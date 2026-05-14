@@ -3,3 +3,4 @@ export { checkAgentHealth } from './health';
 export { fetchAgentWorkspaces, type RemoteWorkspace } from './workspaces';
 export { SSERelay, type SSEEvent } from './sse-relay';
 export { WebSocketRelay, type WSRelayMessage } from './ws-relay';
+export { DevTunnelTokenService, type TunnelToken } from './tunnel-token';

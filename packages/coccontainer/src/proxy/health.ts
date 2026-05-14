@@ -10,7 +10,7 @@ import { URL } from 'url';
  * Check if an agent is reachable by hitting a known endpoint.
  * Returns true if the agent responds with 2xx within timeout.
  */
-export async function checkAgentHealth(agentAddress: string, timeoutMs: number = 5000): Promise<boolean> {
+export async function checkAgentHealth(agentAddress: string, timeoutMs: number = 5000, extraHeaders?: Record<string, string>): Promise<boolean> {
     return new Promise((resolve) => {
         try {
             const url = new URL('/api/health', agentAddress);
@@ -23,6 +23,7 @@ export async function checkAgentHealth(agentAddress: string, timeoutMs: number =
                     port: url.port,
                     path: url.pathname,
                     timeout: timeoutMs,
+                    headers: extraHeaders,
                 },
                 (res) => {
                     // Consume body to free socket

@@ -1,5 +1,6 @@
 import { buildApiUrl, CocApiError, CocClient, CocNetworkError, type CocRequestOptions, type QueryPrimitive } from '@plusplusoneplusplus/coc-client';
-import { getApiBase } from '../utils/config';
+import { getApiBase, isContainerMode, getCurrentAgentId, isAgentAuthenticated, getAuthenticatedAgentAddress, hasServerSideAuth } from '../utils/config';
+import { relayFetch } from '../utils/agent-relay';
 
 let cachedClient: CocClient | undefined;
 let cachedKey = '';
@@ -33,6 +34,56 @@ function toLegacyFetchInit(init?: RequestInit): RequestInit {
     return next;
 }
 
+/**
+ * Create a relay-aware fetch function. For authenticated devtunnel agents,
+ * routes requests through the agent relay popup instead of the container proxy.
+ */
+function createRelayAwareFetch(): typeof fetch {
+    return ((input: RequestInfo | URL, init?: RequestInit) => {
+        const cleanInit = toLegacyFetchInit(init);
+
+        // Check if current agent is an authenticated devtunnel agent
+        if (isContainerMode()) {
+            const agentId = getCurrentAgentId();
+            // If agent has server-side tunnel auth, skip relay — let
+            // the request go to the container proxy which injects the token
+            if (agentId && hasServerSideAuth(agentId)) {
+                return fetch(input, cleanInit);
+            }
+            if (agentId && isAgentAuthenticated(agentId)) {
+                const agentAddr = getAuthenticatedAgentAddress(agentId);
+                if (agentAddr) {
+                    // Rewrite the URL: /api/agent/<id>/path → /api/path (on agent domain)
+                    const inputStr = typeof input === 'string' ? input : input.toString();
+                    const agentPrefix = `/api/agent/${encodeURIComponent(agentId)}`;
+                    if (inputStr.startsWith(agentPrefix)) {
+                        const agentPath = inputStr.slice(agentPrefix.length) || '/';
+                        const apiPath = '/api' + agentPath;
+                        const headers: Record<string, string> = {};
+                        if (cleanInit.headers && typeof cleanInit.headers === 'object' && !Array.isArray(cleanInit.headers)) {
+                            Object.assign(headers, cleanInit.headers);
+                        }
+                        return relayFetch(agentAddr, apiPath, {
+                            method: (cleanInit.method as string) || 'GET',
+                            headers,
+                            body: cleanInit.body as string | undefined,
+                        }).then(({ status, data }) => {
+                            // Return a fetch-Response-like object
+                            const body = typeof data === 'string' ? data : JSON.stringify(data);
+                            return new Response(body, {
+                                status,
+                                headers: { 'Content-Type': typeof data === 'string' ? 'text/plain' : 'application/json' },
+                            });
+                        });
+                    }
+                }
+            }
+        }
+
+        return fetch(input, cleanInit);
+    }) as typeof fetch;
+}
+
 export function getSpaCocClient(): CocClient {
     const apiBasePath = getApiBase();
     const wsPath = (globalThis as any).window?.__DASHBOARD_CONFIG__?.wsPath ?? '/ws';
@@ -43,7 +94,7 @@ export function getSpaCocClient(): CocClient {
             baseUrl: '',
             apiBasePath,
             wsPath,
-            fetch: ((input, init) => fetch(input, toLegacyFetchInit(init))) as typeof fetch,
+            fetch: createRelayAwareFetch(),
         });
         cachedKey = key;
         cachedFetch = fetch;

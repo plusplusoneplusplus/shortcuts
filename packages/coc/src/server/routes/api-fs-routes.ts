@@ -190,6 +190,7 @@ function fsBlobIsBinary(buffer: Buffer): boolean {
 
 export interface RegisterApiFsRoutesOptions {
     dataDir?: string;
+    store?: import('@plusplusoneplusplus/forge').ProcessStore;
 }
 
 export function registerApiFsRoutes(routes: Route[], options?: RegisterApiFsRoutesOptions): void {
@@ -228,37 +229,180 @@ export function registerApiFsRoutes(routes: Route[], options?: RegisterApiFsRout
         },
     });
 
-    // GET /api/fs/browse-helper — HTML page that browses same-origin and posts results via postMessage.
-    // Used by container-mode SPA on localhost to browse devtunnel agents without cross-origin cookie issues.
+    // GET /api/fs/browse-helper — HTML page that returns results via postMessage.
+    // Used by container-mode SPA on localhost to interact with devtunnel agents without cross-origin cookie issues.
+    // Supports two actions via ?action= query param:
+    //   - browse (default): browse a directory, returns browse-result/browse-error
+    //   - register: register a workspace, returns register-result/register-error
     routes.push({
         method: 'GET',
         pattern: '/api/fs/browse-helper',
         handler: async (req, res) => {
             const parsed = url.parse(req.url || '/', true);
-            const browsePath = typeof parsed.query.path === 'string' ? parsed.query.path : '~';
-            const showHidden = parsed.query.showHidden === 'true';
-            const html = `<!DOCTYPE html><html><head><title>Browsing...</title></head><body>
-<p>Loading directory listing...</p>
+            const action = (parsed.query.action as string) || 'browse';
+
+            if (action === 'register') {
+                // Register workspace action
+                const { id, name: wsName, rootPath, color } = parsed.query as Record<string, string | undefined>;
+                if (!id || !wsName || !rootPath) {
+                    const html = `<!DOCTYPE html><html><body><script>
+var target = window.opener || window.parent;
+if (target && target !== window) target.postMessage({ type: 'register-error', error: 'Missing required fields: id, name, rootPath' }, '*');
+</script></body></html>`;
+                    res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+                    res.end(html);
+                    return;
+                }
+                try {
+                    let remoteUrl: string | undefined;
+                    try {
+                        const result = execFileSync('git', ['remote', 'get-url', 'origin'], {
+                            cwd: rootPath, encoding: 'utf-8', timeout: 5000,
+                        }).trim();
+                        if (result) remoteUrl = result;
+                    } catch { /* not a git repo or no remote */ }
+
+                    const workspace = { id, name: wsName, rootPath, color, remoteUrl };
+                    if (!options?.store) throw new Error('Workspace store not available');
+                    await options.store.registerWorkspace(workspace);
+
+                    const html = `<!DOCTYPE html><html><body><script>
+(function() {
+  var target = window.opener || window.parent;
+  var data = ${JSON.stringify({ id, name: wsName, rootPath, color, remoteUrl })};
+  if (target && target !== window) {
+    target.postMessage({ type: 'register-result', data: data }, '*');
+    if (window.opener) setTimeout(function() { window.close(); }, 300);
+  }
+})();
+</script></body></html>`;
+                    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+                    res.end(html);
+                } catch (err: unknown) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    const html = `<!DOCTYPE html><html><body><script>
+var target = window.opener || window.parent;
+if (target && target !== window) target.postMessage({ type: 'register-error', error: ${JSON.stringify(msg)} }, '*');
+</script></body></html>`;
+                    res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' });
+                    res.end(html);
+                }
+                return;
+            }
+
+            if (action === 'relay') {
+                // Persistent postMessage-based RPC bridge for routing API requests
+                // and SSE streams through the browser's devtunnel auth cookies.
+                const html = `<!DOCTYPE html><html><head><title>CoC Relay</title></head><body>
 <script>
-(async () => {
-  try {
-    const p = ${JSON.stringify(browsePath)};
-    const sh = ${JSON.stringify(showHidden)};
-    const resp = await fetch('/api/fs/browse?path=' + encodeURIComponent(p) + '&showHidden=' + sh);
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const data = await resp.json();
-    if (window.opener) {
-      window.opener.postMessage({ type: 'browse-result', data: data }, '*');
-      document.body.innerHTML = '<p>Done — this tab will close.</p>';
-      setTimeout(() => window.close(), 500);
-    } else {
-      document.body.innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+(function() {
+  var sseConnections = {};
+
+  window.addEventListener('message', function(event) {
+    var msg = event.data;
+    if (!msg || !msg.type) return;
+
+    if (msg.type === 'relay-request') {
+      var id = msg.id;
+      var init = { method: msg.method || 'GET' };
+      if (msg.headers) init.headers = msg.headers;
+      if (msg.body !== undefined && msg.body !== null) init.body = msg.body;
+      fetch(msg.path, init).then(function(resp) {
+        var ct = resp.headers.get('content-type') || '';
+        var parseBody = ct.indexOf('json') >= 0
+          ? resp.json()
+          : resp.text();
+        return parseBody.then(function(data) {
+          var src = event.source || window.opener;
+          if (src) src.postMessage({ type: 'relay-response', id: id, status: resp.status, data: data }, '*');
+        });
+      }).catch(function(err) {
+        var src = event.source || window.opener;
+        if (src) src.postMessage({ type: 'relay-error', id: id, error: err.message || String(err) }, '*');
+      });
+      return;
     }
-  } catch (e) {
-    if (window.opener) {
-      window.opener.postMessage({ type: 'browse-error', error: e.message }, '*');
+
+    if (msg.type === 'relay-sse-open') {
+      var sseId = msg.id;
+      var es = new EventSource(msg.path);
+      sseConnections[sseId] = es;
+      es.onopen = function() {
+        var src = event.source || window.opener;
+        if (src) src.postMessage({ type: 'relay-sse-open-ack', id: sseId }, '*');
+      };
+      es.onmessage = function(e) {
+        var src = event.source || window.opener;
+        if (src) src.postMessage({ type: 'relay-sse-message', id: sseId, data: e.data, eventType: 'message' }, '*');
+      };
+      es.onerror = function() {
+        var src = event.source || window.opener;
+        if (src) src.postMessage({ type: 'relay-sse-error', id: sseId }, '*');
+      };
+      var eventNames = [
+        'conversation-snapshot','chunk','tool-start','tool-end',
+        'pending-message-added','pending-message-removed','done',
+        'status','error','keep-alive','queue-position'
+      ];
+      eventNames.forEach(function(name) {
+        es.addEventListener(name, function(e) {
+          var src = event.source || window.opener;
+          if (src) src.postMessage({ type: 'relay-sse-message', id: sseId, data: e.data, eventType: name }, '*');
+        });
+      });
+      return;
     }
-    document.body.innerHTML = '<p style="color:red">Error: ' + e.message + '</p>';
+
+    if (msg.type === 'relay-sse-close') {
+      var conn = sseConnections[msg.id];
+      if (conn) { conn.close(); delete sseConnections[msg.id]; }
+      return;
+    }
+  });
+
+  if (window.opener) window.opener.postMessage({ type: 'relay-ready' }, '*');
+})();
+</script>
+<p style="font:12px sans-serif;color:#888">CoC Relay \\u2014 this window can be minimized</p>
+</body></html>`;
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+                res.end(html);
+                return;
+            }
+
+            // Default: browse action
+            const rawPath = typeof parsed.query.path === 'string' && parsed.query.path
+                ? parsed.query.path
+                : os.homedir();
+            const showHidden = parsed.query.showHidden === 'true';
+            const resolved = path.resolve(rawPath.replace(/^~/, os.homedir()));
+
+            const result = browseDirectory(resolved, showHidden);
+            let payload: Record<string, unknown> | null = null;
+            if (result) {
+                payload = { ...result } as Record<string, unknown>;
+                if (process.platform === 'win32') {
+                    payload.drives = listWindowsDrives();
+                    payload.browseRoots = listBrowseRoots();
+                }
+            }
+
+            const html = `<!DOCTYPE html><html><head><title>Browsing...</title></head><body>
+<script>
+(function() {
+  var data = ${payload ? JSON.stringify(payload) : 'null'};
+  var target = window.opener || window.parent;
+  if (!data) {
+    if (target && target !== window) target.postMessage({ type: 'browse-error', error: 'Directory not found' }, '*');
+    document.body.innerHTML = '<p style="color:red">Directory not found</p>';
+    return;
+  }
+  if (target && target !== window) {
+    target.postMessage({ type: 'browse-result', data: data }, '*');
+    document.body.innerHTML = '<p>Done</p>';
+    if (window.opener) setTimeout(function() { window.close(); }, 300);
+  } else {
+    document.body.innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
   }
 })();
 </script></body></html>`;
@@ -267,7 +411,6 @@ export function registerApiFsRoutes(routes: Route[], options?: RegisterApiFsRout
         },
     });
 
-    // GET /api/fs/blob — Read file content from trusted directories (read-only)
     routes.push({
         method: 'GET',
         pattern: '/api/fs/blob',
