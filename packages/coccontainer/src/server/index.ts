@@ -12,7 +12,6 @@ import { URL } from 'url';
 import type { ResolvedContainerConfig } from '../config';
 import { createAgentStore, type Agent } from '../store';
 import { pipeRequest } from '../proxy/http';
-import { DevTunnelTokenService } from '../proxy/tunnel-token';
 import { TunnelBridge } from '../proxy/tunnel-bridge';
 import { fetchAgentWorkspaces, addCachedWorkspace, type RemoteWorkspace } from '../proxy/workspaces';
 import { SSERelay } from '../proxy/sse-relay';
@@ -56,7 +55,6 @@ function generateContainerHtml(): string {
 
 export async function createContainerServer(config: ResolvedContainerConfig): Promise<ContainerServer> {
     const agentStore = createAgentStore(config.serve.dataDir);
-    const tokenService = new DevTunnelTokenService();
     const tunnelBridge = new TunnelBridge({ basePort: config.tunnelBridgeBasePort });
     const sseRelay = new SSERelay();
     const wsRelay = new WebSocketRelay();
@@ -103,10 +101,6 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
             if (url.pathname === '/api/container/agents' && req.method === 'POST') {
                 const body = await readBody(req);
                 const { address, name, tunnelId } = body as { address: string; name?: string; tunnelId?: string };
-                // Ensure anonymous access on the tunnel so token auth works
-                if (tunnelId) {
-                    await tokenService.ensureAnonymousAccess(tunnelId);
-                }
                 const agent = agentStore.add(address, name, tunnelId);
                 // Start tunnel bridge for devtunnel agents
                 if (agent.tunnelId) {
@@ -135,10 +129,6 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 const agentId = url.pathname.split('/')[4];
                 const body = await readBody(req);
                 const { name, address, tunnelId } = body as { name?: string; address?: string; tunnelId?: string | null };
-                // Ensure anonymous access when setting/updating tunnelId
-                if (tunnelId) {
-                    await tokenService.ensureAnonymousAccess(tunnelId);
-                }
                 // Use full update if address or tunnelId provided, otherwise simple rename
                 const agent = (address !== undefined || tunnelId !== undefined)
                     ? agentStore.update(agentId, { name, address, tunnelId })
