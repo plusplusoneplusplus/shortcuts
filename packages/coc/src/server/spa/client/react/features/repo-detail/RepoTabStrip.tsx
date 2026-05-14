@@ -186,6 +186,49 @@ export function computeVisibleRepoIds(
 }
 
 /**
+ * Compute which agent group IDs are visible given a container width.
+ * Works like computeVisibleRepoIds but for agent pill elements.
+ * The agent containing the selected repo is always included.
+ */
+export function computeVisibleAgentIds(
+    pillElements: HTMLElement[],
+    containerWidth: number,
+    selectedAgentId: string | null,
+): Set<string> {
+    if (containerWidth <= 0) {
+        if (selectedAgentId) return new Set([selectedAgentId]);
+        return new Set<string>();
+    }
+
+    const visible = new Set<string>();
+    let usedWidth = 0;
+    let lastVisibleId: string | null = null;
+
+    for (const el of pillElements) {
+        const id = el.getAttribute('data-agent-id');
+        if (!id) continue;
+        const width = el.offsetWidth + 2;
+        if (usedWidth + width <= containerWidth) {
+            visible.add(id);
+            usedWidth += width;
+            lastVisibleId = id;
+        } else {
+            break;
+        }
+    }
+
+    // Ensure agent with selected repo is always visible
+    if (selectedAgentId && !visible.has(selectedAgentId)) {
+        if (lastVisibleId && visible.size > 0) {
+            visible.delete(lastVisibleId);
+        }
+        visible.add(selectedAgentId);
+    }
+
+    return visible;
+}
+
+/**
  * Flatten grouped repos into a flat ordered list of repo IDs.
  */
 function flattenGroups(groups: RepoGroup[]): string[] {
@@ -222,6 +265,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     const [repoDropIndicator, setRepoDropIndicator] = useState<RepoDropIndicator>(null);
     const [repoLiveMessage, setRepoLiveMessage] = useState('');
     const [openAgentDropdown, setOpenAgentDropdown] = useState<string | null>(null);
+    const [agentOverflowOpen, setAgentOverflowOpen] = useState(false);
     const agentDropdownRef = useRef<HTMLDivElement>(null);
 
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -282,7 +326,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
         [groupOrder, hasCustomRepoOrder, rawGroups],
     );
     const allRepoIds = useMemo(() => flattenGroups(groups), [groups]);
-    const { dispatch } = useApp();
+    const { state: appState, dispatch } = useApp();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
 
     /** Pre-computed queue status for each repo. */
@@ -443,6 +487,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     }, [selectedRepoId, allRepoIds]);
 
     useEffect(() => {
+        if (isContainerMode()) return; // container mode uses agent pill layout, not repo overflow
         const el = tabContainerRef.current;
         if (!el) return;
         if (typeof ResizeObserver === 'undefined') return;
@@ -454,12 +499,25 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
 
     // Recalc when repos change
     useEffect(() => {
+        if (isContainerMode()) return;
         recalcOverflow();
     }, [repos, recalcOverflow]);
 
+    // Container mode agent pill overflow detection — show first 10, "..." for rest
+    const AGENT_PILL_MAX = 10;
+    const visibleAgentGroups = useMemo(
+        () => isContainerMode() ? groups.slice(0, AGENT_PILL_MAX) : groups,
+        [groups],
+    );
+    const hiddenAgentGroups = useMemo(
+        () => isContainerMode() && groups.length > AGENT_PILL_MAX ? groups.slice(AGENT_PILL_MAX) : [],
+        [groups],
+    );
+    const hasAgentOverflow = hiddenAgentGroups.length > 0;
+
     const overflowCount = visibleRepoIds ? allRepoIds.length - visibleRepoIds.size : 0;
     const hasOverflow = overflowCount > 0;
-    const showOverflowControl = hasOverflow || customizeRepoTabs;
+    const showOverflowControl = !isContainerMode() && (hasOverflow || customizeRepoTabs);
     const overflowHasUnseen = hasOverflow && allRepoIds.some(
         id => !visibleRepoIds!.has(id) && (unseenCounts[id] ?? 0) > 0
     );
@@ -681,7 +739,8 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
             className="flex items-center flex-1 min-w-0"
             data-testid="repo-tab-strip"
         >
-        {/* Hidden measurement container — lightweight spans to measure natural widths */}
+        {/* Hidden measurement container — lightweight spans to measure natural widths (non-container mode only) */}
+        {!isContainerMode() && (
         <div
             ref={measureContainerRef}
             className="flex items-center gap-0.5 absolute invisible overflow-hidden h-0"
@@ -695,21 +754,33 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                 </div>
             ))}
         </div>
+        )}
         {/* Visible tab container */}
         <div
             ref={tabContainerRef}
-            className="flex items-center gap-0.5 flex-1 min-w-0 px-1"
+            className={
+                isContainerMode()
+                    ? 'flex items-center gap-0.5 px-1'
+                    : 'flex items-center gap-0.5 flex-1 min-w-0 px-1'
+            }
             data-testid="repo-tab-visible-container"
         >
             {isContainerMode() ? (
-                /* Container mode: agent dropdown pills */
-                groups.map((group) => {
+                /* Container mode: agent pills with hover submenu (max 10 visible) */
+                visibleAgentGroups.map((group) => {
                     const agentId = group.normalizedUrl ?? 'unknown';
                     const isOpen = openAgentDropdown === agentId;
-                    const selectedInGroup = group.repos.find(r => r.workspace.id === selectedRepoId);
+                    const isActiveAgent = appState.currentAgentId === agentId;
+                    const selectedInGroup = isActiveAgent && group.repos.find(r => r.workspace.id === selectedRepoId);
                     const totalUnseen = group.repos.reduce((sum, r) => sum + (unseenCounts[r.workspace.id] ?? 0), 0);
                     return (
-                        <div key={agentId} className="relative flex-shrink-0" ref={isOpen ? agentDropdownRef : undefined}>
+                        <div
+                            key={agentId}
+                            className="relative flex-shrink-0 group/agent"
+                            ref={isOpen ? agentDropdownRef : undefined}
+                            onMouseEnter={() => setOpenAgentDropdown(agentId)}
+                            onMouseLeave={() => setOpenAgentDropdown(prev => prev === agentId ? null : prev)}
+                        >
                             <button
                                 data-testid="agent-pill"
                                 className={
@@ -718,18 +789,31 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                         ? 'bg-[#0078d4] text-white'
                                         : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
                                 }
-                                onClick={() => setOpenAgentDropdown(isOpen ? null : agentId)}
+                                onClick={() => {
+                                    // If only one repo, select it directly
+                                    if (group.repos.length === 1) {
+                                        const switchingAgent = appState.currentAgentId !== agentId;
+                                        dispatch({ type: 'SET_CURRENT_AGENT', agentId });
+                                        onSelect(group.repos[0].workspace.id);
+                                        if (switchingAgent && group.repos[0].workspace.id === selectedRepoId) {
+                                            onRefresh();
+                                        }
+                                    } else {
+                                        setOpenAgentDropdown(isOpen ? null : agentId);
+                                    }
+                                }}
                             >
                                 <span>{group.label}</span>
-                                <span className="text-[9px] opacity-70">▾</span>
+                                {group.repos.length > 0 && <span className="text-[9px] opacity-70">▾</span>}
                                 {totalUnseen > 0 && (
                                     <span className="min-w-[14px] h-[14px] px-[3px] rounded-full bg-[#d16969] text-white text-[8px] font-semibold flex items-center justify-center leading-none">
                                         {totalUnseen > 99 ? '99+' : totalUnseen}
                                     </span>
                                 )}
                             </button>
-                            {isOpen && (
-                                <div className="absolute top-full left-0 mt-1 z-[9999] min-w-[200px] max-w-[320px] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg py-1">
+                            {isOpen && group.repos.length > 0 && (
+                                <div className="absolute top-full left-0 pt-1 z-[9999]">
+                                <div className="min-w-[200px] max-w-[320px] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg py-1">
                                     {group.repos.map(repo => {
                                         const ws = repo.workspace;
                                         const isSelected = ws.id === selectedRepoId;
@@ -745,7 +829,17 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                                         ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/15 text-[#0078d4] dark:text-[#60b4ff] font-medium'
                                                         : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/5 dark:hover:bg-[#3794ff]/10')
                                                 }
-                                                onClick={() => { onSelect(ws.id); setOpenAgentDropdown(null); }}
+                                                onClick={() => {
+                                                    // Switch to this agent before selecting the repo
+                                                    const switchingAgent = appState.currentAgentId !== agentId;
+                                                    dispatch({ type: 'SET_CURRENT_AGENT', agentId });
+                                                    onSelect(ws.id);
+                                                    setOpenAgentDropdown(null);
+                                                    // If same repo ID is already selected but agent changed, force data refresh
+                                                    if (switchingAgent && ws.id === selectedRepoId) {
+                                                        onRefresh();
+                                                    }
+                                                }}
                                             >
                                                 <RepoQueueStatusIndicator status={queueStatus} color={color} idleShape="rounded-full" isSelected={isSelected} testId="agent-repo-dot" />
                                                 <span className="truncate">{ws.name}</span>
@@ -757,6 +851,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                             </button>
                                         );
                                     })}
+                                </div>
                                 </div>
                             )}
                         </div>
@@ -782,6 +877,98 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                 })
             )}
         </div>
+        {/* Agent overflow "..." for container mode (more than 10 agents) */}
+        {isContainerMode() && hasAgentOverflow && (
+            <div className="relative flex-shrink-0 px-0.5" data-testid="agent-overflow-pill-container">
+                <button
+                    data-testid="agent-overflow-pill"
+                    className={
+                        'relative flex items-center justify-center h-7 px-2.5 rounded text-xs font-medium transition-colors cursor-pointer ' +
+                        'bg-gray-200 dark:bg-gray-700 text-[#1e1e1e] dark:text-[#cccccc] ' +
+                        'hover:bg-gray-300 dark:hover:bg-gray-600'
+                    }
+                    aria-label={`${hiddenAgentGroups.length} more agents`}
+                    title={`${hiddenAgentGroups.length} more agents`}
+                    onClick={() => setAgentOverflowOpen(prev => !prev)}
+                >
+                    +{hiddenAgentGroups.length}
+                </button>
+                {agentOverflowOpen && (
+                    <div
+                        data-testid="agent-overflow-dropdown"
+                        className="absolute right-0 top-full mt-1 z-[9999] min-w-[200px] max-w-[320px] bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded shadow-lg py-1"
+                        role="menu"
+                    >
+                        {hiddenAgentGroups.map(group => {
+                            const agentId = group.normalizedUrl ?? 'unknown';
+                            const isActiveAgent = appState.currentAgentId === agentId;
+                            const selectedInGroup = isActiveAgent && group.repos.find(r => r.workspace.id === selectedRepoId);
+                            const totalUnseen = group.repos.reduce((sum, r) => sum + (unseenCounts[r.workspace.id] ?? 0), 0);
+                            return (
+                                <div key={agentId} className="relative px-1 py-0.5 group/overflow-agent">
+                                    <button
+                                        className={
+                                            'w-full text-left flex items-center gap-2 px-3 py-1.5 text-xs rounded cursor-pointer ' +
+                                            (selectedInGroup
+                                                ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/15 text-[#0078d4] dark:text-[#60b4ff] font-medium'
+                                                : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/5 dark:hover:bg-[#3794ff]/10')
+                                        }
+                                        onMouseEnter={() => setOpenAgentDropdown(agentId)}
+                                        onMouseLeave={() => setOpenAgentDropdown(prev => prev === agentId ? null : prev)}
+                                        onClick={() => {
+                                            if (group.repos.length === 1) {
+                                                onSelect(group.repos[0].workspace.id);
+                                                setAgentOverflowOpen(false);
+                                                setOpenAgentDropdown(null);
+                                            }
+                                        }}
+                                    >
+                                        <span className="truncate">{group.label}</span>
+                                        <span className="text-[10px] opacity-60 ml-auto">{group.repos.length}</span>
+                                        {totalUnseen > 0 && (
+                                            <span className="min-w-[14px] h-[14px] px-[3px] rounded-full bg-[#d16969] text-white text-[8px] font-semibold flex items-center justify-center leading-none">
+                                                {totalUnseen > 99 ? '99+' : totalUnseen}
+                                            </span>
+                                        )}
+                                    </button>
+                                    {openAgentDropdown === agentId && group.repos.length > 0 && (
+                                        <div
+                                            className="absolute right-full top-0 pr-1 z-[10000]"
+                                            onMouseEnter={() => setOpenAgentDropdown(agentId)}
+                                            onMouseLeave={() => setOpenAgentDropdown(null)}
+                                        >
+                                        <div className="min-w-[180px] max-w-[280px] rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg py-1">
+                                            {group.repos.map(repo => {
+                                                const ws = repo.workspace;
+                                                const isSelected = ws.id === selectedRepoId;
+                                                const color = ws.color || '#848484';
+                                                const queueStatus = repoQueueStatusMap[ws.id] ?? 'idle';
+                                                return (
+                                                    <button
+                                                        key={ws.id}
+                                                        className={
+                                                            'w-full text-left flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer ' +
+                                                            (isSelected
+                                                                ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/15 text-[#0078d4] dark:text-[#60b4ff] font-medium'
+                                                                : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/5 dark:hover:bg-[#3794ff]/10')
+                                                        }
+                                                        onClick={() => { const sw = appState.currentAgentId !== agentId; dispatch({ type: 'SET_CURRENT_AGENT', agentId }); onSelect(ws.id); setOpenAgentDropdown(null); setAgentOverflowOpen(false); if (sw && ws.id === selectedRepoId) onRefresh(); }}
+                                                    >
+                                                        <RepoQueueStatusIndicator status={queueStatus} color={color} idleShape="rounded-full" isSelected={isSelected} testId="agent-overflow-repo-dot" />
+                                                        <span className="truncate">{ws.name}</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        )}
         {/* "+N" overflow pill / customize order list */}
         {showOverflowControl && (
             <div ref={overflowRef} className="relative flex-shrink-0 px-0.5" data-testid="overflow-pill-container">

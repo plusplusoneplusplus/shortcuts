@@ -7,6 +7,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useQueue } from '../contexts/QueueContext';
+import { useContainerAgents } from '../contexts/ContainerAgentContext';
 import { FirstStepsCard } from '../welcome/FirstStepsCard';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
 import { Button, cn } from '../ui';
@@ -48,6 +49,7 @@ interface ReposGridProps {
 export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
     const { state, dispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
+    const containerAgentCtx = useContainerAgents();
     const [expandedState, setExpandedState] = useState<Record<string, boolean>>(loadGroupExpandedState);
     const [addOpen, setAddOpen] = useState(false);
     const [addFolderOpen, setAddFolderOpen] = useState(false);
@@ -91,7 +93,23 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
     const groups = applyGroupOrder(rawGroups, groupOrder);
 
     // Container mode: agent-level grouping above remote groups
-    const agentGroups = isContainerMode() ? groupReposByAgent(repos, expandedState) : null;
+    const agentGroups = (() => {
+        if (!isContainerMode()) return null;
+        const repoGroups = groupReposByAgent(repos, expandedState);
+        // Include agents with 0 repos
+        const seen = new Set(repoGroups.map(g => g.normalizedUrl));
+        for (const agent of containerAgentCtx.agents) {
+            if (!seen.has(agent.id)) {
+                repoGroups.push({
+                    normalizedUrl: agent.id,
+                    label: agent.name || agent.address,
+                    repos: [],
+                    expanded: true,
+                });
+            }
+        }
+        return repoGroups;
+    })();
 
     const toggleGroup = (url: string) => {
         setExpandedState(prev => {

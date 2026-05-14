@@ -49,6 +49,7 @@ export interface AppContextState {
     activeTab: DashboardTab;
     workspaces: any[];
     selectedRepoId: string | null;
+    currentAgentId: string | null;
     activeRepoSubTab: RepoSubTab;
     reposSidebarCollapsed: boolean;
     selectedWikiId: string | null;
@@ -118,6 +119,7 @@ const initialState: AppContextState = {
     activeTab: 'repos',
     workspaces: [],
     selectedRepoId: null,
+    currentAgentId: null,
     activeRepoSubTab: 'chats',
     reposSidebarCollapsed: getInitialSidebarCollapsed(),
     selectedWikiId: null,
@@ -190,6 +192,7 @@ export type AppAction =
     | { type: 'SET_SEARCH_LOADING'; loading: boolean }
     | { type: 'SET_ACTIVE_TAB'; tab: DashboardTab }
     | { type: 'SET_SELECTED_REPO'; id: string | null }
+    | { type: 'SET_CURRENT_AGENT'; agentId: string | null }
     | { type: 'SET_REPO_SUB_TAB'; tab: RepoSubTab }
     | { type: 'TOGGLE_REPOS_SIDEBAR' }
     | { type: 'SET_REPOS_SIDEBAR_COLLAPSED'; value: boolean }
@@ -334,6 +337,10 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
                 : state.notePathState;
             const restoredNotePath = action.id ? (savedNoteState[action.id] ?? null) : null;
             return { ...state, selectedRepoId: action.id, repoTabState: savedTabState, activeRepoSubTab: restoredTab, notePathState: savedNoteState, selectedNotePath: restoredNotePath, selectedWorkflowName: null, selectedWorkflowProcessId: null };
+        }
+        case 'SET_CURRENT_AGENT': {
+            setCurrentAgentId(action.agentId);
+            return { ...state, currentAgentId: action.agentId };
         }
         case 'SET_REPO_SUB_TAB': {
             const updatedRepoTabState = state.selectedRepoId
@@ -573,12 +580,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         if (!isContainerMode()) return;
         if (!state.selectedRepoId) {
-            setCurrentAgentId(null);
+            if (state.currentAgentId !== null) {
+                dispatch({ type: 'SET_CURRENT_AGENT', agentId: null });
+            }
             return;
         }
-        const ws = state.workspaces.find((w: any) => w.id === state.selectedRepoId);
-        setCurrentAgentId(ws?.agentId ?? null);
-    }, [state.selectedRepoId, state.workspaces]);
+        const matches = state.workspaces.filter((w: any) => w.id === state.selectedRepoId);
+        let resolvedAgentId: string | null;
+        if (matches.length === 0) {
+            resolvedAgentId = null;
+        } else if (matches.length === 1) {
+            resolvedAgentId = matches[0].agentId ?? null;
+        } else {
+            // Multiple agents have the same workspace ID (same repo path).
+            // Prefer the one matching the current agent (set explicitly by click handler).
+            const preferred = matches.find((w: any) => w.agentId === state.currentAgentId);
+            resolvedAgentId = (preferred ?? matches[0]).agentId ?? null;
+        }
+        if (resolvedAgentId !== state.currentAgentId) {
+            dispatch({ type: 'SET_CURRENT_AGENT', agentId: resolvedAgentId });
+        }
+    }, [state.selectedRepoId, state.workspaces, state.currentAgentId]);
 
     // Debounced save of activity filters to server preferences
     const filterSaveRef = useRef<ReturnType<typeof setTimeout>>();

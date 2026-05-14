@@ -14,7 +14,7 @@ import {
     registerWorkspace,
     updateWorkspace,
 } from './repositoryService';
-import { isContainerMode, setCurrentAgentId } from '../utils/config';
+import { isContainerMode, setCurrentAgentId, getCurrentAgentId } from '../utils/config';
 import { useContainerAgents } from '../contexts/ContainerAgentContext';
 
 const AUTO_VALUE = 'auto';
@@ -85,7 +85,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
     const editRepo = isEdit ? repos.find(r => r.workspace.id === editId) : null;
     const pathPlaceholder = getPathPlaceholder();
     const { agents } = useContainerAgents();
-    const onlineAgents = agents.filter(a => a.status !== 'offline');
+    const availableAgents = agents;
 
     const [selectedAgentId, setSelectedAgentId] = useState('');
     const [path, setPath] = useState('');
@@ -94,12 +94,12 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
     const [validation, setValidation] = useState<{ msg: string; ok: boolean } | null>(null);
     const [submitting, setSubmitting] = useState(false);
 
-    // Auto-select first online agent when dialog opens in container mode
+    // Auto-select first available agent when dialog opens in container mode
     useEffect(() => {
-        if (open && isContainerMode() && !selectedAgentId && onlineAgents.length > 0) {
-            setSelectedAgentId(onlineAgents[0].id);
+        if (open && isContainerMode() && !selectedAgentId && availableAgents.length > 0) {
+            setSelectedAgentId(availableAgents[0].id);
         }
-    }, [open, selectedAgentId, onlineAgents]);
+    }, [open, selectedAgentId, availableAgents]);
 
     // Browser state
     const [showBrowser, setShowBrowser] = useState(false);
@@ -132,6 +132,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
     const navigateTo = useCallback(async (dir: string) => {
         setBrowserLoading(true);
         setBrowserError(null);
+        const prevAgentId = getCurrentAgentId();
         try {
             if (isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
             const data = await browseWorkspaceFolders(dir) as BrowserResponse;
@@ -145,9 +146,11 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
             setBrowserParent(null);
             setBrowseRoots([]);
             setBrowserError('Unable to browse this path');
+        } finally {
+            setCurrentAgentId(prevAgentId);
         }
         setBrowserLoading(false);
-    }, []);
+    }, [selectedAgentId]);
 
     const openBrowser = useCallback(() => {
         setShowBrowser(true);
@@ -180,6 +183,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
             ? resolveAutoColor(existingColors, REAL_PALETTE)
             : color;
 
+        const prevAgentId = getCurrentAgentId();
         try {
             if (isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
             if (isEdit && editId) {
@@ -211,9 +215,12 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
                 }
             }
 
+            // Restore agent ID before triggering refresh so fetchRepos uses the correct base
+            setCurrentAgentId(prevAgentId);
             onSuccess();
             onClose();
         } catch (error) {
+            setCurrentAgentId(prevAgentId);
             setValidation({
                 msg: getRepositoryApiErrorMessage(
                     error,
@@ -251,12 +258,12 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
                             value={selectedAgentId}
                             onChange={e => setSelectedAgentId(e.target.value)}
                         >
-                            {onlineAgents.length === 0 && (
-                                <option value="" disabled>No agents online</option>
+                            {availableAgents.length === 0 && (
+                                <option value="" disabled>No agents available</option>
                             )}
-                            {onlineAgents.map(agent => (
+                            {availableAgents.map(agent => (
                                 <option key={agent.id} value={agent.id}>
-                                    {agent.name} ({agent.address})
+                                    {agent.name} ({agent.address}){agent.status === 'offline' ? ' [offline]' : ''}
                                 </option>
                             ))}
                         </select>
