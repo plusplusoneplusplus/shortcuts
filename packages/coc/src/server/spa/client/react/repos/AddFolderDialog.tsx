@@ -54,7 +54,7 @@ function joinBrowserPath(basePath: string, childName: string): string {
 export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps) {
     const [phase, setPhase] = useState<Phase>('pick');
     const { agents } = useContainerAgents();
-    const onlineAgents = agents.filter(a => a.status !== 'offline');
+    const availableAgents = agents;
     const [selectedAgentId, setSelectedAgentId] = useState('');
 
     // Browser state
@@ -94,8 +94,8 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
             setAddingIdx(0);
             setErrors([]);
             cancelRef.current = false;
-            if (isContainerMode() && onlineAgents.length > 0) {
-                setSelectedAgentId(onlineAgents[0].id);
+            if (isContainerMode() && availableAgents.length > 0) {
+                setSelectedAgentId(availableAgents[0].id);
             }
             navigateTo('~');
         }
@@ -256,12 +256,12 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
                                 value={selectedAgentId}
                                 onChange={e => setSelectedAgentId(e.target.value)}
                             >
-                                {onlineAgents.length === 0 && (
-                                    <option value="" disabled>No agents online</option>
+                                {availableAgents.length === 0 && (
+                                    <option value="" disabled>No agents available</option>
                                 )}
-                                {onlineAgents.map(agent => (
+                                {availableAgents.map(agent => (
                                     <option key={agent.id} value={agent.id}>
-                                        {agent.name} ({agent.address})
+                                        {agent.name} ({agent.address}){agent.status === 'offline' ? ' [offline]' : ''}
                                     </option>
                                 ))}
                             </select>

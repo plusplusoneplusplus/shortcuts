@@ -85,7 +85,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
     const editRepo = isEdit ? repos.find(r => r.workspace.id === editId) : null;
     const pathPlaceholder = getPathPlaceholder();
     const { agents } = useContainerAgents();
-    const onlineAgents = agents.filter(a => a.status !== 'offline');
+    const availableAgents = agents;
 
     const [selectedAgentId, setSelectedAgentId] = useState('');
     const [path, setPath] = useState('');
@@ -94,12 +94,12 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
     const [validation, setValidation] = useState<{ msg: string; ok: boolean } | null>(null);
     const [submitting, setSubmitting] = useState(false);
 
-    // Auto-select first online agent when dialog opens in container mode
+    // Auto-select first available agent when dialog opens in container mode
     useEffect(() => {
-        if (open && isContainerMode() && !selectedAgentId && onlineAgents.length > 0) {
-            setSelectedAgentId(onlineAgents[0].id);
+        if (open && isContainerMode() && !selectedAgentId && availableAgents.length > 0) {
+            setSelectedAgentId(availableAgents[0].id);
         }
-    }, [open, selectedAgentId, onlineAgents]);
+    }, [open, selectedAgentId, availableAgents]);
 
     // Browser state
     const [showBrowser, setShowBrowser] = useState(false);
@@ -258,12 +258,12 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
                             value={selectedAgentId}
                             onChange={e => setSelectedAgentId(e.target.value)}
                         >
-                            {onlineAgents.length === 0 && (
-                                <option value="" disabled>No agents online</option>
+                            {availableAgents.length === 0 && (
+                                <option value="" disabled>No agents available</option>
                             )}
-                            {onlineAgents.map(agent => (
+                            {availableAgents.map(agent => (
                                 <option key={agent.id} value={agent.id}>
-                                    {agent.name} ({agent.address})
+                                    {agent.name} ({agent.address}){agent.status === 'offline' ? ' [offline]' : ''}
                                 </option>
                             ))}
                         </select>
