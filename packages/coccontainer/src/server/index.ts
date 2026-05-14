@@ -115,7 +115,8 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 const effectiveAddr = tunnelBridge.getLocalUrl(agent.id) || agent.address;
                 sseRelay.connect(agent.id, agent.name, effectiveAddr);
                 wsRelay.connect(agent.id, agent.name, effectiveAddr);
-                return sendJson(res, agent, 201);
+                const bridgeUrl = tunnelBridge.getLocalUrl(agent.id);
+                return sendJson(res, { ...agent, bridgeUrl: bridgeUrl || undefined }, 201);
             }
 
             if (url.pathname.startsWith('/api/container/agents/') && req.method === 'DELETE') {
@@ -148,7 +149,8 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 if (agent.tunnelId) {
                     await tunnelBridge.start(agentId, agent.tunnelId, agent.address).catch(() => {});
                 }
-                return sendJson(res, agent);
+                const bridgeUrl = tunnelBridge.getLocalUrl(agentId);
+                return sendJson(res, { ...agent, bridgeUrl: bridgeUrl || undefined });
             }
 
             // Aggregated workspaces from all agents
