@@ -12,7 +12,7 @@ import {
     useCallback,
     type ReactNode,
 } from 'react';
-import { isContainerMode, getRawApiBase } from '../utils/config';
+import { isContainerMode, getRawApiBase, setServerAuthAgents } from '../utils/config';
 
 /** Fetch from container-level endpoints (not agent-proxied). */
 async function fetchContainerApi(path: string, options?: RequestInit): Promise<any> {
@@ -27,18 +27,21 @@ export interface ContainerAgent {
     id: string;
     name: string;
     address: string;
+    tunnelId?: string;
+    bridgeUrl?: string;
     status: 'online' | 'offline' | 'unknown';
-    addedAt?: string;
-    lastHealthCheck?: string;
+    addedAt?: number;
+    lastHealthCheck?: number;
 }
 
 export interface ContainerAgentContextValue {
     agents: ContainerAgent[];
     loading: boolean;
     refresh: () => Promise<void>;
-    addAgent: (address: string, name?: string) => Promise<ContainerAgent>;
+    addAgent: (address: string, name?: string, tunnelId?: string) => Promise<ContainerAgent>;
     removeAgent: (id: string) => Promise<void>;
     renameAgent: (id: string, name: string) => Promise<ContainerAgent>;
+    updateAgent: (id: string, fields: { name?: string; address?: string; tunnelId?: string | null }) => Promise<ContainerAgent>;
 }
 
 const ContainerAgentContext = createContext<ContainerAgentContextValue | null>(null);
@@ -55,7 +58,10 @@ export function ContainerAgentProvider({ children }: { children: ReactNode }) {
         }
         try {
             const data = await fetchContainerApi('/container/agents');
-            setAgents(Array.isArray(data) ? data : []);
+            const list: ContainerAgent[] = Array.isArray(data) ? data : [];
+            setAgents(list);
+            // Register which agents have server-side tunnel auth
+            setServerAuthAgents(list.filter(a => !!a.tunnelId).map(a => a.id));
         } catch {
             setAgents([]);
         }
@@ -66,11 +72,11 @@ export function ContainerAgentProvider({ children }: { children: ReactNode }) {
         refresh();
     }, [refresh]);
 
-    const addAgent = useCallback(async (address: string, name?: string): Promise<ContainerAgent> => {
+    const addAgent = useCallback(async (address: string, name?: string, tunnelId?: string): Promise<ContainerAgent> => {
         const agent = await fetchContainerApi('/container/agents', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ address, name }),
+            body: JSON.stringify({ address, name, tunnelId }),
         });
         await refresh();
         return agent;
@@ -91,8 +97,18 @@ export function ContainerAgentProvider({ children }: { children: ReactNode }) {
         return agent;
     }, [refresh]);
 
+    const updateAgent = useCallback(async (id: string, fields: { name?: string; address?: string; tunnelId?: string | null }): Promise<ContainerAgent> => {
+        const agent = await fetchContainerApi(`/container/agents/${encodeURIComponent(id)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(fields),
+        });
+        await refresh();
+        return agent;
+    }, [refresh]);
+
     return (
-        <ContainerAgentContext.Provider value={{ agents, loading, refresh, addAgent, removeAgent, renameAgent }}>
+        <ContainerAgentContext.Provider value={{ agents, loading, refresh, addAgent, removeAgent, renameAgent, updateAgent }}>
             {children}
         </ContainerAgentContext.Provider>
     );
@@ -109,6 +125,7 @@ export function useContainerAgents(): ContainerAgentContextValue {
             addAgent: async () => { throw new Error('Not in container mode'); },
             removeAgent: async () => { throw new Error('Not in container mode'); },
             renameAgent: async () => { throw new Error('Not in container mode'); },
+            updateAgent: async () => { throw new Error('Not in container mode'); },
         };
     }
     return ctx;

@@ -17,6 +17,8 @@ export interface ContainerConfig {
     };
     /** Health check interval in milliseconds */
     healthCheckIntervalMs?: number;
+    /** Base port for local tunnel bridge proxies (default: 10400) */
+    tunnelBridgeBasePort?: number;
 }
 
 export interface ResolvedContainerConfig {
@@ -26,6 +28,7 @@ export interface ResolvedContainerConfig {
         dataDir: string;
     };
     healthCheckIntervalMs: number;
+    tunnelBridgeBasePort: number;
 }
 
 const DEFAULT_DATA_DIR = path.join(os.homedir(), '.coccontainer');
@@ -37,6 +40,7 @@ const DEFAULTS: ResolvedContainerConfig = {
         dataDir: DEFAULT_DATA_DIR,
     },
     healthCheckIntervalMs: 30_000,
+    tunnelBridgeBasePort: 10400,
 };
 
 export function getDefaultDataDir(): string {
@@ -55,6 +59,7 @@ export function resolveConfig(overrides?: Partial<ContainerConfig>): ResolvedCon
             dataDir: overrides?.serve?.dataDir ?? fileConfig.serve?.dataDir ?? DEFAULTS.serve.dataDir,
         },
         healthCheckIntervalMs: overrides?.healthCheckIntervalMs ?? fileConfig.healthCheckIntervalMs ?? DEFAULTS.healthCheckIntervalMs,
+        tunnelBridgeBasePort: overrides?.tunnelBridgeBasePort ?? fileConfig.tunnelBridgeBasePort ?? DEFAULTS.tunnelBridgeBasePort,
     };
 }
 
