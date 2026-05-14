@@ -78,7 +78,7 @@ export function pipeRequest(
     agentAddress: string,
     incomingReq: http.IncomingMessage,
     outgoingRes: http.ServerResponse,
-    targetPath: string
+    targetPath: string,
 ): void {
     const url = new URL(targetPath, agentAddress);
     const isHttps = url.protocol === 'https:';
@@ -110,14 +110,24 @@ export function pipeRequest(
             }
             if (status >= 300 && status < 400) {
                 const location = proxyRes.headers['location'] || '';
-                // Redirect likely to a login page — signal auth required
-                outgoingRes.writeHead(401, { 'Content-Type': 'application/json' });
-                outgoingRes.end(JSON.stringify({
-                    error: 'Authentication required (redirect)',
-                    authUrl: location || agentAddress,
-                    status: 401,
-                }));
-                proxyRes.resume();
+                // Only treat cross-domain redirects as auth (e.g., redirect to login.microsoftonline.com)
+                try {
+                    const redirectHost = new URL(location, agentAddress).hostname;
+                    const agentHost = new URL(agentAddress).hostname;
+                    if (redirectHost !== agentHost) {
+                        outgoingRes.writeHead(401, { 'Content-Type': 'application/json' });
+                        outgoingRes.end(JSON.stringify({
+                            error: 'Authentication required (redirect)',
+                            authUrl: location || agentAddress,
+                            status: 401,
+                        }));
+                        proxyRes.resume();
+                        return;
+                    }
+                } catch { /* invalid URL, fall through to normal pipe */ }
+                // Same-domain redirect — pass through normally
+                outgoingRes.writeHead(status, proxyRes.headers);
+                proxyRes.pipe(outgoingRes);
                 return;
             }
             outgoingRes.writeHead(status, proxyRes.headers);
