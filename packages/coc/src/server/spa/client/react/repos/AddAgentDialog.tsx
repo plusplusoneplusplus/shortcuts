@@ -2,31 +2,20 @@
  * AddAgentDialog — modal for adding a new CoC agent in container mode.
  */
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { Dialog, Button } from '../ui';
-
-function isDevTunnelAddress(address: string): boolean {
-    try {
-        return new URL(address).hostname.endsWith('.devtunnels.ms');
-    } catch {
-        return false;
-    }
-}
 
 interface AddAgentDialogProps {
     open: boolean;
     onClose: () => void;
-    onAdd: (address: string, name?: string, tunnelId?: string) => Promise<any>;
+    onAdd: (address: string, name?: string) => Promise<any>;
 }
 
 export function AddAgentDialog({ open, onClose, onAdd }: AddAgentDialogProps) {
     const [address, setAddress] = useState('');
     const [name, setName] = useState('');
-    const [tunnelId, setTunnelId] = useState('');
     const [adding, setAdding] = useState(false);
     const [error, setError] = useState<string | null>(null);
-
-    const showTunnelId = useMemo(() => isDevTunnelAddress(address), [address]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -34,14 +23,9 @@ export function AddAgentDialog({ open, onClose, onAdd }: AddAgentDialogProps) {
         setAdding(true);
         setError(null);
         try {
-            await onAdd(
-                address.trim(),
-                name.trim() || undefined,
-                showTunnelId && tunnelId.trim() ? tunnelId.trim() : undefined,
-            );
+            await onAdd(address.trim(), name.trim() || undefined);
             setAddress('');
             setName('');
-            setTunnelId('');
             onClose();
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err));
@@ -59,28 +43,13 @@ export function AddAgentDialog({ open, onClose, onAdd }: AddAgentDialogProps) {
                     <input
                         type="text"
                         className="mt-1 w-full h-8 px-2 text-xs rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]"
-                        placeholder="http://localhost:4000 or https://abc.devtunnels.ms"
+                        placeholder="http://localhost:4000"
                         value={address}
                         onChange={e => setAddress(e.target.value)}
                         autoFocus
                         required
                     />
                 </label>
-                {showTunnelId && (
-                    <label className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">
-                        Tunnel ID
-                        <input
-                            type="text"
-                            className="mt-1 w-full h-8 px-2 text-xs rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]"
-                            placeholder="e.g. amusing-book-s4hcgw2.usw2"
-                            value={tunnelId}
-                            onChange={e => setTunnelId(e.target.value)}
-                        />
-                        <span className="text-[10px] text-[#6e6e6e] dark:text-[#888888] mt-0.5 block">
-                            Required for server-side authentication. Run <code>devtunnel list</code> to find it.
-                        </span>
-                    </label>
-                )}
                 <label className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">
                     Display Name (optional)
                     <input

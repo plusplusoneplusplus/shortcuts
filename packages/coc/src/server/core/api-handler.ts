@@ -261,7 +261,7 @@ export function registerApiRoutes(routes: Route[], store: ProcessStore, bridge?:
 
         registerApiWorkspaceRoutes(ctx);
         registerApiGitRoutes(ctx);
-        registerApiFsRoutes(routes, { dataDir: dataDir ?? undefined, store });
+        registerApiFsRoutes(routes, { dataDir: dataDir ?? undefined });
         registerApiProcessRoutes(ctx);
         registerCommitChatRoutes(ctx);
         registerNoteChatBindingRoutes(ctx);

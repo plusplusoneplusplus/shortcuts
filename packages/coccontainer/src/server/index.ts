@@ -12,8 +12,7 @@ import { URL } from 'url';
 import type { ResolvedContainerConfig } from '../config';
 import { createAgentStore, type Agent } from '../store';
 import { pipeRequest } from '../proxy/http';
-import { DevTunnelTokenService } from '../proxy/tunnel-token';
-import { fetchAgentWorkspaces, addCachedWorkspace, type RemoteWorkspace } from '../proxy/workspaces';
+import { fetchAgentWorkspaces, type RemoteWorkspace } from '../proxy/workspaces';
 import { SSERelay } from '../proxy/sse-relay';
 import { WebSocketRelay } from '../proxy/ws-relay';
 import { AgentHealthMonitor } from './health-monitor';
@@ -55,10 +54,9 @@ function generateContainerHtml(): string {
 
 export async function createContainerServer(config: ResolvedContainerConfig): Promise<ContainerServer> {
     const agentStore = createAgentStore(config.serve.dataDir);
-    const tokenService = new DevTunnelTokenService();
     const sseRelay = new SSERelay();
     const wsRelay = new WebSocketRelay();
-    const healthMonitor = new AgentHealthMonitor(agentStore, config.healthCheckIntervalMs, tokenService);
+    const healthMonitor = new AgentHealthMonitor(agentStore, config.healthCheckIntervalMs);
 
     // Start health monitoring and SSE/WS connections for existing agents
     const agents = agentStore.list();
@@ -90,8 +88,8 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
 
             if (url.pathname === '/api/container/agents' && req.method === 'POST') {
                 const body = await readBody(req);
-                const { address, name, tunnelId } = body as { address: string; name?: string; tunnelId?: string };
-                const agent = agentStore.add(address, name, tunnelId);
+                const { address, name } = body as { address: string; name?: string };
+                const agent = agentStore.add(address, name);
                 sseRelay.connect(agent.id, agent.name, agent.address);
                 wsRelay.connect(agent.id, agent.name, agent.address);
                 return sendJson(res, agent, 201);
@@ -111,11 +109,8 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
             if (url.pathname.startsWith('/api/container/agents/') && req.method === 'PUT') {
                 const agentId = url.pathname.split('/')[4];
                 const body = await readBody(req);
-                const { name, address, tunnelId } = body as { name?: string; address?: string; tunnelId?: string | null };
-                // Use full update if address or tunnelId provided, otherwise simple rename
-                const agent = (address !== undefined || tunnelId !== undefined)
-                    ? agentStore.update(agentId, { name, address, tunnelId })
-                    : agentStore.rename(agentId, name ?? '');
+                const { name } = body as { name: string };
+                const agent = agentStore.rename(agentId, name);
                 if (!agent) return sendJson(res, { error: 'Agent not found' }, 404);
                 return sendJson(res, agent);
             }
@@ -123,7 +118,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
             // Aggregated workspaces from all agents
             if (url.pathname === '/api/workspaces' && req.method === 'GET') {
                 const allAgents = agentStore.list();
-                const workspaces = await aggregateWorkspaces(allAgents, tokenService);
+                const workspaces = await aggregateWorkspaces(allAgents);
                 return sendJson(res, { workspaces });
             }
 
@@ -133,14 +128,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 const results = await Promise.all(
                     allAgents.map(async (agent) => {
                         try {
-                            const headers: Record<string, string> = {};
-                            if (agent.tunnelId) {
-                                const token = await tokenService.getToken(agent.tunnelId);
-                                if (token) {
-                                    headers['X-Tunnel-Authorization'] = `TunnelAccessToken ${token}`;
-                                }
-                            }
-                            const resp = await fetch(`${agent.address}/api/processes/summaries${url.search}`, { headers });
+                            const resp = await fetch(`${agent.address}/api/processes/summaries${url.search}`);
                             if (!resp.ok) return [];
                             const data = await resp.json() as any;
                             const summaries = data?.summaries || data?.processes || (Array.isArray(data) ? data : []);
@@ -154,25 +142,6 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
             // Queue stub (container has no local queue — per-agent queues via proxy)
             if (url.pathname === '/api/queue' && req.method === 'GET') {
                 return sendJson(res, { tasks: [], stats: { pending: 0, running: 0, completed: 0, failed: 0, cancelled: 0 } });
-            }
-
-            // Notify container that a workspace was registered on a remote agent
-            // (bypassing the proxy, e.g. via browse-helper). Updates the workspace cache
-            // so the aggregated list includes the new workspace immediately.
-            if (url.pathname === '/api/container/workspace-registered' && req.method === 'POST') {
-                const body = await readBody(req) as { agentId?: string; workspace?: RemoteWorkspace };
-                if (body?.agentId && body?.workspace) {
-                    const agent = agentStore.get(body.agentId);
-                    if (agent) {
-                        addCachedWorkspace(agent.address, {
-                            ...body.workspace,
-                            agentId: agent.id,
-                            agentName: agent.name,
-                            agentAddress: agent.address,
-                        });
-                    }
-                }
-                return sendJson(res, { ok: true });
             }
 
             // Queue repos stub
@@ -207,15 +176,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                     res.writeHead(404, { 'Content-Type': 'application/json' });
                     return res.end(JSON.stringify({ error: 'Agent not found' }));
                 }
-                // Inject tunnel auth header if agent has a tunnelId
-                let extraHeaders: Record<string, string> | undefined;
-                if (agent.tunnelId) {
-                    const token = await tokenService.getToken(agent.tunnelId);
-                    if (token) {
-                        extraHeaders = { 'X-Tunnel-Authorization': `TunnelAccessToken ${token}` };
-                    }
-                }
-                return pipeRequest(agent.address, req, res, `/api/${rest}${url.search}`, extraHeaders);
+                return pipeRequest(agent.address, req, res, `/api/${rest}${url.search}`);
             }
 
             // ── SSE events stream ──────────────────────────────
@@ -309,19 +270,12 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
 
 // ── Helpers ──────────────────────────────────────────────
 
-async function aggregateWorkspaces(agents: Agent[], tokenSvc: DevTunnelTokenService): Promise<RemoteWorkspace[]> {
+async function aggregateWorkspaces(agents: Agent[]): Promise<RemoteWorkspace[]> {
     const results = await Promise.all(
         agents
             .filter(a => a.status !== 'offline')
             .map(async (agent) => {
-                let headers: Record<string, string> | undefined;
-                if (agent.tunnelId) {
-                    const token = await tokenSvc.getToken(agent.tunnelId);
-                    if (token) {
-                        headers = { 'X-Tunnel-Authorization': `TunnelAccessToken ${token}` };
-                    }
-                }
-                const workspaces = await fetchAgentWorkspaces(agent.address, headers);
+                const workspaces = await fetchAgentWorkspaces(agent.address);
                 return workspaces.map(ws => ({
                     ...ws,
                     agentId: agent.id,

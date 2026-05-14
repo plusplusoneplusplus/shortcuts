@@ -29,7 +29,6 @@ export type ResolvedConfigNamespaceValues = Pick<
     | 'workflows'
     | 'pullRequests'
     | 'servers'
-    | 'container'
     | 'ralph'
     | 'vimNavigation'
     | 'loops'
@@ -65,7 +64,6 @@ const SCRATCHPAD_SOURCE_KEYS = ['scratchpad.enabled', 'scratchpad.layout'] as co
 const WORKFLOWS_SOURCE_KEYS = ['workflows.enabled'] as const;
 const PULL_REQUESTS_SOURCE_KEYS = ['pullRequests.enabled'] as const;
 const SERVERS_SOURCE_KEYS = ['servers.enabled'] as const;
-const CONTAINER_SOURCE_KEYS = ['container.enabled'] as const;
 const RALPH_SOURCE_KEYS = ['ralph.enabled'] as const;
 const VIM_NAVIGATION_SOURCE_KEYS = ['vimNavigation.enabled'] as const;
 const LOOPS_SOURCE_KEYS = ['loops.enabled'] as const;
@@ -224,11 +222,6 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
             name: 'servers',
             sourceDescriptors: [source('servers.', ['servers'], SERVERS_SOURCE_KEYS)],
             merge: (base, override) => ({ servers: { enabled: override?.servers?.enabled ?? base.servers?.enabled ?? false } }),
-        },
-        {
-            name: 'container',
-            sourceDescriptors: [source('container.', ['container'], CONTAINER_SOURCE_KEYS)],
-            merge: (base, override) => ({ container: { enabled: override?.container?.enabled ?? base.container?.enabled ?? false } }),
         },
         {
             name: 'ralph',

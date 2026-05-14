@@ -5,7 +5,6 @@
  */
 
 import type { AgentStore } from '../store';
-import type { DevTunnelTokenService } from '../proxy/tunnel-token';
 import { checkAgentHealth } from '../proxy/health';
 
 export class AgentHealthMonitor {
@@ -13,8 +12,7 @@ export class AgentHealthMonitor {
 
     constructor(
         private store: AgentStore,
-        private intervalMs: number = 30_000,
-        private tokenService?: DevTunnelTokenService
+        private intervalMs: number = 30_000
     ) {}
 
     start(): void {
@@ -33,14 +31,7 @@ export class AgentHealthMonitor {
         const agents = this.store.list();
         await Promise.all(
             agents.map(async (agent) => {
-                let headers: Record<string, string> | undefined;
-                if (agent.tunnelId && this.tokenService) {
-                    const token = await this.tokenService.getToken(agent.tunnelId);
-                    if (token) {
-                        headers = { 'X-Tunnel-Authorization': `TunnelAccessToken ${token}` };
-                    }
-                }
-                const healthy = await checkAgentHealth(agent.address, 5000, headers);
+                const healthy = await checkAgentHealth(agent.address);
                 this.store.updateStatus(agent.id, healthy ? 'online' : 'offline');
             })
         );

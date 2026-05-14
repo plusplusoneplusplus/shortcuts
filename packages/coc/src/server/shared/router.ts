@@ -146,7 +146,7 @@ export function createRouter(options: SharedRouterOptions): (req: http.IncomingM
         if (rawPathname.startsWith('/api/')) {
             for (const route of routes) {
                 const routeMethod = (route.method || 'GET').toUpperCase();
-                if (routeMethod !== '*' && routeMethod !== method) {
+                if (routeMethod !== method) {
                     continue;
                 }
 

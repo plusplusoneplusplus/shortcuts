@@ -73,15 +73,12 @@ export async function proxyRequest(
  * Used by the server to transparently proxy dashboard API calls.
  * Detects auth-required responses (401/403/302-to-login) and returns a
  * structured JSON error so the client can prompt for authentication.
- *
- * @param extraHeaders - Additional headers to inject (e.g., tunnel auth token)
  */
 export function pipeRequest(
     agentAddress: string,
     incomingReq: http.IncomingMessage,
     outgoingRes: http.ServerResponse,
-    targetPath: string,
-    extraHeaders?: Record<string, string>
+    targetPath: string
 ): void {
     const url = new URL(targetPath, agentAddress);
     const isHttps = url.protocol === 'https:';
@@ -96,7 +93,6 @@ export function pipeRequest(
             headers: {
                 ...incomingReq.headers,
                 host: url.host,
-                ...extraHeaders,
             },
         },
         (proxyRes) => {
@@ -114,24 +110,14 @@ export function pipeRequest(
             }
             if (status >= 300 && status < 400) {
                 const location = proxyRes.headers['location'] || '';
-                // Only treat cross-domain redirects as auth (e.g., redirect to login.microsoftonline.com)
-                try {
-                    const redirectHost = new URL(location, agentAddress).hostname;
-                    const agentHost = new URL(agentAddress).hostname;
-                    if (redirectHost !== agentHost) {
-                        outgoingRes.writeHead(401, { 'Content-Type': 'application/json' });
-                        outgoingRes.end(JSON.stringify({
-                            error: 'Authentication required (redirect)',
-                            authUrl: location || agentAddress,
-                            status: 401,
-                        }));
-                        proxyRes.resume();
-                        return;
-                    }
-                } catch { /* invalid URL, fall through to normal pipe */ }
-                // Same-domain redirect — pass through normally
-                outgoingRes.writeHead(status, proxyRes.headers);
-                proxyRes.pipe(outgoingRes);
+                // Redirect likely to a login page — signal auth required
+                outgoingRes.writeHead(401, { 'Content-Type': 'application/json' });
+                outgoingRes.end(JSON.stringify({
+                    error: 'Authentication required (redirect)',
+                    authUrl: location || agentAddress,
+                    status: 401,
+                }));
+                proxyRes.resume();
                 return;
             }
             outgoingRes.writeHead(status, proxyRes.headers);

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { getApiBase, isContainerMode, getCurrentAgentId, isAgentAuthenticated, getAuthenticatedAgentAddress, hasServerSideAuth } from '../../../utils/config';
-import { relayEventSource, type RelaySSE } from '../../../utils/agent-relay';
+import { getApiBase } from '../../../utils/config';
 import type { ClientConversationTurn } from '../../../types/dashboard';
 import type { QueuedMessage } from '../../../utils/chatUtils';
 
@@ -96,30 +95,8 @@ export function useChatSSE({
         if (!taskId || task?.status !== 'running' || !processId) return;
         if (typeof EventSource === 'undefined') return;
 
-        const streamPath = `/processes/${encodeURIComponent(processId)}/stream`;
-
-        // For authenticated devtunnel agents, use the relay to bypass proxy auth issues
-        // But if server-side auth is configured (tunnelId), use the proxy directly
-        let es: EventSource | RelaySSE;
-        if (isContainerMode()) {
-            const agentId = getCurrentAgentId();
-            if (agentId && hasServerSideAuth(agentId)) {
-                // Server proxy injects tunnel auth — no relay needed
-                es = new EventSource(`${getApiBase()}${streamPath}`);
-            } else if (agentId && isAgentAuthenticated(agentId)) {
-                const agentAddr = getAuthenticatedAgentAddress(agentId);
-                if (agentAddr) {
-                    es = relayEventSource(agentAddr, `/api${streamPath}`);
-                } else {
-                    es = new EventSource(`${getApiBase()}${streamPath}`);
-                }
-            } else {
-                es = new EventSource(`${getApiBase()}${streamPath}`);
-            }
-        } else {
-            es = new EventSource(`${getApiBase()}${streamPath}`);
-        }
-        eventSourceRef.current = es as EventSource;
+        const es = new EventSource(`${getApiBase()}/processes/${encodeURIComponent(processId)}/stream`);
+        eventSourceRef.current = es;
         setIsStreaming(true);
         const sseStartTime = Date.now();
 

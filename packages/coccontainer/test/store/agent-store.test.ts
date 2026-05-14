@@ -91,46 +91,4 @@ describe('AgentStore', () => {
         expect(updated?.status).toBe('offline');
         expect(updated?.lastSeenAt).toBe(seenAt);
     });
-
-    it('should add agent with tunnelId', () => {
-        const agent = store.add('https://abc.devtunnels.ms', 'tunnel-agent', 'my-tunnel-id');
-        expect(agent.tunnelId).toBe('my-tunnel-id');
-        expect(agent.name).toBe('tunnel-agent');
-    });
-
-    it('should add agent without tunnelId', () => {
-        const agent = store.add('http://localhost:4000', 'no-tunnel');
-        expect(agent.tunnelId).toBeUndefined();
-    });
-
-    it('should update agent fields including tunnelId', () => {
-        const agent = store.add('http://localhost:4000', 'original');
-        const updated = store.update(agent.id, { name: 'renamed', tunnelId: 'new-tunnel' });
-        expect(updated?.name).toBe('renamed');
-        expect(updated?.tunnelId).toBe('new-tunnel');
-        expect(updated?.address).toBe('http://localhost:4000');
-    });
-
-    it('should clear tunnelId with null', () => {
-        const agent = store.add('https://abc.devtunnels.ms', 'tunnel-agent', 'my-tunnel');
-        expect(agent.tunnelId).toBe('my-tunnel');
-
-        const updated = store.update(agent.id, { tunnelId: null });
-        expect(updated?.tunnelId).toBeUndefined();
-    });
-
-    it('should update address via update()', () => {
-        const agent = store.add('http://localhost:4000', 'test');
-        const updated = store.update(agent.id, { address: 'http://localhost:5000' });
-        expect(updated?.address).toBe('http://localhost:5000');
-    });
-
-    it('should migrate existing db without tunnel_id column', () => {
-        // Close and reopen — simulates migration on existing DB
-        store.close();
-        const store2 = createAgentStore(tmpDir);
-        const agent = store2.add('http://localhost:9000', 'migrated');
-        expect(agent.tunnelId).toBeUndefined();
-        store2.close();
-    });
 });

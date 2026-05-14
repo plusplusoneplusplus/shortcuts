@@ -71,7 +71,6 @@ import type { TerminalSessionManager } from '../terminal/index';
 import { registerRemoteServerRoutes } from '../servers/remote-server-routes';
 import { RemoteServerStore } from '../servers/remote-server-store';
 import { DevTunnelConnector } from '../servers/devtunnel-connector';
-import { ContainerAgentStore, DevTunnelTokenService, registerContainerAgentRoutes, registerContainerAgentProxyRoute } from '../container';
 import { registerRalphRoutes } from './queue-ralph-routes';
 import { registerRalphSessionRoutes } from './ralph-session-routes';
 import { registerRalphContinueRoutes } from './ralph-continue-routes';
@@ -140,15 +139,6 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         store: opts.remoteServerStore ?? new RemoteServerStore(dataDir),
         connector: opts.remoteServerConnector ?? new DevTunnelConnector(),
     });
-
-    // Container mode routes — agent CRUD + proxy (gated by config)
-    if (opts.resolvedConfig?.container?.enabled) {
-        const containerAgentStore = new ContainerAgentStore(dataDir);
-        const containerTokenService = new DevTunnelTokenService();
-        registerContainerAgentRoutes(routes, { store: containerAgentStore, tokenService: containerTokenService });
-        registerContainerAgentProxyRoute(routes, { store: containerAgentStore, tokenService: containerTokenService });
-    }
-
     registerProviderRoutes(routes, dataDir);
     registerProcessResumeRoutes(routes, store);
     registerFreshChatTerminalRoutes(routes);

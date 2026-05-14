@@ -58,12 +58,11 @@ describe('GET /api/fs/browse-helper', () => {
         expect(res.headers.get('content-type')).toContain('text/html');
     });
 
-    it('embeds browse results directly in the HTML (no secondary fetch)', async () => {
+    it('embeds the requested path in the HTML script', async () => {
         const res = await fetch(`${baseUrl}/api/fs/browse-helper?path=${encodeURIComponent(tmpDir)}`);
         const html = await res.text();
-        // Should contain the directory entries as inline JSON
-        expect(html).toContain('sub-a');
-        expect(html).toContain('sub-b');
+        // The path should be embedded as a JSON string in the script
+        expect(html).toContain(JSON.stringify(tmpDir));
     });
 
     it('contains postMessage call for browse-result', async () => {
@@ -73,19 +72,29 @@ describe('GET /api/fs/browse-helper', () => {
         expect(html).toContain('postMessage');
     });
 
-    it('contains postMessage call for browse-error on invalid path', async () => {
-        const res = await fetch(`${baseUrl}/api/fs/browse-helper?path=${encodeURIComponent(path.join(tmpDir, 'nonexistent'))}`);
+    it('contains postMessage call for browse-error on failure', async () => {
+        const res = await fetch(`${baseUrl}/api/fs/browse-helper?path=${encodeURIComponent(tmpDir)}`);
         const html = await res.text();
         expect(html).toContain("'browse-error'");
-        expect(html).toContain('Directory not found');
     });
 
-    it('defaults path to home when not provided', async () => {
+    it('fetches /api/fs/browse same-origin in the script', async () => {
+        const res = await fetch(`${baseUrl}/api/fs/browse-helper?path=${encodeURIComponent(tmpDir)}`);
+        const html = await res.text();
+        expect(html).toContain('/api/fs/browse?path=');
+    });
+
+    it('defaults path to ~ when not provided', async () => {
         const res = await fetch(`${baseUrl}/api/fs/browse-helper`);
         expect(res.status).toBe(200);
         const html = await res.text();
-        // Should have some data (home directory exists)
-        expect(html).toContain('browse-result');
+        expect(html).toContain(JSON.stringify('~'));
+    });
+
+    it('passes showHidden parameter', async () => {
+        const res = await fetch(`${baseUrl}/api/fs/browse-helper?path=${encodeURIComponent(tmpDir)}&showHidden=true`);
+        const html = await res.text();
+        expect(html).toContain(JSON.stringify(true));
     });
 
     it('includes CORS credentials header when Origin is present', async () => {
