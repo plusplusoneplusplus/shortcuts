@@ -11,6 +11,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import * as readline from 'readline';
 import { exec } from 'child_process';
 import { EXIT_CODES } from '../cli';
 import {
@@ -140,6 +141,14 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
 
             process.on('SIGINT', onSignal);
             process.on('SIGTERM', onSignal);
+
+            // On Windows, SIGINT may not fire in all terminal environments.
+            // Use readline interface to reliably capture Ctrl+C.
+            if (process.platform === 'win32') {
+                const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+                rl.on('SIGINT', onSignal);
+                rl.on('close', onSignal);
+            }
         });
 
         return EXIT_CODES.SUCCESS;
