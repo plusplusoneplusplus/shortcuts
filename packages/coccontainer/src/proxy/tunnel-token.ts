@@ -90,4 +90,18 @@ export class DevTunnelTokenService {
             this.cache.clear();
         }
     }
+
+    /**
+     * Ensure anonymous access is configured on the tunnel so token auth works.
+     * Runs `devtunnel access create <tunnelId> --anonymous` (idempotent).
+     */
+    async ensureAnonymousAccess(tunnelId: string): Promise<boolean> {
+        return new Promise((resolve) => {
+            execFile('devtunnel', ['access', 'create', tunnelId, '--anonymous'], {
+                timeout: 15_000,
+            }, (error) => {
+                resolve(!error);
+            });
+        });
+    }
 }

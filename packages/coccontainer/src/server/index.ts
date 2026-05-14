@@ -91,6 +91,10 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
             if (url.pathname === '/api/container/agents' && req.method === 'POST') {
                 const body = await readBody(req);
                 const { address, name, tunnelId } = body as { address: string; name?: string; tunnelId?: string };
+                // Ensure anonymous access on the tunnel so token auth works
+                if (tunnelId) {
+                    await tokenService.ensureAnonymousAccess(tunnelId);
+                }
                 const agent = agentStore.add(address, name, tunnelId);
                 sseRelay.connect(agent.id, agent.name, agent.address);
                 wsRelay.connect(agent.id, agent.name, agent.address);
@@ -112,6 +116,10 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 const agentId = url.pathname.split('/')[4];
                 const body = await readBody(req);
                 const { name, address, tunnelId } = body as { name?: string; address?: string; tunnelId?: string | null };
+                // Ensure anonymous access when setting/updating tunnelId
+                if (tunnelId) {
+                    await tokenService.ensureAnonymousAccess(tunnelId);
+                }
                 // Use full update if address or tunnelId provided, otherwise simple rename
                 const agent = (address !== undefined || tunnelId !== undefined)
                     ? agentStore.update(agentId, { name, address, tunnelId })
