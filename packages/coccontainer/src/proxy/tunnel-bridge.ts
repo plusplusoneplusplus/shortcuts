@@ -102,6 +102,8 @@ export class TunnelBridge {
         const headers: Record<string, string | string[] | undefined> = {
             ...incomingReq.headers,
             host: url.host,
+            // Override User-Agent so devtunnel doesn't trigger browser auth flow
+            'user-agent': 'CoCContainer/1.0',
         };
         // Remove connection-specific headers that shouldn't be forwarded
         delete headers['connection'];
