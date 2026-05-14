@@ -126,7 +126,25 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
             if (isAuthError && isContainerMode() && selectedAgentId) {
                 const agent = availableAgents.find(a => a.id === selectedAgentId);
                 if (agent?.address) {
-                    setBrowserError('Authentication required — complete login in the opened tab...');
+                    // Browser may already have auth cookie — try direct fetch first
+                    const directUrl = `${agent.address}/api/workspaces/browse?path=${encodeURIComponent(dir)}`;
+                    try {
+                        const resp = await fetch(directUrl, { credentials: 'include' });
+                        if (resp.ok) {
+                            const data = await resp.json() as BrowserResponse;
+                            setBrowserPath(data.path);
+                            setBrowserParent(data.parent || null);
+                            setBrowserEntries(data.entries || []);
+                            setBrowserDrives(Array.isArray(data.drives) ? data.drives : []);
+                            setBrowseRoots(Array.isArray(data.browseRoots) ? data.browseRoots : []);
+                            setBrowserError(null);
+                            setBrowserLoading(false);
+                            return;
+                        }
+                    } catch { /* direct fetch failed, fall through to popup */ }
+
+                    // Direct fetch failed — open auth page, poll until closed, then retry
+                    setBrowserError('Authentication required — complete login in the opened tab, then close it.');
                     const authWindow = window.open(agent.address, '_blank');
                     if (authWindow) {
                         const poll = setInterval(async () => {
@@ -135,7 +153,6 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
                                 setBrowserError(null);
                                 setBrowserLoading(true);
                                 try {
-                                    const directUrl = `${agent.address}/api/workspaces/browse?path=${encodeURIComponent(dir)}`;
                                     const resp = await fetch(directUrl, { credentials: 'include' });
                                     if (resp.ok) {
                                         const data = await resp.json() as BrowserResponse;
