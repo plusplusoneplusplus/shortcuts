@@ -15,7 +15,7 @@ import {
     getRepositoryApiErrorMessage,
     registerWorkspace,
 } from './repositoryService';
-import { isContainerMode, setCurrentAgentId } from '../utils/config';
+import { isContainerMode, setCurrentAgentId, getCurrentAgentId, markAgentAuthenticated, isAgentAuthenticated, getAuthenticatedAgentAddress, clearAgentAuth, getRawApiBase, hasServerSideAuth } from '../utils/config';
 import { useContainerAgents } from '../contexts/ContainerAgentContext';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
 
@@ -103,11 +103,101 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open]);
 
+    // Runs a helper URL on the agent domain via a popup window.
+    // First-time auth: larger popup for Microsoft login flow.
+    // Cached/already authed: small named popup that reuses the same window and auto-closes.
+    const runViaHelper = useCallback((
+        agentId: string, agentAddr: string, helperUrl: string,
+        resultType: string, errorType: string,
+        onResult: (data: unknown) => void,
+        onError: (msg: string) => void,
+        isFirstAuth: boolean,
+    ) => {
+        let gotResult = false;
+
+        const cleanupAll = () => {
+            window.removeEventListener('message', onMessage);
+            clearInterval(closedCheck);
+            clearTimeout(timeout);
+        };
+        const onMessage = (event: MessageEvent) => {
+            if (event.data?.type === resultType) {
+                gotResult = true;
+                cleanupAll();
+                markAgentAuthenticated(agentId, agentAddr);
+                onResult(event.data.data);
+                try { popup?.close(); } catch { /* ignore */ }
+            } else if (event.data?.type === errorType) {
+                gotResult = true;
+                cleanupAll();
+                onError(event.data.error || 'Unknown error');
+                try { popup?.close(); } catch { /* ignore */ }
+            }
+        };
+        window.addEventListener('message', onMessage);
+
+        const winName = isFirstAuth ? '_blank' : 'coc-agent-helper';
+        const winFeatures = isFirstAuth
+            ? 'width=600,height=400'
+            : 'width=100,height=100';
+        const popup = window.open(helperUrl, winName, winFeatures);
+        if (!popup) {
+            cleanupAll();
+            onError('Popup was blocked by the browser. Please allow popups for this site and try again.');
+            return;
+        }
+
+        const closedCheck = setInterval(() => {
+            if (popup.closed) {
+                cleanupAll();
+                if (!gotResult) onError('Agent is unreachable or authentication was not completed.');
+            }
+        }, 1000);
+
+        const timeoutMs = isFirstAuth ? 60_000 : 15_000;
+        const timeout = setTimeout(() => {
+            if (!gotResult) {
+                cleanupAll();
+                onError('Request timed out — the agent may be offline or unreachable.');
+                try { popup.close(); } catch { /* ignore */ }
+            }
+        }, timeoutMs);
+    }, []);
+
+    const browseViaHelper = useCallback((agentId: string, agentAddr: string, dir: string, isFirstAuth: boolean) => {
+        const helperUrl = `${agentAddr}/api/fs/browse-helper?path=${encodeURIComponent(dir)}`;
+        if (isFirstAuth) {
+            setBrowserError('Authenticating — complete login in the opened tab if prompted...');
+        }
+        runViaHelper(agentId, agentAddr, helperUrl, 'browse-result', 'browse-error',
+            (data) => {
+                const d = data as BrowserResponse;
+                setBrowserPath(d.path);
+                setBrowserParent(d.parent || null);
+                setBrowserEntries(d.entries || []);
+                setBrowserDrives(Array.isArray(d.drives) ? d.drives : []);
+                setBrowseRoots(Array.isArray(d.browseRoots) ? d.browseRoots : []);
+                setBrowserError(null);
+                setBrowserLoading(false);
+            },
+            (msg) => { setBrowserError(msg); setBrowserLoading(false); },
+            isFirstAuth,
+        );
+    }, [runViaHelper]);
+
     const navigateTo = useCallback(async (dir: string) => {
         setBrowserLoading(true);
         setBrowserError(null);
         try {
             if (isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
+
+            // For authenticated devtunnel agents without server-side auth, use browse-helper directly (popup relay)
+            if (isContainerMode() && selectedAgentId && !hasServerSideAuth(selectedAgentId) && isAgentAuthenticated(selectedAgentId)) {
+                const agentAddr = getAuthenticatedAgentAddress(selectedAgentId)!;
+                browseViaHelper(selectedAgentId, agentAddr, dir, false);
+                return;
+            }
+
             const data = await browseWorkspaceFolders(dir) as BrowserResponse;
             setBrowserPath(data.path);
             setBrowserParent(data.parent || null);
@@ -124,39 +214,11 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
                 || /unexpected.*token|not valid json|authentication required/i.test(errMsg);
             console.warn('[AddFolderDialog] Browse error:', { errStatus, errMsg, isAuthError, err });
             if (isAuthError && isContainerMode() && selectedAgentId) {
+                // Clear stale cached auth so we don't keep trying the direct path
+                clearAgentAuth(selectedAgentId);
                 const agent = availableAgents.find(a => a.id === selectedAgentId);
                 if (agent?.address) {
-                    const helperUrl = `${agent.address}/api/fs/browse-helper?path=${encodeURIComponent(dir)}`;
-                    setBrowserError('Authenticating — complete login in the opened tab if prompted...');
-                    const popup = window.open(helperUrl, '_blank', 'width=600,height=400');
-                    const onMessage = (event: MessageEvent) => {
-                        if (event.data?.type === 'browse-result') {
-                            window.removeEventListener('message', onMessage);
-                            const data = event.data.data as BrowserResponse;
-                            setBrowserPath(data.path);
-                            setBrowserParent(data.parent || null);
-                            setBrowserEntries(data.entries || []);
-                            setBrowserDrives(Array.isArray(data.drives) ? data.drives : []);
-                            setBrowseRoots(Array.isArray(data.browseRoots) ? data.browseRoots : []);
-                            setBrowserError(null);
-                            setBrowserLoading(false);
-                        } else if (event.data?.type === 'browse-error') {
-                            window.removeEventListener('message', onMessage);
-                            setBrowserError(`Browse failed: ${event.data.error}`);
-                            setBrowserLoading(false);
-                        }
-                    };
-                    window.addEventListener('message', onMessage);
-                    if (popup) {
-                        const cleanup = setInterval(() => {
-                            if (popup.closed) {
-                                clearInterval(cleanup);
-                                window.removeEventListener('message', onMessage);
-                                setBrowserLoading(false);
-                            }
-                        }, 1000);
-                        setTimeout(() => { clearInterval(cleanup); window.removeEventListener('message', onMessage); }, 300_000);
-                    }
+                    browseViaHelper(selectedAgentId, agent.address, dir, true);
                 } else {
                     setBrowserError('Authentication required. Please authenticate with this agent first.');
                 }
@@ -165,7 +227,7 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
             }
         }
         setBrowserLoading(false);
-    }, [selectedAgentId, availableAgents]);
+    }, [selectedAgentId, availableAgents, browseViaHelper]);
 
     const handleScan = useCallback(async () => {
         if (!browserPath) return;
@@ -181,7 +243,7 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
             setScanError(getRepositoryApiErrorMessage(error, 'Failed to scan folder'));
         }
         setScanning(false);
-    }, [browserPath]);
+    }, [browserPath, selectedAgentId]);
 
     const toggleCheck = (repoPath: string) => {
         setChecked(prev => {
@@ -213,11 +275,38 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
             const repo = selected[i];
             try {
                 if (isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
-                await registerWorkspace({
-                    id: 'ws-' + hashString(repo.path),
-                    name: repo.name,
-                    rootPath: repo.path,
-                });
+                const id = 'ws-' + hashString(repo.path);
+                // For devtunnel agents without server-side auth, use register-helper iframe
+                if (isContainerMode() && selectedAgentId && !hasServerSideAuth(selectedAgentId) && isAgentAuthenticated(selectedAgentId)) {
+                    const agentAddr = getAuthenticatedAgentAddress(selectedAgentId)!;
+                    const params = new URLSearchParams({ action: 'register', id, name: repo.name, rootPath: repo.path });
+                    const helperUrl = `${agentAddr}/api/fs/browse-helper?${params.toString()}`;
+                    try {
+                        await new Promise<void>((resolve, reject) => {
+                            runViaHelper(selectedAgentId, agentAddr, helperUrl, 'register-result', 'register-error',
+                                () => resolve(),
+                                (msg) => reject(new Error(msg)),
+                                false,
+                            );
+                        });
+                        // Notify container about the new workspace (await to populate cache before refresh)
+                        try {
+                            await fetch(`${getRawApiBase()}/container/workspace-registered`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    agentId: selectedAgentId,
+                                    workspace: { id, name: repo.name, rootPath: repo.path },
+                                }),
+                            });
+                        } catch { /* best-effort */ }
+                    } catch {
+                        // Helper doesn't support register — fall back to proxy
+                        await registerWorkspace({ id, name: repo.name, rootPath: repo.path });
+                    }
+                } else {
+                    await registerWorkspace({ id, name: repo.name, rootPath: repo.path });
+                }
             } catch (error) {
                 newErrors.push(`${repo.name}: ${getRepositoryApiErrorMessage(error, 'Failed', 'Network error')}`);
             }
@@ -225,7 +314,7 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
 
         setErrors(newErrors);
         setPhase('done');
-    }, [repos, checked]);
+    }, [repos, checked, selectedAgentId, runViaHelper]);
 
     const handleClose = useCallback(() => {
         cancelRef.current = true;

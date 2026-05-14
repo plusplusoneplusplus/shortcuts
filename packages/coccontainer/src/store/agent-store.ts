@@ -14,15 +14,17 @@ export interface Agent {
     id: string;
     name: string;
     address: string;
+    tunnelId?: string;
     status: 'online' | 'offline' | 'unknown';
     lastSeenAt: string | null;
     createdAt: string;
 }
 
 export interface AgentStore {
-    add(address: string, name?: string): Agent;
+    add(address: string, name?: string, tunnelId?: string): Agent;
     remove(idOrName: string): boolean;
     rename(id: string, newName: string): Agent | undefined;
+    update(id: string, fields: { name?: string; address?: string; tunnelId?: string | null }): Agent | undefined;
     list(): Agent[];
     get(idOrName: string): Agent | undefined;
     updateStatus(id: string, status: Agent['status']): void;
@@ -40,14 +42,21 @@ export function createAgentStore(dataDir: string): AgentStore {
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             address TEXT NOT NULL UNIQUE,
+            tunnel_id TEXT,
             status TEXT NOT NULL DEFAULT 'unknown',
             last_seen_at TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
     `);
 
+    // Migration: add tunnel_id column if missing (existing installs)
+    const columns = db.pragma('table_info(agents)') as { name: string }[];
+    if (!columns.some(c => c.name === 'tunnel_id')) {
+        db.exec(`ALTER TABLE agents ADD COLUMN tunnel_id TEXT`);
+    }
+
     const insertStmt = db.prepare(
-        `INSERT INTO agents (id, name, address) VALUES (?, ?, ?)`
+        `INSERT INTO agents (id, name, address, tunnel_id) VALUES (?, ?, ?, ?)`
     );
     const deleteByIdStmt = db.prepare(`DELETE FROM agents WHERE id = ?`);
     const deleteByNameStmt = db.prepare(`DELETE FROM agents WHERE name = ?`);
@@ -59,12 +68,16 @@ export function createAgentStore(dataDir: string): AgentStore {
         `UPDATE agents SET status = ?, last_seen_at = CASE WHEN ? = 'online' THEN datetime('now') ELSE last_seen_at END WHERE id = ?`
     );
     const renameStmt = db.prepare(`UPDATE agents SET name = ? WHERE id = ?`);
+    const updateFieldsStmt = db.prepare(
+        `UPDATE agents SET name = COALESCE(?, name), address = COALESCE(?, address), tunnel_id = ? WHERE id = ?`
+    );
 
     function toAgent(row: Record<string, unknown>): Agent {
         return {
             id: row.id as string,
             name: row.name as string,
             address: row.address as string,
+            tunnelId: (row.tunnel_id as string) || undefined,
             status: row.status as Agent['status'],
             lastSeenAt: row.last_seen_at as string | null,
             createdAt: row.created_at as string,
@@ -72,19 +85,15 @@ export function createAgentStore(dataDir: string): AgentStore {
     }
 
     return {
-        add(address: string, name?: string): Agent {
-            // Normalize address: strip trailing slash
+        add(address: string, name?: string, tunnelId?: string): Agent {
             const normalizedAddress = address.replace(/\/+$/, '');
-
-            // Check for duplicate address
             const existing = selectByAddressStmt.get(normalizedAddress) as Record<string, unknown> | undefined;
             if (existing) {
                 throw new Error(`Agent with address '${normalizedAddress}' already registered (id: ${existing.id})`);
             }
-
             const id = randomUUID();
             const agentName = name ?? new URL(normalizedAddress).host;
-            insertStmt.run(id, agentName, normalizedAddress);
+            insertStmt.run(id, agentName, normalizedAddress, tunnelId || null);
             return toAgent(selectByIdStmt.get(id) as Record<string, unknown>);
         },
 
@@ -98,6 +107,18 @@ export function createAgentStore(dataDir: string): AgentStore {
 
         rename(id: string, newName: string): Agent | undefined {
             renameStmt.run(newName, id);
+            const row = selectByIdStmt.get(id) as Record<string, unknown> | undefined;
+            return row ? toAgent(row) : undefined;
+        },
+
+        update(id: string, fields: { name?: string; address?: string; tunnelId?: string | null }): Agent | undefined {
+            const tunnelIdValue = fields.tunnelId === null ? null : (fields.tunnelId || null);
+            updateFieldsStmt.run(
+                fields.name || null,
+                fields.address?.replace(/\/+$/, '') || null,
+                tunnelIdValue,
+                id,
+            );
             const row = selectByIdStmt.get(id) as Record<string, unknown> | undefined;
             return row ? toAgent(row) : undefined;
         },

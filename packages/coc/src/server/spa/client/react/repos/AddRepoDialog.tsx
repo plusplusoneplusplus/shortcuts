@@ -14,7 +14,7 @@ import {
     registerWorkspace,
     updateWorkspace,
 } from './repositoryService';
-import { isContainerMode, setCurrentAgentId, getCurrentAgentId } from '../utils/config';
+import { isContainerMode, setCurrentAgentId, getCurrentAgentId, markAgentAuthenticated, isAgentAuthenticated, getAuthenticatedAgentAddress, clearAgentAuth, getRawApiBase, hasServerSideAuth } from '../utils/config';
 import { useContainerAgents } from '../contexts/ContainerAgentContext';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
 
@@ -130,12 +130,107 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
         setBrowserError(null);
     }, [open, isEdit, editRepo]);
 
+    // Runs a helper URL on the agent domain via a popup window.
+    // First-time auth: larger popup for Microsoft login flow.
+    // Cached/already authed: small named popup that reuses the same window and auto-closes.
+    // Hidden iframes DON'T work because devtunnel auth cookies have SameSite restrictions.
+    const runViaHelper = useCallback((
+        agentId: string, agentAddr: string, helperUrl: string,
+        resultType: string, errorType: string,
+        onResult: (data: unknown) => void,
+        onError: (msg: string) => void,
+        isFirstAuth: boolean,
+    ) => {
+        let gotResult = false;
+
+        const cleanupAll = () => {
+            window.removeEventListener('message', onMessage);
+            clearInterval(closedCheck);
+            clearTimeout(timeout);
+        };
+        const onMessage = (event: MessageEvent) => {
+            if (event.data?.type === resultType) {
+                gotResult = true;
+                cleanupAll();
+                markAgentAuthenticated(agentId, agentAddr);
+                onResult(event.data.data);
+                try { popup?.close(); } catch { /* ignore */ }
+            } else if (event.data?.type === errorType) {
+                gotResult = true;
+                cleanupAll();
+                onError(event.data.error || 'Unknown error');
+                try { popup?.close(); } catch { /* ignore */ }
+            }
+        };
+        window.addEventListener('message', onMessage);
+
+        // Use a named window for cached agents (reuses same small popup)
+        const winName = isFirstAuth ? '_blank' : 'coc-agent-helper';
+        const winFeatures = isFirstAuth
+            ? 'width=600,height=400'
+            : 'width=100,height=100';
+        const popup = window.open(helperUrl, winName, winFeatures);
+        if (!popup) {
+            cleanupAll();
+            onError('Popup was blocked by the browser. Please allow popups for this site and try again.');
+            return;
+        }
+
+        const closedCheck = setInterval(() => {
+            if (popup.closed) {
+                cleanupAll();
+                if (!gotResult) onError('Agent is unreachable or authentication was not completed.');
+            }
+        }, 1000);
+
+        const timeoutMs = isFirstAuth ? 60_000 : 15_000;
+        const timeout = setTimeout(() => {
+            if (!gotResult) {
+                cleanupAll();
+                onError('Request timed out — the agent may be offline or unreachable.');
+                try { popup.close(); } catch { /* ignore */ }
+            }
+        }, timeoutMs);
+    }, []);
+
+    // Browse via helper (popup or iframe depending on auth state)
+    const browseViaHelper = useCallback((agentId: string, agentAddr: string, dir: string, isFirstAuth: boolean) => {
+        const helperUrl = `${agentAddr}/api/fs/browse-helper?path=${encodeURIComponent(dir)}`;
+        if (isFirstAuth) {
+            setBrowserError('Authenticating — complete login in the opened tab if prompted...');
+        }
+        runViaHelper(agentId, agentAddr, helperUrl, 'browse-result', 'browse-error',
+            (data) => {
+                const d = data as BrowserResponse;
+                setBrowserPath(d.path);
+                setBrowserParent(d.parent || null);
+                setBrowserEntries(d.entries || []);
+                setBrowserDrives(Array.isArray(d.drives) ? d.drives : []);
+                setBrowseRoots(Array.isArray(d.browseRoots) ? d.browseRoots : []);
+                setBrowserError(null);
+                setBrowserLoading(false);
+            },
+            (msg) => { setBrowserError(msg); setBrowserLoading(false); },
+            isFirstAuth,
+        );
+    }, [runViaHelper]);
+
     const navigateTo = useCallback(async (dir: string) => {
         setBrowserLoading(true);
         setBrowserError(null);
         const prevAgentId = getCurrentAgentId();
         try {
             if (isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
+
+            // If agent is already authenticated AND doesn't have server-side auth,
+            // use browse-helper directly (popup relay). For server-auth agents, use the proxy.
+            if (isContainerMode() && selectedAgentId && !hasServerSideAuth(selectedAgentId) && isAgentAuthenticated(selectedAgentId)) {
+                const agentAddr = getAuthenticatedAgentAddress(selectedAgentId)!;
+                browseViaHelper(selectedAgentId, agentAddr, dir, false);
+                setCurrentAgentId(prevAgentId);
+                return;
+            }
+
             const data = await browseWorkspaceFolders(dir) as BrowserResponse;
             setBrowserPath(data.path);
             setBrowserParent(data.parent || null);
@@ -152,43 +247,10 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
                 || /unexpected.*token|not valid json|authentication required/i.test(errMsg);
             console.warn('[AddRepoDialog] Browse error:', { errStatus, errMsg, isAuthError, err });
             if (isAuthError && isContainerMode() && selectedAgentId) {
+                clearAgentAuth(selectedAgentId);
                 const agent = availableAgents.find(a => a.id === selectedAgentId);
                 if (agent?.address) {
-                    // Open browse-helper on the agent domain (same-origin, so auth cookies work).
-                    // The helper page fetches /api/fs/browse same-origin and posts results back via postMessage.
-                    const helperUrl = `${agent.address}/api/fs/browse-helper?path=${encodeURIComponent(dir)}`;
-                    setBrowserError('Authenticating — complete login in the opened tab if prompted...');
-                    const popup = window.open(helperUrl, '_blank', 'width=600,height=400');
-                    const onMessage = (event: MessageEvent) => {
-                        if (event.data?.type === 'browse-result') {
-                            window.removeEventListener('message', onMessage);
-                            const data = event.data.data as BrowserResponse;
-                            setBrowserPath(data.path);
-                            setBrowserParent(data.parent || null);
-                            setBrowserEntries(data.entries || []);
-                            setBrowserDrives(Array.isArray(data.drives) ? data.drives : []);
-                            setBrowseRoots(Array.isArray(data.browseRoots) ? data.browseRoots : []);
-                            setBrowserError(null);
-                            setBrowserLoading(false);
-                        } else if (event.data?.type === 'browse-error') {
-                            window.removeEventListener('message', onMessage);
-                            setBrowserError(`Browse failed: ${event.data.error}`);
-                            setBrowserLoading(false);
-                        }
-                    };
-                    window.addEventListener('message', onMessage);
-                    // Cleanup if popup is closed without posting
-                    if (popup) {
-                        const cleanup = setInterval(() => {
-                            if (popup.closed) {
-                                clearInterval(cleanup);
-                                window.removeEventListener('message', onMessage);
-                                // Only update if still in auth state
-                                setBrowserLoading(false);
-                            }
-                        }, 1000);
-                        setTimeout(() => { clearInterval(cleanup); window.removeEventListener('message', onMessage); }, 300_000);
-                    }
+                    browseViaHelper(selectedAgentId, agent.address, dir, true);
                 } else {
                     setBrowserError('Authentication required. Please authenticate with this agent first.');
                 }
@@ -240,26 +302,60 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
             } else {
                 const wsName = name.trim() || getPathLeaf(trimmedPath) || 'repo';
                 const id = 'ws-' + hashString(trimmedPath);
-                const created = await registerWorkspace({
-                    id,
-                    name: wsName,
-                    rootPath: trimmedPath,
-                    color: resolvedColor,
-                });
 
-                // Clone detection
-                if (created?.remoteUrl) {
-                    const normalized = normalizeRemoteUrl(created.remoteUrl);
-                    const clones = repos.filter(r => {
-                        const u = r.workspace.remoteUrl || r.gitInfo?.remoteUrl;
-                        return u && normalizeRemoteUrl(u) === normalized;
-                    });
-                    if (clones.length > 0) {
-                        setValidation({
-                            msg: `Clone detected: shares remote with ${clones.map(c => c.workspace.name).join(', ')}. They will be grouped together.`,
-                            ok: true,
+                // For devtunnel agents without server-side auth, use browse-helper with action=register (popup),
+                // fall back to proxy if helper doesn't support register action
+                if (isContainerMode() && selectedAgentId && !hasServerSideAuth(selectedAgentId) && isAgentAuthenticated(selectedAgentId)) {
+                    const agentAddr = getAuthenticatedAgentAddress(selectedAgentId)!;
+                    const params = new URLSearchParams({ action: 'register', id, name: wsName, rootPath: trimmedPath });
+                    if (resolvedColor) params.set('color', resolvedColor);
+                    const helperUrl = `${agentAddr}/api/fs/browse-helper?${params.toString()}`;
+                    try {
+                        await new Promise<void>((resolve, reject) => {
+                            runViaHelper(selectedAgentId, agentAddr, helperUrl, 'register-result', 'register-error',
+                                () => resolve(),
+                                (msg) => reject(new Error(msg)),
+                                false,
+                            );
                         });
-                        await new Promise(r => setTimeout(r, 1200));
+                        // Notify container about the new workspace so it appears in the aggregated list.
+                        // Must await so the cache is populated before onSuccess triggers a refresh.
+                        try {
+                            await fetch(`${getRawApiBase()}/container/workspace-registered`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    agentId: selectedAgentId,
+                                    workspace: { id, name: wsName, rootPath: trimmedPath, color: resolvedColor },
+                                }),
+                            });
+                        } catch { /* best-effort — refresh may not show the workspace immediately */ }
+                    } catch {
+                        // Helper doesn't support register — fall back to proxy
+                        await registerWorkspace({ id, name: wsName, rootPath: trimmedPath, color: resolvedColor });
+                    }
+                } else {
+                    const created = await registerWorkspace({
+                        id,
+                        name: wsName,
+                        rootPath: trimmedPath,
+                        color: resolvedColor,
+                    });
+
+                    // Clone detection
+                    if (created?.remoteUrl) {
+                        const normalized = normalizeRemoteUrl(created.remoteUrl);
+                        const clones = repos.filter(r => {
+                            const u = r.workspace.remoteUrl || r.gitInfo?.remoteUrl;
+                            return u && normalizeRemoteUrl(u) === normalized;
+                        });
+                        if (clones.length > 0) {
+                            setValidation({
+                                msg: `Clone detected: shares remote with ${clones.map(c => c.workspace.name).join(', ')}. They will be grouped together.`,
+                                ok: true,
+                            });
+                            await new Promise(r => setTimeout(r, 1200));
+                        }
                     }
                 }
             }

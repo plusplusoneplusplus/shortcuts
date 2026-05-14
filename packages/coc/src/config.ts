@@ -113,6 +113,10 @@ export interface CLIConfig {
     servers?: {
         enabled?: boolean;
     };
+    /** Container mode configuration (multi-agent aggregation dashboard). Disabled by default. */
+    container?: {
+        enabled?: boolean;
+    };
     /** Ralph mode configuration (autonomous iterative coding loop). Disabled by default. */
     ralph?: {
         enabled?: boolean;
@@ -273,6 +277,10 @@ export interface ResolvedCLIConfig {
     servers: {
         enabled: boolean;
     };
+    /** Container mode configuration (multi-agent aggregation dashboard). */
+    container: {
+        enabled: boolean;
+    };
     /** Ralph orchestration mode configuration. */
     ralph: {
         enabled: boolean;
@@ -394,6 +402,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
     },
     servers: {
+        enabled: false,
+    },
+    container: {
         enabled: false,
     },
     ralph: {
