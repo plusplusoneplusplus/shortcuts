@@ -67,6 +67,39 @@ describe('Skill resolution in workflow nodes', () => {
         expect(skillIdx).toBeLessThan(promptIdx);
     });
 
+    it('map node resolves skills from ordered skillDirectories before workspace defaults', async () => {
+        mockedResolveSkill
+            .mockRejectedValueOnce(new Error('missing in repo skills'))
+            .mockResolvedValueOnce('[Skill: dpu-log-triage] EnDev guidance');
+
+        const { fn, calls } = captureInvoker();
+        const config: MapNodeConfig = {
+            type: 'map',
+            prompt: 'Triage {{log}}',
+            skill: 'dpu-log-triage',
+            output: ['result'],
+        };
+        await executeMap(config, [{ log: 'error.log' }], opts({
+            aiInvoker: fn,
+            skillDirectories: ['/workspace/.github/skills', '/endev/plugin/skills'],
+        }));
+
+        expect(mockedResolveSkill).toHaveBeenNthCalledWith(
+            1,
+            'dpu-log-triage',
+            '/workspace',
+            '/workspace/.github/skills',
+        );
+        expect(mockedResolveSkill).toHaveBeenNthCalledWith(
+            2,
+            'dpu-log-triage',
+            '/workspace',
+            '/endev/plugin/skills',
+        );
+        expect(calls[0].prompt).toContain('[Skill: dpu-log-triage] EnDev guidance');
+        expect(calls[0].prompt).toContain('Triage error.log');
+    });
+
     it('ai node with skill prepends skill content to prompt', async () => {
         const { fn, calls } = captureInvoker();
         const config: AINodeConfig = {

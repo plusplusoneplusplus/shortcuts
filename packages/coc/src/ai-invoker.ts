@@ -46,6 +46,10 @@ export interface CLIAIInvokerOptions {
     loadMcpConfig?: boolean;
     /** Pre-filtered MCP server map; mirrors `mcpServers` on `SendMessageOptions` and can be forwarded without transformation. */
     mcpServers?: Record<string, MCPServerConfig>;
+    /** Ordered skill directories to expose to the SDK session. */
+    skillDirectories?: string[];
+    /** Skill names to disable for the SDK session. */
+    disabledSkills?: string[];
     /** Optional callback invoked with each AI output chunk for streaming */
     onChunk?: (chunk: string) => void;
     /** Custom tools to expose to the AI session */
@@ -117,6 +121,8 @@ export function createCLIAIInvoker(options: CLIAIInvokerOptions = {}): AIInvoker
                     ? false                             // explicit server list → skip global load
                     : options.loadMcpConfig !== false,  // existing behaviour preserved
                 mcpServers: options.mcpServers,
+                skillDirectories: options.skillDirectories,
+                disabledSkills: options.disabledSkills,
                 onStreamingChunk: options.onChunk,
                 tools: options.tools,
                 onToolEvent: invokerOptions?.onToolEvent,

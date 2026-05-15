@@ -76,6 +76,30 @@ export function mergeOutput(item: Item, response: string, outputFields?: string[
 // Prompt resolution
 // ---------------------------------------------------------------------------
 
+async function resolveWorkflowSkill(name: string, options: WorkflowExecutionOptions): Promise<string> {
+    const workspaceRoot = options.workspaceRoot ?? process.cwd();
+    const searchedDirectories: string[] = [];
+
+    for (const skillDirectory of options.skillDirectories ?? []) {
+        searchedDirectories.push(skillDirectory);
+        try {
+            return await resolveSkill(name, workspaceRoot, skillDirectory);
+        } catch {
+            // Try the next configured skill directory before falling back.
+        }
+    }
+
+    if (options.workspaceRoot) {
+        return await resolveSkill(name, options.workspaceRoot);
+    }
+
+    throw new Error(
+        searchedDirectories.length > 0
+            ? `Skill "${name}" not found in configured skill directories: ${searchedDirectories.join(', ')}`
+            : `Skill "${name}" requires a workspace root or configured skill directories`
+    );
+}
+
 /**
  * Resolve a prompt template from either an inline string or a file path.
  * Optionally resolves one or more skills (prepended) and substitutes top-level parameters.
@@ -106,11 +130,11 @@ export async function resolvePrompt(
     const effectiveSkills = skillNames ?? (skillName ? [skillName] : []);
 
     // Prepend skill content if specified
-    if (effectiveSkills.length > 0 && options.workspaceRoot) {
+    if (effectiveSkills.length > 0 && (options.workspaceRoot || options.skillDirectories?.length)) {
         const skillContents: string[] = [];
         for (const name of effectiveSkills) {
             try {
-                const skillContent = await resolveSkill(name, options.workspaceRoot);
+                const skillContent = await resolveWorkflowSkill(name, options);
                 skillContents.push(skillContent);
             } catch (err) {
                 getLogger().warn(

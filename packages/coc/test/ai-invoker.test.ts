@@ -229,6 +229,18 @@ describe('AI Invoker', () => {
             expect(sendOptions.loadDefaultMcpConfig).toBe(false);
             expect(sendOptions.mcpServers).toEqual(mcpServers);
         });
+
+        it('should forward skill directories and disabled skills to SendMessageOptions', async () => {
+            const invoker = createCLIAIInvoker({
+                skillDirectories: ['/repo/.github/skills', '/endev/plugin/skills'],
+                disabledSkills: ['legacy-skill'],
+            });
+            await invoker('test prompt');
+
+            const [sendOptions] = mockSendMessageCapture.mock.calls[0];
+            expect(sendOptions.skillDirectories).toEqual(['/repo/.github/skills', '/endev/plugin/skills']);
+            expect(sendOptions.disabledSkills).toEqual(['legacy-skill']);
+        });
     });
 
     // ========================================================================

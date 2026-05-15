@@ -47,6 +47,9 @@ folder to the workspace `extraSkillFolders`. The dashboard EnDev-xDpu settings
 section can save dirty WSL fields, call discovery, surface setup errors, and
 refresh workspace skills after success. Discovery also records EnDev's WSL MCP
 config path. Enabled WSL workspaces bridge only EnDev's `funbird-mcp` server
-into CoC chat sessions by spawning `wsl.exe` per SDK request. MCP bridging and
-EnDev discovery must remain workspace-scoped and must not mutate Windows
+into CoC chat sessions by spawning `wsl.exe` per SDK request. `coc run
+--workspace-root <root>` also resolves the matching workspace's
+`extraSkillFolders` for workflow `skill`/`skills` prompt injection and bridges
+the workspace EnDev MCP server for workflow AI nodes. MCP bridging and EnDev
+discovery must remain workspace-scoped and must not mutate Windows
 `~/.copilot/mcp-config.json`.

@@ -14,34 +14,54 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import {
     DEFAULT_SKILLS_SETTINGS,
     getBundledSkillsPath,
+    normalizeExecutionPath,
     resolvePathForHostFilesystem,
     resolvePathInExecutionContext,
     resolveWorkspaceExecutionContext,
     translatePathForExecution,
 } from '@plusplusoneplusplus/forge';
 
+export interface ResolveSkillConfigOptions {
+    /**
+     * `execution` returns paths as seen by the active workspace execution
+     * context; `host` returns paths readable by this Node.js process.
+     */
+    skillDirectoryPathKind?: 'execution' | 'host';
+}
+
+function pathsReferToSameWorkspace(leftPath: string | undefined, rightPath: string | undefined): boolean {
+    if (!leftPath || !rightPath) return false;
+    try {
+        return normalizeExecutionPath(leftPath) === normalizeExecutionPath(rightPath);
+    } catch {
+        return leftPath.replace(/\\/g, '/').toLowerCase() === rightPath.replace(/\\/g, '/').toLowerCase();
+    }
+}
+
 export async function resolveSkillConfig(
     store: ProcessStore,
     dataDir: string | undefined,
     workspaceId: string | undefined,
     workingDirectory: string | undefined,
+    options: ResolveSkillConfigOptions = {},
 ): Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }> {
     let disabledSkills: string[] | undefined;
     let extraSkillFolders: string[] | undefined;
+    const skillDirectoryPathKind = options.skillDirectoryPathKind ?? 'execution';
 
-    if (workspaceId) {
-        try {
-            const workspaces = await store.getWorkspaces();
-            const ws = workspaces.find(w => w.id === workspaceId);
-            if (ws?.disabledSkills && ws.disabledSkills.length > 0) {
-                disabledSkills = [...ws.disabledSkills];
-            }
-            if (ws?.extraSkillFolders && ws.extraSkillFolders.length > 0) {
-                extraSkillFolders = [...ws.extraSkillFolders];
-            }
-        } catch {
-            // Non-fatal: continue without workspace config
+    try {
+        const workspaces = await store.getWorkspaces();
+        const ws = workspaceId
+            ? workspaces.find(w => w.id === workspaceId)
+            : workspaces.find(w => pathsReferToSameWorkspace(w.rootPath, workingDirectory));
+        if (ws?.disabledSkills && ws.disabledSkills.length > 0) {
+            disabledSkills = [...ws.disabledSkills];
         }
+        if (ws?.extraSkillFolders && ws.extraSkillFolders.length > 0) {
+            extraSkillFolders = [...ws.extraSkillFolders];
+        }
+    } catch {
+        // Non-fatal: continue without workspace config
     }
 
     if (dataDir) {
@@ -74,9 +94,12 @@ export async function resolveSkillConfig(
         }
 
         try {
-            dirs.push(sessionContext.kind === 'wsl'
-                ? translatePathForExecution(sourcePath, sessionContext)
-                : hostPath);
+            const resolvedPath = skillDirectoryPathKind === 'host'
+                ? hostPath
+                : (sessionContext.kind === 'wsl'
+                    ? translatePathForExecution(sourcePath, sessionContext)
+                    : hostPath);
+            dirs.push(resolvedPath);
         } catch {
             // Non-fatal: skip skill folders that the active session namespace cannot access
         }

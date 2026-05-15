@@ -547,6 +547,14 @@ export interface WorkflowExecutionOptions {
      * Distinct from `workflowDirectory` which is the pipeline package directory.
      */
     workspaceRoot?: string;
+    /**
+     * Ordered skill directories to search before the workspace-local default.
+     *
+     * Used by workflow `skill`/`skills` prompt injection. Callers that already
+     * resolved workspace/global/extra skill folders can pass that ordered list
+     * so workflow nodes are not limited to `<workspaceRoot>/.github/skills`.
+     */
+    skillDirectories?: string[];
     /** Working directory for AI invocations. Falls back to workflowDirectory. */
     workingDirectory?: string;
     /** Override the default AI model for all nodes. */

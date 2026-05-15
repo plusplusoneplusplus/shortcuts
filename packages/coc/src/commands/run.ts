@@ -21,6 +21,8 @@ import type {
     WorkflowProgressEvent,
     FlatWorkflowResult,
     AIProcess,
+    MCPServerConfig,
+    ProcessStore,
 } from '@plusplusoneplusplus/forge';
 import {
     createCLIAIInvoker,
@@ -44,6 +46,8 @@ import type { CLIConfig } from '../config';
 import { formatResults, formatSummary, formatDuration } from '../output-formatter';
 import type { OutputFormat } from '../output-formatter';
 import { resolvePipelinePath } from './validate';
+import { resolveMcpConfig } from '../server/executors/mcp-config-resolver';
+import { resolveSkillConfig } from '../server/executors/skill-config-resolver';
 
 // ============================================================================
 // Types
@@ -83,6 +87,37 @@ export interface RunCommandOptions {
     logLevel?: string;
     /** Directory for .ndjson log files. No file logging when undefined. */
     logDir?: string;
+}
+
+export interface RunWorkspaceIntegration {
+    skillDirectories?: string[];
+    disabledSkills?: string[];
+    mcpServers?: Record<string, MCPServerConfig>;
+}
+
+export interface RunWorkspaceIntegrationOptions {
+    includeMcp?: boolean;
+}
+
+export async function resolveRunWorkspaceIntegration(
+    store: ProcessStore,
+    dataDir: string | undefined,
+    workingDirectory: string,
+    options: RunWorkspaceIntegrationOptions = {},
+): Promise<RunWorkspaceIntegration> {
+    const mcpConfigPromise: Promise<{ mcpServers?: Record<string, MCPServerConfig> }> = options.includeMcp === false
+        ? Promise.resolve({})
+        : resolveMcpConfig(store, undefined, workingDirectory);
+    const [skillConfig, mcpConfig] = await Promise.all([
+        resolveSkillConfig(store, dataDir, undefined, workingDirectory, { skillDirectoryPathKind: 'host' }),
+        mcpConfigPromise,
+    ]);
+
+    return {
+        skillDirectories: skillConfig.skillDirectories,
+        disabledSkills: skillConfig.disabledSkills,
+        mcpServers: mcpConfig.mcpServers,
+    };
 }
 
 // ============================================================================
@@ -135,6 +170,7 @@ export async function executeRun(
 
     // 4. Set up logger
     const fileConfig = loadConfigFile();
+    const dataDir = options.dataDir ?? path.join(os.homedir(), '.coc');
     const { ai } = createCLIPinoLogger(resolveLoggingConfig(
         { logLevel: options.logLevel, logDir: options.logDir, verbose: options.verbose },
         fileConfig?.logging
@@ -152,11 +188,30 @@ export async function executeRun(
         workingDirectory = pipelineDir;
     }
 
+    let workspaceIntegration: RunWorkspaceIntegration = {};
+    if (options.workspaceRoot) {
+        let store: ProcessStore | undefined;
+        try {
+            store = createProcessStore(dataDir, fileConfig?.store?.backend);
+            workspaceIntegration = await resolveRunWorkspaceIntegration(store, dataDir, workingDirectory, {
+                includeMcp: !options.dryRun,
+            });
+        } catch (error) {
+            printError(`Failed to resolve workspace configuration: ${error instanceof Error ? error.message : String(error)}`);
+            return 1;
+        } finally {
+            closeStore(store);
+        }
+    }
+
     const invokerOptions: CLIAIInvokerOptions = {
         model: options.model,
         approvePermissions: options.approvePermissions,
         workingDirectory,
         timeoutMs: options.timeout ? options.timeout * 1000 : undefined,
+        skillDirectories: workspaceIntegration.skillDirectories,
+        disabledSkills: workspaceIntegration.disabledSkills,
+        mcpServers: workspaceIntegration.mcpServers,
     };
 
     const aiInvoker = options.dryRun
@@ -188,6 +243,7 @@ export async function executeRun(
             aiInvoker,
             workflowDirectory: pipelineDir,
             workspaceRoot: options.workspaceRoot,
+            skillDirectories: workspaceIntegration.skillDirectories,
             model: options.model,
             concurrency: options.parallel,
             timeoutMs: options.timeout ? options.timeout * 1000 : undefined,
@@ -351,12 +407,16 @@ async function persistProcess(
         try {
             await store.addProcess(process);
         } finally {
-            if ('close' in store && typeof store.close === 'function') {
-                store.close();
-            }
+            closeStore(store);
         }
     } catch (err) {
         // Persistence errors should never fail the run command
         printError(`Failed to persist process: ${err instanceof Error ? err.message : String(err)}`);
+    }
+}
+
+function closeStore(store: ProcessStore | undefined): void {
+    if (store && 'close' in store && typeof store.close === 'function') {
+        store.close();
     }
 }

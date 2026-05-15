@@ -60,6 +60,38 @@ describe('resolveSkillConfig', () => {
         }
     });
 
+    it('matches workspace by working directory and returns host-readable extra skill folders', async () => {
+        const repoDir = path.join(tmpDir, 'repo');
+        const repoSkillsDir = path.join(repoDir, '.github', 'skills');
+        const extraSkillsDir = path.join(tmpDir, 'endev-plugin-skills');
+        fs.mkdirSync(repoSkillsDir, { recursive: true });
+        fs.mkdirSync(extraSkillsDir, { recursive: true });
+        (store.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue([
+            {
+                id: 'ws-endev',
+                name: 'xStore',
+                rootPath: repoDir,
+                disabledSkills: ['legacy-skill'],
+                extraSkillFolders: [extraSkillsDir],
+            },
+        ]);
+
+        const result = await resolveSkillConfig(
+            store,
+            undefined,
+            undefined,
+            repoDir,
+            { skillDirectoryPathKind: 'host' },
+        );
+
+        expect(result.disabledSkills).toEqual(['legacy-skill']);
+        expect(result.skillDirectories).toBeDefined();
+        expect(result.skillDirectories).toEqual(expect.arrayContaining([
+            repoSkillsDir,
+            extraSkillsDir,
+        ]));
+    });
+
     it('merges globalDisabledSkills from preferences (applies to bundled too)', async () => {
         const dataDir = path.join(tmpDir, 'data');
         fs.mkdirSync(dataDir, { recursive: true });
