@@ -1441,6 +1441,7 @@ export function ChatListPane({
     // can be displayed even when the locally-loaded history page is empty.
     if (running.length === 0 && queued.length === 0 && history.length === 0 && !isServerSearchActive) {
         return (
+            <>
             <div className="p-4 text-center text-sm text-[#848484]" data-testid="queue-empty-state">
                 {isRefreshing && (
                     <div className="mb-2 animate-pulse" data-testid="queue-refreshing-indicator">Refreshing…</div>
@@ -1464,6 +1465,19 @@ export function ChatListPane({
                     <div className="mb-2">{workspaceId ? 'No tasks in queue for this repository' : 'No tasks in queue'}</div>
                 )}
             </div>
+            {isMobile && onNewChat && (
+                <button
+                    className="mobile-fab"
+                    onClick={onNewChat}
+                    data-testid="mobile-new-chat-fab-empty"
+                    aria-label="New chat"
+                >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+                    </svg>
+                </button>
+            )}
+            </>
         );
     }
 
