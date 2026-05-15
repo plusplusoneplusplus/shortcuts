@@ -7,6 +7,7 @@
  */
 
 import * as http from 'http';
+import * as fs from 'fs';
 import * as path from 'path';
 import { URL } from 'url';
 import type { ResolvedContainerConfig } from '../config';
@@ -197,15 +198,24 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 return sendJson(res, { repos: [] });
             }
 
-            // Preferences stub (container stores no preferences — fire-and-forget writes)
+            // Preferences — persisted as JSON in container data dir
             if (url.pathname === '/api/preferences') {
+                const prefsPath = path.join(config.serve.dataDir, 'preferences.json');
                 if (req.method === 'GET') {
-                    return sendJson(res, {});
+                    try {
+                        const data = JSON.parse(fs.readFileSync(prefsPath, 'utf8'));
+                        return sendJson(res, data);
+                    } catch {
+                        return sendJson(res, {});
+                    }
                 }
                 if (req.method === 'PATCH' || req.method === 'PUT') {
-                    // Discard — container has no persistent preferences
-                    await readBody(req).catch(() => {});
-                    return sendJson(res, {});
+                    const body = await readBody(req) as Record<string, unknown>;
+                    let existing: Record<string, unknown> = {};
+                    try { existing = JSON.parse(fs.readFileSync(prefsPath, 'utf8')); } catch { /* first write */ }
+                    const merged = { ...existing, ...body };
+                    fs.writeFileSync(prefsPath, JSON.stringify(merged, null, 2));
+                    return sendJson(res, merged);
                 }
             }
 
