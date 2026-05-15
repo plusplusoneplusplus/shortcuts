@@ -96,6 +96,7 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
         loopsEnabled,
         reviewFilePath,
         projectDir,
+        bindAddress,
     } = options;
 
     const themeAttr = theme === 'auto' ? '' : ` data-theme="${theme === 'dark' ? 'dark' : 'light'}"`;
@@ -140,7 +141,8 @@ ${getBundleCss()}
             ralphEnabled: ${!!ralphEnabled},
             vimNavigationEnabled: ${!!vimNavigationEnabled},
             containerMode: ${!!containerMode},
-            loopsEnabled: ${!!loopsEnabled}
+            loopsEnabled: ${!!loopsEnabled}${bindAddress ? `,
+            bindAddress: '${escapeHtml(bindAddress)}'` : ''}
         };
     </script>${reviewFilePath ? `
     <script>

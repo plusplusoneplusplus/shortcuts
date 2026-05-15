@@ -41,5 +41,11 @@ export interface DashboardOptions {
     projectDir?: string;
     /** When true, the SPA runs in container mode (multi-agent aggregation). */
     containerMode?: boolean;
+    /**
+     * Raw bind address the server is listening on (e.g., '0.0.0.0', '::',
+     * '127.0.0.1', or a specific interface IP). Exposed to the SPA so it can
+     * surface a security warning when the server is bound to all interfaces.
+     */
+    bindAddress?: string;
 }
 

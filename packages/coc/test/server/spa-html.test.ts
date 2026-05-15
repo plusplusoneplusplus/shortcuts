@@ -144,6 +144,16 @@ describe('generateDashboardHtml', () => {
         expect(html).toContain('&lt;script&gt;');
     });
 
+    it('includes bindAddress in __DASHBOARD_CONFIG__ when provided', () => {
+        const html = generateDashboardHtml({ bindAddress: '0.0.0.0' });
+        expect(html).toContain("bindAddress: '0.0.0.0'");
+    });
+
+    it('omits bindAddress key when not provided', () => {
+        const html = generateDashboardHtml();
+        expect(html).not.toContain('bindAddress:');
+    });
+
     it('defaults serversEnabled to false in __DASHBOARD_CONFIG__', () => {
         const html = generateDashboardHtml();
         expect(html).toContain('serversEnabled: false');

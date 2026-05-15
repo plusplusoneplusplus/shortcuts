@@ -20,6 +20,7 @@ interface DashboardConfig {
     vimNavigationEnabled?: boolean;
     containerMode?: boolean;
     loopsEnabled?: boolean;
+    bindAddress?: string;
 }
 
 function getConfig(): DashboardConfig {
@@ -118,4 +119,20 @@ export function isContainerMode(): boolean {
 
 export function isLoopsEnabled(): boolean {
     return getConfig().loopsEnabled === true;
+}
+
+/** Returns the raw bind address the server is listening on (e.g., '0.0.0.0'), if known. */
+export function getBindAddress(): string | undefined {
+    return getConfig().bindAddress;
+}
+
+/**
+ * Returns true when the server is bound to an address that exposes it on all
+ * network interfaces. Currently matches IPv4 wildcard '0.0.0.0' and the IPv6
+ * wildcard '::' (and the equivalent '[::]' display form).
+ */
+export function isExposedBinding(): boolean {
+    const addr = getConfig().bindAddress;
+    if (!addr) return false;
+    return addr === '0.0.0.0' || addr === '::' || addr === '[::]';
 }
