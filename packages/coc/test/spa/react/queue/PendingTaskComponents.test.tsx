@@ -22,6 +22,7 @@ import { PendingTaskPayload, MetaRow, FilePathValue } from '../../../../src/serv
 
 // Mock config for fetchApi (used internally by PendingTaskPayload for images)
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '/api',
     getWsPath: () => '/ws',
     getWsUrl: () => 'ws://localhost/ws',

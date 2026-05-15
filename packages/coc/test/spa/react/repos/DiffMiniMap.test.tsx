@@ -299,11 +299,11 @@ describe('DiffMiniMap', () => {
         });
         globalThis.cancelAnimationFrame = vi.fn();
         // Provide a no-op ResizeObserver for jsdom
-        globalThis.ResizeObserver = vi.fn().mockImplementation(() => ({
+        globalThis.ResizeObserver = vi.fn().mockImplementation(function () { return ({
             observe: vi.fn(),
             unobserve: vi.fn(),
             disconnect: vi.fn(),
-        }));
+        }); });
     });
 
     afterEach(() => {

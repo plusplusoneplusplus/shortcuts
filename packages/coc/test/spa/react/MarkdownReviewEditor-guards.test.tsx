@@ -66,6 +66,7 @@ vi.mock('../../../src/server/spa/client/react/shared/SourceEditor', () => ({
 
 /* ── Mock getApiBase ── */
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '',
 }));
 

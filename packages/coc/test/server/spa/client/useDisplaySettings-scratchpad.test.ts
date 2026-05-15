@@ -8,6 +8,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 
 // Mock config module before importing useDisplaySettings
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '/api',
     isTerminalEnabled: () => false,
     isNotesEnabled: () => false,

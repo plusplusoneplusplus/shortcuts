@@ -64,10 +64,10 @@ describe('truncateDiffIfNeeded', () => {
 
 const mockExecSync = vi.fn();
 const mockExecFileSync = vi.fn();
-vi.mock('child_process', () => ({
+vi.mock('child_process', function () { return ({
     execSync: (...args: any[]) => mockExecSync(...args),
     execFileSync: (...args: any[]) => mockExecFileSync(...args),
-}));
+}); });
 
 const mockGetBranchStatus = vi.fn();
 const mockGetAllChanges = vi.fn();
@@ -82,11 +82,11 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     return {
         ...actual,
         execGit: (...args: any[]) => mockForgeExecGit(...args),
-        BranchService: vi.fn().mockImplementation(() => ({
+        BranchService: vi.fn().mockImplementation(function () { return ({
             getBranchStatus: mockGetBranchStatus,
             getRepoState: vi.fn().mockReturnValue({}),
-        })),
-        WorkingTreeService: vi.fn().mockImplementation(() => ({
+        }); }),
+        WorkingTreeService: vi.fn().mockImplementation(function () { return ({
             getAllChanges: mockGetAllChanges,
             getFileDiff: mockGetFileDiff,
             stageFile: vi.fn(),
@@ -95,12 +95,12 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             stageFiles: vi.fn(),
             unstageFiles: vi.fn(),
             deleteUntrackedFile: vi.fn(),
-        })),
-        GitRangeService: vi.fn().mockImplementation(() => ({
+        }); }),
+        GitRangeService: vi.fn().mockImplementation(function () { return ({
             detectCommitRange: mockDetectCommitRange,
             getFileDiff: mockRangeGetFileDiff,
             getRangeDiff: vi.fn().mockReturnValue(''),
-        })),
+        }); }),
     };
 });
 

@@ -11,6 +11,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 // ---------------------------------------------------------------------------
 
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => 'http://localhost:4000/api',
     isRalphEnabled: () => true,
 }));

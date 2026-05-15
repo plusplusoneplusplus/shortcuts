@@ -7,6 +7,7 @@ import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 
 // Mock getApiBase so fetch URLs are predictable.
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '',
 }));
 

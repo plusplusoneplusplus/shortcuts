@@ -11,6 +11,7 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 vi.mock('@plusplusoneplusplus/forge', () => ({}));
 
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '',
 }));
 

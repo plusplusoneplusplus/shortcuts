@@ -21,9 +21,9 @@ import type { MockProcessStore } from './helpers/mock-process-store';
 // ============================================================================
 
 const mockExecSync = vi.fn();
-vi.mock('child_process', () => ({
+vi.mock('child_process', function () { return ({
     execSync: (...args: any[]) => mockExecSync(...args),
-}));
+}); });
 
 // ============================================================================
 // Mock GitRangeService (used by branch-range endpoint) and BranchService
@@ -42,11 +42,11 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             detectCommitRange = mockDetectCommitRange;
             getCurrentBranch = vi.fn().mockResolvedValue('main');
         },
-        BranchService: vi.fn().mockImplementation(() => ({
+        BranchService: vi.fn().mockImplementation(function () { return ({
             getBranchStatus: vi.fn(async (...args: any[]) => mockGetBranchStatus(...args)),
             hasUncommittedChanges: vi.fn().mockReturnValue(false),
             hasUncommittedChanges: vi.fn().mockResolvedValue(false),
-        })),
+        }); }),
     };
 });
 

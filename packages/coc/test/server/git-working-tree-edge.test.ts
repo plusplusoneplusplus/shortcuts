@@ -41,7 +41,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
-        WorkingTreeService: vi.fn().mockImplementation(() => ({
+        WorkingTreeService: vi.fn().mockImplementation(function () { return ({
             getAllChanges: mockGetAllChanges,
             stageFile: mockStageFile,
             unstageFile: mockUnstageFile,
@@ -50,15 +50,15 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             getFileDiff: mockGetFileDiff,
             stageFiles: mockStageFiles,
             unstageFiles: mockUnstageFiles,
-        })),
+        }); }),
     };
 });
 
 // Mock child_process to prevent real git calls
-vi.mock('child_process', () => ({
+vi.mock('child_process', function () { return ({
     execSync: vi.fn(),
     execFileSync: vi.fn(),
-}));
+}); });
 
 // ============================================================================
 // Test Helpers

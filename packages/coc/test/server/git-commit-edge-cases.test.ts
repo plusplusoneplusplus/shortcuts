@@ -29,10 +29,10 @@ import { gitCache } from '../../src/server/git/git-cache';
 
 const mockExecSync = vi.fn();
 const mockExecFileSync = vi.fn();
-vi.mock('child_process', () => ({
+vi.mock('child_process', function () { return ({
     execSync: (...args: any[]) => mockExecSync(...args),
     execFileSync: (...args: any[]) => mockExecFileSync(...args),
-}));
+}); });
 
 // ============================================================================
 // Mock forge: execGit (used by execGitArgsSync and readGitFileAtCommit),
@@ -49,14 +49,14 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     return {
         ...actual,
         execGit: (...args: any[]) => mockExecGit(...args),
-        BranchService: vi.fn().mockImplementation(() => ({
+        BranchService: vi.fn().mockImplementation(function () { return ({
             getBranchStatus: mockGetBranchStatus,
             hasUncommittedChanges: mockHasUncommittedChanges,
-        })),
-        GitRangeService: vi.fn().mockImplementation(() => ({
+        }); }),
+        GitRangeService: vi.fn().mockImplementation(function () { return ({
             getCurrentBranch: mockGetCurrentBranch,
             detectCommitRange: vi.fn(),
-        })),
+        }); }),
     };
 });
 

@@ -31,21 +31,21 @@ const mockGetRangeDiff = vi.fn();
 const mockGetFileDiff = vi.fn();
 
 const mockExecSync = vi.fn();
-vi.mock('child_process', () => ({
+vi.mock('child_process', function () { return ({
     execSync: (...args: any[]) => mockExecSync(...args),
-}));
+}); });
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
-        GitRangeService: vi.fn().mockImplementation(() => ({
+        GitRangeService: vi.fn().mockImplementation(function () { return ({
             detectCommitRange: mockDetectCommitRange,
             getRangeDiff: mockGetRangeDiff,
             getFileDiff: mockGetFileDiff,
             getCurrentBranch: vi.fn().mockReturnValue('main'),
             getCurrentBranch: vi.fn().mockResolvedValue('main'),
-        })),
+        }); }),
     };
 });
 

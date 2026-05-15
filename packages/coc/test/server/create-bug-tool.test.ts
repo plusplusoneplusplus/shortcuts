@@ -11,12 +11,12 @@ import * as os from 'os';
 // Mock FileWorkItemStore before importing the tool
 const mockAddWorkItem = vi.fn();
 const mockSavePlanVersion = vi.fn();
-vi.mock('../../src/server/work-items/work-item-store', () => ({
-    FileWorkItemStore: vi.fn().mockImplementation(() => ({
+vi.mock('../../src/server/work-items/work-item-store', function () { return ({
+    FileWorkItemStore: vi.fn().mockImplementation(function () { return ({
         addWorkItem: mockAddWorkItem,
         savePlanVersion: mockSavePlanVersion,
-    })),
-}));
+    }); }),
+}); });
 
 import { createBugTool, type CreateBugArgs } from '../../src/server/llm-tools/create-bug-tool';
 

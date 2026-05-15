@@ -52,6 +52,7 @@ vi.mock('../../../../../../src/server/spa/client/react/ui/Dialog', () => ({
 
 // Mock getApiBase used by the promotion panel
 vi.mock('../../../../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => 'http://localhost:4000',
 }));
 

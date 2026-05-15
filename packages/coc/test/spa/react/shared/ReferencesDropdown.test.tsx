@@ -7,16 +7,16 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 
 // ── Hoisted mutable mock state ─────────────────────────────────────────────
 
-const { mockBreakpoint } = vi.hoisted(() => ({
+const { mockBreakpoint } = vi.hoisted(function () { return ({
     mockBreakpoint: { isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' as const },
-}));
+}); });
 
-vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', function () { return ({
     useBreakpoint: () => mockBreakpoint,
-}));
+}); });
 
 // BottomSheet stub — renders inline for testability (avoids portal complexity)
-vi.mock('../../../../src/server/spa/client/react/ui/BottomSheet', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui/BottomSheet', function () { return ({
     BottomSheet: ({ isOpen, onClose, title, children }: any) =>
         isOpen ? (
             <div data-testid="bottomsheet-mock" data-title={title}>
@@ -24,7 +24,7 @@ vi.mock('../../../../src/server/spa/client/react/ui/BottomSheet', () => ({
                 {children}
             </div>
         ) : null,
-}));
+}); });
 
 import {
     computeReferencesDropdownPlacement,
@@ -54,7 +54,7 @@ function mockTriggerRect(rect: Partial<DOMRect>) {
         right: 760,
         bottom: 48,
         left: 660,
-        toJSON: () => ({}),
+        toJSON: function () { return ({}); },
         ...rect,
     } as DOMRect);
 }

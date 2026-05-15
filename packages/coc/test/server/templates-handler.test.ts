@@ -25,12 +25,12 @@ import type { ProcessStore, Workspace } from '@plusplusoneplusplus/forge';
 const mockGetCommit = vi.fn();
 const mockDispose = vi.fn();
 
-vi.mock('@plusplusoneplusplus/forge/git', () => ({
-    GitLogService: vi.fn().mockImplementation(() => ({
+vi.mock('@plusplusoneplusplus/forge/git', function () { return ({
+    GitLogService: vi.fn().mockImplementation(function () { return ({
         getCommit: mockGetCommit,
         dispose: mockDispose,
-    })),
-}));
+    }); }),
+}); });
 
 // ============================================================================
 // Helpers

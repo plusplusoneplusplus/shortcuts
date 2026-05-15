@@ -55,7 +55,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     return {
         ...actual,
         execGit: (...args: any[]) => mockForgeExecGit(...args),
-        BranchService: vi.fn().mockImplementation(() => ({
+        BranchService: vi.fn().mockImplementation(function () { return ({
             getBranchStatus: vi.fn(async (...args: any[]) => mockGetBranchStatus(...args)),
             hasUncommittedChanges: vi.fn(async (...args: any[]) => mockHasUncommittedChanges(...args)),
             getLocalBranchesPaginated: mockGetLocalBranchesPaginated,
@@ -72,21 +72,21 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             popStash: mockPopStash,
             rebaseAutosquash: mockRebaseAutosquash,
             cherryPick: mockCherryPick,
-        })),
-        GitRangeService: vi.fn().mockImplementation(() => ({
+        }); }),
+        GitRangeService: vi.fn().mockImplementation(function () { return ({
             getCurrentBranch: vi.fn().mockReturnValue('main'),
             getCurrentBranch: vi.fn().mockResolvedValue('main'),
             detectCommitRange: vi.fn(),
-        })),
+        }); }),
     };
 });
 
 // Mock child_process to prevent real git calls
 const mockExecSync = vi.fn();
-vi.mock('child_process', () => ({
+vi.mock('child_process', function () { return ({
     execSync: (...args: any[]) => mockExecSync(...args),
     execFileSync: vi.fn(),
-}));
+}); });
 
 // ============================================================================
 // Test Helpers

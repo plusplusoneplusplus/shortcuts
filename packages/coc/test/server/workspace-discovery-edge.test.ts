@@ -27,30 +27,30 @@ import type { MockProcessStore } from './helpers/mock-process-store';
 
 // ── Silence git / git-related calls ──────────────────────────────────────────
 
-vi.mock('child_process', () => ({
+vi.mock('child_process', function () { return ({
     execSync: vi.fn(() => ''),
     execFileSync: vi.fn(() => ''),
-}));
+}); });
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,
-        BranchService: vi.fn().mockImplementation(() => ({
+        BranchService: vi.fn().mockImplementation(function () { return ({
             getBranchStatus: vi.fn(),
             getBranchStatus: vi.fn(),
             hasUncommittedChanges: vi.fn(),
             hasUncommittedChanges: vi.fn(),
-        })),
-        GitRangeService: vi.fn().mockImplementation(() => ({
+        }); }),
+        GitRangeService: vi.fn().mockImplementation(function () { return ({
             getCurrentBranch: vi.fn(),
             getCurrentBranch: vi.fn(),
             detectCommitRange: vi.fn(),
-        })),
+        }); }),
         detectRemoteUrl: vi.fn(async () => undefined),
-        GitOpsStore: vi.fn().mockImplementation(() => ({
+        GitOpsStore: vi.fn().mockImplementation(function () { return ({
             markStaleRunningJobs: vi.fn().mockResolvedValue(undefined),
-        })),
+        }); }),
     };
 });
 

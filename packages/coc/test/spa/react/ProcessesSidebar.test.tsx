@@ -60,6 +60,7 @@ vi.mock('../../../src/server/spa/client/react/utils/workspace', () => ({
 
 // Stub config
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '',
 }));
 
