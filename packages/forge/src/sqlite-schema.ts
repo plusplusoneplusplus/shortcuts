@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 /**
  * Read the current schema version from the database.
@@ -102,6 +102,7 @@ export function initializeDatabase(db: Database.Database): void {
                 enabled_mcp_servers  TEXT,
                 disabled_skills      TEXT,
                 extra_skill_folders  TEXT,
+                endev_xdpu           TEXT,
                 virtual              INTEGER DEFAULT 0
             )
         `);
@@ -356,6 +357,9 @@ export function initializeDatabase(db: Database.Database): void {
         if (versionBefore < 14) {
             migrateV13toV14(db);
         }
+        if (versionBefore < 15) {
+            migrateV14toV15(db);
+        }
 
         // Stamp the schema version
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -522,4 +526,12 @@ function migrateV13toV14(db: Database.Database): void {
         CREATE INDEX IF NOT EXISTS idx_note_chat_bindings_task
             ON note_chat_bindings(workspace_id, task_id);
     `);
+}
+
+/**
+ * V14 -> V15: add `endev_xdpu TEXT` to `workspaces` for workspace-only
+ * EnDev xDPU settings.
+ */
+function migrateV14toV15(db: Database.Database): void {
+    ensureColumn(db, 'workspaces', 'endev_xdpu', 'TEXT');
 }

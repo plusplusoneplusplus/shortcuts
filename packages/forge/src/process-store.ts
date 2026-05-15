@@ -160,6 +160,18 @@ export interface ProcessOutputEvent {
 }
 
 /**
+ * Per-workspace EnDev xDPU settings.
+ *
+ * The feature is disabled unless `enabled` is explicitly true. WSL discovery
+ * can use the optional distro and Linux repo root as user-provided defaults.
+ */
+export interface EnDevXDpuWorkspaceConfig {
+    enabled: boolean;
+    wslDistro?: string;
+    xstoreRepoRoot?: string;
+}
+
+/**
  * Workspace identity for multi-workspace process tracking.
  * `id` is a stable hash of the workspace root path.
  */
@@ -194,6 +206,8 @@ export interface WorkspaceInfo {
      * Paths may be absolute or relative to the workspace `rootPath`.
      */
     extraSkillFolders?: string[];
+    /** Workspace-only EnDev xDPU configuration. Absent means disabled. */
+    endevXDpu?: EnDevXDpuWorkspaceConfig;
     /** True for the global workspace (not a real git repo). Virtual workspaces are hidden from the repos grid. */
     virtual?: boolean;
 }

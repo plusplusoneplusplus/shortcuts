@@ -26,6 +26,7 @@ import {
     ConversationSearchResult,
     PromptAutocompleteContext,
     PromptAutocompleteHistoryItem,
+    EnDevXDpuWorkspaceConfig,
 } from './process-store';
 import {
     AIProcess,
@@ -129,6 +130,7 @@ interface WorkspaceRow {
     enabled_mcp_servers: string | null;
     disabled_skills: string | null;
     extra_skill_folders: string | null;
+    endev_xdpu: string | null;
     virtual: number;
 }
 
@@ -496,6 +498,7 @@ function workspaceToRow(ws: WorkspaceInfo): Record<string, unknown> {
             ws.enabledMcpServers !== undefined ? JSON.stringify(ws.enabledMcpServers) : null,
         disabled_skills: jsonStringify(ws.disabledSkills),
         extra_skill_folders: jsonStringify(ws.extraSkillFolders),
+        endev_xdpu: jsonStringify(ws.endevXDpu),
         virtual: boolToInt(ws.virtual),
     };
 }
@@ -520,6 +523,9 @@ function rowToWorkspace(row: WorkspaceRow): WorkspaceInfo {
     }
     if (row.extra_skill_folders !== null) {
         ws.extraSkillFolders = jsonParse<string[]>(row.extra_skill_folders);
+    }
+    if (row.endev_xdpu !== null) {
+        ws.endevXDpu = jsonParse<EnDevXDpuWorkspaceConfig>(row.endev_xdpu);
     }
 
     return ws;
@@ -1276,10 +1282,10 @@ export class SqliteProcessStore implements ProcessStore {
         this.db.prepare(`
             INSERT OR REPLACE INTO workspaces (
                 id, name, root_path, color, remote_url, description,
-                enabled_mcp_servers, disabled_skills, extra_skill_folders, virtual
+                enabled_mcp_servers, disabled_skills, extra_skill_folders, endev_xdpu, virtual
             ) VALUES (
                 @id, @name, @root_path, @color, @remote_url, @description,
-                @enabled_mcp_servers, @disabled_skills, @extra_skill_folders, @virtual
+                @enabled_mcp_servers, @disabled_skills, @extra_skill_folders, @endev_xdpu, @virtual
             )
         `).run(row);
     }
@@ -1315,6 +1321,10 @@ export class SqliteProcessStore implements ProcessStore {
         if ('extraSkillFolders' in updates) {
             setClauses.push('extra_skill_folders = ?');
             values.push(jsonStringify(updates.extraSkillFolders));
+        }
+        if ('endevXDpu' in updates) {
+            setClauses.push('endev_xdpu = ?');
+            values.push(jsonStringify(updates.endevXDpu));
         }
         if (updates.virtual !== undefined) { setClauses.push('virtual = ?'); values.push(boolToInt(updates.virtual)); }
 

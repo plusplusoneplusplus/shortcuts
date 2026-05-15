@@ -9,6 +9,7 @@ import * as url from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
 import type { ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
+import type { EnDevXDpuWorkspaceConfig } from '@plusplusoneplusplus/forge';
 import { BranchService, loadDefaultMcpConfig, detectRemoteUrl, resolvePathForHostFilesystem } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJSON } from '../core/api-handler';
@@ -50,6 +51,61 @@ function hasGitDirectory(rootPath: string): boolean {
     } catch {
         return false;
     }
+}
+
+type OptionalStringValidationResult =
+    | { ok: true; value?: string }
+    | { ok: false; error: ReturnType<typeof badRequest> };
+
+type EnDevXDpuValidationResult =
+    | { ok: true; config?: EnDevXDpuWorkspaceConfig }
+    | { ok: false; error: ReturnType<typeof badRequest> };
+
+function normalizeOptionalStringField(
+    raw: Record<string, unknown>,
+    fieldName: 'wslDistro' | 'xstoreRepoRoot',
+): OptionalStringValidationResult {
+    const value = raw[fieldName];
+    if (value === undefined || value === null) {
+        return { ok: true };
+    }
+    if (typeof value !== 'string') {
+        return { ok: false, error: badRequest(`\`endevXDpu.${fieldName}\` must be a string`) };
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? { ok: true, value: trimmed } : { ok: true };
+}
+
+function validateEnDevXDpuConfig(input: unknown): EnDevXDpuValidationResult {
+    if (input === null) {
+        return { ok: true, config: undefined };
+    }
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+        return { ok: false, error: badRequest('`endevXDpu` must be an object or null') };
+    }
+
+    const raw = input as Record<string, unknown>;
+    if (raw.enabled !== undefined && typeof raw.enabled !== 'boolean') {
+        return { ok: false, error: badRequest('`endevXDpu.enabled` must be a boolean') };
+    }
+
+    const wslDistro = normalizeOptionalStringField(raw, 'wslDistro');
+    if (!wslDistro.ok) {
+        return wslDistro;
+    }
+    const xstoreRepoRoot = normalizeOptionalStringField(raw, 'xstoreRepoRoot');
+    if (!xstoreRepoRoot.ok) {
+        return xstoreRepoRoot;
+    }
+
+    return {
+        ok: true,
+        config: {
+            enabled: raw.enabled === true,
+            ...(wslDistro.value ? { wslDistro: wslDistro.value } : {}),
+            ...(xstoreRepoRoot.value ? { xstoreRepoRoot: xstoreRepoRoot.value } : {}),
+        },
+    };
 }
 
 /**
@@ -226,6 +282,13 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             if (body.rootPath !== undefined) { updates.rootPath = body.rootPath; }
             if (body.remoteUrl !== undefined) { updates.remoteUrl = body.remoteUrl; }
             if (body.description !== undefined) { updates.description = body.description; }
+            if (Object.prototype.hasOwnProperty.call(body, 'endevXDpu')) {
+                const validation = validateEnDevXDpuConfig(body.endevXDpu);
+                if (!validation.ok) {
+                    return handleAPIError(res, validation.error);
+                }
+                updates.endevXDpu = validation.config;
+            }
 
             const updated = await store.updateWorkspace(id, updates);
             if (!updated) {

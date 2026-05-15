@@ -558,6 +558,11 @@ describe('SqliteProcessStore — Workspace CRUD', () => {
             enabledMcpServers: ['server-a', 'server-b'],
             disabledSkills: ['skill-x'],
             extraSkillFolders: ['/extra/skills'],
+            endevXDpu: {
+                enabled: true,
+                wslDistro: 'Ubuntu',
+                xstoreRepoRoot: '/home/xstore',
+            },
             virtual: true,
         }));
 
@@ -565,7 +570,32 @@ describe('SqliteProcessStore — Workspace CRUD', () => {
         expect(workspaces[0].enabledMcpServers).toEqual(['server-a', 'server-b']);
         expect(workspaces[0].disabledSkills).toEqual(['skill-x']);
         expect(workspaces[0].extraSkillFolders).toEqual(['/extra/skills']);
+        expect(workspaces[0].endevXDpu).toEqual({
+            enabled: true,
+            wslDistro: 'Ubuntu',
+            xstoreRepoRoot: '/home/xstore',
+        });
         expect(workspaces[0].virtual).toBe(true);
+    });
+
+    it('updateWorkspace can enable and clear EnDev xDPU config', async () => {
+        await store.registerWorkspace(makeWorkspace('ws-endev'));
+
+        const enabled = await store.updateWorkspace('ws-endev', {
+            endevXDpu: {
+                enabled: true,
+                wslDistro: 'Ubuntu',
+                xstoreRepoRoot: '/home/xstore',
+            },
+        });
+        expect(enabled!.endevXDpu).toEqual({
+            enabled: true,
+            wslDistro: 'Ubuntu',
+            xstoreRepoRoot: '/home/xstore',
+        });
+
+        const cleared = await store.updateWorkspace('ws-endev', { endevXDpu: undefined });
+        expect(cleared!.endevXDpu).toBeUndefined();
     });
 });
 

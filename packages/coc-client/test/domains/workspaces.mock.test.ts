@@ -83,6 +83,11 @@ describe('WorkspacesClient mock server contract', () => {
       name: 'Updated Repo',
       description: 'Updated description',
       tags: ['updated'],
+      endevXDpu: {
+        enabled: true,
+        wslDistro: 'Ubuntu',
+        xstoreRepoRoot: '/home/xstore',
+      },
     });
     mock.on('POST', '/api/workspaces', { status: 201, body: registered });
     mock.on('PATCH', '/api/workspaces/assigned%2Frepo', { body: { workspace: updated } });
@@ -103,6 +108,11 @@ describe('WorkspacesClient mock server contract', () => {
       name: 'Updated Repo',
       description: 'Updated description',
       tags: ['updated'],
+      endevXDpu: {
+        enabled: true,
+        wslDistro: 'Ubuntu',
+        xstoreRepoRoot: '/home/xstore',
+      },
     })).resolves.toEqual({ workspace: updated });
     await expect(client.workspaces.delete('assigned/repo', { archive: true })).resolves.toBeUndefined();
     await expect(client.workspaces.delete('assigned/repo', { archive: false })).resolves.toBeUndefined();
@@ -121,6 +131,11 @@ describe('WorkspacesClient mock server contract', () => {
       name: 'Updated Repo',
       description: 'Updated description',
       tags: ['updated'],
+      endevXDpu: {
+        enabled: true,
+        wslDistro: 'Ubuntu',
+        xstoreRepoRoot: '/home/xstore',
+      },
     });
     expectEmptyRequest(mock.requests[2], 'DELETE', '/api/workspaces/assigned%2Frepo', { archive: 'true' });
     expectEmptyRequest(mock.requests[3], 'DELETE', '/api/workspaces/assigned%2Frepo', { archive: 'false' });

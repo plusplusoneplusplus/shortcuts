@@ -10,7 +10,14 @@ export interface WorkspaceInfo {
   description?: string;
   isGitRepo?: boolean;
   virtual?: boolean;
+  endevXDpu?: EnDevXDpuWorkspaceConfig;
   [key: string]: unknown;
+}
+
+export interface EnDevXDpuWorkspaceConfig {
+  enabled: boolean;
+  wslDistro?: string;
+  xstoreRepoRoot?: string;
 }
 
 export interface WorkspaceMcpServerEntry {

@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 /**
  * Regression tests for RepoSettingsTab navigation behavior.
  */
@@ -22,6 +24,12 @@ const mockClient = vi.hoisted(() => ({
         getRepo: vi.fn(),
         patchRepo: vi.fn(),
         getTaskSettings: vi.fn(),
+    },
+    workspaces: {
+        getInstructions: vi.fn(),
+        updateInstruction: vi.fn(),
+        deleteInstruction: vi.fn(),
+        update: vi.fn(),
     },
 }));
 
@@ -57,13 +65,14 @@ const repo = {
     taskCount: 0,
 };
 
-function makeRepo(workspaceId: string) {
+function makeRepo(workspaceId: string, rootPath?: string, endevXDpu?: any) {
     return {
         ...repo,
         workspace: {
             ...repo.workspace,
             id: workspaceId,
-            rootPath: workspaceId === 'ws-1' ? repo.workspace.rootPath : '',
+            rootPath: rootPath ?? (workspaceId === 'ws-1' ? repo.workspace.rootPath : ''),
+            ...(endevXDpu ? { endevXDpu } : {}),
         },
     };
 }
@@ -71,9 +80,13 @@ function makeRepo(workspaceId: string) {
 async function renderSettingsTab({
     workspaceId = 'ws-1',
     initialSection,
+    rootPath,
+    endevXDpu,
 }: {
     workspaceId?: string;
     initialSection?: SettingsSection;
+    rootPath?: string;
+    endevXDpu?: any;
 } = {}) {
     const { RepoSettingsTab } = await import(
         '../../../../src/server/spa/client/react/features/repo-settings/RepoSettingsTab'
@@ -95,7 +108,7 @@ async function renderSettingsTab({
     render(
         <AppProvider>
             <InitialSectionSetter />
-            <RepoSettingsTab workspaceId={workspaceId} repo={makeRepo(workspaceId) as any} />
+            <RepoSettingsTab workspaceId={workspaceId} repo={makeRepo(workspaceId, rootPath, endevXDpu) as any} />
         </AppProvider>
     );
 }
@@ -122,6 +135,10 @@ describe('RepoSettingsTab skill expansion', () => {
         mockClient.preferences.getRepo.mockResolvedValue({});
         mockClient.preferences.patchRepo.mockResolvedValue({});
         mockClient.preferences.getTaskSettings.mockResolvedValue({});
+        mockClient.workspaces.getInstructions.mockResolvedValue({ base: null, ask: null, plan: null, autopilot: null });
+        mockClient.workspaces.updateInstruction.mockResolvedValue({ mode: 'base', content: '' });
+        mockClient.workspaces.deleteInstruction.mockResolvedValue({ success: true });
+        mockClient.workspaces.update.mockResolvedValue({ workspace: {} });
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({ base: null, ask: null, plan: null, autopilot: null }),
@@ -175,5 +192,43 @@ describe('RepoSettingsTab skill expansion', () => {
         await waitFor(() => expect(location.hash).toBe(`#repos/${workspaceId}/settings/info`));
         expect(screen.queryByTestId('nav-item-notes')).toBeNull();
         expect(screen.queryByTestId('notes-settings-section')).toBeNull();
+    });
+
+    it('shows EnDev-xDpu disabled by default and saves WSL defaults when enabled', async () => {
+        await act(async () => {
+            await renderSettingsTab({
+                initialSection: 'endev-xdpu',
+                rootPath: '\\\\wsl$\\Ubuntu\\home\\xstore',
+            });
+        });
+
+        const toggle = await screen.findByTestId('endev-xdpu-toggle') as HTMLInputElement;
+        expect(toggle.checked).toBe(false);
+        expect(toggle.disabled).toBe(false);
+
+        await act(async () => {
+            fireEvent.click(toggle);
+        });
+
+        await waitFor(() => expect(mockClient.workspaces.update).toHaveBeenCalledWith('ws-1', {
+            endevXDpu: {
+                enabled: true,
+                wslDistro: 'Ubuntu',
+                xstoreRepoRoot: '/home/xstore',
+            },
+        }));
+        expect((screen.getByTestId('endev-xdpu-distro') as HTMLInputElement).value).toBe('Ubuntu');
+        expect((screen.getByTestId('endev-xdpu-root') as HTMLInputElement).value).toBe('/home/xstore');
+    });
+
+    it('disables EnDev-xDpu toggle for non-WSL workspaces', async () => {
+        await act(async () => {
+            await renderSettingsTab({ initialSection: 'endev-xdpu', rootPath: 'C:\\repo' });
+        });
+
+        const toggle = await screen.findByTestId('endev-xdpu-toggle') as HTMLInputElement;
+        expect(toggle.checked).toBe(false);
+        expect(toggle.disabled).toBe(true);
+        expect(screen.getByTestId('endev-xdpu-unsupported').textContent).toContain('not a WSL path');
     });
 });

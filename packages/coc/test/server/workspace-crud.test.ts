@@ -170,6 +170,54 @@ describe('Workspace CRUD Lifecycle', () => {
             expect(ws?.name).toBe('Updated Name');
         });
 
+        it('PATCH EnDev-xDpu settings → reflected in subsequent GET list', async () => {
+            const srv = await startServer();
+            await jsonReq(`${srv.url}/api/workspaces`, 'POST', {
+                id: 'ws-endev-1',
+                name: 'WSL Repo',
+                rootPath: '\\\\wsl$\\Ubuntu\\home\\xstore',
+            });
+
+            const patchRes = await jsonReq(`${srv.url}/api/workspaces/ws-endev-1`, 'PATCH', {
+                endevXDpu: {
+                    enabled: true,
+                    wslDistro: ' Ubuntu ',
+                    xstoreRepoRoot: ' /home/xstore ',
+                },
+            });
+            expect(patchRes.status).toBe(200);
+            const patchBody = JSON.parse(patchRes.body);
+            expect(patchBody.workspace.endevXDpu).toEqual({
+                enabled: true,
+                wslDistro: 'Ubuntu',
+                xstoreRepoRoot: '/home/xstore',
+            });
+
+            const listRes = await request(`${srv.url}/api/workspaces`);
+            const listBody = JSON.parse(listRes.body);
+            const ws = (listBody.workspaces ?? []).find((w: any) => w.id === 'ws-endev-1');
+            expect(ws?.endevXDpu).toEqual({
+                enabled: true,
+                wslDistro: 'Ubuntu',
+                xstoreRepoRoot: '/home/xstore',
+            });
+        });
+
+        it('PATCH EnDev-xDpu rejects invalid enabled values', async () => {
+            const srv = await startServer();
+            await jsonReq(`${srv.url}/api/workspaces`, 'POST', {
+                id: 'ws-endev-invalid',
+                name: 'WSL Repo',
+                rootPath: '\\\\wsl$\\Ubuntu\\home\\xstore',
+            });
+
+            const res = await jsonReq(`${srv.url}/api/workspaces/ws-endev-invalid`, 'PATCH', {
+                endevXDpu: { enabled: 'yes' },
+            });
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).error).toContain('endevXDpu.enabled');
+        });
+
         it('PATCH on nonexistent workspace → 404', async () => {
             const srv = await startServer();
             const res = await jsonReq(`${srv.url}/api/workspaces/does-not-exist`, 'PATCH', {

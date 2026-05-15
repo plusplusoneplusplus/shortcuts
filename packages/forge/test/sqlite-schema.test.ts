@@ -95,7 +95,14 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(14);
+        expect(SCHEMA_VERSION).toBe(15);
+    });
+
+    it('creates EnDev xDPU workspace settings column', () => {
+        initializeDatabase(db);
+
+        const cols = db.prepare("PRAGMA table_info(workspaces)").all() as Array<{ name: string }>;
+        expect(cols.map(c => c.name)).toContain('endev_xdpu');
     });
 
     it('creates queue pause timer columns', () => {
@@ -124,6 +131,36 @@ describe('sqlite-schema', () => {
         expect(tables).toContain('wikis');
         expect(tables).toContain('queue_tasks');
         expect(tables).toContain('queue_repo_state');
+        expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+    });
+
+    it('migrates a V14 database by adding EnDev xDPU workspace settings without data loss', () => {
+        db.exec(`
+            CREATE TABLE workspaces (
+                id                   TEXT PRIMARY KEY,
+                name                 TEXT NOT NULL,
+                root_path            TEXT NOT NULL,
+                color                TEXT,
+                remote_url           TEXT,
+                description          TEXT,
+                enabled_mcp_servers  TEXT,
+                disabled_skills      TEXT,
+                extra_skill_folders  TEXT,
+                virtual              INTEGER DEFAULT 0
+            )
+        `);
+        db.prepare(`
+            INSERT INTO workspaces (id, name, root_path, virtual)
+            VALUES ('ws-1', 'Workspace', '/repo', 0)
+        `).run();
+        db.pragma('user_version = 14');
+
+        initializeDatabase(db);
+
+        const cols = db.prepare("PRAGMA table_info(workspaces)").all() as Array<{ name: string }>;
+        expect(cols.map(c => c.name)).toContain('endev_xdpu');
+        const row = db.prepare("SELECT id, name, root_path, endev_xdpu FROM workspaces WHERE id = 'ws-1'").get() as any;
+        expect(row).toEqual({ id: 'ws-1', name: 'Workspace', root_path: '/repo', endev_xdpu: null });
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
     });
 

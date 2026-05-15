@@ -34,3 +34,11 @@ Recurring follow-up subsystem in `src/server/loops/`. Separate from schedules.
 - **Infrastructure:** `infrastructure/loop-infrastructure.ts` wires store + executor + timer registry
 - **LLM tools:** `llm-tools/loop-tools.ts` — `createLoop`/`cancelLoop`/`listLoops` (skill-gated), `scheduleWakeup` (always available)
 - **Dashboard:** `LoopBadge`, `LoopManagementPanel`, turn source badges in `ConversationTurnBubble`
+
+## EnDev xDPU
+
+Workspace settings can persist an optional `WorkspaceInfo.endevXDpu` object for
+the disabled-by-default `EnDev-xDpu` integration. The dashboard settings surface
+stores only the enablement flag, WSL distro, and xStore WSL repo root at this
+stage; MCP bridging and EnDev discovery must remain workspace-scoped and must not
+mutate Windows `~/.copilot/mcp-config.json`.

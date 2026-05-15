@@ -231,6 +231,7 @@ export {
 export {
     HookStepEvent,
     ProcessOutputEvent,
+    EnDevXDpuWorkspaceConfig,
     WorkspaceInfo,
     WikiInfo,
     ProcessFilter,
