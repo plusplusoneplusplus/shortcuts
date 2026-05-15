@@ -67,6 +67,10 @@ function generateSessionId(): string {
     return id;
 }
 
+function getWindowsHostCwdForWslPty(): string {
+    return process.env['SystemRoot'] || process.cwd();
+}
+
 export function toSessionInfo(session: TerminalSession): TerminalSessionInfo {
     return {
         id: session.id,
@@ -159,12 +163,12 @@ export class TerminalSessionManager {
             throw new Error(`Maximum terminal sessions (${this.options.maxSessions}) reached`);
         }
 
-        const { shell, args } = this.detectShell(rootPath);
+        const { shell, args, cwd } = this.detectShell(rootPath);
         const pty: IPty = this.nodePty.spawn(shell, args, {
             name: 'xterm-256color',
             cols,
             rows,
-            cwd: rootPath,
+            cwd,
             env: this.env as any ?? process.env as any,
         });
 
@@ -279,20 +283,21 @@ export class TerminalSessionManager {
     // Private
     // --------------------------------------------------------------------
 
-    private detectShell(rootPath: string): { shell: string; args: string[] } {
+    private detectShell(rootPath: string): { shell: string; args: string[]; cwd: string } {
         if (this.options.platform === 'win32') {
             const executionContext = resolveWorkspaceExecutionContext(rootPath);
             if (executionContext.kind === 'wsl') {
                 return {
                     shell: getWslExecutablePath(),
                     args: buildWslCommandArgs(executionContext, ['bash', '--login']),
+                    cwd: getWindowsHostCwdForWslPty(),
                 };
             }
-            return { shell: 'powershell.exe', args: [] };
+            return { shell: 'powershell.exe', args: [], cwd: rootPath };
         }
         // macOS/Linux: use $SHELL or fallback to /bin/bash
         const shell = process.env.SHELL || '/bin/bash';
-        return { shell, args: ['--login'] };
+        return { shell, args: ['--login'], cwd: rootPath };
     }
 
     private cleanupIdleSessions(): void {

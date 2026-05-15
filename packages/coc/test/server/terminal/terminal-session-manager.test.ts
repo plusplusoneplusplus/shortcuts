@@ -154,7 +154,7 @@ describe('TerminalSessionManager', () => {
                 expect(mockSpawn).toHaveBeenCalledWith(
                     'C:\\Windows\\System32\\wsl.exe',
                     ['-d', 'Ubuntu', '--cd', '/home/user/project', '--', 'bash', '--login'],
-                    expect.objectContaining({ cwd: rootPath }),
+                    expect.objectContaining({ cwd: 'C:\\Windows' }),
                 );
             } finally {
                 if (origSystemRoot !== undefined) {
@@ -177,7 +177,7 @@ describe('TerminalSessionManager', () => {
                 expect(mockSpawn).toHaveBeenCalledWith(
                     'Z:\\DefinitelyMissingSystemRoot\\System32\\wsl.exe',
                     ['--cd', '/home/user/project', '--', 'bash', '--login'],
-                    expect.objectContaining({ cwd: '/home/user/project' }),
+                    expect.objectContaining({ cwd: 'Z:\\DefinitelyMissingSystemRoot' }),
                 );
             } finally {
                 if (origSystemRoot !== undefined) {
@@ -230,8 +230,8 @@ describe('TerminalSessionManager', () => {
             }
         });
 
-        it('should pass rootPath as cwd to pty.spawn', () => {
-            manager = createManager();
+        it('should pass rootPath as cwd to pty.spawn for native terminals', () => {
+            manager = createManager({ platform: 'linux' });
             manager.createSession('ws-abc', '/my/root/path');
 
             expect(mockSpawn).toHaveBeenCalledWith(

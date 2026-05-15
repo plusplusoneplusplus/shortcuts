@@ -13,6 +13,7 @@ import * as http from 'http';
 import type { AddressInfo } from 'net';
 import { WebSocket } from 'ws';
 import { TerminalWebSocketServer } from '../../../src/server/terminal/terminal-ws-server';
+import type { TerminalSessionManagerOptions } from '../../../src/server/terminal/terminal-session-manager';
 import { attachWebSocketUpgradeHandler } from '../../../src/server/streaming/websocket';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import type { MockProcessStore } from '../helpers/mock-process-store';
@@ -56,12 +57,29 @@ function createMockPty(overrides?: Partial<IPty>): MockPty {
 // Helpers
 // ============================================================================
 
-const TEST_WORKSPACE = { id: 'test-ws', name: 'Test Workspace', rootPath: '/tmp/test-ws' };
+interface TestWorkspace {
+    id: string;
+    name: string;
+    rootPath: string;
+}
+
+const TEST_WORKSPACE: TestWorkspace = { id: 'test-ws', name: 'Test Workspace', rootPath: '/tmp/test-ws' };
+const TEST_WSL_WORKSPACE: TestWorkspace = {
+    id: 'wsl-ws',
+    name: 'WSL Workspace',
+    rootPath: String.raw`\\wsl$\Ubuntu\home\user\xstore`,
+};
 let lastMockPty: MockPty;
 
 function createTestServer(
-    storeOverrides?: { workspaces?: typeof TEST_WORKSPACE[] },
-): { server: http.Server; terminalWs: TerminalWebSocketServer; store: MockProcessStore } {
+    storeOverrides?: { workspaces?: TestWorkspace[] },
+    sessionManagerOptions?: Omit<TerminalSessionManagerOptions, 'onData' | 'onExit' | 'nodePtyModule'>,
+): {
+    server: http.Server;
+    terminalWs: TerminalWebSocketServer;
+    store: MockProcessStore;
+    mockSpawn: ReturnType<typeof vi.fn>;
+} {
     const store = createMockProcessStore();
     const workspaces = storeOverrides?.workspaces ?? [TEST_WORKSPACE];
     (store.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue(workspaces);
@@ -72,13 +90,14 @@ function createTestServer(
     });
 
     const terminalWs = new TerminalWebSocketServer(store, {
+        ...sessionManagerOptions,
         nodePtyModule: { spawn: mockSpawn },
-        cleanupIntervalMs: 999_999, // effectively disabled for tests
+        cleanupIntervalMs: sessionManagerOptions?.cleanupIntervalMs ?? 999_999, // effectively disabled for tests
     });
     const server = http.createServer();
     // Use the dispatch function so /ws/terminal routes correctly
     attachWebSocketUpgradeHandler(server, { handleUpgrade: () => {} } as any, terminalWs);
-    return { server, terminalWs, store };
+    return { server, terminalWs, store, mockSpawn };
 }
 
 function startServer(server: http.Server): Promise<number> {
@@ -144,11 +163,12 @@ describe('TerminalWebSocketServer', () => {
     let server: http.Server;
     let terminalWs: TerminalWebSocketServer;
     let store: MockProcessStore;
+    let mockSpawn: ReturnType<typeof vi.fn>;
     let port: number;
     let openSockets: WebSocket[] = [];
 
     beforeEach(async () => {
-        ({ server, terminalWs, store } = createTestServer());
+        ({ server, terminalWs, store, mockSpawn } = createTestServer());
         port = await startServer(server);
         openSockets = [];
     });
@@ -163,12 +183,10 @@ describe('TerminalWebSocketServer', () => {
 
     // Helper: connect and track socket for cleanup
     async function connect(workspaceId = 'test-ws') {
-        const expectedClientCount = workspaceId === TEST_WORKSPACE.id ? terminalWs.clientCount + 1 : terminalWs.clientCount;
+        const expectedClientCount = terminalWs.clientCount + 1;
         const result = await connectTerminal(port, workspaceId);
         openSockets.push(result.ws);
-        if (workspaceId === TEST_WORKSPACE.id) {
-            await waitForCondition(() => terminalWs.clientCount === expectedClientCount);
-        }
+        await waitForCondition(() => terminalWs.clientCount === expectedClientCount);
         return result;
     }
 
@@ -232,6 +250,42 @@ describe('TerminalWebSocketServer', () => {
         expect(typeof messages[0].session.pid).toBe('number');
     });
 
+    it('should route WSL workspace terminals through wsl.exe using a host cwd', async () => {
+        const origSystemRoot = process.env.SystemRoot;
+        process.env.SystemRoot = 'C:\\Windows';
+
+        terminalWs.closeAll();
+        await new Promise<void>((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
+        ({ server, terminalWs, store, mockSpawn } = createTestServer(
+            { workspaces: [TEST_WSL_WORKSPACE] },
+            { platform: 'win32' },
+        ));
+        port = await startServer(server);
+
+        try {
+            const { ws, messages } = await connect('wsl-ws');
+            sendMsg(ws, { type: 'terminal-create', workspaceId: 'wsl-ws', cols: 120, rows: 40 });
+            await waitForMessages(messages, 1, 10_000);
+
+            expect(messages[0].type).toBe('terminal-created');
+            expect(mockSpawn).toHaveBeenCalledWith(
+                'C:\\Windows\\System32\\wsl.exe',
+                ['-d', 'Ubuntu', '--cd', '/home/user/xstore', '--', 'bash', '--login'],
+                expect.objectContaining({
+                    cols: 120,
+                    rows: 40,
+                    cwd: 'C:\\Windows',
+                }),
+            );
+        } finally {
+            if (origSystemRoot !== undefined) {
+                process.env.SystemRoot = origSystemRoot;
+            } else {
+                delete process.env.SystemRoot;
+            }
+        }
+    });
+
     it('should return terminal-error when PTY spawn fails', async () => {
         // Create server with null nodePtyModule (unavailable)
         terminalWs.closeAll();
@@ -265,7 +319,7 @@ describe('TerminalWebSocketServer', () => {
         }
 
         // Re-create the main server for afterEach
-        ({ server, terminalWs, store } = createTestServer());
+        ({ server, terminalWs, store, mockSpawn } = createTestServer());
         port = await startServer(server);
     });
 

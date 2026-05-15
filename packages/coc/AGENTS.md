@@ -53,3 +53,7 @@ into CoC chat sessions by spawning `wsl.exe` per SDK request. `coc run
 the workspace EnDev MCP server for workflow AI nodes. MCP bridging and EnDev
 discovery must remain workspace-scoped and must not mutate Windows
 `~/.copilot/mcp-config.json`.
+
+Terminal sessions for WSL workspaces spawn `wsl.exe` with `--cd <linux-root>`
+and keep the PTY `cwd` on the Windows host so the process can start before WSL
+switches into the xStore repo root.
