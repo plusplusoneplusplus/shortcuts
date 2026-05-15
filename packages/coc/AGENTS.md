@@ -43,6 +43,8 @@ stores only the enablement flag, WSL distro, and xStore WSL repo root.
 `POST /api/workspaces/:id/endev-xdpu/discover` runs `endev doctor` in WSL,
 discovers EnDev plugin skills, installs the generated global `EnDev-xDpu`
 wrapper skill under `~/.coc/skills`, and appends the discovered plugin skills
-folder to the workspace `extraSkillFolders`. MCP bridging and EnDev discovery
-must remain workspace-scoped and must not mutate Windows
-`~/.copilot/mcp-config.json`.
+folder to the workspace `extraSkillFolders`. Discovery also records EnDev's WSL
+MCP config path. Enabled WSL workspaces bridge only EnDev's `funbird-mcp`
+server into CoC chat sessions by spawning `wsl.exe` per SDK request. MCP
+bridging and EnDev discovery must remain workspace-scoped and must not mutate
+Windows `~/.copilot/mcp-config.json`.

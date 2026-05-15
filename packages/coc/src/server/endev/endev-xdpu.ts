@@ -8,7 +8,7 @@
 import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ProcessStore, WorkspaceInfo, WslExecutionContext } from '@plusplusoneplusplus/forge';
+import type { MCPServerConfig, ProcessStore, WorkspaceInfo, WslExecutionContext } from '@plusplusoneplusplus/forge';
 import {
     buildWslCommandArgs,
     normalizeExecutionPath,
@@ -17,6 +17,7 @@ import {
 } from '@plusplusoneplusplus/forge';
 
 export const ENDEV_XDPU_WRAPPER_SKILL_NAME = 'EnDev-xDpu';
+export const ENDEV_XDPU_MCP_SERVER_NAME = 'funbird-mcp';
 export const ENDEV_XDPU_REQUIRED_PLUGIN_SKILLS = [
     'dpu-log-triage',
     'dpu-log-fetch',
@@ -90,6 +91,10 @@ function linuxPathToWslUncPath(distro: string, linuxPath: string): string {
 
 function shellQuote(value: string): string {
     return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function truncateOutput(value: string): string {
@@ -259,7 +264,7 @@ done
 `;
 }
 
-function parseDiscoveryOutput(stdout: string): { pluginSkillFolder: string; mcpConfigPath?: string } {
+function parseDiscoveryOutput(stdout: string): { pluginSkillFolder: string; mcpConfigPath: string } {
     let pluginSkillFolder: string | undefined;
     let mcpConfigPath: string | undefined;
     let errorLine: string | undefined;
@@ -283,9 +288,233 @@ function parseDiscoveryOutput(stdout: string): { pluginSkillFolder: string; mcpC
         );
     }
 
+    if (!mcpConfigPath) {
+        throw new EnDevXDpuSetupError(
+            `Could not locate EnDev generated MCP config containing ${ENDEV_XDPU_MCP_SERVER_NAME}. Run \`endev doctor\` in the WSL workspace and ensure EnDev generated MCP config is available.`,
+            'ENDEV_XDPU_MCP_CONFIG_NOT_FOUND',
+            { stdout: truncateOutput(stdout) },
+        );
+    }
+
     return {
         pluginSkillFolder: normalizeLinuxPath(pluginSkillFolder),
-        ...(mcpConfigPath ? { mcpConfigPath: normalizeLinuxPath(mcpConfigPath) } : {}),
+        mcpConfigPath: normalizeLinuxPath(mcpConfigPath),
+    };
+}
+
+function buildMcpConfigReadScript(mcpConfigPath: string | undefined): string {
+    const candidates = [
+        ...(mcpConfigPath ? [mcpConfigPath] : []),
+        '$HOME/.endev/generated/.mcp.json',
+        '$HOME/.endev/source/.vscode/mcp.json',
+    ];
+    const seen = new Set<string>();
+    const tests = candidates
+        .filter(candidate => {
+            const key = candidate.replace(/\/+$/g, '');
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        })
+        .map(candidate => candidate.startsWith('$HOME/')
+            ? `"${candidate}"`
+            : shellQuote(normalizeLinuxPath(candidate)));
+
+    return `
+set -u
+for file in ${tests.join(' ')}; do
+  if [ -f "$file" ] && grep -q '${ENDEV_XDPU_MCP_SERVER_NAME}' "$file"; then
+    printf 'MCP=%s\\n' "$file"
+    printf 'JSON_BEGIN\\n'
+    cat "$file"
+    printf '\\nJSON_END\\n'
+    exit 0
+  fi
+done
+printf 'ERROR=Could not locate EnDev generated MCP config containing ${ENDEV_XDPU_MCP_SERVER_NAME}. Run endev doctor in the WSL workspace.\\n'
+exit 22
+`;
+}
+
+function parseMcpConfigReadOutput(stdout: string): { mcpConfigPath: string; json: string } {
+    const pathMatch = stdout.match(/^MCP=(.+)$/m);
+    const jsonMatch = stdout.match(/(?:^|\n)JSON_BEGIN\r?\n([\s\S]*?)\r?\nJSON_END(?:\r?\n|$)/);
+    if (!pathMatch || !jsonMatch) {
+        const errorLine = stdout.split(/\r?\n/)
+            .find(line => line.startsWith('ERROR='))
+            ?.slice('ERROR='.length)
+            ?.trim();
+        throw new EnDevXDpuSetupError(
+            errorLine || `Could not read EnDev generated MCP config containing ${ENDEV_XDPU_MCP_SERVER_NAME}.`,
+            'ENDEV_XDPU_MCP_CONFIG_NOT_FOUND',
+            { stdout: truncateOutput(stdout) },
+        );
+    }
+
+    return {
+        mcpConfigPath: normalizeLinuxPath(pathMatch[1].trim()),
+        json: jsonMatch[1].trim(),
+    };
+}
+
+function extractMcpServerMap(parsed: unknown): Record<string, unknown> {
+    if (!isRecord(parsed)) {
+        throw new EnDevXDpuSetupError(
+            'EnDev generated MCP config must be a JSON object.',
+            'ENDEV_XDPU_MCP_CONFIG_INVALID',
+        );
+    }
+
+    const candidate = parsed.mcpServers ?? parsed.servers;
+    if (!isRecord(candidate)) {
+        throw new EnDevXDpuSetupError(
+            'EnDev generated MCP config must contain an `mcpServers` or `servers` object.',
+            'ENDEV_XDPU_MCP_CONFIG_INVALID',
+        );
+    }
+
+    return candidate;
+}
+
+function getFunbirdMcpServer(parsed: unknown): MCPServerConfig {
+    const servers = extractMcpServerMap(parsed);
+    const entry = Object.entries(servers).find(([name]) =>
+        name.toLowerCase() === ENDEV_XDPU_MCP_SERVER_NAME.toLowerCase());
+    if (!entry) {
+        throw new EnDevXDpuSetupError(
+            `EnDev generated MCP config does not contain ${ENDEV_XDPU_MCP_SERVER_NAME}. Run \`endev doctor\` in the WSL workspace.`,
+            'ENDEV_XDPU_MCP_SERVER_NOT_FOUND',
+        );
+    }
+
+    const config = entry[1];
+    if (!isRecord(config)) {
+        throw new EnDevXDpuSetupError(
+            `${ENDEV_XDPU_MCP_SERVER_NAME} MCP server config must be an object.`,
+            'ENDEV_XDPU_MCP_CONFIG_INVALID',
+        );
+    }
+    if (config.enabled === false) {
+        throw new EnDevXDpuSetupError(
+            `${ENDEV_XDPU_MCP_SERVER_NAME} is disabled in EnDev generated MCP config.`,
+            'ENDEV_XDPU_MCP_SERVER_DISABLED',
+        );
+    }
+    if (typeof config.command !== 'string' || config.command.trim().length === 0) {
+        throw new EnDevXDpuSetupError(
+            `${ENDEV_XDPU_MCP_SERVER_NAME} MCP server config must define a command to bridge through WSL.`,
+            'ENDEV_XDPU_MCP_CONFIG_INVALID',
+        );
+    }
+    if (config.type !== undefined && config.type !== 'local' && config.type !== 'stdio') {
+        throw new EnDevXDpuSetupError(
+            `${ENDEV_XDPU_MCP_SERVER_NAME} MCP server config must be a local or stdio server.`,
+            'ENDEV_XDPU_MCP_CONFIG_INVALID',
+        );
+    }
+    if (config.args !== undefined && (!Array.isArray(config.args) || config.args.some(arg => typeof arg !== 'string'))) {
+        throw new EnDevXDpuSetupError(
+            `${ENDEV_XDPU_MCP_SERVER_NAME} MCP server config args must be an array of strings.`,
+            'ENDEV_XDPU_MCP_CONFIG_INVALID',
+        );
+    }
+    if (config.env !== undefined && (!isRecord(config.env) || Object.values(config.env).some(value => typeof value !== 'string'))) {
+        throw new EnDevXDpuSetupError(
+            `${ENDEV_XDPU_MCP_SERVER_NAME} MCP server config env must be an object with string values.`,
+            'ENDEV_XDPU_MCP_CONFIG_INVALID',
+        );
+    }
+    if (config.cwd !== undefined && typeof config.cwd !== 'string') {
+        throw new EnDevXDpuSetupError(
+            `${ENDEV_XDPU_MCP_SERVER_NAME} MCP server config cwd must be a string.`,
+            'ENDEV_XDPU_MCP_CONFIG_INVALID',
+        );
+    }
+    if (config.tools !== undefined && (!Array.isArray(config.tools) || config.tools.some(tool => typeof tool !== 'string'))) {
+        throw new EnDevXDpuSetupError(
+            `${ENDEV_XDPU_MCP_SERVER_NAME} MCP server config tools must be an array of strings.`,
+            'ENDEV_XDPU_MCP_CONFIG_INVALID',
+        );
+    }
+    if (config.timeout !== undefined && typeof config.timeout !== 'number') {
+        throw new EnDevXDpuSetupError(
+            `${ENDEV_XDPU_MCP_SERVER_NAME} MCP server config timeout must be a number.`,
+            'ENDEV_XDPU_MCP_CONFIG_INVALID',
+        );
+    }
+
+    return {
+        ...(config.type ? { type: config.type } : {}),
+        command: config.command,
+        ...(Array.isArray(config.args) ? { args: [...config.args] } : {}),
+        ...(isRecord(config.env) ? { env: Object.fromEntries(Object.entries(config.env).map(([key, value]) => [key, String(value)])) } : {}),
+        ...(typeof config.cwd === 'string' ? { cwd: config.cwd } : {}),
+        ...(Array.isArray(config.tools) ? { tools: [...config.tools] } : {}),
+        ...(typeof config.timeout === 'number' ? { timeout: config.timeout } : {}),
+        ...(typeof config.enabled === 'boolean' ? { enabled: config.enabled } : {}),
+    };
+}
+
+function validateEnvName(name: string): void {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+        throw new EnDevXDpuSetupError(
+            `${ENDEV_XDPU_MCP_SERVER_NAME} MCP server config contains invalid environment variable name: ${name}`,
+            'ENDEV_XDPU_MCP_CONFIG_INVALID',
+        );
+    }
+}
+
+function buildLinuxMcpArgv(config: MCPServerConfig): string[] {
+    if (!('command' in config)) {
+        throw new EnDevXDpuSetupError(
+            `${ENDEV_XDPU_MCP_SERVER_NAME} must be a local MCP server to bridge through WSL.`,
+            'ENDEV_XDPU_MCP_CONFIG_INVALID',
+        );
+    }
+
+    const command = config.command.trim();
+    const args = config.args ?? [];
+    const envEntries = Object.entries(config.env ?? {});
+    if (!config.cwd && envEntries.length === 0) {
+        return [command, ...args];
+    }
+
+    const envPrefix = envEntries.map(([name, value]) => {
+        validateEnvName(name);
+        return `${name}=${shellQuote(String(value))}`;
+    }).join(' ');
+    const execCommand = `exec ${[command, ...args].map(shellQuote).join(' ')}`;
+    const cwdPrefix = config.cwd ? `cd ${shellQuote(config.cwd)} && ` : '';
+    const shellCommand = `${cwdPrefix}${envPrefix ? `${envPrefix} ` : ''}${execCommand}`;
+    return ['sh', '-lc', shellCommand];
+}
+
+function bridgeMcpServerThroughWsl(
+    config: MCPServerConfig,
+    distro: string,
+    xstoreRepoRoot: string,
+): MCPServerConfig {
+    if (!('command' in config)) {
+        throw new EnDevXDpuSetupError(
+            `${ENDEV_XDPU_MCP_SERVER_NAME} must be a local MCP server to bridge through WSL.`,
+            'ENDEV_XDPU_MCP_CONFIG_INVALID',
+        );
+    }
+
+    const context: WslExecutionContext = {
+        kind: 'wsl',
+        distro,
+        linuxWorkingDirectory: xstoreRepoRoot,
+        originalWorkingDirectory: xstoreRepoRoot,
+    };
+
+    return {
+        ...('tools' in config && config.tools ? { tools: config.tools } : {}),
+        ...(config.timeout !== undefined ? { timeout: config.timeout } : {}),
+        ...(config.enabled !== undefined ? { enabled: config.enabled } : {}),
+        type: config.type === 'local' ? 'local' : 'stdio',
+        command: getWslExecutablePath(),
+        args: buildWslCommandArgs(context, buildLinuxMcpArgv(config)),
     };
 }
 
@@ -372,7 +601,16 @@ export async function activateEnDevXDpuWorkspace(
     const extraSkillFolder = linuxPathToWslUncPath(distro, pluginSkillFolder);
     const wrapperSkillPath = installWrapperSkill(dataDir);
     const extraSkillFolders = addExtraSkillFolder(workspace.extraSkillFolders, extraSkillFolder);
-    const updated = await store.updateWorkspace(workspace.id, { extraSkillFolders });
+    const updated = await store.updateWorkspace(workspace.id, {
+        extraSkillFolders,
+        endevXDpu: {
+            ...workspace.endevXDpu,
+            enabled: true,
+            wslDistro: distro,
+            xstoreRepoRoot,
+            mcpConfigPath,
+        },
+    });
 
     return {
         workspace: updated ?? { ...workspace, extraSkillFolders },
@@ -380,8 +618,48 @@ export async function activateEnDevXDpuWorkspace(
         xstoreRepoRoot,
         pluginSkillFolder,
         extraSkillFolder,
-        ...(mcpConfigPath ? { mcpConfigPath } : {}),
+        mcpConfigPath,
         wrapperSkillPath,
         doctorOutput: truncateOutput(`${doctor.stdout}\n${doctor.stderr}`),
+    };
+}
+
+export async function resolveEnDevXDpuMcpServers(
+    workspace: WorkspaceInfo,
+    runner?: EnDevXDpuWslCommandRunner,
+): Promise<Record<string, MCPServerConfig> | undefined> {
+    if (workspace.endevXDpu?.enabled !== true) {
+        return undefined;
+    }
+
+    const { distro, xstoreRepoRoot } = resolveActivationConfig(workspace);
+    const commandRunner = getRunner(runner);
+    const configRead = await runRequiredWslCommand(
+        commandRunner,
+        {
+            distro,
+            linuxWorkingDirectory: xstoreRepoRoot,
+            command: buildMcpConfigReadScript(workspace.endevXDpu.mcpConfigPath),
+            timeoutMs: WSL_COMMAND_TIMEOUT_MS,
+        },
+        'EnDev MCP config discovery',
+        'ENDEV_XDPU_MCP_CONFIG_NOT_FOUND',
+        'Run `endev doctor` in the WSL workspace and ensure EnDev generated MCP config is available.',
+    );
+    const { json } = parseMcpConfigReadOutput(configRead.stdout);
+
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(json);
+    } catch (error) {
+        throw new EnDevXDpuSetupError(
+            `Failed to parse EnDev generated MCP config: ${error instanceof Error ? error.message : String(error)}`,
+            'ENDEV_XDPU_MCP_CONFIG_INVALID',
+        );
+    }
+
+    const funbirdConfig = getFunbirdMcpServer(parsed);
+    return {
+        [ENDEV_XDPU_MCP_SERVER_NAME]: bridgeMcpServerThroughWsl(funbirdConfig, distro, xstoreRepoRoot),
     };
 }

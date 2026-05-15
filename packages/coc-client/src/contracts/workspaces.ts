@@ -18,6 +18,7 @@ export interface EnDevXDpuWorkspaceConfig {
   enabled: boolean;
   wslDistro?: string;
   xstoreRepoRoot?: string;
+  mcpConfigPath?: string;
 }
 
 export interface WorkspaceMcpServerEntry {

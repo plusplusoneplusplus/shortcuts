@@ -169,6 +169,8 @@ export interface EnDevXDpuWorkspaceConfig {
     enabled: boolean;
     wslDistro?: string;
     xstoreRepoRoot?: string;
+    /** Linux absolute path to EnDev's generated MCP config, discovered automatically. */
+    mcpConfigPath?: string;
 }
 
 /**

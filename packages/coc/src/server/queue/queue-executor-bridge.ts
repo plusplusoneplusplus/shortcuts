@@ -7,6 +7,7 @@ import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, FileToolCallCacheStore, get
 import * as path from 'path';
 import { BaseExecutor } from '../executors/base-executor';
 import { resolveSkillConfig } from '../executors/skill-config-resolver';
+import { resolveMcpConfig } from '../executors/mcp-config-resolver';
 import { TitleGenerationService } from '../executors/title-generator';
 import { ExecutorRegistry } from '../executors/executor-registry';
 import { shouldEnqueueReview, DEFAULT_REVIEW_CONFIG } from '../memory/background-review';
@@ -85,6 +86,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         });
         const cacheStore = new FileToolCallCacheStore(resolveToolCallCacheOptions(options.workingDirectory, this.dataDir ? path.join(this.dataDir, 'memory') : undefined));
         const skillCfg = (wsId: string | undefined, workDir?: string) => resolveSkillConfig(store, this.dataDir, wsId, workDir);
+        const mcpCfg = (wsId: string | undefined, workDir?: string) => resolveMcpConfig(store, wsId, workDir);
         this.executors = new ExecutorRegistry(store, {
             approvePermissions: this.approvePermissions,
             defaultWorkingDirectory: this.defaultWorkingDirectory,
@@ -96,6 +98,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             memoryPromotion: options.memoryPromotion,
             toolCallCacheStore: cacheStore,
             resolveSkillConfig: skillCfg,
+            resolveMcpConfig: mcpCfg,
             resolveWorkspaceIdForPath: (p: string) => this.resolveWorkspaceIdForPath(p),
             onTitleNeeded: (pid: string, turns: ConversationTurn[]) => this.generateTitleIfNeeded(pid, turns),
             onBackgroundReview: (pid: string, wsId: string, turns: ConversationTurn[]) => this.enqueueBackgroundReview(pid, wsId, turns),

@@ -10,8 +10,10 @@ import { registerApiRoutes } from '../../src/server/core/api-handler';
 import type { Route } from '../../src/server/types';
 import {
     activateEnDevXDpuWorkspace,
+    ENDEV_XDPU_MCP_SERVER_NAME,
     ENDEV_XDPU_WRAPPER_SKILL_NAME,
     EnDevXDpuSetupError,
+    resolveEnDevXDpuMcpServers,
     setEnDevXDpuWslCommandRunnerForTesting,
 } from '../../src/server/endev/endev-xdpu';
 import type { EnDevXDpuWslCommandRunner } from '../../src/server/endev/endev-xdpu';
@@ -71,14 +73,22 @@ function createSuccessfulRunner(): EnDevXDpuWslCommandRunner {
 
 describe('EnDev-xDpu activation', () => {
     let dataDir: string;
+    let originalSystemRoot: string | undefined;
 
     beforeEach(() => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'endev-xdpu-test-'));
+        originalSystemRoot = process.env.SystemRoot;
+        process.env.SystemRoot = originalSystemRoot ?? String.raw`C:\Windows`;
         setEnDevXDpuWslCommandRunnerForTesting(undefined);
     });
 
     afterEach(() => {
         setEnDevXDpuWslCommandRunnerForTesting(undefined);
+        if (originalSystemRoot === undefined) {
+            delete process.env.SystemRoot;
+        } else {
+            process.env.SystemRoot = originalSystemRoot;
+        }
         fs.rmSync(dataDir, { recursive: true, force: true });
     });
 
@@ -108,6 +118,12 @@ describe('EnDev-xDpu activation', () => {
 
         const persisted = (await store.getWorkspaces()).find(ws => ws.id === workspace.id);
         expect(persisted?.extraSkillFolders).toEqual([result.extraSkillFolder]);
+        expect(persisted?.endevXDpu).toEqual({
+            enabled: true,
+            wslDistro: 'Ubuntu',
+            xstoreRepoRoot: '/home/user/xstore',
+            mcpConfigPath: '/home/user/.endev/generated/.mcp.json',
+        });
 
         const wrapperPath = path.join(dataDir, 'skills', ENDEV_XDPU_WRAPPER_SKILL_NAME, 'SKILL.md');
         expect(result.wrapperSkillPath).toBe(wrapperPath);
@@ -129,6 +145,115 @@ describe('EnDev-xDpu activation', () => {
         const result = await activateEnDevXDpuWorkspace(store, workspace, dataDir, createSuccessfulRunner());
 
         expect(result.workspace.extraSkillFolders).toEqual([extraSkillFolder]);
+    });
+
+    it('requires EnDev generated MCP config during discovery', async () => {
+        const store = new FileProcessStore({ dataDir });
+        const workspace: WorkspaceInfo = {
+            id: 'ws-endev-no-mcp',
+            name: 'xStore WSL',
+            rootPath: String.raw`\\wsl$\Ubuntu\home\user\xstore`,
+            endevXDpu: { enabled: true },
+        };
+        const runner = vi.fn<EnDevXDpuWslCommandRunner>(async (req) => {
+            if (req.command === 'endev doctor') {
+                return { exitCode: 0, stdout: 'ok', stderr: '' };
+            }
+            return {
+                exitCode: 0,
+                stdout: 'SKILLS=/home/user/xstore/Developer/private/EnDpuDev/plugin/skills\n',
+                stderr: '',
+            };
+        });
+
+        await expect(activateEnDevXDpuWorkspace(store, workspace, dataDir, runner))
+            .rejects.toMatchObject({
+                code: 'ENDEV_XDPU_MCP_CONFIG_NOT_FOUND',
+            } satisfies Partial<EnDevXDpuSetupError>);
+    });
+
+    it('bridges EnDev funbird-mcp through wsl.exe without modifying global Copilot config', async () => {
+        const workspace: WorkspaceInfo = {
+            id: 'ws-endev-mcp',
+            name: 'xStore WSL',
+            rootPath: String.raw`\\wsl$\Ubuntu\home\user\xstore`,
+            endevXDpu: {
+                enabled: true,
+                wslDistro: 'Ubuntu',
+                xstoreRepoRoot: '/home/user/xstore',
+                mcpConfigPath: '/home/user/.endev/generated/.mcp.json',
+            },
+        };
+        const runner = vi.fn<EnDevXDpuWslCommandRunner>(async () => ({
+            exitCode: 0,
+            stdout: [
+                'MCP=/home/user/.endev/generated/.mcp.json',
+                'JSON_BEGIN',
+                JSON.stringify({
+                    mcpServers: {
+                        [ENDEV_XDPU_MCP_SERVER_NAME]: {
+                            command: 'funbird-mcp',
+                            args: ['serve'],
+                            tools: ['*'],
+                            timeout: 90_000,
+                        },
+                    },
+                }),
+                'JSON_END',
+                '',
+            ].join('\n'),
+            stderr: '',
+        }));
+
+        const servers = await resolveEnDevXDpuMcpServers(workspace, runner);
+
+        expect(runner).toHaveBeenCalledOnce();
+        expect(runner.mock.calls[0][0].command).toContain('/home/user/.endev/generated/.mcp.json');
+        expect(servers).toEqual({
+            [ENDEV_XDPU_MCP_SERVER_NAME]: expect.objectContaining({
+                type: 'stdio',
+                command: path.win32.join(process.env.SystemRoot!, 'System32', 'wsl.exe'),
+                args: ['-d', 'Ubuntu', '--cd', '/home/user/xstore', '--', 'funbird-mcp', 'serve'],
+                tools: ['*'],
+                timeout: 90_000,
+            }),
+        });
+    });
+
+    it('supports VS Code-style EnDev MCP config shape and bridges Linux env/cwd in WSL', async () => {
+        const workspace: WorkspaceInfo = {
+            id: 'ws-endev-vscode-mcp',
+            name: 'xStore WSL',
+            rootPath: String.raw`\\wsl$\Ubuntu\home\user\xstore`,
+            endevXDpu: { enabled: true },
+        };
+        const runner = vi.fn<EnDevXDpuWslCommandRunner>(async () => ({
+            exitCode: 0,
+            stdout: [
+                'MCP=/home/user/.endev/source/.vscode/mcp.json',
+                'JSON_BEGIN',
+                JSON.stringify({
+                    servers: {
+                        [ENDEV_XDPU_MCP_SERVER_NAME]: {
+                            command: 'python3',
+                            args: ['-m', 'funbird_mcp'],
+                            env: { FUNBIRD_MODE: 'xstore' },
+                            cwd: '/home/user/.endev/mcp-servers/funbird',
+                        },
+                    },
+                }),
+                'JSON_END',
+            ].join('\n'),
+            stderr: '',
+        }));
+
+        const servers = await resolveEnDevXDpuMcpServers(workspace, runner);
+        const bridged = servers?.[ENDEV_XDPU_MCP_SERVER_NAME] as { args: string[] } | undefined;
+
+        expect(bridged?.args.slice(0, 4)).toEqual(['-d', 'Ubuntu', '--cd', '/home/user/xstore']);
+        expect(bridged?.args.slice(4, 7)).toEqual(['--', 'sh', '-lc']);
+        expect(bridged?.args[7]).toContain("cd '/home/user/.endev/mcp-servers/funbird' && FUNBIRD_MODE='xstore'");
+        expect(bridged?.args[7]).toContain("'python3' '-m' 'funbird_mcp'");
     });
 
     it('rejects non-WSL workspace roots before running EnDev commands', async () => {

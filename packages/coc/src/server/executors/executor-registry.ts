@@ -37,6 +37,7 @@ export interface ExecutorRegistryOptions {
     memoryPromotion?: MemoryPromoteConfig;
     toolCallCacheStore: FileToolCallCacheStore;
     resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
+    resolveMcpConfig?: (wsId: string | undefined, workDir?: string) => Promise<{ mcpServers?: Record<string, import('@plusplusoneplusplus/forge').MCPServerConfig> }>;
     resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
     onTitleNeeded: (processId: string, turns: ConversationTurn[]) => void;
     onBackgroundReview?: (processId: string, workspaceId: string, turns: ConversationTurn[]) => void;
@@ -91,6 +92,7 @@ export class ExecutorRegistry {
             askUser: options.askUser,
             toolCallCacheStore: options.toolCallCacheStore,
             resolveSkillConfig: options.resolveSkillConfig,
+            resolveMcpConfig: options.resolveMcpConfig,
             resolveWorkspaceIdForPath: options.resolveWorkspaceIdForPath,
             getLoopInfra: options.getLoopInfra,
         };

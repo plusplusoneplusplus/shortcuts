@@ -23,6 +23,7 @@ import type {
     AutoFolderContext,
     MemoryToolCaptureContext,
     ModelInfo,
+    MCPServerConfig,
     CopilotSDKService,
     ProcessStore,
     QueuedTask,
@@ -96,6 +97,8 @@ export interface ChatModeExecutorOptions {
     toolCallCacheStore: FileToolCallCacheStore;
     /** Resolve skill configuration for a workspace */
     resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
+    /** Resolve workspace-scoped MCP additions for a workspace */
+    resolveMcpConfig?: (wsId: string | undefined, workDir?: string) => Promise<{ mcpServers?: Record<string, MCPServerConfig> }>;
     /** Resolve workspace ID for a root path */
     resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
     /** Late-bound loop infrastructure (getter because loop infra is created after executor registry). */
@@ -137,6 +140,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly askUser: { enabled: boolean };
     protected readonly toolCallCacheStore: FileToolCallCacheStore;
     protected readonly resolveSkillConfigFn: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
+    protected readonly resolveMcpConfigFn?: (wsId: string | undefined, workDir?: string) => Promise<{ mcpServers?: Record<string, MCPServerConfig> }>;
     protected readonly resolveWorkspaceIdForPathFn: (rootPath: string) => Promise<string>;
     protected readonly getLoopInfra?: () => LoopInfraDeps | undefined;
 
@@ -150,6 +154,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.askUser = options.askUser ?? { enabled: false };
         this.toolCallCacheStore = options.toolCallCacheStore;
         this.resolveSkillConfigFn = options.resolveSkillConfig;
+        this.resolveMcpConfigFn = options.resolveMcpConfig;
         this.resolveWorkspaceIdForPathFn = options.resolveWorkspaceIdForPath;
         this.getLoopInfra = options.getLoopInfra;
     }
@@ -452,6 +457,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             const timeoutMs = task.config.timeoutMs || this.defaultTimeoutMs;
             const taskWorkspaceId = payload.workspaceId;
             const { skillDirectories, disabledSkills } = await this.resolveSkillConfigFn(taskWorkspaceId, workingDirectory);
+            const { mcpServers } = await this.resolveMcpConfigFn?.(taskWorkspaceId, workingDirectory) ?? {};
             effectivePrompt = prependSelectedSkillsDirective(
                 effectivePrompt,
                 (payload as ChatPayload).context?.skills,
@@ -504,6 +510,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 systemMessage,
                 skillDirectories,
                 disabledSkills,
+                ...(mcpServers !== undefined ? { mcpServers, loadDefaultMcpConfig: false } : {}),
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
                 onSessionCreated: (sessionId: string) => {
                     this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch(() => {

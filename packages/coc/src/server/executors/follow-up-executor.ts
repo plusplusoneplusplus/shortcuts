@@ -197,6 +197,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         }
 
         const { skillDirectories, disabledSkills } = await this.resolveSkillConfigFn(wsId, workingDirectory);
+        const { mcpServers } = await this.resolveMcpConfigFn?.(wsId, workingDirectory) ?? {};
 
         const canResumeSession = !!process.sdkSessionId;
 
@@ -331,6 +332,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 tools: filteredTools.length > 0 ? filteredTools : undefined,
                 skillDirectories,
                 disabledSkills,
+                ...(mcpServers !== undefined ? { mcpServers, loadDefaultMcpConfig: false } : {}),
                 onSessionCreated: (sessionId: string) => {
                     this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch((err: unknown) => {
                         logger.warn(LogCategory.AI, `[FollowUp] Failed to persist sdkSessionId for ${processId} — future resume may fail: ${err instanceof Error ? err.message : String(err)}`);
