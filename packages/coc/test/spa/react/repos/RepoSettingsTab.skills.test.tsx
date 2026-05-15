@@ -19,11 +19,15 @@ const mockClient = vi.hoisted(() => ({
         deleteWorkspace: vi.fn(),
         listBundledWorkspace: vi.fn(),
         getWorkspacePath: vi.fn(),
+        listAllWorkspace: vi.fn(),
     },
     preferences: {
         getRepo: vi.fn(),
         patchRepo: vi.fn(),
         getTaskSettings: vi.fn(),
+    },
+    models: {
+        list: vi.fn(),
     },
     workspaces: {
         getInstructions: vi.fn(),
@@ -133,9 +137,13 @@ describe('RepoSettingsTab skill expansion', () => {
         mockClient.skills.deleteWorkspace.mockResolvedValue(undefined);
         mockClient.skills.listBundledWorkspace.mockResolvedValue([]);
         mockClient.skills.getWorkspacePath.mockResolvedValue({ path: 'C:\\repo\\.github\\skills', skillCount: 1, accessible: true });
+        mockClient.skills.listAllWorkspace.mockResolvedValue({ merged: [] });
         mockClient.preferences.getRepo.mockResolvedValue({});
         mockClient.preferences.patchRepo.mockResolvedValue({});
         mockClient.preferences.getTaskSettings.mockResolvedValue({});
+        mockClient.models.list.mockResolvedValue([
+            { id: 'gpt-4', name: 'GPT-4', enabled: true, tokenLimit: 128000 },
+        ]);
         mockClient.workspaces.getInstructions.mockResolvedValue({ base: null, ask: null, plan: null, autopilot: null });
         mockClient.workspaces.updateInstruction.mockResolvedValue({ mode: 'base', content: '' });
         mockClient.workspaces.deleteInstruction.mockResolvedValue({ success: true });
@@ -215,13 +223,20 @@ describe('RepoSettingsTab skill expansion', () => {
         expect(screen.queryByTestId('notes-settings-section')).toBeNull();
     });
 
-    it('shows EnDev-xDpu disabled by default and saves WSL defaults when enabled', async () => {
+    it('shows EnDev-xDpu near the end of Preferences for WSL workspaces and saves WSL defaults when enabled', async () => {
         await act(async () => {
             await renderSettingsTab({
-                initialSection: 'endev-xdpu',
+                initialSection: 'preferences',
                 rootPath: '\\\\wsl$\\Ubuntu\\home\\xstore',
             });
         });
+
+        await waitFor(() => expect(screen.queryByTestId('nav-item-endev-xdpu')).toBeNull());
+        const advancedSection = await screen.findByTestId('section-advanced');
+        const enDevSection = await screen.findByTestId('endev-xdpu-settings-section');
+        expect(advancedSection.compareDocumentPosition(enDevSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(enDevSection.textContent).toContain('xDPU development workspaces that live inside WSL');
+        expect(enDevSection.textContent).toContain('endev doctor');
 
         const toggle = await screen.findByTestId('endev-xdpu-toggle') as HTMLInputElement;
         expect(toggle.checked).toBe(false);
@@ -242,21 +257,21 @@ describe('RepoSettingsTab skill expansion', () => {
         expect((screen.getByTestId('endev-xdpu-root') as HTMLInputElement).value).toBe('/home/xstore');
     });
 
-    it('disables EnDev-xDpu toggle for non-WSL workspaces', async () => {
+    it('hides EnDev-xDpu controls for non-WSL workspaces', async () => {
         await act(async () => {
-            await renderSettingsTab({ initialSection: 'endev-xdpu', rootPath: 'C:\\repo' });
+            await renderSettingsTab({ initialSection: 'preferences', rootPath: 'C:\\repo' });
         });
 
-        const toggle = await screen.findByTestId('endev-xdpu-toggle') as HTMLInputElement;
-        expect(toggle.checked).toBe(false);
-        expect(toggle.disabled).toBe(true);
-        expect(screen.getByTestId('endev-xdpu-unsupported').textContent).toContain('not a WSL path');
+        await waitFor(() => expect(screen.getByTestId('section-advanced')).toBeTruthy());
+        expect(screen.queryByTestId('nav-item-endev-xdpu')).toBeNull();
+        expect(screen.queryByTestId('endev-xdpu-settings-section')).toBeNull();
+        expect(screen.queryByTestId('endev-xdpu-toggle')).toBeNull();
     });
 
     it('saves dirty EnDev-xDpu settings before running discovery and refreshing skills', async () => {
         await act(async () => {
             await renderSettingsTab({
-                initialSection: 'endev-xdpu',
+                initialSection: 'preferences',
                 rootPath: '\\\\wsl$\\Ubuntu\\home\\xstore',
                 endevXDpu: { enabled: true, wslDistro: 'Ubuntu', xstoreRepoRoot: '/home/old-xstore' },
             });
@@ -293,7 +308,7 @@ describe('RepoSettingsTab skill expansion', () => {
 
         await act(async () => {
             await renderSettingsTab({
-                initialSection: 'endev-xdpu',
+                initialSection: 'preferences',
                 rootPath: '\\\\wsl$\\Ubuntu\\home\\xstore',
                 endevXDpu: { enabled: true, wslDistro: 'Ubuntu', xstoreRepoRoot: '/home/xstore' },
             });

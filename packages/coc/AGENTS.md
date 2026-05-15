@@ -38,19 +38,22 @@ Recurring follow-up subsystem in `src/server/loops/`. Separate from schedules.
 ## EnDev xDPU
 
 Workspace settings can persist an optional `WorkspaceInfo.endevXDpu` object for
-the disabled-by-default `EnDev-xDpu` integration. The dashboard settings surface
-stores only the enablement flag, WSL distro, and xStore WSL repo root.
+the disabled-by-default `EnDev-xDpu` integration. The dashboard shows this
+control near the end of the repo Preferences tab only for WSL-compatible
+workspaces, and stores only the enablement flag, WSL distro, and xStore WSL repo
+root.
 `POST /api/workspaces/:id/endev-xdpu/discover` runs `endev doctor` in WSL,
 discovers EnDev plugin skills, installs the generated global `EnDev-xDpu`
 wrapper skill under `~/.coc/skills`, and appends the discovered plugin skills
-folder to the workspace `extraSkillFolders`. The dashboard EnDev-xDpu settings
-section can save dirty WSL fields, call discovery, surface setup errors, and
-refresh workspace skills after success. Discovery searches standard xStore and
-EnDev source/generated layouts, including `~/.endev/source/.../plugin/skills`
-and `.mcp.json` or `.vscode/mcp.json` files, and records EnDev's WSL MCP config
-path. Enabled WSL workspaces bridge only EnDev's `funbird-mcp` server into CoC
-chat sessions by spawning `wsl.exe` per SDK request, defaulting to all funbird
-tools when EnDev's generated config omits a tool filter. `coc run
+folder to the workspace `extraSkillFolders`. The dashboard EnDev-xDpu
+Preferences section can save dirty WSL fields, call discovery, surface setup
+errors, and refresh workspace skills after success. Discovery searches standard
+xStore and EnDev source/generated layouts, including
+`~/.endev/source/.../plugin/skills` and `.mcp.json` or `.vscode/mcp.json` files,
+and records EnDev's WSL MCP config path. Enabled WSL workspaces bridge only
+EnDev's `funbird-mcp` server into CoC chat sessions by spawning `wsl.exe` per
+SDK request, defaulting to all funbird tools when EnDev's generated config
+omits a tool filter. `coc run
 --workspace-root <root>` also resolves the matching workspace's
 `extraSkillFolders` for workflow `skill`/`skills` prompt injection and bridges
 the workspace EnDev MCP server for workflow AI nodes. MCP bridging and EnDev

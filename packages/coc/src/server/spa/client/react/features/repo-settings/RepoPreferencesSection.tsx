@@ -1,9 +1,10 @@
 /**
  * RepoPreferencesSection — Editable per-repo preferences form with auto-save.
- * Sections: Models, Execution, Skills, Advanced (linked repos).
+ * Sections: Models, Execution, Skills, Advanced, and WSL-only EnDev xDPU setup.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import type { EnDevXDpuActivationResponse, EnDevXDpuWorkspaceConfig } from '@plusplusoneplusplus/coc-client';
 import { usePreferences, type SkillMode, type ModelMode } from '../../hooks/preferences/usePreferences';
 import { useModels, type ModelInfo } from '../../hooks/useModels';
 import { useFilesViewMode } from '../git/hooks/useFilesViewMode';
@@ -12,9 +13,13 @@ import { useGlobalToast } from '../../contexts/ToastContext';
 import { useRepos } from '../../contexts/ReposContext';
 import { SkillPicker, type SkillOption } from '../../queue/SkillPicker';
 import { getSpaCocClient } from '../../api/cocClient';
+import { EnDevXDpuSettingsSection, deriveEnDevXDpuWorkspaceDefaults } from './EnDevXDpuSettingsSection';
 
 interface RepoPreferencesSectionProps {
     workspaceId: string;
+    rootPath?: string;
+    enDevXDpu?: EnDevXDpuWorkspaceConfig;
+    onEnDevXDpuActivated?: (result: EnDevXDpuActivationResponse) => void;
 }
 
 const labelClass = 'text-xs w-28 shrink-0 text-[#616161] dark:text-[#999]';
@@ -32,13 +37,22 @@ const MODE_LABELS: Record<string, string> = {
     memory: 'Memory',
 };
 
-export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionProps) {
+export function RepoPreferencesSection({
+    workspaceId,
+    rootPath = '',
+    enDevXDpu,
+    onEnDevXDpuActivated,
+}: RepoPreferencesSectionProps) {
     const { addToast } = useGlobalToast();
     const prefs = usePreferences(workspaceId);
     const { models: availableModels, loading: modelsLoading } = useModels();
     const { mode: filesViewMode, setMode: setFilesViewMode } = useFilesViewMode(workspaceId);
     const [uiLayoutMode, setUiLayoutMode] = useUiLayoutMode();
     const { repos } = useRepos();
+    const showEnDevXDpu = useMemo(
+        () => deriveEnDevXDpuWorkspaceDefaults(rootPath).supported,
+        [rootPath],
+    );
 
     // Available skills
     const [availableSkills, setAvailableSkills] = useState<SkillOption[]>([]);
@@ -405,6 +419,18 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
                     </div>
                 </div>
             </div>
+
+            {showEnDevXDpu && (
+                <>
+                    <div className={dividerClass} />
+                    <EnDevXDpuSettingsSection
+                        workspaceId={workspaceId}
+                        rootPath={rootPath}
+                        initialConfig={enDevXDpu}
+                        onActivated={onEnDevXDpuActivated}
+                    />
+                </>
+            )}
 
             {/* Footer note */}
             <div className="mt-4 text-[11px] text-[#848484]" data-testid="auto-save-note">

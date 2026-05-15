@@ -184,12 +184,16 @@ export function EnDevXDpuSettingsSection({
     const unsupported = !defaults.supported;
     const busy = saving || discovering;
 
+    if (unsupported) {
+        return null;
+    }
+
     return (
         <section className="flex flex-col gap-4 max-w-2xl" data-testid="endev-xdpu-settings-section">
             <div>
-                <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1">EnDev-xDpu</h3>
+                <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1">EnDev-xDpu WSL bundle</h3>
                 <p className="text-xs text-[#6a6a6a] dark:text-[#9d9d9d]">
-                    Enable workspace-local EnDev xDPU capabilities for WSL xStore repos without using nested EnDev Copilot sessions.
+                    Enables the CoC integration bundle for xDPU development workspaces that live inside WSL. The EnDev bundle must already be set up in this WSL distro; CoC links its plugin skills, stores the distro and Linux xStore root on this workspace, and bridges the WSL MCP server into CoC sessions.
                 </p>
             </div>
 
@@ -205,16 +209,10 @@ export function EnDevXDpuSettingsSection({
                 <span className="flex flex-col gap-1">
                     <span className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">Enable EnDev-xDpu for this workspace</span>
                     <span className="text-xs text-[#6a6a6a] dark:text-[#9d9d9d]">
-                        Disabled by default. When enabled, CoC stores only the WSL distro and xStore WSL repo root in this workspace setting.
+                        Disabled by default. Use this only for WSL xDPU workspaces where EnDev is installed and `endev doctor` passes inside the distro.
                     </span>
                 </span>
             </label>
-
-            {unsupported && (
-                <div className="text-xs text-amber-700 dark:text-amber-300" data-testid="endev-xdpu-unsupported">
-                    This workspace root is not a WSL path. Register a WSL repo path such as \\wsl$\Ubuntu\home\xstore or a Linux absolute path.
-                </div>
-            )}
 
             {config.enabled && (
                 <div className="grid grid-cols-1 sm:grid-cols-[10rem_1fr] gap-2 items-center">

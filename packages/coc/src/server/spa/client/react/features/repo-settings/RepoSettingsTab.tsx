@@ -25,7 +25,6 @@ import { TasksSettingsSection } from './TasksSettingsSection';
 import { RepoPreferencesSection } from './RepoPreferencesSection';
 import { LlmToolsPanel } from './LlmToolsPanel';
 import { NotesSettingsSection } from './NotesSettingsSection';
-import { EnDevXDpuSettingsSection } from './EnDevXDpuSettingsSection';
 
 interface RepoSettingsTabProps {
     workspaceId: string;
@@ -40,7 +39,6 @@ const NAV_ITEMS: { id: ActiveSection; label: string; icon: string }[] = [
     { id: 'mcp', label: 'MCP Servers', icon: '🖥️' },
     { id: 'skills', label: 'Agent Skills', icon: '🧩' },
     { id: 'llm-tools', label: 'LLM Tools', icon: '🔧' },
-    { id: 'endev-xdpu', label: 'EnDev-xDpu', icon: 'DPU' },
     { id: 'instructions', label: 'Custom Instructions', icon: '📝' },
     { id: 'memory', label: 'Memory', icon: '🧠' },
     { id: 'tasks', label: 'Plans Folder', icon: '📁' },
@@ -485,7 +483,12 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                     </div>
                 )}
                 {activeSection === 'preferences' && (
-                    <RepoPreferencesSection workspaceId={workspaceId} />
+                    <RepoPreferencesSection
+                        workspaceId={workspaceId}
+                        rootPath={ws.rootPath || ''}
+                        enDevXDpu={ws.endevXDpu}
+                        onEnDevXDpuActivated={handleEnDevXDpuActivated}
+                    />
                 )}
                 {activeSection === 'mcp' && (
                     <McpServersPanel
@@ -522,14 +525,6 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                 )}
                 {activeSection === 'llm-tools' && (
                     <LlmToolsPanel workspaceId={workspaceId} />
-                )}
-                {activeSection === 'endev-xdpu' && (
-                    <EnDevXDpuSettingsSection
-                        workspaceId={workspaceId}
-                        rootPath={ws.rootPath || ''}
-                        initialConfig={ws.endevXDpu}
-                        onActivated={handleEnDevXDpuActivated}
-                    />
                 )}
                 {activeSection === 'instructions' && (
                     <CustomInstructionsPanel

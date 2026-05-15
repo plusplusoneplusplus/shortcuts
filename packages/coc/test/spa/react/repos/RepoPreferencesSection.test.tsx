@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import React from 'react';
@@ -101,8 +103,8 @@ function mockDefaultFetches(overrides?: {
     });
 }
 
-function renderSection(workspaceId = 'repo-a') {
-    return render(<RepoPreferencesSection workspaceId={workspaceId} />);
+function renderSection(workspaceId = 'repo-a', rootPath = '') {
+    return render(<RepoPreferencesSection workspaceId={workspaceId} rootPath={rootPath} />);
 }
 
 describe('RepoPreferencesSection', () => {
@@ -136,6 +138,25 @@ describe('RepoPreferencesSection', () => {
                 expect(screen.getByTestId('auto-save-note')).toBeDefined();
                 expect(screen.getByText('Changes are saved automatically.')).toBeDefined();
             });
+        });
+
+        it('shows the EnDev-xDpu bundle after Advanced only for WSL workspaces', async () => {
+            mockDefaultFetches();
+            await act(async () => { renderSection('repo-a', '\\\\wsl$\\Ubuntu\\home\\xstore'); });
+
+            const advancedSection = await screen.findByTestId('section-advanced');
+            const enDevSection = await screen.findByTestId('endev-xdpu-settings-section');
+
+            expect(advancedSection.compareDocumentPosition(enDevSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+            expect(enDevSection.textContent).toContain('xDPU development workspaces that live inside WSL');
+        });
+
+        it('hides the EnDev-xDpu bundle for non-WSL workspaces', async () => {
+            mockDefaultFetches();
+            await act(async () => { renderSection('repo-a', 'C:\\repo'); });
+
+            await waitFor(() => expect(screen.getByTestId('section-advanced')).toBeDefined());
+            expect(screen.queryByTestId('endev-xdpu-settings-section')).toBeNull();
         });
 
         it('renders model dropdowns with enabled models only', async () => {
