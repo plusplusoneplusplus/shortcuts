@@ -15,14 +15,21 @@
 .PARAMETER SkipInitialBuild
     Skip the first build (useful when you've just built manually).
 
+.PARAMETER BindAddress
+    Network address that `coccontainer serve` binds to (default: 127.0.0.1).
+    Use 0.0.0.0 to expose on all interfaces. Named -BindAddress to avoid
+    collision with PowerShell's automatic `$Host` variable.
+
 .EXAMPLE
     .\scripts\coccontainer-serve-loop.ps1
     .\scripts\coccontainer-serve-loop.ps1 -Port 8080
+    .\scripts\coccontainer-serve-loop.ps1 -BindAddress 0.0.0.0
     .\scripts\coccontainer-serve-loop.ps1 -SkipInitialBuild
 #>
 param(
     [int]$Port = 5000,
-    [switch]$SkipInitialBuild
+    [switch]$SkipInitialBuild,
+    [string]$BindAddress = '127.0.0.1'
 )
 
 $RESTART_EXIT_CODE = 75
@@ -83,10 +90,10 @@ while ($true) {
     $first = $false
 
     # Serve step
-    Write-Host "`n=== Starting coccontainer serve (port $Port) ===" -ForegroundColor Cyan
+    Write-Host "`n=== Starting coccontainer serve (host $BindAddress, port $Port) ===" -ForegroundColor Cyan
     Write-Host "POST /api/admin/restart to rebuild & restart.`n" -ForegroundColor DarkGray
 
-    & coccontainer serve --no-open --port $Port
+    & coccontainer serve --no-open --port $Port --host $BindAddress
     $exitCode = $LASTEXITCODE
 
     if ($exitCode -eq $RESTART_EXIT_CODE) {
