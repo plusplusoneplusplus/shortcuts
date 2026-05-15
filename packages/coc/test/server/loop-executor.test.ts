@@ -604,6 +604,26 @@ describe('LoopExecutor', () => {
             expect(call.payload.context.source).toBe('loop');
         });
 
+        it('does not force autopilot mode in fallback enqueue payload', async () => {
+            // Regression: loop ticks must not flip an Ask/Plan conversation
+            // into Autopilot. The fallback enqueue path should omit `mode`
+            // so FollowUpExecutor preserves the process's existing mode.
+            const { deps, store, timerRegistry, queueManager } = createDeps();
+            const loop = makeLoop({ id: 'loop_mode_preserve', prompt: 'tick' });
+            store.insert(loop);
+
+            const executor = new LoopExecutor(deps);
+            executor.armAll();
+
+            await timerRegistry._fire('loop_mode_preserve');
+
+            expect(queueManager.enqueue).toHaveBeenCalled();
+            const call = queueManager.enqueue.mock.calls[0][0];
+            expect(call.payload).not.toHaveProperty('mode');
+            expect(call.payload.context.loopId).toBe('loop_mode_preserve');
+            expect(call.payload.context.source).toBe('loop');
+        });
+
         it('requeues from history when task exists as completed', async () => {
             const { deps, store, timerRegistry, queueManager } = createDeps();
             // Pre-populate a completed task in the queue

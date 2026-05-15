@@ -299,7 +299,6 @@ export class LoopExecutor {
             priority: 'normal',
             payload: {
                 kind: 'chat',
-                mode: 'autopilot',
                 prompt: loop.prompt,
                 processId: loop.processId,
                 ...(loop.model ? { model: loop.model } : {}),
