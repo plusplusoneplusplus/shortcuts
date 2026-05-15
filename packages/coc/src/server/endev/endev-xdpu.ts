@@ -23,6 +23,8 @@ export const ENDEV_XDPU_REQUIRED_PLUGIN_SKILLS = [
     'dpu-log-fetch',
     'hbm-dump-triage',
 ] as const;
+export const ENDEV_XDPU_HBM_SMOKE_SANITY_JOB_ID = '48037';
+export const ENDEV_XDPU_HBM_SMOKE_SAMPLE = '0_FUN-S21F1E-E001_1778203452409685840_hbm1.bin.tgz';
 
 const WSL_COMMAND_TIMEOUT_MS = 120_000;
 const WSL_COMMAND_MAX_BUFFER = 10 * 1024 * 1024;
@@ -532,7 +534,14 @@ Use this skill when working on xDPU/xStore tasks in a WSL workspace with EnDev e
 - Do not run nested \`endev copilot\`; CoC owns the chat/workflow session and routes EnDev capabilities through workspace skills and MCP.
 - Run shell commands through the WSL workspace context. \`endev doctor\` is the setup validation command when EnDev tools appear unavailable.
 - For HBM dump analysis, use \`hbm-dump-triage\` with the bridged \`funbird-mcp\` tools when the user has network access and credentials.
-- Manual smoke validation may use sanity job 48037 and sample \`0_FUN-S21F1E-E001_1778203452409685840_hbm1.bin.tgz\`; automated tests must not download internal artifacts.
+
+## Manual HBM smoke validation
+
+Use this path only when the user explicitly asks to smoke-test HBM dump analysis and confirms internal network access and credentials are available.
+
+1. Start from the enabled WSL xStore workspace and run \`endev doctor\`; if it fails, surface the setup error and stop.
+2. Ask \`hbm-dump-triage\` to analyze sanity job ${ENDEV_XDPU_HBM_SMOKE_SANITY_JOB_ID} sample \`${ENDEV_XDPU_HBM_SMOKE_SAMPLE}\` through the bridged \`funbird-mcp\` tools.
+3. Treat download or access failures as environment prerequisites, not CoC failures. Do not run this path in CI, unit tests, or automated workflow validation.
 `;
 }
 

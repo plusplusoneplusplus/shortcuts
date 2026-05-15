@@ -57,3 +57,8 @@ discovery must remain workspace-scoped and must not mutate Windows
 Terminal sessions for WSL workspaces spawn `wsl.exe` with `--cd <linux-root>`
 and keep the PTY `cwd` on the Windows host so the process can start before WSL
 switches into the xStore repo root.
+
+The generated `EnDev-xDpu` wrapper skill documents a manual-only HBM smoke path
+using sanity job `48037` and sample
+`0_FUN-S21F1E-E001_1778203452409685840_hbm1.bin.tgz`; automated tests and CI
+must not download internal artifacts or require credentials.

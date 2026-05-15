@@ -10,6 +10,8 @@ import { registerApiRoutes } from '../../src/server/core/api-handler';
 import type { Route } from '../../src/server/types';
 import {
     activateEnDevXDpuWorkspace,
+    ENDEV_XDPU_HBM_SMOKE_SAMPLE,
+    ENDEV_XDPU_HBM_SMOKE_SANITY_JOB_ID,
     ENDEV_XDPU_MCP_SERVER_NAME,
     ENDEV_XDPU_WRAPPER_SKILL_NAME,
     EnDevXDpuSetupError,
@@ -127,7 +129,12 @@ describe('EnDev-xDpu activation', () => {
 
         const wrapperPath = path.join(dataDir, 'skills', ENDEV_XDPU_WRAPPER_SKILL_NAME, 'SKILL.md');
         expect(result.wrapperSkillPath).toBe(wrapperPath);
-        expect(fs.readFileSync(wrapperPath, 'utf-8')).toContain(`name: ${ENDEV_XDPU_WRAPPER_SKILL_NAME}`);
+        const wrapper = fs.readFileSync(wrapperPath, 'utf-8');
+        expect(wrapper).toContain(`name: ${ENDEV_XDPU_WRAPPER_SKILL_NAME}`);
+        expect(wrapper).toContain('## Manual HBM smoke validation');
+        expect(wrapper).toContain(`sanity job ${ENDEV_XDPU_HBM_SMOKE_SANITY_JOB_ID}`);
+        expect(wrapper).toContain(ENDEV_XDPU_HBM_SMOKE_SAMPLE);
+        expect(wrapper).toContain('Do not run this path in CI, unit tests, or automated workflow validation.');
     });
 
     it('does not duplicate an existing discovered plugin skill folder', async () => {
