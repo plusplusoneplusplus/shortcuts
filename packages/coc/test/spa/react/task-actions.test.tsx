@@ -14,6 +14,7 @@ import { TaskProvider, useTaskContext } from '../../../src/server/spa/client/rea
 import { TaskActions } from '../../../src/server/spa/client/react/tasks/TaskActions';
 
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '/api',
 }));
 

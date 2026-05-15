@@ -8,6 +8,7 @@ import { useFolderActions } from '../../../src/server/spa/client/react/tasks/hoo
 
 // Stub getApiBase to return a known prefix
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '/api',
 }));
 

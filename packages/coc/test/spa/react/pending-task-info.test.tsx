@@ -28,6 +28,7 @@ vi.mock('../../../src/server/spa/client/react/contexts/ChatPreferencesContext', 
 
 // Mock config to return predictable API base
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '/api',
     getWsPath: () => '/ws',
     getWsUrl: () => 'ws://localhost/ws',

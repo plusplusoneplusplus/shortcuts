@@ -10,6 +10,7 @@ import type { UseSendMessageOptions } from '../../../../src/server/spa/client/re
 // ── Mocks ────────────────────────────────────────────────────────────
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '/api',
 }));
 

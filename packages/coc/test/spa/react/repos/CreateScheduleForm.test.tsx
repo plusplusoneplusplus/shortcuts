@@ -21,6 +21,7 @@ const { mockSchedulesClient, mockModelsClient, mockFeatureFlags } = vi.hoisted((
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '',
 }));
 

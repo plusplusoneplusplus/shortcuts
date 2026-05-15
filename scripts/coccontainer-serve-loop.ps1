@@ -4,7 +4,7 @@
     Hit POST /api/admin/restart from any browser/node to trigger a rebuild + restart.
 
 .DESCRIPTION
-    1. Builds all packages (forge → coc → coccontainer) and npm-links them.
+    1. Builds all packages (forge -> coc -> coccontainer) and npm-links them.
     2. Starts `coccontainer serve --no-open`.
     3. When the server exits with code 75 (restart requested), loops back to step 1.
     4. Any other exit code (0 = clean shutdown, Ctrl+C, etc.) stops the loop.
@@ -43,7 +43,7 @@ function Build-CocContainer {
             return $false
         }
         Write-Host "`n=== Building coccontainer packages ===" -ForegroundColor Cyan
-        # Build forge → coccontainer, then npm link
+        # Build forge -> coccontainer, then npm link
         Push-Location (Join-Path $repoRoot "packages\forge")
         npm run build
         if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Host "forge build failed" -ForegroundColor Red; return $false }

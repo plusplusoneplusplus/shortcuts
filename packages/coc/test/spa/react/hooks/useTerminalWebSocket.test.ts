@@ -47,6 +47,7 @@ class MockWebSocket {
 }
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '/api',
     getWsPath: () => '/ws',
     getWsUrl: () => 'ws://localhost/ws',

@@ -35,6 +35,7 @@ vi.mock('../../../../../../src/server/spa/client/react/api/cocClient', () => ({
 }));
 
 vi.mock('../../../../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '/api',
 }));
 

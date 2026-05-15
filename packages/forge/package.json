@@ -94,12 +94,8 @@
     "@octokit/rest": "^22.0.1",
     "azure-devops-node-api": "^14.1.0",
     "better-sqlite3": "^11.9.1",
-    "copy-webpack-plugin": "14.0.0",
     "diff": "^5.2.0",
-    "esbuild": "0.28.0",
     "js-yaml": "^4.1.0",
-    "mocha": "7.2.0",
-    "monaco-editor": "0.53.0",
     "pino": "^9.x"
   },
   "devDependencies": {
@@ -108,10 +104,10 @@
     "@types/diff": "^5.2.0",
     "@types/js-yaml": "^4.0.0",
     "@types/node": "^20.0.0",
-    "@vitest/coverage-v8": "^4.1.5",
+    "@vitest/coverage-v8": "^1.6.1",
     "pino-pretty": "^13.x",
     "typescript": "^5.3.0",
-    "vitest": "^4.1.5"
+    "vitest": "^1.0.0"
   },
   "engines": {
     "node": ">=24"

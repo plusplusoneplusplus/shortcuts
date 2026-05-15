@@ -14,6 +14,8 @@ export default defineConfig({
     },
     test: {
         globals: true,
+        environment: 'node',
+        include: ['test/**/*.test.ts', 'test/**/*.test.tsx'],
         setupFiles: ['test/setup.ts'],
         globalSetup: ['test/global-setup.ts'],
         coverage: {
@@ -25,6 +27,10 @@ export default defineConfig({
         },
         testTimeout: 60000,
         hookTimeout: 60000,
+        environmentMatchGlobs: [
+            ['test/spa/**/*.test.tsx', 'jsdom'],
+            ['test/spa/**/*.test.ts', 'jsdom'],
+        ],
         // Use child_process forks instead of worker_threads. Worker threads
         // on macOS Apple Silicon (Node 24 + vitest 1.6) can crash with
         // SIGSEGV on shutdown when test files load native addons (notably
@@ -41,28 +47,5 @@ export default defineConfig({
         // passed at that point, so swallow the cleanup-time error rather
         // than fail an otherwise-green run.
         dangerouslyIgnoreUnhandledErrors: true,
-        // Vitest 4 removed `environmentMatchGlobs`; the supported migration
-        // is to split env-specific test sets into projects. SPA tests run
-        // in jsdom; everything else runs in node. Both inherit the shared
-        // root settings above via `extends: true`.
-        projects: [
-            {
-                extends: true,
-                test: {
-                    name: 'jsdom',
-                    include: ['test/spa/**/*.test.ts', 'test/spa/**/*.test.tsx'],
-                    environment: 'jsdom',
-                },
-            },
-            {
-                extends: true,
-                test: {
-                    name: 'node',
-                    include: ['test/**/*.test.ts', 'test/**/*.test.tsx'],
-                    exclude: ['test/spa/**/*.test.ts', 'test/spa/**/*.test.tsx'],
-                    environment: 'node',
-                },
-            },
-        ],
     }
 });

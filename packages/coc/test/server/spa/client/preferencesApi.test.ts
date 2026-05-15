@@ -3,6 +3,7 @@ import { getWorkspacePreferences, patchWorkspacePreferences } from
     '../../../../src/server/spa/client/react/hooks/preferences/preferencesApi';
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '/api',
 }));
 
