@@ -35,7 +35,6 @@ import { useTerminalEnabled } from '../../hooks/feature-flags/useTerminalEnabled
 import { useNotesEnabled } from '../notes/hooks/useNotesEnabled';
 import { useWorkflowsEnabled } from '../../hooks/feature-flags/useWorkflowsEnabled';
 import { usePullRequestsEnabled } from '../../hooks/feature-flags/usePullRequestsEnabled';
-import { useNotesAutoCommit } from '../notes/hooks/useNotesAutoCommit';
 import { MobileTabBar } from '../../layout/MobileTabBar';
 import { buildRepoSubTabSuffix } from '../../layout/Router';
 import { SHOW_WIKI_TAB } from '../../layout/TopBar';
@@ -98,7 +97,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const taskCount = repo.taskCount || 0;
     const { running: queueRunningCount, queued: queueQueuedCount } = useRepoQueueStats(ws.id);
     const { ahead: gitAhead, behind: gitBehind } = useGitInfo(ws.id);
-    const notesAutoCommit = useNotesAutoCommit(ws.id);
     const isGitRepo = !!repo.gitInfo?.isGitRepo;
     const terminalEnabled = useTerminalEnabled();
     const notesEnabled = useNotesEnabled();
@@ -475,12 +473,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                                 data-testid="wiki-warning-badge"
                                                 title="Needs attention"
                                             />
-                                        )}
-                                        {t.key === 'notes' && notesAutoCommit.autoCommitEnabled && (
-                                            <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[17px] text-[10px] font-mono bg-amber-600 text-white px-1 py-px rounded-full"
-                                                  data-testid="notes-autocommit-badge" title="Auto-commit active">
-                                                ⏰
-                                            </span>
                                         )}
                                         {isActive && (
                                             <span className="absolute left-1.5 right-1.5 -bottom-[5px] h-[3px] rounded-sm bg-[#0969da] dark:bg-[#3794ff]" />
