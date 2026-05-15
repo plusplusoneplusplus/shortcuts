@@ -17,6 +17,7 @@ set -euo pipefail
 
 RESTART_EXIT_CODE=75
 PORT=4000
+HOST=127.0.0.1
 SKIP_INITIAL_BUILD=false
 
 while [[ $# -gt 0 ]]; do
@@ -25,15 +26,20 @@ while [[ $# -gt 0 ]]; do
             PORT="$2"
             shift 2
             ;;
+        -H|--host)
+            HOST="$2"
+            shift 2
+            ;;
         --skip-initial-build)
             SKIP_INITIAL_BUILD=true
             shift
             ;;
         -h|--help)
-            echo "Usage: $0 [-p|--port PORT] [--skip-initial-build]"
+            echo "Usage: $0 [-p|--port PORT] [-H|--host ADDR] [--skip-initial-build]"
             echo ""
             echo "Options:"
             echo "  -p, --port PORT        Port to serve on (default: 4000)"
+            echo "  -H, --host ADDR        Bind address (default: 127.0.0.1)"
             echo "  --skip-initial-build   Skip the first build"
             exit 0
             ;;
@@ -91,12 +97,12 @@ while true; do
     first=false
 
     echo ""
-    echo -e "\033[36m=== Starting coc serve (port $PORT) ===\033[0m"
+    echo -e "\033[36m=== Starting coc serve (host $HOST, port $PORT) ===\033[0m"
     echo -e "\033[90mPOST /api/admin/restart to rebuild & restart.\033[0m"
     echo ""
 
     set +e
-    coc serve --no-open --port "$PORT"
+    coc serve --no-open --port "$PORT" --host "$HOST"
     exit_code=$?
     set -e
 

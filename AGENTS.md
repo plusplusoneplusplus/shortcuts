@@ -70,7 +70,7 @@ Manages `coc-serve-loop.ps1` as a Windows Task Scheduler task running under the 
 | `status`     | Show task state, running PIDs, log file size, and last log line. |
 | `logs`       | Print the last N log lines. Use `-Follow` for continuous tail. |
 
-Key options: `-Port` (default 4000, non-tunnel mode only), `-TunnelId` (host the configured Microsoft Dev Tunnel and use its persisted HTTP port binding), `-NoBuildSkip` (build on every start, not just install), `-LogLines` (default 50), `-Follow`, `-TaskName` (default `CoCServer`). Configure the tunnel first with `.\scripts\config-devtunnel.ps1 [-TunnelId <id>] [-Port <port>]`; the service loop reads the configured tunnel port and only starts/stops `devtunnel host`.
+Key options: `-Port` (default 4000, non-tunnel mode only), `-BindAddress` (default `127.0.0.1`; use `0.0.0.0` to expose on all interfaces — named `-BindAddress` to avoid PowerShell's `$Host` automatic variable), `-TunnelId` (host the configured Microsoft Dev Tunnel and use its persisted HTTP port binding), `-NoBuildSkip` (build on every start, not just install), `-LogLines` (default 50), `-Follow`, `-TaskName` (default `CoCServer`). Configure the tunnel first with `.\scripts\config-devtunnel.ps1 [-TunnelId <id>] [-Port <port>]`; the service loop reads the configured tunnel port and only starts/stops `devtunnel host`.
 
 **Log file:** `~/.coc/logs/coc-service.log` — rotated automatically at 10 MB.
 
