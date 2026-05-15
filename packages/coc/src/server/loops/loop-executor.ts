@@ -7,7 +7,7 @@
  * - Enqueues follow-up tasks via `TaskQueueManager` (chat with processId)
  * - Tracks execution results, updates store
  * - Reschedules next tick after execution
- * - Handles server shutdown (pause all active loops)
+ * - Handles server shutdown (disarm timers without mutating persisted loops)
  *
  * Pure execution — no CRUD or REST knowledge.
  */
@@ -109,17 +109,16 @@ export class LoopExecutor {
     }
 
     /**
-     * Pause all active loops (e.g. on server shutdown).
-     * Cancels all timers, persists paused status.
+     * Disarm active loop timers during server shutdown without mutating
+     * persisted loop state. Active loops are re-armed on the next startup.
      */
-    shutdownAll(reason: string): void {
+    shutdownAll(): void {
         const logger = getLogger();
         const activeLoops = this.deps.store.getActive();
         for (const loop of activeLoops) {
             this.disarmTimer(loop.id);
         }
-        const count = this.deps.store.pauseAllActive(reason);
-        logger.info(LogCategory.AI, `[LoopExecutor] Paused ${count} active loop(s) with reason: ${reason}`);
+        logger.info(LogCategory.AI, `[LoopExecutor] Disarmed ${activeLoops.length} active loop timer(s) for shutdown`);
     }
 
     /**

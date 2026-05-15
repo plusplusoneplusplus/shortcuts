@@ -140,10 +140,7 @@ export class LoopStore {
         return (this.stmtCountActive.get() as { cnt: number }).cnt;
     }
 
-    /**
-     * Pause all active loops with the given reason.
-     * Used during server shutdown to mark loops as paused for restart.
-     */
+    /** Pause all active loops with the given reason. */
     pauseAllActive(reason: string): number {
         const result = this.stmtPauseActive.run({ reason });
         return result.changes;

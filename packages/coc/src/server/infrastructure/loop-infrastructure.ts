@@ -51,8 +51,8 @@ export interface LoopInfrastructureOptions {
 
 /**
  * Creates and wires up the loop infrastructure required by the execution
- * server. Active loops are NOT auto-resumed — they are left paused with
- * `pausedReason: 'server-restart'` from the previous shutdown.
+ * server. Active loops are re-armed from persisted `nextTickAt` so they
+ * continue across server restarts.
  *
  * @returns LoopInfrastructure with store, executor, and dispose function.
  */
@@ -85,7 +85,10 @@ export function createLoopInfrastructure(options: LoopInfrastructureOptions): Lo
         resolveWorkspaceId,
     });
 
-    // Log startup state (do NOT armAll — loops stay paused from server-restart)
+    // Restore active loop timers from the persisted nextTickAt values.
+    loopExecutor.armAll();
+
+    // Log startup state after timers have been restored.
     const activeCount = loopStore.getActive().length;
     const pausedCount = loopStore.getAll().filter(l => l.status === 'paused').length;
     if (activeCount > 0 || pausedCount > 0) {

@@ -99,7 +99,7 @@ describe('Loop Infrastructure', () => {
     });
 
     describe('server shutdown flow', () => {
-        it('shutdownAll pauses active loops and cancels timers', async () => {
+        it('shutdownAll cancels active timers without pausing loops', async () => {
             // Import directly for unit-level testing
             const { LoopExecutor } = await import('../../src/server/loops/loop-executor');
             const { ScheduleTimerRegistry } = await import('../../src/server/schedule/schedule-timer-registry');
@@ -127,42 +127,43 @@ describe('Loop Infrastructure', () => {
             expect(timerRegistry.has('loop_shutdown_2')).toBe(true);
 
             // Shutdown
-            executor.shutdownAll('server-restart');
+            executor.shutdownAll();
 
             // Timers should be cancelled
             expect(timerRegistry.has('loop_shutdown_1')).toBe(false);
             expect(timerRegistry.has('loop_shutdown_2')).toBe(false);
 
-            // Loops should be paused
+            // Loops should remain active for restart continuity.
             const l1 = loopStore.getById('loop_shutdown_1');
             const l2 = loopStore.getById('loop_shutdown_2');
-            expect(l1!.status).toBe('paused');
-            expect(l1!.pausedReason).toBe('server-restart');
-            expect(l2!.status).toBe('paused');
-            expect(l2!.pausedReason).toBe('server-restart');
+            expect(l1!.status).toBe('active');
+            expect(l1!.pausedReason).toBeNull();
+            expect(l2!.status).toBe('active');
+            expect(l2!.pausedReason).toBeNull();
         });
     });
 
     describe('close handler integration', () => {
-        it('loops are NOT auto-resumed on restart (left paused)', () => {
-            // Simulate a loop that was paused by a previous server shutdown
-            const pausedLoop = makeLoop({
-                id: 'loop_was_paused',
-                status: 'paused',
-                pausedReason: 'server-restart',
-                nextTickAt: null,
-            });
+        it('manually paused loops are not armed on restart', () => {
+            const pausedLoop = makeLoop({ id: 'loop_was_paused', status: 'paused', pausedReason: 'manual pause', nextTickAt: null });
             loopStore.insert(pausedLoop);
 
-            // On startup, getActive() should NOT return paused loops
             const active = loopStore.getActive();
             expect(active).toHaveLength(0);
 
-            // The paused loop should still be there
             const all = loopStore.getAll();
             expect(all).toHaveLength(1);
             expect(all[0].status).toBe('paused');
-            expect(all[0].pausedReason).toBe('server-restart');
+            expect(all[0].pausedReason).toBe('manual pause');
+        });
+
+        it('active loops remain eligible for startup re-arming', () => {
+            const activeLoop = makeLoop({ id: 'loop_survives_restart', status: 'active' });
+            loopStore.insert(activeLoop);
+
+            const active = loopStore.getActive();
+            expect(active).toHaveLength(1);
+            expect(active[0].id).toBe('loop_survives_restart');
         });
     });
 });

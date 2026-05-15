@@ -234,7 +234,7 @@ describe('LoopExecutor', () => {
     // --------------------------------------------------------------------
 
     describe('shutdownAll', () => {
-        it('pauses all active loops and cancels timers', () => {
+        it('cancels active timers without mutating persisted loops', () => {
             const { deps, store, timerRegistry } = createDeps();
             store.insert(makeLoop({ id: 'loop_1', status: 'active' }));
             store.insert(makeLoop({ id: 'loop_2', status: 'active' }));
@@ -243,17 +243,17 @@ describe('LoopExecutor', () => {
             const executor = new LoopExecutor(deps);
             executor.armAll();
 
-            executor.shutdownAll('server-restart');
+            executor.shutdownAll();
 
             // Timers should be cancelled
             expect(timerRegistry.cancel).toHaveBeenCalledWith('loop_1');
             expect(timerRegistry.cancel).toHaveBeenCalledWith('loop_2');
 
-            // All active loops should now be paused
-            expect(store.getActive()).toHaveLength(0);
+            // Active loops should remain active so startup can re-arm them.
+            expect(store.getActive()).toHaveLength(2);
             const loop1 = store.getById('loop_1')!;
-            expect(loop1.status).toBe('paused');
-            expect(loop1.pausedReason).toBe('server-restart');
+            expect(loop1.status).toBe('active');
+            expect(loop1.pausedReason).toBeNull();
         });
     });
 
