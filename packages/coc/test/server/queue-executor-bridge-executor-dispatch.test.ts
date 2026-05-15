@@ -40,51 +40,51 @@ vi.mock('fs', async (importOriginal) => {
 
 // WorkflowExecutor mock — records calls for dispatch assertions
 const mockWorkflowExecute = vi.fn();
-vi.mock('../../src/server/executors/workflow-executor', () => ({
-    WorkflowExecutor: vi.fn().mockImplementation(() => ({
+vi.mock('../../src/server/executors/workflow-executor', function () { return ({
+    WorkflowExecutor: vi.fn().mockImplementation(function () { return ({
         execute: mockWorkflowExecute,
-    })),
-}));
+    }); }),
+}); });
 
 // ShellExecutor mock — records calls for dispatch assertions
 const mockShellExecute = vi.fn();
-vi.mock('../../src/server/executors/shell-executor', () => ({
-    ShellExecutor: vi.fn().mockImplementation(() => ({
+vi.mock('../../src/server/executors/shell-executor', function () { return ({
+    ShellExecutor: vi.fn().mockImplementation(function () { return ({
         execute: mockShellExecute,
-    })),
-}));
+    }); }),
+}); });
 
 // FollowUpExecutor mock — records calls for dispatch assertions
 const mockFollowUpExecuteFollowUp = vi.fn();
-vi.mock('../../src/server/executors/follow-up-executor', () => ({
-    FollowUpExecutor: vi.fn().mockImplementation(() => ({
+vi.mock('../../src/server/executors/follow-up-executor', function () { return ({
+    FollowUpExecutor: vi.fn().mockImplementation(function () { return ({
         executeFollowUp: mockFollowUpExecuteFollowUp,
-    })),
-}));
+    }); }),
+}); });
 
 // ChatExecutor mock — records calls for dispatch assertions
 const mockChatExecute = vi.fn();
-vi.mock('../../src/server/executors/chat-executor', () => ({
-    ChatExecutor: vi.fn().mockImplementation(() => ({
+vi.mock('../../src/server/executors/chat-executor', function () { return ({
+    ChatExecutor: vi.fn().mockImplementation(function () { return ({
         execute: mockChatExecute,
-    })),
-}));
+    }); }),
+}); });
 
 // PlanExecutor mock — records calls for dispatch assertions
 const mockPlanExecute = vi.fn();
-vi.mock('../../src/server/executors/plan-executor', () => ({
-    PlanExecutor: vi.fn().mockImplementation(() => ({
+vi.mock('../../src/server/executors/plan-executor', function () { return ({
+    PlanExecutor: vi.fn().mockImplementation(function () { return ({
         execute: mockPlanExecute,
-    })),
-}));
+    }); }),
+}); });
 
 // AutopilotExecutor mock — records calls for dispatch assertions
 const mockAutopilotExecute = vi.fn();
-vi.mock('../../src/server/executors/autopilot-executor', () => ({
-    AutopilotExecutor: vi.fn().mockImplementation(() => ({
+vi.mock('../../src/server/executors/autopilot-executor', function () { return ({
+    AutopilotExecutor: vi.fn().mockImplementation(function () { return ({
         execute: mockAutopilotExecute,
-    })),
-}));
+    }); }),
+}); });
 
 // Forge mock — prevent real getCopilotSDKService and other side-effects
 const sdkMocks = createMockSDKService();
@@ -99,9 +99,9 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     };
 });
 
-vi.mock('../../src/ai-invoker', () => ({
+vi.mock('../../src/ai-invoker', function () { return ({
     createCLIAIInvoker: vi.fn().mockReturnValue(vi.fn()),
-}));
+}); });
 
 vi.mock('../../src/server/queue/image-blob-store', async (importOriginal) => {
     const actual = await importOriginal<typeof import('../../src/server/queue/image-blob-store')>();

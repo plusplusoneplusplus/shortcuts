@@ -20,9 +20,9 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal() as any;
     return {
         ...actual,
-        BranchService: vi.fn().mockImplementation(() => ({})),
-        GitRangeService: vi.fn().mockImplementation(() => ({})),
-        WorkingTreeService: vi.fn().mockImplementation(() => ({})),
+        BranchService: vi.fn().mockImplementation(function () { return ({}); }),
+        GitRangeService: vi.fn().mockImplementation(function () { return ({}); }),
+        WorkingTreeService: vi.fn().mockImplementation(function () { return ({}); }),
     };
 });
 

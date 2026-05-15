@@ -28,10 +28,10 @@ import { gitCache } from '../../src/server/git/git-cache';
 const mockExecSync = vi.fn();
 const mockExecFileSync = vi.fn();
 const mockForgeExecGit = vi.fn();
-vi.mock('child_process', () => ({
+vi.mock('child_process', function () { return ({
     execSync: (...args: any[]) => mockExecSync(...args),
     execFileSync: (...args: any[]) => mockExecFileSync(...args),
-}));
+}); });
 
 // ============================================================================
 // Mock BranchService and GitRangeService
@@ -45,14 +45,14 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,
-        BranchService: vi.fn().mockImplementation(() => ({
+        BranchService: vi.fn().mockImplementation(function () { return ({
             getBranchStatus: vi.fn(async (...args: any[]) => mockGetBranchStatus(...args)),
             hasUncommittedChanges: vi.fn(async (...args: any[]) => mockHasUncommittedChanges(...args)),
-        })),
-        GitRangeService: vi.fn().mockImplementation(() => ({
+        }); }),
+        GitRangeService: vi.fn().mockImplementation(function () { return ({
             getCurrentBranch: vi.fn(async (...args: any[]) => mockGetCurrentBranch(...args)),
             detectCommitRange: vi.fn(),
-        })),
+        }); }),
         detectRemoteUrl: vi.fn(async () => undefined),
         execGit: (...args: any[]) => mockForgeExecGit(...args),
     };

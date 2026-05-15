@@ -15,22 +15,22 @@ import type { PullRequest, CommentThread, Reviewer } from '@plusplusoneplusplus/
 
 // ── Mock ProviderFactory and RepoTreeService ─────────────────────────────────
 
-vi.mock('../../src/server/providers/provider-factory', () => ({
+vi.mock('../../src/server/providers/provider-factory', function () { return ({
     ProviderFactory: {
         detectProviderType: vi.fn().mockReturnValue('github'),
         createPullRequestsService: vi.fn(),
     },
-}));
+}); });
 
-vi.mock('../../src/server/repos/tree-service', () => ({
-    RepoTreeService: vi.fn().mockImplementation(() => ({
+vi.mock('../../src/server/repos/tree-service', function () { return ({
+    RepoTreeService: vi.fn().mockImplementation(function () { return ({
         resolveRepo: vi.fn(),
-    })),
-}));
+    }); }),
+}); });
 
-vi.mock('../../src/server/providers/providers-config', () => ({
+vi.mock('../../src/server/providers/providers-config', function () { return ({
     readProvidersConfig: vi.fn().mockResolvedValue({ providers: {} }),
-}));
+}); });
 
 import { ProviderFactory } from '../../src/server/providers/provider-factory';
 import { RepoTreeService } from '../../src/server/repos/tree-service';
@@ -126,9 +126,9 @@ beforeEach(async () => {
         getDiff: vi.fn().mockResolvedValue('diff --git a/foo.ts b/foo.ts\n'),
     };
 
-    (RepoTreeService as ReturnType<typeof vi.fn>).mockImplementation(() => ({
+    (RepoTreeService as ReturnType<typeof vi.fn>).mockImplementation(function () { return ({
         resolveRepo: mockResolveRepo = vi.fn().mockResolvedValue(mockRepoInfo),
-    }));
+    }); });
     (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(mockSvc);
 
     server = makeServer(dataDir);

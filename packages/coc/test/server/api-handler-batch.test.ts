@@ -80,23 +80,23 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal() as any;
     return {
         ...actual,
-        BranchService: vi.fn().mockImplementation(() => ({
+        BranchService: vi.fn().mockImplementation(function () { return ({
             hasUncommittedChanges: vi.fn(async () => true),
-            getBranchStatus: vi.fn(async () => ({ name: 'main', isDetached: false, ahead: 1, behind: 0, hasUncommittedChanges: true })),
-        })),
-        GitRangeService: vi.fn().mockImplementation(() => ({
+            getBranchStatus: vi.fn(async function () { return ({ name: 'main', isDetached: false, ahead: 1, behind: 0, hasUncommittedChanges: true }); }),
+        }); }),
+        GitRangeService: vi.fn().mockImplementation(function () { return ({
             getCurrentBranch: vi.fn(async () => 'main'),
-        })),
-        WorkingTreeService: vi.fn().mockImplementation(() => ({
+        }); }),
+        WorkingTreeService: vi.fn().mockImplementation(function () { return ({
             getAllChanges: vi.fn(async () => []),
-            stageFile: vi.fn(async () => ({ success: true })),
-            unstageFile: vi.fn(async () => ({ success: true })),
-            stageFiles: vi.fn(async () => ({ success: true, staged: 2, errors: [] })),
-            unstageFiles: vi.fn(async () => ({ success: true, unstaged: 2, errors: [] })),
-            discardChanges: vi.fn(async () => ({ success: true })),
+            stageFile: vi.fn(async function () { return ({ success: true }); }),
+            unstageFile: vi.fn(async function () { return ({ success: true }); }),
+            stageFiles: vi.fn(async function () { return ({ success: true, staged: 2, errors: [] }); }),
+            unstageFiles: vi.fn(async function () { return ({ success: true, unstaged: 2, errors: [] }); }),
+            discardChanges: vi.fn(async function () { return ({ success: true }); }),
             getFileDiff: vi.fn(async () => ''),
-            deleteUntrackedFile: vi.fn(async () => ({ success: true })),
-        })),
+            deleteUntrackedFile: vi.fn(async function () { return ({ success: true }); }),
+        }); }),
     };
 });
 

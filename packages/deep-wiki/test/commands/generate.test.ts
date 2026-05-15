@@ -18,7 +18,7 @@ import * as yaml from 'js-yaml';
 // ============================================================================
 
 // Mock AI invoker
-vi.mock('../../src/ai-invoker', () => ({
+vi.mock('../../src/ai-invoker', function () { return ({
     checkAIAvailability: vi.fn().mockResolvedValue({ available: true }),
     createAnalysisInvoker: vi.fn().mockReturnValue(vi.fn().mockResolvedValue({
         success: true,
@@ -40,10 +40,10 @@ vi.mock('../../src/ai-invoker', () => ({
         success: true,
         response: '# Test Article\n\nContent here.',
     })),
-}));
+}); });
 
 // Mock discovery
-vi.mock('../../src/discovery', () => ({
+vi.mock('../../src/discovery', function () { return ({
     discoverComponentGraph: vi.fn().mockResolvedValue({
         graph: {
             project: {
@@ -91,10 +91,10 @@ vi.mock('../../src/discovery', () => ({
         categories: [{ name: 'core', description: 'Core' }],
         architectureNotes: 'Iterative discovery',
     }),
-}));
+}); });
 
 // Mock analysis component
-vi.mock('../../src/analysis', () => ({
+vi.mock('../../src/analysis', function () { return ({
     analyzeComponents: vi.fn().mockResolvedValue({
         analyses: [{
             componentId: 'test-module',
@@ -112,7 +112,7 @@ vi.mock('../../src/analysis', () => ({
         duration: 1000,
     }),
     parseAnalysisResponse: vi.fn(),
-}));
+}); });
 
 // Mock writing component — keep writeWikiOutput and buildReducePromptTemplate as real implementations
 // so existing tests that depend on file writes continue to work.
@@ -134,17 +134,17 @@ vi.mock('../../src/writing', async (importOriginal) => {
 });
 
 // Mock seeds
-vi.mock('../../src/seeds', () => ({
+vi.mock('../../src/seeds', function () { return ({
     generateThemeSeeds: vi.fn().mockResolvedValue([
         { theme: 'auth', description: 'Auth', hints: ['auth'] },
     ]),
     parseSeedFile: vi.fn().mockReturnValue([
         { theme: 'auth', description: 'Auth', hints: ['auth'] },
     ]),
-}));
+}); });
 
 // Mock cache
-vi.mock('../../src/cache', () => ({
+vi.mock('../../src/cache', function () { return ({
     getCachedGraph: vi.fn().mockResolvedValue(null),
     getCachedGraphAny: vi.fn().mockReturnValue(null),
     saveGraph: vi.fn().mockResolvedValue(undefined),
@@ -205,7 +205,7 @@ vi.mock('../../src/cache', () => ({
     saveDiscoveryMetadata: vi.fn(),
     getDiscoveryMetadata: vi.fn().mockReturnValue(null),
     getDiscoveryCacheDir: vi.fn().mockReturnValue('/mock/.wiki-cache/discovery'),
-}));
+}); });
 
 // Mock website generator — keep real exports, only mock generateWebsite
 vi.mock('../../src/writing/website-generator', async (importOriginal) => {
@@ -217,15 +217,15 @@ vi.mock('../../src/writing/website-generator', async (importOriginal) => {
 });
 
 // Suppress logger output during tests
-vi.mock('../../src/logger', () => ({
-    Spinner: vi.fn().mockImplementation(() => ({
+vi.mock('../../src/logger', function () { return ({
+    Spinner: vi.fn().mockImplementation(function () { return ({
         start: vi.fn(),
         update: vi.fn(),
         stop: vi.fn(),
         succeed: vi.fn(),
         fail: vi.fn(),
         warn: vi.fn(),
-    })),
+    }); }),
     printSuccess: vi.fn(),
     printError: vi.fn(),
     printWarning: vi.fn(),
@@ -237,7 +237,7 @@ vi.mock('../../src/logger', () => ({
     cyan: (s: string) => s,
     yellow: (s: string) => s,
     gray: (s: string) => s,
-}));
+}); });
 
 import { executeGenerate } from '../../src/commands/generate';
 import { EXIT_CODES } from '../../src/cli';
