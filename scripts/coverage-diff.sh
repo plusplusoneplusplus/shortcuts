@@ -4,6 +4,11 @@
 # Usage: bash scripts/coverage-diff.sh [base_branch]
 #   base_branch  Branch to diff against (default: main)
 #
+# Environment variables:
+#   SKIP_TESTS=1  Skip the test re-run and reuse an existing coverage/lcov.info.
+#                 Useful when coverage was already produced upstream (e.g., merged
+#                 from CI shards) and only the diff-filter step is needed.
+#
 # Must be run from a package directory (e.g., packages/forge/).
 # Produces filtered coverage in coverage/coverage-diff/.
 
@@ -18,9 +23,13 @@ DIFF_DIR="$COVERAGE_DIR/coverage-diff"
 LCOV_FULL="$COVERAGE_DIR/lcov.info"
 LCOV_FILTERED="$DIFF_DIR/lcov.info"
 
-# Step 1: Run tests with coverage
-echo "==> Running tests with coverage..."
-npx vitest run --coverage
+# Step 1: Run tests with coverage (unless coverage was already produced upstream)
+if [ "${SKIP_TESTS:-}" = "1" ]; then
+  echo "==> SKIP_TESTS=1, reusing existing $LCOV_FULL..."
+else
+  echo "==> Running tests with coverage..."
+  npx vitest run --coverage
+fi
 
 if [ ! -f "$LCOV_FULL" ]; then
   echo "ERROR: $LCOV_FULL not found. Ensure lcov reporter is configured in vitest.config.ts."

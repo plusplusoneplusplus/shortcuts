@@ -83,6 +83,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        shard: [1, 2, 3]
         node-version: [24.x]
 
     steps:
@@ -112,23 +113,78 @@ jobs:
         run: npm run build:client
         working-directory: packages/coc
 
-      - name: Run coc tests
+      - name: Run coc tests (shard ${{ matrix.shard }}/3)
         if: matrix.os != 'ubuntu-latest'
-        run: npm run test:run
+        run: npm run test:run -- --shard=${{ matrix.shard }}/3
         working-directory: packages/coc
 
-      - name: Run coc tests with coverage
+      - name: Run coc tests with coverage (shard ${{ matrix.shard }}/3)
         if: matrix.os == 'ubuntu-latest'
-        run: npm run coverage
+        run: npm run coverage -- --shard=${{ matrix.shard }}/3
         working-directory: packages/coc
+
+      - name: Upload coc coverage shard
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coc-coverage-shard-${{ matrix.shard }}
+          path: packages/coc/coverage/coverage-final.json
+          retention-days: 1
+
+  coc-coverage:
+    runs-on: ubuntu-latest
+    needs: [coc-test]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: 'npm'
+
+      - name: Download coc coverage shards
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coc-coverage-shard-*
+          path: packages/coc/coverage-shards/
+
+      - name: Aggregate sharded coverage into lcov.info
+        working-directory: packages/coc
+        run: |
+          set -euo pipefail
+          mkdir -p .nyc_output coverage
+          i=0
+          for f in coverage-shards/coc-coverage-shard-*/coverage-final.json; do
+            if [ -f "$f" ]; then
+              i=$((i+1))
+              cp "$f" ".nyc_output/shard-$i.json"
+              echo "==> Loaded shard $i from $f"
+            fi
+          done
+          if [ "$i" -eq 0 ]; then
+            echo "ERROR: no coverage-final.json shard inputs found under coverage-shards/" >&2
+            exit 1
+          fi
+          npx --yes nyc@15 report \
+            --temp-dir .nyc_output \
+            --report-dir coverage \
+            --reporter=lcov \
+            --reporter=cobertura \
+            --reporter=html \
+            --reporter=text
 
       - name: Generate diff coverage report
-        if: matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request'
-        run: bash ../../scripts/coverage-diff.sh origin/main || true
+        if: github.event_name == 'pull_request'
         working-directory: packages/coc
+        env:
+          SKIP_TESTS: '1'
+        run: bash ../../scripts/coverage-diff.sh origin/main || true
 
-      - name: Upload coc coverage report
-        if: matrix.os == 'ubuntu-latest'
+      - name: Upload merged coc coverage
         uses: actions/upload-artifact@v4
         with:
           name: coc-coverage
@@ -229,7 +285,7 @@ jobs:
 
   ci:
     runs-on: ubuntu-latest
-    needs: [lint, forge-test, coc-test, deep-wiki-test, extension-test]
+    needs: [lint, forge-test, coc-test, coc-coverage, deep-wiki-test, extension-test]
     if: always()
     steps:
       - name: Verify all required jobs succeeded
@@ -238,6 +294,7 @@ jobs:
             [lint]="${{ needs.lint.result }}"
             [forge-test]="${{ needs.forge-test.result }}"
             [coc-test]="${{ needs.coc-test.result }}"
+            [coc-coverage]="${{ needs.coc-coverage.result }}"
             [deep-wiki-test]="${{ needs.deep-wiki-test.result }}"
             [extension-test]="${{ needs.extension-test.result }}"
           )
