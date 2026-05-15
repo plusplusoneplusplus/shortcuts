@@ -819,6 +819,46 @@ describe('MultiRepoQueueRouter', () => {
     });
 
     // ========================================================================
+    // aggregate facade updateTask()
+    // ========================================================================
+
+    describe('aggregate facade updateTask', () => {
+        it('updates a task in the owning per-repo manager', () => {
+            const { bridge } = createBridge();
+            bridge.getOrCreateBridge('/repo/update-task');
+            const manager = bridge.registry.getQueueForRepo('/repo/update-task');
+            const taskId = manager.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: { kind: 'chat', mode: 'ask', prompt: 'old prompt' },
+                config: {},
+                displayName: 'old display',
+            });
+
+            const facade = bridge.createAggregateQueueFacade() as any;
+            const updated = facade.updateTask(taskId, {
+                displayName: 'new display',
+                payload: { kind: 'chat', mode: 'ask', prompt: 'new prompt' },
+            });
+
+            expect(updated).toBe(true);
+            expect(manager.getTask(taskId)?.displayName).toBe('new display');
+            expect(manager.getTask(taskId)?.payload).toMatchObject({ prompt: 'new prompt' });
+
+            bridge.dispose();
+        });
+
+        it('returns false for unknown tasks', () => {
+            const { bridge } = createBridge();
+            const facade = bridge.createAggregateQueueFacade() as any;
+
+            expect(facade.updateTask('missing-task', { displayName: 'ignored' })).toBe(false);
+
+            bridge.dispose();
+        });
+    });
+
+    // ========================================================================
     // enqueue() — workspaceId-to-rootPath routing
     // ========================================================================
 

@@ -74,7 +74,7 @@ interface CloseHandlerDeps {
     terminalSessionManager?: { destroyAll(): void };
     remoteServerConnector: { dispose(): void };
     autoPromoteScheduler?: { dispose(): void };
-    loopExecutor?: { shutdownAll(reason: string): void };
+    loopExecutor?: { shutdownAll(): void };
     loopInfraDispose?: () => void;
     activeSockets: Set<import('net').Socket>;
     server: http.Server;
@@ -95,7 +95,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         wikiManager?.disposeAll();
         scheduleManager.dispose();
         deps.scheduleInfraDispose();
-        deps.loopExecutor?.shutdownAll('server-restart');
+        deps.loopExecutor?.shutdownAll();
         deps.loopInfraDispose?.();
         gitInfoCache.dispose();
         deps.notesGitTimerManager.dispose();

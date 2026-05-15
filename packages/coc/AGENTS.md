@@ -34,3 +34,4 @@ Recurring follow-up subsystem in `src/server/loops/`. Separate from schedules.
 - **Infrastructure:** `infrastructure/loop-infrastructure.ts` wires store + executor + timer registry
 - **LLM tools:** `llm-tools/loop-tools.ts` — `createLoop`/`cancelLoop`/`listLoops` (skill-gated), `scheduleWakeup` (always available)
 - **Dashboard:** `LoopBadge`, `LoopManagementPanel`, turn source badges in `ConversationTurnBubble`
+- **Restart behavior:** active loops stay persisted as `active` on shutdown and are re-armed from `nextTickAt` on startup; manually paused/cancelled/expired loops stay inactive.

@@ -199,7 +199,7 @@ Creates a recurring loop. First tick fires after one full interval.
 ## Server Lifecycle
 
 - **Startup:** If `loops.enabled`, `LoopStore` and `LoopExecutor` are constructed. `executor.armAll()` restores timers for all active loops from the database.
-- **Shutdown:** `executor.shutdownAll('server-restart')` pauses all active loops with `pausedReason: 'server-restart'`. Loops do **not** auto-resume on restart (manual resume required via REST API or dashboard).
+- **Shutdown:** `executor.shutdownAll()` disarms in-memory timers without changing persisted loop state. Active loops remain `active` and are re-armed on the next startup from their persisted `nextTickAt`; overdue ticks fire immediately.
 - **Config toggle:** `loops.enabled` is editable at runtime via the admin API (`PUT /api/admin/config`). A server restart is required for the change to take effect (infrastructure is only constructed at startup).
 
 ## Feature Gating Summary
