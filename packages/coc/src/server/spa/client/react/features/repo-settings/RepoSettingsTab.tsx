@@ -18,6 +18,7 @@ import { CustomInstructionsPanel } from '../skills/CustomInstructionsPanel';
 import type { InstructionMode } from '../skills/CustomInstructionsPanel';
 import type { SettingsSection } from '../../types/dashboard';
 import type { RepoData } from '../../repos/repoGrouping';
+import type { EnDevXDpuActivationResponse } from '@plusplusoneplusplus/coc-client';
 import { RepoMemorySection } from '../memory/RepoMemorySection';
 import { useRepos } from '../../contexts/ReposContext';
 import { TasksSettingsSection } from './TasksSettingsSection';
@@ -234,6 +235,11 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
             addToast(e?.message ?? 'Failed to save linked repos', 'error');
         }
     };
+
+    const handleEnDevXDpuActivated = useCallback((result: EnDevXDpuActivationResponse) => {
+        setExtraSkillFolders(result.workspace.extraSkillFolders ?? []);
+        fetchSkills();
+    }, [fetchSkills]);
 
     // ── Instructions state ───────────────────────────────────────────────────
     const [instrContents, setInstrContents] = useState<Record<InstructionMode, string | null>>({
@@ -522,6 +528,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                         workspaceId={workspaceId}
                         rootPath={ws.rootPath || ''}
                         initialConfig={ws.endevXDpu}
+                        onActivated={handleEnDevXDpuActivated}
                     />
                 )}
                 {activeSection === 'instructions' && (

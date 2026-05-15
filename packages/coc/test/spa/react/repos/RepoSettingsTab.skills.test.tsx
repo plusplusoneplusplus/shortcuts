@@ -30,6 +30,7 @@ const mockClient = vi.hoisted(() => ({
         updateInstruction: vi.fn(),
         deleteInstruction: vi.fn(),
         update: vi.fn(),
+        discoverEnDevXDpu: vi.fn(),
     },
 }));
 
@@ -139,6 +140,26 @@ describe('RepoSettingsTab skill expansion', () => {
         mockClient.workspaces.updateInstruction.mockResolvedValue({ mode: 'base', content: '' });
         mockClient.workspaces.deleteInstruction.mockResolvedValue({ success: true });
         mockClient.workspaces.update.mockResolvedValue({ workspace: {} });
+        mockClient.workspaces.discoverEnDevXDpu.mockResolvedValue({
+            workspace: {
+                id: 'ws-1',
+                rootPath: '\\\\wsl$\\Ubuntu\\home\\xstore',
+                extraSkillFolders: ['\\\\wsl$\\Ubuntu\\home\\user\\.endev\\skills'],
+                endevXDpu: {
+                    enabled: true,
+                    wslDistro: 'Ubuntu',
+                    xstoreRepoRoot: '/home/xstore',
+                    mcpConfigPath: '/home/user/.endev/generated/.mcp.json',
+                },
+            },
+            wslDistro: 'Ubuntu',
+            xstoreRepoRoot: '/home/xstore',
+            pluginSkillFolder: '/home/user/.endev/skills',
+            extraSkillFolder: '\\\\wsl$\\Ubuntu\\home\\user\\.endev\\skills',
+            mcpConfigPath: '/home/user/.endev/generated/.mcp.json',
+            wrapperSkillPath: 'C:\\data\\skills\\EnDev-xDpu\\SKILL.md',
+            doctorOutput: 'endev doctor ok',
+        });
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({ base: null, ask: null, plan: null, autopilot: null }),
@@ -230,5 +251,58 @@ describe('RepoSettingsTab skill expansion', () => {
         expect(toggle.checked).toBe(false);
         expect(toggle.disabled).toBe(true);
         expect(screen.getByTestId('endev-xdpu-unsupported').textContent).toContain('not a WSL path');
+    });
+
+    it('saves dirty EnDev-xDpu settings before running discovery and refreshing skills', async () => {
+        await act(async () => {
+            await renderSettingsTab({
+                initialSection: 'endev-xdpu',
+                rootPath: '\\\\wsl$\\Ubuntu\\home\\xstore',
+                endevXDpu: { enabled: true, wslDistro: 'Ubuntu', xstoreRepoRoot: '/home/old-xstore' },
+            });
+        });
+        await waitFor(() => expect(mockClient.skills.listWorkspace).toHaveBeenCalledWith('ws-1'));
+        const initialSkillLoads = mockClient.skills.listWorkspace.mock.calls.length;
+
+        await act(async () => {
+            fireEvent.change(screen.getByTestId('endev-xdpu-root'), { target: { value: '/home/xstore' } });
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('endev-xdpu-discover'));
+        });
+
+        await waitFor(() => expect(mockClient.workspaces.update).toHaveBeenCalledWith('ws-1', {
+            endevXDpu: {
+                enabled: true,
+                wslDistro: 'Ubuntu',
+                xstoreRepoRoot: '/home/xstore',
+            },
+        }));
+        await waitFor(() => expect(mockClient.workspaces.discoverEnDevXDpu).toHaveBeenCalledWith('ws-1'));
+        await waitFor(() => expect(mockClient.skills.listWorkspace.mock.calls.length).toBeGreaterThan(initialSkillLoads));
+
+        expect(screen.getByTestId('endev-xdpu-discovery-success').textContent).toContain('funbird-mcp');
+        expect(screen.getByTestId('endev-xdpu-discovery-success').textContent).toContain('endev doctor output');
+        expect((screen.getByTestId('endev-xdpu-root') as HTMLInputElement).value).toBe('/home/xstore');
+    });
+
+    it('surfaces actionable EnDev-xDpu discovery errors', async () => {
+        mockClient.workspaces.discoverEnDevXDpu.mockRejectedValueOnce(
+            new Error('endev doctor failed in WSL. Open the WSL workspace terminal and run `endev doctor`.'),
+        );
+
+        await act(async () => {
+            await renderSettingsTab({
+                initialSection: 'endev-xdpu',
+                rootPath: '\\\\wsl$\\Ubuntu\\home\\xstore',
+                endevXDpu: { enabled: true, wslDistro: 'Ubuntu', xstoreRepoRoot: '/home/xstore' },
+            });
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('endev-xdpu-discover'));
+        });
+
+        await waitFor(() => expect(mockClient.workspaces.discoverEnDevXDpu).toHaveBeenCalledWith('ws-1'));
+        expect(screen.getByTestId('endev-xdpu-discovery-error').textContent).toContain('run `endev doctor`');
     });
 });

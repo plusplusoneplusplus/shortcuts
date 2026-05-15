@@ -21,6 +21,17 @@ export interface EnDevXDpuWorkspaceConfig {
   mcpConfigPath?: string;
 }
 
+export interface EnDevXDpuActivationResponse {
+  workspace: WorkspaceInfo;
+  wslDistro: string;
+  xstoreRepoRoot: string;
+  pluginSkillFolder: string;
+  extraSkillFolder: string;
+  mcpConfigPath?: string;
+  wrapperSkillPath: string;
+  doctorOutput: string;
+}
+
 export interface WorkspaceMcpServerEntry {
   name: string;
   type: string;

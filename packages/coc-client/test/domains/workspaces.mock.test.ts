@@ -68,6 +68,37 @@ describe('WorkspacesClient mock server contract', () => {
     expectJsonRequest(mock.requests[4], 'POST', '/api/git-info/batch', { workspaceIds: ['repo/a space%雪'] });
   });
 
+  it('calls the workspace-scoped EnDev-xDpu discovery route', async () => {
+    mock = await startMockServer();
+    const response = {
+      workspace: mockWorkspace({
+        id: 'repo/endev',
+        name: 'EnDev Repo',
+        rootPath: '\\\\wsl$\\Ubuntu\\home\\xstore',
+        extraSkillFolders: ['\\\\wsl$\\Ubuntu\\home\\.endev\\skills'],
+        endevXDpu: {
+          enabled: true,
+          wslDistro: 'Ubuntu',
+          xstoreRepoRoot: '/home/xstore',
+          mcpConfigPath: '/home/user/.endev/generated/.mcp.json',
+        },
+      }),
+      wslDistro: 'Ubuntu',
+      xstoreRepoRoot: '/home/xstore',
+      pluginSkillFolder: '/home/user/.endev/skills',
+      extraSkillFolder: '\\\\wsl$\\Ubuntu\\home\\.endev\\skills',
+      mcpConfigPath: '/home/user/.endev/generated/.mcp.json',
+      wrapperSkillPath: 'C:\\data\\skills\\EnDev-xDpu\\SKILL.md',
+      doctorOutput: 'endev doctor ok',
+    };
+    mock.on('POST', '/api/workspaces/repo%2Fendev/endev-xdpu/discover', { body: response });
+    const client = createClient(mock);
+
+    await expect(client.workspaces.discoverEnDevXDpu('repo/endev')).resolves.toEqual(response);
+
+    expectEmptyJsonRequest(mock.requests[0], 'POST', '/api/workspaces/repo%2Fendev/endev-xdpu/discover');
+  });
+
   it('sends register, update, delete, and history deletion shapes exactly', async () => {
     mock = await startMockServer();
     const registered: WorkspaceInfo = {

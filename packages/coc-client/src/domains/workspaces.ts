@@ -4,6 +4,7 @@ import type {
   DeleteWorkspaceHistoryFilters,
   DeleteWorkspaceOptions,
   DiscoverWorkspacesResponse,
+  EnDevXDpuActivationResponse,
   GitInfoBatchResponse,
   GitInfoResponse,
   MyLifeSummaryResponse,
@@ -82,6 +83,13 @@ export class WorkspacesClient {
 
   discover(path: string): Promise<DiscoverWorkspacesResponse> {
     return this.transport.request<DiscoverWorkspacesResponse>('/workspaces/discover', { query: { path } });
+  }
+
+  discoverEnDevXDpu(workspaceId: string): Promise<EnDevXDpuActivationResponse> {
+    return this.transport.request<EnDevXDpuActivationResponse>(
+      `/workspaces/${encodePathSegment(workspaceId)}/endev-xdpu/discover`,
+      { method: 'POST' },
+    );
   }
 
   browseFolders(path: string, options?: BrowseWorkspaceFoldersOptions): Promise<BrowseWorkspaceFoldersResponse> {
