@@ -39,6 +39,10 @@ Recurring follow-up subsystem in `src/server/loops/`. Separate from schedules.
 
 Workspace settings can persist an optional `WorkspaceInfo.endevXDpu` object for
 the disabled-by-default `EnDev-xDpu` integration. The dashboard settings surface
-stores only the enablement flag, WSL distro, and xStore WSL repo root at this
-stage; MCP bridging and EnDev discovery must remain workspace-scoped and must not
-mutate Windows `~/.copilot/mcp-config.json`.
+stores only the enablement flag, WSL distro, and xStore WSL repo root.
+`POST /api/workspaces/:id/endev-xdpu/discover` runs `endev doctor` in WSL,
+discovers EnDev plugin skills, installs the generated global `EnDev-xDpu`
+wrapper skill under `~/.coc/skills`, and appends the discovered plugin skills
+folder to the workspace `extraSkillFolders`. MCP bridging and EnDev discovery
+must remain workspace-scoped and must not mutate Windows
+`~/.copilot/mcp-config.json`.

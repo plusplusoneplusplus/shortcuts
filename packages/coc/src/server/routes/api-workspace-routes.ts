@@ -18,6 +18,8 @@ import { gitCache } from '../git/git-cache';
 import { gitInfoCache, type GitInfoResult } from '../git/git-info-cache';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
+import { activateEnDevXDpuWorkspace, EnDevXDpuSetupError } from '../endev/endev-xdpu';
+import { skillCache } from '../skills/skill-handler';
 import {
     readEffectiveDisabledLlmTools,
     readGlobalPreferences,
@@ -295,6 +297,33 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, notFound('Workspace'));
             }
             sendJSON(res, 200, { workspace: updated });
+        },
+    });
+
+    // POST /api/workspaces/:id/endev-xdpu/discover — Validate EnDev in WSL and wire discovered skills
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/endev-xdpu\/discover$/,
+        handler: async (_req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            if (!ctx.dataDir) {
+                return handleAPIError(res, badRequest('dataDir not configured'));
+            }
+
+            try {
+                const result = await activateEnDevXDpuWorkspace(store, ws, ctx.dataDir);
+                skillCache.delete(ws.id);
+                sendJSON(res, 200, result);
+            } catch (error) {
+                if (error instanceof EnDevXDpuSetupError) {
+                    return handleAPIError(res, badRequest(error.message, {
+                        code: error.code,
+                        ...(error.details ? { details: error.details } : {}),
+                    }));
+                }
+                return handleAPIError(res, error);
+            }
         },
     });
 
