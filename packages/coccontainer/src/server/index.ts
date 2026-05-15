@@ -22,6 +22,20 @@ export interface ContainerServer {
     close(): void;
 }
 
+export interface ContainerServerOptions {
+    /**
+     * Override the dashboard HTML renderer (for tests).
+     * The default reads coc's compiled `generateDashboardHtml` from its `dist/` folder.
+     */
+    htmlRenderer?: () => string;
+    /**
+     * Skip the eager HTML render probe performed during server creation.
+     * Default `false`. Tests use this to simulate request-time render failures
+     * without aborting startup.
+     */
+    skipHtmlPrecheck?: boolean;
+}
+
 // ── CoC SPA HTML reuse ──────────────────────────────────
 
 /**
@@ -35,25 +49,52 @@ function getCocHtmlTemplate(): { generateDashboardHtml: (opts?: Record<string, u
     return require(templatePath);
 }
 
-let cachedHtml: string | null = null;
-
-function generateContainerHtml(): string {
-    if (cachedHtml) return cachedHtml;
-    const { generateDashboardHtml } = getCocHtmlTemplate();
-    cachedHtml = generateDashboardHtml({
-        title: 'CoCContainer',
-        containerMode: true,
-        // Container doesn't run terminal/notes/wiki locally — agents provide those
-        terminalEnabled: false,
-        notesEnabled: false,
-        workflowsEnabled: false,
-    });
-    return cachedHtml;
+/**
+ * Build the default dashboard renderer. Loads coc's compiled template lazily
+ * (on first invocation) and caches the rendered HTML.
+ */
+function createDefaultHtmlRenderer(): () => string {
+    let cachedHtml: string | null = null;
+    let generator: ((opts?: Record<string, unknown>) => string) | null = null;
+    return () => {
+        if (cachedHtml !== null) return cachedHtml;
+        if (generator === null) {
+            const tpl = getCocHtmlTemplate();
+            generator = tpl.generateDashboardHtml;
+        }
+        cachedHtml = generator({
+            title: 'CoCContainer',
+            containerMode: true,
+            // Container doesn't run terminal/notes/wiki locally — agents provide those
+            terminalEnabled: false,
+            notesEnabled: false,
+            workflowsEnabled: false,
+        });
+        return cachedHtml;
+    };
 }
 
 // ── Server factory ──────────────────────────────────────
 
-export async function createContainerServer(config: ResolvedContainerConfig): Promise<ContainerServer> {
+export async function createContainerServer(
+    config: ResolvedContainerConfig,
+    options: ContainerServerOptions = {},
+): Promise<ContainerServer> {
+    const renderHtml = options.htmlRenderer ?? createDefaultHtmlRenderer();
+
+    if (!options.skipHtmlPrecheck) {
+        try {
+            renderHtml();
+        } catch (err) {
+            const reason = err instanceof Error ? err.message : String(err);
+            throw new Error(
+                "coccontainer cannot render the dashboard HTML. Make sure the 'coc' package is built " +
+                "('npm run build -w packages/coc' from repo root, or rerun the coccontainer serve loop script). " +
+                `Underlying error: ${reason}`,
+            );
+        }
+    }
+
     const agentStore = createAgentStore(config.serve.dataDir);
     const tunnelBridge = new TunnelBridge({ basePort: config.tunnelBridgeBasePort });
     const sseRelay = new SSERelay();
@@ -257,8 +298,9 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
 
             // ── Dashboard SPA (CoC bundle with containerMode) ───
             if (url.pathname === '/' || url.pathname === '/index.html') {
+                const html = renderHtml();
                 res.writeHead(200, { 'Content-Type': 'text/html' });
-                return res.end(generateContainerHtml());
+                return res.end(html);
             }
 
             // 404

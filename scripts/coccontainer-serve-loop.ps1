@@ -43,11 +43,24 @@ function Build-CocContainer {
             return $false
         }
         Write-Host "`n=== Building coccontainer packages ===" -ForegroundColor Cyan
-        # Build forge → coccontainer, then npm link
+        # Build order: forge -> coc-client -> coc -> coccontainer.
+        # `coc` must be built (full `npm run build`, not just `build:client`) so
+        # `packages/coc/dist/server/spa/html-template.js` exists. coccontainer's
+        # request handler requires that file at runtime to serve the dashboard.
         Push-Location (Join-Path $repoRoot "packages\forge")
         npm run build
         if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Host "forge build failed" -ForegroundColor Red; return $false }
         npm link
+        Pop-Location
+
+        Push-Location (Join-Path $repoRoot "packages\coc-client")
+        npm run build
+        if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Host "coc-client build failed" -ForegroundColor Red; return $false }
+        Pop-Location
+
+        Push-Location (Join-Path $repoRoot "packages\coc")
+        npm run build
+        if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Host "coc build failed" -ForegroundColor Red; return $false }
         Pop-Location
 
         Push-Location (Join-Path $repoRoot "packages\coccontainer")

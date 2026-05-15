@@ -54,14 +54,20 @@ build_coccontainer() {
     npm install || { echo -e "\033[31mnpm install failed\033[0m"; return 1; }
 
     echo -e "\n\033[36m=== Building coccontainer packages ===\033[0m"
+    # Build order: forge -> coc-client -> coc -> coccontainer.
+    # `coc` must run its full `npm run build` (not just `build:client`) so
+    # `packages/coc/dist/server/spa/html-template.js` exists. coccontainer's
+    # request handler requires that file at runtime to serve the dashboard.
 
     cd "$REPO_ROOT/packages/forge"
     npm run build || { echo -e "\033[31mforge build failed\033[0m"; return 1; }
     npm link
 
+    cd "$REPO_ROOT/packages/coc-client"
+    npm run build || { echo -e "\033[31mcoc-client build failed\033[0m"; return 1; }
+
     cd "$REPO_ROOT/packages/coc"
-    npm run build:client || { echo -e "\033[31mcoc client build failed\033[0m"; return 1; }
-    npm run build:copy-client || { echo -e "\033[31mcoc copy-client failed\033[0m"; return 1; }
+    npm run build || { echo -e "\033[31mcoc build failed\033[0m"; return 1; }
 
     cd "$REPO_ROOT/packages/coccontainer"
     npm run build || { echo -e "\033[31mcoccontainer build failed\033[0m"; return 1; }

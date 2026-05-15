@@ -12,7 +12,7 @@ import {
     useCallback,
     type ReactNode,
 } from 'react';
-import { isContainerMode, getRawApiBase, setServerAuthAgents } from '../utils/config';
+import { isContainerMode, getRawApiBase } from '../utils/config';
 
 /** Fetch from container-level endpoints (not agent-proxied). */
 async function fetchContainerApi(path: string, options?: RequestInit): Promise<any> {
@@ -60,8 +60,6 @@ export function ContainerAgentProvider({ children }: { children: ReactNode }) {
             const data = await fetchContainerApi('/container/agents');
             const list: ContainerAgent[] = Array.isArray(data) ? data : [];
             setAgents(list);
-            // Register which agents have server-side tunnel auth
-            setServerAuthAgents(list.filter(a => !!a.tunnelId).map(a => a.id));
         } catch {
             setAgents([]);
         }
