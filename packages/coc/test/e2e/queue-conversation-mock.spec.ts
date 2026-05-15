@@ -386,9 +386,11 @@ test.describe('Mock AI: Streaming Content', () => {
     }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'mock-stream-2');
         try {
-            // Use a direct mock with intentional delays so SSE can connect
+            // Use a direct mock with intentional delays so SSE can connect.
+            // The initial delay must be long enough for the page to load and
+            // observe the "running" state before the mock completes.
             mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
-                await new Promise((r) => setTimeout(r, 2500));
+                await new Promise((r) => setTimeout(r, 8000));
                 if (opts && opts.onStreamingChunk) {
                     opts.onStreamingChunk('Hello');
                     await new Promise((r) => setTimeout(r, 300));
@@ -410,8 +412,8 @@ test.describe('Mock AI: Streaming Content', () => {
             // Streaming indicator should appear during in-flight period
             await expect(page.locator('.streaming-indicator')).toBeVisible({ timeout: 5_000 });
 
-            // Wait until the task finishes
-            await waitForTaskStatus(serverUrl, taskId, ['completed', 'failed']);
+            // Wait until the task finishes (longer timeout due to 8s mock delay)
+            await waitForTaskStatus(serverUrl, taskId, ['completed', 'failed'], 15_000);
 
             // Navigate away then back to force a fresh conversation load
             await page.goto(`${serverUrl}/`);
