@@ -45,9 +45,12 @@ discovers EnDev plugin skills, installs the generated global `EnDev-xDpu`
 wrapper skill under `~/.coc/skills`, and appends the discovered plugin skills
 folder to the workspace `extraSkillFolders`. The dashboard EnDev-xDpu settings
 section can save dirty WSL fields, call discovery, surface setup errors, and
-refresh workspace skills after success. Discovery also records EnDev's WSL MCP
-config path. Enabled WSL workspaces bridge only EnDev's `funbird-mcp` server
-into CoC chat sessions by spawning `wsl.exe` per SDK request. `coc run
+refresh workspace skills after success. Discovery searches standard xStore and
+EnDev source/generated layouts, including `~/.endev/source/.../plugin/skills`
+and `.mcp.json` or `.vscode/mcp.json` files, and records EnDev's WSL MCP config
+path. Enabled WSL workspaces bridge only EnDev's `funbird-mcp` server into CoC
+chat sessions by spawning `wsl.exe` per SDK request, defaulting to all funbird
+tools when EnDev's generated config omits a tool filter. `coc run
 --workspace-root <root>` also resolves the matching workspace's
 `extraSkillFolders` for workflow `skill`/`skills` prompt injection and bridges
 the workspace EnDev MCP server for workflow AI nodes. MCP bridging and EnDev

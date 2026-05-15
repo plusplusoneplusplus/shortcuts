@@ -218,51 +218,80 @@ set -u
 root=${root}
 required='${required}'
 has_required() {
-  dir="$1"
-  [ -d "$dir" ] || return 1
-  for skill in $required; do
-    [ -f "$dir/$skill/SKILL.md" ] || return 1
+  dir="\\$1"
+  [ -d "\\$dir" ] || return 1
+  for skill in \\$required; do
+    [ -f "\\$dir/\\$skill/SKILL.md" ] || return 1
   done
   return 0
 }
+has_funbird_mcp() {
+  file="\\$1"
+  [ -f "\\$file" ] && grep -q '${ENDEV_XDPU_MCP_SERVER_NAME}' "\\$file"
+}
 print_first_skills_dir() {
-  for dir in "$@"; do
-    if has_required "$dir"; then
-      printf 'SKILLS=%s\\n' "$dir"
+  for dir in "\\$@"; do
+    if has_required "\\$dir"; then
+      printf 'SKILLS=%s\\n' "\\$dir"
       return 0
     fi
   done
   return 1
 }
 if ! print_first_skills_dir \
-  "$root/Developer/private/EnDpuDev/plugin/skills" \
-  "$root/.endev/plugin/skills" \
-  "$HOME/.endev/mcp-servers/node_modules/funbird-mcp/skills" \
-  "$HOME/.endev/generated/skills"; then
+  "\\$root/Developer/private/EnDpuDev/plugin/skills" \
+  "\\$root/.endev/plugin/skills" \
+  "\\$HOME/.endev/source/plugin/skills" \
+  "\\$HOME/.endev/mcp-servers/node_modules/funbird-mcp/skills" \
+  "\\$HOME/.endev/generated/skills"; then
   found="$(
-    for base in "$root" "$HOME/.endev"; do
-      [ -e "$base" ] || continue
-      find "$base" -maxdepth 8 -path '*/dpu-log-triage/SKILL.md' -print 2>/dev/null
+    for base in "\\$HOME/.endev/source" "\\$HOME/.endev" "\\$root"; do
+      [ -e "\\$base" ] || continue
+      find "\\$base" -maxdepth 16 -type f -path '*/dpu-log-triage/SKILL.md' -print 2>/dev/null
     done | while IFS= read -r marker; do
-      dir="$(dirname "$(dirname "$marker")")"
-      if has_required "$dir"; then
-        printf '%s\\n' "$dir"
+      dir="$(dirname "$(dirname "\\$marker")")"
+      if has_required "\\$dir"; then
+        printf '%s\\n' "\\$dir"
         break
       fi
     done
   )"
-  if [ -z "$found" ]; then
-    printf 'ERROR=Could not locate EnDev plugin skills containing %s. Run endev doctor in the WSL workspace and ensure the EnDev plugin is installed.\\n' "$required"
+  if [ -z "\\$found" ]; then
+    printf 'ERROR=Could not locate EnDev plugin skills containing %s. Run endev doctor in the WSL workspace and ensure the EnDev plugin is installed.\\n' "\\$required"
     exit 21
   fi
-  printf 'SKILLS=%s\\n' "$found"
+  printf 'SKILLS=%s\\n' "\\$found"
 fi
-for file in "$HOME/.endev/generated/.mcp.json" "$HOME/.endev/source/.vscode/mcp.json"; do
-  if [ -f "$file" ] && grep -q 'funbird-mcp' "$file"; then
-    printf 'MCP=%s\\n' "$file"
-    break
+print_first_mcp_config() {
+  for file in "\\$@"; do
+    if has_funbird_mcp "\\$file"; then
+      printf 'MCP=%s\\n' "\\$file"
+      return 0
+    fi
+  done
+  return 1
+}
+if ! print_first_mcp_config \
+  "\\$HOME/.endev/generated/.mcp.json" \
+  "\\$HOME/.endev/source/.mcp.json" \
+  "\\$HOME/.endev/source/.vscode/mcp.json" \
+  "\\$root/.mcp.json" \
+  "\\$root/.vscode/mcp.json"; then
+  found_mcp="$(
+    for base in "\\$HOME/.endev/source" "\\$HOME/.endev" "\\$root"; do
+      [ -e "\\$base" ] || continue
+      find "\\$base" -maxdepth 16 -type f \\( -name '.mcp.json' -o -path '*/.vscode/mcp.json' \\) -print 2>/dev/null
+    done | while IFS= read -r file; do
+      if has_funbird_mcp "\\$file"; then
+        printf '%s\\n' "\\$file"
+        break
+      fi
+    done
+  )"
+  if [ -n "\\$found_mcp" ]; then
+    printf 'MCP=%s\\n' "\\$found_mcp"
   fi
-done
+fi
 `;
 }
 
@@ -308,7 +337,10 @@ function buildMcpConfigReadScript(mcpConfigPath: string | undefined): string {
     const candidates = [
         ...(mcpConfigPath ? [mcpConfigPath] : []),
         '$HOME/.endev/generated/.mcp.json',
+        '$HOME/.endev/source/.mcp.json',
         '$HOME/.endev/source/.vscode/mcp.json',
+        './.mcp.json',
+        './.vscode/mcp.json',
     ];
     const seen = new Set<string>();
     const tests = candidates
@@ -319,20 +351,43 @@ function buildMcpConfigReadScript(mcpConfigPath: string | undefined): string {
             return true;
         })
         .map(candidate => candidate.startsWith('$HOME/')
-            ? `"${candidate}"`
+            ? `"${candidate.replace(/^\$HOME\//, '\\$HOME/')}"`
             : shellQuote(normalizeLinuxPath(candidate)));
 
     return `
 set -u
+has_funbird_mcp() {
+  file="\\$1"
+  [ -f "\\$file" ] && grep -q '${ENDEV_XDPU_MCP_SERVER_NAME}' "\\$file"
+}
+print_mcp_json() {
+  file="\\$1"
+  printf 'MCP=%s\\n' "\\$file"
+  printf 'JSON_BEGIN\\n'
+  cat "\\$file"
+  printf '\\nJSON_END\\n'
+}
 for file in ${tests.join(' ')}; do
-  if [ -f "$file" ] && grep -q '${ENDEV_XDPU_MCP_SERVER_NAME}' "$file"; then
-    printf 'MCP=%s\\n' "$file"
-    printf 'JSON_BEGIN\\n'
-    cat "$file"
-    printf '\\nJSON_END\\n'
+  if has_funbird_mcp "\\$file"; then
+    print_mcp_json "\\$file"
     exit 0
   fi
 done
+found_mcp="$(
+  for base in "\\$HOME/.endev/source" "\\$HOME/.endev" "."; do
+    [ -e "\\$base" ] || continue
+    find "\\$base" -maxdepth 16 -type f \\( -name '.mcp.json' -o -path '*/.vscode/mcp.json' \\) -print 2>/dev/null
+  done | while IFS= read -r file; do
+    if has_funbird_mcp "\\$file"; then
+      printf '%s\\n' "\\$file"
+      break
+    fi
+  done
+)"
+if [ -n "\\$found_mcp" ]; then
+  print_mcp_json "\\$found_mcp"
+  exit 0
+fi
 printf 'ERROR=Could not locate EnDev generated MCP config containing ${ENDEV_XDPU_MCP_SERVER_NAME}. Run endev doctor in the WSL workspace.\\n'
 exit 22
 `;
@@ -511,7 +566,7 @@ function bridgeMcpServerThroughWsl(
     };
 
     return {
-        ...('tools' in config && config.tools ? { tools: config.tools } : {}),
+        tools: config.tools ?? ['*'],
         ...(config.timeout !== undefined ? { timeout: config.timeout } : {}),
         ...(config.enabled !== undefined ? { enabled: config.enabled } : {}),
         type: config.type === 'local' ? 'local' : 'stdio',

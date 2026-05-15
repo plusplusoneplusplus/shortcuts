@@ -137,6 +137,43 @@ describe('EnDev-xDpu activation', () => {
         expect(wrapper).toContain('Do not run this path in CI, unit tests, or automated workflow validation.');
     });
 
+    it('searches EnDev source plugin skill and MCP layouts during activation', async () => {
+        const store = new FileProcessStore({ dataDir });
+        const workspace: WorkspaceInfo = {
+            id: 'ws-endev-source-layout',
+            name: 'xStore WSL',
+            rootPath: String.raw`\\wsl$\Ubuntu\home\user\xstore`,
+            endevXDpu: { enabled: true },
+        };
+        await store.registerWorkspace(workspace);
+        const runner = vi.fn<EnDevXDpuWslCommandRunner>(async (req) => {
+            if (req.command === 'endev doctor') {
+                return { exitCode: 0, stdout: 'endev doctor ok\n', stderr: '' };
+            }
+            expect(req.command).toContain('"\\$HOME/.endev/source"');
+            expect(req.command).toContain('"\\$root/Developer/private/EnDpuDev/plugin/skills"');
+            expect(req.command).toContain('for skill in \\$required; do');
+            expect(req.command).toContain("'*/dpu-log-triage/SKILL.md'");
+            expect(req.command).toContain("-name '.mcp.json'");
+            expect(req.command).toContain("'*/.vscode/mcp.json'");
+            return {
+                exitCode: 0,
+                stdout: [
+                    'SKILLS=/home/user/.endev/source/worktrees/xstore/Developer/private/EnDpuDev/plugin/skills',
+                    'MCP=/home/user/.endev/source/worktrees/xstore/.mcp.json',
+                    '',
+                ].join('\n'),
+                stderr: '',
+            };
+        });
+
+        const result = await activateEnDevXDpuWorkspace(store, workspace, dataDir, runner);
+
+        expect(result.pluginSkillFolder).toBe('/home/user/.endev/source/worktrees/xstore/Developer/private/EnDpuDev/plugin/skills');
+        expect(result.mcpConfigPath).toBe('/home/user/.endev/source/worktrees/xstore/.mcp.json');
+        expect(result.extraSkillFolder).toBe(String.raw`\\wsl$\Ubuntu\home\user\.endev\source\worktrees\xstore\Developer\private\EnDpuDev\plugin\skills`);
+    });
+
     it('does not duplicate an existing discovered plugin skill folder', async () => {
         const store = new FileProcessStore({ dataDir });
         const extraSkillFolder = String.raw`\\wsl$\Ubuntu\home\user\xstore\Developer\private\EnDpuDev\plugin\skills`;
@@ -227,6 +264,53 @@ describe('EnDev-xDpu activation', () => {
         });
     });
 
+    it('searches source and workspace MCP config fallbacks when no path was persisted', async () => {
+        const workspace: WorkspaceInfo = {
+            id: 'ws-endev-source-mcp',
+            name: 'xStore WSL',
+            rootPath: String.raw`\\wsl$\Ubuntu\home\user\xstore`,
+            endevXDpu: {
+                enabled: true,
+                wslDistro: 'Ubuntu',
+                xstoreRepoRoot: '/home/user/xstore',
+            },
+        };
+        const runner = vi.fn<EnDevXDpuWslCommandRunner>(async (req) => {
+            expect(req.command).toContain('"\\$HOME/.endev/source/.mcp.json"');
+            expect(req.command).toContain("'./.mcp.json'");
+            expect(req.command).toContain('file="\\$1"');
+            expect(req.command).toContain('has_funbird_mcp "\\$file"');
+            expect(req.command).toContain("-name '.mcp.json'");
+            expect(req.command).toContain("'*/.vscode/mcp.json'");
+            return {
+                exitCode: 0,
+                stdout: [
+                    'MCP=/home/user/.endev/source/worktrees/xstore/.mcp.json',
+                    'JSON_BEGIN',
+                    JSON.stringify({
+                        mcpServers: {
+                            [ENDEV_XDPU_MCP_SERVER_NAME]: {
+                                command: 'funbird-mcp',
+                                args: ['serve'],
+                            },
+                        },
+                    }),
+                    'JSON_END',
+                    '',
+                ].join('\n'),
+                stderr: '',
+            };
+        });
+
+        const servers = await resolveEnDevXDpuMcpServers(workspace, runner);
+
+        expect(servers?.[ENDEV_XDPU_MCP_SERVER_NAME]).toEqual(expect.objectContaining({
+            command: path.win32.join(process.env.SystemRoot!, 'System32', 'wsl.exe'),
+            args: ['-d', 'Ubuntu', '--cd', '/home/user/xstore', '--', 'funbird-mcp', 'serve'],
+            tools: ['*'],
+        }));
+    });
+
     it('supports VS Code-style EnDev MCP config shape and bridges Linux env/cwd in WSL', async () => {
         const workspace: WorkspaceInfo = {
             id: 'ws-endev-vscode-mcp',
@@ -261,6 +345,9 @@ describe('EnDev-xDpu activation', () => {
         expect(bridged?.args.slice(4, 7)).toEqual(['--', 'sh', '-lc']);
         expect(bridged?.args[7]).toContain("cd '/home/user/.endev/mcp-servers/funbird' && FUNBIRD_MODE='xstore'");
         expect(bridged?.args[7]).toContain("'python3' '-m' 'funbird_mcp'");
+        expect(servers?.[ENDEV_XDPU_MCP_SERVER_NAME]).toEqual(expect.objectContaining({
+            tools: ['*'],
+        }));
     });
 
     it('rejects non-WSL workspace roots before running EnDev commands', async () => {
