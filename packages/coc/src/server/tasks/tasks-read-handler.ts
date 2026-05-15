@@ -11,6 +11,7 @@
 import * as url from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import type { ProcessStore, TaskFolder } from '@plusplusoneplusplus/forge';
 import { isWithinDirectory } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from '../core/api-handler';
@@ -43,19 +44,36 @@ async function realpathIfExists(p: string): Promise<string | null> {
     }
 }
 
+function stripFileScheme(input: string): { path?: string; status?: number; message?: string } {
+    if (!input.toLowerCase().startsWith('file://')) {
+        return { path: input };
+    }
+
+    try {
+        return { path: url.fileURLToPath(input) };
+    } catch {
+        return { status: 400, message: 'Invalid path' };
+    }
+}
+
 async function resolveAllowedHtmlPath(filePath: string, ws: { id: string; rootPath: string }, dataDir: string): Promise<{ path?: string; status?: number; message?: string }> {
-    const requestedPath = filePath.split(/[?#]/, 1)[0];
+    const parsedPath = stripFileScheme(filePath);
+    if (!parsedPath.path) {
+        return { status: parsedPath.status, message: parsedPath.message };
+    }
+
+    const requestedPath = parsedPath.path.split(/[?#]/, 1)[0];
     if (!HTML_EMBED_TYPES.has(path.extname(requestedPath).toLowerCase())) {
         return { status: 415, message: 'Unsupported HTML type' };
     }
 
     const wsRoot = path.resolve(ws.rootPath);
     const outputsRoot = getRepoDataPath(dataDir, ws.id, 'outputs');
-    const candidate = path.isAbsolute(filePath)
+    const candidate = path.isAbsolute(requestedPath)
         ? path.resolve(requestedPath)
         : path.resolve(wsRoot, requestedPath);
 
-    if (!path.isAbsolute(filePath) && !isWithinDirectory(candidate, wsRoot)) {
+    if (!path.isAbsolute(requestedPath) && !isWithinDirectory(candidate, wsRoot)) {
         return { status: 403, message: 'Access denied: path is outside workspace' };
     }
 
@@ -74,6 +92,11 @@ async function resolveAllowedHtmlPath(filePath: string, ws: { id: string; rootPa
 
     const realOutputsRoot = await realpathIfExists(outputsRoot);
     if (realOutputsRoot && isWithinDirectory(realCandidate, realOutputsRoot)) {
+        return { path: realCandidate };
+    }
+
+    const realTmpRoot = await fs.promises.realpath(os.tmpdir());
+    if (isWithinDirectory(realCandidate, realTmpRoot)) {
         return { path: realCandidate };
     }
 
