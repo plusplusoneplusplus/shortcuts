@@ -35,6 +35,19 @@ export interface CommentThread {
     };
 }
 
+/** Shape of a single commit as returned by the /api/repos/:id/pull-requests/:prId/commits endpoint. */
+export interface PullRequestCommit {
+    id: string;
+    shortId: string;
+    message: string;
+    subject: string;
+    author?: { displayName?: string; email?: string; avatarUrl?: string };
+    committer?: { displayName?: string; email?: string; avatarUrl?: string };
+    authoredAt?: string;
+    committedAt?: string;
+    url?: string;
+}
+
 /** Shape of a pull request as returned by the /api/repos/:id/pull-requests endpoint. */
 export interface PullRequest {
     id: number | string;

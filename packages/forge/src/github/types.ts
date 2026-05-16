@@ -56,6 +56,24 @@ export interface GitHubComment {
     side?: 'RIGHT' | 'LEFT' | null;
 }
 
+/**
+ * Minimal shape of a commit returned by `GET /repos/{owner}/{repo}/pulls/{pull_number}/commits`.
+ * Only the fields the adapter actually consumes are listed here.
+ */
+export interface GitHubPullRequestCommit {
+    sha: string;
+    html_url?: string;
+    commit: {
+        message: string;
+        author?: { name?: string | null; email?: string | null; date?: string | null } | null;
+        committer?: { name?: string | null; email?: string | null; date?: string | null } | null;
+    };
+    /** Linked GitHub user for the author, when known. May be null for unmatched commits. */
+    author?: GitHubUser | null;
+    /** Linked GitHub user for the committer, when known. */
+    committer?: GitHubUser | null;
+}
+
 export interface GitHubIssue {
     id: number;
     number: number;

@@ -62,6 +62,22 @@ const mockAdoCommit = {
     remoteUrl: 'https://dev.azure.com/org/proj/_git/repo/commit/abcdef1234567890',
 };
 
+const mockAdoCommit = {
+    commitId: 'abc1234deadbeef0000000000000000000000000',
+    comment: 'feat: stream JSONL parser\n\nMore details.',
+    author: {
+        name: 'Alice',
+        email: 'alice@example.com',
+        date: new Date('2024-01-04T12:34:56Z'),
+    },
+    committer: {
+        name: 'Alice',
+        email: 'alice@example.com',
+        date: new Date('2024-01-04T12:34:56Z'),
+    },
+    remoteUrl: 'https://dev.azure.com/org/proj/_git/repo/commit/abc1234',
+};
+
 function makeMockService(overrides: Partial<Record<string, ReturnType<typeof vi.fn>>> = {}): AdoPullRequestsService {
     return {
         listPullRequests: vi.fn().mockResolvedValue([mockAdoPr]),
@@ -76,6 +92,7 @@ function makeMockService(overrides: Partial<Record<string, ReturnType<typeof vi.
         getPullRequestIterations: vi.fn().mockResolvedValue([]),
         getPullRequestIterationChanges: vi.fn().mockResolvedValue({ changeEntries: [] }),
         getFileContent: vi.fn().mockResolvedValue(''),
+        getPullRequestCommits: vi.fn().mockResolvedValue([mockAdoCommit]),
         ...overrides,
     } as unknown as AdoPullRequestsService;
 }
@@ -520,6 +537,43 @@ describe('AdoPullRequestsAdapter', () => {
             expect(diff).toBe('');
             const warnCalls = (mockLogger.warn as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
             expect(warnCalls.some(m => m.includes('getDiff failed') && m.includes('network timeout'))).toBe(true);
+        });
+    });
+
+    // ── getCommits ───────────────────────────────────────────
+
+    describe('getCommits', () => {
+        it('maps ADO commits to canonical PullRequestCommit', async () => {
+            const commits = await adapter.getCommits('repo-id', 42);
+            expect(commits).toHaveLength(1);
+            const commit = commits[0];
+            expect(commit.id).toBe('abc1234deadbeef0000000000000000000000000');
+            expect(commit.shortId).toBe('abc1234');
+            expect(commit.subject).toBe('feat: stream JSONL parser');
+            expect(commit.message).toBe('feat: stream JSONL parser\n\nMore details.');
+            expect(commit.author.displayName).toBe('Alice');
+            expect(commit.author.email).toBe('alice@example.com');
+            expect(commit.committer?.displayName).toBe('Alice');
+            expect(commit.authoredAt).toEqual(new Date('2024-01-04T12:34:56Z'));
+            expect(commit.committedAt).toEqual(new Date('2024-01-04T12:34:56Z'));
+            expect(commit.url).toBe('https://dev.azure.com/org/proj/_git/repo/commit/abc1234');
+            expect(service.getPullRequestCommits).toHaveBeenCalledWith('repo-id', 42, 'my-project');
+        });
+
+        it('uses constructor repo override instead of repositoryId', async () => {
+            const svc = makeMockService();
+            const adapterWithRepo = new AdoPullRequestsAdapter(svc, 'my-project', 'my-repo');
+            await adapterWithRepo.getCommits('ws-48cyxk', 99);
+            expect(svc.getPullRequestCommits).toHaveBeenCalledWith('my-repo', 99, 'my-project');
+        });
+
+        it('returns an empty array when ADO returns no commits', async () => {
+            const svc = makeMockService({
+                getPullRequestCommits: vi.fn().mockResolvedValue([]),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const commits = await a.getCommits('repo-id', 42);
+            expect(commits).toEqual([]);
         });
     });
 

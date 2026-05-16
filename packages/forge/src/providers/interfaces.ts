@@ -59,7 +59,7 @@ export interface IPullRequestsService {
     ): Promise<Reviewer[]>;
     /** Returns the unified diff for a pull request. Optional — not all providers support this. */
     getDiff?(repositoryId: string, pullRequestId: number | string): Promise<string>;
-    /** Returns commits included in a pull request. Optional — not all providers support this. */
+    /** Returns the commits included in a pull request, oldest first. Optional — not all providers support this. */
     getCommits?(repositoryId: string, pullRequestId: number | string): Promise<PullRequestCommit[]>;
 }
 

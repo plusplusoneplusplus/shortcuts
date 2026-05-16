@@ -43,15 +43,24 @@ const mockGitHubComment = {
     side: 'RIGHT' as const,
 };
 
-const mockGitHubCommit = {
-    sha: 'abcdef1234567890',
+const mockGitHubPrCommit = {
+    sha: 'abc1234deadbeef0000000000000000000000000',
+    html_url: 'https://github.com/owner/repo/commit/abc1234',
     commit: {
-        message: 'Fix bug\n\nDetailed body',
-        author: { name: 'Alice Smith', email: 'alice@example.com', date: '2024-01-04T00:00:00Z' },
-        committer: { name: 'CI', email: 'ci@example.com', date: '2024-01-04T01:00:00Z' },
+        message: 'feat: stream JSONL parser\n\nMore details about the change.',
+        author: {
+            name: 'Alice Smith',
+            email: 'alice@example.com',
+            date: '2024-01-04T12:34:56Z',
+        },
+        committer: {
+            name: 'Alice Smith',
+            email: 'alice@example.com',
+            date: '2024-01-04T12:34:56Z',
+        },
     },
     author: { id: 100, login: 'alice', name: 'Alice Smith', email: 'alice@example.com', avatar_url: 'https://avatar/alice' },
-    html_url: 'https://github.com/owner/repo/commit/abcdef1234567890',
+    committer: { id: 100, login: 'alice', name: 'Alice Smith', email: 'alice@example.com', avatar_url: 'https://avatar/alice' },
 };
 
 function makeMockOctokit(overrides: Record<string, unknown> = {}): Octokit {
@@ -63,7 +72,7 @@ function makeMockOctokit(overrides: Record<string, unknown> = {}): Octokit {
             update: vi.fn().mockResolvedValue({ data: mockGitHubPr }),
             listReviewComments: vi.fn().mockResolvedValue({ data: [mockGitHubComment] }),
             listReviews: vi.fn().mockResolvedValue({ data: [mockGitHubReview] }),
-            listCommits: vi.fn().mockResolvedValue({ data: [mockGitHubCommit] }),
+            listCommits: vi.fn().mockResolvedValue({ data: [mockGitHubPrCommit] }),
             requestReviewers: vi.fn().mockResolvedValue({ data: {} }),
         },
         issues: {
@@ -283,25 +292,46 @@ describe('GitHubPullRequestsAdapter', () => {
     });
 
     describe('getCommits', () => {
-        it('maps GitHub PR commits to canonical commits', async () => {
+        it('maps GitHub PR commits to canonical PullRequestCommit', async () => {
             const commits = await adapter.getCommits('repo', 42);
+            expect(commits).toHaveLength(1);
+            const commit = commits[0];
+            expect(commit.id).toBe('abc1234deadbeef0000000000000000000000000');
+            expect(commit.shortId).toBe('abc1234');
+            expect(commit.subject).toBe('feat: stream JSONL parser');
+            expect(commit.message).toBe('feat: stream JSONL parser\n\nMore details about the change.');
+            expect(commit.author.displayName).toBe('Alice Smith');
+            expect(commit.author.email).toBe('alice@example.com');
+            expect(commit.committer?.displayName).toBe('Alice Smith');
+            expect(commit.authoredAt).toEqual(new Date('2024-01-04T12:34:56Z'));
+            expect(commit.committedAt).toEqual(new Date('2024-01-04T12:34:56Z'));
+            expect(commit.url).toBe('https://github.com/owner/repo/commit/abc1234');
             expect(octokit.pulls.listCommits).toHaveBeenCalledWith({
                 owner: 'owner',
                 repo: 'repo',
                 pull_number: 42,
                 per_page: 100,
             });
-            expect(commits).toHaveLength(1);
-            expect(commits[0]).toMatchObject({
-                sha: 'abcdef1234567890',
-                shortSha: 'abcdef1',
-                title: 'Fix bug',
-                message: 'Fix bug\n\nDetailed body',
-                author: { displayName: 'Alice Smith', email: 'alice@example.com' },
-                url: 'https://github.com/owner/repo/commit/abcdef1234567890',
+        });
+
+        it('falls back to commit.author name/email when GitHub user is unmatched', async () => {
+            (octokit.pulls.listCommits as ReturnType<typeof vi.fn>).mockResolvedValue({
+                data: [{
+                    ...mockGitHubPrCommit,
+                    author: null,
+                    committer: null,
+                }],
             });
-            expect(commits[0].authoredAt).toEqual(new Date('2024-01-04T00:00:00Z'));
-            expect(commits[0].committedAt).toEqual(new Date('2024-01-04T01:00:00Z'));
+            const [commit] = await adapter.getCommits('repo', 42);
+            expect(commit.author.id).toBe('');
+            expect(commit.author.displayName).toBe('Alice Smith');
+            expect(commit.author.email).toBe('alice@example.com');
+        });
+
+        it('returns an empty array when octokit returns no commits', async () => {
+            (octokit.pulls.listCommits as ReturnType<typeof vi.fn>).mockResolvedValue({ data: [] });
+            const commits = await adapter.getCommits('repo', 42);
+            expect(commits).toEqual([]);
         });
     });
 });

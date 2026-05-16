@@ -11,7 +11,8 @@ import { createRouter } from '../../src/server/shared/router';
 import { registerPrRoutes, clearPrListCache } from '../../src/server/repos/pr-routes';
 import type { Route } from '../../src/server/types';
 import type { IPullRequestsService } from '@plusplusoneplusplus/forge';
-import type { PullRequest, PullRequestCommit, CommentThread, Reviewer } from '@plusplusoneplusplus/forge';
+import type { PullRequest, CommentThread, Reviewer } from '@plusplusoneplusplus/forge';
+import type { ProviderPullRequestCommit } from '@plusplusoneplusplus/forge';
 
 // ── Mock ProviderFactory and RepoTreeService ─────────────────────────────────
 
@@ -80,15 +81,14 @@ const mockReviewer: Reviewer = {
     isRequired: false,
 };
 
-const mockCommit: PullRequestCommit = {
-    sha: 'abcdef1234567890',
-    shortSha: 'abcdef1',
-    title: 'Add feature X',
-    message: 'Add feature X\n\nDetailed body',
+const mockCommit: ProviderPullRequestCommit = {
+    id: 'abc1234deadbeef0000000000000000000000000',
+    shortId: 'abc1234',
+    message: 'feat: stream JSONL parser\n\nMore details',
+    subject: 'feat: stream JSONL parser',
     author: { id: 'user1', displayName: 'Alice', email: 'alice@example.com' },
-    authoredAt: new Date('2024-01-01'),
-    committedAt: new Date('2024-01-01'),
-    url: 'https://github.com/org/repo/commit/abcdef1234567890',
+    authoredAt: new Date('2024-01-04T12:34:56Z'),
+    url: 'https://github.com/org/repo/commit/abc1234',
 };
 
 // ── Server helpers ────────────────────────────────────────────────────────────
@@ -136,6 +136,7 @@ beforeEach(async () => {
         getReviewers: vi.fn().mockResolvedValue([mockReviewer]),
         getCommits: vi.fn().mockResolvedValue([mockCommit]),
         getDiff: vi.fn().mockResolvedValue('diff --git a/foo.ts b/foo.ts\n'),
+        getCommits: vi.fn().mockResolvedValue([mockCommit]),
     };
 
     (RepoTreeService as ReturnType<typeof vi.fn>).mockImplementation(function () { return ({
@@ -485,6 +486,59 @@ describe('GET /api/repos/:id/pull-requests/:prId/diff', () => {
     it('returns 500 on unexpected error', async () => {
         (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network'));
         const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        expect(res.status).toBe(500);
+    });
+});
+
+// ── GET /api/repos/:id/pull-requests/:prId/commits ────────────────────────────
+
+describe('GET /api/repos/:id/pull-requests/:prId/commits', () => {
+    it('returns commits array on success', async () => {
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { commits: Array<{ id: string; shortId: string; subject: string }> };
+        expect(Array.isArray(body.commits)).toBe(true);
+        expect(body.commits).toHaveLength(1);
+        expect(body.commits[0].shortId).toBe('abc1234');
+        expect(body.commits[0].subject).toBe('feat: stream JSONL parser');
+    });
+
+    it('returns empty array when getCommits is not implemented', async () => {
+        const svcWithoutCommits = { ...mockSvc };
+        delete (svcWithoutCommits as any).getCommits;
+        (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(svcWithoutCommits);
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { commits: unknown[] };
+        expect(body.commits).toEqual([]);
+    });
+
+    it('returns 404 when repo not found', async () => {
+        mockResolveRepo.mockResolvedValueOnce(null);
+        const res = await fetch(`${baseUrl}/api/repos/unknown/pull-requests/42/commits`);
+        expect(res.status).toBe(404);
+    });
+
+    it('returns 401 when unconfigured', async () => {
+        (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        expect(res.status).toBe(401);
+        const body = await res.json() as { error: string };
+        expect(body.error).toBe('unconfigured');
+    });
+
+    it('returns 401 with no-ado-credentials when ADO az CLI fails', async () => {
+        (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue({ error: 'no-ado-credentials' });
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        expect(res.status).toBe(401);
+        const body = await res.json() as { error: string };
+        expect(body.error).toBe('no-ado-credentials');
+    });
+
+    it('returns 500 on unexpected error', async () => {
+        (mockSvc.getCommits as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network'));
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
         expect(res.status).toBe(500);
     });
 });

@@ -861,6 +861,7 @@ export {
     type Reviewer,
     type PullRequestCommit,
     type PullRequest as ProviderPullRequest,
+    type PullRequestCommit as ProviderPullRequestCommit,
     type WorkItem as ProviderWorkItem,
     type SearchCriteria as ProviderSearchCriteria,
     type CreatePullRequestInput,

@@ -1,5 +1,6 @@
 import type { IGitApi } from 'azure-devops-node-api/GitApi';
 import type {
+    GitCommitRef,
     GitPullRequest,
     GitPullRequestSearchCriteria,
     GitPullRequestCommentThread,
@@ -301,6 +302,39 @@ export class AdoPullRequestsService {
         } catch (error) {
             throw new AdoPullRequestError(
                 `Failed to get iteration changes for PR ${pullRequestId}, iteration ${iterationId}: ${error}`,
+            );
+        }
+    }
+
+    async getPullRequestCommits(
+        repositoryId: string,
+        pullRequestId: number,
+        project?: string,
+    ): Promise<GitCommitRef[]> {
+        const api = await this.getGitApi();
+        const logger = getLogger();
+        try {
+            logger.info(
+                LogCategory.ADO,
+                `getPullRequestCommits: repo=${repositoryId} PR #${pullRequestId} project=${project ?? '(default)'}`,
+            );
+            const result = await api.getPullRequestCommits(repositoryId, pullRequestId, project);
+            // ADO returns a PagedList<GitCommitRef>; it's array-shaped at runtime.
+            const commits = (result as unknown as GitCommitRef[] | undefined) ?? [];
+            logger.info(
+                LogCategory.ADO,
+                `getPullRequestCommits: returned ${commits.length} commit(s) for PR #${pullRequestId}`,
+            );
+            return commits;
+        } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            logger.error(
+                LogCategory.ADO,
+                `getPullRequestCommits failed: repo=${repositoryId} PR #${pullRequestId}: ${errMsg}`,
+            );
+            throw new AdoPullRequestError(
+                `Failed to get commits for PR ${pullRequestId}`,
+                err,
             );
         }
     }

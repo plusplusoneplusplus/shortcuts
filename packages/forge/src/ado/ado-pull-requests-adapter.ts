@@ -1,4 +1,4 @@
-import type { GitPullRequest, GitPullRequestCommentThread, IdentityRefWithVote } from 'azure-devops-node-api/interfaces/GitInterfaces';
+import type { GitCommitRef, GitPullRequest, GitPullRequestCommentThread, IdentityRefWithVote } from 'azure-devops-node-api/interfaces/GitInterfaces';
 import { PullRequestStatus as AdoPrStatus } from 'azure-devops-node-api/interfaces/GitInterfaces';
 import type { IPullRequestsService } from '../providers/interfaces';
 import type {
@@ -112,6 +112,41 @@ function mapAdoPullRequest(pr: GitPullRequest, repositoryId: string): PullReques
         reviewers: (pr.reviewers ?? []).map(mapAdoReviewer),
         labels: (pr.labels ?? []).map((l: { name?: string }) => l.name ?? '').filter(Boolean),
         raw: pr,
+    };
+}
+
+function firstLine(text: string): string {
+    const idx = text.indexOf('\n');
+    return idx === -1 ? text : text.slice(0, idx);
+}
+
+function mapAdoCommitIdentity(
+    user: { name?: string; email?: string; imageUrl?: string } | undefined,
+): Identity {
+    return {
+        id: '',
+        displayName: user?.name ?? '',
+        email: user?.email,
+        avatarUrl: user?.imageUrl,
+    };
+}
+
+function mapAdoCommit(commit: GitCommitRef): PullRequestCommit {
+    const sha = commit.commitId ?? '';
+    const message = commit.comment ?? '';
+    const authoredAt = commit.author?.date ? new Date(commit.author.date) : new Date(0);
+    const committedAt = commit.committer?.date ? new Date(commit.committer.date) : authoredAt;
+    return {
+        id: sha,
+        shortId: sha.slice(0, 7),
+        message,
+        subject: firstLine(message),
+        author: mapAdoCommitIdentity(commit.author),
+        committer: mapAdoCommitIdentity(commit.committer),
+        authoredAt,
+        committedAt,
+        url: commit.remoteUrl ?? commit.url,
+        raw: commit,
     };
 }
 
@@ -350,6 +385,25 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
         );
         logger.info(LogCategory.ADO, `addReviewers: added ${reviewers.length} reviewer(s) to PR #${pullRequestId}`);
         return reviewers.map(mapAdoReviewer);
+    }
+
+    async getCommits(repositoryId: string, pullRequestId: number | string): Promise<PullRequestCommit[]> {
+        const logger = getLogger();
+        const effectiveRepo = this.repo ?? repositoryId;
+        logger.info(
+            LogCategory.ADO,
+            `getCommits: repo=${effectiveRepo} PR #${pullRequestId} project=${this.project ?? '(default)'}`,
+        );
+        const commits = await this.service.getPullRequestCommits(
+            effectiveRepo,
+            Number(pullRequestId),
+            this.project,
+        );
+        logger.info(
+            LogCategory.ADO,
+            `getCommits: returned ${commits.length} commit(s) for PR #${pullRequestId}`,
+        );
+        return commits.map(mapAdoCommit);
     }
 
     async getDiff(repositoryId: string, pullRequestId: number | string): Promise<string> {

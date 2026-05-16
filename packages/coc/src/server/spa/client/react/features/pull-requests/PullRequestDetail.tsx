@@ -5,6 +5,8 @@
  *   - PR header (title, branches, status, reviewers, labels, description)
  *   - Comment threads (via /threads endpoint)
  *   - File list, +/- counts, hunks, and diff body (parsed from /diff)
+ *   - Commit list (via /commits endpoint) — intent label is still a
+ *     heuristic inferred from the commit subject (editable).
  *   - The "AI grouped threads" sidebar groups REAL threads — only the
  *     severity tag is AI-derived (deterministic, mocked for now).
  *
@@ -13,7 +15,7 @@
  *   - AI summary panel (risk, confidence, findings, metrics)
  *   - Persona lenses
  *   - Conversation timeline
- *   - Checks / merge-readiness (also: no check REST endpoint yet)
+ *   - Checks / merge-readiness (no check REST endpoint yet)
  *   - Assistant chat drawer
  */
 
@@ -29,15 +31,15 @@ import { PrAiSummaryPanel } from './PrAiSummaryPanel';
 import { PrQuickReviewWorkflow } from './PrQuickReviewWorkflow';
 import { PrConversationPanel } from './PrConversationPanel';
 import { PrAiGroupedThreads } from './PrAiGroupedThreads';
-import { PrCommitTable, type PrCommitRow } from './PrCommitTable';
+import { PrCommitTable } from './PrCommitTable';
 import { PrChecksTable, PrMergeReadiness } from './PrChecksAndReadiness';
 import { PrFilesPanel } from './PrFilesPanel';
 import { PrAiAssistantDrawer } from './PrAiAssistantDrawer';
 import {
     buildAiThreadGroupsFromThreads,
+    buildCommitRowsFromPrCommits,
     getMockAiSummary,
     getMockCheckRows,
-    getMockCommitRows,
     getMockFiles,
     getMockMergeReadiness,
     getMockPersonaLenses,
@@ -45,7 +47,7 @@ import {
     getMockTimeline,
     riskPillClass,
 } from './pr-mock-data';
-import type { PullRequest, CommentThread } from './pr-utils';
+import type { PullRequest, PullRequestCommit, CommentThread } from './pr-utils';
 import type { PrDetailTab } from '../../types/dashboard';
 import { parseUnifiedDiff, type ParsedDiff } from './unified-diff-parser';
 
@@ -81,7 +83,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     const { state, dispatch } = useApp();
     const [pr, setPr] = useState<PullRequest | null>(null);
     const [threads, setThreads] = useState<CommentThread[]>([]);
-    const [commits, setCommits] = useState<PrCommitRow[]>([]);
+    const [commits, setCommits] = useState<PullRequestCommit[]>([]);
     const [commitsError, setCommitsError] = useState<string | null>(null);
     const [diff, setDiff] = useState<ParsedDiff>(EMPTY_DIFF);
     const [diffError, setDiffError] = useState<string | null>(null);
@@ -124,32 +126,32 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                 .then(body => (body.threads ?? []) as CommentThread[])
                 .catch(() => [] as CommentThread[]),
             client.pullRequests
-                .getCommits(repoIdStr, prIdStr)
-                .then(body => ({ kind: 'ok' as const, commits: (body.commits ?? []) as PrCommitRow[] }))
-                .catch((err: unknown) => ({
-                    kind: 'err' as const,
-                    message: getSpaCocClientErrorMessage(err, 'Failed to load commits'),
-                })),
-            client.pullRequests
                 .getDiff(repoIdStr, prIdStr)
                 .then(text => ({ kind: 'ok' as const, parsed: parseUnifiedDiff(text) }))
                 .catch((err: unknown) => ({
                     kind: 'err' as const,
                     message: getSpaCocClientErrorMessage(err, 'Failed to load diff'),
                 })),
+            client.pullRequests
+                .getCommits(repoIdStr, prIdStr)
+                .then(body => ({ kind: 'ok' as const, commits: (body.commits ?? []) as PullRequestCommit[] }))
+                .catch((err: unknown) => ({
+                    kind: 'err' as const,
+                    message: getSpaCocClientErrorMessage(err, 'Failed to load commits'),
+                })),
         ])
-            .then(([prData, threadsData, commitsResult, diffResult]) => {
+            .then(([prData, threadsData, diffResult, commitsResult]) => {
                 setPr(prData);
                 setThreads(threadsData);
-                if (commitsResult.kind === 'ok') {
-                    setCommits(commitsResult.commits);
-                } else {
-                    setCommitsError(commitsResult.message);
-                }
                 if (diffResult.kind === 'ok') {
                     setDiff(diffResult.parsed);
                 } else {
                     setDiffError(diffResult.message);
+                }
+                if (commitsResult.kind === 'ok') {
+                    setCommits(commitsResult.commits);
+                } else {
+                    setCommitsError(commitsResult.message);
                 }
             })
             .catch(err => setError(getSpaCocClientErrorMessage(err, 'Failed to load pull request')))
@@ -167,6 +169,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     const personaLenses = useMemo(() => getMockPersonaLenses(), []);
     const timeline = useMemo(() => getMockTimeline(), []);
     const threadGroups = useMemo(() => buildAiThreadGroupsFromThreads(threads), [threads]);
+    const commitRows = useMemo(() => buildCommitRowsFromPrCommits(commits), [commits]);
     const checkRows = useMemo(() => getMockCheckRows(), []);
     const mergeReadiness = useMemo(() => getMockMergeReadiness(), []);
 
@@ -498,7 +501,23 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
 
                 {detailTab === 'commits' && (
                     <div className="w-full px-2.5 pb-7 pt-2" data-testid="commits-tab">
-                        <PrCommitTable rows={commits} error={commitsError} />
+                        {commitsError ? (
+                            <div
+                                className="rounded-[5px] border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-700 dark:border-red-700 dark:bg-red-900/30 dark:text-red-200"
+                                data-testid="pr-commits-error"
+                            >
+                                Failed to load commits: {commitsError}
+                            </div>
+                        ) : commits.length === 0 ? (
+                            <div
+                                className="rounded-[5px] border border-dashed border-gray-200 bg-white px-2 py-3 text-[11px] text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400"
+                                data-testid="pr-commits-empty"
+                            >
+                                No commits returned for this pull request.
+                            </div>
+                        ) : (
+                            <PrCommitTable rows={commitRows} />
+                        )}
                     </div>
                 )}
 

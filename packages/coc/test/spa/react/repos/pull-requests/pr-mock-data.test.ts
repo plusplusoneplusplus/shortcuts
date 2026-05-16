@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+    buildCommitRowsFromPrCommits,
     checkStatusClass,
     commitIntentClass,
     findingTagClass,
@@ -25,11 +26,12 @@ import {
     getMockThreadGroups,
     getMockTimeline,
     getQueueFilterDefinitions,
+    inferCommitIntent,
     queueDotClass,
     queueRiskClass,
     riskPillClass,
 } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-mock-data';
-import type { PullRequest } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-utils';
+import type { PullRequest, PullRequestCommit } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-utils';
 
 const basePr: PullRequest = {
     id: 4289,
@@ -148,6 +150,82 @@ describe('AI mock data', () => {
     it('returns a non-empty review summary text', () => {
         const summary = getMockReviewSummaryText(basePr);
         expect(summary.length).toBeGreaterThan(20);
+    });
+});
+
+describe('commit intent inference', () => {
+    it.each([
+        ['feat: stream JSONL parser',           'feat'],
+        ['feature(stream): add backpressure',   'feat'],
+        ['Add cancellation test',               'feat'],
+        ['fix: handle abort cleanly',           'fix'],
+        ['Fixes regression in retry path',      'fix'],
+        ['docs: update README',                 'docs'],
+        ['Document ingest rollout',             'docs'],
+        ['test: cover slow consumer',           'test'],
+        ['refactor: extract parser module',     'refactor'],
+        ['Rename old offset cache',             'refactor'],
+        ['chore: bump dependencies',            'chore'],
+        ['Bump @types/foo to 1.2.3',            'chore'],
+    ])('infers %s as %s', (message, expected) => {
+        expect(inferCommitIntent(message)).toBe(expected);
+    });
+
+    it('falls back to "chore" when the message has no known keyword', () => {
+        expect(inferCommitIntent('mystery commit')).toBe('chore');
+    });
+
+    it('only looks at the first line of multi-line messages', () => {
+        expect(inferCommitIntent('fix: handle abort\n\nfeature notes')).toBe('fix');
+    });
+});
+
+describe('buildCommitRowsFromPrCommits', () => {
+    const realCommits: PullRequestCommit[] = [
+        {
+            id: 'abc1234deadbeef0000000000000000000000000',
+            shortId: 'abc1234',
+            message: 'feat: stream JSONL parser',
+            subject: 'feat: stream JSONL parser',
+        },
+        {
+            id: 'def5678deadbeef0000000000000000000000000',
+            shortId: 'def5678',
+            message: 'fix: handle abort cleanly\n\ndetails',
+            subject: 'fix: handle abort cleanly',
+        },
+    ];
+
+    it('maps real provider commits to rows with inferred intent and short hash', () => {
+        const rows = buildCommitRowsFromPrCommits(realCommits);
+        expect(rows).toHaveLength(2);
+        expect(rows[0]).toMatchObject({
+            id: 'abc1234deadbeef0000000000000000000000000',
+            title: 'feat: stream JSONL parser',
+            intent: 'feat',
+            hash: 'abc1234',
+        });
+        expect(rows[1]).toMatchObject({
+            id: 'def5678deadbeef0000000000000000000000000',
+            title: 'fix: handle abort cleanly',
+            intent: 'fix',
+            hash: 'def5678',
+        });
+        expect(rows[0].note.length).toBeGreaterThan(0);
+    });
+
+    it('falls back to the full id when shortId is missing', () => {
+        const rows = buildCommitRowsFromPrCommits([{
+            id: 'longshaaaa',
+            shortId: '',
+            message: 'docs: tweak readme',
+            subject: 'docs: tweak readme',
+        }]);
+        expect(rows[0].hash).toBe('longsha');
+    });
+
+    it('returns an empty array when given no commits', () => {
+        expect(buildCommitRowsFromPrCommits([])).toEqual([]);
     });
 });
 

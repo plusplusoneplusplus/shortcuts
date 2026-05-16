@@ -56,15 +56,32 @@ export interface Reviewer {
     isRequired: boolean;
 }
 
+// ── Canonical commit on a pull request ───────────────────────
+
+/**
+ * Canonical commit shape exposed for a pull request. Provider-agnostic;
+ * adapters map their native commit objects into this shape.
+ */
 export interface PullRequestCommit {
-    sha: string;
-    shortSha: string;
-    title: string;
+    /** Full commit SHA. */
+    id: string;
+    /** Short SHA (typically the first 7 chars). */
+    shortId: string;
+    /** Full commit message (subject + body if available). */
     message: string;
+    /** First line of the commit message. */
+    subject: string;
+    /** Author identity. */
     author: Identity;
-    authoredAt?: Date;
+    /** Committer identity, if distinct from the author. */
+    committer?: Identity;
+    /** Author timestamp. */
+    authoredAt: Date;
+    /** Commit timestamp (commit creation). May equal `authoredAt`. */
     committedAt?: Date;
+    /** Web URL for the commit, if exposed by the provider. */
     url?: string;
+    /** Provider-specific raw object, for fields not in the canonical shape. */
     raw?: unknown;
 }
 

@@ -81,21 +81,21 @@ function textResponse(body: string) {
     } as unknown as Response;
 }
 
-/** Mock the full PR detail fetch set (pr, threads, commits, diff). */
-function mockFetchDetail(pr: any, threads: any[] = [], diffText = '', commits: any[] = makeCommits()) {
+/** Mock the full PR detail fetch quartet (pr, threads, diff, commits). */
+function mockFetchDetail(pr: any, threads: any[] = [], diffText = '', commits: any[] = []) {
     global.fetch = vi.fn()
         .mockResolvedValueOnce(jsonResponse(pr))
         .mockResolvedValueOnce(jsonResponse({ threads }))
-        .mockResolvedValueOnce(jsonResponse({ commits }))
-        .mockResolvedValueOnce(textResponse(diffText));
+        .mockResolvedValueOnce(textResponse(diffText))
+        .mockResolvedValueOnce(jsonResponse({ commits }));
 }
 
 function mockFetchPrError(status = 500, message = 'Server error') {
     global.fetch = vi.fn()
         .mockResolvedValueOnce(jsonResponse({ message }, false, status))
         .mockResolvedValueOnce(jsonResponse({ threads: [] }))
-        .mockResolvedValueOnce(jsonResponse({ commits: [] }))
-        .mockResolvedValueOnce(textResponse(''));
+        .mockResolvedValueOnce(textResponse(''))
+        .mockResolvedValueOnce(jsonResponse({ commits: [] }));
 }
 
 const SAMPLE_DIFF = [
@@ -331,15 +331,62 @@ describe('tabs', () => {
         expect(screen.queryByTestId('pr-file-ai-annotation')).not.toBeInTheDocument();
     });
 
-    it('switches to the Commits tab and renders the commit intent table behind a preview notice', async () => {
-        mockFetchDetail(makePr());
+    it('switches to the Commits tab and renders real commits from the /commits endpoint', async () => {
+        const commits = [
+            {
+                id: 'abc1234deadbeef0000000000000000000000000',
+                shortId: 'abc1234',
+                message: 'feat: stream JSONL parser',
+                subject: 'feat: stream JSONL parser',
+                author: { displayName: 'Alice' },
+                authoredAt: new Date('2024-01-04T12:34:56Z').toISOString(),
+            },
+            {
+                id: 'def5678deadbeef0000000000000000000000000',
+                shortId: 'def5678',
+                message: 'fix: handle abort',
+                subject: 'fix: handle abort',
+                author: { displayName: 'Bob' },
+                authoredAt: new Date('2024-01-05T12:34:56Z').toISOString(),
+            },
+        ];
+        mockFetchDetail(makePr(), [], '', commits);
         await act(async () => { await renderDetail(); });
         await waitFor(() => expect(screen.getByTestId('tab-commits')).toBeInTheDocument());
         fireEvent.click(screen.getByTestId('tab-commits'));
         expect(screen.getByTestId('commits-tab')).toBeInTheDocument();
         expect(screen.getByTestId('pr-commit-table')).toBeInTheDocument();
-        expect(screen.getByText('Wire retry backoff')).toBeInTheDocument();
+        const rows = screen.getAllByTestId('pr-commit-row');
+        expect(rows).toHaveLength(2);
+        expect(rows[0].textContent).toContain('feat: stream JSONL parser');
+        expect(rows[0].textContent).toContain('abc1234');
+        expect(rows[1].textContent).toContain('fix: handle abort');
+        expect(rows[1].textContent).toContain('def5678');
+        // Commit list is no longer mocked — preview notice must not appear here.
         expect(screen.queryByTestId('pr-tab-preview-notice')).not.toBeInTheDocument();
+        expect(screen.getByTestId('tab-commits').textContent).toContain('2');
+    });
+
+    it('renders an empty-state message when the /commits endpoint returns no commits', async () => {
+        mockFetchDetail(makePr());
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('tab-commits')).toBeInTheDocument());
+        fireEvent.click(screen.getByTestId('tab-commits'));
+        expect(screen.getByTestId('pr-commits-empty')).toBeInTheDocument();
+        expect(screen.queryByTestId('pr-commit-table')).not.toBeInTheDocument();
+    });
+
+    it('surfaces an error banner when the /commits endpoint fails', async () => {
+        global.fetch = vi.fn()
+            .mockResolvedValueOnce(jsonResponse(makePr()))
+            .mockResolvedValueOnce(jsonResponse({ threads: [] }))
+            .mockResolvedValueOnce(textResponse(''))
+            .mockResolvedValueOnce(jsonResponse({ error: 'boom' }, false, 500));
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('tab-commits')).toBeInTheDocument());
+        fireEvent.click(screen.getByTestId('tab-commits'));
+        expect(screen.getByTestId('pr-commits-error').textContent).toMatch(/Failed to load commits/);
+        expect(screen.queryByTestId('pr-commit-table')).not.toBeInTheDocument();
     });
 
     it('switches to the Checks tab and renders the checks + merge readiness panels with a preview notice', async () => {

@@ -13,7 +13,13 @@ import type {
     SearchCriteria,
     UpdatePullRequestInput,
 } from '../providers/types';
-import type { GitHubComment, GitHubPullRequest, GitHubReview, GitHubUser } from './types';
+import type {
+    GitHubComment,
+    GitHubPullRequest,
+    GitHubPullRequestCommit,
+    GitHubReview,
+    GitHubUser,
+} from './types';
 
 // ── mapping helpers ──────────────────────────────────────────
 
@@ -77,26 +83,49 @@ function mapGitHubComment(c: GitHubComment): Comment {
     };
 }
 
-function firstLine(message: string | null | undefined): string {
-    return (message ?? '').split(/\r?\n/, 1)[0] ?? '';
+function firstLine(text: string): string {
+    const idx = text.indexOf('\n');
+    return idx === -1 ? text : text.slice(0, idx);
 }
 
-function mapGitHubCommit(c: any): PullRequestCommit {
-    const sha = String(c.sha ?? '');
-    const author = c.commit?.author;
-    const user = c.author ?? c.committer;
-    const authoredAt = author?.date ? new Date(author.date) : undefined;
-    const committedAt = c.commit?.committer?.date ? new Date(c.commit.committer.date) : authoredAt;
+function mapGitHubCommitIdentity(
+    user: GitHubUser | null | undefined,
+    fallbackName: string | null | undefined,
+    fallbackEmail: string | null | undefined,
+): Identity {
     return {
-        sha,
-        shortSha: sha.slice(0, 7),
-        title: firstLine(c.commit?.message),
-        message: c.commit?.message ?? '',
-        author: {
-            ...mapGitHubUser(user),
-            displayName: author?.name ?? user?.name ?? user?.login ?? '',
-            email: author?.email,
-        },
+        id: user ? String(user.id) : '',
+        displayName: user?.name ?? user?.login ?? fallbackName ?? '',
+        email: user?.email ?? fallbackEmail ?? undefined,
+        avatarUrl: user?.avatar_url,
+    };
+}
+
+function parseGitHubCommitDate(value: string | null | undefined): Date {
+    if (!value) return new Date(0);
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? new Date(0) : parsed;
+}
+
+function mapGitHubPullRequestCommit(c: GitHubPullRequestCommit): PullRequestCommit {
+    const message = c.commit?.message ?? '';
+    const authoredAt = parseGitHubCommitDate(c.commit?.author?.date);
+    const committedAt = parseGitHubCommitDate(c.commit?.committer?.date);
+    return {
+        id: c.sha,
+        shortId: c.sha.slice(0, 7),
+        message,
+        subject: firstLine(message),
+        author: mapGitHubCommitIdentity(
+            c.author ?? null,
+            c.commit?.author?.name,
+            c.commit?.author?.email,
+        ),
+        committer: mapGitHubCommitIdentity(
+            c.committer ?? null,
+            c.commit?.committer?.name,
+            c.commit?.committer?.email,
+        ),
         authoredAt,
         committedAt,
         url: c.html_url,
@@ -278,18 +307,13 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
     }
 
     async getCommits(_repositoryId: string, pullRequestId: number | string): Promise<PullRequestCommit[]> {
-        const params = {
+        const { data } = await this.octokit.pulls.listCommits({
             owner: this.owner,
             repo: this.repo,
             pull_number: Number(pullRequestId),
             per_page: 100,
-        };
+        });
 
-        const paginate = (this.octokit as any).paginate;
-        const data = typeof paginate === 'function'
-            ? await paginate(this.octokit.pulls.listCommits, params)
-            : (await this.octokit.pulls.listCommits(params)).data;
-
-        return (data as any[]).map(mapGitHubCommit);
+        return (data as unknown as GitHubPullRequestCommit[]).map(mapGitHubPullRequestCommit);
     }
 }

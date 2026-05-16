@@ -10,6 +10,7 @@
  * GET  /api/repos/:repoId/pull-requests/:prId/reviewers  — get reviewers
  * GET  /api/repos/:repoId/pull-requests/:prId/commits    — get commits
  * GET  /api/repos/:repoId/pull-requests/:prId/diff       — get unified diff
+ * GET  /api/repos/:repoId/pull-requests/:prId/commits    — get commits
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */

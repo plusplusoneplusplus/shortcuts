@@ -8,6 +8,7 @@ export {
     type Reviewer,
     type PullRequestCommit,
     type PullRequest,
+    type PullRequestCommit,
     type WorkItem,
     type SearchCriteria,
     type CreatePullRequestInput,

@@ -9,7 +9,7 @@
  * presentational components.
  */
 
-import type { PullRequest } from './pr-utils';
+import type { PullRequest, PullRequestCommit } from './pr-utils';
 
 export type FindingTag = 'good' | 'risk' | 'note' | 'ai';
 export type CommitIntent = 'feat' | 'fix' | 'docs' | 'test' | 'refactor' | 'chore';
@@ -525,6 +525,51 @@ export function getMockThreadGroups(): AiThreadGroup[] {
 
 export function getMockCommitRows(): AiCommitRow[] {
     return COMMIT_TEMPLATES;
+}
+
+const INTENT_KEYWORDS: Array<{ test: RegExp; intent: CommitIntent }> = [
+    { test: /^(feat|feature)\b|\bfeature(?:s|d)?\b|\badd(?:s|ed)?\b|\bintroduce(?:s|d)?\b|\bsupport(?:s|ed)?\b/i, intent: 'feat' },
+    { test: /^fix\b|\bfix(?:es|ed)?\b|\bbugfix\b|\bregression\b|\bpatch\b/i,                                       intent: 'fix' },
+    { test: /^docs?\b|\bdocs?\b|\breadme\b|\bcomment(?:s|ed)?\b|\bdocument(?:s|ed|ation)?\b/i,                       intent: 'docs' },
+    { test: /^test\b|\btest(?:s|ed|ing)?\b|\bspec(?:s)?\b|\bcoverage\b|\bvitest\b|\bmocha\b/i,                       intent: 'test' },
+    { test: /^refactor\b|\brefactor(?:s|ed|ing)?\b|\brename(?:s|d)?\b|\bcleanup\b|\bsimplif(?:y|ied|ies)\b/i,         intent: 'refactor' },
+    { test: /^chore\b|\bchore\b|\bbump\b|\bdep(?:s|endencies)?\b|\bversion\b|\brelease\b|\bci\b|\bbuild\b/i,         intent: 'chore' },
+];
+
+/**
+ * Infer an AI-style commit intent label from a real commit subject.
+ * Heuristic only — the intent label is meant as a starting point that
+ * a reviewer can edit, not a guarantee.
+ */
+export function inferCommitIntent(message: string): CommitIntent {
+    const head = (message ?? '').split('\n', 1)[0];
+    for (const entry of INTENT_KEYWORDS) {
+        if (entry.test.test(head)) return entry.intent;
+    }
+    return 'chore';
+}
+
+const INTENT_NOTE: Record<CommitIntent, string> = {
+    feat: 'New behavior — focus review on the boundary.',
+    fix: 'Bug fix — confirm regression coverage.',
+    docs: 'Docs only — quick skim.',
+    test: 'Adds or updates tests — read for coverage gaps.',
+    refactor: 'Refactor — verify behavior preserved.',
+    chore: 'Chore — low review value.',
+};
+
+/** Map real `PullRequestCommit` records to AI-style rows for the commit table. */
+export function buildCommitRowsFromPrCommits(commits: PullRequestCommit[]): AiCommitRow[] {
+    return commits.map(commit => {
+        const intent = inferCommitIntent(commit.subject || commit.message);
+        return {
+            id: commit.id,
+            title: commit.subject || commit.message || commit.shortId || commit.id,
+            intent,
+            note: INTENT_NOTE[intent],
+            hash: commit.shortId || commit.id.slice(0, 7),
+        };
+    });
 }
 
 export function getMockCheckRows(): AiCheckRow[] {
