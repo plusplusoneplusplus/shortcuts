@@ -144,6 +144,8 @@ describe('GitHubPullRequestsAdapter', () => {
             expect(pr.author.email).toBe('alice@example.com');
             expect(pr.sourceBranch).toBe('feature/fix');
             expect(pr.targetBranch).toBe('main');
+            expect(pr.headSha).toBe('abc123');
+            expect(pr.baseSha).toBe('def456');
             expect(pr.status).toBe('open');
             expect(pr.isDraft).toBe(false);
             expect(pr.labels).toEqual(['bug']);

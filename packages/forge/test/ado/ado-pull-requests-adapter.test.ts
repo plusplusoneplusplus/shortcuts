@@ -23,6 +23,8 @@ const mockAdoPr = {
         { id: 'user-2', displayName: 'Bob', uniqueName: 'bob@example.com', vote: 10, isRequired: true },
     ],
     labels: [{ name: 'bug' }],
+    lastMergeSourceCommit: { commitId: 'aabbcc1122' },
+    lastMergeTargetCommit: { commitId: 'ddeeff3344' },
 };
 
 const mockAdoThread = {
@@ -124,6 +126,8 @@ describe('AdoPullRequestsAdapter', () => {
             expect(pr.author.email).toBe('alice@example.com');
             expect(pr.sourceBranch).toBe('feature/fix');
             expect(pr.targetBranch).toBe('main');
+            expect(pr.headSha).toBe('aabbcc1122');
+            expect(pr.baseSha).toBe('ddeeff3344');
             expect(pr.status).toBe('open');
             expect(pr.isDraft).toBe(false);
             expect(pr.labels).toEqual(['bug']);
