@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import {
     extractClassificationFromResult,
     classificationCacheTag,
+    buildClassificationPrompt,
 } from '../../src/server/repos/pr-classification-handler';
 import type { DiffClassificationResult } from '../../src/server/spa/client/react/features/pull-requests/classification-types';
 
@@ -81,5 +82,38 @@ describe('classificationCacheTag', () => {
         const tag1 = classificationCacheTag('repo', '1', 'sha');
         const tag2 = classificationCacheTag('repo', '2', 'sha');
         expect(tag1).not.toBe(tag2);
+    });
+});
+
+// ── buildClassificationPrompt ────────────────────────────────────────────────
+
+describe('buildClassificationPrompt', () => {
+    it('should include the PR number in the prompt', () => {
+        const prompt = buildClassificationPrompt('my-repo', '42');
+        expect(prompt).toContain('pull request #42');
+    });
+
+    it('should embed the cache tag when provided', () => {
+        const tag = 'classify-diff:repo:42:abc123def';
+        const prompt = buildClassificationPrompt('repo', '42', tag);
+        expect(prompt).toContain(`<!-- cache-key: ${tag} -->`);
+    });
+
+    it('should NOT include cache-key comment when cacheTag is omitted', () => {
+        const prompt = buildClassificationPrompt('repo', '42');
+        expect(prompt).not.toContain('cache-key');
+    });
+
+    it('should include instructions to use git tools', () => {
+        const prompt = buildClassificationPrompt('repo', '42');
+        expect(prompt).toContain('git');
+        expect(prompt).toContain('gh');
+    });
+
+    it('should include JSON schema guidance', () => {
+        const prompt = buildClassificationPrompt('repo', '42');
+        expect(prompt).toContain('"classifications"');
+        expect(prompt).toContain('"category"');
+        expect(prompt).toContain('"intensity"');
     });
 });

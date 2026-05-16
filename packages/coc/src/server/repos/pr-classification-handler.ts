@@ -151,7 +151,7 @@ export function registerPrClassificationRoutes(routes: Route[], opts: PrClassifi
                 const workspaceId = body.workspaceId || repoId;
 
                 // Build the classification prompt
-                const prompt = buildClassificationPrompt(repoId, prId);
+                const prompt = buildClassificationPrompt(repoId, prId, cacheTag);
 
                 // Enqueue a chat task with the classify-diff skill
                 const rootPath = repo.localPath ?? process.cwd();
@@ -231,8 +231,8 @@ export function registerPrClassificationRoutes(routes: Route[], opts: PrClassifi
 // Helpers
 // ============================================================================
 
-function buildClassificationPrompt(repoId: string, prId: string): string {
-    return [
+export function buildClassificationPrompt(repoId: string, prId: string, cacheTag?: string): string {
+    const lines = [
         `Classify every hunk in pull request #${prId} of this repository.`,
         '',
         'Use the available git and gh CLI tools to read the PR diff. Do NOT ask me for the diff — fetch it yourself.',
@@ -243,7 +243,11 @@ function buildClassificationPrompt(repoId: string, prId: string): string {
         '```json',
         '{ "classifications": [ { "file": "...", "hunkIndex": 0, "category": "logic", "intensity": "high", "reason": "..." } ] }',
         '```',
-    ].join('\n');
+    ];
+    if (cacheTag) {
+        lines.push('', `<!-- cache-key: ${cacheTag} -->`);
+    }
+    return lines.join('\n');
 }
 
 interface CachedResult {
@@ -254,27 +258,32 @@ interface CachedResult {
 }
 
 /**
- * Search the process store for a process whose prompt contains the cache tag.
- * Uses a display-name convention: "Classify PR #<prId> [<shortSha>]".
- * Returns the most recent match.
+ * Search the process store for a process whose display name exactly matches
+ * the expected classification naming convention:
+ *   "Classify PR #<prId> [<shortSha>]"
+ *
+ * The display name encodes both the PR ID and the head SHA prefix, ensuring
+ * stale results from older commits are never returned.
  */
 async function findCachedClassification(store: ProcessStore, cacheTag: string): Promise<CachedResult | undefined> {
     try {
-        // Extract the headSha short prefix from the cache tag for display-name matching
         const parts = cacheTag.split(':');
         const prId = parts[2];
         const headSha = parts[3];
-        const expectedDisplayName = `${CLASSIFY_DISPLAY_PREFIX}${prId} [${headSha.slice(0, 7)}]`;
+        const shortSha = headSha.slice(0, 7);
+        const expectedDisplayName = `${CLASSIFY_DISPLAY_PREFIX}${prId} [${shortSha}]`;
 
         // Get recent processes (limit search to avoid scanning the entire store)
         const processes = await store.getAllProcesses({ limit: 50, exclude: ['conversation'] });
         for (const proc of processes) {
-            // Match by prompt content containing the cache tag, or by display name convention
-            const promptMatch = proc.fullPrompt?.includes(`#${prId}`) ?? false;
-            const nameMatch = (proc as any).displayName === expectedDisplayName ||
-                proc.promptPreview?.includes(`Classify PR #${prId}`);
+            // Strict match: display name must contain both PR ID and correct SHA prefix
+            const nameMatch = (proc as any).displayName === expectedDisplayName;
+            const previewMatch = proc.promptPreview?.includes(`Classify PR #${prId}`) &&
+                proc.promptPreview?.includes(shortSha);
+            const promptMatch = proc.fullPrompt?.includes(`pull request #${prId}`) &&
+                proc.fullPrompt?.includes(cacheTag);
 
-            if (promptMatch || nameMatch) {
+            if (nameMatch || previewMatch || promptMatch) {
                 let result: DiffClassificationResult | undefined;
                 if (proc.status === 'completed' && proc.result) {
                     result = extractClassificationFromResult(proc.result);
