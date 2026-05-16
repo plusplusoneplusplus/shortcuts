@@ -12,8 +12,12 @@ import type { LoopEntry } from '@plusplusoneplusplus/coc-client';
 export interface UseLoopsResult {
     /** All loops associated with this process. */
     loops: LoopEntry[];
-    /** Number of active loops for badge display. */
+    /** Number of active loops. */
     activeCount: number;
+    /** Number of loops that can still be managed from the dashboard. */
+    manageableCount: number;
+    /** Whether any manageable loops are actively running. */
+    hasActiveLoops: boolean;
     /** Whether the initial fetch is still in progress. */
     loading: boolean;
     /** Pause an active loop. */
@@ -109,6 +113,8 @@ export function useLoops(workspaceId: string | undefined, processId: string | nu
     }, [workspaceId, fetchLoops]);
 
     const activeCount = loops.filter(l => l.status === 'active').length;
+    const manageableCount = loops.filter(l => l.status !== 'cancelled').length;
+    const hasActiveLoops = activeCount > 0;
 
-    return { loops, activeCount, loading, pause, resume, cancel, refresh: fetchLoops };
+    return { loops, activeCount, manageableCount, hasActiveLoops, loading, pause, resume, cancel, refresh: fetchLoops };
 }

@@ -1029,7 +1029,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 onOpenScratchpad={handleOpenScratchpad}
                 onFork={metadataProcess?.sdkSessionId && task?.status === 'completed' ? handleFork : undefined}
                 forking={forking}
-                activeLoopCount={loopsHook.activeCount}
+                loopCount={loopsHook.manageableCount}
+                hasActiveLoops={loopsHook.hasActiveLoops}
                 onToggleLoopPanel={() => setLoopPanelOpen(v => !v)}
             />
             {loopPanelOpen && isLoopsEnabled() && (
