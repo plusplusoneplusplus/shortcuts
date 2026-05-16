@@ -328,10 +328,10 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                         <span className="shrink-0">· upd {formatTimestamp(pr.updatedAt)}</span>
                     )}
 
-                    <div className="ml-auto flex shrink-0 items-center gap-1">
+                    <div className="ml-auto flex shrink-0 items-center gap-px">
                         <button
                             type="button"
-                            className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-transparent bg-green-600 px-1.5 py-0.5 text-[11px] font-semibold text-white shadow-sm hover:bg-green-700"
+                            className="inline-flex min-h-[20px] items-center justify-center rounded border border-transparent bg-green-600 px-1.5 py-0 text-[11px] font-semibold leading-none text-white shadow-sm hover:bg-green-700"
                             data-testid="pr-merge-when-ready"
                         >
                             Merge
@@ -340,7 +340,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                             type="button"
                             disabled={aiPassRunning}
                             onClick={handleRunAiPass}
-                            className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-transparent bg-gradient-to-br from-purple-500 to-blue-500 px-1.5 py-0.5 text-[11px] font-semibold text-white shadow-sm hover:opacity-95 disabled:opacity-60"
+                            className="inline-flex min-h-[20px] items-center justify-center rounded border border-transparent bg-gradient-to-br from-purple-500 to-blue-500 px-1.5 py-0 text-[11px] font-semibold leading-none text-white shadow-sm hover:opacity-95 disabled:opacity-60"
                             data-testid="pr-run-ai-pass"
                         >
                             {aiPassRunning ? 'Reviewing…' : aiPassDone ? 'AI done' : 'AI review'}
@@ -348,7 +348,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                         <button
                             type="button"
                             onClick={() => setAssistantOpen(true)}
-                            className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-purple-300 bg-purple-50 px-1.5 py-0.5 text-[11px] font-semibold text-purple-700 hover:bg-purple-100 dark:border-purple-700 dark:bg-purple-900/30 dark:text-purple-200"
+                            className="inline-flex min-h-[20px] items-center justify-center rounded border border-purple-300 bg-purple-50 px-1.5 py-0 text-[11px] font-semibold leading-none text-purple-700 hover:bg-purple-100 dark:border-purple-700 dark:bg-purple-900/30 dark:text-purple-200"
                             data-testid="pr-open-ai-assistant"
                         >
                             Ask AI
@@ -356,14 +356,14 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                         <button
                             type="button"
                             onClick={handleCopySummary}
-                            className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-gray-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                            className="inline-flex min-h-[20px] items-center justify-center rounded border border-gray-300 bg-white px-1.5 py-0 text-[11px] font-semibold leading-none text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
                             data-testid="pr-copy-summary"
                         >
                             {summaryCopied ? 'Copied' : 'Copy'}
                         </button>
                         <button
                             type="button"
-                            className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-gray-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-red-600 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-gray-700"
+                            className="inline-flex min-h-[20px] items-center justify-center rounded border border-gray-300 bg-white px-1.5 py-0 text-[11px] font-semibold leading-none text-red-600 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-gray-700"
                             data-testid="pr-request-changes"
                         >
                             Changes
@@ -373,7 +373,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                                 href={pr.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-gray-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                                className="inline-flex min-h-[20px] items-center justify-center rounded border border-gray-300 bg-white px-1.5 py-0 text-[11px] font-semibold leading-none text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
                                 data-testid="header-external-link"
                             >
                                 Open 🔗
