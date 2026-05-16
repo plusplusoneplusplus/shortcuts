@@ -56,11 +56,18 @@ function isReadOnlyPullRequestCommand(command: string): boolean {
     return READ_ONLY_PR_PATTERNS.some(re => re.test(command));
 }
 
+function hasPullRequestCreationEvidence(command: string, result: string): boolean {
+    if (isPullRequestCreatingCommand(command)) return true;
+    if (!command) return true;
+    return isPullRequestCreatingCommand(result);
+}
+
 /**
  * Scans tool calls in a tool group for pull-request URLs emitted by shell tools.
  *
- * Only inspects PR creation commands, or shell output with no command metadata.
- * Read-only PR commands are ignored to avoid counting inspected pull requests.
+ * Only inspects PR creation commands, wrapper output that ran a PR creation
+ * command, or shell output with no command metadata. Read-only PR commands are
+ * ignored to avoid counting inspected pull requests.
  */
 export function detectPullRequestsInToolGroup(toolCalls: ToolCallLike[]): DetectedPullRequest[] {
     const results: DetectedPullRequest[] = [];
@@ -73,7 +80,7 @@ export function detectPullRequestsInToolGroup(toolCalls: ToolCallLike[]): Detect
 
         const command = getCommandString(tc.args);
         if (isReadOnlyPullRequestCommand(command)) continue;
-        if (command && !isPullRequestCreatingCommand(command)) continue;
+        if (!hasPullRequestCreationEvidence(command, tc.result)) continue;
 
         GITHUB_PR_URL_RE.lastIndex = 0;
         for (const match of tc.result.matchAll(GITHUB_PR_URL_RE)) {
