@@ -28,6 +28,8 @@ export interface LoopInfrastructure {
     loopExecutor: LoopExecutor;
     /** Timer registry for scheduling loop ticks and wakeups. */
     timerRegistry: ScheduleTimerRegistry;
+    /** Loop event emitter (used by REST handler and LLM tools to broadcast state). */
+    emit: LoopEventEmit;
     /** Close owned resources. Call on server shutdown. */
     dispose: () => void;
 }
@@ -123,5 +125,5 @@ export async function createLoopInfrastructure(options: LoopInfrastructureOption
         }
     };
 
-    return { loopStore, loopExecutor, timerRegistry, dispose };
+    return { loopStore, loopExecutor, timerRegistry, emit, dispose };
 }

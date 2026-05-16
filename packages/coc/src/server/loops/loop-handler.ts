@@ -13,8 +13,8 @@ import { sendJSON, sendError } from '../core/api-handler';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
 import type { LoopStore } from './loop-store';
-import type { LoopExecutor } from './loop-executor';
-import type { LoopEntry, LoopStatus } from './loop-types';
+import type { LoopExecutor, LoopEventEmit } from './loop-executor';
+import type { LoopEntry, LoopStatus, LoopChangeEvent } from './loop-types';
 
 // ============================================================================
 // Types
@@ -23,6 +23,17 @@ import type { LoopEntry, LoopStatus } from './loop-types';
 export interface LoopRouteContext {
     store: LoopStore;
     executor: LoopExecutor;
+    /** Optional WebSocket emitter for broadcasting loop state changes. */
+    emit?: LoopEventEmit;
+}
+
+function safeEmit(emit: LoopEventEmit | undefined, event: LoopChangeEvent): void {
+    if (!emit) return;
+    try {
+        emit(event);
+    } catch {
+        // Best-effort broadcast — never fail the REST response.
+    }
 }
 
 // ============================================================================
@@ -82,7 +93,7 @@ function validatePatchFields(body: Record<string, unknown>): { valid: boolean; e
 // ============================================================================
 
 export function registerLoopRoutes(routes: Route[], ctx: LoopRouteContext): void {
-    const { store, executor } = ctx;
+    const { store, executor, emit } = ctx;
 
     // ------------------------------------------------------------------
     // GET /api/workspaces/:id/loops — List loops for a workspace
@@ -141,6 +152,7 @@ export function registerLoopRoutes(routes: Route[], ctx: LoopRouteContext): void
             if (body.model !== undefined) loop.model = (body.model as string) || null;
 
             store.update(loop);
+            safeEmit(emit, { type: 'loop-updated', loop });
             sendJSON(res, 200, { loop: serializeLoop(loop) });
         },
     });
@@ -162,6 +174,7 @@ export function registerLoopRoutes(routes: Route[], ctx: LoopRouteContext): void
             loop.status = 'cancelled';
             loop.nextTickAt = null;
             store.update(loop);
+            safeEmit(emit, { type: 'loop-cancelled', loop });
 
             sendJSON(res, 200, { deleted: true, loop: serializeLoop(loop) });
         },
@@ -193,6 +206,7 @@ export function registerLoopRoutes(routes: Route[], ctx: LoopRouteContext): void
             loop.pausedReason = reason;
             loop.nextTickAt = null;
             store.update(loop);
+            safeEmit(emit, { type: 'loop-paused', loop });
 
             sendJSON(res, 200, { loop: serializeLoop(loop) });
         },
@@ -219,6 +233,7 @@ export function registerLoopRoutes(routes: Route[], ctx: LoopRouteContext): void
                 loop.status = 'expired';
                 loop.nextTickAt = null;
                 store.update(loop);
+                safeEmit(emit, { type: 'loop-expired', loop });
                 return sendError(res, 400, 'Loop has expired and cannot be resumed');
             }
 
@@ -228,6 +243,7 @@ export function registerLoopRoutes(routes: Route[], ctx: LoopRouteContext): void
             loop.nextTickAt = new Date(Date.now() + loop.intervalMs).toISOString();
             store.update(loop);
             executor.armTimer(loop);
+            safeEmit(emit, { type: 'loop-resumed', loop });
 
             sendJSON(res, 200, { loop: serializeLoop(loop) });
         },

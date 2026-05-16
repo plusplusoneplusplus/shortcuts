@@ -13,14 +13,14 @@
 
 import * as crypto from 'crypto';
 import { defineTool } from '@plusplusoneplusplus/forge';
-import type { LoopEntry } from '../loops/loop-types';
+import type { LoopEntry, LoopChangeEvent } from '../loops/loop-types';
 import {
     MIN_LOOP_INTERVAL_MS,
     MIN_WAKEUP_DELAY_MS,
     DEFAULT_LOOP_TTL_MS,
 } from '../loops/loop-types';
 import type { LoopStore } from '../loops/loop-store';
-import type { LoopExecutor } from '../loops/loop-executor';
+import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
 
 // ============================================================================
 // Shared deps type
@@ -33,6 +33,8 @@ export interface LoopToolDeps {
     processId: string;
     /** Resolve workspace ID for the process (used at loop creation time). */
     resolveWorkspaceId: (processId: string) => Promise<string | undefined>;
+    /** Optional emitter for broadcasting loop state changes via WebSocket. */
+    emit?: LoopEventEmit;
 }
 
 export interface WakeupToolDeps {
@@ -86,6 +88,15 @@ export interface ScheduleWakeupArgs {
     delay: string | number;
     /** Optional model override. */
     model?: string;
+}
+
+function safeEmit(emit: LoopEventEmit | undefined, event: LoopChangeEvent): void {
+    if (!emit) return;
+    try {
+        emit(event);
+    } catch {
+        // Best-effort broadcast — never fail the tool call.
+    }
 }
 
 // ============================================================================
@@ -203,6 +214,7 @@ export function createCreateLoopTool(deps: LoopToolDeps) {
             }
 
             deps.executor.armTimer(loop);
+            safeEmit(deps.emit, { type: 'loop-created', loop });
 
             return {
                 created: true,
@@ -254,6 +266,7 @@ export function createCancelLoopTool(deps: LoopToolDeps) {
             loop.status = 'cancelled';
             loop.nextTickAt = null;
             deps.store.update(loop);
+            safeEmit(deps.emit, { type: 'loop-cancelled', loop });
 
             return { cancelled: true, loopId: loop.id };
         },

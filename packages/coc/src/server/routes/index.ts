@@ -77,7 +77,7 @@ import { registerRalphContinueRoutes } from './ralph-continue-routes';
 import { registerRalphPromoteRoutes } from './ralph-promote-routes';
 import { registerLoopRoutes } from '../loops/loop-handler';
 import type { LoopStore } from '../loops/loop-store';
-import type { LoopExecutor } from '../loops/loop-executor';
+import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
 import { registerMcpOauthRoutes } from '../mcp-oauth';
 import type { McpOauthManager } from '../mcp-oauth';
 
@@ -123,6 +123,7 @@ export interface RegisterRoutesOptions {
     loopStore?: LoopStore;
     loopExecutor?: LoopExecutor;
     mcpOauthManager?: McpOauthManager;
+    loopEmit?: LoopEventEmit;
 }
 
 export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined } {
@@ -217,6 +218,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         registerLoopRoutes(routes, {
             store: opts.loopStore,
             executor: opts.loopExecutor,
+            emit: opts.loopEmit,
         });
     }
 

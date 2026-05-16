@@ -312,4 +312,40 @@ describe('ChatListPane loop awareness', () => {
             expect(indicator.className).toContain('text-[#15703a]');
         });
     });
+
+    describe('WebSocket-driven refresh', () => {
+        it('refetches and updates row indicator when coc-ws-message loop-paused arrives', async () => {
+            loopsEnabledValue = true;
+            const tasks = [makeTask({ id: 'proc-a', displayName: 'Chat A' })];
+            // First fetch: active loop → green
+            mockListAll.mockResolvedValueOnce([
+                { id: 'loop-1', processId: 'proc-a', status: 'active', description: '', intervalMs: 60000, createdAt: '', lastTickAt: null, nextTickAt: null, tickCount: 0, consecutiveFailures: 0, expiresAt: '', pausedReason: null, prompt: '', model: null },
+            ]);
+            await act(async () => {
+                render(<ChatListPane {...defaultProps} history={tasks} />);
+            });
+            let indicator = screen.getByTestId('loop-indicator');
+            expect(indicator.title).toBe('Has active loops');
+            expect(indicator.className).toContain('text-[#15703a]');
+
+            // Second fetch (after WS event): now paused → amber
+            mockListAll.mockResolvedValueOnce([
+                { id: 'loop-1', processId: 'proc-a', status: 'paused', description: '', intervalMs: 60000, createdAt: '', lastTickAt: null, nextTickAt: null, tickCount: 0, consecutiveFailures: 0, expiresAt: '', pausedReason: 'user-paused', prompt: '', model: null },
+            ]);
+
+            await act(async () => {
+                window.dispatchEvent(new CustomEvent('coc-ws-message', {
+                    detail: { type: 'loop-paused', loopId: 'loop-1', processId: 'proc-a', status: 'paused' },
+                }));
+                // allow promise chain to flush
+                await Promise.resolve();
+                await Promise.resolve();
+            });
+
+            indicator = screen.getByTestId('loop-indicator');
+            expect(indicator.title).toBe('Has paused loops');
+            expect(indicator.className).toContain('text-[#8a5a00]');
+            expect(mockListAll).toHaveBeenCalledTimes(2);
+        });
+    });
 });

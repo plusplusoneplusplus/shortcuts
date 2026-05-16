@@ -177,6 +177,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             return {
                 store: loopInfra.loopStore,
                 executor: loopInfra.loopExecutor,
+                emit: loopInfra.emit,
                 resolveWorkspaceId: async (processId: string) => {
                     try {
                         const taskId = processId.startsWith('queue_') ? processId.slice(6) : processId;
@@ -364,6 +365,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         loopStore: loopInfra?.loopStore,
         loopExecutor: loopInfra?.loopExecutor,
         mcpOauthManager: mcpOauthInfra?.manager,
+        loopEmit: loopInfra?.emit,
     });
     // Restore auto-commit timers for all workspaces that had it enabled
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });

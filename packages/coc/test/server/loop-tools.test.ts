@@ -492,3 +492,47 @@ describe('tool metadata', () => {
         expect(tool.name).toBe('scheduleWakeup');
     });
 });
+
+describe('loop tool event emission', () => {
+    it('createLoop emits loop-created with the new loop', async () => {
+        const emit = vi.fn();
+        const deps = makeLoopToolDeps({ emit });
+        const { tool } = createCreateLoopTool(deps);
+        const result: any = await (tool.handler as any)({ description: 'd', interval: '30s', prompt: 'p' });
+        expect(result.created).toBe(true);
+        expect(emit).toHaveBeenCalledTimes(1);
+        const evt = emit.mock.calls[0][0];
+        expect(evt.type).toBe('loop-created');
+        expect(evt.loop.id).toBe(result.loopId);
+        expect(evt.loop.processId).toBe('proc-123');
+    });
+
+    it('cancelLoop emits loop-cancelled', async () => {
+        const emit = vi.fn();
+        const deps = makeLoopToolDeps({ emit });
+        const { tool: createTool } = createCreateLoopTool(deps);
+        const { tool: cancelTool } = createCancelLoopTool(deps);
+        const createRes: any = await (createTool.handler as any)({ description: 'd', interval: '30s', prompt: 'p' });
+        emit.mockClear();
+        const cancelRes: any = await (cancelTool.handler as any)({ loopId: createRes.loopId });
+        expect(cancelRes.cancelled).toBe(true);
+        expect(emit).toHaveBeenCalledTimes(1);
+        expect(emit.mock.calls[0][0].type).toBe('loop-cancelled');
+        expect(emit.mock.calls[0][0].loop.status).toBe('cancelled');
+    });
+
+    it('does not throw when emit throws', async () => {
+        const emit = vi.fn().mockImplementation(() => { throw new Error('boom'); });
+        const deps = makeLoopToolDeps({ emit });
+        const { tool } = createCreateLoopTool(deps);
+        const result: any = await (tool.handler as any)({ description: 'd', interval: '30s', prompt: 'p' });
+        expect(result.created).toBe(true);
+    });
+
+    it('works without emit (backwards compatible)', async () => {
+        const deps = makeLoopToolDeps();
+        const { tool } = createCreateLoopTool(deps);
+        const result: any = await (tool.handler as any)({ description: 'd', interval: '30s', prompt: 'p' });
+        expect(result.created).toBe(true);
+    });
+});

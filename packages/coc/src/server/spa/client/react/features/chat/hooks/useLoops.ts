@@ -69,28 +69,16 @@ export function useLoops(workspaceId: string | undefined, processId: string | nu
         if (!processId) return;
         if (!isLoopsEnabled()) return;
 
-        function handleWsMessage(event: MessageEvent) {
-            try {
-                const msg = JSON.parse(event.data);
-                if (!msg.type?.startsWith('loop-')) return;
-                if (msg.processId !== processId) return;
-                // Re-fetch on any loop event for this process
-                fetchLoops();
-            } catch { /* ignore parse errors */ }
-        }
-
-        // Attach to any existing WebSocket — we piggyback on the app's connection
-        // by listening to the custom event dispatched by the WS context
-        window.addEventListener('coc-ws-message' as any, ((e: CustomEvent) => {
+        const handler = ((e: CustomEvent) => {
             const msg = e.detail;
             if (!msg?.type?.startsWith('loop-')) return;
             if (msg.processId !== processId) return;
             fetchLoops();
-        }) as EventListener);
+        }) as EventListener;
 
+        window.addEventListener('coc-ws-message' as any, handler);
         return () => {
-            // Cleanup not strictly necessary for custom events on window,
-            // but good practice
+            window.removeEventListener('coc-ws-message' as any, handler);
         };
     }, [processId, fetchLoops]);
 
