@@ -111,7 +111,6 @@ test.describe('Pull Requests tab — list', () => {
             await openPrTab(page, serverUrl, repoId);
 
             // Queue chrome
-            await expect(page.locator('[data-testid="pr-queue-header"]')).toBeVisible({ timeout: 10000 });
             await expect(page.locator('[data-testid="pr-queue-filter-all"]')).toBeVisible({ timeout: 10000 });
             await expect(page.locator('[data-testid="pr-queue-filter-mine"]')).toBeVisible({ timeout: 10000 });
             await expect(page.locator('[data-testid="pr-queue-filter-blocked"]')).toBeVisible({ timeout: 10000 });

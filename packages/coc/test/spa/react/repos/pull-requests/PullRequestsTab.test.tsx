@@ -101,10 +101,10 @@ describe('successful fetch', () => {
         expect(screen.getByText('PR Two')).toBeInTheDocument();
     });
 
-    it('renders the queue header, search input, refresh, and select controls', async () => {
+    it('renders the search input, refresh, and select controls', async () => {
         mockFetchOk([]);
         await act(async () => { await renderTab(); });
-        expect(screen.getByTestId('pr-queue-header')).toBeInTheDocument();
+        expect(screen.queryByTestId('pr-queue-header')).not.toBeInTheDocument();
         expect(screen.getByTestId('search-input')).toBeInTheDocument();
         expect(screen.getByTestId('refresh-button')).toBeInTheDocument();
         expect(screen.getByTestId('select-mode-button')).toBeInTheDocument();

@@ -1,6 +1,5 @@
 /**
  * Unit tests for the chrome of the redesigned PR review command queue:
- *  - PrQueueHeader (eyebrow + title + copy)
  *  - PrQueueFilters (4 filter pills with counts and active state)
  *  - PrQueueGroupSection (labeled section wrapper)
  *  - PrQueueFooter (queue rule explanation)
@@ -8,27 +7,9 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { PrQueueHeader } from '../../../../../src/server/spa/client/react/features/pull-requests/PrQueueHeader';
 import { PrQueueFilters } from '../../../../../src/server/spa/client/react/features/pull-requests/PrQueueFilters';
 import { PrQueueGroupSection } from '../../../../../src/server/spa/client/react/features/pull-requests/PrQueueGroupSection';
 import { PrQueueFooter } from '../../../../../src/server/spa/client/react/features/pull-requests/PrQueueFooter';
-
-describe('PrQueueHeader', () => {
-    it('renders default eyebrow, title, and copy', () => {
-        render(<PrQueueHeader />);
-        expect(screen.getByTestId('pr-queue-header').textContent).toContain('Review command queue');
-        expect(screen.getByTestId('pr-queue-header').textContent).toContain('Ship the right PR first');
-        expect(screen.getByTestId('pr-queue-header').textContent).toContain('AI ranks queue items');
-    });
-
-    it('honors prop overrides', () => {
-        render(<PrQueueHeader eyebrow="EYE" title="Title" copy="Copy" />);
-        const header = screen.getByTestId('pr-queue-header');
-        expect(header.textContent).toContain('EYE');
-        expect(header.textContent).toContain('Title');
-        expect(header.textContent).toContain('Copy');
-    });
-});
 
 describe('PrQueueFilters', () => {
     it('renders all four pills with their counts', () => {

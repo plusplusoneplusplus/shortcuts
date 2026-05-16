@@ -21,7 +21,6 @@ import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { PullRequestDetail } from './PullRequestDetail';
 import { PullRequestRow } from './PullRequestRow';
-import { PrQueueHeader } from './PrQueueHeader';
 import { PrQueueFilters } from './PrQueueFilters';
 import { PrQueueGroupSection } from './PrQueueGroupSection';
 import { PrQueueFooter } from './PrQueueFooter';
@@ -318,8 +317,6 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
 
     const queuePanel = (
         <>
-            <PrQueueHeader />
-
             <div
                 className="flex items-center gap-1.5 border-b border-gray-200 px-2.5 py-1.5 dark:border-gray-700"
                 data-testid="pr-queue-toolbar"
