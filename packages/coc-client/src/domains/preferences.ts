@@ -76,8 +76,21 @@ export class PreferencesClient {
     });
   }
 
+  recordCommitSkillUsage(workspaceId: string, skillName: string): Promise<SkillUsageResponse> {
+    return this.transport.request<SkillUsageResponse>(repoPreferencesPath(workspaceId, '/commit-skill-usage'), {
+      method: 'PATCH',
+      body: { skillName },
+    });
+  }
+
   getSkillUsage(workspaceId: string, query?: SkillUsageQuery): Promise<SkillUsageListResponse> {
     return this.transport.request<SkillUsageListResponse>(repoPreferencesPath(workspaceId, '/skill-usage'), {
+      query: serializeSkillUsageQuery(query),
+    });
+  }
+
+  getCommitSkillUsage(workspaceId: string, query?: SkillUsageQuery): Promise<SkillUsageListResponse> {
+    return this.transport.request<SkillUsageListResponse>(repoPreferencesPath(workspaceId, '/commit-skill-usage'), {
       query: serializeSkillUsageQuery(query),
     });
   }

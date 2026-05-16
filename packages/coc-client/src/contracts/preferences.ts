@@ -30,6 +30,8 @@ export interface PerRepoPreferences {
   lastEffort?: string;
   lastSkills?: Record<string, string[] | undefined>;
   skillUsageMap?: Record<string, string>;
+  /** Commit-scoped skill usage timestamps for the Git tab context menu (skillName → ISO timestamp). */
+  commitSkillUsageMap?: Record<string, string>;
   linkedRepoIds?: string[];
   disabledLlmTools?: string[];
   filesViewMode?: 'flat' | 'tree';

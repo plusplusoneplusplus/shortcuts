@@ -472,7 +472,7 @@ The **Repository Git Tab** provides a full-featured git interface for browsing c
 | Cherry Pick | Confirmation required; `POST .../git/cherry-pick` |
 | Ask AI | Opens floating chat with commit hash + subject context |
 | Queue Task | Enqueues task with commit context |
-| Use Skill | Submenu of available skills (shown only when skills exist) |
+| Use Skill | Submenu showing top 5 most-recently-used skills (from `commitSkillUsageMap`), then a "More…" sub-submenu with remaining skills sorted alphabetically. When ≤5 skills installed, shows a flat recency-sorted list. |
 
 ### Commit Row — Non-HEAD commit
 
@@ -485,7 +485,7 @@ The **Repository Git Tab** provides a full-featured git interface for browsing c
 | Cherry Pick | Confirmation required; `POST .../git/cherry-pick` |
 | Ask AI | Opens floating chat with commit hash + subject context |
 | Queue Task | Enqueues task with commit context |
-| Use Skill | Submenu of available skills (shown only when skills exist) |
+| Use Skill | Submenu showing top 5 most-recently-used skills (from `commitSkillUsageMap`), then a "More…" sub-submenu with remaining skills sorted alphabetically. When ≤5 skills installed, shows a flat recency-sorted list. |
 
 ### Multi-commit (2+ selected)
 
@@ -495,7 +495,7 @@ The **Repository Git Tab** provides a full-featured git interface for browsing c
 | Squash N Commits | AI-powered squash task (shown when ≥2 selected) |
 | Ask AI | Enqueues AI task with combined diff context |
 | Queue Task | Enqueues task with combined context |
-| Use Skill | Submenu of available skills (shown only when skills exist) |
+| Use Skill | Submenu showing top 5 most-recently-used skills (from `commitSkillUsageMap`), then a "More…" sub-submenu with remaining skills sorted alphabetically. When ≤5 skills installed, shows a flat recency-sorted list. |
 
 ### Branch Header
 
@@ -503,7 +503,7 @@ The **Repository Git Tab** provides a full-featured git interface for browsing c
 |---|---|
 | Ask AI | Enqueues AI task with branch range context (diff if under 50KB, stat-only otherwise) |
 | Queue Task | Enqueues task with branch context |
-| Use Skill | Submenu of available skills (shown only when skills exist) |
+| Use Skill | Submenu showing top 5 most-recently-used skills (from `commitSkillUsageMap`), then a "More…" sub-submenu with remaining skills sorted alphabetically. When ≤5 skills installed, shows a flat recency-sorted list. |
 
 ### Diff Viewer (right-click on selected text)
 
@@ -739,6 +739,8 @@ The **Repository Git Tab** provides a full-featured git interface for browsing c
 |---|---|---|
 | `GET /api/workspaces/:id/skills` | Skill list for context menu | US-19 |
 | `POST /api/queue` | Task enqueue (AI, chat, skill, squash) | US-19, US-22, US-23 |
+| `GET /api/workspaces/:id/preferences/commit-skill-usage` | Commit-scoped skill MRU ordering | US-19 |
+| `PATCH /api/workspaces/:id/preferences/commit-skill-usage` | Record commit-scoped skill usage | US-19 |
 
 ---
 

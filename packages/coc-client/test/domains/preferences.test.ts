@@ -12,6 +12,9 @@ describe('PreferencesClient', () => {
     await client.getRepo('repo/a');
     await client.patchRepo('repo/a', { lastDepth: 'deep' });
     await client.recordSkillUsage('repo/a', 'impl');
+    await client.recordCommitSkillUsage('repo/a', 'go-deep');
+    await client.getSkillUsage('repo/a');
+    await client.getCommitSkillUsage('repo/a');
     await client.getTaskSettings('repo/a');
     await client.updateTaskSettings('repo/a', { folderPaths: ['tasks', 'plans'] });
     await client.getLlmToolsConfig('repo/a');
@@ -23,6 +26,9 @@ describe('PreferencesClient', () => {
       { path: '/workspaces/repo%2Fa/preferences' },
       { path: '/workspaces/repo%2Fa/preferences', options: { method: 'PATCH', body: { lastDepth: 'deep' } } },
       { path: '/workspaces/repo%2Fa/preferences/skill-usage', options: { method: 'PATCH', body: { skillName: 'impl' } } },
+      { path: '/workspaces/repo%2Fa/preferences/commit-skill-usage', options: { method: 'PATCH', body: { skillName: 'go-deep' } } },
+      { path: '/workspaces/repo%2Fa/preferences/skill-usage' },
+      { path: '/workspaces/repo%2Fa/preferences/commit-skill-usage' },
       { path: '/workspaces/repo%2Fa/tasks/settings' },
       {
         path: '/workspaces/repo%2Fa/tasks/settings',
