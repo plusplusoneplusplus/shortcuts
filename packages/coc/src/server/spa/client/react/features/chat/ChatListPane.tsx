@@ -32,6 +32,7 @@ import { RalphSessionRow } from './RalphSessionRow';
 import { isRalphEnabled, isLoopsEnabled } from '../../utils/config';
 import { getListModeConfig } from './list-mode-config';
 import { useAllLoops, type ProcessLoopState } from './hooks/useAllLoops';
+import { LoopIcon } from './icons/LoopIcon';
 import { isRalphTask } from '../../../../../tasks/task-types';
 
 /** Primary task types surfaced as individual filter options. */
@@ -1373,9 +1374,10 @@ export function ChatListPane({
                                             : 'text-[#8a5a00] dark:text-[#fbbf24]',
                                     )}
                                     title={state === 'active' ? 'Has active loops' : 'Has paused loops'}
-                                    aria-hidden="true"
                                     data-testid="loop-indicator"
-                                >🔁</span>
+                                >
+                                    <LoopIcon className="w-3 h-3" />
+                                </span>
                             );
                         })()}
                     </span>
@@ -1964,7 +1966,7 @@ export function ChatListPane({
                                 id: 'loops' as const,
                                 label: 'Loops',
                                 count: scopeCounts.loops,
-                                icon: <span className="text-[11px]" aria-hidden="true">🔁</span>,
+                                icon: <LoopIcon className="w-3 h-3" />,
                                 hidden: !loopsEnabled,
                             },
                             {

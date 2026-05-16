@@ -256,7 +256,7 @@ describe('ChatListPane loop awareness', () => {
                 render(<ChatListPane {...defaultProps} history={tasks} />);
             });
             const indicator = screen.getByTestId('loop-indicator');
-            expect(indicator.textContent).toBe('🔁');
+            expect(indicator.querySelector('[data-testid="loop-icon"]')).toBeTruthy();
             expect(indicator.title).toBe('Has active loops');
             // Green tint class
             expect(indicator.className).toContain('text-[#15703a]');

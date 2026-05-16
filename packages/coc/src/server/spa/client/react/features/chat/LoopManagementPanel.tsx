@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { cn } from '../../ui/cn';
 import type { LoopEntry } from '@plusplusoneplusplus/coc-client';
+import { LoopIcon } from './icons/LoopIcon';
 
 export interface LoopManagementPanelProps {
     loops: LoopEntry[];
@@ -155,8 +156,9 @@ export function LoopManagementPanel({ loops, isOpen, onClose, onPause, onResume,
             data-testid="loop-management-panel"
         >
             <div className="px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                <span className="text-[11px] font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
-                    🔁 Loops ({loops.length})
+                <span className="text-[11px] font-semibold text-[#1e1e1e] dark:text-[#cccccc] inline-flex items-center gap-1">
+                    <LoopIcon className="w-3.5 h-3.5" />
+                    <span>Loops ({loops.length})</span>
                 </span>
             </div>
             {loops.length === 0 ? (

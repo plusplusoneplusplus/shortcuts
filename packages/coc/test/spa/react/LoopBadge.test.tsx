@@ -10,7 +10,7 @@ describe('LoopBadge', () => {
         const { container } = render(<LoopBadge count={3} hasActiveLoops={true} />);
         expect(container.querySelector('[data-testid="loop-badge"]')).toBeTruthy();
         expect(screen.getByText('3')).toBeTruthy();
-        expect(screen.getByText('🔁')).toBeTruthy();
+        expect(container.querySelector('[data-testid="loop-icon"]')).toBeTruthy();
     });
 
     it('renders nothing when count is 0', () => {

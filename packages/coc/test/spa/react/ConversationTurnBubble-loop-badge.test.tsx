@@ -42,7 +42,7 @@ describe('ConversationTurnBubble turnSource badge', () => {
         const badge = container.querySelector('[data-testid="turn-source-badge"]');
         expect(badge).toBeTruthy();
         expect(badge?.textContent).toContain('loop');
-        expect(badge?.textContent).toContain('🔁');
+        expect(badge?.querySelector('[data-testid="loop-icon"]')).toBeTruthy();
         expect(badge?.getAttribute('title')).toContain('Loop tick');
         expect(badge?.getAttribute('title')).toContain('loop-123');
     });

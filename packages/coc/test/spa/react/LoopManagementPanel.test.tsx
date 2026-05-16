@@ -198,6 +198,6 @@ describe('LoopManagementPanel', () => {
                 {...defaultHandlers}
             />,
         );
-        expect(screen.getByText('🔁 Loops (2)')).toBeTruthy();
+        expect(screen.getByText(/Loops \(2\)/)).toBeTruthy();
     });
 });
