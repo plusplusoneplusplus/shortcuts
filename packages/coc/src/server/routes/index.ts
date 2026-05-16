@@ -30,6 +30,7 @@ import { registerRepoRoutes } from '../repos/repo-routes';
 import { registerInstructionRoutes } from '../skills/instruction-handler';
 import { registerProviderRoutes } from '../providers/provider-routes';
 import { registerPrRoutes } from '../repos/pr-routes';
+import { registerPrClassificationRoutes } from '../repos/pr-classification-handler';
 import { registerLogsRoutes } from '../logging/logs-routes';
 import { registerModelRoutes } from '../models/model-routes';
 import { RepoTreeService } from '../repos/tree-service';
@@ -139,6 +140,15 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const repoTreeService = new RepoTreeService(dataDir, undefined, store);
     registerRepoRoutes(routes, dataDir, repoTreeService);
     registerPrRoutes(routes, dataDir, repoTreeService);
+    // Focused-diff classification routes (feature-flagged)
+    if (opts.resolvedConfig?.features?.focusedDiff) {
+        registerPrClassificationRoutes(routes, {
+            dataDir,
+            store,
+            bridge,
+            repoTreeService,
+        });
+    }
     registerRemoteServerRoutes(routes, {
         store: opts.remoteServerStore ?? new RemoteServerStore(dataDir),
         connector: opts.remoteServerConnector ?? new DevTunnelConnector(),
