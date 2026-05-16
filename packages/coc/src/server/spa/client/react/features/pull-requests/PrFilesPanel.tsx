@@ -30,6 +30,11 @@ import {
     type FileTreeNode,
 } from './file-tree';
 import { formatTimestamp, type CommentThread, type PrComment } from './pr-utils';
+import { SHOW_FOCUSED_DIFF } from '../../featureFlags';
+import type { HunkCategory } from './classification-types';
+import { HUNK_CATEGORIES, CATEGORY_LABELS } from './classification-types';
+import type { UseClassificationReturn } from './useClassification';
+import type { AiFileAnnotation } from './pr-mock-data';
 
 interface PrFilesPanelProps {
     files: ParsedDiffFile[];
@@ -38,6 +43,12 @@ interface PrFilesPanelProps {
     /** When true (small viewports), the file list stacks above the diff
      *  with full width and no resize handle. */
     isMobile?: boolean;
+    /** Optional, keyed by file path. Comes from `pr-mock-data` for now. */
+    annotations?: Record<string, AiFileAnnotation | undefined>;
+    /** Optional, keyed by file path. Highlights an AI-flagged file. */
+    focusByPath?: Record<string, string | undefined>;
+    /** Classification hook return — enables focused-diff filter bar. */
+    classification?: UseClassificationReturn;
 }
 
 const FILES_PANEL_WIDTH_STORAGE_KEY = 'coc:pr-files-panel-width';
@@ -58,7 +69,110 @@ const STATUS_CLASS: Record<ParsedDiffFile['status'], string> = {
     renamed:  'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200',
 };
 
-export function PrFilesPanel({ files, commentsByPath, isMobile = false }: PrFilesPanelProps) {
+// ── Classification badge dots ────────────────────────────────────────
+
+const BADGE_COLORS: Record<HunkCategory, string> = {
+    logic: 'text-orange-500 dark:text-orange-400',
+    mechanical: 'text-gray-400 dark:text-gray-500',
+    test: 'text-blue-500 dark:text-blue-400',
+    generated: 'text-purple-500 dark:text-purple-400',
+};
+
+function ClassificationBadge({ category, intensity }: { category: HunkCategory; intensity: 'high' | 'low' }) {
+    const color = BADGE_COLORS[category];
+    const filled = intensity === 'high' ? 2 : 1;
+    return (
+        <span
+            className={cn('ml-1 shrink-0 text-[10px] tracking-tight', color)}
+            title={`${CATEGORY_LABELS[category]} (${intensity})`}
+            data-testid="classification-badge"
+        >
+            {filled >= 1 ? '●' : '○'}{filled >= 2 ? '●' : '○'}
+        </span>
+    );
+}
+
+// ── Classification filter bar ───────────────────────────────────────
+
+function ClassificationFilterBar({ classification }: { classification: UseClassificationReturn }) {
+    const { state, classify, toggleFilter, setFilters } = classification;
+    const { status, activeFilters, error } = state;
+    const isLoading = status === 'loading';
+    const isReady = status === 'ready';
+
+    return (
+        <div
+            className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-gray-200 bg-gray-50/70 px-2 py-1 dark:border-gray-700 dark:bg-gray-800/40"
+            data-testid="classification-filter-bar"
+        >
+            {/* Classify button */}
+            <button
+                type="button"
+                onClick={classify}
+                disabled={isLoading}
+                className={cn(
+                    'inline-flex h-[22px] items-center gap-1 rounded border px-1.5 text-[10px] font-semibold uppercase leading-none',
+                    isLoading
+                        ? 'cursor-wait border-gray-300 bg-gray-100 text-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-500'
+                        : 'border-indigo-400 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500 dark:bg-indigo-900/30 dark:text-indigo-200 dark:hover:bg-indigo-900/50',
+                )}
+                data-testid="classify-button"
+            >
+                {isLoading ? (
+                    <>
+                        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        Classifying…
+                    </>
+                ) : isReady ? (
+                    'Re-classify'
+                ) : (
+                    'Classify'
+                )}
+            </button>
+
+            {/* Category checkboxes (shown once results are available) */}
+            {isReady && (
+                <>
+                    <span className="mx-0.5 h-3 w-px bg-gray-300 dark:bg-gray-600" />
+                    {HUNK_CATEGORIES.map(cat => (
+                        <label
+                            key={cat}
+                            className="inline-flex cursor-pointer items-center gap-0.5 text-[11px] text-gray-700 dark:text-gray-300"
+                        >
+                            <input
+                                type="checkbox"
+                                checked={activeFilters.has(cat)}
+                                onChange={() => toggleFilter(cat)}
+                                className="h-3 w-3 rounded border-gray-300 text-indigo-500 focus:ring-indigo-500 dark:border-gray-600"
+                                data-testid={`classification-filter-${cat}`}
+                            />
+                            {CATEGORY_LABELS[cat]}
+                        </label>
+                    ))}
+                    <button
+                        type="button"
+                        onClick={() => setFilters(new Set(HUNK_CATEGORIES))}
+                        className="ml-0.5 text-[10px] text-indigo-600 hover:underline dark:text-indigo-300"
+                        data-testid="classification-filter-all"
+                    >
+                        All
+                    </button>
+                </>
+            )}
+
+            {/* Error indicator */}
+            {status === 'error' && error && (
+                <span className="text-[10px] text-red-600 dark:text-red-400" data-testid="classify-error">
+                    {error}
+                </span>
+            )}
+        </div>
+    );
+}
+
+// ── Main component ──────────────────────────────────────────────────
+
+export function PrFilesPanel({ files, commentsByPath, isMobile = false, annotations, focusByPath, classification }: PrFilesPanelProps) {
     const [search, setSearch] = useState('');
     const [viewMode, setViewMode] = useState<ViewMode>('tree');
     const [activePath, setActivePath] = useState<string>(files[0]?.path ?? '');
@@ -180,6 +294,9 @@ export function PrFilesPanel({ files, commentsByPath, isMobile = false }: PrFile
                         </button>
                     </div>
                 </header>
+                {SHOW_FOCUSED_DIFF && classification && (
+                    <ClassificationFilterBar classification={classification} />
+                )}
                 <div className="shrink-0 px-2 pt-2">
                     <input
                         type="text"
@@ -208,12 +325,14 @@ export function PrFilesPanel({ files, commentsByPath, isMobile = false }: PrFile
                             collapsedFolders={collapsedFolders}
                             onToggleFolder={toggleFolder}
                             depth={0}
+                            classification={classification}
                         />
                     ) : (
                         <FlatFileList
                             files={visibleFiles}
                             activePath={activePath}
                             onSelect={setActivePath}
+                            classification={classification}
                         />
                     )}
                 </div>
@@ -245,6 +364,9 @@ export function PrFilesPanel({ files, commentsByPath, isMobile = false }: PrFile
                     <FileDiffCard
                         file={focusedFile}
                         threads={getThreadsForFile(commentsByPath, focusedFile)}
+                        annotation={annotations?.[focusedFile.path]}
+                        focus={focusByPath?.[focusedFile.path]}
+                        classification={classification}
                     />
                 )}
                 {!focusedFile && (
@@ -278,9 +400,10 @@ interface FlatFileListProps {
     files: ParsedDiffFile[];
     activePath: string;
     onSelect: (path: string) => void;
+    classification?: UseClassificationReturn;
 }
 
-function FlatFileList({ files, activePath, onSelect }: FlatFileListProps) {
+function FlatFileList({ files, activePath, onSelect, classification }: FlatFileListProps) {
     return (
         <div className="grid min-w-0 gap-px">
             {files.map(file => {
@@ -310,7 +433,11 @@ function FlatFileList({ files, activePath, onSelect }: FlatFileListProps) {
                             <span className="min-w-0 flex-1 truncate" data-testid="pr-file-basename">
                                 {basename}
                             </span>
-                            <span className="shrink-0 text-[11px] text-gray-500 dark:text-gray-400">
+                            <span className="flex shrink-0 items-center gap-1 text-[11px] text-gray-500 dark:text-gray-400">
+                                {(() => {
+                                    const badge = classification?.getFileBadge(file.path);
+                                    return badge ? <ClassificationBadge category={badge.category} intensity={badge.intensity} /> : null;
+                                })()}
                                 <span className="text-green-700 dark:text-green-400">+{file.additions}</span>{' '}
                                 <span className="text-red-700 dark:text-red-400">-{file.deletions}</span>
                             </span>
@@ -329,6 +456,7 @@ interface FileTreeViewProps {
     collapsedFolders: Set<string>;
     onToggleFolder: (path: string) => void;
     depth: number;
+    classification?: UseClassificationReturn;
 }
 
 function FileTreeView({
@@ -338,6 +466,7 @@ function FileTreeView({
     collapsedFolders,
     onToggleFolder,
     depth,
+    classification,
 }: FileTreeViewProps) {
     return (
         <div className="grid min-w-0 gap-px">
@@ -379,6 +508,7 @@ function FileTreeView({
                                     collapsedFolders={collapsedFolders}
                                     onToggleFolder={onToggleFolder}
                                     depth={depth + 1}
+                                    classification={classification}
                                 />
                             )}
                         </div>
@@ -404,7 +534,11 @@ function FileTreeView({
                         <span className="min-w-0 flex-1 truncate" data-testid="pr-file-basename">
                             {node.name}
                         </span>
-                        <span className="shrink-0 text-[11px] text-gray-500 dark:text-gray-400">
+                        <span className="flex shrink-0 items-center gap-1 text-[11px] text-gray-500 dark:text-gray-400">
+                            {(() => {
+                                const badge = classification?.getFileBadge(node.path);
+                                return badge ? <ClassificationBadge category={badge.category} intensity={badge.intensity} /> : null;
+                            })()}
                             <span className="text-green-700 dark:text-green-400">+{node.file.additions}</span>{' '}
                             <span className="text-red-700 dark:text-red-400">-{node.file.deletions}</span>
                         </span>
@@ -418,15 +552,20 @@ function FileTreeView({
 interface FileDiffCardProps {
     file: ParsedDiffFile;
     threads: CommentThread[];
+    annotation?: AiFileAnnotation;
+    focus?: string;
+    classification?: UseClassificationReturn;
 }
 
-function FileDiffCard({ file, threads }: FileDiffCardProps) {
+function FileDiffCard({ file, threads, annotation, focus, classification }: FileDiffCardProps) {
     const lineThreads = useMemo(() => groupThreadsByDiffLine(threads), [threads]);
     const fileLevelThreads = useMemo(
         () => threads.filter(thread => !resolveThreadLine(thread)),
         [threads],
     );
 
+    // Track hunk indices — each time we see a 'hunk' line, we increment.
+    let hunkIndex = -1;
     return (
         <article
             className="mb-2 overflow-hidden rounded-[5px] border border-gray-200 bg-white last:mb-0 dark:border-gray-700 dark:bg-gray-900"
@@ -476,16 +615,40 @@ function FileDiffCard({ file, threads }: FileDiffCardProps) {
                 <div className="font-mono text-[12px] leading-[1.45]">
                     {file.lines.map((line, idx) => {
                         if (line.kind === 'hunk') {
+                            hunkIndex++;
+                            const dimmed = classification?.isHunkDimmed(file.path, hunkIndex) ?? false;
+                            const hunkClassification = classification?.getHunkClassification(file.path, hunkIndex);
                             return (
                                 <div
                                     key={`hunk-${idx}`}
-                                    className="border-y border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] text-gray-500 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-400"
+                                    className={cn(
+                                        'border-y border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] text-gray-500 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-400',
+                                        dimmed && 'opacity-40',
+                                    )}
                                     data-testid="pr-file-hunk-header"
+                                    data-hunk-index={hunkIndex}
+                                    data-hunk-category={hunkClassification?.category}
                                 >
-                                    {line.text}
+                                    <span>{line.text}</span>
+                                    {hunkClassification && (
+                                        <span
+                                            className={cn(
+                                                'ml-2 rounded px-1 py-px text-[9px] font-semibold uppercase',
+                                                hunkClassification.category === 'logic' && 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+                                                hunkClassification.category === 'mechanical' && 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
+                                                hunkClassification.category === 'test' && 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+                                                hunkClassification.category === 'generated' && 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+                                            )}
+                                            title={hunkClassification.reason}
+                                            data-testid="hunk-category-tag"
+                                        >
+                                            {CATEGORY_LABELS[hunkClassification.category]}
+                                        </span>
+                                    )}
                                 </div>
                             );
                         }
+                        const dimmed = hunkIndex >= 0 && (classification?.isHunkDimmed(file.path, hunkIndex) ?? false);
                         const lineNo = line.kind === 'del' ? line.oldLineNo : line.newLineNo;
                         const comments = getThreadsForDiffLine(lineThreads, line);
                         return (
@@ -495,6 +658,7 @@ function FileDiffCard({ file, threads }: FileDiffCardProps) {
                                         'grid min-h-[19px] items-start',
                                         line.kind === 'add' && 'bg-green-50 dark:bg-green-900/30',
                                         line.kind === 'del' && 'bg-red-50 dark:bg-red-900/30',
+                                        dimmed && 'opacity-40',
                                     )}
                                     style={{ gridTemplateColumns: '38px 1fr' }}
                                     data-testid={`pr-file-diff-line-${line.kind}`}
