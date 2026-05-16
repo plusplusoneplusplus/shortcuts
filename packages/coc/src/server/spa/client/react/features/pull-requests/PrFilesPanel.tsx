@@ -14,14 +14,13 @@
  *
  * The file list, +/- counts, line numbers and the diff body all come
  * from the real `/api/repos/:repoId/pull-requests/:prId/diff` payload
- * (parsed by `unified-diff-parser`). Only the optional inline AI
- * annotation card (purple "AI noticed…" callout) is still mocked,
- * keyed deterministically off the file path.
+ * (parsed by `unified-diff-parser`). File-scoped comment threads come
+ * from the real `/threads` payload and render inline when the provider
+ * exposes file/line context.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { cn } from '../../ui';
-import type { AiFileAnnotation } from './pr-mock-data';
 import type { ParsedDiffFile } from './unified-diff-parser';
 import {
     buildFileTree,
@@ -29,13 +28,12 @@ import {
     splitPath,
     type FileTreeNode,
 } from './file-tree';
+import { formatTimestamp, type CommentThread, type PrComment } from './pr-utils';
 
 interface PrFilesPanelProps {
     files: ParsedDiffFile[];
-    /** Optional, keyed by file path. Comes from `pr-mock-data` for now. */
-    annotations?: Record<string, AiFileAnnotation | undefined>;
-    /** Optional, keyed by file path. Highlights an AI-flagged file. */
-    focusByPath?: Record<string, string | undefined>;
+    /** Real provider comment threads keyed by repository-relative file path. */
+    commentsByPath?: Record<string, CommentThread[] | undefined>;
 }
 
 type ViewMode = 'tree' | 'flat';
@@ -54,7 +52,7 @@ const STATUS_CLASS: Record<ParsedDiffFile['status'], string> = {
     renamed:  'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200',
 };
 
-export function PrFilesPanel({ files, annotations, focusByPath }: PrFilesPanelProps) {
+export function PrFilesPanel({ files, commentsByPath }: PrFilesPanelProps) {
     const [search, setSearch] = useState('');
     const [viewMode, setViewMode] = useState<ViewMode>('tree');
     const [activePath, setActivePath] = useState<string>(files[0]?.path ?? '');
@@ -208,8 +206,7 @@ export function PrFilesPanel({ files, annotations, focusByPath }: PrFilesPanelPr
                 {focusedFile && (
                     <FileDiffCard
                         file={focusedFile}
-                        annotation={annotations?.[focusedFile.path]}
-                        focus={focusByPath?.[focusedFile.path]}
+                        threads={getThreadsForFile(commentsByPath, focusedFile)}
                     />
                 )}
                 {!focusedFile && (
@@ -223,6 +220,20 @@ export function PrFilesPanel({ files, annotations, focusByPath }: PrFilesPanelPr
             </div>
         </div>
     );
+}
+
+function getThreadsForFile(
+    commentsByPath: PrFilesPanelProps['commentsByPath'],
+    file: ParsedDiffFile,
+): CommentThread[] {
+    const byId = new Map<string | number, CommentThread>();
+    for (const path of [file.path, file.oldPath]) {
+        if (!path) continue;
+        for (const thread of commentsByPath?.[path] ?? []) {
+            byId.set(thread.id, thread);
+        }
+    }
+    return [...byId.values()];
 }
 
 interface FlatFileListProps {
@@ -368,11 +379,16 @@ function FileTreeView({
 
 interface FileDiffCardProps {
     file: ParsedDiffFile;
-    annotation?: AiFileAnnotation;
-    focus?: string;
+    threads: CommentThread[];
 }
 
-function FileDiffCard({ file, annotation, focus }: FileDiffCardProps) {
+function FileDiffCard({ file, threads }: FileDiffCardProps) {
+    const lineThreads = useMemo(() => groupThreadsByDiffLine(threads), [threads]);
+    const fileLevelThreads = useMemo(
+        () => threads.filter(thread => !resolveThreadLine(thread)),
+        [threads],
+    );
+
     return (
         <article
             className="mb-2 overflow-hidden rounded-[5px] border border-gray-200 bg-white last:mb-0 dark:border-gray-700 dark:bg-gray-900"
@@ -394,11 +410,22 @@ function FileDiffCard({ file, annotation, focus }: FileDiffCardProps) {
                     </strong>
                 </div>
                 <div className="flex items-center gap-1.5 text-[11px] tabular-nums">
-                    {focus && <span className="text-purple-700 dark:text-purple-200">{focus}</span>}
+                    {threads.length > 0 && (
+                        <span className="text-blue-700 dark:text-blue-300" data-testid="pr-file-comment-count">
+                            {threads.length} comment{threads.length === 1 ? '' : 's'}
+                        </span>
+                    )}
                     <span className="text-green-700 dark:text-green-400">+{file.additions}</span>
                     <span className="text-red-700 dark:text-red-400">-{file.deletions}</span>
                 </div>
             </header>
+            {fileLevelThreads.length > 0 && (
+                <div className="border-b border-gray-100 bg-blue-50/60 px-2 py-1.5 dark:border-gray-700 dark:bg-blue-900/20">
+                    {fileLevelThreads.map(thread => (
+                        <InlineCommentThread key={thread.id} thread={thread} />
+                    ))}
+                </div>
+            )}
             {file.isBinary ? (
                 <div className="px-2 py-3 text-[11px] italic text-gray-500 dark:text-gray-400">
                     Binary file — diff omitted.
@@ -422,53 +449,138 @@ function FileDiffCard({ file, annotation, focus }: FileDiffCardProps) {
                             );
                         }
                         const lineNo = line.kind === 'del' ? line.oldLineNo : line.newLineNo;
+                        const comments = getThreadsForDiffLine(lineThreads, line);
                         return (
-                            <div
-                                key={idx}
-                                className={cn(
-                                    'grid min-h-[19px] items-start',
-                                    line.kind === 'add' && 'bg-green-50 dark:bg-green-900/30',
-                                    line.kind === 'del' && 'bg-red-50 dark:bg-red-900/30',
+                            <Fragment key={idx}>
+                                <div
+                                    className={cn(
+                                        'grid min-h-[19px] items-start',
+                                        line.kind === 'add' && 'bg-green-50 dark:bg-green-900/30',
+                                        line.kind === 'del' && 'bg-red-50 dark:bg-red-900/30',
+                                    )}
+                                    style={{ gridTemplateColumns: '38px 1fr' }}
+                                    data-testid={`pr-file-diff-line-${line.kind}`}
+                                >
+                                    <span className="border-r border-gray-200 px-1.5 py-px text-right text-gray-400 dark:border-gray-700 dark:text-gray-500">
+                                        {lineNo ?? ''}
+                                    </span>
+                                    <span className="overflow-x-auto whitespace-pre px-[7px] py-px text-gray-800 dark:text-gray-200">
+                                        {line.kind === 'add' ? '+' : line.kind === 'del' ? '-' : ' '}
+                                        {line.text}
+                                    </span>
+                                </div>
+                                {comments.length > 0 && (
+                                    <div
+                                        className="border-y border-blue-200 bg-blue-50/80 py-1 pl-[46px] pr-2 dark:border-blue-800 dark:bg-blue-900/20"
+                                        data-testid="pr-file-inline-comments"
+                                    >
+                                        {comments.map(thread => (
+                                            <InlineCommentThread key={thread.id} thread={thread} />
+                                        ))}
+                                    </div>
                                 )}
-                                style={{ gridTemplateColumns: '38px 1fr' }}
-                                data-testid={`pr-file-diff-line-${line.kind}`}
-                            >
-                                <span className="border-r border-gray-200 px-1.5 py-px text-right text-gray-400 dark:border-gray-700 dark:text-gray-500">
-                                    {lineNo ?? ''}
-                                </span>
-                                <span className="overflow-x-auto whitespace-pre px-[7px] py-px text-gray-800 dark:text-gray-200">
-                                    {line.kind === 'add' ? '+' : line.kind === 'del' ? '-' : ' '}
-                                    {line.text}
-                                </span>
-                            </div>
+                            </Fragment>
                         );
                     })}
                 </div>
             )}
-            {annotation && (
-                <div
-                    className="mb-2 ml-[46px] mr-2 mt-1.5 rounded-[5px] border border-purple-300 bg-purple-50 px-2 py-1.5 dark:border-purple-800 dark:bg-purple-900/30"
-                    data-testid="pr-file-ai-annotation"
-                >
-                    <strong className="mb-0.5 block text-[12px] font-semibold text-purple-700 dark:text-purple-200">
-                        {annotation.title}
-                    </strong>
-                    <p className="m-0 mt-px text-[12px] leading-[1.35] text-gray-700 dark:text-gray-200">
-                        {annotation.body}
-                    </p>
-                    <div className="mt-1.5 flex flex-wrap gap-1">
-                        {annotation.actions.map(action => (
-                            <button
-                                key={action}
-                                type="button"
-                                className="inline-flex min-h-[24px] items-center rounded-[5px] border border-gray-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                            >
-                                {action}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
         </article>
+    );
+}
+
+type DiffSide = 'left' | 'right';
+
+function resolveThreadLine(thread: CommentThread): number | undefined {
+    const line = thread.threadContext?.line ?? thread.threadContext?.endLine ?? thread.threadContext?.startLine;
+    return typeof line === 'number' && Number.isFinite(line) && line > 0 ? line : undefined;
+}
+
+function resolveThreadSide(thread: CommentThread): DiffSide | undefined {
+    const side = thread.threadContext?.side;
+    if (side === 'left' || side === 'right') return side;
+    return undefined;
+}
+
+function threadKey(side: DiffSide, line: number): string {
+    return `${side}:${line}`;
+}
+
+function groupThreadsByDiffLine(threads: CommentThread[]): Map<string, CommentThread[]> {
+    const buckets = new Map<string, CommentThread[]>();
+    for (const thread of threads) {
+        const line = resolveThreadLine(thread);
+        if (!line) continue;
+        const side = resolveThreadSide(thread);
+        const sides: DiffSide[] = side ? [side] : ['right', 'left'];
+        for (const s of sides) {
+            const key = threadKey(s, line);
+            const bucket = buckets.get(key) ?? [];
+            bucket.push(thread);
+            buckets.set(key, bucket);
+        }
+    }
+    return buckets;
+}
+
+function getThreadsForDiffLine(
+    buckets: Map<string, CommentThread[]>,
+    line: ParsedDiffFile['lines'][number],
+): CommentThread[] {
+    if (line.kind === 'hunk') return [];
+    const matches = new Map<string | number, CommentThread>();
+    if (line.newLineNo != null) {
+        for (const thread of buckets.get(threadKey('right', line.newLineNo)) ?? []) {
+            matches.set(thread.id, thread);
+        }
+    }
+    if (line.oldLineNo != null) {
+        for (const thread of buckets.get(threadKey('left', line.oldLineNo)) ?? []) {
+            matches.set(thread.id, thread);
+        }
+    }
+    return [...matches.values()];
+}
+
+function InlineCommentThread({ thread }: { thread: CommentThread }) {
+    return (
+        <div
+            className="mb-1.5 overflow-hidden rounded-[5px] border border-blue-200 bg-white text-[12px] last:mb-0 dark:border-blue-800 dark:bg-gray-900"
+            data-testid="pr-file-real-comment"
+        >
+            <div className="flex items-center justify-between gap-2 border-b border-blue-100 bg-blue-50 px-2 py-1 dark:border-blue-900 dark:bg-blue-950/40">
+                <span className="font-semibold text-blue-800 dark:text-blue-200">
+                    Review comment
+                </span>
+                {thread.status && (
+                    <span className="text-[10px] uppercase text-blue-600 dark:text-blue-300">
+                        {thread.status}
+                    </span>
+                )}
+            </div>
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                {thread.comments.map(comment => (
+                    <InlineComment key={comment.id} comment={comment} />
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function InlineComment({ comment }: { comment: PrComment }) {
+    const author = comment.author?.displayName ?? comment.author?.email ?? 'Unknown';
+    return (
+        <div className="px-2 py-1.5">
+            <div className="mb-0.5 flex items-center justify-between gap-2 text-[11px]">
+                <span className="font-semibold text-gray-700 dark:text-gray-200">
+                    @{author}
+                </span>
+                <span className="shrink-0 text-gray-400 dark:text-gray-500">
+                    {formatTimestamp(comment.createdAt)}
+                </span>
+            </div>
+            <p className="m-0 whitespace-pre-wrap text-[12px] leading-[1.35] text-gray-700 dark:text-gray-300">
+                {comment.body}
+            </p>
+        </div>
     );
 }

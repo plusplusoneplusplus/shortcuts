@@ -48,6 +48,12 @@ export interface GitHubComment {
     created_at: string;
     updated_at: string;
     html_url: string;
+    path?: string | null;
+    line?: number | null;
+    original_line?: number | null;
+    start_line?: number | null;
+    original_start_line?: number | null;
+    side?: 'RIGHT' | 'LEFT' | null;
 }
 
 export interface GitHubIssue {

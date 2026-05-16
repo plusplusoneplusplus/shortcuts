@@ -310,8 +310,29 @@ describe('tabs', () => {
         expect(screen.getByTestId('tab-files').textContent).toContain('2');
     });
 
-    it('switches to the Commits tab and renders real commits', async () => {
-        mockFetchDetail(makePr(), [], '', makeCommits([{ title: 'Wire retry backoff' }]));
+    it('renders real provider review comments inside the matching file diff', async () => {
+        mockFetchDetail(makePr(), makeThreads([{
+            id: 'thread-actual',
+            threadContext: { filePath: '/src/foo.ts', line: 2, side: 'right' },
+            comments: [{
+                id: 'comment-actual',
+                author: { displayName: 'Bob' },
+                body: 'This should come from the provider thread.',
+                createdAt: new Date('2024-01-03T00:00:00Z').toISOString(),
+            }],
+        }]), SAMPLE_DIFF);
+
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('tab-files')).toBeInTheDocument());
+        fireEvent.click(screen.getByTestId('tab-files'));
+
+        expect(screen.getByTestId('pr-file-inline-comments')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-file-real-comment').textContent).toContain('This should come from the provider thread.');
+        expect(screen.queryByTestId('pr-file-ai-annotation')).not.toBeInTheDocument();
+    });
+
+    it('switches to the Commits tab and renders the commit intent table behind a preview notice', async () => {
+        mockFetchDetail(makePr());
         await act(async () => { await renderDetail(); });
         await waitFor(() => expect(screen.getByTestId('tab-commits')).toBeInTheDocument());
         fireEvent.click(screen.getByTestId('tab-commits'));

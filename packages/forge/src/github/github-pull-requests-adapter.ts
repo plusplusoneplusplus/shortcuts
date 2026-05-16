@@ -104,6 +104,20 @@ function mapGitHubCommit(c: any): PullRequestCommit {
     };
 }
 
+function mapGitHubThreadContext(c: GitHubComment): CommentThread['threadContext'] | undefined {
+    if (!c.path) return undefined;
+    const side = c.side === 'LEFT' ? 'left' : c.side === 'RIGHT' ? 'right' : 'unknown';
+    const line = c.line ?? c.original_line ?? undefined;
+    const startLine = c.start_line ?? c.original_start_line ?? undefined;
+    return {
+        filePath: c.path,
+        line,
+        startLine,
+        endLine: line,
+        side,
+    };
+}
+
 // ── adapter ──────────────────────────────────────────────────
 
 /**
@@ -194,6 +208,7 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
             comments: [mapGitHubComment(c)],
             status: 'active' as const,
             createdAt: new Date(c.created_at),
+            threadContext: mapGitHubThreadContext(c),
         }));
     }
 

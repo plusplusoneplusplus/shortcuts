@@ -26,7 +26,13 @@ export interface CommentThread {
     id: string | number;
     comments: PrComment[];
     status?: string;
-    threadContext?: { filePath?: string };
+    threadContext?: {
+        filePath?: string;
+        line?: number;
+        startLine?: number;
+        endLine?: number;
+        side?: 'right' | 'left' | 'unknown';
+    };
 }
 
 /** Shape of a pull request as returned by the /api/repos/:id/pull-requests endpoint. */

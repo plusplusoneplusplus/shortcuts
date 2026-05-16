@@ -27,6 +27,18 @@ export interface CommentThread {
     comments: Comment[];
     status: 'active' | 'resolved' | 'closed' | 'unknown';
     createdAt: Date;
+    threadContext?: {
+        /** Repository-relative path for file-scoped review comments. */
+        filePath?: string;
+        /** 1-based line number on the side indicated by `side`. */
+        line?: number;
+        /** 1-based start line when the provider exposes a range. */
+        startLine?: number;
+        /** 1-based end line when the provider exposes a range. */
+        endLine?: number;
+        /** Diff side the line belongs to: right/new file or left/old file. */
+        side?: 'right' | 'left' | 'unknown';
+    };
 }
 
 export type PullRequestStatus = 'open' | 'closed' | 'merged' | 'draft';

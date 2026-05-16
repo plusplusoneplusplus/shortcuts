@@ -37,6 +37,10 @@ const mockGitHubComment = {
     created_at: '2024-01-03T00:00:00Z',
     updated_at: '2024-01-03T00:00:00Z',
     html_url: 'https://github.com/owner/repo/pull/42#issuecomment-300',
+    path: 'src/foo.ts',
+    line: 12,
+    start_line: 10,
+    side: 'RIGHT' as const,
 };
 
 const mockGitHubCommit = {
@@ -196,6 +200,13 @@ describe('GitHubPullRequestsAdapter', () => {
             expect(threads[0].id).toBe(300);
             expect(threads[0].status).toBe('active');
             expect(threads[0].comments[0].body).toBe('Looks good!');
+            expect(threads[0].threadContext).toEqual({
+                filePath: 'src/foo.ts',
+                line: 12,
+                startLine: 10,
+                endLine: 12,
+                side: 'right',
+            });
         });
     });
 

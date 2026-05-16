@@ -39,6 +39,11 @@ const mockAdoThread = {
     ],
     status: 1, // active
     publishedDate: new Date('2024-01-02T00:00:00Z'),
+    threadContext: {
+        filePath: '/src/foo.ts',
+        rightFileStart: { line: 8, offset: 1 },
+        rightFileEnd: { line: 9, offset: 4 },
+    },
 };
 
 const mockAdoReviewer = {
@@ -332,6 +337,13 @@ describe('AdoPullRequestsAdapter', () => {
             expect(comment.id).toBe(10);
             expect(comment.body).toBe('LGTM');
             expect(comment.author.email).toBe('alice@example.com');
+            expect(thread.threadContext).toEqual({
+                filePath: '/src/foo.ts',
+                line: 9,
+                startLine: 8,
+                endLine: 9,
+                side: 'right',
+            });
         });
     });
 

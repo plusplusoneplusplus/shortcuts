@@ -126,6 +126,35 @@ function mapAdoComment(c: { id?: number; author?: { id?: string; displayName?: s
     };
 }
 
+interface AdoThreadContextLocation {
+    line?: number;
+    offset?: number;
+}
+
+interface AdoThreadContextShape {
+    filePath?: string;
+    rightFileStart?: AdoThreadContextLocation;
+    rightFileEnd?: AdoThreadContextLocation;
+    leftFileStart?: AdoThreadContextLocation;
+    leftFileEnd?: AdoThreadContextLocation;
+}
+
+function mapAdoThreadContext(t: GitPullRequestCommentThread): CommentThread['threadContext'] | undefined {
+    const context = (t as { threadContext?: AdoThreadContextShape }).threadContext;
+    if (!context) return undefined;
+    const rightLine = context.rightFileEnd?.line ?? context.rightFileStart?.line;
+    const leftLine = context.leftFileEnd?.line ?? context.leftFileStart?.line;
+    const line = rightLine ?? leftLine;
+    if (!context.filePath && line == null) return undefined;
+    return {
+        filePath: context.filePath,
+        line,
+        startLine: context.rightFileStart?.line ?? context.leftFileStart?.line,
+        endLine: context.rightFileEnd?.line ?? context.leftFileEnd?.line ?? line,
+        side: rightLine != null ? 'right' : leftLine != null ? 'left' : 'unknown',
+    };
+}
+
 function mapAdoThread(t: GitPullRequestCommentThread): CommentThread {
     const statusMap: Record<number, CommentThread['status']> = {
         1: 'active',
@@ -137,6 +166,7 @@ function mapAdoThread(t: GitPullRequestCommentThread): CommentThread {
         comments: (t.comments ?? []).map((c: Parameters<typeof mapAdoComment>[0]) => mapAdoComment(c)),
         status: statusMap[t.status ?? 0] ?? 'unknown',
         createdAt: t.publishedDate ? new Date(t.publishedDate) : new Date(0),
+        threadContext: mapAdoThreadContext(t),
     };
 }
 

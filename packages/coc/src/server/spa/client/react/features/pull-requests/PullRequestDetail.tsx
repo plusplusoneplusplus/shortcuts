@@ -14,7 +14,6 @@
  *   - Persona lenses
  *   - Conversation timeline
  *   - Checks / merge-readiness (also: no check REST endpoint yet)
- *   - Inline AI annotations on file diffs
  *   - Assistant chat drawer
  */
 
@@ -38,6 +37,7 @@ import {
     buildAiThreadGroupsFromThreads,
     getMockAiSummary,
     getMockCheckRows,
+    getMockCommitRows,
     getMockFiles,
     getMockMergeReadiness,
     getMockPersonaLenses,
@@ -170,22 +170,15 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     const checkRows = useMemo(() => getMockCheckRows(), []);
     const mergeReadiness = useMemo(() => getMockMergeReadiness(), []);
 
-    // AI annotations are keyed by mock file path; assign them to the
-    // first matching real files via round-robin so a few real files in
-    // the diff get a purple "AI noticed…" callout for demo purposes.
-    const aiAnnotationByPath = useMemo(() => {
-        const mockFiles = getMockFiles();
-        const annotations: Record<string, ReturnType<typeof getMockFiles>[number]['annotation']> = {};
-        const focus: Record<string, string | undefined> = {};
-        const annotated = mockFiles.filter(file => file.annotation);
-        for (let i = 0; i < diff.files.length && i < annotated.length; i++) {
-            const realFile = diff.files[i];
-            const mockFile = annotated[i];
-            if (mockFile.annotation) annotations[realFile.path] = mockFile.annotation;
-            if (mockFile.focus) focus[realFile.path] = mockFile.focus;
+    const threadsByPath = useMemo(() => {
+        const byPath: Record<string, CommentThread[]> = {};
+        for (const thread of threads) {
+            const path = normalizeThreadPath(thread.threadContext?.filePath);
+            if (!path) continue;
+            (byPath[path] ??= []).push(thread);
         }
-        return { annotations, focus };
-    }, [diff.files]);
+        return byPath;
+    }, [threads]);
 
     const handleBack = () => {
         dispatch({ type: 'CLEAR_SELECTED_PR' });
@@ -497,8 +490,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                         <div className="min-h-0 flex-1">
                             <PrFilesPanel
                                 files={diff.files}
-                                annotations={aiAnnotationByPath.annotations}
-                                focusByPath={aiAnnotationByPath.focus}
+                                commentsByPath={threadsByPath}
                             />
                         </div>
                     </div>
@@ -531,6 +523,10 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
             />
         </div>
     );
+}
+
+function normalizeThreadPath(filePath: string | null | undefined): string {
+    return (filePath ?? '').replace(/\\/g, '/').replace(/^\/+/, '');
 }
 
 interface PreviewOnlyNoticeProps {
