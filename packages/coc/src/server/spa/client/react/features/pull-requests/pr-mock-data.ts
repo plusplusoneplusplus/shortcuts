@@ -695,13 +695,13 @@ export function buildAiThreadGroupsFromThreads(
 export function queueDotClass(state: QueueDotState): string {
     switch (state) {
         case 'open':
-            return 'border-2 border-green-600 dark:border-green-500';
+            return 'border-green-600 dark:border-green-500';
         case 'draft':
-            return 'border-2 border-gray-500 bg-gray-500';
+            return 'border-gray-500 bg-gray-500';
         case 'blocked':
-            return 'border-2 border-yellow-600 bg-yellow-600 dark:border-yellow-500 dark:bg-yellow-500';
+            return 'border-yellow-600 bg-yellow-600 dark:border-yellow-500 dark:bg-yellow-500';
         case 'ready':
-            return 'border-2 border-purple-600 bg-purple-600 dark:border-purple-400 dark:bg-purple-400';
+            return 'border-purple-600 bg-purple-600 dark:border-purple-400 dark:bg-purple-400';
     }
 }
 

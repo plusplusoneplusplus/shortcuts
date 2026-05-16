@@ -194,13 +194,13 @@ describe('successful render', () => {
         await waitFor(() => expect(screen.getAllByTestId('label-chip')).toHaveLength(2));
     });
 
-    it('renders "Open in browser" text in the header link', async () => {
+    it('renders an "Open" external link in the compact hero', async () => {
         mockFetchDetail(makePr({ url: 'https://example.com/pr/1' }));
         await act(async () => { await renderDetail(); });
         await waitFor(() => expect(screen.getByTestId('header-external-link')).toBeInTheDocument());
         expect(screen.getByTestId('header-external-link')).toHaveAttribute('href', 'https://example.com/pr/1');
         expect(screen.getByTestId('header-external-link')).toHaveAttribute('target', '_blank');
-        expect(screen.getByTestId('header-external-link').textContent).toContain('Open in browser');
+        expect(screen.getByTestId('header-external-link').textContent).toContain('Open');
     });
 });
 

@@ -23,7 +23,7 @@ export function PrQueueFilters({ active, counts, onChange }: PrQueueFiltersProps
         <div
             role="toolbar"
             aria-label="Queue filters"
-            className="flex flex-wrap gap-1.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
+            className="flex flex-wrap gap-1 border-b border-gray-200 px-2.5 py-1.5 dark:border-gray-700"
             data-testid="pr-queue-filters"
         >
             {filters.map(filter => {
@@ -36,10 +36,10 @@ export function PrQueueFilters({ active, counts, onChange }: PrQueueFiltersProps
                         onClick={() => onChange(filter.id)}
                         aria-pressed={isActive}
                         className={cn(
-                            'inline-flex min-h-[26px] items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors',
+                            'inline-flex min-h-[22px] items-center gap-1 rounded-full border px-[7px] py-px text-xs font-semibold transition-colors',
                             isActive
                                 ? 'border-gray-900 bg-gray-900 text-white dark:border-gray-200 dark:bg-gray-100 dark:text-gray-900'
-                                : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800/60',
+                                : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800/60',
                         )}
                         data-testid={`pr-queue-filter-${filter.id}`}
                         data-active={isActive}

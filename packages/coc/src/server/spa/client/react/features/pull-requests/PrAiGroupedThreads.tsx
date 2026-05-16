@@ -35,25 +35,25 @@ export function PrAiGroupedThreads({ groups, totalThreads }: PrAiGroupedThreadsP
 
     return (
         <aside
-            className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+            className="overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
             data-testid="pr-ai-thread-groups"
         >
-            <header className="flex items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-4 py-2.5 dark:border-gray-700 dark:bg-gray-800/60">
-                <h2 className="m-0 text-sm font-semibold text-gray-900 dark:text-gray-100">
+            <header className="flex min-h-[30px] items-center justify-between gap-1.5 border-b border-gray-200 bg-gray-50 px-2 py-1 dark:border-gray-700 dark:bg-gray-800/60">
+                <h2 className="m-0 text-[13px] font-semibold leading-tight text-gray-900 dark:text-gray-100">
                     AI grouped threads
                 </h2>
-                <div className="flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
+                <div className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
                     <span data-testid="pr-ai-thread-total">{totalThreads} total</span>
                     {blockingCount > 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-2 py-0.5 font-semibold text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200">
+                        <span className="inline-flex min-h-[20px] items-center gap-1 rounded-full bg-yellow-100 px-1.5 py-0.5 font-semibold text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200">
                             {blockingCount} blocking
                         </span>
                     )}
                 </div>
             </header>
-            <div className="grid gap-2.5 p-4">
+            <div className="grid gap-[5px] p-2">
                 {totalThreads === 0 && (
-                    <p className="m-0 px-2 py-1 text-xs italic text-gray-500 dark:text-gray-400">
+                    <p className="m-0 px-1.5 py-0.5 text-[11px] italic text-gray-500 dark:text-gray-400">
                         No comment threads on this pull request yet.
                     </p>
                 )}
@@ -61,24 +61,24 @@ export function PrAiGroupedThreads({ groups, totalThreads }: PrAiGroupedThreadsP
                     <div
                         key={group.id}
                         className={cn(
-                            'rounded-md border border-gray-200 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-800/40',
+                            'rounded-[5px] border border-gray-200 bg-white p-1.5 dark:border-gray-700 dark:bg-gray-800/40',
                             group.count === 0 && 'opacity-60',
                         )}
                         data-testid="pr-ai-thread-group"
                         data-severity={group.severity}
                     >
-                        <div className="flex items-baseline justify-between gap-3">
-                            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                        <div className="flex items-baseline justify-between gap-1.5">
+                            <span className="text-[12px] font-semibold leading-snug text-gray-900 dark:text-gray-100">
                                 {group.title}
                             </span>
-                            <span className="font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
+                            <span className="font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-400">
                                 {group.count}
                             </span>
                         </div>
-                        <p className="m-0 mt-1.5 text-xs text-gray-600 dark:text-gray-400">{group.body}</p>
+                        <p className="m-0 mt-0.5 text-[11px] leading-[1.35] text-gray-500 dark:text-gray-400">{group.body}</p>
                         <span
                             className={cn(
-                                'mt-2 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                                'mt-1 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-normal leading-[1.4]',
                                 severityClass(group.severity),
                             )}
                         >

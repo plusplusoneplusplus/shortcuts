@@ -70,12 +70,12 @@ export function PullRequestRow({
     return (
         <div
             className={cn(
-                'pr-row grid w-full cursor-pointer items-start gap-2.5 border-b border-l-[3px] border-gray-100 bg-white px-3.5 py-2.5 text-left transition-colors dark:border-gray-800 dark:bg-gray-900',
+                'pr-row grid w-full cursor-pointer items-start gap-[7px] border-b border-l-[3px] border-gray-100 bg-white py-1.5 pl-2.5 pr-2 text-left transition-colors dark:border-gray-800 dark:bg-gray-900',
                 isSelected
                     ? 'border-l-blue-500 bg-blue-50 dark:bg-blue-900/30'
                     : 'border-l-transparent hover:bg-gray-50 dark:hover:bg-gray-800/60',
             )}
-            style={{ gridTemplateColumns: '18px minmax(0, 1fr) auto' }}
+            style={{ gridTemplateColumns: '16px minmax(0, 1fr) auto' }}
             onClick={onClick}
             data-testid="pr-row"
             data-pr-status={pr.status}
@@ -91,14 +91,14 @@ export function PullRequestRow({
                         onSelect?.(String(pr.number ?? pr.id), e.target.checked, shiftKey);
                     }}
                     onClick={e => e.stopPropagation()}
-                    className="mr-1 mt-1 h-3.5 w-3.5 shrink-0 cursor-pointer accent-blue-500"
+                    className="mr-0.5 mt-0.5 h-3 w-3 shrink-0 cursor-pointer accent-blue-500"
                 />
             )}
             {!batchMode && (
                 <span
                     aria-hidden="true"
                     className={cn(
-                        'pr-state-dot mt-[3px] h-3.5 w-3.5 shrink-0 rounded-full',
+                        'pr-state-dot mt-[2px] h-[13px] w-[13px] shrink-0 rounded-full border-[2.5px]',
                         queueDotClass(effectiveDot),
                     )}
                     data-testid="pr-state-dot"
@@ -107,12 +107,12 @@ export function PullRequestRow({
             )}
             <div className="min-w-0">
                 <span
-                    className="pr-title block truncate text-[13px] font-semibold leading-snug text-gray-900 dark:text-gray-100"
+                    className="pr-title block truncate text-[12px] font-semibold leading-[1.25] text-gray-900 dark:text-gray-100"
                     title={pr.title}
                 >
                     {pr.title}
                 </span>
-                <div className="pr-meta mt-0.5 flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+                <div className="pr-meta mt-px flex items-center gap-1 text-[11px] leading-[1.3] text-gray-500 dark:text-gray-400">
                     {pr.number != null && (
                         <span className="pr-number font-mono tabular-nums">#{pr.number}</span>
                     )}
@@ -122,7 +122,7 @@ export function PullRequestRow({
             </div>
             <span
                 className={cn(
-                    'pr-risk inline-flex h-[22px] min-w-[48px] items-center justify-center rounded-full px-2 text-[10px] font-bold uppercase tracking-wide',
+                    'pr-risk inline-flex h-[18px] min-w-[38px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold uppercase tracking-normal leading-none',
                     queueRiskClass(effectiveRisk),
                 )}
                 data-testid="pr-risk-pill"

@@ -24,31 +24,31 @@ export function PrChecksTable({ rows }: PrChecksTableProps) {
 
     return (
         <div
-            className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+            className="overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
             data-testid="pr-checks-table"
         >
-            <header className="flex items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-4 py-2.5 dark:border-gray-700 dark:bg-gray-800/60">
-                <h2 className="m-0 text-sm font-semibold text-gray-900 dark:text-gray-100">
+            <header className="flex min-h-[30px] items-center justify-between gap-1.5 border-b border-gray-200 bg-gray-50 px-2 py-1 dark:border-gray-700 dark:bg-gray-800/60">
+                <h2 className="m-0 text-[13px] font-semibold leading-tight text-gray-900 dark:text-gray-100">
                     Checks and CI
                 </h2>
-                <span className="inline-flex items-center gap-1 rounded-full bg-green-600 px-2.5 py-1 text-[11px] font-semibold text-white">
+                <span className="inline-flex min-h-[20px] items-center gap-1 rounded-full bg-green-600 px-1.5 py-0.5 text-[11px] font-semibold text-white">
                     {passingCount} passing
                 </span>
             </header>
             <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-sm">
+                <table className="w-full border-collapse text-[12px]">
                     <thead>
                         <tr className="bg-gray-50 dark:bg-gray-800/60">
-                            <th className="border-b border-gray-200 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                            <th className="border-b border-gray-200 px-[7px] py-[5px] text-left text-[11px] font-semibold uppercase tracking-normal text-gray-500 dark:border-gray-700 dark:text-gray-400">
                                 Check
                             </th>
-                            <th className="border-b border-gray-200 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                            <th className="border-b border-gray-200 px-[7px] py-[5px] text-left text-[11px] font-semibold uppercase tracking-normal text-gray-500 dark:border-gray-700 dark:text-gray-400">
                                 Status
                             </th>
-                            <th className="border-b border-gray-200 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                            <th className="border-b border-gray-200 px-[7px] py-[5px] text-left text-[11px] font-semibold uppercase tracking-normal text-gray-500 dark:border-gray-700 dark:text-gray-400">
                                 Duration
                             </th>
-                            <th className="border-b border-gray-200 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                            <th className="border-b border-gray-200 px-[7px] py-[5px] text-left text-[11px] font-semibold uppercase tracking-normal text-gray-500 dark:border-gray-700 dark:text-gray-400">
                                 AI interpretation
                             </th>
                         </tr>
@@ -60,16 +60,16 @@ export function PrChecksTable({ rows }: PrChecksTableProps) {
                                 className="border-b border-gray-100 last:border-0 dark:border-gray-800"
                                 data-testid="pr-check-row"
                             >
-                                <td className="px-3 py-2.5 align-top text-sm text-gray-800 dark:text-gray-200">
+                                <td className="px-[7px] py-[5px] align-top text-[12px] text-gray-800 dark:text-gray-200">
                                     {row.name}
                                 </td>
-                                <td className={cn('px-3 py-2.5 align-top text-sm font-semibold', checkStatusClass(row.status))}>
+                                <td className={cn('px-[7px] py-[5px] align-top text-[12px] font-semibold', checkStatusClass(row.status))}>
                                     {statusLabel(row.status)}
                                 </td>
-                                <td className="px-3 py-2.5 align-top font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
+                                <td className="px-[7px] py-[5px] align-top font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-400">
                                     {row.duration}
                                 </td>
-                                <td className="px-3 py-2.5 align-top text-xs text-gray-600 dark:text-gray-400">
+                                <td className="px-[7px] py-[5px] align-top text-[11px] text-gray-500 dark:text-gray-400">
                                     {row.interpretation}
                                 </td>
                             </tr>
@@ -90,16 +90,16 @@ export function PrMergeReadiness({ items }: PrMergeReadinessProps) {
 
     return (
         <aside
-            className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+            className="overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
             data-testid="pr-merge-readiness"
         >
-            <header className="flex items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-4 py-2.5 dark:border-gray-700 dark:bg-gray-800/60">
-                <h2 className="m-0 text-sm font-semibold text-gray-900 dark:text-gray-100">
+            <header className="flex min-h-[30px] items-center justify-between gap-1.5 border-b border-gray-200 bg-gray-50 px-2 py-1 dark:border-gray-700 dark:bg-gray-800/60">
+                <h2 className="m-0 text-[13px] font-semibold leading-tight text-gray-900 dark:text-gray-100">
                     Merge readiness
                 </h2>
                 <span
                     className={cn(
-                        'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold',
+                        'inline-flex min-h-[20px] items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold',
                         blocked
                             ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200'
                             : 'bg-green-600 text-white',
@@ -108,17 +108,17 @@ export function PrMergeReadiness({ items }: PrMergeReadinessProps) {
                     {blocked ? 'Almost' : 'Ready'}
                 </span>
             </header>
-            <ul className="m-0 grid list-none gap-2 p-4">
+            <ul className="m-0 grid list-none gap-1 p-2">
                 {items.map((item, idx) => (
                     <li
                         key={`${item.tag}-${idx}`}
-                        className="grid items-start gap-2.5 text-[13px] text-gray-700 dark:text-gray-300"
-                        style={{ gridTemplateColumns: '64px 1fr' }}
+                        className="grid items-start gap-1.5 text-[12px] leading-snug text-gray-700 dark:text-gray-300"
+                        style={{ gridTemplateColumns: '56px 1fr' }}
                         data-testid="pr-merge-readiness-item"
                     >
                         <span
                             className={cn(
-                                'self-start rounded-full px-1.5 py-0.5 text-center text-[10px] font-bold uppercase tracking-wide',
+                                'self-start rounded-full px-1.5 py-0.5 text-center text-[10px] font-bold uppercase tracking-normal leading-[1.4]',
                                 findingTagClass(item.tag),
                             )}
                         >

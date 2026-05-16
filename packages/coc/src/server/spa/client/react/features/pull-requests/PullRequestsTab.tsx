@@ -97,7 +97,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     const [fetchedAt, setFetchedAt] = useState<number | null>(null);
     const { isMobile } = useBreakpoint();
     const { width: leftPanelWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
-        initialWidth: 304,
+        initialWidth: 276,
         minWidth: 200,
         maxWidth: 600,
         storageKey: 'pr-left-panel-width',
@@ -321,11 +321,11 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
             <PrQueueHeader />
 
             <div
-                className="flex items-center gap-2 border-b border-gray-200 px-4 py-2 dark:border-gray-700"
+                className="flex items-center gap-1.5 border-b border-gray-200 px-2.5 py-1.5 dark:border-gray-700"
                 data-testid="pr-queue-toolbar"
             >
                 <input
-                    className="min-w-0 flex-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900 outline-none placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                    className="min-w-0 flex-1 rounded-md border border-gray-300 bg-white px-1.5 py-0.5 text-xs text-gray-900 outline-none placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
                     placeholder="Search PRs…"
                     value={searchText}
                     onChange={e => setSearchText(e.target.value)}
@@ -337,11 +337,11 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                     disabled={loading}
                     title="Refresh pull requests"
                     data-testid="refresh-button"
-                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                    className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
                 >
                     <svg
                         className={loading ? 'animate-spin' : ''}
-                        width="14" height="14" viewBox="0 0 24 24"
+                        width="12" height="12" viewBox="0 0 24 24"
                         fill="none" stroke="currentColor" strokeWidth="2"
                         strokeLinecap="round" strokeLinejoin="round"
                     >
@@ -357,7 +357,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                     aria-pressed={batchMode}
                     data-testid="select-mode-button"
                     className={cn(
-                        'inline-flex h-7 shrink-0 items-center rounded-md border px-2 text-xs font-semibold transition-colors',
+                        'inline-flex h-[22px] shrink-0 items-center rounded-md border px-1.5 text-[11px] font-semibold transition-colors',
                         batchMode
                             ? 'border-blue-500 bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300'
                             : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700',
@@ -375,7 +375,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
 
             {batchMode && selectedPrIds.size > 0 && (
                 <div
-                    className="flex items-center justify-between border-b border-blue-100 bg-blue-50 px-4 py-1 text-xs font-medium text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300"
+                    className="flex items-center justify-between border-b border-blue-100 bg-blue-50 px-2.5 py-0.5 text-[11px] font-medium text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300"
                     data-testid="selection-count-bar"
                 >
                     <span>{selectedPrIds.size} PR{selectedPrIds.size !== 1 ? 's' : ''} selected</span>
@@ -394,7 +394,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
 
             {fetchedAt != null && !loading && !error && !unconfigured && (
                 <div
-                    className="border-b border-gray-200 px-4 py-1 text-[11px] text-gray-500 dark:border-gray-700 dark:text-gray-400"
+                    className="border-b border-gray-200 px-2.5 py-0.5 text-[11px] text-gray-500 dark:border-gray-700 dark:text-gray-400"
                     data-testid="fetched-at"
                 >
                     {formatFetchedAt(fetchedAt)}
@@ -463,9 +463,9 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
             </div>
 
             {hasMore && !loading && (
-                <div className="border-t border-gray-200 px-4 py-2 dark:border-gray-700">
+                <div className="border-t border-gray-200 px-2.5 py-1.5 dark:border-gray-700">
                     <button
-                        className="w-full py-1 text-sm text-blue-600 hover:underline dark:text-blue-400"
+                        className="w-full py-0.5 text-xs text-blue-600 hover:underline dark:text-blue-400"
                         onClick={() => fetchPrs(false)}
                         data-testid="load-more"
                     >
@@ -475,7 +475,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
             )}
 
             {loading && prs.length > 0 && (
-                <div className="px-4 py-2 text-center text-sm text-gray-500" data-testid="loading-more">
+                <div className="px-2.5 py-1.5 text-center text-xs text-gray-500" data-testid="loading-more">
                     Loading…
                 </div>
             )}

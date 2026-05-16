@@ -62,29 +62,29 @@ export function PrFilesPanel({ files, annotations, focusByPath }: PrFilesPanelPr
     );
 
     return (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-[260px_minmax(0,1fr)]" data-testid="pr-files-panel">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-[224px_minmax(0,1fr)]" data-testid="pr-files-panel">
             <aside
-                className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+                className="overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
                 data-testid="pr-file-list-panel"
             >
-                <header className="flex items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-4 py-2.5 dark:border-gray-700 dark:bg-gray-800/60">
-                    <h2 className="m-0 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                <header className="flex min-h-[30px] items-center justify-between gap-1.5 border-b border-gray-200 bg-gray-50 px-2 py-1 dark:border-gray-700 dark:bg-gray-800/60">
+                    <h2 className="m-0 text-[13px] font-semibold leading-tight text-gray-900 dark:text-gray-100">
                         Changed files
                     </h2>
-                    <span className="font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
+                    <span className="font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-400">
                         {files.length}
                     </span>
                 </header>
-                <div className="px-4 py-3">
+                <div className="p-2">
                     <input
                         type="text"
                         value={search}
                         onChange={event => setSearch(event.target.value)}
                         placeholder="Filter files by path"
-                        className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                        className="min-h-[26px] w-full rounded-[5px] border border-gray-300 bg-white px-[7px] py-[3px] text-[12px] text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
                         data-testid="pr-file-search"
                     />
-                    <div className="mt-2 grid gap-px font-mono text-xs">
+                    <div className="mt-1.5 grid gap-px font-mono text-[12px] leading-[1.4]">
                         {visibleFiles.map(file => {
                             const isActive = file.path === activePath;
                             return (
@@ -93,7 +93,7 @@ export function PrFilesPanel({ files, annotations, focusByPath }: PrFilesPanelPr
                                     type="button"
                                     onClick={() => setActivePath(file.path)}
                                     className={cn(
-                                        'flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs',
+                                        'flex items-center justify-between gap-1.5 rounded px-1.5 py-1 text-left text-[12px]',
                                         isActive
                                             ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100'
                                             : 'text-gray-800 hover:bg-blue-50 dark:text-gray-200 dark:hover:bg-blue-900/30',
@@ -110,7 +110,7 @@ export function PrFilesPanel({ files, annotations, focusByPath }: PrFilesPanelPr
                             );
                         })}
                         {visibleFiles.length === 0 && (
-                            <p className="m-0 px-2 py-2 text-xs text-gray-500 dark:text-gray-400">
+                            <p className="m-0 px-1.5 py-1.5 text-[11px] text-gray-500 dark:text-gray-400">
                                 {files.length === 0
                                     ? 'No file changes in this pull request.'
                                     : 'No files match the filter.'}
@@ -129,7 +129,7 @@ export function PrFilesPanel({ files, annotations, focusByPath }: PrFilesPanelPr
                 )}
                 {!focusedFile && (
                     <div
-                        className="rounded-lg border border-dashed border-gray-200 bg-white px-4 py-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400"
+                        className="rounded-[5px] border border-dashed border-gray-200 bg-white px-2 py-4 text-center text-[12px] text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400"
                         data-testid="pr-file-diff-empty"
                     >
                         Select a file from the list to see its diff.
@@ -149,14 +149,14 @@ interface FileDiffCardProps {
 function FileDiffCard({ file, annotation, focus }: FileDiffCardProps) {
     return (
         <article
-            className="mb-3.5 overflow-hidden rounded-lg border border-gray-200 bg-white last:mb-0 dark:border-gray-700 dark:bg-gray-900"
+            className="mb-2 overflow-hidden rounded-[5px] border border-gray-200 bg-white last:mb-0 dark:border-gray-700 dark:bg-gray-900"
             data-testid="pr-file-diff-card"
         >
-            <header className="flex items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs dark:border-gray-700 dark:bg-gray-800/60">
-                <div className="flex min-w-0 items-center gap-2">
+            <header className="flex min-h-[28px] items-center justify-between gap-1.5 border-b border-gray-200 bg-gray-50 px-2 py-[5px] font-mono text-[12px] leading-[1.4] dark:border-gray-700 dark:bg-gray-800/60">
+                <div className="flex min-w-0 items-center gap-1.5">
                     <span
                         className={cn(
-                            'inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                            'inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[10px] font-semibold uppercase tracking-normal leading-[1.4]',
                             STATUS_CLASS[file.status],
                         )}
                         data-testid="pr-file-status"
@@ -167,28 +167,28 @@ function FileDiffCard({ file, annotation, focus }: FileDiffCardProps) {
                         {file.oldPath && file.oldPath !== file.path ? `${file.oldPath} → ${file.path}` : file.path}
                     </strong>
                 </div>
-                <div className="flex items-center gap-2 text-[11px] tabular-nums">
+                <div className="flex items-center gap-1.5 text-[11px] tabular-nums">
                     {focus && <span className="text-purple-700 dark:text-purple-200">{focus}</span>}
                     <span className="text-green-700 dark:text-green-400">+{file.additions}</span>
                     <span className="text-red-700 dark:text-red-400">-{file.deletions}</span>
                 </div>
             </header>
             {file.isBinary ? (
-                <div className="px-3 py-4 text-xs italic text-gray-500 dark:text-gray-400">
+                <div className="px-2 py-3 text-[11px] italic text-gray-500 dark:text-gray-400">
                     Binary file — diff omitted.
                 </div>
             ) : file.lines.length === 0 ? (
-                <div className="px-3 py-4 text-xs italic text-gray-500 dark:text-gray-400">
+                <div className="px-2 py-3 text-[11px] italic text-gray-500 dark:text-gray-400">
                     No textual diff content.
                 </div>
             ) : (
-                <div className="font-mono text-xs leading-snug">
+                <div className="font-mono text-[12px] leading-[1.45]">
                     {file.lines.map((line, idx) => {
                         if (line.kind === 'hunk') {
                             return (
                                 <div
                                     key={`hunk-${idx}`}
-                                    className="border-y border-gray-200 bg-gray-50 px-3 py-1 text-[11px] text-gray-500 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-400"
+                                    className="border-y border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] text-gray-500 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-400"
                                     data-testid="pr-file-hunk-header"
                                 >
                                     {line.text}
@@ -200,17 +200,17 @@ function FileDiffCard({ file, annotation, focus }: FileDiffCardProps) {
                             <div
                                 key={idx}
                                 className={cn(
-                                    'grid min-h-6 items-start',
+                                    'grid min-h-[19px] items-start',
                                     line.kind === 'add' && 'bg-green-50 dark:bg-green-900/30',
                                     line.kind === 'del' && 'bg-red-50 dark:bg-red-900/30',
                                 )}
-                                style={{ gridTemplateColumns: '48px 1fr' }}
+                                style={{ gridTemplateColumns: '38px 1fr' }}
                                 data-testid={`pr-file-diff-line-${line.kind}`}
                             >
-                                <span className="border-r border-gray-200 px-2 py-0.5 text-right text-gray-400 dark:border-gray-700 dark:text-gray-500">
+                                <span className="border-r border-gray-200 px-1.5 py-px text-right text-gray-400 dark:border-gray-700 dark:text-gray-500">
                                     {lineNo ?? ''}
                                 </span>
-                                <span className="overflow-x-auto whitespace-pre px-2.5 py-0.5 text-gray-800 dark:text-gray-200">
+                                <span className="overflow-x-auto whitespace-pre px-[7px] py-px text-gray-800 dark:text-gray-200">
                                     {line.kind === 'add' ? '+' : line.kind === 'del' ? '-' : ' '}
                                     {line.text}
                                 </span>
@@ -221,21 +221,21 @@ function FileDiffCard({ file, annotation, focus }: FileDiffCardProps) {
             )}
             {annotation && (
                 <div
-                    className="mb-3 ml-12 mr-3 mt-3 rounded-lg border border-purple-300 bg-purple-50 px-3 py-2.5 dark:border-purple-800 dark:bg-purple-900/30"
+                    className="mb-2 ml-[46px] mr-2 mt-1.5 rounded-[5px] border border-purple-300 bg-purple-50 px-2 py-1.5 dark:border-purple-800 dark:bg-purple-900/30"
                     data-testid="pr-file-ai-annotation"
                 >
-                    <strong className="block text-xs font-semibold text-purple-700 dark:text-purple-200">
+                    <strong className="mb-0.5 block text-[12px] font-semibold text-purple-700 dark:text-purple-200">
                         {annotation.title}
                     </strong>
-                    <p className="m-0 mt-1 text-xs text-gray-700 dark:text-gray-200">
+                    <p className="m-0 mt-px text-[12px] leading-[1.35] text-gray-700 dark:text-gray-200">
                         {annotation.body}
                     </p>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
+                    <div className="mt-1.5 flex flex-wrap gap-1">
                         {annotation.actions.map(action => (
                             <button
                                 key={action}
                                 type="button"
-                                className="inline-flex items-center rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-semibold text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                                className="inline-flex min-h-[24px] items-center rounded-[5px] border border-gray-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
                             >
                                 {action}
                             </button>

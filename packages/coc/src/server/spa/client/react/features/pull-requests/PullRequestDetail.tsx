@@ -245,10 +245,10 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     return (
         <div className="flex h-full flex-col overflow-hidden bg-gray-50 dark:bg-gray-950" data-testid="pr-detail">
             <section className="shrink-0 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
-                <div className="px-6 pb-3 pt-5">
+                <div className="px-2 pb-1 pt-1.5">
                     {isMobile && (
                         <button
-                            className="mb-2 text-sm text-blue-600 hover:underline dark:text-blue-400"
+                            className="mb-1 text-xs text-blue-600 hover:underline dark:text-blue-400"
                             onClick={handleBack}
                             data-testid="back-button"
                         >
@@ -256,10 +256,10 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                         </button>
                     )}
 
-                    <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                    <div className="mb-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
                         <span
                             className={cn(
-                                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold shrink-0',
+                                'inline-flex min-h-[20px] items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold shrink-0',
                                 badge.className,
                             )}
                             data-testid="pr-status-badge"
@@ -276,7 +276,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                         {aiSummary && (
                             <span
                                 className={cn(
-                                    'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold',
+                                    'inline-flex min-h-[20px] items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold',
                                     riskPillClass(aiSummary.risk),
                                 )}
                                 data-testid="pr-risk-pill"
@@ -285,47 +285,101 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                             </span>
                         )}
                         {unresolvedCount > 0 && (
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-yellow-100 px-2.5 py-1 text-xs font-semibold text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200">
+                            <span className="inline-flex min-h-[20px] items-center gap-1 rounded-full bg-yellow-100 px-1.5 py-0.5 text-[11px] font-semibold text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200">
                                 {unresolvedCount} unresolved
                             </span>
                         )}
                     </div>
 
-                    <h1 className="m-0 max-w-[980px] text-3xl font-semibold leading-tight tracking-tight text-gray-900 dark:text-gray-100">
-                        <span data-testid="pr-title">{pr.title}</span>
-                        {pr.number != null && (
-                            <span className="ml-2 font-normal text-gray-400 dark:text-gray-500" data-testid="pr-number">
-                                #{pr.number}
-                            </span>
-                        )}
-                    </h1>
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                        <h1 className="m-0 min-w-0 max-w-full flex-1 truncate text-[21px] font-semibold leading-[1.15] tracking-normal text-gray-900 dark:text-gray-100">
+                            <span data-testid="pr-title">{pr.title}</span>
+                            {pr.number != null && (
+                                <span className="ml-1.5 font-normal text-gray-400 dark:text-gray-500" data-testid="pr-number">
+                                    #{pr.number}
+                                </span>
+                            )}
+                        </h1>
+                        <div className="flex flex-wrap items-center justify-end gap-1">
+                            <button
+                                type="button"
+                                className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-transparent bg-green-600 px-1.5 py-0.5 text-[11px] font-semibold text-white shadow-sm hover:bg-green-700"
+                                data-testid="pr-merge-when-ready"
+                            >
+                                Merge
+                            </button>
+                            <button
+                                type="button"
+                                disabled={aiPassRunning}
+                                onClick={handleRunAiPass}
+                                className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-transparent bg-gradient-to-br from-purple-500 to-blue-500 px-1.5 py-0.5 text-[11px] font-semibold text-white shadow-sm hover:opacity-95 disabled:opacity-60"
+                                data-testid="pr-run-ai-pass"
+                            >
+                                {aiPassRunning ? 'Reviewing…' : aiPassDone ? 'AI done' : 'AI review'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setAssistantOpen(true)}
+                                className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-purple-300 bg-purple-50 px-1.5 py-0.5 text-[11px] font-semibold text-purple-700 hover:bg-purple-100 dark:border-purple-700 dark:bg-purple-900/30 dark:text-purple-200"
+                                data-testid="pr-open-ai-assistant"
+                            >
+                                Ask AI
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleCopySummary}
+                                className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-gray-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                                data-testid="pr-copy-summary"
+                            >
+                                {summaryCopied ? 'Copied' : 'Copy'}
+                            </button>
+                            <button
+                                type="button"
+                                className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-gray-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-red-600 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-gray-700"
+                                data-testid="pr-request-changes"
+                            >
+                                Changes
+                            </button>
+                            {pr.url && (
+                                <a
+                                    href={pr.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-gray-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                                    data-testid="header-external-link"
+                                >
+                                    Open 🔗
+                                </a>
+                            )}
+                        </div>
+                    </div>
 
                     <div
-                        className="mt-3 flex flex-wrap items-center gap-2 text-[13px] text-gray-500 dark:text-gray-400"
+                        className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-gray-500 dark:text-gray-400"
                         data-testid="pr-branches"
                     >
-                        <span className="rounded-md border border-gray-200 bg-gray-50 px-1.5 py-0.5 font-mono text-xs text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                        <span className="rounded-[5px] border border-gray-200 bg-gray-50 px-1.5 py-px font-mono text-[11px] text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
                             {pr.sourceBranch}
                         </span>
                         <span>into</span>
-                        <span className="rounded-md border border-gray-200 bg-gray-50 px-1.5 py-0.5 font-mono text-xs text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                        <span className="rounded-[5px] border border-gray-200 bg-gray-50 px-1.5 py-px font-mono text-[11px] text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
                             {pr.targetBranch}
                         </span>
                         {deltaText && (
-                            <span className="font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400" data-testid="pr-delta">
+                            <span className="font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-400" data-testid="pr-delta">
                                 {deltaText}
                             </span>
                         )}
                         {fileCountText && (
                             <span
-                                className="font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400"
+                                className="font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-400"
                                 data-testid="pr-file-count"
                             >
                                 {fileCountText}
                             </span>
                         )}
                         {pr.author?.displayName && (
-                            <span className="ml-1">· @{pr.author.displayName}</span>
+                            <span>· @{pr.author.displayName}</span>
                         )}
                         {pr.createdAt && (
                             <span>· Created {formatTimestamp(pr.createdAt)}</span>
@@ -334,61 +388,8 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                             <span>· Updated {formatTimestamp(pr.updatedAt)}</span>
                         )}
                     </div>
-
-                    <div className="mt-4 flex flex-wrap gap-2 pb-3">
-                        <button
-                            type="button"
-                            className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-md border border-transparent bg-green-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-green-700"
-                            data-testid="pr-merge-when-ready"
-                        >
-                            Merge when ready
-                        </button>
-                        <button
-                            type="button"
-                            disabled={aiPassRunning}
-                            onClick={handleRunAiPass}
-                            className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-md border border-transparent bg-gradient-to-br from-purple-500 to-blue-500 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:opacity-95 disabled:opacity-60"
-                            data-testid="pr-run-ai-pass"
-                        >
-                            {aiPassRunning ? 'Reviewing…' : aiPassDone ? 'AI pass complete' : 'Run AI review pass'}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={handleCopySummary}
-                            className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                            data-testid="pr-copy-summary"
-                        >
-                            {summaryCopied ? 'Summary copied' : 'Copy review summary'}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setAssistantOpen(true)}
-                            className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-md border border-transparent bg-gradient-to-br from-purple-500 to-blue-500 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:opacity-95"
-                            data-testid="pr-open-ai-assistant"
-                        >
-                            Ask AI
-                        </button>
-                        <button
-                            type="button"
-                            className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-red-600 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-gray-700"
-                            data-testid="pr-request-changes"
-                        >
-                            Request changes
-                        </button>
-                        {pr.url && (
-                            <a
-                                href={pr.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                                data-testid="header-external-link"
-                            >
-                                Open in browser 🔗
-                            </a>
-                        )}
-                    </div>
                 </div>
-                <nav className="flex gap-1 overflow-x-auto border-t border-gray-100 px-6 dark:border-gray-800" aria-label="Pull request sections">
+                <nav className="flex gap-0.5 overflow-x-auto border-t border-gray-100 px-2.5 dark:border-gray-800" aria-label="Pull request sections">
                     {TAB_DEFINITIONS.map(tab => {
                         const isActive = detailTab === tab.id;
                         const count = tabCount(tab.id, {
@@ -403,7 +404,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                                 type="button"
                                 onClick={() => switchTab(tab.id)}
                                 className={cn(
-                                    'inline-flex min-h-11 items-center gap-2 border-b-2 px-3 py-0 text-sm font-semibold whitespace-nowrap transition-colors',
+                                    'inline-flex min-h-[32px] items-center gap-1.5 border-b-2 px-2 py-0 text-[13px] font-semibold whitespace-nowrap transition-colors',
                                     isActive
                                         ? 'border-blue-500 text-gray-900 dark:text-gray-100'
                                         : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200',
@@ -414,10 +415,10 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                                 {count !== null && (
                                     <span
                                         className={cn(
-                                            'rounded-full px-1.5 py-0.5 text-[11px] font-semibold',
+                                            'rounded-full px-1.5 py-px text-[11px] font-semibold leading-[1.4]',
                                             isActive
                                                 ? 'bg-blue-500 text-white'
-                                                : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300',
+                                                : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-300',
                                         )}
                                     >
                                         {count}
@@ -431,9 +432,9 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
 
             <div className="flex-1 overflow-y-auto">
                 {detailTab === 'overview' && (
-                    <div className="mx-auto w-full max-w-[1180px] px-6 py-6" data-testid="overview-tab">
-                        <div className="grid gap-4 lg:grid-cols-[1.35fr_minmax(300px,0.65fr)]">
-                            <div className="grid gap-4">
+                    <div className="w-full px-2.5 pb-7 pt-2" data-testid="overview-tab">
+                        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_264px]">
+                            <div className="grid gap-2">
                                 {aiSummary && <PrAiSummaryPanel summary={aiSummary} />}
                                 <PrQuickReviewWorkflow lenses={personaLenses} />
                                 <PrConversationPanel events={timeline} />
@@ -446,14 +447,14 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                                 />
                                 {threads.length > 0 && (
                                     <div
-                                        className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+                                        className="overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
                                         data-testid="threads-tab"
                                     >
-                                        <header className="flex items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-4 py-2.5 dark:border-gray-700 dark:bg-gray-800/60">
-                                            <h2 className="m-0 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                                        <header className="flex min-h-[30px] items-center justify-between gap-1.5 border-b border-gray-200 bg-gray-50 px-2 py-1 dark:border-gray-700 dark:bg-gray-800/60">
+                                            <h2 className="m-0 text-[13px] font-semibold leading-tight text-gray-900 dark:text-gray-100">
                                                 All comment threads
                                             </h2>
-                                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                                            <span className="text-[11px] text-gray-500 dark:text-gray-400">
                                                 {threads.length} total
                                             </span>
                                         </header>
@@ -461,7 +462,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                                     </div>
                                 )}
                             </div>
-                            <div className="grid gap-4">
+                            <div className="grid gap-2">
                                 <PrAiGroupedThreads groups={threadGroups} totalThreads={threads.length} />
                             </div>
                         </div>
@@ -469,10 +470,10 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                 )}
 
                 {detailTab === 'files' && (
-                    <div className="mx-auto w-full max-w-[1180px] px-6 py-6" data-testid="files-tab">
+                    <div className="w-full px-2.5 pb-7 pt-2" data-testid="files-tab">
                         {diffError && (
                             <div
-                                className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-700 dark:bg-red-900/30 dark:text-red-200"
+                                className="mb-2 rounded-[5px] border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-700 dark:border-red-700 dark:bg-red-900/30 dark:text-red-200"
                                 data-testid="pr-diff-error"
                             >
                                 Failed to load diff: {diffError}
@@ -487,7 +488,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                 )}
 
                 {detailTab === 'commits' && (
-                    <div className="mx-auto w-full max-w-[1180px] px-6 py-6" data-testid="commits-tab">
+                    <div className="w-full px-2.5 pb-7 pt-2" data-testid="commits-tab">
                         <PreviewOnlyNotice
                             label="Commit list is AI-mocked"
                             body="The server does not yet expose a per-PR commit endpoint. Intent labels and the commit log shown below are placeholder fixtures."
@@ -497,12 +498,12 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                 )}
 
                 {detailTab === 'checks' && (
-                    <div className="mx-auto w-full max-w-[1180px] px-6 py-6" data-testid="checks-tab">
+                    <div className="w-full px-2.5 pb-7 pt-2" data-testid="checks-tab">
                         <PreviewOnlyNotice
                             label="Checks are AI-mocked"
                             body="The server does not yet expose a per-PR check / status endpoint. Results and merge readiness shown below are placeholder fixtures."
                         />
-                        <div className="grid gap-4 lg:grid-cols-[1.35fr_minmax(300px,0.65fr)]">
+                        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_264px]">
                             <PrChecksTable rows={checkRows} />
                             <PrMergeReadiness items={mergeReadiness} />
                         </div>
@@ -527,7 +528,7 @@ interface PreviewOnlyNoticeProps {
 function PreviewOnlyNotice({ label, body }: PreviewOnlyNoticeProps) {
     return (
         <div
-            className="mb-3 rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-800 dark:border-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-200"
+            className="mb-2 rounded-[5px] border border-yellow-200 bg-yellow-50 px-2 py-1.5 text-[11px] text-yellow-800 dark:border-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-200"
             data-testid="pr-tab-preview-notice"
         >
             <strong>{label}.</strong> {body}
@@ -562,14 +563,14 @@ function DescriptionAndMeta({ descHtml, description, url, reviewers, labels }: D
     if (!description && !hasMeta) {
         return (
             <div
-                className="flex flex-col gap-2 rounded-lg border border-dashed border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900"
+                className="flex flex-col gap-1.5 rounded-[5px] border border-dashed border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-900"
                 data-testid="pr-description-empty"
             >
-                <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+                <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400">
                     <span aria-hidden="true">📝</span>
-                    <span className="text-sm font-medium">No description</span>
+                    <span className="text-[13px] font-medium">No description</span>
                 </div>
-                <p className="text-xs text-gray-400 dark:text-gray-500">
+                <p className="text-[11px] text-gray-400 dark:text-gray-500">
                     This pull request has no description yet.
                 </p>
                 {url && (
@@ -577,7 +578,7 @@ function DescriptionAndMeta({ descHtml, description, url, reviewers, labels }: D
                         href={url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 self-start text-xs text-blue-600 hover:underline dark:text-blue-400"
+                        className="inline-flex items-center gap-1 self-start text-[11px] text-blue-600 hover:underline dark:text-blue-400"
                         data-testid="pr-description-open-link"
                     >
                         Open in browser to add one 🔗
@@ -589,11 +590,11 @@ function DescriptionAndMeta({ descHtml, description, url, reviewers, labels }: D
 
     return (
         <div
-            className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+            className="overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
             data-testid="pr-description-card"
         >
-            <header className="flex items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-4 py-2.5 dark:border-gray-700 dark:bg-gray-800/60">
-                <h2 className="m-0 text-sm font-semibold text-gray-900 dark:text-gray-100">
+            <header className="flex min-h-[30px] items-center justify-between gap-1.5 border-b border-gray-200 bg-gray-50 px-2 py-1 dark:border-gray-700 dark:bg-gray-800/60">
+                <h2 className="m-0 text-[13px] font-semibold leading-tight text-gray-900 dark:text-gray-100">
                     Description
                 </h2>
                 {url && (
@@ -601,35 +602,35 @@ function DescriptionAndMeta({ descHtml, description, url, reviewers, labels }: D
                         href={url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-xs text-blue-600 hover:underline dark:text-blue-400"
+                        className="text-[11px] text-blue-600 hover:underline dark:text-blue-400"
                     >
                         Open in browser
                     </a>
                 )}
             </header>
-            <div className="space-y-3 px-4 py-3.5">
+            <div className="space-y-2 p-2">
                 {description ? (
                     descHtml ? (
                         <div
-                            className="markdown-body text-sm text-gray-700 dark:text-gray-300"
+                            className="markdown-body text-[13px] leading-snug text-gray-700 dark:text-gray-300"
                             dangerouslySetInnerHTML={{ __html: descHtml }}
                             data-testid="pr-description"
                         />
                     ) : (
                         <pre
-                            className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300"
+                            className="whitespace-pre-wrap text-[13px] leading-snug text-gray-700 dark:text-gray-300"
                             data-testid="pr-description"
                         >
                             {description}
                         </pre>
                     )
                 ) : (
-                    <p className="text-xs italic text-gray-500 dark:text-gray-400">No description provided.</p>
+                    <p className="text-[11px] italic text-gray-500 dark:text-gray-400">No description provided.</p>
                 )}
 
                 {reviewerList.length > 0 && (
                     <div data-testid="reviewers-section">
-                        <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-normal text-gray-500 dark:text-gray-400">
                             Reviewers
                         </h3>
                         <div className="space-y-1">
@@ -642,14 +643,14 @@ function DescriptionAndMeta({ descHtml, description, url, reviewers, labels }: D
 
                 {labels.length > 0 && (
                     <div data-testid="labels-section">
-                        <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-normal text-gray-500 dark:text-gray-400">
                             Labels
                         </h3>
                         <div className="flex flex-wrap gap-1">
                             {labels.map((label, idx) => (
                                 <span
                                     key={idx}
-                                    className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+                                    className="rounded bg-gray-100 px-1 py-px text-[11px] text-gray-700 dark:bg-gray-700 dark:text-gray-300"
                                     data-testid="label-chip"
                                 >
                                     {label}

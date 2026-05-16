@@ -19,14 +19,17 @@ export function PrQueueHeader({
     copy = DEFAULT_COPY,
 }: PrQueueHeaderProps) {
     return (
-        <div className="border-b border-gray-200 px-4 py-4 dark:border-gray-700" data-testid="pr-queue-header">
-            <p className="m-0 mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+        <div
+            className="border-b border-gray-200 px-2.5 pb-2 pt-[9px] dark:border-gray-700"
+            data-testid="pr-queue-header"
+        >
+            <p className="m-0 mb-[3px] text-[11px] font-semibold uppercase tracking-normal text-gray-500 dark:text-gray-400">
                 {eyebrow}
             </p>
-            <h1 className="m-0 text-[22px] font-semibold leading-tight text-gray-900 dark:text-gray-100">
+            <h1 className="m-0 text-[18px] font-semibold leading-[1.12] text-gray-900 dark:text-gray-100">
                 {title}
             </h1>
-            <p className="m-0 mt-2 text-[13px] text-gray-600 dark:text-gray-400">{copy}</p>
+            <p className="m-0 mt-1 text-[11px] leading-snug text-gray-500 dark:text-gray-400">{copy}</p>
         </div>
     );
 }
