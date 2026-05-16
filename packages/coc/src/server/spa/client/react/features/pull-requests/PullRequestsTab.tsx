@@ -1,16 +1,18 @@
 /**
- * PullRequestsTab — fetches and renders a paginated, filterable list of pull
- * requests for the selected repository.
+ * PullRequestsTab — fetches and renders the redesigned "PR review
+ * command queue" left rail plus the PR detail / batch panel right pane.
  *
- * Scope dropdown controls server-side scoping (Mine / All / Author…).
- * Status filter triggers a server re-fetch; search filters are
- * applied client-side without additional requests.
+ * The queue is grouped into two sections (Needs review / Ready after
+ * checks) and filtered via four pills (All / Mine / Blocked / Ready).
+ * Real PR data still drives the list; AI-flagged risk, file count, and
+ * review minutes shown on each row come from the deterministic
+ * `pr-mock-data` module.
  *
- * Desktop: resizable split-panel (list left, detail right).
- * Mobile: single-pane toggle (list ↔ detail).
+ * Desktop: resizable split-panel (queue left, detail right).
+ * Mobile: single-pane toggle (queue ↔ detail).
  */
 
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useApp } from '../../contexts/AppContext';
@@ -19,12 +21,22 @@ import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { PullRequestDetail } from './PullRequestDetail';
 import { PullRequestRow } from './PullRequestRow';
-import type { PullRequest, PrStatus } from './pr-utils';
+import { PrQueueHeader } from './PrQueueHeader';
+import { PrQueueFilters } from './PrQueueFilters';
+import { PrQueueGroupSection } from './PrQueueGroupSection';
+import { PrQueueFooter } from './PrQueueFooter';
 import { ProviderConfigPanel } from './ProviderConfigPanel';
-import { AttentionGroupSection } from './AttentionGroupSection';
-import { AttentionSummaryBar } from './AttentionSummaryBar';
-import { ATTENTION_GROUP_CONFIGS, AttentionGroup, classifyPr } from './pr-attention-groups';
 import { BatchCommandPanel } from './BatchCommandPanel';
+import {
+    QUEUE_SECTION_CONFIGS,
+    classifyPr,
+    classifyQueueSection,
+    mapAttentionToQueueSection,
+    AttentionGroup,
+    type QueueSection,
+} from './pr-attention-groups';
+import { getMockQueueRisk, type QueueFilter, type QueueFilterCounts } from './pr-mock-data';
+import type { PullRequest, PrStatus } from './pr-utils';
 
 export interface PullRequestsTabProps {
     repoId: string;
@@ -32,13 +44,7 @@ export interface PullRequestsTabProps {
     remoteUrl?: string;
 }
 
-type StatusFilter = PrStatus | 'all';
-type ScopeMode = 'mine' | 'all' | 'author';
-
 const PAGE_SIZE = 25;
-const AUTHOR_DEBOUNCE_MS = 300;
-/** Below this count, skip groups and render a flat PR list. */
-const FLAT_LIST_THRESHOLD = 5;
 
 interface PrListCacheEntry {
     prs: PullRequest[];
@@ -47,20 +53,36 @@ interface PrListCacheEntry {
     fetchedAt: number | null;
 }
 
-/** Keyed by `${repoId}|${statusFilter}|${scope}|${authorFilter}` — persists across mounts. */
 const prListCache = new Map<string, PrListCacheEntry>();
+
+function getPrSelectionId(pr: PullRequest): string {
+    return String(pr.number ?? pr.id);
+}
 
 function formatFetchedAt(ts: number): string {
     const diffMs = Date.now() - ts;
     const diffMin = Math.floor(diffMs / 60000);
     if (diffMin < 1) return 'Updated just now';
     if (diffMin < 60) return `Updated ${diffMin} min ago`;
-    const diffHr = Math.floor(diffMin / 60);
-    return `Updated ${diffHr} hr ago`;
+    return `Updated ${Math.floor(diffMin / 60)} hr ago`;
 }
 
-function getPrSelectionId(pr: PullRequest): string {
-    return String(pr.number ?? pr.id);
+const STATUS_FILTER: PrStatus = 'open';
+
+/** Map a queue filter pill to the server scope it requires. */
+function scopeForFilter(filter: QueueFilter): 'mine' | 'all' {
+    return filter === 'all' ? 'all' : 'mine';
+}
+
+/** Filter pills that classify a PR by attention/queue section. */
+function matchesFilter(pr: PullRequest, filter: QueueFilter): boolean {
+    if (filter === 'all' || filter === 'mine') return true;
+    const group = classifyPr(pr);
+    if (filter === 'blocked') {
+        return group === AttentionGroup.RerunNeeded || group === AttentionGroup.ManualUpdateNeeded;
+    }
+    // 'ready'
+    return mapAttentionToQueueSection(group) === 'ready';
 }
 
 export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
@@ -69,18 +91,14 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [unconfigured, setUnconfigured] = useState<{ detected: string | null; remoteUrl?: string; noCredentials?: boolean } | null>(null);
-    const [statusFilter, setStatusFilter] = useState<StatusFilter>('open');
-    const [scopeMode, setScopeMode] = useState<ScopeMode>('mine');
-    const [authorInput, setAuthorInput] = useState('');
-    const [committedAuthor, setCommittedAuthor] = useState('');
+    const [activeFilter, setActiveFilter] = useState<QueueFilter>('mine');
     const [searchText, setSearchText] = useState('');
     const [hasMore, setHasMore] = useState(false);
     const [fetchedAt, setFetchedAt] = useState<number | null>(null);
-    const [scopeDropdownOpen, setScopeDropdownOpen] = useState(false);
     const { isMobile } = useBreakpoint();
     const { width: leftPanelWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
-        initialWidth: 288,
-        minWidth: 160,
+        initialWidth: 304,
+        minWidth: 200,
         maxWidth: 600,
         storageKey: 'pr-left-panel-width',
     });
@@ -91,24 +109,15 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
 
     const skipRef = useRef(0);
     const abortRef = useRef<AbortController | null>(null);
-    const authorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const authorInputRef = useRef<HTMLInputElement>(null);
-    const scopeDropdownRef = useRef<HTMLDivElement>(null);
-    const groupSectionRefs = useRef<Map<AttentionGroup, HTMLDivElement>>(new Map());
 
-    // Derived: the effective scope param sent to the server
-    const effectiveScope = scopeMode === 'author' ? 'all' : scopeMode;
-    // Derived: the effective author filter for the server
-    const effectiveAuthor = scopeMode === 'author' ? committedAuthor : '';
+    const effectiveScope = scopeForFilter(activeFilter);
 
-    const makeCacheKey = useCallback(
-        () => `${repoId}|${statusFilter}|${effectiveScope}|${effectiveAuthor}`,
-        [repoId, statusFilter, effectiveScope, effectiveAuthor],
+    const cacheKey = useMemo(
+        () => `${repoId}|${STATUS_FILTER}|${effectiveScope}`,
+        [repoId, effectiveScope],
     );
 
     const fetchPrs = useCallback((reset = false, force = false) => {
-        const cacheKey = makeCacheKey();
-
         if (force) {
             prListCache.delete(cacheKey);
         }
@@ -127,7 +136,6 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
             }
         }
 
-        // Abort any in-flight request
         if (abortRef.current) abortRef.current.abort();
         const controller = new AbortController();
         abortRef.current = controller;
@@ -144,12 +152,11 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         getSpaCocClient().pullRequests.list(
             repoId,
             {
-                status: statusFilter,
+                status: STATUS_FILTER,
                 scope: effectiveScope,
                 top: PAGE_SIZE,
                 skip: offset,
                 force: force || undefined,
-                author: effectiveAuthor || undefined,
             },
             { signal: controller.signal },
         )
@@ -189,54 +196,53 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                 }
             })
             .finally(() => setLoading(false));
-    }, [repoId, statusFilter, effectiveScope, effectiveAuthor, makeCacheKey]);
+    }, [repoId, effectiveScope, cacheKey]);
 
-    // Re-fetch from scratch whenever repoId, statusFilter, scope, or committed author changes.
+    // Re-fetch from scratch whenever the active scope changes.
     useEffect(() => {
         fetchPrs(true);
     }, [fetchPrs]);
 
-    // Close scope dropdown on outside click
-    useEffect(() => {
-        function handleClickOutside(e: MouseEvent) {
-            if (scopeDropdownRef.current && !scopeDropdownRef.current.contains(e.target as Node)) {
-                setScopeDropdownOpen(false);
-            }
-        }
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
+    const filteredBySearch = useMemo(() => {
+        if (!searchText) return prs;
+        const query = searchText.toLowerCase();
+        return prs.filter(pr => pr.title.toLowerCase().includes(query));
+    }, [prs, searchText]);
 
-    // Auto-focus author input when entering author mode
-    useEffect(() => {
-        if (scopeMode === 'author') {
-            authorInputRef.current?.focus();
-        }
-    }, [scopeMode]);
-
-    const filtered = useMemo(() => prs.filter(pr => {
-        const matchesSearch = !searchText || pr.title.toLowerCase().includes(searchText.toLowerCase());
-        return matchesSearch;
-    }), [prs, searchText]);
+    const filteredByPill = useMemo(
+        () => filteredBySearch.filter(pr => matchesFilter(pr, activeFilter)),
+        [filteredBySearch, activeFilter],
+    );
 
     const groupedPrs = useMemo(() => {
-        const buckets = new Map<AttentionGroup, PullRequest[]>();
-        for (const config of ATTENTION_GROUP_CONFIGS) {
-            buckets.set(config.group, []);
+        const buckets = new Map<QueueSection, PullRequest[]>();
+        for (const config of QUEUE_SECTION_CONFIGS) buckets.set(config.section, []);
+        for (const pr of filteredByPill) {
+            buckets.get(classifyQueueSection(pr))?.push(pr);
         }
-        for (const pr of filtered) {
-            buckets.get(classifyPr(pr))?.push(pr);
-        }
-        return ATTENTION_GROUP_CONFIGS.map(config => ({
+        return QUEUE_SECTION_CONFIGS.map(config => ({
             config,
-            prs: buckets.get(config.group) ?? [],
+            prs: buckets.get(config.section) ?? [],
         }));
-    }, [filtered]);
+    }, [filteredByPill]);
 
-    const groupCounts = useMemo(() => groupedPrs.map(({ config, prs }) => ({
-        config,
-        count: prs.length,
-    })), [groupedPrs]);
+    const filterCounts: QueueFilterCounts = useMemo(() => {
+        const counts: QueueFilterCounts = { all: 0, mine: 0, blocked: 0, ready: 0 };
+        // 'all' / 'mine' counts represent the size of the currently fetched
+        // scope; 'blocked' / 'ready' are derived per-PR via the classifier.
+        counts.all = filteredBySearch.length;
+        counts.mine = effectiveScope === 'mine' ? filteredBySearch.length : 0;
+        for (const pr of filteredBySearch) {
+            const group = classifyPr(pr);
+            if (group === AttentionGroup.RerunNeeded || group === AttentionGroup.ManualUpdateNeeded) {
+                counts.blocked += 1;
+            }
+            if (mapAttentionToQueueSection(group) === 'ready') {
+                counts.ready += 1;
+            }
+        }
+        return counts;
+    }, [filteredBySearch, effectiveScope]);
 
     const selectedPrs = useMemo(
         () => prs.filter(pr => selectedPrIds.has(getPrSelectionId(pr))),
@@ -245,72 +251,24 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
 
     const dominantGroup = useMemo(() => {
         if (selectedPrs.length === 0) return undefined;
-
-        const counts = new Map<AttentionGroup, number>();
+        const tally = new Map<AttentionGroup, number>();
         for (const pr of selectedPrs) {
             const group = classifyPr(pr);
-            counts.set(group, (counts.get(group) ?? 0) + 1);
+            tally.set(group, (tally.get(group) ?? 0) + 1);
         }
-
         let bestGroup: AttentionGroup | undefined;
         let bestCount = -1;
-        for (const config of ATTENTION_GROUP_CONFIGS) {
-            const count = counts.get(config.group) ?? 0;
+        for (const [group, count] of tally) {
             if (count > bestCount) {
-                bestGroup = config.group;
+                bestGroup = group;
                 bestCount = count;
             }
         }
         return bestGroup;
     }, [selectedPrs]);
 
-    const setGroupSectionRef = useCallback((group: AttentionGroup, element: HTMLDivElement | null) => {
-        if (element) {
-            groupSectionRefs.current.set(group, element);
-        } else {
-            groupSectionRefs.current.delete(group);
-        }
-    }, []);
-
-    const scrollToGroup = useCallback((group: AttentionGroup) => {
-        groupSectionRefs.current.get(group)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, []);
-
-    function handleScopeSelect(mode: ScopeMode) {
-        setScopeDropdownOpen(false);
-        if (mode === 'author') {
-            setScopeMode('author');
-            setAuthorInput('');
-            setCommittedAuthor('');
-        } else {
-            setScopeMode(mode);
-            setAuthorInput('');
-            setCommittedAuthor('');
-        }
-    }
-
-    function handleAuthorInputChange(value: string) {
-        setAuthorInput(value);
-        if (authorDebounceRef.current) clearTimeout(authorDebounceRef.current);
-        authorDebounceRef.current = setTimeout(() => {
-            setCommittedAuthor(value);
-        }, AUTHOR_DEBOUNCE_MS);
-    }
-
-    function handleAuthorKeyDown(e: React.KeyboardEvent) {
-        if (e.key === 'Escape') {
-            setScopeMode('mine');
-            setAuthorInput('');
-            setCommittedAuthor('');
-        } else if (e.key === 'Enter') {
-            setCommittedAuthor(authorInput);
-        }
-    }
-
-    function handleClearAuthor() {
-        setScopeMode('mine');
-        setAuthorInput('');
-        setCommittedAuthor('');
+    function handleFilterChange(next: QueueFilter) {
+        setActiveFilter(next);
     }
 
     function handleToggleBatchMode() {
@@ -331,10 +289,10 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         if (isMobile) setMobileShowDetail(true);
     }
 
-    function handlePrSelect(id: string, checked: boolean, shiftKey: boolean, groupPrs: PullRequest[]) {
-        const groupIds = groupPrs.map(getPrSelectionId);
-        const anchorIndex = anchorPrId === null ? -1 : groupIds.indexOf(anchorPrId);
-        const targetIndex = groupIds.indexOf(id);
+    function handlePrSelect(id: string, checked: boolean, shiftKey: boolean, sectionPrs: PullRequest[]) {
+        const sectionIds = sectionPrs.map(getPrSelectionId);
+        const anchorIndex = anchorPrId === null ? -1 : sectionIds.indexOf(anchorPrId);
+        const targetIndex = sectionIds.indexOf(id);
         const shouldSelectRange = shiftKey && anchorIndex !== -1 && targetIndex !== -1;
 
         setSelectedPrIds(prev => {
@@ -342,7 +300,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
             if (shouldSelectRange) {
                 const start = Math.min(anchorIndex, targetIndex);
                 const end = Math.max(anchorIndex, targetIndex);
-                for (const rangeId of groupIds.slice(start, end + 1)) {
+                for (const rangeId of sectionIds.slice(start, end + 1)) {
                     next.add(rangeId);
                 }
             } else if (checked) {
@@ -358,152 +316,28 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         }
     }
 
-    function handleGroupSelectAll(group: AttentionGroup, checked: boolean) {
-        const groupPrs = groupedPrs.find(item => item.config.group === group)?.prs ?? [];
-        const groupIds = groupPrs.map(getPrSelectionId);
-        setSelectedPrIds(prev => {
-            const next = new Set(prev);
-            for (const id of groupIds) {
-                if (checked) {
-                    next.add(id);
-                } else {
-                    next.delete(id);
-                }
-            }
-            return next;
-        });
-        if (!checked && anchorPrId !== null && groupIds.includes(anchorPrId)) {
-            setAnchorPrId(null);
-        }
-    }
-
-    // Summary line
-    function getSummaryText(): string {
-        const count = filtered.length;
-        const statusLabel = statusFilter === 'all' ? '' : ` ${statusFilter}`;
-        if (scopeMode === 'mine') {
-            return count === 0
-                ? 'No pull requests found'
-                : `Showing ${count} of your${statusLabel} pull requests`;
-        }
-        if (scopeMode === 'author' && committedAuthor) {
-            return count === 0
-                ? `No pull requests found by "${committedAuthor}"`
-                : `Showing ${count}${statusLabel} pull requests by "${committedAuthor}"`;
-        }
-        return count === 0
-            ? 'No pull requests found'
-            : `Showing ${count}${statusLabel} pull requests`;
-    }
-
-    // Scope dropdown label
-    const scopeLabel = scopeMode === 'mine' ? '👤 Mine'
-        : scopeMode === 'all' ? '👥 All'
-        : committedAuthor ? `👤 ${committedAuthor}` : '👤 Author…';
-
-    const listPanel = (
+    const queuePanel = (
         <>
-            {/* Toolbar */}
-            <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700 shrink-0 flex-wrap">
+            <PrQueueHeader />
+
+            <div
+                className="flex items-center gap-2 border-b border-gray-200 px-4 py-2 dark:border-gray-700"
+                data-testid="pr-queue-toolbar"
+            >
                 <input
-                    className="flex-1 min-w-32 text-sm border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-800"
-                    placeholder="Search PRs..."
+                    className="min-w-0 flex-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900 outline-none placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                    placeholder="Search PRs…"
                     value={searchText}
                     onChange={e => setSearchText(e.target.value)}
                     data-testid="search-input"
                 />
-
-                {/* Scope dropdown */}
-                {scopeMode === 'author' ? (
-                    <div className="flex items-center gap-1" data-testid="author-scope-input">
-                        <span className="text-sm">👤</span>
-                        <input
-                            ref={authorInputRef}
-                            className="w-32 text-sm border border-blue-400 dark:border-blue-500 rounded px-2 py-1 bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                            placeholder="Author name…"
-                            value={authorInput}
-                            onChange={e => handleAuthorInputChange(e.target.value)}
-                            onKeyDown={handleAuthorKeyDown}
-                            data-testid="author-input"
-                        />
-                        <button
-                            className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 px-1"
-                            onClick={handleClearAuthor}
-                            title="Clear author filter"
-                            data-testid="clear-author"
-                        >
-                            ✕
-                        </button>
-                    </div>
-                ) : (
-                    <div className="relative" ref={scopeDropdownRef}>
-                        <button
-                            className="text-sm border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 whitespace-nowrap"
-                            onClick={() => setScopeDropdownOpen(!scopeDropdownOpen)}
-                            data-testid="scope-dropdown-trigger"
-                        >
-                            {scopeLabel} ▾
-                        </button>
-                        {scopeDropdownOpen && (
-                            <div
-                                className="absolute top-full left-0 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded shadow-lg z-10 min-w-[140px]"
-                                data-testid="scope-dropdown-menu"
-                            >
-                                <button
-                                    className={cn(
-                                        'w-full text-left text-sm px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700',
-                                        scopeMode === 'mine' && 'font-semibold',
-                                    )}
-                                    onClick={() => handleScopeSelect('mine')}
-                                    data-testid="scope-option-mine"
-                                >
-                                    👤 Mine {scopeMode === 'mine' && '✓'}
-                                </button>
-                                <button
-                                    className={cn(
-                                        'w-full text-left text-sm px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700',
-                                        scopeMode === 'all' && 'font-semibold',
-                                    )}
-                                    onClick={() => handleScopeSelect('all')}
-                                    data-testid="scope-option-all"
-                                >
-                                    👥 All {scopeMode === 'all' && '✓'}
-                                </button>
-                                <button
-                                    className="w-full text-left text-sm px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700"
-                                    onClick={() => handleScopeSelect('author')}
-                                    data-testid="scope-option-author"
-                                >
-                                    ✏️ Author…
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                <select
-                    className="text-sm border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-800"
-                    value={statusFilter}
-                    onChange={e => setStatusFilter(e.target.value as StatusFilter)}
-                    data-testid="status-filter"
-                >
-                    <option value="open">Open</option>
-                    <option value="closed">Closed</option>
-                    <option value="merged">Merged</option>
-                    <option value="draft">Draft</option>
-                    <option value="all">All</option>
-                </select>
-                {fetchedAt != null && (
-                    <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap" data-testid="fetched-at">
-                        {formatFetchedAt(fetchedAt)}
-                    </span>
-                )}
                 <button
+                    type="button"
                     onClick={() => fetchPrs(true, true)}
                     disabled={loading}
                     title="Refresh pull requests"
                     data-testid="refresh-button"
-                    className="flex items-center gap-1 text-sm px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
                 >
                     <svg
                         className={loading ? 'animate-spin' : ''}
@@ -523,21 +357,30 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                     aria-pressed={batchMode}
                     data-testid="select-mode-button"
                     className={cn(
-                        'text-sm px-2 py-1 rounded border whitespace-nowrap',
+                        'inline-flex h-7 shrink-0 items-center rounded-md border px-2 text-xs font-semibold transition-colors',
                         batchMode
-                            ? 'border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
-                            : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700',
+                            ? 'border-blue-500 bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300'
+                            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700',
                     )}
                 >
                     {batchMode ? 'Cancel' : 'Select'}
                 </button>
             </div>
 
+            <PrQueueFilters
+                active={activeFilter}
+                counts={filterCounts}
+                onChange={handleFilterChange}
+            />
+
             {batchMode && selectedPrIds.size > 0 && (
-                <div className="px-4 py-1 text-xs font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-800 flex items-center justify-between" data-testid="selection-count-bar">
+                <div
+                    className="flex items-center justify-between border-b border-blue-100 bg-blue-50 px-4 py-1 text-xs font-medium text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300"
+                    data-testid="selection-count-bar"
+                >
                     <span>{selectedPrIds.size} PR{selectedPrIds.size !== 1 ? 's' : ''} selected</span>
                     <button
-                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                        className="text-xs text-blue-600 hover:underline dark:text-blue-400"
                         onClick={() => {
                             setSelectedPrIds(new Set());
                             setAnchorPrId(null);
@@ -549,23 +392,16 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                 </div>
             )}
 
-            {/* Summary line */}
-            {!loading && !error && !unconfigured && (
-                <div className="px-4 py-1 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800" data-testid="summary-line">
-                    {getSummaryText()}
-                    {scopeMode === 'author' && committedAuthor && filtered.length === 0 && (
-                        <button
-                            className="ml-2 text-blue-600 dark:text-blue-400 hover:underline"
-                            onClick={() => handleScopeSelect('all')}
-                            data-testid="show-all-link"
-                        >
-                            Show all pull requests
-                        </button>
-                    )}
+            {fetchedAt != null && !loading && !error && !unconfigured && (
+                <div
+                    className="border-b border-gray-200 px-4 py-1 text-[11px] text-gray-500 dark:border-gray-700 dark:text-gray-400"
+                    data-testid="fetched-at"
+                >
+                    {formatFetchedAt(fetchedAt)}
                 </div>
             )}
 
-            {/* Unconfigured provider — prompts user to configure credentials */}
+            {/* Loading / unconfigured / error states share the same scroll body */}
             {unconfigured && (
                 <ProviderConfigPanel
                     detected={unconfigured.detected}
@@ -575,66 +411,46 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                 />
             )}
 
-            {/* Error state */}
             {error && (
                 <div className="px-4 py-2 text-sm text-red-500 dark:text-red-400" data-testid="error-message">
                     {error}
                 </div>
             )}
 
-            {/* Initial loading state */}
             {loading && prs.length === 0 && (
                 <div className="flex items-center justify-center py-8" data-testid="loading-spinner">
                     <span className="text-sm text-gray-500">Loading pull requests…</span>
                 </div>
             )}
 
-            {/* PR list */}
+            {/* Queue rows */}
             <div className="flex-1 overflow-y-auto" data-testid="pr-list">
-                {!error && !unconfigured && !(loading && prs.length === 0) && (
-                    filtered.length > 0 && filtered.length <= FLAT_LIST_THRESHOLD ? (
-                        /* Flat list for a small number of PRs — no grouping overhead */
-                        filtered.map(pr => (
-                            <PullRequestRow
-                                key={pr.id}
-                                pr={pr}
-                                onClick={() => handleRowClick(pr)}
-                                isSelected={(pr.number ?? pr.id) === state.selectedPrId}
-                                isChecked={selectedPrIds.has(getPrSelectionId(pr))}
-                                onSelect={(id, checked, shiftKey) => handlePrSelect(id, checked, shiftKey, filtered)}
-                                batchMode={batchMode}
-                            />
-                        ))
-                    ) : (
-                        <>
-                            <AttentionSummaryBar groups={groupCounts} onChipClick={scrollToGroup} />
-                            {groupedPrs.filter(({ prs: groupPrs }) => groupPrs.length > 0).map(({ config, prs: groupPrs }) => {
-                                const groupIds = groupPrs.map(getPrSelectionId);
-                                const allSelected = groupIds.length > 0 && groupIds.every(id => selectedPrIds.has(id));
-                                const someSelected = groupIds.some(id => selectedPrIds.has(id));
-
-                                return (
-                                    <AttentionGroupSection
-                                        key={config.group}
-                                        ref={element => setGroupSectionRef(config.group, element)}
-                                        config={config}
-                                        prs={groupPrs}
-                                        selectedPrId={state.selectedPrId}
-                                        onRowClick={handleRowClick}
-                                        onSelectAll={checked => handleGroupSelectAll(config.group, checked)}
-                                        allSelected={allSelected}
-                                        someSelected={someSelected}
-                                        selectedPrIds={selectedPrIds}
-                                        onPrSelect={(id, checked, shiftKey) => handlePrSelect(id, checked, shiftKey, groupPrs)}
-                                        anchorPrId={anchorPrId}
+                {!error && !unconfigured && !(loading && prs.length === 0) && filteredByPill.length > 0 && (
+                    groupedPrs
+                        .filter(({ prs: sectionPrs }) => sectionPrs.length > 0)
+                        .map(({ config, prs: sectionPrs }) => (
+                            <PrQueueGroupSection
+                                key={config.section}
+                                section={config.section}
+                                label={config.label}
+                            >
+                                {sectionPrs.map(pr => (
+                                    <PullRequestRow
+                                        key={pr.id}
+                                        pr={pr}
+                                        onClick={() => handleRowClick(pr)}
+                                        isSelected={(pr.number ?? pr.id) === state.selectedPrId}
+                                        isChecked={selectedPrIds.has(getPrSelectionId(pr))}
+                                        onSelect={(id, checked, shiftKey) =>
+                                            handlePrSelect(id, checked, shiftKey, sectionPrs)
+                                        }
                                         batchMode={batchMode}
                                     />
-                                );
-                            })}
-                        </>
-                    )
+                                ))}
+                            </PrQueueGroupSection>
+                        ))
                 )}
-                {!loading && !error && !unconfigured && prs.length > 0 && filtered.length === 0 && (
+                {!loading && !error && !unconfigured && prs.length > 0 && filteredByPill.length === 0 && (
                     <div className="px-4 py-6 text-center text-sm text-gray-500" data-testid="no-results">
                         No pull requests match your filters.
                     </div>
@@ -646,11 +462,10 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                 )}
             </div>
 
-            {/* Load more */}
             {hasMore && !loading && (
-                <div className="px-4 py-2 shrink-0 border-t border-gray-200 dark:border-gray-700">
+                <div className="border-t border-gray-200 px-4 py-2 dark:border-gray-700">
                     <button
-                        className="w-full text-sm text-blue-600 dark:text-blue-400 hover:underline py-1"
+                        className="w-full py-1 text-sm text-blue-600 hover:underline dark:text-blue-400"
                         onClick={() => fetchPrs(false)}
                         data-testid="load-more"
                     >
@@ -659,12 +474,13 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                 </div>
             )}
 
-            {/* Loading more indicator */}
             {loading && prs.length > 0 && (
-                <div className="px-4 py-2 text-center text-sm text-gray-500 shrink-0" data-testid="loading-more">
+                <div className="px-4 py-2 text-center text-sm text-gray-500" data-testid="loading-more">
                     Loading…
                 </div>
             )}
+
+            <PrQueueFooter />
         </>
     );
 
@@ -704,26 +520,27 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                         {detailContent}
                     </div>
                 ) : (
-                    <div className="flex-1 flex flex-col overflow-hidden" data-testid="pr-list-panel">
-                        {listPanel}
+                    <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-gray-900" data-testid="pr-list-panel">
+                        {queuePanel}
                     </div>
                 )}
             </div>
         );
     }
 
+    // Suppress unused-warning when mock helper is only re-exported for tests.
+    void getMockQueueRisk;
+
     return (
         <div className={cn('flex h-full overflow-hidden', isDragging && 'select-none')} data-testid="pr-split-panel">
-            {/* Left panel */}
             <div
-                className="flex-shrink-0 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden"
+                className="flex-shrink-0 border-r border-gray-200 flex flex-col overflow-hidden bg-white dark:border-gray-700 dark:bg-gray-900"
                 style={{ width: leftPanelWidth }}
                 data-testid="pr-list-panel"
             >
-                {listPanel}
+                {queuePanel}
             </div>
 
-            {/* Resize handle */}
             <div
                 className="flex items-center justify-center w-1 cursor-col-resize hover:bg-blue-400/30 active:bg-blue-400/50 transition-colors flex-shrink-0"
                 onMouseDown={handleMouseDown}
@@ -735,7 +552,6 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                 tabIndex={0}
             />
 
-            {/* Right panel */}
             <div className="flex-1 min-w-0 overflow-y-auto" data-testid="pr-detail-panel">
                 {detailContent}
             </div>

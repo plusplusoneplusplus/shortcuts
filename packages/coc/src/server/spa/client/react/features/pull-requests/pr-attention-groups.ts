@@ -84,6 +84,30 @@ function isApproval(reviewer: Reviewer): boolean {
     return vote === 'approved' || vote === 'approvedwithsuggestions';
 }
 
+/**
+ * Two-bucket queue grouping used by the redesigned PR queue rail.
+ * Backed by the existing four-group attention classifier.
+ */
+export type QueueSection = 'needs-review' | 'ready';
+
+export interface QueueSectionConfig {
+    section: QueueSection;
+    label: string;
+}
+
+export const QUEUE_SECTION_CONFIGS: QueueSectionConfig[] = [
+    { section: 'needs-review', label: 'Needs review' },
+    { section: 'ready',        label: 'Ready after checks' },
+];
+
+export function mapAttentionToQueueSection(group: AttentionGroup): QueueSection {
+    return group === AttentionGroup.MergeValidation ? 'ready' : 'needs-review';
+}
+
+export function classifyQueueSection(pr: PullRequest, threads?: CommentThread[]): QueueSection {
+    return mapAttentionToQueueSection(classifyPr(pr, threads));
+}
+
 export function classifyPr(pr: PullRequest, threads?: CommentThread[]): AttentionGroup {
     const reviewers = pr.reviewers ?? [];
     const openThreads = threads?.filter(hasActiveThread) ?? [];

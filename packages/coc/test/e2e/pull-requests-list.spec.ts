@@ -99,7 +99,7 @@ test.describe('Pull Requests tab — list', () => {
         }
     });
 
-    test('renders PR rows with title, number, status badge, and branches', async ({
+    test('renders queue header, filter pills, and PR rows with title and number', async ({
         page,
         serverUrl,
     }) => {
@@ -110,62 +110,29 @@ test.describe('Pull Requests tab — list', () => {
         try {
             await openPrTab(page, serverUrl, repoId);
 
+            // Queue chrome
+            await expect(page.locator('[data-testid="pr-queue-header"]')).toBeVisible({ timeout: 10000 });
+            await expect(page.locator('[data-testid="pr-queue-filter-all"]')).toBeVisible({ timeout: 10000 });
+            await expect(page.locator('[data-testid="pr-queue-filter-mine"]')).toBeVisible({ timeout: 10000 });
+            await expect(page.locator('[data-testid="pr-queue-filter-blocked"]')).toBeVisible({ timeout: 10000 });
+            await expect(page.locator('[data-testid="pr-queue-filter-ready"]')).toBeVisible({ timeout: 10000 });
+            await expect(page.locator('[data-testid="pr-queue-footer"]')).toBeVisible({ timeout: 10000 });
+
             // Three rows rendered
             await expect(page.locator('.pr-row')).toHaveCount(3, { timeout: 10000 });
 
             const firstRow = page.locator('.pr-row').first();
-
-            // Title
-            await expect(firstRow.locator('.pr-title')).toHaveText(MOCK_PR_LIST[0].title, {
-                timeout: 10000,
-            });
-
-            // PR number
-            await expect(firstRow.locator('.pr-number')).toContainText(
-                `#${MOCK_PR_LIST[0].id}`,
-                { timeout: 10000 },
-            );
-
-            // Branch text (source → target)
-            await expect(firstRow.locator('.pr-branches')).toContainText(
-                MOCK_PR_LIST[0].sourceBranch,
-                { timeout: 10000 },
-            );
-            await expect(firstRow.locator('.pr-branches')).toContainText(
-                MOCK_PR_LIST[0].targetBranch,
-                { timeout: 10000 },
-            );
-
-            // Status badge present
-            await expect(firstRow.locator('.pr-status-badge')).toBeVisible({ timeout: 10000 });
+            await expect(firstRow.locator('.pr-title')).toHaveText(MOCK_PR_LIST[0].title, { timeout: 10000 });
+            await expect(firstRow.locator('.pr-number')).toContainText(`#${MOCK_PR_LIST[0].id}`, { timeout: 10000 });
+            await expect(firstRow.locator('[data-testid="pr-state-dot"]')).toBeVisible({ timeout: 10000 });
+            await expect(firstRow.locator('[data-testid="pr-risk-pill"]')).toBeVisible({ timeout: 10000 });
         } finally {
             await routeCleanup();
             cleanup();
         }
     });
 
-    test('shows author name in each row', async ({ page, serverUrl }) => {
-        const { id: repoId, cleanup } = await seedPrWorkspace(serverUrl, 'ws-3', 'My Repo');
-        const routeCleanup = await setupPrRoutes(page, serverUrl, repoId, {
-            pullRequests: MOCK_PR_LIST,
-        });
-        try {
-            await openPrTab(page, serverUrl, repoId);
-
-            await expect(page.locator('.pr-row')).toHaveCount(3, { timeout: 10000 });
-
-            const firstRow = page.locator('.pr-row').first();
-            await expect(firstRow.locator('.pr-author')).toContainText(
-                MOCK_PR_LIST[0].author!.displayName!,
-                { timeout: 10000 },
-            );
-        } finally {
-            await routeCleanup();
-            cleanup();
-        }
-    });
-
-    test('shows relative time in each row', async ({ page, serverUrl }) => {
+    test('shows file count and review minutes in each row meta line', async ({ page, serverUrl }) => {
         const { id: repoId, cleanup } = await seedPrWorkspace(serverUrl, 'ws-4', 'My Repo');
         const routeCleanup = await setupPrRoutes(page, serverUrl, repoId, {
             pullRequests: MOCK_PR_LIST,
@@ -175,13 +142,11 @@ test.describe('Pull Requests tab — list', () => {
 
             await expect(page.locator('.pr-row')).toHaveCount(3, { timeout: 10000 });
 
-            // Every row should contain a timestamp string showing "Updated"
             const rows = page.locator('.pr-row');
             const count = await rows.count();
             for (let i = 0; i < count; i++) {
-                await expect(rows.nth(i).locator('.pr-time')).toContainText('Updated', {
-                    timeout: 10000,
-                });
+                await expect(rows.nth(i).locator('.pr-meta')).toContainText(/\d+ files/, { timeout: 10000 });
+                await expect(rows.nth(i).locator('.pr-meta')).toContainText(/\d+ min/, { timeout: 10000 });
             }
         } finally {
             await routeCleanup();
@@ -189,23 +154,25 @@ test.describe('Pull Requests tab — list', () => {
         }
     });
 
-    test('status filter changes visible rows', async ({ page, serverUrl }) => {
+    test('queue grouping renders Needs review and Ready after checks sections', async ({ page, serverUrl }) => {
         const { id: repoId, cleanup } = await seedPrWorkspace(serverUrl, 'ws-5', 'My Repo');
-        // MOCK_PR_LIST contains open, draft, merged — 1 merged PR
         const routeCleanup = await setupPrRoutes(page, serverUrl, repoId, {
-            pullRequests: MOCK_PR_LIST,
+            pullRequests: [
+                createMockPullRequest({
+                    id: 1, title: 'Needs review one', status: 'active',
+                    reviewers: [{ identity: { displayName: 'R' }, vote: 'waitingForAuthor' }],
+                }),
+                createMockPullRequest({
+                    id: 2, title: 'Ready one', status: 'active',
+                    reviewers: [{ identity: { displayName: 'R' }, vote: 'approved' }],
+                }),
+            ],
         });
         try {
             await openPrTab(page, serverUrl, repoId);
-            await expect(page.locator('[data-testid="pr-row"]')).toHaveCount(3, { timeout: 10000 });
-
-            // Select "merged" from the status filter
-            await page.locator('[data-testid="status-filter"]').selectOption('merged');
-
-            await expect(page.locator('[data-testid="pr-row"]')).toHaveCount(1, { timeout: 10000 });
-            await expect(
-                page.locator('[data-testid="pr-row"]').first().locator('.pr-status-badge'),
-            ).toContainText('Merged', { timeout: 10000 });
+            await expect(page.locator('[data-testid="pr-row"]')).toHaveCount(2, { timeout: 10000 });
+            await expect(page.locator('[data-queue-section="needs-review"]')).toBeVisible({ timeout: 10000 });
+            await expect(page.locator('[data-queue-section="ready"]')).toBeVisible({ timeout: 10000 });
         } finally {
             await routeCleanup();
             cleanup();

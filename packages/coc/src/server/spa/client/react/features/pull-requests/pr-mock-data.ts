@@ -596,3 +596,71 @@ export function getMockBranchSnapshot(pr: PullRequest): AiBranchSnapshot {
 export function getMockReviewSummaryText(pr: PullRequest): string {
     return getMockAiSummary(pr).summary;
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Queue/list helpers (left rail)
+// ──────────────────────────────────────────────────────────────────────────────
+
+export type QueueFilter = 'all' | 'mine' | 'blocked' | 'ready';
+export type QueueDotState = 'open' | 'draft' | 'blocked' | 'ready';
+export type QueueRiskBadge = 'low' | 'med' | 'high';
+
+export function getMockPrFileCount(pr: PullRequest): number {
+    const seed = hashString(`${pr.id}|files`);
+    return 2 + (seed % 60);
+}
+
+export function getMockPrReviewMinutes(pr: PullRequest): number {
+    const seed = hashString(`${pr.id}|time`);
+    return 2 + (seed % 40);
+}
+
+export function getMockQueueRisk(pr: PullRequest): QueueRiskBadge {
+    switch (getMockAiSummary(pr).risk) {
+        case 'Low':    return 'low';
+        case 'Medium': return 'med';
+        case 'High':   return 'high';
+    }
+}
+
+export function queueRiskClass(risk: QueueRiskBadge): string {
+    switch (risk) {
+        case 'low':  return 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-200';
+        case 'med':  return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200';
+        case 'high': return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200';
+    }
+}
+
+export function queueDotClass(state: QueueDotState): string {
+    switch (state) {
+        case 'open':
+            return 'border-2 border-green-600 dark:border-green-500';
+        case 'draft':
+            return 'border-2 border-gray-500 bg-gray-500';
+        case 'blocked':
+            return 'border-2 border-yellow-600 bg-yellow-600 dark:border-yellow-500 dark:bg-yellow-500';
+        case 'ready':
+            return 'border-2 border-purple-600 bg-purple-600 dark:border-purple-400 dark:bg-purple-400';
+    }
+}
+
+export interface QueueFilterCounts {
+    all: number;
+    mine: number;
+    blocked: number;
+    ready: number;
+}
+
+const ALL_FILTERS: QueueFilter[] = ['all', 'mine', 'blocked', 'ready'];
+
+export function getQueueFilterDefinitions(): Array<{ id: QueueFilter; label: string }> {
+    return [
+        { id: 'all',     label: 'All' },
+        { id: 'mine',    label: 'Mine' },
+        { id: 'blocked', label: 'Blocked' },
+        { id: 'ready',   label: 'Ready' },
+    ];
+}
+
+export { ALL_FILTERS as QUEUE_FILTERS };
+

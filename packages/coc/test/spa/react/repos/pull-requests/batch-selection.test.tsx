@@ -1,6 +1,12 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+/**
+ * Batch selection in the redesigned PR review command queue. The new
+ * queue rail does not have a per-section "select all" checkbox — only
+ * row checkboxes (revealed via the toolbar Select button), shift-click
+ * range selection, and a clear-selection action on the count bar.
+ */
+
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AttentionGroup } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-attention-groups';
 
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
@@ -18,7 +24,7 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () 
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useResizablePanel', () => ({
     useResizablePanel: () => ({
-        width: 288,
+        width: 304,
         isDragging: false,
         handleMouseDown: vi.fn(),
         handleTouchStart: vi.fn(),
@@ -66,14 +72,10 @@ async function renderBatchSelection() {
     await act(async () => { await renderTab(); });
     await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(6));
 
-    // Enable batch mode so checkboxes are visible
     fireEvent.click(screen.getByTestId('select-mode-button'));
 
-    const section = document.querySelector(`[data-group-id="${AttentionGroup.MergeValidation}"]`) as HTMLElement;
     return {
-        section,
-        groupCheckbox: within(section).getByTestId('group-select-all') as HTMLInputElement,
-        rowCheckboxes: within(section).getAllByTestId('pr-row-checkbox') as HTMLInputElement[],
+        rowCheckboxes: screen.getAllByTestId('pr-row-checkbox') as HTMLInputElement[],
     };
 }
 
@@ -89,7 +91,9 @@ describe('pull request batch selection', () => {
 
         fireEvent.click(rowCheckboxes[0]);
 
-        await waitFor(() => expect(screen.getByTestId('selection-count-bar')).toHaveTextContent('1 PR selected'));
+        await waitFor(() =>
+            expect(screen.getByTestId('selection-count-bar')).toHaveTextContent('1 PR selected'),
+        );
         expect(rowCheckboxes[0].checked).toBe(true);
         expect(mockDispatch).not.toHaveBeenCalled();
     });
@@ -103,44 +107,19 @@ describe('pull request batch selection', () => {
         expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_PR_DETAIL_TAB', tab: 'overview' });
     });
 
-    it('selects and deselects all PRs in a group from the group header checkbox', async () => {
-        const { groupCheckbox, rowCheckboxes } = await renderBatchSelection();
-
-        fireEvent.click(groupCheckbox);
-
-        await waitFor(() => expect(screen.getByTestId('selection-count-bar')).toHaveTextContent('6 PRs selected'));
-        expect(groupCheckbox.checked).toBe(true);
-        expect(rowCheckboxes.every(checkbox => checkbox.checked)).toBe(true);
-
-        fireEvent.click(groupCheckbox);
-
-        await waitFor(() => expect(screen.queryByTestId('selection-count-bar')).toBeNull());
-        expect(groupCheckbox.checked).toBe(false);
-        expect(rowCheckboxes.every(checkbox => !checkbox.checked)).toBe(true);
-    });
-
-    it('shows an indeterminate group header when one selected PR is deselected', async () => {
-        const { groupCheckbox, rowCheckboxes } = await renderBatchSelection();
-
-        fireEvent.click(groupCheckbox);
-        await waitFor(() => expect(groupCheckbox.checked).toBe(true));
-
-        fireEvent.click(rowCheckboxes[1]);
-
-        await waitFor(() => expect(screen.getByTestId('selection-count-bar')).toHaveTextContent('5 PRs selected'));
-        expect(groupCheckbox.checked).toBe(false);
-        expect(groupCheckbox.indeterminate).toBe(true);
-    });
-
-    it('shift-click selects an inclusive range within the group', async () => {
+    it('shift-click selects an inclusive range within a section', async () => {
         const { rowCheckboxes } = await renderBatchSelection();
 
         fireEvent.click(rowCheckboxes[0]);
-        await waitFor(() => expect(screen.getByTestId('selection-count-bar')).toHaveTextContent('1 PR selected'));
+        await waitFor(() =>
+            expect(screen.getByTestId('selection-count-bar')).toHaveTextContent('1 PR selected'),
+        );
 
         fireEvent.click(rowCheckboxes[2], { shiftKey: true });
 
-        await waitFor(() => expect(screen.getByTestId('selection-count-bar')).toHaveTextContent('3 PRs selected'));
+        await waitFor(() =>
+            expect(screen.getByTestId('selection-count-bar')).toHaveTextContent('3 PRs selected'),
+        );
         expect(rowCheckboxes.slice(0, 3).every(checkbox => checkbox.checked)).toBe(true);
         expect(rowCheckboxes.slice(3).every(checkbox => !checkbox.checked)).toBe(true);
     });
@@ -149,7 +128,9 @@ describe('pull request batch selection', () => {
         const { rowCheckboxes } = await renderBatchSelection();
 
         fireEvent.click(rowCheckboxes[0]);
-        await waitFor(() => expect(screen.getByTestId('selection-count-bar')).toHaveTextContent('1 PR selected'));
+        await waitFor(() =>
+            expect(screen.getByTestId('selection-count-bar')).toHaveTextContent('1 PR selected'),
+        );
 
         fireEvent.click(screen.getByTestId('clear-selection'));
 

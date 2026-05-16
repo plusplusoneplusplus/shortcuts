@@ -16,11 +16,17 @@ import {
     getMockFiles,
     getMockMergeReadiness,
     getMockPersonaLenses,
+    getMockPrFileCount,
+    getMockPrReviewMinutes,
+    getMockQueueRisk,
     getMockReviewSummaryText,
     getMockSeedChat,
     getMockSuggestedPrompts,
     getMockThreadGroups,
     getMockTimeline,
+    getQueueFilterDefinitions,
+    queueDotClass,
+    queueRiskClass,
     riskPillClass,
 } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-mock-data';
 import type { PullRequest } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-utils';
@@ -142,5 +148,55 @@ describe('AI mock data', () => {
     it('returns a non-empty review summary text', () => {
         const summary = getMockReviewSummaryText(basePr);
         expect(summary.length).toBeGreaterThan(20);
+    });
+});
+
+describe('queue helpers', () => {
+    it('returns deterministic file count and review minutes inside expected ranges', () => {
+        const a = getMockPrFileCount(basePr);
+        const b = getMockPrFileCount({ ...basePr });
+        expect(a).toBe(b);
+        expect(a).toBeGreaterThanOrEqual(2);
+        expect(a).toBeLessThanOrEqual(61);
+
+        const t = getMockPrReviewMinutes(basePr);
+        expect(t).toBe(getMockPrReviewMinutes({ ...basePr }));
+        expect(t).toBeGreaterThanOrEqual(2);
+        expect(t).toBeLessThanOrEqual(41);
+    });
+
+    it('maps the AI summary risk to a low / med / high queue badge', () => {
+        const risk = getMockQueueRisk(basePr);
+        expect(['low', 'med', 'high']).toContain(risk);
+
+        expect(getMockQueueRisk({
+            ...basePr,
+            title: 'docs(api): clarify webhook replay order',
+            description: 'Tighten the wording on the webhook replay order docs.',
+        })).toBe('low');
+        expect(getMockQueueRisk({
+            ...basePr,
+            title: 'refactor(tasks): replace scheduler persistence',
+        })).toBe('high');
+    });
+
+    it('exposes class-name helpers for queue dots and risk pills', () => {
+        expect(queueDotClass('open')).toContain('green');
+        expect(queueDotClass('draft')).toContain('gray');
+        expect(queueDotClass('blocked')).toContain('yellow');
+        expect(queueDotClass('ready')).toContain('purple');
+
+        expect(queueRiskClass('low')).toContain('green');
+        expect(queueRiskClass('med')).toContain('yellow');
+        expect(queueRiskClass('high')).toContain('red');
+    });
+
+    it('lists the four canonical queue filters in display order', () => {
+        expect(getQueueFilterDefinitions().map(filter => filter.id)).toEqual([
+            'all',
+            'mine',
+            'blocked',
+            'ready',
+        ]);
     });
 });

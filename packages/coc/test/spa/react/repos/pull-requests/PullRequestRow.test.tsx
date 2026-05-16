@@ -1,5 +1,7 @@
 /**
- * Unit tests for PullRequestRow — renders a single row in the PR list.
+ * Unit tests for the redesigned PullRequestRow used by the PR review
+ * command queue. Verifies the new state-dot + title + meta + risk pill
+ * layout and selection / batch-mode behavior.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -23,141 +25,104 @@ function makePr(overrides: Partial<PullRequest> = {}): PullRequest {
     };
 }
 
-describe('PullRequestRow — title and metadata', () => {
-    it('renders PR title', () => {
+describe('PullRequestRow — title and meta', () => {
+    it('renders the PR title', () => {
         render(<PullRequestRow pr={makePr()} onClick={vi.fn()} />);
         expect(screen.getByText('Fix login bug')).toBeTruthy();
     });
 
-    it('renders PR number when present', () => {
+    it('renders the PR number when present', () => {
         render(<PullRequestRow pr={makePr({ number: 99 })} onClick={vi.fn()} />);
         expect(screen.getByText('#99')).toBeTruthy();
     });
 
-    it('omits PR number when not present', () => {
+    it('omits the PR number when not present', () => {
         render(<PullRequestRow pr={makePr({ number: undefined })} onClick={vi.fn()} />);
         expect(screen.queryByText(/#\d+/)).toBeNull();
     });
 
-    it('renders source and target branches', () => {
-        render(<PullRequestRow pr={makePr({ sourceBranch: 'dev', targetBranch: 'main' })} onClick={vi.fn()} />);
-        expect(screen.getByText('dev')).toBeTruthy();
-        expect(screen.getByText('main')).toBeTruthy();
-    });
-
-    it('renders updated timestamp', () => {
+    it('renders deterministic file count and review minutes from the AI mock', () => {
         render(<PullRequestRow pr={makePr()} onClick={vi.fn()} />);
-        const timeEl = document.querySelector('.pr-time');
-        expect(timeEl?.textContent).toContain('Updated');
+        expect(document.querySelector('.pr-meta')?.textContent).toMatch(/\d+ files/);
+        expect(document.querySelector('.pr-meta')?.textContent).toMatch(/\d+ min/);
+    });
+
+    it('truncates long titles', () => {
+        render(<PullRequestRow pr={makePr({ title: 'A'.repeat(200) })} onClick={vi.fn()} />);
+        expect(document.querySelector('.pr-title')?.className).toContain('truncate');
     });
 });
 
-describe('PullRequestRow — author', () => {
-    it('renders author display name', () => {
-        render(<PullRequestRow pr={makePr({ author: { displayName: 'Bob' } })} onClick={vi.fn()} />);
-        expect(screen.getByText('Bob')).toBeTruthy();
+describe('PullRequestRow — state dot', () => {
+    it('renders an "open" dot for open PRs that are not high-risk', () => {
+        render(<PullRequestRow pr={makePr({ status: 'open' })} onClick={vi.fn()} risk="low" />);
+        expect(screen.getByTestId('pr-state-dot').getAttribute('data-state')).toBe('open');
     });
 
-    it('renders author initial as avatar fallback', () => {
-        render(<PullRequestRow pr={makePr({ author: { displayName: 'Carol' } })} onClick={vi.fn()} />);
-        expect(screen.getByText('C')).toBeTruthy();
+    it('uses the "blocked" dot when the AI flags the PR as high risk', () => {
+        render(<PullRequestRow pr={makePr({ status: 'open' })} onClick={vi.fn()} risk="high" />);
+        expect(screen.getByTestId('pr-state-dot').getAttribute('data-state')).toBe('blocked');
     });
 
-    it('does not render author section when author is absent', () => {
-        render(<PullRequestRow pr={makePr({ author: undefined })} onClick={vi.fn()} />);
-        expect(document.querySelector('.pr-author')).toBeNull();
-    });
-
-    it('does not render author section when displayName is empty', () => {
-        render(<PullRequestRow pr={makePr({ author: { displayName: '' } })} onClick={vi.fn()} />);
-        expect(document.querySelector('.pr-author')).toBeNull();
-    });
-});
-
-describe('PullRequestRow — status badge', () => {
-    it('shows Open badge for open PRs', () => {
-        render(<PullRequestRow pr={makePr({ status: 'open' })} onClick={vi.fn()} />);
-        const badge = document.querySelector('.pr-status-badge');
-        expect(badge?.textContent).toContain('Open');
-    });
-
-    it('shows Merged badge for merged PRs', () => {
-        render(<PullRequestRow pr={makePr({ status: 'merged' })} onClick={vi.fn()} />);
-        const badge = document.querySelector('.pr-status-badge');
-        expect(badge?.textContent).toContain('Merged');
-    });
-
-    it('shows Closed badge for closed PRs', () => {
-        render(<PullRequestRow pr={makePr({ status: 'closed' })} onClick={vi.fn()} />);
-        const badge = document.querySelector('.pr-status-badge');
-        expect(badge?.textContent).toContain('Closed');
-    });
-
-    it('shows Draft badge for draft PRs', () => {
+    it('uses the draft dot for draft PRs', () => {
         render(<PullRequestRow pr={makePr({ status: 'draft' })} onClick={vi.fn()} />);
-        const badge = document.querySelector('.pr-status-badge');
-        expect(badge?.textContent).toContain('Draft');
+        expect(screen.getByTestId('pr-state-dot').getAttribute('data-state')).toBe('draft');
+    });
+
+    it('uses the ready dot for merged / closed PRs (when not high risk)', () => {
+        const { unmount } = render(
+            <PullRequestRow pr={makePr({ status: 'merged' })} onClick={vi.fn()} risk="low" />,
+        );
+        expect(screen.getByTestId('pr-state-dot').getAttribute('data-state')).toBe('ready');
+        unmount();
+        render(<PullRequestRow pr={makePr({ status: 'closed' })} onClick={vi.fn()} risk="med" />);
+        expect(screen.getByTestId('pr-state-dot').getAttribute('data-state')).toBe('ready');
+    });
+
+    it('respects an explicit dotState override', () => {
+        render(<PullRequestRow pr={makePr()} onClick={vi.fn()} dotState="blocked" />);
+        expect(screen.getByTestId('pr-state-dot').getAttribute('data-state')).toBe('blocked');
+    });
+
+    it('hides the state dot in batch mode (checkbox replaces it)', () => {
+        render(<PullRequestRow pr={makePr()} onClick={vi.fn()} batchMode />);
+        expect(screen.queryByTestId('pr-state-dot')).toBeNull();
+        expect(screen.getByTestId('pr-row-checkbox')).toBeTruthy();
     });
 });
 
-describe('PullRequestRow — operational group badge', () => {
-    it('renders the group badge and reason instead of the status badge when group label is supplied', () => {
-        render(
-            <PullRequestRow
-                pr={makePr({ status: 'open' })}
-                onClick={vi.fn()}
-                groupLabel="Nudge reviewer"
-                groupColor="bg-blue-100 text-blue-800"
-                groupEmoji="💬"
-                groupReason="No reviewer response in 2+ days"
-            />,
-        );
-
-        const groupBadge = screen.getByTestId('pr-group-badge');
-        expect(groupBadge.textContent).toContain('Nudge reviewer');
-        expect(groupBadge.textContent).toContain('💬');
-        expect(groupBadge.className).toContain('bg-blue-100');
-        expect(groupBadge.className).toContain('text-blue-800');
-        expect(screen.getByTestId('pr-group-reason').textContent).toBe('No reviewer response in 2+ days');
-        expect(document.querySelector('.pr-status-badge')).toBeNull();
+describe('PullRequestRow — risk pill', () => {
+    it('renders an AI risk pill with one of low/med/high', () => {
+        render(<PullRequestRow pr={makePr()} onClick={vi.fn()} />);
+        const pill = screen.getByTestId('pr-risk-pill');
+        expect(['low', 'med', 'high']).toContain(pill.getAttribute('data-risk'));
+        expect(['Low', 'Med', 'High']).toContain(pill.textContent ?? '');
     });
 
-    it('falls back to the old status badge when group label is absent', () => {
-        render(<PullRequestRow pr={makePr({ status: 'draft' })} onClick={vi.fn()} />);
+    it('respects an explicit risk override', () => {
+        render(<PullRequestRow pr={makePr()} onClick={vi.fn()} risk="high" />);
+        const pill = screen.getByTestId('pr-risk-pill');
+        expect(pill.getAttribute('data-risk')).toBe('high');
+        expect(pill.textContent).toBe('High');
+    });
+});
 
-        expect(document.querySelector('.pr-status-badge')?.textContent).toContain('Draft');
-        expect(screen.queryByTestId('pr-group-badge')).toBeNull();
-        expect(screen.queryByTestId('pr-group-reason')).toBeNull();
+describe('PullRequestRow — selection styling', () => {
+    it('applies the selected styling when isSelected is true', () => {
+        render(<PullRequestRow pr={makePr()} onClick={vi.fn()} isSelected />);
+        const row = screen.getByTestId('pr-row');
+        expect(row.className).toContain('bg-blue-50');
+        expect(row.className).toContain('border-l-blue-500');
     });
 
-    it('keeps author, branch, reviewer, timestamp, and comment metadata with the group reason', () => {
-        render(
-            <PullRequestRow
-                pr={makePr({
-                    sourceBranch: 'feature/metadata',
-                    targetBranch: 'main',
-                    commentCount: 3,
-                    reviewers: [{ identity: { displayName: 'Reviewer' }, vote: undefined }],
-                })}
-                onClick={vi.fn()}
-                groupLabel="Validate merge"
-                groupColor="bg-purple-100 text-purple-800"
-                groupEmoji="✅"
-                groupReason="All checks passed — ready to merge"
-            />,
-        );
-
-        expect(screen.getByText('Alice')).toBeTruthy();
-        expect(screen.getByText('feature/metadata')).toBeTruthy();
-        expect(screen.getByText('main')).toBeTruthy();
-        expect(screen.getByText('1 reviewer')).toBeTruthy();
-        expect(screen.getByText('3 comments')).toBeTruthy();
-        expect(document.querySelector('.pr-time')?.textContent).toContain('Updated');
+    it('applies the hover styling when isSelected is false', () => {
+        render(<PullRequestRow pr={makePr()} onClick={vi.fn()} isSelected={false} />);
+        expect(screen.getByTestId('pr-row').className).toContain('hover:bg-gray-50');
     });
 });
 
 describe('PullRequestRow — click handling', () => {
-    it('calls onClick when row is clicked', () => {
+    it('calls onClick when the row is clicked', () => {
         const onClick = vi.fn();
         render(<PullRequestRow pr={makePr()} onClick={onClick} />);
         fireEvent.click(screen.getByTestId('pr-row'));
@@ -165,104 +130,43 @@ describe('PullRequestRow — click handling', () => {
     });
 });
 
-describe('PullRequestRow — reviewer count', () => {
-    it('shows reviewer count when reviewers are present', () => {
-        const pr = makePr({
-            reviewers: [
-                { identity: { displayName: 'R1' }, vote: undefined, isRequired: false },
-                { identity: { displayName: 'R2' }, vote: undefined, isRequired: false },
-            ],
-        });
-        render(<PullRequestRow pr={pr} onClick={vi.fn()} />);
-        expect(screen.getByText('2 reviewers')).toBeTruthy();
-    });
-
-    it('uses singular "reviewer" for count of 1', () => {
-        const pr = makePr({
-            reviewers: [{ identity: { displayName: 'R1' }, vote: undefined, isRequired: false }],
-        });
-        render(<PullRequestRow pr={pr} onClick={vi.fn()} />);
-        expect(screen.getByText('1 reviewer')).toBeTruthy();
-    });
-
-    it('does not show reviewer count when reviewers list is empty', () => {
-        render(<PullRequestRow pr={makePr({ reviewers: [] })} onClick={vi.fn()} />);
-        expect(screen.queryByText(/reviewer/)).toBeNull();
-    });
-
-    it('does not show reviewer count when reviewers is undefined', () => {
-        render(<PullRequestRow pr={makePr({ reviewers: undefined })} onClick={vi.fn()} />);
-        expect(screen.queryByText(/reviewer/)).toBeNull();
-    });
-});
-
-describe('PullRequestRow — comment count', () => {
-    it('shows comment count when comments exist', () => {
-        render(<PullRequestRow pr={makePr({ commentCount: 5 })} onClick={vi.fn()} />);
-        expect(screen.getByText('5 comments')).toBeTruthy();
-    });
-
-    it('uses singular "comment" for count of 1', () => {
-        render(<PullRequestRow pr={makePr({ commentCount: 1 })} onClick={vi.fn()} />);
-        expect(screen.getByText('1 comment')).toBeTruthy();
-    });
-
-    it('does not show comment count when zero', () => {
-        render(<PullRequestRow pr={makePr({ commentCount: 0 })} onClick={vi.fn()} />);
-        expect(screen.queryByText(/comment/)).toBeNull();
-    });
-
-    it('does not show comment count when undefined', () => {
-        render(<PullRequestRow pr={makePr({ commentCount: undefined })} onClick={vi.fn()} />);
-        expect(screen.queryByText(/comment/)).toBeNull();
-    });
-});
-
-describe('PullRequestRow — selection styling', () => {
-    it('applies selected styling when isSelected is true', () => {
-        render(<PullRequestRow pr={makePr()} onClick={vi.fn()} isSelected />);
-        const row = screen.getByTestId('pr-row');
-        expect(row.className).toContain('bg-blue-50');
-    });
-
-    it('applies hover styling when isSelected is false', () => {
-        render(<PullRequestRow pr={makePr()} onClick={vi.fn()} isSelected={false} />);
-        const row = screen.getByTestId('pr-row');
-        expect(row.className).toContain('hover:bg-gray-50');
-    });
-});
-
-describe('PullRequestRow — title truncation', () => {
-    it('applies truncate class to title element', () => {
-        render(<PullRequestRow pr={makePr({ title: 'A'.repeat(200) })} onClick={vi.fn()} />);
-        const title = document.querySelector('.pr-title');
-        expect(title?.className).toContain('truncate');
-    });
-});
-
-describe('PullRequestRow — checkbox visibility', () => {
-    it('hides checkbox by default (no batchMode prop)', () => {
+describe('PullRequestRow — batch mode checkbox', () => {
+    it('hides the checkbox by default', () => {
         render(<PullRequestRow pr={makePr()} onClick={vi.fn()} />);
         expect(screen.queryByTestId('pr-row-checkbox')).toBeNull();
     });
 
-    it('hides checkbox when batchMode is explicitly false', () => {
+    it('hides the checkbox when batchMode is explicitly false', () => {
         render(<PullRequestRow pr={makePr()} onClick={vi.fn()} batchMode={false} />);
         expect(screen.queryByTestId('pr-row-checkbox')).toBeNull();
     });
 
-    it('shows checkbox when batchMode is true', () => {
-        render(<PullRequestRow pr={makePr()} onClick={vi.fn()} batchMode={true} />);
+    it('shows the checkbox when batchMode is true', () => {
+        render(<PullRequestRow pr={makePr()} onClick={vi.fn()} batchMode />);
         expect(screen.getByTestId('pr-row-checkbox')).toBeTruthy();
     });
 
-    it('checkbox reflects isChecked state in batch mode', () => {
+    it('reflects isChecked state', () => {
         const { rerender } = render(
-            <PullRequestRow pr={makePr()} onClick={vi.fn()} batchMode={true} isChecked={false} />,
+            <PullRequestRow pr={makePr()} onClick={vi.fn()} batchMode isChecked={false} />,
         );
         expect((screen.getByTestId('pr-row-checkbox') as HTMLInputElement).checked).toBe(false);
 
-        rerender(<PullRequestRow pr={makePr()} onClick={vi.fn()} batchMode={true} isChecked={true} />);
+        rerender(<PullRequestRow pr={makePr()} onClick={vi.fn()} batchMode isChecked />);
         expect((screen.getByTestId('pr-row-checkbox') as HTMLInputElement).checked).toBe(true);
+    });
+
+    it('invokes onSelect with the selection id when toggled', () => {
+        const onSelect = vi.fn();
+        render(<PullRequestRow pr={makePr({ number: 7 })} onClick={vi.fn()} batchMode onSelect={onSelect} />);
+        fireEvent.click(screen.getByTestId('pr-row-checkbox'));
+        expect(onSelect).toHaveBeenCalledWith('7', true, false);
+    });
+
+    it('does not bubble row click when checkbox is toggled', () => {
+        const onClick = vi.fn();
+        render(<PullRequestRow pr={makePr()} onClick={onClick} batchMode />);
+        fireEvent.click(screen.getByTestId('pr-row-checkbox'));
+        expect(onClick).not.toHaveBeenCalled();
     });
 });
