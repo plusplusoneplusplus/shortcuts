@@ -631,6 +631,67 @@ export function queueRiskClass(risk: QueueRiskBadge): string {
     }
 }
 
+/**
+ * Map a real comment thread to a deterministic AI severity. The
+ * severity itself is mocked (we don't have an AI classifier yet) but
+ * it is derived from the thread's content so the same thread always
+ * gets the same label.
+ */
+export function getMockThreadSeverity(thread: { id: string | number; comments?: Array<{ body?: string }> }): 'blocking' | 'non-blocking' | 'noise' {
+    const body = (thread.comments ?? []).map(c => c.body ?? '').join(' ').toLowerCase();
+    if (/(bug|crash|wrong|broken|incorrect|fail|leak|race|regress)/.test(body)) return 'blocking';
+    if (/(nit|typo|style|format|naming|consider|maybe|fyi)/.test(body)) return 'noise';
+    const seed = hashString(String(thread.id));
+    const ladder = ['blocking', 'non-blocking', 'noise'] as const;
+    return ladder[seed % ladder.length];
+}
+
+/**
+ * Group real comment threads by their (mocked) AI severity. The list
+ * of threads is real, the severity classification is the only mocked
+ * part. Use to drive the "AI grouped threads" sidebar.
+ */
+export interface ThreadGroupSummary {
+    id: 'blocking' | 'non-blocking' | 'noise';
+    title: string;
+    count: number;
+    severity: 'blocking' | 'non-blocking' | 'noise';
+    body: string;
+}
+
+export function buildAiThreadGroupsFromThreads(
+    threads: Array<{ id: string | number; comments?: Array<{ body?: string }>; threadContext?: { filePath?: string } }>,
+): ThreadGroupSummary[] {
+    const tally = { blocking: 0, 'non-blocking': 0, noise: 0 } as Record<'blocking' | 'non-blocking' | 'noise', number>;
+    const exampleFiles: Record<'blocking' | 'non-blocking' | 'noise', string | undefined> = {
+        blocking: undefined, 'non-blocking': undefined, noise: undefined,
+    };
+
+    for (const thread of threads) {
+        const severity = getMockThreadSeverity(thread);
+        tally[severity] += 1;
+        if (!exampleFiles[severity] && thread.threadContext?.filePath) {
+            exampleFiles[severity] = thread.threadContext.filePath;
+        }
+    }
+
+    const definitions = [
+        { id: 'blocking',     title: 'Blocking concerns',     body: 'AI grouped threads that mention bugs, regressions, or correctness risks.' },
+        { id: 'non-blocking', title: 'Non-blocking feedback', body: 'AI grouped threads that surface clarifications, refactors, and follow-ups.' },
+        { id: 'noise',        title: 'Nits and noise',        body: 'AI grouped threads that look like style suggestions or low-impact comments.' },
+    ] as const;
+
+    return definitions.map(def => ({
+        id: def.id,
+        title: def.title,
+        count: tally[def.id],
+        severity: def.id,
+        body: exampleFiles[def.id]
+            ? `${def.body} First example in ${exampleFiles[def.id]}.`
+            : def.body,
+    }));
+}
+
 export function queueDotClass(state: QueueDotState): string {
     switch (state) {
         case 'open':

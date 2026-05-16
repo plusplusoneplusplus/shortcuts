@@ -15,6 +15,8 @@ export interface PrMockOptions {
     prDetail?: PullRequest;
     threads?: CommentThread[];
     reviewers?: Reviewer[];
+    /** Body for GET /pull-requests/:id/diff (text/plain). Defaults to empty. */
+    diff?: string;
     unconfigured?: boolean;
     detectedProvider?: 'github' | 'ado' | null;
     remoteUrl?: string;
@@ -31,6 +33,7 @@ export async function setupPrRoutes(
         prDetail = MOCK_PR_OPEN,
         threads = MOCK_PR_THREADS,
         reviewers = [],
+        diff = '',
         unconfigured = false,
         detectedProvider = null,
         remoteUrl = '',
@@ -38,10 +41,11 @@ export async function setupPrRoutes(
 
     const base = `${serverUrl}/api/repos/${repoId}/pull-requests`;
 
-    const threadsPattern  = `${base}/*/threads`;
+    const threadsPattern   = `${base}/*/threads`;
     const reviewersPattern = `${base}/*/reviewers`;
-    const detailPattern   = `${base}/*`;
-    const listPattern     = `${base}?*`;
+    const diffPattern      = `${base}/*/diff`;
+    const detailPattern    = `${base}/*`;
+    const listPattern      = `${base}?*`;
 
     const unconfiguredBody = {
         error: 'unconfigured',
@@ -63,6 +67,18 @@ export async function setupPrRoutes(
             return route.fulfill({ status: 401, json: unconfiguredBody });
         }
         return route.fulfill({ status: 200, json: { reviewers } });
+    });
+
+    // diff — plain-text unified diff
+    await page.route(diffPattern, (route) => {
+        if (unconfigured) {
+            return route.fulfill({ status: 401, json: unconfiguredBody });
+        }
+        return route.fulfill({
+            status: 200,
+            headers: { 'content-type': 'text/plain' },
+            body: diff,
+        });
     });
 
     // single PR detail — must come after sub-resources, before list
@@ -94,6 +110,7 @@ export async function setupPrRoutes(
     return async () => {
         await page.unroute(threadsPattern);
         await page.unroute(reviewersPattern);
+        await page.unroute(diffPattern);
         await page.unroute(detailPattern);
         await page.unroute(listPattern);
     };

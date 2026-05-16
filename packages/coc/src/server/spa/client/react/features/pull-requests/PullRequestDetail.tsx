@@ -1,12 +1,22 @@
 /**
  * PullRequestDetail — redesigned PR review command center.
  *
- * Real PR data drives the title, branches, status, reviewers, labels, and
- * comment threads. AI-flavored sections (summary, lens grid, grouped
- * threads, commit intent, checks/CI, merge readiness, file annotations,
- * and the assistant chat) are populated from deterministic fixtures in
- * `pr-mock-data.ts` for now and will swap to real data once an AI
- * backend is wired up.
+ * Real PR data drives:
+ *   - PR header (title, branches, status, reviewers, labels, description)
+ *   - Comment threads (via /threads endpoint)
+ *   - File list, +/- counts, hunks, and diff body (parsed from /diff)
+ *   - The "AI grouped threads" sidebar groups REAL threads — only the
+ *     severity tag is AI-derived (deterministic, mocked for now).
+ *
+ * AI-flavored sections still backed by deterministic fixtures in
+ * `pr-mock-data.ts` (until an AI backend is wired up):
+ *   - AI summary panel (risk, confidence, findings, metrics)
+ *   - Persona lenses
+ *   - Conversation timeline
+ *   - Commit intent table (also: no commit REST endpoint exists yet)
+ *   - Checks / merge-readiness (also: no check REST endpoint yet)
+ *   - Inline AI annotations on file diffs
+ *   - Assistant chat drawer
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -26,20 +36,20 @@ import { PrChecksTable, PrMergeReadiness } from './PrChecksAndReadiness';
 import { PrFilesPanel } from './PrFilesPanel';
 import { PrAiAssistantDrawer } from './PrAiAssistantDrawer';
 import {
+    buildAiThreadGroupsFromThreads,
     getMockAiSummary,
-    getMockBranchSnapshot,
     getMockCheckRows,
     getMockCommitRows,
     getMockFiles,
     getMockMergeReadiness,
     getMockPersonaLenses,
     getMockReviewSummaryText,
-    getMockThreadGroups,
     getMockTimeline,
     riskPillClass,
 } from './pr-mock-data';
 import type { PullRequest, CommentThread } from './pr-utils';
 import type { PrDetailTab } from '../../types/dashboard';
+import { parseUnifiedDiff, type ParsedDiff } from './unified-diff-parser';
 
 const descRenderer = {
     link(href: string, _title: string | null | undefined, text: string) {
@@ -67,10 +77,14 @@ const TAB_DEFINITIONS: Array<{ id: PrDetailTab; label: string }> = [
     { id: 'checks',   label: 'Checks' },
 ];
 
+const EMPTY_DIFF: ParsedDiff = { files: [], totalAdditions: 0, totalDeletions: 0, fileCount: 0 };
+
 export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: PullRequestDetailProps) {
     const { state, dispatch } = useApp();
     const [pr, setPr] = useState<PullRequest | null>(null);
     const [threads, setThreads] = useState<CommentThread[]>([]);
+    const [diff, setDiff] = useState<ParsedDiff>(EMPTY_DIFF);
+    const [diffError, setDiffError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const initialTab = (state.selectedPrDetailTab as PrDetailTab) ?? 'overview';
@@ -93,6 +107,8 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     useEffect(() => {
         setLoading(true);
         setError(null);
+        setDiff(EMPTY_DIFF);
+        setDiffError(null);
         const client = getSpaCocClient();
         const prIdStr = String(prId);
         const repoIdStr = String(repoId);
@@ -103,12 +119,24 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                 .then(body => body as PullRequest),
             client.pullRequests
                 .getThreads(repoIdStr, prIdStr)
-                .then(body => body.threads ?? [])
+                .then(body => (body.threads ?? []) as CommentThread[])
                 .catch(() => [] as CommentThread[]),
+            client.pullRequests
+                .getDiff(repoIdStr, prIdStr)
+                .then(text => ({ kind: 'ok' as const, parsed: parseUnifiedDiff(text) }))
+                .catch((err: unknown) => ({
+                    kind: 'err' as const,
+                    message: getSpaCocClientErrorMessage(err, 'Failed to load diff'),
+                })),
         ])
-            .then(([prData, threadsData]) => {
+            .then(([prData, threadsData, diffResult]) => {
                 setPr(prData);
                 setThreads(threadsData);
+                if (diffResult.kind === 'ok') {
+                    setDiff(diffResult.parsed);
+                } else {
+                    setDiffError(diffResult.message);
+                }
             })
             .catch(err => setError(getSpaCocClientErrorMessage(err, 'Failed to load pull request')))
             .finally(() => setLoading(false));
@@ -122,14 +150,29 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     }, [state.selectedPrDetailTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const aiSummary = useMemo(() => (pr ? getMockAiSummary(pr) : null), [pr]);
-    const branchSnapshot = useMemo(() => (pr ? getMockBranchSnapshot(pr) : null), [pr]);
     const personaLenses = useMemo(() => getMockPersonaLenses(), []);
     const timeline = useMemo(() => getMockTimeline(), []);
-    const threadGroups = useMemo(() => getMockThreadGroups(), []);
+    const threadGroups = useMemo(() => buildAiThreadGroupsFromThreads(threads), [threads]);
     const commitRows = useMemo(() => getMockCommitRows(), []);
     const checkRows = useMemo(() => getMockCheckRows(), []);
     const mergeReadiness = useMemo(() => getMockMergeReadiness(), []);
-    const aiFiles = useMemo(() => getMockFiles(), []);
+
+    // AI annotations are keyed by mock file path; assign them to the
+    // first matching real files via round-robin so a few real files in
+    // the diff get a purple "AI noticed…" callout for demo purposes.
+    const aiAnnotationByPath = useMemo(() => {
+        const mockFiles = getMockFiles();
+        const annotations: Record<string, ReturnType<typeof getMockFiles>[number]['annotation']> = {};
+        const focus: Record<string, string | undefined> = {};
+        const annotated = mockFiles.filter(file => file.annotation);
+        for (let i = 0; i < diff.files.length && i < annotated.length; i++) {
+            const realFile = diff.files[i];
+            const mockFile = annotated[i];
+            if (mockFile.annotation) annotations[realFile.path] = mockFile.annotation;
+            if (mockFile.focus) focus[realFile.path] = mockFile.focus;
+        }
+        return { annotations, focus };
+    }, [diff.files]);
 
     const handleBack = () => {
         dispatch({ type: 'CLEAR_SELECTED_PR' });
@@ -191,8 +234,12 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     const labels = pr.labels ?? [];
     const descHtml = pr.description ? String(descMarked.parse(pr.description)) : '';
     const unresolvedCount = aiSummary?.unresolvedCount ?? 0;
-    const deltaText = branchSnapshot
-        ? `+${branchSnapshot.additions} / -${branchSnapshot.deletions}`
+    const hasRealDiff = diff.fileCount > 0;
+    const deltaText = hasRealDiff
+        ? `+${diff.totalAdditions} / -${diff.totalDeletions}`
+        : '';
+    const fileCountText = hasRealDiff
+        ? `${diff.fileCount} file${diff.fileCount === 1 ? '' : 's'}`
         : '';
 
     return (
@@ -223,7 +270,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                             <strong className="font-mono text-gray-700 dark:text-gray-300">
                                 {pr.author?.displayName ?? 'unknown'}
                             </strong>{' '}
-                            wants to merge {branchSnapshot?.commitCount ?? 12} commits into{' '}
+                            wants to merge into{' '}
                             <span className="font-mono text-gray-700 dark:text-gray-300">{pr.targetBranch}</span>
                         </span>
                         {aiSummary && (
@@ -267,6 +314,14 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                         {deltaText && (
                             <span className="font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400" data-testid="pr-delta">
                                 {deltaText}
+                            </span>
+                        )}
+                        {fileCountText && (
+                            <span
+                                className="font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400"
+                                data-testid="pr-file-count"
+                            >
+                                {fileCountText}
                             </span>
                         )}
                         {pr.author?.displayName && (
@@ -338,7 +393,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                         const isActive = detailTab === tab.id;
                         const count = tabCount(tab.id, {
                             commits: commitRows.length,
-                            files: aiFiles.length,
+                            files: diff.fileCount,
                             checks: checkRows.length,
                             overview: threads.length,
                         });
@@ -407,7 +462,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                                 )}
                             </div>
                             <div className="grid gap-4">
-                                <PrAiGroupedThreads groups={threadGroups} />
+                                <PrAiGroupedThreads groups={threadGroups} totalThreads={threads.length} />
                             </div>
                         </div>
                     </div>
@@ -415,18 +470,38 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
 
                 {detailTab === 'files' && (
                     <div className="mx-auto w-full max-w-[1180px] px-6 py-6" data-testid="files-tab">
-                        <PrFilesPanel files={aiFiles} />
+                        {diffError && (
+                            <div
+                                className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-700 dark:bg-red-900/30 dark:text-red-200"
+                                data-testid="pr-diff-error"
+                            >
+                                Failed to load diff: {diffError}
+                            </div>
+                        )}
+                        <PrFilesPanel
+                            files={diff.files}
+                            annotations={aiAnnotationByPath.annotations}
+                            focusByPath={aiAnnotationByPath.focus}
+                        />
                     </div>
                 )}
 
                 {detailTab === 'commits' && (
                     <div className="mx-auto w-full max-w-[1180px] px-6 py-6" data-testid="commits-tab">
+                        <PreviewOnlyNotice
+                            label="Commit list is AI-mocked"
+                            body="The server does not yet expose a per-PR commit endpoint. Intent labels and the commit log shown below are placeholder fixtures."
+                        />
                         <PrCommitTable rows={commitRows} />
                     </div>
                 )}
 
                 {detailTab === 'checks' && (
                     <div className="mx-auto w-full max-w-[1180px] px-6 py-6" data-testid="checks-tab">
+                        <PreviewOnlyNotice
+                            label="Checks are AI-mocked"
+                            body="The server does not yet expose a per-PR check / status endpoint. Results and merge readiness shown below are placeholder fixtures."
+                        />
                         <div className="grid gap-4 lg:grid-cols-[1.35fr_minmax(300px,0.65fr)]">
                             <PrChecksTable rows={checkRows} />
                             <PrMergeReadiness items={mergeReadiness} />
@@ -440,6 +515,22 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                 onClose={() => setAssistantOpen(false)}
                 prNumber={pr.number}
             />
+        </div>
+    );
+}
+
+interface PreviewOnlyNoticeProps {
+    label: string;
+    body: string;
+}
+
+function PreviewOnlyNotice({ label, body }: PreviewOnlyNoticeProps) {
+    return (
+        <div
+            className="mb-3 rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-800 dark:border-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-200"
+            data-testid="pr-tab-preview-notice"
+        >
+            <strong>{label}.</strong> {body}
         </div>
     );
 }

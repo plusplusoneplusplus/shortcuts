@@ -1,16 +1,23 @@
 /**
- * Sidebar panel that surfaces AI-generated thread groupings, e.g.
- * "Backpressure and aborts" / "Generated fixtures".
+ * Sidebar panel that surfaces AI-generated thread groupings.
+ *
+ * The underlying `CommentThread[]` is real (from
+ * `/api/repos/:repoId/pull-requests/:prId/threads`). The grouping
+ * categories and severity tags are mocked for now and assigned
+ * deterministically by `buildAiThreadGroupsFromThreads`.
  */
 
 import { cn } from '../../ui';
-import type { AiThreadGroup } from './pr-mock-data';
+import type { ThreadGroupSummary } from './pr-mock-data';
 
 interface PrAiGroupedThreadsProps {
-    groups: AiThreadGroup[];
+    groups: ThreadGroupSummary[];
+    /** Total number of real threads — shown so users see the AI did not
+     *  silently drop any thread when bucketing. */
+    totalThreads: number;
 }
 
-function severityClass(severity: AiThreadGroup['severity']): string {
+function severityClass(severity: ThreadGroupSummary['severity']): string {
     switch (severity) {
         case 'blocking':
             return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200';
@@ -21,8 +28,10 @@ function severityClass(severity: AiThreadGroup['severity']): string {
     }
 }
 
-export function PrAiGroupedThreads({ groups }: PrAiGroupedThreadsProps) {
-    const blockingCount = groups.filter(group => group.severity === 'blocking').length;
+export function PrAiGroupedThreads({ groups, totalThreads }: PrAiGroupedThreadsProps) {
+    const blockingCount = groups
+        .filter(group => group.severity === 'blocking')
+        .reduce((sum, group) => sum + group.count, 0);
 
     return (
         <aside
@@ -33,18 +42,30 @@ export function PrAiGroupedThreads({ groups }: PrAiGroupedThreadsProps) {
                 <h2 className="m-0 text-sm font-semibold text-gray-900 dark:text-gray-100">
                     AI grouped threads
                 </h2>
-                {blockingCount > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-2.5 py-1 text-[11px] font-semibold text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200">
-                        {blockingCount} blocking
-                    </span>
-                )}
+                <div className="flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
+                    <span data-testid="pr-ai-thread-total">{totalThreads} total</span>
+                    {blockingCount > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-2 py-0.5 font-semibold text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200">
+                            {blockingCount} blocking
+                        </span>
+                    )}
+                </div>
             </header>
             <div className="grid gap-2.5 p-4">
+                {totalThreads === 0 && (
+                    <p className="m-0 px-2 py-1 text-xs italic text-gray-500 dark:text-gray-400">
+                        No comment threads on this pull request yet.
+                    </p>
+                )}
                 {groups.map(group => (
                     <div
                         key={group.id}
-                        className="rounded-md border border-gray-200 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-800/40"
+                        className={cn(
+                            'rounded-md border border-gray-200 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-800/40',
+                            group.count === 0 && 'opacity-60',
+                        )}
                         data-testid="pr-ai-thread-group"
+                        data-severity={group.severity}
                     >
                         <div className="flex items-baseline justify-between gap-3">
                             <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">

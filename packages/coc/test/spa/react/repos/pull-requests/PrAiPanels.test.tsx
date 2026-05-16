@@ -16,15 +16,15 @@ import {
 import { PrFilesPanel } from '../../../../../src/server/spa/client/react/features/pull-requests/PrFilesPanel';
 import { PrConversationPanel } from '../../../../../src/server/spa/client/react/features/pull-requests/PrConversationPanel';
 import {
+    buildAiThreadGroupsFromThreads,
     getMockAiSummary,
     getMockCheckRows,
     getMockCommitRows,
-    getMockFiles,
     getMockMergeReadiness,
     getMockPersonaLenses,
-    getMockThreadGroups,
     getMockTimeline,
 } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-mock-data';
+import { parseUnifiedDiff } from '../../../../../src/server/spa/client/react/features/pull-requests/unified-diff-parser';
 import type { PullRequest } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-utils';
 
 const samplePr: PullRequest = {
@@ -67,11 +67,30 @@ describe('PrConversationPanel', () => {
 });
 
 describe('PrAiGroupedThreads', () => {
-    it('renders one row per thread group with a blocking pill', () => {
-        render(<PrAiGroupedThreads groups={getMockThreadGroups()} />);
-        expect(screen.getAllByTestId('pr-ai-thread-group').length).toBeGreaterThanOrEqual(4);
-        // At least one element mentions "blocking" — header pill or severity tag
+    it('groups real threads into the three AI severity buckets', () => {
+        const realThreads = [
+            { id: 1, comments: [{ body: 'this looks like a real bug, crash on null' }] },
+            { id: 2, comments: [{ body: 'nit: typo here' }] },
+            { id: 3, comments: [{ body: 'general note about future work' }], threadContext: { filePath: 'src/foo.ts' } },
+        ];
+        render(
+            <PrAiGroupedThreads
+                groups={buildAiThreadGroupsFromThreads(realThreads)}
+                totalThreads={realThreads.length}
+            />,
+        );
+        const rows = screen.getAllByTestId('pr-ai-thread-group');
+        expect(rows).toHaveLength(3);
+        const severities = rows.map(row => row.getAttribute('data-severity'));
+        expect(severities).toEqual(['blocking', 'non-blocking', 'noise']);
+        expect(screen.getByTestId('pr-ai-thread-total').textContent).toContain('3');
+        // header pill or severity tag — at least one mention of "blocking"
         expect(screen.getAllByText(/blocking/i).length).toBeGreaterThan(0);
+    });
+
+    it('renders an empty-state message when there are no threads', () => {
+        render(<PrAiGroupedThreads groups={buildAiThreadGroupsFromThreads([])} totalThreads={0} />);
+        expect(screen.getByText(/No comment threads/i)).toBeTruthy();
     });
 });
 
@@ -96,15 +115,47 @@ describe('PrChecksTable + PrMergeReadiness', () => {
 });
 
 describe('PrFilesPanel', () => {
-    it('renders a row per file and shows AI annotations', () => {
-        render(<PrFilesPanel files={getMockFiles()} />);
+    const realDiff = parseUnifiedDiff([
+        'diff --git a/src/foo.ts b/src/foo.ts',
+        '--- a/src/foo.ts',
+        '+++ b/src/foo.ts',
+        '@@ -1,1 +1,2 @@',
+        ' keep',
+        '+added',
+        'diff --git a/docs/readme.md b/docs/readme.md',
+        '--- a/docs/readme.md',
+        '+++ b/docs/readme.md',
+        '@@ -1,1 +1,1 @@',
+        '-old',
+        '+new',
+        'diff --git a/test/worker.ts b/test/worker.ts',
+        'new file mode 100644',
+        '--- /dev/null',
+        '+++ b/test/worker.ts',
+        '@@ -0,0 +1,1 @@',
+        '+ok',
+        '',
+    ].join('\n')).files;
+
+    it('renders a row per parsed file', () => {
+        render(<PrFilesPanel files={realDiff} />);
         const rows = screen.getAllByTestId('pr-file-row');
-        expect(rows.length).toBeGreaterThanOrEqual(5);
-        expect(screen.getAllByTestId('pr-file-diff-card').length).toBeGreaterThan(0);
+        expect(rows).toHaveLength(3);
+        expect(screen.getByTestId('pr-file-diff-card')).toBeInTheDocument();
+    });
+
+    it('shows AI annotations only for paths supplied in the annotations map', () => {
+        render(
+            <PrFilesPanel
+                files={realDiff}
+                annotations={{ 'src/foo.ts': { title: 'AI noticed', body: 'Watch this', actions: ['Apply'] } }}
+            />,
+        );
+        expect(screen.getByTestId('pr-file-ai-annotation').textContent).toContain('AI noticed');
     });
 
     it('filters files by the search input', () => {
-        render(<PrFilesPanel files={getMockFiles()} />);
+        render(<PrFilesPanel files={realDiff} />);
         const search = screen.getByTestId('pr-file-search') as HTMLInputElement;
         fireEvent.change(search, { target: { value: 'docs/' } });
         const rows = screen.getAllByTestId('pr-file-row');
@@ -114,12 +165,28 @@ describe('PrFilesPanel', () => {
     });
 
     it('changes the active file when a row is clicked', () => {
-        render(<PrFilesPanel files={getMockFiles()} />);
+        render(<PrFilesPanel files={realDiff} />);
         const rows = screen.getAllByTestId('pr-file-row');
-        const target = rows.find(row => row.textContent?.includes('worker.ts'));
+        const target = rows.find(row => row.getAttribute('data-file-path') === 'test/worker.ts');
         expect(target).toBeTruthy();
         fireEvent.click(target!);
         expect(target!.className).toMatch(/bg-blue-100|bg-blue-900/);
+    });
+
+    it('renders an empty placeholder when there are no files', () => {
+        render(<PrFilesPanel files={[]} />);
+        expect(screen.getByText(/No file changes/i)).toBeTruthy();
+    });
+
+    it('renders a binary-file placeholder instead of diff body for binary files', () => {
+        const binaryDiff = parseUnifiedDiff([
+            'diff --git a/logo.png b/logo.png',
+            'index 1..2 100644',
+            'Binary files a/logo.png and b/logo.png differ',
+            '',
+        ].join('\n')).files;
+        render(<PrFilesPanel files={binaryDiff} />);
+        expect(screen.getByText(/Binary file/i)).toBeTruthy();
     });
 });
 
