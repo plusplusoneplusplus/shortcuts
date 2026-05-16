@@ -28,9 +28,13 @@ export const ENDEV_XDPU_HBM_SMOKE_SAMPLE = '0_FUN-S21F1E-E001_177820345240968584
 
 const WSL_COMMAND_TIMEOUT_MS = 120_000;
 const WSL_COMMAND_MAX_BUFFER = 10 * 1024 * 1024;
+type EnDevXDpuHostMode = 'windows-wsl' | 'native-linux';
+type EnDevXDpuActivationConfig =
+    | { hostMode: 'windows-wsl'; distro: string; xstoreRepoRoot: string }
+    | { hostMode: 'native-linux'; distro?: string; xstoreRepoRoot: string };
 
 export interface EnDevXDpuWslCommandRequest {
-    distro: string;
+    distro?: string;
     linuxWorkingDirectory: string;
     command: string;
     timeoutMs?: number;
@@ -48,7 +52,7 @@ export type EnDevXDpuWslCommandRunner = (
 
 export interface EnDevXDpuActivationResult {
     workspace: WorkspaceInfo;
-    wslDistro: string;
+    wslDistro?: string;
     xstoreRepoRoot: string;
     pluginSkillFolder: string;
     extraSkillFolder: string;
@@ -69,13 +73,22 @@ export class EnDevXDpuSetupError extends Error {
 }
 
 let runnerOverrideForTesting: EnDevXDpuWslCommandRunner | undefined;
+let hostPlatformOverrideForTesting: NodeJS.Platform | undefined;
 
 export function setEnDevXDpuWslCommandRunnerForTesting(runner: EnDevXDpuWslCommandRunner | undefined): void {
     runnerOverrideForTesting = runner;
 }
 
-function getRunner(runner?: EnDevXDpuWslCommandRunner): EnDevXDpuWslCommandRunner {
-    return runner ?? runnerOverrideForTesting ?? runWslCommand;
+export function setEnDevXDpuHostPlatformForTesting(platform: NodeJS.Platform | undefined): void {
+    hostPlatformOverrideForTesting = platform;
+}
+
+function getHostPlatform(): NodeJS.Platform {
+    return hostPlatformOverrideForTesting ?? process.platform;
+}
+
+function getRunner(hostMode: EnDevXDpuHostMode, runner?: EnDevXDpuWslCommandRunner): EnDevXDpuWslCommandRunner {
+    return runner ?? runnerOverrideForTesting ?? (hostMode === 'native-linux' ? runNativeCommand : runWslCommand);
 }
 
 function normalizeLinuxPath(input: string): string {
@@ -112,7 +125,7 @@ function formatCommandDetails(result: EnDevXDpuWslCommandResult): Record<string,
     };
 }
 
-function resolveActivationConfig(workspace: WorkspaceInfo): { distro: string; xstoreRepoRoot: string } {
+function resolveActivationConfig(workspace: WorkspaceInfo): EnDevXDpuActivationConfig {
     if (workspace.endevXDpu?.enabled !== true) {
         throw new EnDevXDpuSetupError(
             'EnDev-xDpu is not enabled for this workspace.',
@@ -120,10 +133,23 @@ function resolveActivationConfig(workspace: WorkspaceInfo): { distro: string; xs
         );
     }
 
+    const hostPlatform = getHostPlatform();
+    const configuredRoot = workspace.endevXDpu.xstoreRepoRoot?.trim();
+    if (hostPlatform === 'linux') {
+        const nativeRoot = configuredRoot || (workspace.rootPath.startsWith('/') ? workspace.rootPath : undefined);
+        if (nativeRoot?.startsWith('/')) {
+            return {
+                hostMode: 'native-linux',
+                ...(workspace.endevXDpu.wslDistro?.trim() ? { distro: workspace.endevXDpu.wslDistro.trim() } : {}),
+                xstoreRepoRoot: normalizeLinuxPath(nativeRoot),
+            };
+        }
+    }
+
     const context = resolveWorkspaceExecutionContext(workspace.rootPath);
-    if (context.kind !== 'wsl') {
+    if (hostPlatform !== 'win32' || context.kind !== 'wsl') {
         throw new EnDevXDpuSetupError(
-            'EnDev-xDpu requires a WSL workspace root. Register the xStore checkout using a WSL path such as \\\\wsl$\\Ubuntu\\home\\user\\xstore.',
+            'EnDev-xDpu requires a WSL workspace root. On Windows, register the xStore checkout using a WSL path such as \\\\wsl$\\Ubuntu\\home\\user\\xstore. When CoC runs inside WSL, register the native Linux path such as /home/user/xstore.',
             'ENDEV_XDPU_UNSUPPORTED_WORKSPACE',
         );
     }
@@ -136,7 +162,7 @@ function resolveActivationConfig(workspace: WorkspaceInfo): { distro: string; xs
         );
     }
 
-    const xstoreRepoRoot = workspace.endevXDpu.xstoreRepoRoot?.trim() || context.linuxWorkingDirectory;
+    const xstoreRepoRoot = configuredRoot || context.linuxWorkingDirectory;
     if (!xstoreRepoRoot || !xstoreRepoRoot.startsWith('/')) {
         throw new EnDevXDpuSetupError(
             'EnDev-xDpu requires the xStore WSL repo root as a Linux absolute path, for example /home/user/xstore.',
@@ -144,10 +170,17 @@ function resolveActivationConfig(workspace: WorkspaceInfo): { distro: string; xs
         );
     }
 
-    return { distro, xstoreRepoRoot: normalizeLinuxPath(xstoreRepoRoot) };
+    return {
+        hostMode: 'windows-wsl',
+        distro,
+        xstoreRepoRoot: normalizeLinuxPath(xstoreRepoRoot),
+    };
 }
 
 async function runWslCommand(request: EnDevXDpuWslCommandRequest): Promise<EnDevXDpuWslCommandResult> {
+    if (!request.distro) {
+        throw new Error('WSL distro is required when EnDev-xDpu runs through the Windows WSL bridge.');
+    }
     const context: WslExecutionContext = {
         kind: 'wsl',
         distro: request.distro,
@@ -161,6 +194,33 @@ async function runWslCommand(request: EnDevXDpuWslCommandRequest): Promise<EnDev
             getWslExecutablePath(),
             args,
             {
+                encoding: 'utf8',
+                timeout: request.timeoutMs ?? WSL_COMMAND_TIMEOUT_MS,
+                maxBuffer: WSL_COMMAND_MAX_BUFFER,
+            },
+            (error, stdout, stderr) => {
+                const out = typeof stdout === 'string' ? stdout : String(stdout ?? '');
+                const err = typeof stderr === 'string' ? stderr : String(stderr ?? '');
+                if (error) {
+                    const withCode = error as NodeJS.ErrnoException & { code?: number | string; signal?: string };
+                    const numericCode = typeof withCode.code === 'number' ? withCode.code : 1;
+                    const message = withCode.message ? `${err}${err ? '\n' : ''}${withCode.message}` : err;
+                    resolve({ exitCode: numericCode, stdout: out, stderr: message });
+                    return;
+                }
+                resolve({ exitCode: 0, stdout: out, stderr: err });
+            },
+        );
+    });
+}
+
+async function runNativeCommand(request: EnDevXDpuWslCommandRequest): Promise<EnDevXDpuWslCommandResult> {
+    return await new Promise<EnDevXDpuWslCommandResult>((resolve) => {
+        execFile(
+            'sh',
+            ['-lc', request.command],
+            {
+                cwd: request.linuxWorkingDirectory,
                 encoding: 'utf8',
                 timeout: request.timeoutMs ?? WSL_COMMAND_TIMEOUT_MS,
                 maxBuffer: WSL_COMMAND_MAX_BUFFER,
@@ -575,10 +635,43 @@ function bridgeMcpServerThroughWsl(
     };
 }
 
+function nativeMcpServerConfig(
+    config: MCPServerConfig,
+    xstoreRepoRoot: string,
+): MCPServerConfig {
+    if (!('command' in config)) {
+        throw new EnDevXDpuSetupError(
+            `${ENDEV_XDPU_MCP_SERVER_NAME} must be a local MCP server to run in native WSL.`,
+            'ENDEV_XDPU_MCP_CONFIG_INVALID',
+        );
+    }
+
+    return {
+        tools: config.tools ?? ['*'],
+        ...(config.timeout !== undefined ? { timeout: config.timeout } : {}),
+        ...(config.enabled !== undefined ? { enabled: config.enabled } : {}),
+        type: config.type === 'local' ? 'local' : 'stdio',
+        command: config.command.trim(),
+        ...(config.args !== undefined ? { args: [...config.args] } : {}),
+        ...(config.env !== undefined ? { env: { ...config.env } } : {}),
+        cwd: config.cwd ?? xstoreRepoRoot,
+    };
+}
+
+function resolveMcpServerForHost(
+    config: MCPServerConfig,
+    activation: EnDevXDpuActivationConfig,
+): MCPServerConfig {
+    if (activation.hostMode === 'native-linux') {
+        return nativeMcpServerConfig(config, activation.xstoreRepoRoot);
+    }
+    return bridgeMcpServerThroughWsl(config, activation.distro, activation.xstoreRepoRoot);
+}
+
 function wrapperSkillContent(): string {
     return `---
 name: ${ENDEV_XDPU_WRAPPER_SKILL_NAME}
-description: Use workspace-local EnDev xDPU skills and bridged WSL MCP from CoC without nested EnDev Copilot sessions.
+description: Use workspace-local EnDev xDPU skills and WSL MCP from CoC without nested EnDev Copilot sessions.
 ---
 
 # ${ENDEV_XDPU_WRAPPER_SKILL_NAME}
@@ -588,14 +681,14 @@ Use this skill when working on xDPU/xStore tasks in a WSL workspace with EnDev e
 - Prefer the EnDev plugin skills exposed in this workspace, especially \`dpu-log-triage\`, \`dpu-log-fetch\`, and \`hbm-dump-triage\`.
 - Do not run nested \`endev copilot\`; CoC owns the chat/workflow session and routes EnDev capabilities through workspace skills and MCP.
 - Run shell commands through the WSL workspace context. \`endev doctor\` is the setup validation command when EnDev tools appear unavailable.
-- For HBM dump analysis, use \`hbm-dump-triage\` with the bridged \`funbird-mcp\` tools when the user has network access and credentials.
+- For HBM dump analysis, use \`hbm-dump-triage\` with the \`funbird-mcp\` tools when the user has network access and credentials. Windows-hosted CoC bridges WSL MCP through \`wsl.exe\`; native WSL CoC uses local stdio MCP directly.
 
 ## Manual HBM smoke validation
 
 Use this path only when the user explicitly asks to smoke-test HBM dump analysis and confirms internal network access and credentials are available.
 
 1. Start from the enabled WSL xStore workspace and run \`endev doctor\`; if it fails, surface the setup error and stop.
-2. Ask \`hbm-dump-triage\` to analyze sanity job ${ENDEV_XDPU_HBM_SMOKE_SANITY_JOB_ID} sample \`${ENDEV_XDPU_HBM_SMOKE_SAMPLE}\` through the bridged \`funbird-mcp\` tools.
+2. Ask \`hbm-dump-triage\` to analyze sanity job ${ENDEV_XDPU_HBM_SMOKE_SANITY_JOB_ID} sample \`${ENDEV_XDPU_HBM_SMOKE_SAMPLE}\` through the \`funbird-mcp\` tools.
 3. Treat download or access failures as environment prerequisites, not CoC failures. Do not run this path in CI, unit tests, or automated workflow validation.
 `;
 }
@@ -633,14 +726,14 @@ export async function activateEnDevXDpuWorkspace(
     dataDir: string,
     runner?: EnDevXDpuWslCommandRunner,
 ): Promise<EnDevXDpuActivationResult> {
-    const { distro, xstoreRepoRoot } = resolveActivationConfig(workspace);
-    const commandRunner = getRunner(runner);
+    const activation = resolveActivationConfig(workspace);
+    const commandRunner = getRunner(activation.hostMode, runner);
 
     const doctor = await runRequiredWslCommand(
         commandRunner,
         {
-            distro,
-            linuxWorkingDirectory: xstoreRepoRoot,
+            distro: activation.distro,
+            linuxWorkingDirectory: activation.xstoreRepoRoot,
             command: 'endev doctor',
             timeoutMs: WSL_COMMAND_TIMEOUT_MS,
         },
@@ -652,9 +745,9 @@ export async function activateEnDevXDpuWorkspace(
     const discovery = await runRequiredWslCommand(
         commandRunner,
         {
-            distro,
-            linuxWorkingDirectory: xstoreRepoRoot,
-            command: buildDiscoveryScript(xstoreRepoRoot),
+            distro: activation.distro,
+            linuxWorkingDirectory: activation.xstoreRepoRoot,
+            command: buildDiscoveryScript(activation.xstoreRepoRoot),
             timeoutMs: WSL_COMMAND_TIMEOUT_MS,
         },
         'EnDev plugin discovery',
@@ -662,24 +755,25 @@ export async function activateEnDevXDpuWorkspace(
         'Run `endev doctor` in the WSL workspace and ensure the EnDev plugin is installed.',
     );
     const { pluginSkillFolder, mcpConfigPath } = parseDiscoveryOutput(discovery.stdout);
-    const extraSkillFolder = linuxPathToWslUncPath(distro, pluginSkillFolder);
+    const extraSkillFolder = activation.hostMode === 'windows-wsl'
+        ? linuxPathToWslUncPath(activation.distro, pluginSkillFolder)
+        : pluginSkillFolder;
     const wrapperSkillPath = installWrapperSkill(dataDir);
     const extraSkillFolders = addExtraSkillFolder(workspace.extraSkillFolders, extraSkillFolder);
     const updated = await store.updateWorkspace(workspace.id, {
         extraSkillFolders,
         endevXDpu: {
-            ...workspace.endevXDpu,
             enabled: true,
-            wslDistro: distro,
-            xstoreRepoRoot,
+            ...(activation.distro ? { wslDistro: activation.distro } : {}),
+            xstoreRepoRoot: activation.xstoreRepoRoot,
             mcpConfigPath,
         },
     });
 
     return {
         workspace: updated ?? { ...workspace, extraSkillFolders },
-        wslDistro: distro,
-        xstoreRepoRoot,
+        ...(activation.distro ? { wslDistro: activation.distro } : {}),
+        xstoreRepoRoot: activation.xstoreRepoRoot,
         pluginSkillFolder,
         extraSkillFolder,
         mcpConfigPath,
@@ -696,13 +790,13 @@ export async function resolveEnDevXDpuMcpServers(
         return undefined;
     }
 
-    const { distro, xstoreRepoRoot } = resolveActivationConfig(workspace);
-    const commandRunner = getRunner(runner);
+    const activation = resolveActivationConfig(workspace);
+    const commandRunner = getRunner(activation.hostMode, runner);
     const configRead = await runRequiredWslCommand(
         commandRunner,
         {
-            distro,
-            linuxWorkingDirectory: xstoreRepoRoot,
+            distro: activation.distro,
+            linuxWorkingDirectory: activation.xstoreRepoRoot,
             command: buildMcpConfigReadScript(workspace.endevXDpu.mcpConfigPath),
             timeoutMs: WSL_COMMAND_TIMEOUT_MS,
         },
@@ -724,6 +818,6 @@ export async function resolveEnDevXDpuMcpServers(
 
     const funbirdConfig = getFunbirdMcpServer(parsed);
     return {
-        [ENDEV_XDPU_MCP_SERVER_NAME]: bridgeMcpServerThroughWsl(funbirdConfig, distro, xstoreRepoRoot),
+        [ENDEV_XDPU_MCP_SERVER_NAME]: resolveMcpServerForHost(funbirdConfig, activation),
     };
 }

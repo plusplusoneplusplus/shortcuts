@@ -12,6 +12,7 @@ interface EnDevXDpuSettingsSectionProps {
 
 interface WslWorkspaceDefaults {
     supported: boolean;
+    requiresDistro?: boolean;
     wslDistro?: string;
     xstoreRepoRoot?: string;
 }
@@ -27,6 +28,7 @@ export function deriveEnDevXDpuWorkspaceDefaults(rootPath: string): WslWorkspace
         const suffix = (wslUnc[2] ?? '').replace(/^\\+/, '').replace(/\\/g, '/');
         return {
             supported: true,
+            requiresDistro: true,
             wslDistro: wslUnc[1],
             xstoreRepoRoot: suffix ? `/${suffix}` : '/',
         };
@@ -36,6 +38,7 @@ export function deriveEnDevXDpuWorkspaceDefaults(rootPath: string): WslWorkspace
     if (wslUri) {
         return {
             supported: true,
+            requiresDistro: true,
             wslDistro: wslUri[1].toLowerCase() === 'default' ? undefined : wslUri[1],
             xstoreRepoRoot: wslUri[2] ?? '/',
         };
@@ -143,7 +146,7 @@ export function EnDevXDpuSettingsSection({
             setError('EnDev-xDpu requires a WSL workspace root.');
             return;
         }
-        if (!normalized.wslDistro) {
+        if (defaults.requiresDistro && !normalized.wslDistro) {
             setError('Enter the WSL distro for this xStore workspace.');
             return;
         }
@@ -193,7 +196,7 @@ export function EnDevXDpuSettingsSection({
             <div>
                 <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1">EnDev-xDpu WSL bundle</h3>
                 <p className="text-xs text-[#6a6a6a] dark:text-[#9d9d9d]">
-                    Enables the CoC integration bundle for xDPU development workspaces that live inside WSL. The EnDev bundle must already be set up in this WSL distro; CoC links its plugin skills, stores the distro and Linux xStore root on this workspace, and bridges the WSL MCP server into CoC sessions.
+                    Enables the CoC integration bundle for xDPU development workspaces that live inside WSL. The EnDev bundle must already be set up in this WSL environment; CoC links its plugin skills, stores the Linux xStore root on this workspace, and either bridges the WSL MCP server from Windows or uses native local MCP when CoC runs inside WSL.
                 </p>
             </div>
 

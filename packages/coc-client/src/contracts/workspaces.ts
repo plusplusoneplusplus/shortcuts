@@ -23,7 +23,7 @@ export interface EnDevXDpuWorkspaceConfig {
 
 export interface EnDevXDpuActivationResponse {
   workspace: WorkspaceInfo;
-  wslDistro: string;
+  wslDistro?: string;
   xstoreRepoRoot: string;
   pluginSkillFolder: string;
   extraSkillFolder: string;

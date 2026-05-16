@@ -6,6 +6,7 @@ import type { ChatMode } from '../../src/server/tasks/task-types';
 import { CLITaskExecutor } from '../../src/server/queue/queue-executor-bridge';
 import {
     ENDEV_XDPU_MCP_SERVER_NAME,
+    setEnDevXDpuHostPlatformForTesting,
     setEnDevXDpuWslCommandRunnerForTesting,
 } from '../../src/server/endev/endev-xdpu';
 import type { EnDevXDpuWslCommandRunner } from '../../src/server/endev/endev-xdpu';
@@ -14,6 +15,7 @@ import { createMockSDKService } from '../helpers/mock-sdk-service';
 import type { QueuedTask, WorkspaceInfo } from '@plusplusoneplusplus/forge';
 
 const WSL_ROOT = String.raw`\\wsl$\Ubuntu\home\user\xstore`;
+const NATIVE_WSL_ROOT = '/home/user/xstore';
 
 function createMcpRunner(): EnDevXDpuWslCommandRunner {
     return vi.fn(async () => ({
@@ -46,6 +48,19 @@ function expectBridgedFunbirdMcp(sendOptions: any): void {
     expect(sendOptions.loadDefaultMcpConfig).toBe(false);
 }
 
+function expectNativeFunbirdMcp(sendOptions: any): void {
+    expect(sendOptions.mcpServers).toEqual({
+        [ENDEV_XDPU_MCP_SERVER_NAME]: expect.objectContaining({
+            type: 'stdio',
+            command: 'funbird-mcp',
+            args: ['serve'],
+            cwd: NATIVE_WSL_ROOT,
+            tools: ['*'],
+        }),
+    });
+    expect(sendOptions.loadDefaultMcpConfig).toBe(false);
+}
+
 describe('EnDev-xDpu MCP bridge in chat executors', () => {
     let dataDir: string;
     let originalSystemRoot: string | undefined;
@@ -58,6 +73,7 @@ describe('EnDev-xDpu MCP bridge in chat executors', () => {
     });
 
     afterEach(() => {
+        setEnDevXDpuHostPlatformForTesting(undefined);
         setEnDevXDpuWslCommandRunnerForTesting(undefined);
         if (originalSystemRoot === undefined) {
             delete process.env.SystemRoot;
@@ -112,6 +128,49 @@ describe('EnDev-xDpu MCP bridge in chat executors', () => {
             expectBridgedFunbirdMcp(sdkMocks.mockSendMessage.mock.calls[0][0]);
         },
     );
+
+    it('passes native funbird-mcp config to dashboard sessions when CoC runs inside WSL', async () => {
+        setEnDevXDpuHostPlatformForTesting('linux');
+        const sdkMocks = createMockSDKService();
+        const store = createMockProcessStore();
+        const workspace: WorkspaceInfo = {
+            id: 'ws-native-endev',
+            name: 'xStore native WSL',
+            rootPath: NATIVE_WSL_ROOT,
+            endevXDpu: {
+                enabled: true,
+                xstoreRepoRoot: NATIVE_WSL_ROOT,
+                mcpConfigPath: '/home/user/.endev/generated/.mcp.json',
+            },
+        };
+        (store.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue([workspace]);
+        setEnDevXDpuWslCommandRunnerForTesting(createMcpRunner());
+
+        const executor = new CLITaskExecutor(store, {
+            aiService: sdkMocks.service as any,
+            dataDir,
+        });
+        const task: QueuedTask = {
+            id: 'endev-native',
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: {
+                kind: 'chat' as const,
+                mode: 'ask',
+                prompt: 'Use native EnDev',
+                workspaceId: workspace.id,
+                workingDirectory: workspace.rootPath,
+            },
+            config: {},
+        };
+
+        await executor.execute(task);
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        expectNativeFunbirdMcp(sdkMocks.mockSendMessage.mock.calls[0][0]);
+    });
 
     it('passes bridged funbird-mcp to follow-up sessions for enabled WSL workspaces', async () => {
         const sdkMocks = createMockSDKService();

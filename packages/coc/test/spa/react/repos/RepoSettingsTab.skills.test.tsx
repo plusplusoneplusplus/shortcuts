@@ -257,6 +257,31 @@ describe('RepoSettingsTab skill expansion', () => {
         expect((screen.getByTestId('endev-xdpu-root') as HTMLInputElement).value).toBe('/home/xstore');
     });
 
+    it('saves native WSL EnDev-xDpu defaults without requiring a distro', async () => {
+        await act(async () => {
+            await renderSettingsTab({
+                initialSection: 'preferences',
+                rootPath: '/home/user/xstore',
+            });
+        });
+
+        const toggle = await screen.findByTestId('endev-xdpu-toggle') as HTMLInputElement;
+        expect(toggle.checked).toBe(false);
+
+        await act(async () => {
+            fireEvent.click(toggle);
+        });
+
+        await waitFor(() => expect(mockClient.workspaces.update).toHaveBeenCalledWith('ws-1', {
+            endevXDpu: {
+                enabled: true,
+                xstoreRepoRoot: '/home/user/xstore',
+            },
+        }));
+        expect((screen.getByTestId('endev-xdpu-distro') as HTMLInputElement).value).toBe('');
+        expect((screen.getByTestId('endev-xdpu-root') as HTMLInputElement).value).toBe('/home/user/xstore');
+    });
+
     it('hides EnDev-xDpu controls for non-WSL workspaces', async () => {
         await act(async () => {
             await renderSettingsTab({ initialSection: 'preferences', rootPath: 'C:\\repo' });
