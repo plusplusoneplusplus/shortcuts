@@ -31,6 +31,8 @@ export interface LoopToolDeps {
     executor: LoopExecutor;
     /** The processId of the current conversation. */
     processId: string;
+    /** Resolve workspace ID for the process (used at loop creation time). */
+    resolveWorkspaceId: (processId: string) => Promise<string | undefined>;
 }
 
 export interface WakeupToolDeps {
@@ -175,6 +177,7 @@ export function createCreateLoopTool(deps: LoopToolDeps) {
             }
 
             const now = new Date();
+            const workspaceId = await deps.resolveWorkspaceId(deps.processId);
             const loop: LoopEntry = {
                 id: `loop_${crypto.randomUUID().replace(/-/g, '').substring(0, 12)}`,
                 processId: deps.processId,
@@ -190,6 +193,7 @@ export function createCreateLoopTool(deps: LoopToolDeps) {
                 pausedReason: null,
                 prompt: args.prompt,
                 model: args.model ?? null,
+                workspaceId,
             };
 
             try {

@@ -19,6 +19,7 @@ function makeMockLoopToolDeps() {
             disarmTimer: vi.fn(),
         } as any,
         processId: 'proc-test',
+        resolveWorkspaceId: vi.fn().mockResolvedValue('ws-test'),
     };
 }
 

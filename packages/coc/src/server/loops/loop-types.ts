@@ -62,6 +62,14 @@ export interface LoopEntry {
 
     /** Optional model override for loop ticks. */
     model: string | null;
+
+    /**
+     * Workspace (repo) this loop belongs to.
+     * Persisted at creation time so the workspace filter does not depend
+     * on live in-memory task state. May be `undefined` for legacy rows
+     * that were created before this field existed.
+     */
+    workspaceId?: string;
 }
 
 // ============================================================================

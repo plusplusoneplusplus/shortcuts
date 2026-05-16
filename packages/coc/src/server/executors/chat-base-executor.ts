@@ -180,6 +180,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 store: infra.store,
                 executor: infra.executor,
                 processId,
+                resolveWorkspaceId: infra.resolveWorkspaceId,
             },
         };
     }

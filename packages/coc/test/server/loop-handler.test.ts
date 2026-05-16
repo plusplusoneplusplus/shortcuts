@@ -133,7 +133,7 @@ describe('Loop REST API Handler', () => {
             return undefined;
         });
 
-        const ctx: LoopRouteContext = { store, executor: mockExecutor, resolveWorkspaceId };
+        const ctx: LoopRouteContext = { store, executor: mockExecutor };
         registerLoopRoutes(routes, ctx);
     });
 
@@ -149,9 +149,9 @@ describe('Loop REST API Handler', () => {
         });
 
         it('returns only loops for the given workspace', async () => {
-            const l1 = makeLoop({ id: 'loop_1', processId: 'proc_ws1_a' });
-            const l2 = makeLoop({ id: 'loop_2', processId: 'proc_ws2_a' });
-            const l3 = makeLoop({ id: 'loop_3', processId: 'proc_ws1_b' });
+            const l1 = makeLoop({ id: 'loop_1', processId: 'proc_ws1_a', workspaceId: 'ws1' });
+            const l2 = makeLoop({ id: 'loop_2', processId: 'proc_ws2_a', workspaceId: 'ws2' });
+            const l3 = makeLoop({ id: 'loop_3', processId: 'proc_ws1_b', workspaceId: 'ws1' });
             store.insert(l1);
             store.insert(l2);
             store.insert(l3);
@@ -333,8 +333,8 @@ describe('Loop REST API Handler', () => {
 
     describe('GET /api/loops (server-wide)', () => {
         it('returns all loops across workspaces', async () => {
-            store.insert(makeLoop({ id: 'loop_a', processId: 'proc_ws1_a' }));
-            store.insert(makeLoop({ id: 'loop_b', processId: 'proc_ws2_a' }));
+            store.insert(makeLoop({ id: 'loop_a', processId: 'proc_ws1_a', workspaceId: 'ws1' }));
+            store.insert(makeLoop({ id: 'loop_b', processId: 'proc_ws2_a', workspaceId: 'ws2' }));
 
             const res = await dispatch(routes, 'GET', '/api/loops');
             expect(res.statusCode).toBe(200);
@@ -358,6 +358,56 @@ describe('Loop REST API Handler', () => {
         it('returns 404 for unknown loop', async () => {
             const res = await dispatch(routes, 'GET', '/api/loops/nope');
             expect(res.statusCode).toBe(404);
+        });
+    });
+
+    // ========================================================================
+    // workspaceId stored-column filter
+    // ========================================================================
+
+    describe('workspaceId stored-column filter', () => {
+        it('workspace filter uses stored workspaceId, not resolver', async () => {
+            // Insert loops with explicit workspaceId — resolver is not called
+            store.insert(makeLoop({ id: 'loop_ws1', processId: 'proc_a', workspaceId: 'ws1' }));
+            store.insert(makeLoop({ id: 'loop_ws2', processId: 'proc_b', workspaceId: 'ws2' }));
+            store.insert(makeLoop({ id: 'loop_noWs', processId: 'proc_c' })); // legacy, no workspaceId
+
+            const res = await dispatch(routes, 'GET', '/api/workspaces/ws1/loops');
+            expect(res.statusCode).toBe(200);
+            expect(res.body.loops).toHaveLength(1);
+            expect(res.body.loops[0].id).toBe('loop_ws1');
+
+            // The resolver should NOT be called (it's no longer part of the context)
+            expect(resolveWorkspaceId).not.toHaveBeenCalled();
+        });
+
+        it('includes workspaceId in serialized response', async () => {
+            store.insert(makeLoop({ id: 'loop_serial', workspaceId: 'ws-xyz' }));
+
+            const res = await dispatch(routes, 'GET', '/api/workspaces/ws-xyz/loops');
+            expect(res.statusCode).toBe(200);
+            expect(res.body.loops[0].workspaceId).toBe('ws-xyz');
+        });
+
+        it('omits workspaceId from response when not set', async () => {
+            store.insert(makeLoop({ id: 'loop_noWs' }));
+
+            const res = await dispatch(routes, 'GET', '/api/loops/loop_noWs');
+            expect(res.statusCode).toBe(200);
+            expect(res.body.loop.workspaceId).toBeUndefined();
+        });
+
+        it('multi-repo isolation — loop in ws-A not visible from ws-B', async () => {
+            store.insert(makeLoop({ id: 'loop_a', workspaceId: 'ws-A' }));
+            store.insert(makeLoop({ id: 'loop_b', workspaceId: 'ws-B' }));
+
+            const resA = await dispatch(routes, 'GET', '/api/workspaces/ws-A/loops');
+            const resB = await dispatch(routes, 'GET', '/api/workspaces/ws-B/loops');
+
+            expect(resA.body.loops).toHaveLength(1);
+            expect(resA.body.loops[0].id).toBe('loop_a');
+            expect(resB.body.loops).toHaveLength(1);
+            expect(resB.body.loops[0].id).toBe('loop_b');
         });
     });
 });

@@ -23,8 +23,6 @@ import type { LoopEntry, LoopStatus } from './loop-types';
 export interface LoopRouteContext {
     store: LoopStore;
     executor: LoopExecutor;
-    /** Resolve processId → workspaceId for filtering. */
-    resolveWorkspaceId: (processId: string) => Promise<string | undefined>;
 }
 
 // ============================================================================
@@ -47,6 +45,7 @@ function serializeLoop(loop: LoopEntry): Record<string, unknown> {
         pausedReason: loop.pausedReason,
         prompt: loop.prompt,
         model: loop.model,
+        ...(loop.workspaceId != null ? { workspaceId: loop.workspaceId } : {}),
     };
 }
 
@@ -83,20 +82,7 @@ function validatePatchFields(body: Record<string, unknown>): { valid: boolean; e
 // ============================================================================
 
 export function registerLoopRoutes(routes: Route[], ctx: LoopRouteContext): void {
-    const { store, executor, resolveWorkspaceId } = ctx;
-
-    // Helper to filter loops by workspace
-    async function getLoopsForWorkspace(workspaceId: string): Promise<LoopEntry[]> {
-        const allLoops = store.getAll();
-        const results: LoopEntry[] = [];
-        for (const loop of allLoops) {
-            const wsId = await resolveWorkspaceId(loop.processId);
-            if (wsId === workspaceId) {
-                results.push(loop);
-            }
-        }
-        return results;
-    }
+    const { store, executor } = ctx;
 
     // ------------------------------------------------------------------
     // GET /api/workspaces/:id/loops — List loops for a workspace
@@ -106,7 +92,7 @@ export function registerLoopRoutes(routes: Route[], ctx: LoopRouteContext): void
         pattern: /^\/api\/workspaces\/([^/]+)\/loops$/,
         handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match) => {
             const workspaceId = decodeURIComponent(match![1]);
-            const loops = await getLoopsForWorkspace(workspaceId);
+            const loops = store.getByWorkspace(workspaceId);
             sendJSON(res, 200, { loops: loops.map(serializeLoop) });
         },
     });

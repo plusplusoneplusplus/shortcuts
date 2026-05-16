@@ -35,6 +35,7 @@ function makeLoop(overrides: Partial<LoopEntry> = {}): LoopEntry {
         pausedReason: 'pausedReason' in overrides ? overrides.pausedReason! : null,
         prompt: overrides.prompt ?? 'check status',
         model: 'model' in overrides ? overrides.model! : null,
+        ...('workspaceId' in overrides ? { workspaceId: overrides.workspaceId } : {}),
     };
 }
 
@@ -260,5 +261,122 @@ describe('LoopStore', () => {
 
         store1.insert(makeLoop({ id: 'loop_from_1' }));
         expect(store2.getById('loop_from_1')).not.toBeNull();
+    });
+
+    // --------------------------------------------------------------------
+    // workspaceId persistence
+    // --------------------------------------------------------------------
+
+    it('persists and retrieves workspaceId', () => {
+        const loop = makeLoop({ workspaceId: 'ws-abc' });
+        store.insert(loop);
+
+        const retrieved = store.getById(loop.id)!;
+        expect(retrieved.workspaceId).toBe('ws-abc');
+    });
+
+    it('handles loops without workspaceId (legacy rows)', () => {
+        const loop = makeLoop();
+        // No workspaceId set — simulates legacy row
+        store.insert(loop);
+
+        const retrieved = store.getById(loop.id)!;
+        expect(retrieved.workspaceId).toBeUndefined();
+    });
+
+    it('updates workspaceId on existing loop', () => {
+        const loop = makeLoop();
+        store.insert(loop);
+
+        const updated = { ...loop, workspaceId: 'ws-new' };
+        store.update(updated);
+
+        const retrieved = store.getById(loop.id)!;
+        expect(retrieved.workspaceId).toBe('ws-new');
+    });
+
+    // --------------------------------------------------------------------
+    // getByWorkspace
+    // --------------------------------------------------------------------
+
+    it('returns loops for a specific workspace', () => {
+        store.insert(makeLoop({ id: 'loop_a', processId: 'proc_1', workspaceId: 'ws1' }));
+        store.insert(makeLoop({ id: 'loop_b', processId: 'proc_2', workspaceId: 'ws1' }));
+        store.insert(makeLoop({ id: 'loop_c', processId: 'proc_3', workspaceId: 'ws2' }));
+        store.insert(makeLoop({ id: 'loop_d', processId: 'proc_4' })); // no workspaceId
+
+        const ws1Loops = store.getByWorkspace('ws1');
+        expect(ws1Loops).toHaveLength(2);
+        expect(ws1Loops.map(l => l.id).sort()).toEqual(['loop_a', 'loop_b']);
+
+        const ws2Loops = store.getByWorkspace('ws2');
+        expect(ws2Loops).toHaveLength(1);
+        expect(ws2Loops[0].id).toBe('loop_c');
+    });
+
+    it('returns empty array for workspace with no loops', () => {
+        store.insert(makeLoop({ id: 'loop_a', workspaceId: 'ws1' }));
+        expect(store.getByWorkspace('ws-other')).toEqual([]);
+    });
+
+    // --------------------------------------------------------------------
+    // Schema migration (ALTER TABLE idempotency)
+    // --------------------------------------------------------------------
+
+    it('migrates existing table without workspace_id column', () => {
+        // Create a fresh DB with the old schema (no workspace_id)
+        const oldDb = new Database(':memory:');
+        oldDb.exec(`
+            CREATE TABLE loops (
+                id TEXT PRIMARY KEY,
+                process_id TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                interval_ms INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT NOT NULL,
+                last_tick_at TEXT,
+                next_tick_at TEXT,
+                tick_count INTEGER NOT NULL DEFAULT 0,
+                consecutive_failures INTEGER NOT NULL DEFAULT 0,
+                expires_at TEXT NOT NULL,
+                paused_reason TEXT,
+                prompt TEXT NOT NULL DEFAULT '',
+                model TEXT
+            )
+        `);
+
+        // Insert a row using old schema
+        oldDb.prepare(`
+            INSERT INTO loops (id, process_id, description, interval_ms, status, created_at, tick_count, consecutive_failures, expires_at, prompt)
+            VALUES ('loop_legacy', 'proc_old', 'Old loop', 60000, 'active', '2026-01-01T00:00:00Z', 0, 0, '2026-01-04T00:00:00Z', 'check')
+        `).run();
+
+        // Creating a new LoopStore should migrate the table
+        const migratedStore = new LoopStore(oldDb);
+
+        // Legacy row should be readable with undefined workspaceId
+        const legacy = migratedStore.getById('loop_legacy')!;
+        expect(legacy.processId).toBe('proc_old');
+        expect(legacy.workspaceId).toBeUndefined();
+
+        // New rows can include workspaceId
+        const newLoop = makeLoop({ id: 'loop_new', workspaceId: 'ws-migrated' });
+        migratedStore.insert(newLoop);
+        expect(migratedStore.getById('loop_new')!.workspaceId).toBe('ws-migrated');
+
+        oldDb.close();
+    });
+
+    it('migration is idempotent — second LoopStore on migrated DB is safe', () => {
+        // First store migrates
+        const db2 = new Database(':memory:');
+        const store1 = new LoopStore(db2);
+        store1.insert(makeLoop({ id: 'loop_idem', workspaceId: 'ws-x' }));
+
+        // Second store should not fail
+        const store2 = new LoopStore(db2);
+        expect(store2.getById('loop_idem')!.workspaceId).toBe('ws-x');
+
+        db2.close();
     });
 });

@@ -217,16 +217,6 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         registerLoopRoutes(routes, {
             store: opts.loopStore,
             executor: opts.loopExecutor,
-            resolveWorkspaceId: async (processId: string) => {
-                // Look up workspace via the queue task (which carries repoId)
-                try {
-                    const taskId = processId.startsWith('queue_') ? processId.slice(6) : processId;
-                    const task = bridge.getTask(taskId);
-                    return task?.repoId;
-                } catch {
-                    return undefined;
-                }
-            },
         });
     }
 

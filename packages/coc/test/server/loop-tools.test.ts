@@ -91,6 +91,7 @@ function makeLoopToolDeps(overrides: Partial<LoopToolDeps> = {}): LoopToolDeps {
         store,
         executor: executor as LoopExecutor,
         processId: 'proc-123',
+        resolveWorkspaceId: vi.fn().mockResolvedValue('ws-test'),
         ...overrides,
     };
 }
@@ -202,6 +203,37 @@ describe('createCreateLoopTool', () => {
 
         const loop = deps.store.getByProcess('proc-123')[0];
         expect(loop.model).toBe('gpt-4');
+    });
+
+    it('resolves and persists workspaceId at creation', async () => {
+        const result = await handler({
+            description: 'Workspace test',
+            interval: '1m',
+            prompt: 'Check workspace',
+        });
+
+        expect(result.created).toBe(true);
+        const loop = deps.store.getByProcess('proc-123')[0];
+        expect(loop.workspaceId).toBe('ws-test');
+        expect(deps.resolveWorkspaceId).toHaveBeenCalledWith('proc-123');
+    });
+
+    it('creates loop even if resolveWorkspaceId returns undefined', async () => {
+        deps = makeLoopToolDeps({
+            resolveWorkspaceId: vi.fn().mockResolvedValue(undefined),
+        });
+        const { tool } = createCreateLoopTool(deps);
+        handler = tool.handler as any;
+
+        const result = await handler({
+            description: 'No workspace',
+            interval: '1m',
+            prompt: 'Check',
+        });
+
+        expect(result.created).toBe(true);
+        const loop = deps.store.getByProcess('proc-123')[0];
+        expect(loop.workspaceId).toBeUndefined();
     });
 
     it('rejects invalid TTL', async () => {

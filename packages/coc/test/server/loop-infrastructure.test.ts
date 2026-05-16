@@ -22,6 +22,7 @@ function createTestLoopStore(db: Database.Database): LoopStore {
 }
 
 function makeLoop(overrides: Partial<Record<string, unknown>> = {}) {
+    const { workspaceId, ...rest } = overrides;
     return {
         id: `loop_${Math.random().toString(36).slice(2, 8)}`,
         processId: 'proc_test1',
@@ -37,7 +38,8 @@ function makeLoop(overrides: Partial<Record<string, unknown>> = {}) {
         pausedReason: null,
         prompt: 'Check status',
         model: null,
-        ...overrides,
+        ...rest,
+        ...(workspaceId !== undefined ? { workspaceId } : {}),
     };
 }
 
@@ -164,6 +166,61 @@ describe('Loop Infrastructure', () => {
             const active = loopStore.getActive();
             expect(active).toHaveLength(1);
             expect(active[0].id).toBe('loop_survives_restart');
+        });
+    });
+
+    describe('workspaceId backfill', () => {
+        it('backfills workspaceId for legacy rows on startup', async () => {
+            // Insert legacy rows without workspaceId
+            loopStore.insert(makeLoop({ id: 'loop_legacy1', processId: 'proc_resolvable' }));
+            loopStore.insert(makeLoop({ id: 'loop_legacy2', processId: 'proc_unresolvable' }));
+            loopStore.insert(makeLoop({ id: 'loop_existing', processId: 'proc_already', workspaceId: 'ws-existing' }));
+
+            const { LoopExecutor } = await import('../../src/server/loops/loop-executor');
+            const { ScheduleTimerRegistry } = await import('../../src/server/schedule/schedule-timer-registry');
+
+            const resolveWorkspaceId = vi.fn(async (processId: string) => {
+                if (processId === 'proc_resolvable') return 'ws-resolved';
+                return undefined;
+            });
+
+            const timerRegistry = new ScheduleTimerRegistry();
+            const executor = new LoopExecutor({
+                store: loopStore,
+                processStore: { getProcess: vi.fn().mockResolvedValue(null) } as any,
+                timerRegistry,
+                queueManager: null,
+                emit: vi.fn(),
+                resolveWorkspaceId,
+            });
+
+            // Simulate what createLoopInfrastructure does
+            executor.armAll();
+
+            const allLoops = loopStore.getAll();
+            for (const loop of allLoops) {
+                if (loop.workspaceId == null) {
+                    const wsId = await resolveWorkspaceId(loop.processId);
+                    if (wsId) {
+                        loop.workspaceId = wsId;
+                        loopStore.update(loop);
+                    }
+                }
+            }
+
+            // Resolvable loop should be backfilled
+            const legacy1 = loopStore.getById('loop_legacy1')!;
+            expect(legacy1.workspaceId).toBe('ws-resolved');
+
+            // Unresolvable loop stays without workspaceId
+            const legacy2 = loopStore.getById('loop_legacy2')!;
+            expect(legacy2.workspaceId).toBeUndefined();
+
+            // Already-set workspaceId remains unchanged
+            const existing = loopStore.getById('loop_existing')!;
+            expect(existing.workspaceId).toBe('ws-existing');
+
+            timerRegistry.clear();
         });
     });
 });
