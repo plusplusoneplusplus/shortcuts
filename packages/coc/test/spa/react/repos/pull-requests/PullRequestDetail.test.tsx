@@ -46,17 +46,59 @@ const makeThreads = (overrides: Partial<any>[] = []) =>
         ...o,
     }));
 
-function mockFetchBoth(pr: any, threads: any[] = []) {
+/** JSON response shape that satisfies both the SPA's CocApiClient and the
+ *  fallback `await response.json()` path. */
+function jsonResponse(payload: unknown, ok = true, status = 200) {
+    return {
+        ok,
+        status,
+        headers: { get: () => 'application/json' },
+        json: () => Promise.resolve(payload),
+        text: () => Promise.resolve(JSON.stringify(payload)),
+    } as unknown as Response;
+}
+
+/** text/plain response used by the diff endpoint. */
+function textResponse(body: string) {
+    return {
+        ok: true,
+        status: 200,
+        headers: { get: () => 'text/plain' },
+        text: () => Promise.resolve(body),
+    } as unknown as Response;
+}
+
+/** Mock the full PR detail fetch trio (pr, threads, diff). */
+function mockFetchDetail(pr: any, threads: any[] = [], diffText = '') {
     global.fetch = vi.fn()
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(pr) } as any)
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ threads }) } as any);
+        .mockResolvedValueOnce(jsonResponse(pr))
+        .mockResolvedValueOnce(jsonResponse({ threads }))
+        .mockResolvedValueOnce(textResponse(diffText));
 }
 
 function mockFetchPrError(status = 500, message = 'Server error') {
     global.fetch = vi.fn()
-        .mockResolvedValueOnce({ ok: false, status, json: () => Promise.resolve({ message }) } as any)
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ threads: [] }) } as any);
+        .mockResolvedValueOnce(jsonResponse({ message }, false, status))
+        .mockResolvedValueOnce(jsonResponse({ threads: [] }))
+        .mockResolvedValueOnce(textResponse(''));
 }
+
+const SAMPLE_DIFF = [
+    'diff --git a/src/foo.ts b/src/foo.ts',
+    '--- a/src/foo.ts',
+    '+++ b/src/foo.ts',
+    '@@ -1,1 +1,3 @@',
+    ' keep',
+    '+added one',
+    '+added two',
+    'diff --git a/src/bar.ts b/src/bar.ts',
+    '--- a/src/bar.ts',
+    '+++ b/src/bar.ts',
+    '@@ -1,2 +1,1 @@',
+    ' keep',
+    '-removed one',
+    '',
+].join('\n');
 
 async function renderDetail(props: Partial<any> = {}) {
     const { PullRequestDetail } = await import(
@@ -92,7 +134,7 @@ describe('loading state', () => {
 
 describe('successful render', () => {
     it('renders PR title and status badge after fetch', async () => {
-        mockFetchBoth(makePr());
+        mockFetchDetail(makePr());
         await act(async () => { await renderDetail(); });
         await waitFor(() => expect(screen.getByTestId('pr-title')).toBeInTheDocument());
         expect(screen.getByTestId('pr-title').textContent).toContain('Add retry logic for transient failures');
@@ -100,7 +142,7 @@ describe('successful render', () => {
     });
 
     it('renders branch info', async () => {
-        mockFetchBoth(makePr());
+        mockFetchDetail(makePr());
         await act(async () => { await renderDetail(); });
         await waitFor(() => expect(screen.getByTestId('pr-branches')).toBeInTheDocument());
         const branches = screen.getByTestId('pr-branches').textContent ?? '';
@@ -109,13 +151,13 @@ describe('successful render', () => {
     });
 
     it('renders description as markdown', async () => {
-        mockFetchBoth(makePr({ description: 'Fix flaky network calls.' }));
+        mockFetchDetail(makePr({ description: 'Fix flaky network calls.' }));
         await act(async () => { await renderDetail(); });
         await waitFor(() => expect(screen.getByTestId('pr-description')).toBeInTheDocument());
     });
 
     it('shows actionable empty-description card when description is absent', async () => {
-        mockFetchBoth(makePr({ description: undefined, url: 'https://example.com/pr/142' }));
+        mockFetchDetail(makePr({ description: undefined, url: 'https://example.com/pr/142' }));
         await act(async () => { await renderDetail(); });
         await waitFor(() => expect(screen.getByTestId('pr-description-empty')).toBeInTheDocument());
         expect(screen.getByTestId('pr-description-empty').textContent).toContain('No description');
@@ -125,7 +167,7 @@ describe('successful render', () => {
     });
 
     it('does not render open-link in empty-description card when no url', async () => {
-        mockFetchBoth(makePr({ description: undefined, url: undefined }));
+        mockFetchDetail(makePr({ description: undefined, url: undefined }));
         await act(async () => { await renderDetail(); });
         await waitFor(() => expect(screen.getByTestId('pr-description-empty')).toBeInTheDocument());
         expect(screen.queryByTestId('pr-description-open-link')).not.toBeInTheDocument();
@@ -138,7 +180,7 @@ describe('successful render', () => {
                 { identity: { displayName: 'Carol' }, vote: 'rejected' },
             ],
         });
-        mockFetchBoth(pr);
+        mockFetchDetail(pr);
         await act(async () => { await renderDetail(); });
         await waitFor(() => expect(screen.getAllByTestId('reviewer-badge')).toHaveLength(2));
         const badges = screen.getAllByTestId('reviewer-badge').map(el => el.textContent ?? '');
@@ -147,30 +189,55 @@ describe('successful render', () => {
     });
 
     it('renders label chips', async () => {
-        mockFetchBoth(makePr({ labels: ['bug', 'high-priority'] }));
+        mockFetchDetail(makePr({ labels: ['bug', 'high-priority'] }));
         await act(async () => { await renderDetail(); });
         await waitFor(() => expect(screen.getAllByTestId('label-chip')).toHaveLength(2));
     });
 
-    it('renders "Open in browser" text in the header link', async () => {
-        mockFetchBoth(makePr({ url: 'https://example.com/pr/1' }));
+    it('renders an "Open" external link in the compact hero', async () => {
+        mockFetchDetail(makePr({ url: 'https://example.com/pr/1' }));
         await act(async () => { await renderDetail(); });
         await waitFor(() => expect(screen.getByTestId('header-external-link')).toBeInTheDocument());
         expect(screen.getByTestId('header-external-link')).toHaveAttribute('href', 'https://example.com/pr/1');
         expect(screen.getByTestId('header-external-link')).toHaveAttribute('target', '_blank');
-        expect(screen.getByTestId('header-external-link').textContent).toContain('Open in browser');
+        expect(screen.getByTestId('header-external-link').textContent).toContain('Open');
+    });
+});
+
+// ── Hero / AI badges ───────────────────────────────────────────────────────────
+
+describe('hero metadata', () => {
+    it('renders the AI risk pill on the hero row', async () => {
+        mockFetchDetail(makePr());
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('pr-risk-pill')).toBeInTheDocument());
+        expect(screen.getByTestId('pr-risk-pill').textContent).toMatch(/AI risk:/);
     });
 
-    it('renders header external link next to the PR title', async () => {
-        mockFetchBoth(makePr({ url: 'https://example.com/pr/1' }));
+    it('renders the additions/deletions delta and file count from the real diff', async () => {
+        mockFetchDetail(makePr(), [], SAMPLE_DIFF);
         await act(async () => { await renderDetail(); });
-        await waitFor(() => expect(screen.getByTestId('header-external-link')).toBeInTheDocument());
-        expect(screen.getByTestId('header-external-link')).toHaveAttribute('href', 'https://example.com/pr/1');
-        expect(screen.getByTestId('header-external-link')).toHaveAttribute('target', '_blank');
-        // Verify the link is in the same container as the PR title
-        const titleEl = screen.getByTestId('pr-title');
-        const linkEl = screen.getByTestId('header-external-link');
-        expect(titleEl.parentElement).toBe(linkEl.parentElement);
+        await waitFor(() => expect(screen.getByTestId('pr-delta')).toBeInTheDocument());
+        // SAMPLE_DIFF: +2 additions, -1 deletion across 2 files.
+        expect(screen.getByTestId('pr-delta').textContent).toBe('+2 / -1');
+        expect(screen.getByTestId('pr-file-count').textContent).toBe('2 files');
+    });
+
+    it('hides the delta and file-count metadata when the diff is empty', async () => {
+        mockFetchDetail(makePr());
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('pr-title')).toBeInTheDocument());
+        expect(screen.queryByTestId('pr-delta')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('pr-file-count')).not.toBeInTheDocument();
+    });
+
+    it('renders the merge / AI / copy hero actions', async () => {
+        mockFetchDetail(makePr());
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('pr-merge-when-ready')).toBeInTheDocument());
+        expect(screen.getByTestId('pr-run-ai-pass')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-copy-summary')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-open-ai-assistant')).toBeInTheDocument();
     });
 });
 
@@ -178,7 +245,7 @@ describe('successful render', () => {
 
 describe('back button', () => {
     it('dispatches CLEAR_SELECTED_PR and calls onBack when back is clicked (mobile)', async () => {
-        mockFetchBoth(makePr());
+        mockFetchDetail(makePr());
         const onBack = vi.fn();
         await act(async () => { await renderDetail({ onBack, isMobile: true }); });
         await waitFor(() => expect(screen.getByTestId('back-button')).toBeInTheDocument());
@@ -190,24 +257,82 @@ describe('back button', () => {
     });
 
     it('does not render back button on desktop (isMobile=false)', async () => {
-        mockFetchBoth(makePr());
+        mockFetchDetail(makePr());
         await act(async () => { await renderDetail({ isMobile: false }); });
         await waitFor(() => expect(screen.getByTestId('pr-title')).toBeInTheDocument());
         expect(screen.queryByTestId('back-button')).not.toBeInTheDocument();
     });
 });
 
-// ── Threads tab ────────────────────────────────────────────────────────────────
+// ── Tabs ───────────────────────────────────────────────────────────────────────
 
-describe('threads tab', () => {
-    it('shows thread count in tab label and renders ThreadList when switched', async () => {
-        mockFetchBoth(makePr(), makeThreads([{}, {}]));
+describe('tabs', () => {
+    it('renders the four redesigned tabs', async () => {
+        mockFetchDetail(makePr());
         await act(async () => { await renderDetail(); });
-        await waitFor(() => expect(screen.getByTestId('tab-threads')).toBeInTheDocument());
-        expect(screen.getByTestId('tab-threads').textContent).toContain('2');
+        await waitFor(() => expect(screen.getByTestId('tab-overview')).toBeInTheDocument());
+        expect(screen.getByTestId('tab-files')).toBeInTheDocument();
+        expect(screen.getByTestId('tab-commits')).toBeInTheDocument();
+        expect(screen.getByTestId('tab-checks')).toBeInTheDocument();
+    });
 
-        fireEvent.click(screen.getByTestId('tab-threads'));
+    it('embeds the thread list inside the Overview tab when threads exist', async () => {
+        mockFetchDetail(makePr(), makeThreads([{}, {}]));
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('overview-tab')).toBeInTheDocument());
         expect(screen.getByTestId('threads-tab')).toBeInTheDocument();
+        expect(screen.getByTestId('tab-overview').textContent).toContain('2');
+    });
+
+    it('switches to the Files tab and renders rows from the real diff', async () => {
+        mockFetchDetail(makePr(), [], SAMPLE_DIFF);
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('tab-files')).toBeInTheDocument());
+        fireEvent.click(screen.getByTestId('tab-files'));
+        expect(screen.getByTestId('files-tab')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-files-panel')).toBeInTheDocument();
+        expect(screen.getAllByTestId('pr-file-row')).toHaveLength(2);
+        expect(screen.getByTestId('tab-files').textContent).toContain('2');
+    });
+
+    it('switches to the Commits tab and renders the commit intent table behind a preview notice', async () => {
+        mockFetchDetail(makePr());
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('tab-commits')).toBeInTheDocument());
+        fireEvent.click(screen.getByTestId('tab-commits'));
+        expect(screen.getByTestId('commits-tab')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-commit-table')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-tab-preview-notice').textContent).toMatch(/Commit list is AI-mocked/i);
+    });
+
+    it('switches to the Checks tab and renders the checks + merge readiness panels with a preview notice', async () => {
+        mockFetchDetail(makePr());
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('tab-checks')).toBeInTheDocument());
+        fireEvent.click(screen.getByTestId('tab-checks'));
+        expect(screen.getByTestId('checks-tab')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-checks-table')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-merge-readiness')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-tab-preview-notice').textContent).toMatch(/Checks are AI-mocked/i);
+    });
+});
+
+// ── AI assistant drawer ────────────────────────────────────────────────────────
+
+describe('AI assistant drawer', () => {
+    it('opens when the Ask AI button is clicked', async () => {
+        mockFetchDetail(makePr());
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('pr-open-ai-assistant')).toBeInTheDocument());
+
+        const drawer = screen.getByTestId('pr-ai-assistant');
+        expect(drawer.getAttribute('aria-hidden')).toBe('true');
+
+        fireEvent.click(screen.getByTestId('pr-open-ai-assistant'));
+        expect(drawer.getAttribute('aria-hidden')).toBe('false');
+
+        fireEvent.click(screen.getByTestId('pr-ai-assistant-close'));
+        expect(drawer.getAttribute('aria-hidden')).toBe('true');
     });
 });
 

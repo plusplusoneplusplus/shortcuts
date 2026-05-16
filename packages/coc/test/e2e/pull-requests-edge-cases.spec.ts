@@ -203,8 +203,8 @@ test.describe('Pull Requests — hash navigation', () => {
         });
         // Detail panel should display the correct PR title
         await expect(
-            page.locator('[data-testid="pr-detail"]').getByText('Deep-link target PR'),
-        ).toBeVisible({ timeout: 10000 });
+            page.locator('[data-testid="pr-detail"]').getByTestId('pr-title'),
+        ).toHaveText('Deep-link target PR', { timeout: 10000 });
     });
 });
 

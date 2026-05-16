@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { AttentionGroup, ATTENTION_GROUP_CONFIGS, classifyPr } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-attention-groups';
+import {
+    AttentionGroup,
+    ATTENTION_GROUP_CONFIGS,
+    QUEUE_SECTION_CONFIGS,
+    classifyPr,
+    classifyQueueSection,
+    mapAttentionToQueueSection,
+} from '../../../../../src/server/spa/client/react/features/pull-requests/pr-attention-groups';
 
 const makePr = (overrides: Partial<any> = {}) => ({
     id: 1,
@@ -62,5 +69,31 @@ describe('pr attention groups', () => {
             reviewers: [{ identity: { displayName: 'Reviewer' }, vote: 'approvedWithSuggestions' }],
         }))).toBe(AttentionGroup.MergeValidation);
         expect(classifyPr(makePr())).toBe(AttentionGroup.MergeValidation);
+    });
+});
+
+describe('queue-section mapping', () => {
+    it('exposes the two ordered queue sections used by the rail', () => {
+        expect(QUEUE_SECTION_CONFIGS.map(config => config.section)).toEqual([
+            'needs-review',
+            'ready',
+        ]);
+    });
+
+    it('maps merge-validation to the ready section', () => {
+        expect(mapAttentionToQueueSection(AttentionGroup.MergeValidation)).toBe('ready');
+    });
+
+    it('maps the other three attention groups to needs-review', () => {
+        expect(mapAttentionToQueueSection(AttentionGroup.RerunNeeded)).toBe('needs-review');
+        expect(mapAttentionToQueueSection(AttentionGroup.ManualUpdateNeeded)).toBe('needs-review');
+        expect(mapAttentionToQueueSection(AttentionGroup.ReviewerNudge)).toBe('needs-review');
+    });
+
+    it('classifyQueueSection composes classifyPr and the queue mapping', () => {
+        const blocked = makePr({ reviewers: [{ identity: { displayName: 'Reviewer' }, vote: 'waitingForAuthor' }] });
+        const ready = makePr({ reviewers: [{ identity: { displayName: 'Reviewer' }, vote: 'approved' }] });
+        expect(classifyQueueSection(blocked)).toBe('needs-review');
+        expect(classifyQueueSection(ready)).toBe('ready');
     });
 });

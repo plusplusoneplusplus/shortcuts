@@ -101,12 +101,28 @@ describe('successful fetch', () => {
         expect(screen.getByText('PR Two')).toBeInTheDocument();
     });
 
-    it('renders toolbar controls', async () => {
+    it('renders the search input, refresh, and select controls', async () => {
         mockFetchOk([]);
         await act(async () => { await renderTab(); });
+        expect(screen.queryByTestId('pr-queue-header')).not.toBeInTheDocument();
         expect(screen.getByTestId('search-input')).toBeInTheDocument();
-        expect(screen.getByTestId('status-filter')).toBeInTheDocument();
-        expect(screen.getByTestId('scope-dropdown-trigger')).toBeInTheDocument();
+        expect(screen.getByTestId('refresh-button')).toBeInTheDocument();
+        expect(screen.getByTestId('select-mode-button')).toBeInTheDocument();
+    });
+
+    it('renders the four queue filter pills', async () => {
+        mockFetchOk([]);
+        await act(async () => { await renderTab(); });
+        expect(screen.getByTestId('pr-queue-filter-all')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-queue-filter-mine')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-queue-filter-blocked')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-queue-filter-ready')).toBeInTheDocument();
+    });
+
+    it('renders the queue footer with the AI prioritization rule', async () => {
+        mockFetchOk([]);
+        await act(async () => { await renderTab(); });
+        expect(screen.getByTestId('pr-queue-footer').textContent).toMatch(/Queue rule/i);
     });
 
     it('shows empty state when no PRs returned', async () => {
@@ -151,29 +167,17 @@ describe('client-side filtering', () => {
     });
 });
 
-// ── Scope dropdown ─────────────────────────────────────────────────────────────
+// ── Queue filter pills ─────────────────────────────────────────────────────────
 
-describe('scope dropdown', () => {
-    it('defaults to "Mine" scope with correct label', async () => {
-        mockFetchOk([makePr()]);
-        await act(async () => { await renderTab(); });
-        const trigger = screen.getByTestId('scope-dropdown-trigger');
-        expect(trigger.textContent).toContain('Mine');
-    });
-
-    it('opens dropdown menu on click and shows options', async () => {
+describe('queue filter pills', () => {
+    it('defaults to the "Mine" pill', async () => {
         mockFetchOk([makePr()]);
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(1));
-
-        fireEvent.click(screen.getByTestId('scope-dropdown-trigger'));
-        expect(screen.getByTestId('scope-dropdown-menu')).toBeInTheDocument();
-        expect(screen.getByTestId('scope-option-mine')).toBeInTheDocument();
-        expect(screen.getByTestId('scope-option-all')).toBeInTheDocument();
-        expect(screen.getByTestId('scope-option-author')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-queue-filter-mine').getAttribute('data-active')).toBe('true');
     });
 
-    it('selecting "All" triggers re-fetch with scope=all', async () => {
+    it('selecting the "All" pill triggers a re-fetch with scope=all', async () => {
         mockFetchOk([makePr()]);
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(1));
@@ -182,91 +186,87 @@ describe('scope dropdown', () => {
             ok: true,
             json: () => Promise.resolve({ pullRequests: [makePr({ id: 2, title: 'All PR' })] }),
         } as any);
-
-        // Open dropdown and select "All"
-        fireEvent.click(screen.getByTestId('scope-dropdown-trigger'));
         global.fetch = secondFetch;
+
         await act(async () => {
-            fireEvent.click(screen.getByTestId('scope-option-all'));
+            fireEvent.click(screen.getByTestId('pr-queue-filter-all'));
         });
         await waitFor(() => expect(secondFetch).toHaveBeenCalled());
         const fetchUrl = secondFetch.mock.calls[0][0] as string;
         expect(fetchUrl).toContain('scope=all');
+        expect(screen.getByTestId('pr-queue-filter-all').getAttribute('data-active')).toBe('true');
     });
 
-    it('selecting "Author…" shows author input field', async () => {
+    it('"Mine" stays on scope=mine and does not refetch when re-clicked', async () => {
         mockFetchOk([makePr()]);
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(1));
 
-        fireEvent.click(screen.getByTestId('scope-dropdown-trigger'));
-        await act(async () => {
-            fireEvent.click(screen.getByTestId('scope-option-author'));
-        });
-        expect(screen.getByTestId('author-input')).toBeInTheDocument();
-        expect(screen.getByTestId('clear-author')).toBeInTheDocument();
+        const callsBefore = (global.fetch as any).mock.calls.length;
+        fireEvent.click(screen.getByTestId('pr-queue-filter-mine'));
+        expect((global.fetch as any).mock.calls.length).toBe(callsBefore);
     });
 
-    it('clear author button reverts to "Mine" scope', async () => {
-        mockFetchOk([makePr()]);
+    it('"Blocked" filters the list to PRs flagged as blocked', async () => {
+        mockFetchOk([
+            makePr({ id: 1, title: 'Ready', reviewers: [{ identity: { displayName: 'R' }, vote: 'approved' }] }),
+            makePr({ id: 2, title: 'Blocked one', reviewers: [{ identity: { displayName: 'R' }, vote: 'waitingForAuthor' }] }),
+        ]);
         await act(async () => { await renderTab(); });
-        await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(1));
+        await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(2));
 
-        // Enter author mode
-        fireEvent.click(screen.getByTestId('scope-dropdown-trigger'));
-        await act(async () => {
-            fireEvent.click(screen.getByTestId('scope-option-author'));
-        });
-        expect(screen.getByTestId('author-input')).toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('pr-queue-filter-blocked'));
+        const remaining = screen.getAllByTestId('pr-row');
+        expect(remaining).toHaveLength(1);
+        expect(remaining[0].textContent).toContain('Blocked one');
+    });
 
-        // Clear author
-        await act(async () => {
-            fireEvent.click(screen.getByTestId('clear-author'));
-        });
-        expect(screen.getByTestId('scope-dropdown-trigger')).toBeInTheDocument();
-        expect(screen.getByTestId('scope-dropdown-trigger').textContent).toContain('Mine');
+    it('"Ready" filters the list to PRs ready after checks', async () => {
+        mockFetchOk([
+            makePr({ id: 1, title: 'Ready one', reviewers: [{ identity: { displayName: 'R' }, vote: 'approved' }] }),
+            makePr({ id: 2, title: 'Blocked', reviewers: [{ identity: { displayName: 'R' }, vote: 'waitingForAuthor' }] }),
+        ]);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(2));
+
+        fireEvent.click(screen.getByTestId('pr-queue-filter-ready'));
+        const remaining = screen.getAllByTestId('pr-row');
+        expect(remaining).toHaveLength(1);
+        expect(remaining[0].textContent).toContain('Ready one');
+    });
+
+    it('renders pill counts derived from the fetched list', async () => {
+        mockFetchOk([
+            makePr({ id: 1, title: 'A', reviewers: [{ identity: { displayName: 'R' }, vote: 'approved' }] }),
+            makePr({ id: 2, title: 'B', reviewers: [{ identity: { displayName: 'R' }, vote: 'waitingForAuthor' }] }),
+            makePr({ id: 3, title: 'C', reviewers: [{ identity: { displayName: 'R' }, vote: 'approved' }] }),
+        ]);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(3));
+
+        expect(screen.getByTestId('pr-queue-filter-all').textContent).toContain('3');
+        expect(screen.getByTestId('pr-queue-filter-mine').textContent).toContain('3');
+        expect(screen.getByTestId('pr-queue-filter-blocked').textContent).toContain('1');
+        expect(screen.getByTestId('pr-queue-filter-ready').textContent).toContain('2');
     });
 });
 
-// ── Summary line ───────────────────────────────────────────────────────────────
+// ── Queue grouping ─────────────────────────────────────────────────────────────
 
-describe('summary line', () => {
-    it('shows summary line after PRs load', async () => {
-        mockFetchOk([makePr()]);
+describe('queue grouping', () => {
+    it('groups PRs into Needs review and Ready after checks sections', async () => {
+        mockFetchOk([
+            makePr({ id: 1, title: 'A', reviewers: [{ identity: { displayName: 'R' }, vote: 'waitingForAuthor' }] }),
+            makePr({ id: 2, title: 'B', reviewers: [{ identity: { displayName: 'R' }, vote: 'approved' }] }),
+        ]);
         await act(async () => { await renderTab(); });
-        await waitFor(() => expect(screen.getByTestId('summary-line')).toBeInTheDocument());
-        expect(screen.getByTestId('summary-line').textContent).toContain('your');
-        expect(screen.getByTestId('summary-line').textContent).toContain('open');
-    });
+        await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(2));
 
-    it('shows "No pull requests found" in summary when list is empty', async () => {
-        mockFetchOk([]);
-        await act(async () => { await renderTab(); });
-        await waitFor(() => expect(screen.getByTestId('summary-line')).toBeInTheDocument());
-        expect(screen.getByTestId('summary-line').textContent).toContain('No pull requests found');
-    });
-});
-
-// ── Status filter ──────────────────────────────────────────────────────────────
-
-describe('status filter', () => {
-    it('triggers re-fetch when status filter changes', async () => {
-        mockFetchOk([makePr()]);
-        await act(async () => { await renderTab(); });
-        await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(1));
-
-        // Replace fetch with a new spy that returns a different PR list.
-        const secondFetch = vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({ pullRequests: [makePr({ id: 2, title: 'Closed PR', status: 'closed' })] }),
-        } as any);
-        global.fetch = secondFetch;
-
-        await act(async () => {
-            fireEvent.change(screen.getByTestId('status-filter'), { target: { value: 'closed' } });
-        });
-        await waitFor(() => expect(secondFetch).toHaveBeenCalled());
-        await waitFor(() => expect(screen.getByText('Closed PR')).toBeInTheDocument());
+        const sections = screen.getAllByTestId('pr-queue-group');
+        expect(sections.map(s => s.getAttribute('data-queue-section'))).toEqual([
+            'needs-review',
+            'ready',
+        ]);
     });
 });
 
@@ -405,37 +405,6 @@ describe('split-panel layout', () => {
         // List panel must still be in the DOM
         expect(screen.getByTestId('pr-list-panel')).toBeInTheDocument();
         expect(screen.getByTestId('pr-list')).toBeInTheDocument();
-    });
-});
-
-// ── Flat list mode (≤5 PRs) ────────────────────────────────────────────────────
-
-describe('flat list mode', () => {
-    it('renders flat rows without group sections when PR count is at the threshold (5)', async () => {
-        const prs = Array.from({ length: 5 }, (_, i) => makePr({ id: i + 1, title: `PR ${i + 1}` }));
-        mockFetchOk(prs);
-        await act(async () => { await renderTab(); });
-        await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(5));
-
-        expect(screen.queryByTestId('attention-group-section')).not.toBeInTheDocument();
-        expect(screen.queryByTestId('attention-summary-bar')).not.toBeInTheDocument();
-    });
-
-    it('renders grouped view when PR count exceeds threshold (6)', async () => {
-        const prs = Array.from({ length: 6 }, (_, i) => makePr({ id: i + 1, title: `PR ${i + 1}` }));
-        mockFetchOk(prs);
-        await act(async () => { await renderTab(); });
-        await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(6));
-
-        expect(screen.getAllByTestId('attention-group-section').length).toBeGreaterThan(0);
-    });
-
-    it('flat rows show no checkboxes by default', async () => {
-        mockFetchOk([makePr({ id: 1, title: 'Solo PR' })]);
-        await act(async () => { await renderTab(); });
-        await waitFor(() => expect(screen.getByTestId('pr-row')).toBeInTheDocument());
-
-        expect(screen.queryByTestId('pr-row-checkbox')).not.toBeInTheDocument();
     });
 });
 

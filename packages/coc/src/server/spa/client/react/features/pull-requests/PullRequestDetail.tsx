@@ -1,18 +1,55 @@
 /**
- * PullRequestDetail — renders a single PR's overview (description, reviewers, labels)
- * and comment threads in a two-tab layout.
+ * PullRequestDetail — redesigned PR review command center.
+ *
+ * Real PR data drives:
+ *   - PR header (title, branches, status, reviewers, labels, description)
+ *   - Comment threads (via /threads endpoint)
+ *   - File list, +/- counts, hunks, and diff body (parsed from /diff)
+ *   - The "AI grouped threads" sidebar groups REAL threads — only the
+ *     severity tag is AI-derived (deterministic, mocked for now).
+ *
+ * AI-flavored sections still backed by deterministic fixtures in
+ * `pr-mock-data.ts` (until an AI backend is wired up):
+ *   - AI summary panel (risk, confidence, findings, metrics)
+ *   - Persona lenses
+ *   - Conversation timeline
+ *   - Commit intent table (also: no commit REST endpoint exists yet)
+ *   - Checks / merge-readiness (also: no check REST endpoint yet)
+ *   - Inline AI annotations on file diffs
+ *   - Assistant chat drawer
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Marked } from 'marked';
+import { cn } from '../../ui';
 import { useApp } from '../../contexts/AppContext';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
-import { prStatusBadge, formatTimestamp } from './pr-utils';
+import { formatTimestamp, prStatusBadge } from './pr-utils';
 import { ReviewerBadge } from './ReviewerBadge';
 import { ThreadList } from './ThreadList';
-import { UnifiedDiffViewer } from '../../features/git/diff/UnifiedDiffViewer';
+import { PrAiSummaryPanel } from './PrAiSummaryPanel';
+import { PrQuickReviewWorkflow } from './PrQuickReviewWorkflow';
+import { PrConversationPanel } from './PrConversationPanel';
+import { PrAiGroupedThreads } from './PrAiGroupedThreads';
+import { PrCommitTable } from './PrCommitTable';
+import { PrChecksTable, PrMergeReadiness } from './PrChecksAndReadiness';
+import { PrFilesPanel } from './PrFilesPanel';
+import { PrAiAssistantDrawer } from './PrAiAssistantDrawer';
+import {
+    buildAiThreadGroupsFromThreads,
+    getMockAiSummary,
+    getMockCheckRows,
+    getMockCommitRows,
+    getMockFiles,
+    getMockMergeReadiness,
+    getMockPersonaLenses,
+    getMockReviewSummaryText,
+    getMockTimeline,
+    riskPillClass,
+} from './pr-mock-data';
 import type { PullRequest, CommentThread } from './pr-utils';
 import type { PrDetailTab } from '../../types/dashboard';
+import { parseUnifiedDiff, type ParsedDiff } from './unified-diff-parser';
 
 const descRenderer = {
     link(href: string, _title: string | null | undefined, text: string) {
@@ -29,45 +66,77 @@ export interface PullRequestDetailProps {
     repoId: string;
     prId: number | string;
     onBack: () => void;
-    /** When true (mobile), renders the back button. Hidden on desktop (list always visible). */
+    /** When true (mobile), renders the back button. Hidden on desktop. */
     isMobile?: boolean;
 }
+
+const TAB_DEFINITIONS: Array<{ id: PrDetailTab; label: string }> = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'files',    label: 'Files changed' },
+    { id: 'commits',  label: 'Commits' },
+    { id: 'checks',   label: 'Checks' },
+];
+
+const EMPTY_DIFF: ParsedDiff = { files: [], totalAdditions: 0, totalDeletions: 0, fileCount: 0 };
 
 export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: PullRequestDetailProps) {
     const { state, dispatch } = useApp();
     const [pr, setPr] = useState<PullRequest | null>(null);
     const [threads, setThreads] = useState<CommentThread[]>([]);
+    const [diff, setDiff] = useState<ParsedDiff>(EMPTY_DIFF);
+    const [diffError, setDiffError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const initialTab = (state.selectedPrDetailTab as PrDetailTab) ?? 'overview';
     const [detailTab, setDetailTab] = useState<PrDetailTab>(initialTab);
-    const [diff, setDiff] = useState<string | null>(null);
-    const [diffLoading, setDiffLoading] = useState(false);
+    const [assistantOpen, setAssistantOpen] = useState(false);
+    const [aiPassRunning, setAiPassRunning] = useState(false);
+    const [aiPassDone, setAiPassDone] = useState(false);
+    const [summaryCopied, setSummaryCopied] = useState(false);
 
-    const switchTab = useCallback((tab: PrDetailTab) => {
-        setDetailTab(tab);
-        dispatch({ type: 'SET_PR_DETAIL_TAB', tab });
-        const newHash = `#repos/${encodeURIComponent(String(repoId))}/pull-requests/${encodeURIComponent(String(prId))}/${tab}`;
-        history.replaceState(null, '', newHash);
-    }, [dispatch, repoId, prId]);
+    const switchTab = useCallback(
+        (tab: PrDetailTab) => {
+            setDetailTab(tab);
+            dispatch({ type: 'SET_PR_DETAIL_TAB', tab });
+            const newHash = `#repos/${encodeURIComponent(String(repoId))}/pull-requests/${encodeURIComponent(String(prId))}/${tab}`;
+            history.replaceState(null, '', newHash);
+        },
+        [dispatch, repoId, prId],
+    );
 
     useEffect(() => {
         setLoading(true);
         setError(null);
+        setDiff(EMPTY_DIFF);
+        setDiffError(null);
         const client = getSpaCocClient();
         const prIdStr = String(prId);
         const repoIdStr = String(repoId);
 
         Promise.all([
-            client.pullRequests.get(repoIdStr, prIdStr)
+            client.pullRequests
+                .get(repoIdStr, prIdStr)
                 .then(body => body as PullRequest),
-            client.pullRequests.getThreads(repoIdStr, prIdStr)
-                .then(body => body.threads ?? [])
+            client.pullRequests
+                .getThreads(repoIdStr, prIdStr)
+                .then(body => (body.threads ?? []) as CommentThread[])
                 .catch(() => [] as CommentThread[]),
+            client.pullRequests
+                .getDiff(repoIdStr, prIdStr)
+                .then(text => ({ kind: 'ok' as const, parsed: parseUnifiedDiff(text) }))
+                .catch((err: unknown) => ({
+                    kind: 'err' as const,
+                    message: getSpaCocClientErrorMessage(err, 'Failed to load diff'),
+                })),
         ])
-            .then(([prData, threadsData]) => {
+            .then(([prData, threadsData, diffResult]) => {
                 setPr(prData);
                 setThreads(threadsData);
+                if (diffResult.kind === 'ok') {
+                    setDiff(diffResult.parsed);
+                } else {
+                    setDiffError(diffResult.message);
+                }
             })
             .catch(err => setError(getSpaCocClientErrorMessage(err, 'Failed to load pull request')))
             .finally(() => setLoading(false));
@@ -80,20 +149,58 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
         }
     }, [state.selectedPrDetailTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    useEffect(() => {
-        if (detailTab !== 'files' || diff !== null) return;
-        setDiffLoading(true);
-        getSpaCocClient().pullRequests.getDiff(String(repoId), String(prId))
-            .then(text => setDiff(text))
-            .catch(() => setDiff(''))
-            .finally(() => setDiffLoading(false));
-    }, [detailTab, repoId, prId, diff]);
+    const aiSummary = useMemo(() => (pr ? getMockAiSummary(pr) : null), [pr]);
+    const personaLenses = useMemo(() => getMockPersonaLenses(), []);
+    const timeline = useMemo(() => getMockTimeline(), []);
+    const threadGroups = useMemo(() => buildAiThreadGroupsFromThreads(threads), [threads]);
+    const commitRows = useMemo(() => getMockCommitRows(), []);
+    const checkRows = useMemo(() => getMockCheckRows(), []);
+    const mergeReadiness = useMemo(() => getMockMergeReadiness(), []);
+
+    // AI annotations are keyed by mock file path; assign them to the
+    // first matching real files via round-robin so a few real files in
+    // the diff get a purple "AI noticed…" callout for demo purposes.
+    const aiAnnotationByPath = useMemo(() => {
+        const mockFiles = getMockFiles();
+        const annotations: Record<string, ReturnType<typeof getMockFiles>[number]['annotation']> = {};
+        const focus: Record<string, string | undefined> = {};
+        const annotated = mockFiles.filter(file => file.annotation);
+        for (let i = 0; i < diff.files.length && i < annotated.length; i++) {
+            const realFile = diff.files[i];
+            const mockFile = annotated[i];
+            if (mockFile.annotation) annotations[realFile.path] = mockFile.annotation;
+            if (mockFile.focus) focus[realFile.path] = mockFile.focus;
+        }
+        return { annotations, focus };
+    }, [diff.files]);
 
     const handleBack = () => {
         dispatch({ type: 'CLEAR_SELECTED_PR' });
         window.location.hash = `#repos/${encodeURIComponent(String(repoId))}/pull-requests`;
         onBack();
     };
+
+    function handleRunAiPass() {
+        setAiPassRunning(true);
+        setAiPassDone(false);
+        window.setTimeout(() => {
+            setAiPassRunning(false);
+            setAiPassDone(true);
+            switchTab('files');
+        }, 600);
+    }
+
+    async function handleCopySummary() {
+        if (!pr) return;
+        const text = getMockReviewSummaryText(pr);
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch {
+            /* clipboard may not be available in tests; swallow. */
+        }
+        setSummaryCopied(true);
+        window.setTimeout(() => setSummaryCopied(false), 1400);
+    }
 
     if (loading) {
         return (
@@ -109,7 +216,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                 {isMobile && (
                     <button
                         onClick={handleBack}
-                        className="text-sm text-blue-600 dark:text-blue-400 hover:underline mb-3"
+                        className="mb-3 text-sm text-blue-600 hover:underline dark:text-blue-400"
                         data-testid="back-button"
                     >
                         ← Back to list
@@ -126,14 +233,21 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     const reviewers = pr.reviewers ?? [];
     const labels = pr.labels ?? [];
     const descHtml = pr.description ? String(descMarked.parse(pr.description)) : '';
+    const unresolvedCount = aiSummary?.unresolvedCount ?? 0;
+    const hasRealDiff = diff.fileCount > 0;
+    const deltaText = hasRealDiff
+        ? `+${diff.totalAdditions} / -${diff.totalDeletions}`
+        : '';
+    const fileCountText = hasRealDiff
+        ? `${diff.fileCount} file${diff.fileCount === 1 ? '' : 's'}`
+        : '';
 
     return (
-        <div className="flex flex-col h-full overflow-hidden" data-testid="pr-detail">
-            {/* Header */}
-            <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
+        <div className="flex h-full flex-col overflow-hidden bg-gray-50 dark:bg-gray-950" data-testid="pr-detail">
+            <section className="shrink-0 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
                 {isMobile && (
                     <button
-                        className="text-sm text-blue-600 dark:text-blue-400 hover:underline mb-2"
+                        className="px-2 pt-1.5 text-xs text-blue-600 hover:underline dark:text-blue-400"
                         onClick={handleBack}
                         data-testid="back-button"
                     >
@@ -141,188 +255,412 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                     </button>
                 )}
 
-                <div className="flex items-start gap-2 flex-wrap">
-                    {pr.number != null && (
-                        <span className="text-xs text-gray-400 mt-1">#{pr.number}</span>
-                    )}
-                    <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 flex-1" data-testid="pr-title">
-                        {pr.title}
-                    </h2>
-                    {pr.url && (
-                        <a
-                            href={pr.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline mt-0.5 shrink-0"
-                            data-testid="header-external-link"
-                        >
-                            Open in browser 🔗
-                        </a>
-                    )}
+                <div
+                    className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1.5 text-[11px] text-gray-500 dark:text-gray-400"
+                    data-testid="pr-hero-row"
+                >
                     <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${badge.className}`}
+                        className={cn(
+                            'inline-flex min-h-[20px] shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold',
+                            badge.className,
+                        )}
                         data-testid="pr-status-badge"
                     >
                         {badge.emoji} {badge.label}
                     </span>
-                </div>
 
-                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1" data-testid="pr-branches">
-                    <strong>{pr.targetBranch}</strong>
-                    <span className="mx-1">←</span>
-                    <strong>{pr.sourceBranch}</strong>
-                </div>
+                    <h1 className="m-0 inline-flex min-w-0 max-w-full items-baseline gap-1.5 truncate text-[15px] font-semibold leading-[1.2] tracking-normal text-gray-900 dark:text-gray-100">
+                        <span className="truncate" data-testid="pr-title">{pr.title}</span>
+                        {pr.number != null && (
+                            <span className="shrink-0 font-normal text-gray-400 dark:text-gray-500" data-testid="pr-number">
+                                #{pr.number}
+                            </span>
+                        )}
+                    </h1>
 
-                <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 flex items-center gap-2 flex-wrap">
-                    {pr.author?.displayName && <span>@{pr.author.displayName}</span>}
-                    <span>· Created {formatTimestamp(pr.createdAt)}</span>
-                    <span>· Updated {formatTimestamp(pr.updatedAt)}</span>
-                </div>
+                    {aiSummary && (
+                        <span
+                            className={cn(
+                                'inline-flex min-h-[20px] shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold',
+                                riskPillClass(aiSummary.risk),
+                            )}
+                            data-testid="pr-risk-pill"
+                        >
+                            AI risk: {aiSummary.risk}
+                        </span>
+                    )}
+                    {unresolvedCount > 0 && (
+                        <span className="inline-flex min-h-[20px] shrink-0 items-center gap-1 rounded-full bg-yellow-100 px-1.5 py-0.5 text-[11px] font-semibold text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200">
+                            {unresolvedCount} unresolved
+                        </span>
+                    )}
 
-                {/* Sub-tabs */}
-                <div className="flex gap-1 mt-3">
-                    <button
-                        className={`px-3 py-1 text-sm rounded-t border-b-2 transition-colors ${
-                            detailTab === 'overview'
-                                ? 'border-blue-500 text-blue-600 dark:text-blue-400 font-medium'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-                        }`}
-                        onClick={() => switchTab('overview')}
-                        data-testid="tab-overview"
-                    >
-                        Overview
-                    </button>
-                    <button
-                        className={`px-3 py-1 text-sm rounded-t border-b-2 transition-colors ${
-                            detailTab === 'threads'
-                                ? 'border-blue-500 text-blue-600 dark:text-blue-400 font-medium'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-                        }`}
-                        onClick={() => switchTab('threads')}
-                        data-testid="tab-threads"
-                    >
-                        Threads ({threads.length})
-                    </button>
-                    <button
-                        className={`px-3 py-1 text-sm rounded-t border-b-2 transition-colors ${
-                            detailTab === 'files'
-                                ? 'border-blue-500 text-blue-600 dark:text-blue-400 font-medium'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-                        }`}
-                        onClick={() => switchTab('files')}
-                        data-testid="tab-files"
-                    >
-                        Files Changed
-                    </button>
-                </div>
-            </div>
+                    <span className="inline-flex shrink-0 items-center gap-1" data-testid="pr-branches">
+                        <strong className="font-mono text-gray-700 dark:text-gray-300">
+                            {pr.author?.displayName ?? 'unknown'}
+                        </strong>
+                        <span>wants to merge</span>
+                        <span className="rounded-[5px] border border-gray-200 bg-gray-50 px-1.5 py-px font-mono text-[11px] text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                            {pr.sourceBranch}
+                        </span>
+                        <span>into</span>
+                        <span className="rounded-[5px] border border-gray-200 bg-gray-50 px-1.5 py-px font-mono text-[11px] text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                            {pr.targetBranch}
+                        </span>
+                    </span>
+                    {deltaText && (
+                        <span className="shrink-0 font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-400" data-testid="pr-delta">
+                            {deltaText}
+                        </span>
+                    )}
+                    {fileCountText && (
+                        <span
+                            className="shrink-0 font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-400"
+                            data-testid="pr-file-count"
+                        >
+                            {fileCountText}
+                        </span>
+                    )}
+                    {pr.createdAt && (
+                        <span className="shrink-0">· {formatTimestamp(pr.createdAt)}</span>
+                    )}
+                    {pr.updatedAt && pr.updatedAt !== pr.createdAt && (
+                        <span className="shrink-0">· upd {formatTimestamp(pr.updatedAt)}</span>
+                    )}
 
-            {/* Body */}
-            <div className="flex-1 overflow-y-auto">
-                {detailTab === 'overview' && (
-                    <div className="px-4 py-4 space-y-4" data-testid="overview-tab">
-                        {/* Description */}
-                        {pr.description ? (
-                            descHtml ? (
-                                <div
-                                    className="markdown-body text-sm text-gray-700 dark:text-gray-300"
-                                    dangerouslySetInnerHTML={{ __html: descHtml }}
-                                    data-testid="pr-description"
-                                />
-                            ) : (
-                                <pre className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap" data-testid="pr-description">
-                                    {pr.description}
-                                </pre>
-                            )
-                        ) : (
-                            <div
-                                className="rounded-lg border border-dashed border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 flex flex-col gap-2"
-                                data-testid="pr-description-empty"
+                    <div className="ml-auto flex shrink-0 items-center gap-px">
+                        <button
+                            type="button"
+                            className="inline-flex min-h-[20px] items-center justify-center rounded border border-transparent bg-green-600 px-1.5 py-0 text-[11px] font-semibold leading-none text-white shadow-sm hover:bg-green-700"
+                            data-testid="pr-merge-when-ready"
+                        >
+                            Merge
+                        </button>
+                        <button
+                            type="button"
+                            disabled={aiPassRunning}
+                            onClick={handleRunAiPass}
+                            className="inline-flex min-h-[20px] items-center justify-center rounded border border-transparent bg-gradient-to-br from-purple-500 to-blue-500 px-1.5 py-0 text-[11px] font-semibold leading-none text-white shadow-sm hover:opacity-95 disabled:opacity-60"
+                            data-testid="pr-run-ai-pass"
+                        >
+                            {aiPassRunning ? 'Reviewing…' : aiPassDone ? 'AI done' : 'AI review'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setAssistantOpen(true)}
+                            className="inline-flex min-h-[20px] items-center justify-center rounded border border-purple-300 bg-purple-50 px-1.5 py-0 text-[11px] font-semibold leading-none text-purple-700 hover:bg-purple-100 dark:border-purple-700 dark:bg-purple-900/30 dark:text-purple-200"
+                            data-testid="pr-open-ai-assistant"
+                        >
+                            Ask AI
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleCopySummary}
+                            className="inline-flex min-h-[20px] items-center justify-center rounded border border-gray-300 bg-white px-1.5 py-0 text-[11px] font-semibold leading-none text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                            data-testid="pr-copy-summary"
+                        >
+                            {summaryCopied ? 'Copied' : 'Copy'}
+                        </button>
+                        <button
+                            type="button"
+                            className="inline-flex min-h-[20px] items-center justify-center rounded border border-gray-300 bg-white px-1.5 py-0 text-[11px] font-semibold leading-none text-red-600 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-gray-700"
+                            data-testid="pr-request-changes"
+                        >
+                            Changes
+                        </button>
+                        {pr.url && (
+                            <a
+                                href={pr.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex min-h-[20px] items-center justify-center rounded border border-gray-300 bg-white px-1.5 py-0 text-[11px] font-semibold leading-none text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                                data-testid="header-external-link"
                             >
-                                <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-                                    <span aria-hidden="true">📝</span>
-                                    <span className="text-sm font-medium">No description</span>
-                                </div>
-                                <p className="text-xs text-gray-400 dark:text-gray-500">
-                                    This pull request has no description yet.
-                                </p>
-                                {pr.url && (
-                                    <a
-                                        href={pr.url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="self-start inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                                        data-testid="pr-description-open-link"
+                                Open 🔗
+                            </a>
+                        )}
+                    </div>
+                </div>
+                <nav className="flex gap-0.5 overflow-x-auto border-t border-gray-100 px-2.5 dark:border-gray-800" aria-label="Pull request sections">
+                    {TAB_DEFINITIONS.map(tab => {
+                        const isActive = detailTab === tab.id;
+                        const count = tabCount(tab.id, {
+                            commits: commitRows.length,
+                            files: diff.fileCount,
+                            checks: checkRows.length,
+                            overview: threads.length,
+                        });
+                        return (
+                            <button
+                                key={tab.id}
+                                type="button"
+                                onClick={() => switchTab(tab.id)}
+                                className={cn(
+                                    'inline-flex min-h-[32px] items-center gap-1.5 border-b-2 px-2 py-0 text-[13px] font-semibold whitespace-nowrap transition-colors',
+                                    isActive
+                                        ? 'border-blue-500 text-gray-900 dark:text-gray-100'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200',
+                                )}
+                                data-testid={`tab-${tab.id}`}
+                            >
+                                {tab.label}
+                                {count !== null && (
+                                    <span
+                                        className={cn(
+                                            'rounded-full px-1.5 py-px text-[11px] font-semibold leading-[1.4]',
+                                            isActive
+                                                ? 'bg-blue-500 text-white'
+                                                : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-300',
+                                        )}
                                     >
-                                        Open in browser to add one 🔗
-                                    </a>
+                                        {count}
+                                    </span>
+                                )}
+                            </button>
+                        );
+                    })}
+                </nav>
+            </section>
+
+            <div
+                className={cn(
+                    'flex-1 min-h-0',
+                    // Files tab manages its own independent file-list /
+                    // diff scrollers, so swallow the outer scroll there.
+                    detailTab === 'files' ? 'overflow-hidden' : 'overflow-y-auto',
+                )}
+            >
+                {detailTab === 'overview' && (
+                    <div className="w-full px-2.5 pb-7 pt-2" data-testid="overview-tab">
+                        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_264px]">
+                            <div className="grid gap-2">
+                                {aiSummary && <PrAiSummaryPanel summary={aiSummary} />}
+                                <PrQuickReviewWorkflow lenses={personaLenses} />
+                                <PrConversationPanel events={timeline} />
+                                <DescriptionAndMeta
+                                    descHtml={descHtml}
+                                    description={pr.description ?? ''}
+                                    url={pr.url}
+                                    reviewers={reviewers}
+                                    labels={labels}
+                                />
+                                {threads.length > 0 && (
+                                    <div
+                                        className="overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+                                        data-testid="threads-tab"
+                                    >
+                                        <header className="flex min-h-[30px] items-center justify-between gap-1.5 border-b border-gray-200 bg-gray-50 px-2 py-1 dark:border-gray-700 dark:bg-gray-800/60">
+                                            <h2 className="m-0 text-[13px] font-semibold leading-tight text-gray-900 dark:text-gray-100">
+                                                All comment threads
+                                            </h2>
+                                            <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                                                {threads.length} total
+                                            </span>
+                                        </header>
+                                        <ThreadList threads={threads} />
+                                    </div>
                                 )}
                             </div>
-                        )}
-
-                        {/* Reviewers */}
-                        {reviewers.length > 0 && (
-                            <div data-testid="reviewers-section">
-                                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                                    Reviewers
-                                </h3>
-                                <div className="space-y-1">
-                                    {reviewers.map((r, i) => (
-                                        <ReviewerBadge key={i} reviewer={r} />
-                                    ))}
-                                </div>
+                            <div className="grid gap-2">
+                                <PrAiGroupedThreads groups={threadGroups} totalThreads={threads.length} />
                             </div>
-                        )}
-
-                        {/* Labels */}
-                        {labels.length > 0 && (
-                            <div data-testid="labels-section">
-                                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                                    Labels
-                                </h3>
-                                <div className="flex flex-wrap gap-1">
-                                    {labels.map((label, i) => (
-                                        <span
-                                            key={i}
-                                            className="bg-gray-100 text-gray-700 rounded px-1 text-xs dark:bg-gray-700 dark:text-gray-300"
-                                            data-testid="label-chip"
-                                        >
-                                            {label}
-                                        </span>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-
-                    </div>
-                )}
-
-                {detailTab === 'threads' && (
-                    <div data-testid="threads-tab">
-                        <ThreadList threads={threads} />
+                        </div>
                     </div>
                 )}
 
                 {detailTab === 'files' && (
-                    <div className="px-0 py-0" data-testid="files-tab">
-                        {diffLoading && (
-                            <div className="flex items-center justify-center py-8">
-                                <span className="text-sm text-gray-500">Loading diff…</span>
+                    <div
+                        className="flex h-full min-h-0 w-full flex-col px-2.5 pb-2 pt-2"
+                        data-testid="files-tab"
+                    >
+                        {diffError && (
+                            <div
+                                className="mb-2 shrink-0 rounded-[5px] border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-700 dark:border-red-700 dark:bg-red-900/30 dark:text-red-200"
+                                data-testid="pr-diff-error"
+                            >
+                                Failed to load diff: {diffError}
                             </div>
                         )}
-                        {!diffLoading && diff === '' && (
-                            <p className="px-4 py-4 text-sm text-gray-400 italic">
-                                No diff available for this pull request.
-                            </p>
-                        )}
-                        {!diffLoading && diff && (
-                            <UnifiedDiffViewer
-                                diff={diff}
-                                showLineNumbers={true}
-                                data-testid="pr-diff-viewer"
+                        <div className="min-h-0 flex-1">
+                            <PrFilesPanel
+                                files={diff.files}
+                                annotations={aiAnnotationByPath.annotations}
+                                focusByPath={aiAnnotationByPath.focus}
                             />
-                        )}
+                        </div>
+                    </div>
+                )}
+
+                {detailTab === 'commits' && (
+                    <div className="w-full px-2.5 pb-7 pt-2" data-testid="commits-tab">
+                        <PreviewOnlyNotice
+                            label="Commit list is AI-mocked"
+                            body="The server does not yet expose a per-PR commit endpoint. Intent labels and the commit log shown below are placeholder fixtures."
+                        />
+                        <PrCommitTable rows={commitRows} />
+                    </div>
+                )}
+
+                {detailTab === 'checks' && (
+                    <div className="w-full px-2.5 pb-7 pt-2" data-testid="checks-tab">
+                        <PreviewOnlyNotice
+                            label="Checks are AI-mocked"
+                            body="The server does not yet expose a per-PR check / status endpoint. Results and merge readiness shown below are placeholder fixtures."
+                        />
+                        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_264px]">
+                            <PrChecksTable rows={checkRows} />
+                            <PrMergeReadiness items={mergeReadiness} />
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            <PrAiAssistantDrawer
+                open={assistantOpen}
+                onClose={() => setAssistantOpen(false)}
+                prNumber={pr.number}
+            />
+        </div>
+    );
+}
+
+interface PreviewOnlyNoticeProps {
+    label: string;
+    body: string;
+}
+
+function PreviewOnlyNotice({ label, body }: PreviewOnlyNoticeProps) {
+    return (
+        <div
+            className="mb-2 rounded-[5px] border border-yellow-200 bg-yellow-50 px-2 py-1.5 text-[11px] text-yellow-800 dark:border-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-200"
+            data-testid="pr-tab-preview-notice"
+        >
+            <strong>{label}.</strong> {body}
+        </div>
+    );
+}
+
+function tabCount(
+    tab: PrDetailTab,
+    counts: { commits: number; files: number; checks: number; overview: number },
+): string | number | null {
+    switch (tab) {
+        case 'overview': return counts.overview > 0 ? counts.overview : null;
+        case 'files':    return counts.files;
+        case 'commits':  return counts.commits;
+        case 'checks':   return `${counts.checks}/${counts.checks}`;
+    }
+}
+
+interface DescriptionAndMetaProps {
+    descHtml: string;
+    description: string;
+    url?: string;
+    reviewers: PullRequest['reviewers'];
+    labels: string[];
+}
+
+function DescriptionAndMeta({ descHtml, description, url, reviewers, labels }: DescriptionAndMetaProps) {
+    const reviewerList = reviewers ?? [];
+    const hasMeta = reviewerList.length > 0 || labels.length > 0;
+
+    if (!description && !hasMeta) {
+        return (
+            <div
+                className="flex flex-col gap-1.5 rounded-[5px] border border-dashed border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-900"
+                data-testid="pr-description-empty"
+            >
+                <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400">
+                    <span aria-hidden="true">📝</span>
+                    <span className="text-[13px] font-medium">No description</span>
+                </div>
+                <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                    This pull request has no description yet.
+                </p>
+                {url && (
+                    <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 self-start text-[11px] text-blue-600 hover:underline dark:text-blue-400"
+                        data-testid="pr-description-open-link"
+                    >
+                        Open in browser to add one 🔗
+                    </a>
+                )}
+            </div>
+        );
+    }
+
+    return (
+        <div
+            className="overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+            data-testid="pr-description-card"
+        >
+            <header className="flex min-h-[30px] items-center justify-between gap-1.5 border-b border-gray-200 bg-gray-50 px-2 py-1 dark:border-gray-700 dark:bg-gray-800/60">
+                <h2 className="m-0 text-[13px] font-semibold leading-tight text-gray-900 dark:text-gray-100">
+                    Description
+                </h2>
+                {url && (
+                    <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] text-blue-600 hover:underline dark:text-blue-400"
+                    >
+                        Open in browser
+                    </a>
+                )}
+            </header>
+            <div className="space-y-2 p-2">
+                {description ? (
+                    descHtml ? (
+                        <div
+                            className="markdown-body text-[13px] leading-snug text-gray-700 dark:text-gray-300"
+                            dangerouslySetInnerHTML={{ __html: descHtml }}
+                            data-testid="pr-description"
+                        />
+                    ) : (
+                        <pre
+                            className="whitespace-pre-wrap text-[13px] leading-snug text-gray-700 dark:text-gray-300"
+                            data-testid="pr-description"
+                        >
+                            {description}
+                        </pre>
+                    )
+                ) : (
+                    <p className="text-[11px] italic text-gray-500 dark:text-gray-400">No description provided.</p>
+                )}
+
+                {reviewerList.length > 0 && (
+                    <div data-testid="reviewers-section">
+                        <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-normal text-gray-500 dark:text-gray-400">
+                            Reviewers
+                        </h3>
+                        <div className="space-y-1">
+                            {reviewerList.map((reviewer, idx) => (
+                                <ReviewerBadge key={idx} reviewer={reviewer} />
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {labels.length > 0 && (
+                    <div data-testid="labels-section">
+                        <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-normal text-gray-500 dark:text-gray-400">
+                            Labels
+                        </h3>
+                        <div className="flex flex-wrap gap-1">
+                            {labels.map((label, idx) => (
+                                <span
+                                    key={idx}
+                                    className="rounded bg-gray-100 px-1 py-px text-[11px] text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+                                    data-testid="label-chip"
+                                >
+                                    {label}
+                                </span>
+                            ))}
+                        </div>
                     </div>
                 )}
             </div>
