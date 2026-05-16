@@ -96,6 +96,7 @@ export function AdminPanel() {
     const [ralphEnabled, setRalphEnabled] = useState(false);
     const [vimNavigationEnabled, setVimNavigationEnabled] = useState(false);
     const [loopsEnabled, setLoopsEnabled] = useState(false);
+    const [focusedDiffEnabled, setFocusedDiffEnabled] = useState(false);
 
     // Preferences(theme, reposSidebarCollapsed, uiLayoutMode) — for Appearance card
     const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('auto');
@@ -127,7 +128,7 @@ export function AdminPanel() {
         taskCardDensity: 'compact' as 'compact' | 'dense',
         historyGrouping: true,
     });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, servers: false, ralph: false, vimNavigation: false, loops: false });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, servers: false, ralph: false, vimNavigation: false, loops: false, focusedDiff: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -226,7 +227,9 @@ export function AdminPanel() {
             setVimNavigationEnabled(vne);
             const loe = resolved.loops?.enabled ?? false;
             setLoopsEnabled(loe);
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, servers: svre, ralph: re, vimNavigation: vne, loops: loe });
+            const fde = resolved.features?.focusedDiff ?? false;
+            setFocusedDiffEnabled(fde);
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, servers: svre, ralph: re, vimNavigation: vne, loops: loe, focusedDiff: fde });
         } catch (err: unknown) {
             const detail = getSpaCocClientErrorMessage(err, '');
             setConfigError(detail ? `Failed to load configuration: ${detail}` : 'Failed to load configuration');
@@ -303,7 +306,8 @@ export function AdminPanel() {
         serversEnabled !== featuresSnapshot.servers ||
         ralphEnabled !== featuresSnapshot.ralph ||
         vimNavigationEnabled !== featuresSnapshot.vimNavigation ||
-        loopsEnabled !== featuresSnapshot.loops;
+        loopsEnabled !== featuresSnapshot.loops ||
+        focusedDiffEnabled !== featuresSnapshot.focusedDiff;
 
     // ── AI & Execution card ──
     const handleSaveAiExec = useCallback(async () => {
@@ -455,16 +459,17 @@ export function AdminPanel() {
                 'ralph.enabled': ralphEnabled,
                 'vimNavigation.enabled': vimNavigationEnabled,
                 'loops.enabled': loopsEnabled,
+                'features.focusedDiff': focusedDiffEnabled,
             });
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, servers: serversEnabled, ralph: ralphEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled });
+            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, servers: serversEnabled, ralph: ralphEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, focusedDiff: focusedDiffEnabled });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, serversEnabled, ralphEnabled, vimNavigationEnabled, loopsEnabled, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, serversEnabled, ralphEnabled, vimNavigationEnabled, loopsEnabled, focusedDiffEnabled, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setTerminalEnabled(featuresSnapshot.terminal);
@@ -479,6 +484,7 @@ export function AdminPanel() {
         setRalphEnabled(featuresSnapshot.ralph);
         setVimNavigationEnabled(featuresSnapshot.vimNavigation);
         setLoopsEnabled(featuresSnapshot.loops);
+        setFocusedDiffEnabled(featuresSnapshot.focusedDiff);
     }, [featuresSnapshot]);
 
     const handleSaveServerName = useCallback(async () => {
@@ -1341,11 +1347,29 @@ export function AdminPanel() {
                                             </label>
                                         </div>
                                     </div>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Focused Diff</div>
+                                            <div className="text-xs text-[#616161] dark:text-[#999]">AI-powered hunk classification for PR diffs. Highlights logic changes and dims mechanical edits.</div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <SourceBadge source={sources['features.focusedDiff']} />
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    className="sr-only peer"
+                                                    checked={focusedDiffEnabled}
+                                                    onChange={e => setFocusedDiffEnabled(e.target.checked)}
+                                                    data-testid="toggle-focused-diff-enabled"
+                                                />
+                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
+                                            </label>
+                                        </div>
+                                    </div>
                                 </SettingsCard>
 
                                 {/* ── 5. Link Handlers ── */}
                                 <SettingsCard
-                                    title="Link Handlers"
                                     badge="Global"
                                     description="Open specific URLs in desktop apps instead of a browser tab. Requires the desktop app to be installed."
                                     data-testid="settings-link-handlers"
