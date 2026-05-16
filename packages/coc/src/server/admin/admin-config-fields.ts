@@ -184,6 +184,10 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         if (!cfg.loops) { cfg.loops = {}; }
         cfg.loops.enabled = v;
     }),
+    bool('features.focusedDiff', (cfg, v) => {
+        if (!cfg.features) { cfg.features = {}; }
+        cfg.features.focusedDiff = v;
+    }),
 ];
 
 /** Flat keys accepted by PUT /api/admin/config — derived from the registry. */

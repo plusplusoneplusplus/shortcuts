@@ -83,6 +83,10 @@ export interface CLIConfig {
     loops?: {
         enabled?: boolean;
     };
+    features?: {
+        autoMemoryPromotion?: boolean;
+        focusedDiff?: boolean;
+    };
     store?: {
         backend?: 'file' | 'sqlite';
     };

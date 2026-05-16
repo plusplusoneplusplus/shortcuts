@@ -627,6 +627,31 @@ describe('Admin Handler', () => {
             expect(content).toContain('persisted-model');
         });
 
+        it('should persist features.focusedDiff to disk', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const yaml = require('js-yaml');
+            fs.writeFileSync(configPath, yaml.dump({
+                features: { autoMemoryPromotion: true },
+            }), 'utf-8');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'features.focusedDiff': true }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.resolved.features.focusedDiff).toBe(true);
+            expect(body.resolved.features.autoMemoryPromotion).toBe(true);
+            expect(body.sources['features.focusedDiff']).toBe('file');
+
+            const diskConfig = yaml.load(fs.readFileSync(configPath, 'utf-8'));
+            expect(diskConfig.features.focusedDiff).toBe(true);
+            expect(diskConfig.features.autoMemoryPromotion).toBe(true);
+        });
+
         it('should create config file when none exists', async () => {
             const configPath = path.join(dataDir, 'brand-new-config.yaml');
             expect(fs.existsSync(configPath)).toBe(false);
@@ -766,6 +791,21 @@ describe('Admin Handler', () => {
             expect(res.status).toBe(400);
             const body = JSON.parse(res.body);
             expect(body.error).toContain('timeout');
+        });
+
+        it('should reject non-boolean features.focusedDiff', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'features.focusedDiff': 'yes' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('features.focusedDiff');
         });
 
         it('should reject timeout: string', async () => {
