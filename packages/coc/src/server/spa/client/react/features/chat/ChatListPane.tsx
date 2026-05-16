@@ -1376,7 +1376,7 @@ export function ChatListPane({
                                     title={state === 'active' ? 'Has active loops' : 'Has paused loops'}
                                     data-testid="loop-indicator"
                                 >
-                                    <LoopIcon className="w-3 h-3" />
+                                    <LoopIcon className="w-3.5 h-3.5" />
                                 </span>
                             );
                         })()}

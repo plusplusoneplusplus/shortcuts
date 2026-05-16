@@ -20,7 +20,7 @@ export function LoopIcon({ className, title, ...rest }: LoopIconProps) {
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth={2}
+            strokeWidth={2.25}
             strokeLinecap="round"
             strokeLinejoin="round"
             className={className}
@@ -30,8 +30,9 @@ export function LoopIcon({ className, title, ...rest }: LoopIconProps) {
             {...rest}
         >
             {title ? <title>{title}</title> : null}
-            {/* Heroicons arrow-path */}
-            <path d="M16.023 9.348h4.992V4.355M2.985 19.644l4.992-4.993M2.985 14.65a8.25 8.25 0 0 0 14.503 4.992m3.527-4.992A8.25 8.25 0 0 0 6.512 9.348" />
+            {/* Lucide rotate-cw — single circular arrow, reads cleanly at small sizes */}
+            <path d="M21 12a9 9 0 1 1-3.51-7.14" />
+            <polyline points="21 4 21 10 15 10" />
         </svg>
     );
 }
