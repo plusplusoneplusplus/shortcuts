@@ -91,6 +91,7 @@ function makeLoopToolDeps(overrides: Partial<LoopToolDeps> = {}): LoopToolDeps {
         store,
         executor: executor as LoopExecutor,
         processId: 'proc-123',
+        resolveWorkspaceId: vi.fn().mockResolvedValue('ws-test'),
         ...overrides,
     };
 }
@@ -202,6 +203,37 @@ describe('createCreateLoopTool', () => {
 
         const loop = deps.store.getByProcess('proc-123')[0];
         expect(loop.model).toBe('gpt-4');
+    });
+
+    it('resolves and persists workspaceId at creation', async () => {
+        const result = await handler({
+            description: 'Workspace test',
+            interval: '1m',
+            prompt: 'Check workspace',
+        });
+
+        expect(result.created).toBe(true);
+        const loop = deps.store.getByProcess('proc-123')[0];
+        expect(loop.workspaceId).toBe('ws-test');
+        expect(deps.resolveWorkspaceId).toHaveBeenCalledWith('proc-123');
+    });
+
+    it('creates loop even if resolveWorkspaceId returns undefined', async () => {
+        deps = makeLoopToolDeps({
+            resolveWorkspaceId: vi.fn().mockResolvedValue(undefined),
+        });
+        const { tool } = createCreateLoopTool(deps);
+        handler = tool.handler as any;
+
+        const result = await handler({
+            description: 'No workspace',
+            interval: '1m',
+            prompt: 'Check',
+        });
+
+        expect(result.created).toBe(true);
+        const loop = deps.store.getByProcess('proc-123')[0];
+        expect(loop.workspaceId).toBeUndefined();
     });
 
     it('rejects invalid TTL', async () => {
@@ -458,5 +490,49 @@ describe('tool metadata', () => {
         const deps = makeWakeupToolDeps();
         const { tool } = createScheduleWakeupTool(deps);
         expect(tool.name).toBe('scheduleWakeup');
+    });
+});
+
+describe('loop tool event emission', () => {
+    it('createLoop emits loop-created with the new loop', async () => {
+        const emit = vi.fn();
+        const deps = makeLoopToolDeps({ emit });
+        const { tool } = createCreateLoopTool(deps);
+        const result: any = await (tool.handler as any)({ description: 'd', interval: '30s', prompt: 'p' });
+        expect(result.created).toBe(true);
+        expect(emit).toHaveBeenCalledTimes(1);
+        const evt = emit.mock.calls[0][0];
+        expect(evt.type).toBe('loop-created');
+        expect(evt.loop.id).toBe(result.loopId);
+        expect(evt.loop.processId).toBe('proc-123');
+    });
+
+    it('cancelLoop emits loop-cancelled', async () => {
+        const emit = vi.fn();
+        const deps = makeLoopToolDeps({ emit });
+        const { tool: createTool } = createCreateLoopTool(deps);
+        const { tool: cancelTool } = createCancelLoopTool(deps);
+        const createRes: any = await (createTool.handler as any)({ description: 'd', interval: '30s', prompt: 'p' });
+        emit.mockClear();
+        const cancelRes: any = await (cancelTool.handler as any)({ loopId: createRes.loopId });
+        expect(cancelRes.cancelled).toBe(true);
+        expect(emit).toHaveBeenCalledTimes(1);
+        expect(emit.mock.calls[0][0].type).toBe('loop-cancelled');
+        expect(emit.mock.calls[0][0].loop.status).toBe('cancelled');
+    });
+
+    it('does not throw when emit throws', async () => {
+        const emit = vi.fn().mockImplementation(() => { throw new Error('boom'); });
+        const deps = makeLoopToolDeps({ emit });
+        const { tool } = createCreateLoopTool(deps);
+        const result: any = await (tool.handler as any)({ description: 'd', interval: '30s', prompt: 'p' });
+        expect(result.created).toBe(true);
+    });
+
+    it('works without emit (backwards compatible)', async () => {
+        const deps = makeLoopToolDeps();
+        const { tool } = createCreateLoopTool(deps);
+        const result: any = await (tool.handler as any)({ description: 'd', interval: '30s', prompt: 'p' });
+        expect(result.created).toBe(true);
     });
 });

@@ -145,7 +145,20 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         const workingDirectory = process.workingDirectory || this.defaultWorkingDirectory;
 
         const previousMode = process.metadata?.mode as ChatMode | undefined;
-        const currentMode = mode ?? previousMode ?? 'ask';
+        let currentMode: ChatMode;
+        if (mode) {
+            currentMode = mode;
+        } else {
+            // Fail-loud: every enqueue site should resolve mode via
+            // resolveFollowUpMode() before reaching the executor. Falling
+            // through here means an enqueuer forgot to populate payload.mode.
+            logger.warn(
+                LogCategory.AI,
+                `[FollowUp] mode not provided for process ${processId}; defaulting to 'ask'. ` +
+                `This indicates a bug in the enqueue site — every follow-up enqueuer must resolve mode via resolveFollowUpMode().`,
+            );
+            currentMode = 'ask';
+        }
 
         const metadataUpdates: Record<string, unknown> = {};
         if (mode && mode !== previousMode) {

@@ -28,6 +28,8 @@ export interface LoopInfrastructure {
     loopExecutor: LoopExecutor;
     /** Timer registry for scheduling loop ticks and wakeups. */
     timerRegistry: ScheduleTimerRegistry;
+    /** Loop event emitter (used by REST handler and LLM tools to broadcast state). */
+    emit: LoopEventEmit;
     /** Close owned resources. Call on server shutdown. */
     dispose: () => void;
 }
@@ -56,7 +58,7 @@ export interface LoopInfrastructureOptions {
  *
  * @returns LoopInfrastructure with store, executor, and dispose function.
  */
-export function createLoopInfrastructure(options: LoopInfrastructureOptions): LoopInfrastructure {
+export async function createLoopInfrastructure(options: LoopInfrastructureOptions): Promise<LoopInfrastructure> {
     const { dataDir, queueFacade, store, emit, resolveWorkspaceId } = options;
 
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or open processes.db in dataDir.
@@ -88,14 +90,31 @@ export function createLoopInfrastructure(options: LoopInfrastructureOptions): Lo
     // Restore active loop timers from the persisted nextTickAt values.
     loopExecutor.armAll();
 
+    // Backfill workspaceId for legacy rows that lack it.
+    const allLoops = loopStore.getAll();
+    let backfilled = 0;
+    for (const loop of allLoops) {
+        if (loop.workspaceId == null) {
+            try {
+                const wsId = await resolveWorkspaceId(loop.processId);
+                if (wsId) {
+                    loop.workspaceId = wsId;
+                    loopStore.update(loop);
+                    backfilled++;
+                }
+            } catch { /* best-effort backfill */ }
+        }
+    }
+
     // Log startup state after timers have been restored.
     const activeCount = loopStore.getActive().length;
-    const pausedCount = loopStore.getAll().filter(l => l.status === 'paused').length;
-    if (activeCount > 0 || pausedCount > 0) {
+    const pausedCount = allLoops.filter(l => l.status === 'paused').length;
+    if (activeCount > 0 || pausedCount > 0 || backfilled > 0) {
         const logger = getLogger();
         logger.info(
             LogCategory.AI,
-            `[LoopInfra] Loaded ${activeCount} active, ${pausedCount} paused loop(s) from DB`,
+            `[LoopInfra] Loaded ${activeCount} active, ${pausedCount} paused loop(s) from DB` +
+            (backfilled > 0 ? `, backfilled workspaceId on ${backfilled} loop(s)` : ''),
         );
     }
 
@@ -106,5 +125,5 @@ export function createLoopInfrastructure(options: LoopInfrastructureOptions): Lo
         }
     };
 
-    return { loopStore, loopExecutor, timerRegistry, dispose };
+    return { loopStore, loopExecutor, timerRegistry, emit, dispose };
 }

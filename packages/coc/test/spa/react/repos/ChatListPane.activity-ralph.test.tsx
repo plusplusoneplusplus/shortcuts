@@ -92,6 +92,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '',
     isRalphEnabled: () => true,
+    isLoopsEnabled: () => false,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({

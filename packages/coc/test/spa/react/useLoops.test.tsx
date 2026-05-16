@@ -60,3 +60,55 @@ describe('useLoops', () => {
         expect(result.current.hasActiveLoops).toBe(false);
     });
 });
+
+describe('useLoops WebSocket listener', () => {
+    beforeEach(() => { vi.clearAllMocks(); });
+
+    it('refetches on coc-ws-message loop-paused for matching process', async () => {
+        mockLoopsClient.list.mockResolvedValueOnce([
+            { id: 'l1', processId: 'process-1', status: 'active' },
+        ]);
+        const { result } = renderHook(() => useLoops('workspace-1', 'process-1'));
+        await waitFor(() => expect(result.current.loops).toHaveLength(1));
+        expect(result.current.hasActiveLoops).toBe(true);
+
+        mockLoopsClient.list.mockResolvedValueOnce([
+            { id: 'l1', processId: 'process-1', status: 'paused' },
+        ]);
+        window.dispatchEvent(new CustomEvent('coc-ws-message', {
+            detail: { type: 'loop-paused', processId: 'process-1', loopId: 'l1', status: 'paused' },
+        }));
+        await waitFor(() => expect(result.current.hasActiveLoops).toBe(false));
+        expect(mockLoopsClient.list).toHaveBeenCalledTimes(2);
+    });
+
+    it('ignores coc-ws-message for a different process', async () => {
+        mockLoopsClient.list.mockResolvedValueOnce([
+            { id: 'l1', processId: 'process-1', status: 'active' },
+        ]);
+        const { result } = renderHook(() => useLoops('workspace-1', 'process-1'));
+        await waitFor(() => expect(result.current.loops).toHaveLength(1));
+
+        window.dispatchEvent(new CustomEvent('coc-ws-message', {
+            detail: { type: 'loop-paused', processId: 'process-other', loopId: 'l9', status: 'paused' },
+        }));
+        // give microtasks a chance
+        await new Promise(r => setTimeout(r, 10));
+        expect(mockLoopsClient.list).toHaveBeenCalledTimes(1);
+    });
+
+    it('removes the listener on unmount', async () => {
+        mockLoopsClient.list.mockResolvedValue([
+            { id: 'l1', processId: 'process-1', status: 'active' },
+        ]);
+        const { result, unmount } = renderHook(() => useLoops('workspace-1', 'process-1'));
+        await waitFor(() => expect(result.current.loops).toHaveLength(1));
+        const callsBefore = mockLoopsClient.list.mock.calls.length;
+        unmount();
+        window.dispatchEvent(new CustomEvent('coc-ws-message', {
+            detail: { type: 'loop-paused', processId: 'process-1', loopId: 'l1', status: 'paused' },
+        }));
+        await new Promise(r => setTimeout(r, 10));
+        expect(mockLoopsClient.list.mock.calls.length).toBe(callsBefore);
+    });
+});

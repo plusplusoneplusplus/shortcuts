@@ -163,6 +163,12 @@ function AppInner() {
     const onMessage = useCallback((msg: any) => {
         if (!msg || !msg.type) return;
 
+        // Rebroadcast loop-* WebSocket messages as a generic custom event so
+        // useLoops / useAllLoops hooks refresh without each switch case here.
+        if (typeof msg.type === 'string' && msg.type.startsWith('loop-')) {
+            window.dispatchEvent(new CustomEvent('coc-ws-message', { detail: msg }));
+        }
+
         switch (msg.type) {
             case 'process-added':
                 if (msg.process) appDispatch({ type: 'PROCESS_ADDED', process: msg.process });

@@ -115,6 +115,7 @@ describe('Loop REST API Handler', () => {
     let routes: Route[];
     let mockExecutor: any;
     let resolveWorkspaceId: (processId: string) => Promise<string | undefined>;
+    let emit: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
         db = new Database(':memory:');
@@ -133,7 +134,8 @@ describe('Loop REST API Handler', () => {
             return undefined;
         });
 
-        const ctx: LoopRouteContext = { store, executor: mockExecutor, resolveWorkspaceId };
+        emit = vi.fn();
+        const ctx: LoopRouteContext = { store, executor: mockExecutor, emit };
         registerLoopRoutes(routes, ctx);
     });
 
@@ -149,9 +151,9 @@ describe('Loop REST API Handler', () => {
         });
 
         it('returns only loops for the given workspace', async () => {
-            const l1 = makeLoop({ id: 'loop_1', processId: 'proc_ws1_a' });
-            const l2 = makeLoop({ id: 'loop_2', processId: 'proc_ws2_a' });
-            const l3 = makeLoop({ id: 'loop_3', processId: 'proc_ws1_b' });
+            const l1 = makeLoop({ id: 'loop_1', processId: 'proc_ws1_a', workspaceId: 'ws1' });
+            const l2 = makeLoop({ id: 'loop_2', processId: 'proc_ws2_a', workspaceId: 'ws2' });
+            const l3 = makeLoop({ id: 'loop_3', processId: 'proc_ws1_b', workspaceId: 'ws1' });
             store.insert(l1);
             store.insert(l2);
             store.insert(l3);
@@ -333,8 +335,8 @@ describe('Loop REST API Handler', () => {
 
     describe('GET /api/loops (server-wide)', () => {
         it('returns all loops across workspaces', async () => {
-            store.insert(makeLoop({ id: 'loop_a', processId: 'proc_ws1_a' }));
-            store.insert(makeLoop({ id: 'loop_b', processId: 'proc_ws2_a' }));
+            store.insert(makeLoop({ id: 'loop_a', processId: 'proc_ws1_a', workspaceId: 'ws1' }));
+            store.insert(makeLoop({ id: 'loop_b', processId: 'proc_ws2_a', workspaceId: 'ws2' }));
 
             const res = await dispatch(routes, 'GET', '/api/loops');
             expect(res.statusCode).toBe(200);
@@ -359,5 +361,160 @@ describe('Loop REST API Handler', () => {
             const res = await dispatch(routes, 'GET', '/api/loops/nope');
             expect(res.statusCode).toBe(404);
         });
+    });
+
+    // ========================================================================
+    // workspaceId stored-column filter
+    // ========================================================================
+
+    describe('workspaceId stored-column filter', () => {
+        it('workspace filter uses stored workspaceId, not resolver', async () => {
+            // Insert loops with explicit workspaceId — resolver is not called
+            store.insert(makeLoop({ id: 'loop_ws1', processId: 'proc_a', workspaceId: 'ws1' }));
+            store.insert(makeLoop({ id: 'loop_ws2', processId: 'proc_b', workspaceId: 'ws2' }));
+            store.insert(makeLoop({ id: 'loop_noWs', processId: 'proc_c' })); // legacy, no workspaceId
+
+            const res = await dispatch(routes, 'GET', '/api/workspaces/ws1/loops');
+            expect(res.statusCode).toBe(200);
+            expect(res.body.loops).toHaveLength(1);
+            expect(res.body.loops[0].id).toBe('loop_ws1');
+
+            // The resolver should NOT be called (it's no longer part of the context)
+            expect(resolveWorkspaceId).not.toHaveBeenCalled();
+        });
+
+        it('includes workspaceId in serialized response', async () => {
+            store.insert(makeLoop({ id: 'loop_serial', workspaceId: 'ws-xyz' }));
+
+            const res = await dispatch(routes, 'GET', '/api/workspaces/ws-xyz/loops');
+            expect(res.statusCode).toBe(200);
+            expect(res.body.loops[0].workspaceId).toBe('ws-xyz');
+        });
+
+        it('omits workspaceId from response when not set', async () => {
+            store.insert(makeLoop({ id: 'loop_noWs' }));
+
+            const res = await dispatch(routes, 'GET', '/api/loops/loop_noWs');
+            expect(res.statusCode).toBe(200);
+            expect(res.body.loop.workspaceId).toBeUndefined();
+        });
+
+        it('multi-repo isolation — loop in ws-A not visible from ws-B', async () => {
+            store.insert(makeLoop({ id: 'loop_a', workspaceId: 'ws-A' }));
+            store.insert(makeLoop({ id: 'loop_b', workspaceId: 'ws-B' }));
+
+            const resA = await dispatch(routes, 'GET', '/api/workspaces/ws-A/loops');
+            const resB = await dispatch(routes, 'GET', '/api/workspaces/ws-B/loops');
+
+            expect(resA.body.loops).toHaveLength(1);
+            expect(resA.body.loops[0].id).toBe('loop_a');
+            expect(resB.body.loops).toHaveLength(1);
+            expect(resB.body.loops[0].id).toBe('loop_b');
+        });
+    });
+});
+
+// ============================================================================
+// Event emission via `emit` callback
+// ============================================================================
+
+describe('Loop REST API Handler — event emission', () => {
+    let db: Database.Database;
+    let store: LoopStore;
+    let routes: Route[];
+    let mockExecutor: any;
+    let emit: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+        db = new Database(':memory:');
+        store = new LoopStore(db);
+        routes = [];
+        mockExecutor = { armTimer: vi.fn(), disarmTimer: vi.fn() };
+        emit = vi.fn();
+        registerLoopRoutes(routes, { store, executor: mockExecutor, emit });
+    });
+
+    function insert(loop: LoopEntry) { store.insert(loop); }
+
+    it('emits loop-paused after POST pause', async () => {
+        const loop = makeLoop({ id: 'loop_e1', status: 'active', processId: 'proc_ws1_a', workspaceId: 'ws1' });
+        insert(loop);
+        const res = await dispatch(routes, 'POST', '/api/workspaces/ws1/loops/loop_e1/pause', { reason: 'user-paused' });
+        expect(res.statusCode).toBe(200);
+        expect(emit).toHaveBeenCalledTimes(1);
+        const evt = emit.mock.calls[0][0];
+        expect(evt.type).toBe('loop-paused');
+        expect(evt.loop.id).toBe('loop_e1');
+        expect(evt.loop.processId).toBe('proc_ws1_a');
+        expect(evt.loop.workspaceId).toBe('ws1');
+        expect(evt.loop.status).toBe('paused');
+    });
+
+    it('emits loop-resumed after POST resume', async () => {
+        const loop = makeLoop({ id: 'loop_e2', status: 'paused', pausedReason: 'test', processId: 'proc_ws1_a', workspaceId: 'ws1' });
+        insert(loop);
+        const res = await dispatch(routes, 'POST', '/api/workspaces/ws1/loops/loop_e2/resume');
+        expect(res.statusCode).toBe(200);
+        expect(emit).toHaveBeenCalledTimes(1);
+        const evt = emit.mock.calls[0][0];
+        expect(evt.type).toBe('loop-resumed');
+        expect(evt.loop.id).toBe('loop_e2');
+        expect(evt.loop.status).toBe('active');
+        expect(evt.loop.workspaceId).toBe('ws1');
+    });
+
+    it('emits loop-cancelled after DELETE', async () => {
+        const loop = makeLoop({ id: 'loop_e3', processId: 'proc_ws1_a', workspaceId: 'ws1' });
+        insert(loop);
+        const res = await dispatch(routes, 'DELETE', '/api/workspaces/ws1/loops/loop_e3');
+        expect(res.statusCode).toBe(200);
+        expect(emit).toHaveBeenCalledTimes(1);
+        const evt = emit.mock.calls[0][0];
+        expect(evt.type).toBe('loop-cancelled');
+        expect(evt.loop.id).toBe('loop_e3');
+        expect(evt.loop.status).toBe('cancelled');
+    });
+
+    it('emits loop-updated after PATCH', async () => {
+        const loop = makeLoop({ id: 'loop_e4', processId: 'proc_ws1_a', workspaceId: 'ws1' });
+        insert(loop);
+        const res = await dispatch(routes, 'PATCH', '/api/workspaces/ws1/loops/loop_e4', { description: 'new' });
+        expect(res.statusCode).toBe(200);
+        expect(emit).toHaveBeenCalledTimes(1);
+        expect(emit.mock.calls[0][0].type).toBe('loop-updated');
+    });
+
+    it('emits loop-expired when resuming an already-expired loop', async () => {
+        const loop = makeLoop({
+            id: 'loop_e5',
+            status: 'paused',
+            pausedReason: 'test',
+            processId: 'proc_ws1_a',
+            workspaceId: 'ws1',
+            expiresAt: new Date(Date.now() - 1000).toISOString(),
+        });
+        insert(loop);
+        const res = await dispatch(routes, 'POST', '/api/workspaces/ws1/loops/loop_e5/resume');
+        expect(res.statusCode).toBe(400);
+        expect(emit).toHaveBeenCalledTimes(1);
+        expect(emit.mock.calls[0][0].type).toBe('loop-expired');
+    });
+
+    it('does not throw when emit callback throws', async () => {
+        emit.mockImplementation(() => { throw new Error('boom'); });
+        const loop = makeLoop({ id: 'loop_e6', status: 'active', processId: 'proc_ws1_a', workspaceId: 'ws1' });
+        insert(loop);
+        const res = await dispatch(routes, 'POST', '/api/workspaces/ws1/loops/loop_e6/pause', {});
+        expect(res.statusCode).toBe(200);
+        expect(res.body.loop.status).toBe('paused');
+    });
+
+    it('still succeeds when no emit callback is provided', async () => {
+        const routesNoEmit: Route[] = [];
+        registerLoopRoutes(routesNoEmit, { store, executor: mockExecutor });
+        const loop = makeLoop({ id: 'loop_e7', status: 'active', processId: 'proc_ws1_a', workspaceId: 'ws1' });
+        insert(loop);
+        const res = await dispatch(routesNoEmit, 'POST', '/api/workspaces/ws1/loops/loop_e7/pause', {});
+        expect(res.statusCode).toBe(200);
     });
 });

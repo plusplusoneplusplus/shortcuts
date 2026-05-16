@@ -29,8 +29,10 @@ import { groupHistoryByPlanFile, type HistoryGroup } from '../git/history-groupi
 import { HistoryGroupHeader, computeAggregateMode } from '../git/commits/HistoryGroupHeader';
 import { groupByRalphSession, type RalphHistoryEntry, type RalphSession } from './ralph-session-grouping';
 import { RalphSessionRow } from './RalphSessionRow';
-import { isRalphEnabled } from '../../utils/config';
+import { isRalphEnabled, isLoopsEnabled } from '../../utils/config';
 import { getListModeConfig } from './list-mode-config';
+import { useAllLoops, type ProcessLoopState } from './hooks/useAllLoops';
+import { LoopIcon } from './icons/LoopIcon';
 import { isRalphTask } from '../../../../../tasks/task-types';
 
 /** Primary task types surfaced as individual filter options. */
@@ -381,6 +383,10 @@ export function ChatListPane({
      */
     const excludedTypes = useMemo(() => new Set(appState.myWorkExcludedTypes), [appState.myWorkExcludedTypes]);
 
+    // Fetch all loops server-wide for inline indicators and the "Loops" scope tab.
+    const { loopStateByProcess, processIdsWithLoops, loopProcessCount } = useAllLoops();
+    const loopsEnabled = isLoopsEnabled();
+
     const [searchQuery, setSearchQueryRaw] = useState('');
     const [searchVisible, setSearchVisible] = useState(false);
     const searchInputRef = useRef<HTMLInputElement>(null);
@@ -395,15 +401,15 @@ export function ChatListPane({
      * Persisted in localStorage so the user's choice survives reloads.
      * Default is 'all' to preserve the pre-existing behavior of showing every task.
      */
-    const [activeScope, setActiveScopeState] = useState<'chat' | 'auto' | 'all'>(() => {
+    const [activeScope, setActiveScopeState] = useState<'chat' | 'auto' | 'loops' | 'all'>(() => {
         if (typeof window === 'undefined') return 'all';
         try {
             const saved = localStorage.getItem('coc-activity-scope');
-            if (saved === 'chat' || saved === 'auto' || saved === 'all') return saved;
+            if (saved === 'chat' || saved === 'auto' || saved === 'loops' || saved === 'all') return saved;
         } catch { /* ignore localStorage errors (e.g. private mode) */ }
         return 'all';
     });
-    const setActiveScope = useCallback((next: 'chat' | 'auto' | 'all') => {
+    const setActiveScope = useCallback((next: 'chat' | 'auto' | 'loops' | 'all') => {
         setActiveScopeState(next);
         try { localStorage.setItem('coc-activity-scope', next); } catch { /* ignore */ }
     }, []);
@@ -545,8 +551,9 @@ export function ChatListPane({
         if (activeScope === 'all') return true;
         if (activeScope === 'chat') return isChat(task);
         if (activeScope === 'auto') return isAutomation(task);
+        if (activeScope === 'loops') return processIdsWithLoops.has(task.id) || processIdsWithLoops.has(task.processId);
         return true;
-    }, [activeTab, activeScope]);
+    }, [activeTab, activeScope, processIdsWithLoops]);
 
     const tabFilteredRunning = useMemo(() => {
         if (activeTab === 'chats') return filteredRunning.filter(isChat);
@@ -572,12 +579,14 @@ export function ChatListPane({
         const all = [...running, ...liveQueue, ...history];
         let chat = 0;
         let auto = 0;
+        let loops = 0;
         for (const t of all) {
             if (isChat(t)) chat++;
             else if (isAutomation(t)) auto++;
+            if (processIdsWithLoops.has(t.id) || processIdsWithLoops.has(t.processId)) loops++;
         }
-        return { chat, auto, all: all.length };
-    }, [running, queued, history]);
+        return { chat, auto, loops, all: all.length };
+    }, [running, queued, history, processIdsWithLoops]);
 
     // Separate archived from non-archived history (uses tab-filtered history for proper exclusions)
     const { activeHistory, filteredArchived } = useMemo(() => {
@@ -1351,6 +1360,26 @@ export function ChatListPane({
                                 <span className={cn('shrink-0 text-[10px] font-medium', m.color)} data-testid="session-category-badge">{m.icon}</span>
                             ) : null;
                         })()}
+                        {(() => {
+                            if (!loopsEnabled) return null;
+                            const taskProcessId = task.processId || task.id;
+                            const state = loopStateByProcess.get(task.id) ?? loopStateByProcess.get(taskProcessId);
+                            if (!state) return null;
+                            return (
+                                <span
+                                    className={cn(
+                                        'shrink-0 text-[10px]',
+                                        state === 'active'
+                                            ? 'text-[#15703a] dark:text-[#4ade80]'
+                                            : 'text-[#8a5a00] dark:text-[#fbbf24]',
+                                    )}
+                                    title={state === 'active' ? 'Has active loops' : 'Has paused loops'}
+                                    data-testid="loop-indicator"
+                                >
+                                    <LoopIcon className="w-3.5 h-3.5" />
+                                </span>
+                            );
+                        })()}
                     </span>
                     <span className={cn('flex items-center gap-1', isAwaitingInput ? 'text-amber-700 dark:text-amber-300 font-medium' : 'text-[#848484] dark:text-[#999]')}>
                         <span className="chat-row-when text-[10.5px] font-mono tabular-nums whitespace-nowrap group-hover:hidden">
@@ -1433,6 +1462,8 @@ export function ChatListPane({
         onUnarchiveChat,
         onPinChat,
         onUnpinChat,
+        loopStateByProcess,
+        loopsEnabled,
         onSelectTask,
         historyLongPress,
     ]);
@@ -1905,15 +1936,16 @@ export function ChatListPane({
                     </div>
                 </div>
 
-                {/* Scope segmented control — Chats / Automations / All. Only
+                {/* Scope segmented control — Chats / [Loops] / Automations / All. Only
                     rendered in the Activity branch (`!activeTab`); Chats and
-                    Tasks tabs already have their own narrow scope. Inner spans
+                    Tasks tabs already have their own narrow scope. The Loops
+                    segment is only shown when loops.enabled is true. Inner spans
                     use `whitespace-nowrap` and `min-w-0 truncate` on the label
                     so narrow widths show ellipsis on the longest label
                     ("Automations") instead of wrapping the count below. */}
                 {!activeTab && (
                     <div
-                        className="grid grid-cols-3 gap-0 p-0.5 bg-[#f5f5f5] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#474749] rounded-md"
+                        className={cn('grid gap-0 p-0.5 bg-[#f5f5f5] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#474749] rounded-md', loopsEnabled ? 'grid-cols-4' : 'grid-cols-3')}
                         role="tablist"
                         aria-label="Activity scope"
                         data-testid="activity-scope-tabs"
@@ -1928,6 +1960,14 @@ export function ChatListPane({
                                         <path d="M2 4a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H6l-3 2.5V10a2 2 0 0 1-1-1.7Z" />
                                     </svg>
                                 ),
+                                hidden: false,
+                            },
+                            {
+                                id: 'loops' as const,
+                                label: 'Loops',
+                                count: scopeCounts.loops,
+                                icon: <LoopIcon className="w-3 h-3" />,
+                                hidden: !loopsEnabled,
                             },
                             {
                                 id: 'auto' as const,
@@ -1939,9 +1979,10 @@ export function ChatListPane({
                                         <path d="M7 1v2M7 11v2M1 7h2M11 7h2M2.8 2.8l1.4 1.4M9.8 9.8l1.4 1.4M2.8 11.2l1.4-1.4M9.8 4.2l1.4-1.4" />
                                     </svg>
                                 ),
+                                hidden: false,
                             },
-                            { id: 'all' as const, label: 'All', count: scopeCounts.all, icon: null },
-                        ]).map(scope => {
+                            { id: 'all' as const, label: 'All', count: scopeCounts.all, icon: null, hidden: false },
+                        ]).filter(s => !s.hidden).map(scope => {
                             const on = activeScope === scope.id;
                             return (
                                 <button

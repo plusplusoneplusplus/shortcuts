@@ -32,6 +32,7 @@ import { ensureMyLifeWorkspace } from './workspaces/my-life-workspace';
 import { createScheduleInfrastructure } from './infrastructure/schedule-infrastructure';
 import { createLoopInfrastructure } from './infrastructure/loop-infrastructure';
 import { createMcpOauthInfrastructure } from './mcp-oauth';
+import type { LoopInfrastructure } from './infrastructure/loop-infrastructure';
 import { createCleanupInfrastructure } from './infrastructure/cleanup-infrastructure';
 import { createWebSocketInfrastructure } from './infrastructure/websocket-infrastructure';
 import { createWatcherInfrastructure } from './infrastructure/watcher-infrastructure';
@@ -161,7 +162,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     let terminalInfra: import('./infrastructure/terminal-infrastructure').TerminalInfrastructure | undefined;
 
     // Forward declaration — loop infra is created after queue infra
-    let loopInfra: ReturnType<typeof createLoopInfrastructure> | undefined;
+    let loopInfra: LoopInfrastructure | undefined;
 
     // MCP OAuth infra — gated by mcpOauth.enabled feature flag (default false).
     const mcpOauthEnabled = resolvedConfig.mcpOauth?.enabled ?? false;
@@ -176,6 +177,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             return {
                 store: loopInfra.loopStore,
                 executor: loopInfra.loopExecutor,
+                emit: loopInfra.emit,
                 resolveWorkspaceId: async (processId: string) => {
                     try {
                         const taskId = processId.startsWith('queue_') ? processId.slice(6) : processId;
@@ -188,20 +190,26 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                         `wakeup:${opts.wakeupId}`,
                         () => {
                             const turnSource = { source: 'wakeup' as const, wakeupId: opts.wakeupId };
-                            bridge.executeFollowUp(
-                                opts.processId,
-                                opts.prompt,
-                                undefined,
-                                undefined,
-                                undefined,
-                                undefined,
-                                undefined,
-                                opts.model,
-                                turnSource,
-                            ).catch((err: unknown) => {
-                                const msg = err instanceof Error ? err.message : String(err);
-                                process.stderr.write(`[Wakeup] Failed to execute wakeup ${opts.wakeupId}: ${msg}\n`);
-                            });
+                            void (async () => {
+                                try {
+                                    const { resolveFollowUpMode } = await import('./executors/follow-up-mode');
+                                    const mode = await resolveFollowUpMode(store, opts.processId);
+                                    await bridge.executeFollowUp(
+                                        opts.processId,
+                                        opts.prompt,
+                                        undefined,
+                                        mode,
+                                        undefined,
+                                        undefined,
+                                        undefined,
+                                        opts.model,
+                                        turnSource,
+                                    );
+                                } catch (err) {
+                                    const msg = err instanceof Error ? err.message : String(err);
+                                    process.stderr.write(`[Wakeup] Failed to execute wakeup ${opts.wakeupId}: ${msg}\n`);
+                                }
+                            })();
                         },
                         opts.delayMs,
                     );
@@ -235,7 +243,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     // Loop infrastructure — separate from schedules. Gated by loops.enabled feature flag (default false).
     if (loopsEnabled) {
-        loopInfra = createLoopInfrastructure({
+        loopInfra = await createLoopInfrastructure({
             dataDir,
             queueFacade,
             store,
@@ -246,6 +254,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                         loopId: event.loop.id,
                         processId: event.loop.processId,
                         status: event.loop.status,
+                        workspaceId: event.loop.workspaceId,
                         timestamp: Date.now(),
                     });
                 } catch { /* best-effort broadcast */ }
@@ -356,6 +365,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         loopStore: loopInfra?.loopStore,
         loopExecutor: loopInfra?.loopExecutor,
         mcpOauthManager: mcpOauthInfra?.manager,
+        loopEmit: loopInfra?.emit,
     });
     // Restore auto-commit timers for all workspaces that had it enabled
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });

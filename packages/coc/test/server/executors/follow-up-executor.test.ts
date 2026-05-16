@@ -626,7 +626,9 @@ describe('FollowUpExecutor', () => {
         const executor = makeExecutor(store, {
             askUser: { enabled: true },
         });
-        await executor.executeFollowUp('proc-autopilot-user', 'continue autonomously');
+        // After the single-source-of-truth fix, callers must pass mode
+        // explicitly; the executor no longer infers it from process metadata.
+        await executor.executeFollowUp('proc-autopilot-user', 'continue autonomously', undefined, 'autopilot');
 
         expect(mockBuildChatToolBundle).toHaveBeenCalledWith(expect.objectContaining({
             askUser: expect.objectContaining({

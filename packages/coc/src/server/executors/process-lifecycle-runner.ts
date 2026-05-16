@@ -235,6 +235,22 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     ...(typeof ctx.wakeupId === 'string' ? { wakeupId: ctx.wakeupId } : {}),
                 };
             }
+            // Mark the target process as running BEFORE invoking the follow-up
+            // executor. This closes a race where the queue has already broadcast
+            // that this task is running while the process row still reads as
+            // 'completed' from the prior turn, which caused the same conversation
+            // to briefly appear in both Running Tasks and Completed Tasks in the
+            // Activity view. Fail loud — proceeding with inconsistent state would
+            // reintroduce the duplicate.
+            try {
+                await this.store.updateProcess(followUpPayload.processId!, { status: 'running' });
+            } catch (err) {
+                const errorMsg = err instanceof Error ? err.message : String(err);
+                logger.warn(LogCategory.AI, `[QueueExecutor] Failed to mark follow-up process ${followUpPayload.processId} as running: ${errorMsg}`);
+                await notifyLoopTickComplete(opts, ctx, false, logger);
+                if (imageTempDir) { cleanupTempDir(imageTempDir); }
+                return { success: false, error: err instanceof Error ? err : new Error(errorMsg), durationMs: Date.now() - startTime };
+            }
             try {
                 await opts.executeFollowUpFn(
                     followUpPayload.processId!,

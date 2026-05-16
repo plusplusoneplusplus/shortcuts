@@ -4,6 +4,7 @@
  * Renders a small pill with a loop icon (🔁) and the count of non-cancelled loops.
  */
 import React from 'react';
+import { LoopIcon } from './icons/LoopIcon';
 
 export interface LoopBadgeProps {
     count: number;
@@ -26,7 +27,7 @@ export function LoopBadge({ count, hasActiveLoops, onClick }: LoopBadgeProps) {
             onClick={onClick}
             data-testid="loop-badge"
         >
-            <span aria-hidden="true">🔁</span>
+            <LoopIcon className="w-3 h-3" />
             <span>{count}</span>
         </button>
     );

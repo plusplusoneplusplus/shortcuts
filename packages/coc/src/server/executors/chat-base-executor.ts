@@ -68,6 +68,8 @@ import { buildChatToolBundle } from './chat-tool-builder';
 export interface LoopInfraDeps {
     store: import('../loops/loop-store').LoopStore;
     executor: import('../loops/loop-executor').LoopExecutor;
+    /** Loop event emitter (used by LLM tools to broadcast state changes). */
+    emit?: import('../loops/loop-executor').LoopEventEmit;
     resolveWorkspaceId: (processId: string) => Promise<string | undefined>;
     enqueueWakeup: (opts: {
         processId: string;
@@ -180,6 +182,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 store: infra.store,
                 executor: infra.executor,
                 processId,
+                resolveWorkspaceId: infra.resolveWorkspaceId,
+                emit: infra.emit,
             },
         };
     }

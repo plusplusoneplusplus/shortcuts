@@ -113,6 +113,7 @@ Standalone CLI for YAML AI workflows. Consumes `forge`. Server functionality (HT
 - **Infrastructure:** `loop-infrastructure.ts` factory creates LoopStore + LoopExecutor + ScheduleTimerRegistry. Wired into `createExecutionServer`. On shutdown, active loops are paused with `pausedReason: 'server-restart'` (no auto-resume).
 - **Dashboard UI:** `LoopBadge` (header badge with active count), `LoopManagementPanel` (list/pause/resume/cancel), turn source badge on `ConversationTurnBubble` for loop/wakeup turns.
 - **Turn metadata:** `turnSource` field on `ConversationTurn` (`{ source: 'loop'|'wakeup', loopId/wakeupId }`) propagated through follow-up executor pipeline.
+- **Follow-up mode resolution:** `resolveFollowUpMode(store, processId, explicit?)` in `executors/follow-up-mode.ts` is the single source of truth for "what mode does this follow-up run in?". Every programmatic follow-up enqueue site (loop ticks, wakeup timer, requeue) must call it and set `payload.mode`. `validateAndParseTask` only defaults `payload.mode` to `autopilot` for new chats (no `processId`); REST follow-ups must supply mode. `FollowUpExecutor.executeFollowUp` requires `mode` and logs a fail-loud warning + defaults to `'ask'` if missing.
 
 **Testing:** 627+ Vitest test files under `packages/coc/test/server/`.
 

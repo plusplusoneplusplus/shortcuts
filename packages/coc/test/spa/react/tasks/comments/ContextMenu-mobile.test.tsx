@@ -72,6 +72,36 @@ describe('ContextMenu mobile rendering', () => {
         expect(screen.getByText('Delete')).toBeDefined();
     });
 
+    it('flattens nested submenus (children of children) in BottomSheet mode', () => {
+        viewportCleanup = mockViewport(375);
+        const itemsWithNested = [
+            {
+                label: 'Use Skill', icon: '⚡', onClick: vi.fn(), children: [
+                    { label: 'skill-a', onClick: vi.fn() },
+                    {
+                        label: 'More…', onClick: vi.fn(), children: [
+                            { label: 'skill-b', onClick: vi.fn() },
+                            { label: 'skill-c', onClick: vi.fn() },
+                        ],
+                    },
+                ],
+            },
+        ];
+        render(
+            <ContextMenu
+                position={{ x: 100, y: 100 }}
+                items={itemsWithNested as any}
+                onClose={vi.fn()}
+            />
+        );
+        // All skills should be flattened into the BottomSheet
+        expect(screen.getByText('skill-a')).toBeDefined();
+        expect(screen.getByText('skill-b')).toBeDefined();
+        expect(screen.getByText('skill-c')).toBeDefined();
+        // "More…" should appear as a section header (with parent path)
+        expect(screen.getByText('Use Skill › More…')).toBeDefined();
+    });
+
     it('mobile menu items have min-h-[44px] class', () => {
         viewportCleanup = mockViewport(375);
         render(
