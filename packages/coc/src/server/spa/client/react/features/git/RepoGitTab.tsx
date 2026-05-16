@@ -111,6 +111,15 @@ export function matchCommitsByIdentity(
     return pairs;
 }
 
+export function buildBranchRangeSkillPrompt(
+    branchRangeData: Pick<BranchRangeInfo, 'baseRef' | 'headRef'> | null | undefined,
+    branchName?: string
+): string {
+    const base = branchRangeData?.baseRef ?? 'main';
+    const head = branchRangeData?.headRef ?? branchName ?? 'HEAD';
+    return `<commit-range>${base}..${head}</commit-range>`;
+}
+
 interface RepoGitTabProps {
     workspaceId: string;
 }
@@ -898,9 +907,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         } else if (pendingSkillRun.type === 'multi-commit' && pendingSkillRun.commits?.length) {
             promptContent = `<commits>\n${pendingSkillRun.commits.map(c => c.hash).join('\n')}\n</commits>`;
         } else {
-            const base = (branchRangeData?.baseRef ?? 'main').replace(/^origin\//, '');
-            const head = branchRangeData?.headRef ?? branchName ?? 'HEAD';
-            promptContent = `<commit-range>${base}..${head}</commit-range>`;
+            promptContent = buildBranchRangeSkillPrompt(branchRangeData, branchName);
         }
 
         if (userContext) {
