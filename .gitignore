@@ -140,3 +140,6 @@ test-results/
 # Build debugging artifacts
 build-errors.txt
 esbuild-check.css
+
+# Claude worktrees
+.claude/worktrees/
