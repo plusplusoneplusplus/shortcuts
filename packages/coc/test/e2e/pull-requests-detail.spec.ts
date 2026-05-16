@@ -133,13 +133,12 @@ test.describe('Pull Requests — detail view', () => {
         });
     });
 
-    test('switching to Threads sub-tab shows thread list', async ({ page }) => {
-        await page.getByTestId('tab-threads').click();
+    test('Overview tab shows the embedded thread list when comments exist', async ({ page }) => {
+        await expect(page.getByTestId('overview-tab')).toBeVisible({ timeout: 10000 });
         await expect(page.getByTestId('thread-list')).toBeVisible({ timeout: 10000 });
     });
 
     test('thread list shows file path and comment content', async ({ page }) => {
-        await page.getByTestId('tab-threads').click();
         await expect(page.getByTestId('thread-list')).toBeVisible({ timeout: 10000 });
 
         const firstThread = MOCK_PR_THREADS[0];
@@ -151,5 +150,32 @@ test.describe('Pull Requests — detail view', () => {
             firstThread.comments[0].body,
             { timeout: 10000 },
         );
+    });
+
+    test('AI review summary is rendered for the PR', async ({ page }) => {
+        await expect(page.getByTestId('pr-ai-summary')).toBeVisible({ timeout: 10000 });
+        await expect(page.getByTestId('pr-ai-metrics')).toBeVisible({ timeout: 10000 });
+    });
+
+    test('switching to Files tab renders the AI files panel', async ({ page }) => {
+        await page.getByTestId('tab-files').click();
+        await expect(page.getByTestId('pr-files-panel')).toBeVisible({ timeout: 10000 });
+    });
+
+    test('switching to Commits tab renders the commit intent table', async ({ page }) => {
+        await page.getByTestId('tab-commits').click();
+        await expect(page.getByTestId('pr-commit-table')).toBeVisible({ timeout: 10000 });
+    });
+
+    test('switching to Checks tab renders checks table and merge readiness', async ({ page }) => {
+        await page.getByTestId('tab-checks').click();
+        await expect(page.getByTestId('pr-checks-table')).toBeVisible({ timeout: 10000 });
+        await expect(page.getByTestId('pr-merge-readiness')).toBeVisible({ timeout: 10000 });
+    });
+
+    test('Ask AI button opens the AI assistant drawer', async ({ page }) => {
+        await page.getByTestId('pr-open-ai-assistant').click();
+        await expect(page.getByTestId('pr-ai-assistant')).toBeVisible({ timeout: 10000 });
+        await page.getByTestId('pr-ai-assistant-close').click();
     });
 });

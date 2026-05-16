@@ -160,17 +160,32 @@ describe('successful render', () => {
         expect(screen.getByTestId('header-external-link')).toHaveAttribute('target', '_blank');
         expect(screen.getByTestId('header-external-link').textContent).toContain('Open in browser');
     });
+});
 
-    it('renders header external link next to the PR title', async () => {
-        mockFetchBoth(makePr({ url: 'https://example.com/pr/1' }));
+// ── Hero / AI badges ───────────────────────────────────────────────────────────
+
+describe('hero metadata', () => {
+    it('renders the AI risk pill on the hero row', async () => {
+        mockFetchBoth(makePr());
         await act(async () => { await renderDetail(); });
-        await waitFor(() => expect(screen.getByTestId('header-external-link')).toBeInTheDocument());
-        expect(screen.getByTestId('header-external-link')).toHaveAttribute('href', 'https://example.com/pr/1');
-        expect(screen.getByTestId('header-external-link')).toHaveAttribute('target', '_blank');
-        // Verify the link is in the same container as the PR title
-        const titleEl = screen.getByTestId('pr-title');
-        const linkEl = screen.getByTestId('header-external-link');
-        expect(titleEl.parentElement).toBe(linkEl.parentElement);
+        await waitFor(() => expect(screen.getByTestId('pr-risk-pill')).toBeInTheDocument());
+        expect(screen.getByTestId('pr-risk-pill').textContent).toMatch(/AI risk:/);
+    });
+
+    it('renders the additions/deletions delta from the AI branch snapshot', async () => {
+        mockFetchBoth(makePr());
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('pr-delta')).toBeInTheDocument());
+        expect(screen.getByTestId('pr-delta').textContent).toMatch(/^\+\d+ \/ -\d+$/);
+    });
+
+    it('renders the merge / AI / copy hero actions', async () => {
+        mockFetchBoth(makePr());
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('pr-merge-when-ready')).toBeInTheDocument());
+        expect(screen.getByTestId('pr-run-ai-pass')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-copy-summary')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-open-ai-assistant')).toBeInTheDocument();
     });
 });
 
@@ -197,17 +212,71 @@ describe('back button', () => {
     });
 });
 
-// ── Threads tab ────────────────────────────────────────────────────────────────
+// ── Tabs ───────────────────────────────────────────────────────────────────────
 
-describe('threads tab', () => {
-    it('shows thread count in tab label and renders ThreadList when switched', async () => {
+describe('tabs', () => {
+    it('renders the four redesigned tabs', async () => {
+        mockFetchBoth(makePr());
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('tab-overview')).toBeInTheDocument());
+        expect(screen.getByTestId('tab-files')).toBeInTheDocument();
+        expect(screen.getByTestId('tab-commits')).toBeInTheDocument();
+        expect(screen.getByTestId('tab-checks')).toBeInTheDocument();
+    });
+
+    it('embeds the thread list inside the Overview tab when threads exist', async () => {
         mockFetchBoth(makePr(), makeThreads([{}, {}]));
         await act(async () => { await renderDetail(); });
-        await waitFor(() => expect(screen.getByTestId('tab-threads')).toBeInTheDocument());
-        expect(screen.getByTestId('tab-threads').textContent).toContain('2');
-
-        fireEvent.click(screen.getByTestId('tab-threads'));
+        await waitFor(() => expect(screen.getByTestId('overview-tab')).toBeInTheDocument());
         expect(screen.getByTestId('threads-tab')).toBeInTheDocument();
+        expect(screen.getByTestId('tab-overview').textContent).toContain('2');
+    });
+
+    it('switches to the Files tab and renders the AI files panel', async () => {
+        mockFetchBoth(makePr());
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('tab-files')).toBeInTheDocument());
+        fireEvent.click(screen.getByTestId('tab-files'));
+        expect(screen.getByTestId('files-tab')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-files-panel')).toBeInTheDocument();
+    });
+
+    it('switches to the Commits tab and renders the commit intent table', async () => {
+        mockFetchBoth(makePr());
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('tab-commits')).toBeInTheDocument());
+        fireEvent.click(screen.getByTestId('tab-commits'));
+        expect(screen.getByTestId('commits-tab')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-commit-table')).toBeInTheDocument();
+    });
+
+    it('switches to the Checks tab and renders the checks + merge readiness panels', async () => {
+        mockFetchBoth(makePr());
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('tab-checks')).toBeInTheDocument());
+        fireEvent.click(screen.getByTestId('tab-checks'));
+        expect(screen.getByTestId('checks-tab')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-checks-table')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-merge-readiness')).toBeInTheDocument();
+    });
+});
+
+// ── AI assistant drawer ────────────────────────────────────────────────────────
+
+describe('AI assistant drawer', () => {
+    it('opens when the Ask AI button is clicked', async () => {
+        mockFetchBoth(makePr());
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('pr-open-ai-assistant')).toBeInTheDocument());
+
+        const drawer = screen.getByTestId('pr-ai-assistant');
+        expect(drawer.getAttribute('aria-hidden')).toBe('true');
+
+        fireEvent.click(screen.getByTestId('pr-open-ai-assistant'));
+        expect(drawer.getAttribute('aria-hidden')).toBe('false');
+
+        fireEvent.click(screen.getByTestId('pr-ai-assistant-close'));
+        expect(drawer.getAttribute('aria-hidden')).toBe('true');
     });
 });
 
