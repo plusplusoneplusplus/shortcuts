@@ -46,6 +46,19 @@ const makeThreads = (overrides: Partial<any>[] = []) =>
         ...o,
     }));
 
+const makeCommits = (overrides: Partial<any>[] = [{}]) =>
+    overrides.map((o, i) => ({
+        sha: `abcdef${i}1234567890`,
+        shortSha: `abcdef${i}`,
+        title: i === 0 ? 'Add retry logic' : `Commit ${i + 1}`,
+        message: i === 0 ? 'Add retry logic\n\nDetailed body' : `Commit ${i + 1}`,
+        author: { displayName: 'Alice', email: 'alice@example.com' },
+        authoredAt: '2024-01-01T00:00:00Z',
+        committedAt: '2024-01-01T01:00:00Z',
+        url: 'https://example.com/commit/abcdef',
+        ...o,
+    }));
+
 /** JSON response shape that satisfies both the SPA's CocApiClient and the
  *  fallback `await response.json()` path. */
 function jsonResponse(payload: unknown, ok = true, status = 200) {
@@ -68,11 +81,12 @@ function textResponse(body: string) {
     } as unknown as Response;
 }
 
-/** Mock the full PR detail fetch trio (pr, threads, diff). */
-function mockFetchDetail(pr: any, threads: any[] = [], diffText = '') {
+/** Mock the full PR detail fetch set (pr, threads, commits, diff). */
+function mockFetchDetail(pr: any, threads: any[] = [], diffText = '', commits: any[] = makeCommits()) {
     global.fetch = vi.fn()
         .mockResolvedValueOnce(jsonResponse(pr))
         .mockResolvedValueOnce(jsonResponse({ threads }))
+        .mockResolvedValueOnce(jsonResponse({ commits }))
         .mockResolvedValueOnce(textResponse(diffText));
 }
 
@@ -80,6 +94,7 @@ function mockFetchPrError(status = 500, message = 'Server error') {
     global.fetch = vi.fn()
         .mockResolvedValueOnce(jsonResponse({ message }, false, status))
         .mockResolvedValueOnce(jsonResponse({ threads: [] }))
+        .mockResolvedValueOnce(jsonResponse({ commits: [] }))
         .mockResolvedValueOnce(textResponse(''));
 }
 
@@ -295,14 +310,15 @@ describe('tabs', () => {
         expect(screen.getByTestId('tab-files').textContent).toContain('2');
     });
 
-    it('switches to the Commits tab and renders the commit intent table behind a preview notice', async () => {
-        mockFetchDetail(makePr());
+    it('switches to the Commits tab and renders real commits', async () => {
+        mockFetchDetail(makePr(), [], '', makeCommits([{ title: 'Wire retry backoff' }]));
         await act(async () => { await renderDetail(); });
         await waitFor(() => expect(screen.getByTestId('tab-commits')).toBeInTheDocument());
         fireEvent.click(screen.getByTestId('tab-commits'));
         expect(screen.getByTestId('commits-tab')).toBeInTheDocument();
         expect(screen.getByTestId('pr-commit-table')).toBeInTheDocument();
-        expect(screen.getByTestId('pr-tab-preview-notice').textContent).toMatch(/Commit list is AI-mocked/i);
+        expect(screen.getByText('Wire retry backoff')).toBeInTheDocument();
+        expect(screen.queryByTestId('pr-tab-preview-notice')).not.toBeInTheDocument();
     });
 
     it('switches to the Checks tab and renders the checks + merge readiness panels with a preview notice', async () => {

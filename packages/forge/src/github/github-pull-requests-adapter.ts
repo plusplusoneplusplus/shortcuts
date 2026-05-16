@@ -6,6 +6,7 @@ import type {
     CreatePullRequestInput,
     Identity,
     PullRequest,
+    PullRequestCommit,
     PullRequestStatus,
     Reviewer,
     ReviewVote,
@@ -73,6 +74,33 @@ function mapGitHubComment(c: GitHubComment): Comment {
         createdAt: new Date(c.created_at),
         updatedAt: new Date(c.updated_at),
         url: c.html_url,
+    };
+}
+
+function firstLine(message: string | null | undefined): string {
+    return (message ?? '').split(/\r?\n/, 1)[0] ?? '';
+}
+
+function mapGitHubCommit(c: any): PullRequestCommit {
+    const sha = String(c.sha ?? '');
+    const author = c.commit?.author;
+    const user = c.author ?? c.committer;
+    const authoredAt = author?.date ? new Date(author.date) : undefined;
+    const committedAt = c.commit?.committer?.date ? new Date(c.commit.committer.date) : authoredAt;
+    return {
+        sha,
+        shortSha: sha.slice(0, 7),
+        title: firstLine(c.commit?.message),
+        message: c.commit?.message ?? '',
+        author: {
+            ...mapGitHubUser(user),
+            displayName: author?.name ?? user?.name ?? user?.login ?? '',
+            email: author?.email,
+        },
+        authoredAt,
+        committedAt,
+        url: c.html_url,
+        raw: c,
     };
 }
 
@@ -232,5 +260,21 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
             },
         );
         return String(response.data ?? '');
+    }
+
+    async getCommits(_repositoryId: string, pullRequestId: number | string): Promise<PullRequestCommit[]> {
+        const params = {
+            owner: this.owner,
+            repo: this.repo,
+            pull_number: Number(pullRequestId),
+            per_page: 100,
+        };
+
+        const paginate = (this.octokit as any).paginate;
+        const data = typeof paginate === 'function'
+            ? await paginate(this.octokit.pulls.listCommits, params)
+            : (await this.octokit.pulls.listCommits(params)).data;
+
+        return (data as any[]).map(mapGitHubCommit);
     }
 }

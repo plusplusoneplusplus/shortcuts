@@ -44,6 +44,18 @@ export interface Reviewer {
     isRequired: boolean;
 }
 
+export interface PullRequestCommit {
+    sha: string;
+    shortSha: string;
+    title: string;
+    message: string;
+    author: Identity;
+    authoredAt?: Date;
+    committedAt?: Date;
+    url?: string;
+    raw?: unknown;
+}
+
 // ── Canonical pull-request entity ────────────────────────────
 
 export interface PullRequest {

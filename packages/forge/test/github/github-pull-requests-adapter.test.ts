@@ -39,6 +39,17 @@ const mockGitHubComment = {
     html_url: 'https://github.com/owner/repo/pull/42#issuecomment-300',
 };
 
+const mockGitHubCommit = {
+    sha: 'abcdef1234567890',
+    commit: {
+        message: 'Fix bug\n\nDetailed body',
+        author: { name: 'Alice Smith', email: 'alice@example.com', date: '2024-01-04T00:00:00Z' },
+        committer: { name: 'CI', email: 'ci@example.com', date: '2024-01-04T01:00:00Z' },
+    },
+    author: { id: 100, login: 'alice', name: 'Alice Smith', email: 'alice@example.com', avatar_url: 'https://avatar/alice' },
+    html_url: 'https://github.com/owner/repo/commit/abcdef1234567890',
+};
+
 function makeMockOctokit(overrides: Record<string, unknown> = {}): Octokit {
     return {
         pulls: {
@@ -48,6 +59,7 @@ function makeMockOctokit(overrides: Record<string, unknown> = {}): Octokit {
             update: vi.fn().mockResolvedValue({ data: mockGitHubPr }),
             listReviewComments: vi.fn().mockResolvedValue({ data: [mockGitHubComment] }),
             listReviews: vi.fn().mockResolvedValue({ data: [mockGitHubReview] }),
+            listCommits: vi.fn().mockResolvedValue({ data: [mockGitHubCommit] }),
             requestReviewers: vi.fn().mockResolvedValue({ data: {} }),
         },
         issues: {
@@ -256,6 +268,29 @@ describe('GitHubPullRequestsAdapter', () => {
             (octokit as any).request = vi.fn().mockResolvedValue({ data: null });
             const diff = await adapter.getDiff('repo', 42);
             expect(diff).toBe('');
+        });
+    });
+
+    describe('getCommits', () => {
+        it('maps GitHub PR commits to canonical commits', async () => {
+            const commits = await adapter.getCommits('repo', 42);
+            expect(octokit.pulls.listCommits).toHaveBeenCalledWith({
+                owner: 'owner',
+                repo: 'repo',
+                pull_number: 42,
+                per_page: 100,
+            });
+            expect(commits).toHaveLength(1);
+            expect(commits[0]).toMatchObject({
+                sha: 'abcdef1234567890',
+                shortSha: 'abcdef1',
+                title: 'Fix bug',
+                message: 'Fix bug\n\nDetailed body',
+                author: { displayName: 'Alice Smith', email: 'alice@example.com' },
+                url: 'https://github.com/owner/repo/commit/abcdef1234567890',
+            });
+            expect(commits[0].authoredAt).toEqual(new Date('2024-01-04T00:00:00Z'));
+            expect(commits[0].committedAt).toEqual(new Date('2024-01-04T01:00:00Z'));
         });
     });
 });

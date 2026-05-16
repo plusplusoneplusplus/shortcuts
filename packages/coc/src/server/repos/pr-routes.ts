@@ -8,6 +8,7 @@
  * GET  /api/repos/:repoId/pull-requests/:prId        — get single PR
  * GET  /api/repos/:repoId/pull-requests/:prId/threads    — get comment threads
  * GET  /api/repos/:repoId/pull-requests/:prId/reviewers  — get reviewers
+ * GET  /api/repos/:repoId/pull-requests/:prId/commits    — get commits
  * GET  /api/repos/:repoId/pull-requests/:prId/diff       — get unified diff
  *
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -244,6 +245,47 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
 
                 const reviewers = await prSvc.getReviewers(repoId, prId);
                 sendJson(res, { reviewers });
+            } catch (err) {
+                if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
+                    send404(res, err.message);
+                } else if (isAuthError(err)) {
+                    sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 401);
+                } else {
+                    send500(res, err instanceof Error ? err.message : String(err));
+                }
+            }
+        },
+    });
+
+    // -- Get commits ----------------------------------------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/([^/]+)\/commits$/,
+        handler: async (_req, res, match) => {
+            try {
+                const repoId = decodeURIComponent(match![1]);
+                const prId = decodeURIComponent(match![2]);
+
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+
+                const cfg = await readProvidersConfig(dataDir);
+                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+                if (!prSvc || isNoAdoCredentials(prSvc)) {
+                    if (isNoAdoCredentials(prSvc)) {
+                        return sendJson(res, { error: 'no-ado-credentials' }, 401);
+                    }
+                    const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
+                    return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
+                }
+
+                if (typeof prSvc.getCommits !== 'function') {
+                    return sendJson(res, { commits: [] });
+                }
+
+                const commits = await prSvc.getCommits(repoId, prId);
+                sendJson(res, { commits });
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
                     send404(res, err.message);

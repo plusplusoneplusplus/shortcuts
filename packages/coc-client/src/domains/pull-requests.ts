@@ -2,6 +2,7 @@ import type {
   ProviderConfigRequest,
   PullRequestListQuery,
   PullRequestListResponse,
+  PullRequestCommitsResponse,
   PullRequestReviewersResponse,
   PullRequestThreadsResponse,
   SanitizedProviderConfigResponse,
@@ -60,6 +61,12 @@ export class PullRequestsClient {
 
   getReviewers(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestReviewersResponse> {
     return this.transport.request<PullRequestReviewersResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/reviewers`, {
+      signal: options?.signal,
+    });
+  }
+
+  getCommits(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestCommitsResponse> {
+    return this.transport.request<PullRequestCommitsResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/commits`, {
       signal: options?.signal,
     });
   }

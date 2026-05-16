@@ -50,3 +50,7 @@ export interface PullRequestThreadsResponse {
 export interface PullRequestReviewersResponse {
   reviewers: unknown[];
 }
+
+export interface PullRequestCommitsResponse {
+  commits: unknown[];
+}
