@@ -19,6 +19,7 @@ import type { ScheduleTimerRegistry } from '../schedule/schedule-timer-registry'
 import type { LoopStore } from './loop-store';
 import type { LoopEntry, LoopChangeEvent } from './loop-types';
 import { MAX_CONSECUTIVE_FAILURES, MAX_CONSECUTIVE_WAKEUPS_PER_PROCESS } from './loop-types';
+import { resolveFollowUpMode } from '../executors/follow-up-mode';
 
 // ============================================================================
 // Types
@@ -260,11 +261,16 @@ export class LoopExecutor {
         const existingTask = queueManager.getTask(taskId);
 
         if (existingTask && existingTask.status === 'completed') {
-            // Requeue from history with the loop prompt
+            // Requeue from history with the loop prompt.
+            // Re-resolve mode (don't trust stale value on the existing task —
+            // the process's metadata.mode may have changed since the original
+            // turn was enqueued).
+            const mode = await resolveFollowUpMode(this.deps.processStore, loop.processId);
             queueManager.updateTask(taskId, {
                 displayName: `[Loop] ${loop.description || loop.prompt.substring(0, 40)}`,
                 payload: {
                     ...existingTask.payload,
+                    mode,
                     prompt: loop.prompt,
                     processId: loop.processId,
                     ...(loop.model ? { model: loop.model } : {}),
@@ -293,12 +299,14 @@ export class LoopExecutor {
     private async enqueueNewFollowUpTask(loop: LoopEntry): Promise<void> {
         const queueManager = this.deps.queueManager!;
         const workspaceId = await this.deps.resolveWorkspaceId(loop.processId);
+        const mode = await resolveFollowUpMode(this.deps.processStore, loop.processId);
 
         queueManager.enqueue({
             type: 'chat',
             priority: 'normal',
             payload: {
                 kind: 'chat',
+                mode,
                 prompt: loop.prompt,
                 processId: loop.processId,
                 ...(loop.model ? { model: loop.model } : {}),

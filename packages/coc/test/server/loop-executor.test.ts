@@ -604,10 +604,11 @@ describe('LoopExecutor', () => {
             expect(call.payload.context.source).toBe('loop');
         });
 
-        it('does not force autopilot mode in fallback enqueue payload', async () => {
-            // Regression: loop ticks must not flip an Ask/Plan conversation
-            // into Autopilot. The fallback enqueue path should omit `mode`
-            // so FollowUpExecutor preserves the process's existing mode.
+        it('inherits resolved follow-up mode into fallback enqueue payload', async () => {
+            // Loop ticks must not flip an Ask/Plan conversation into Autopilot.
+            // The resolver inspects the process's metadata.mode (defaulting to
+            // 'ask' when absent) and the resolved value is written onto
+            // payload.mode so the UI badge and execution agree.
             const { deps, store, timerRegistry, queueManager } = createDeps();
             const loop = makeLoop({ id: 'loop_mode_preserve', prompt: 'tick' });
             store.insert(loop);
@@ -619,9 +620,59 @@ describe('LoopExecutor', () => {
 
             expect(queueManager.enqueue).toHaveBeenCalled();
             const call = queueManager.enqueue.mock.calls[0][0];
-            expect(call.payload).not.toHaveProperty('mode');
+            expect(call.payload.mode).toBe('ask');
             expect(call.payload.context.loopId).toBe('loop_mode_preserve');
             expect(call.payload.context.source).toBe('loop');
+        });
+
+        it('uses process metadata.mode when resolving follow-up mode', async () => {
+            const { deps, store, timerRegistry, queueManager, processStore } = createDeps();
+            processStore.getProcess.mockImplementation(async (id: string) => ({
+                id,
+                status: 'completed',
+                workingDirectory: '/test',
+                metadata: { mode: 'plan' },
+            }));
+
+            const loop = makeLoop({ id: 'loop_plan', prompt: 'tick' });
+            store.insert(loop);
+
+            const executor = new LoopExecutor(deps);
+            executor.armAll();
+            await timerRegistry._fire('loop_plan');
+
+            expect(queueManager.enqueue).toHaveBeenCalled();
+            const call = queueManager.enqueue.mock.calls[0][0];
+            expect(call.payload.mode).toBe('plan');
+        });
+
+        it('overwrites stale mode on requeue with resolved mode', async () => {
+            const { deps, store, timerRegistry, queueManager, processStore } = createDeps();
+            processStore.getProcess.mockImplementation(async (id: string) => ({
+                id,
+                status: 'completed',
+                workingDirectory: '/test',
+                metadata: { mode: 'ask' },
+            }));
+
+            queueManager._tasks.set('proc_abc', {
+                id: 'proc_abc',
+                status: 'completed',
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'old prompt' },
+                processId: 'queue_proc_abc',
+            });
+
+            const loop = makeLoop({ id: 'loop_requeue_mode', prompt: 'new prompt' });
+            store.insert(loop);
+
+            const executor = new LoopExecutor(deps);
+            executor.armAll();
+            await timerRegistry._fire('loop_requeue_mode');
+
+            expect(queueManager.updateTask).toHaveBeenCalled();
+            const updateCall = queueManager.updateTask.mock.calls[0];
+            expect(updateCall[1].payload.mode).toBe('ask');
+            expect(updateCall[1].payload.prompt).toBe('new prompt');
         });
 
         it('requeues from history when task exists as completed', async () => {

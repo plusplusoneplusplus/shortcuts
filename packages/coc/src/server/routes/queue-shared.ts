@@ -276,7 +276,13 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
 
     if (taskSpec.type === 'chat' || taskSpec.type === 'custom') {
         if (!payload.kind) payload.kind = 'chat';
-        if (!payload.mode) payload.mode = 'autopilot';
+        // Default mode to 'autopilot' only for *new* chats (no processId).
+        // Follow-ups (processId set) must arrive with mode already resolved by
+        // the caller — programmatic enqueuers go through resolveFollowUpMode,
+        // and REST callers must supply mode explicitly. Leaving payload.mode
+        // unset on a follow-up is treated as a bug and surfaced as a warning
+        // in FollowUpExecutor.
+        if (!payload.mode && !payload.processId) payload.mode = 'autopilot';
     }
     if (taskSpec.type === TaskDefs.runScript.kind && !payload.kind) payload.kind = TaskDefs.runScript.kind;
     if (taskSpec.type === TaskDefs.runWorkflow.kind && !payload.kind) payload.kind = TaskDefs.runWorkflow.kind;

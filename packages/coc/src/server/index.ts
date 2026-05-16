@@ -189,20 +189,26 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                         `wakeup:${opts.wakeupId}`,
                         () => {
                             const turnSource = { source: 'wakeup' as const, wakeupId: opts.wakeupId };
-                            bridge.executeFollowUp(
-                                opts.processId,
-                                opts.prompt,
-                                undefined,
-                                undefined,
-                                undefined,
-                                undefined,
-                                undefined,
-                                opts.model,
-                                turnSource,
-                            ).catch((err: unknown) => {
-                                const msg = err instanceof Error ? err.message : String(err);
-                                process.stderr.write(`[Wakeup] Failed to execute wakeup ${opts.wakeupId}: ${msg}\n`);
-                            });
+                            void (async () => {
+                                try {
+                                    const { resolveFollowUpMode } = await import('./executors/follow-up-mode');
+                                    const mode = await resolveFollowUpMode(store, opts.processId);
+                                    await bridge.executeFollowUp(
+                                        opts.processId,
+                                        opts.prompt,
+                                        undefined,
+                                        mode,
+                                        undefined,
+                                        undefined,
+                                        undefined,
+                                        opts.model,
+                                        turnSource,
+                                    );
+                                } catch (err) {
+                                    const msg = err instanceof Error ? err.message : String(err);
+                                    process.stderr.write(`[Wakeup] Failed to execute wakeup ${opts.wakeupId}: ${msg}\n`);
+                                }
+                            })();
                         },
                         opts.delayMs,
                     );
