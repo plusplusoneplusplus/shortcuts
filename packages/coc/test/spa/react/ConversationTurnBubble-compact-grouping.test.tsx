@@ -63,13 +63,14 @@ vi.mock('../../../src/server/spa/client/react/features/chat/conversation/tool-ca
     WhisperCollapsedGroup: ({
         summary,
     }: {
-        summary: { toolCallCount: number; messageCount: number; commitCount?: number };
+        summary: { toolCallCount: number; messageCount: number; commitCount?: number; prCount?: number };
     }) => (
         <div
             data-testid="whisper-collapsed-group"
             data-tool-count={String(summary.toolCallCount)}
             data-message-count={String(summary.messageCount)}
             data-commit-count={String(summary.commitCount ?? 0)}
+            data-pr-count={String(summary.prCount ?? 0)}
         />
     ),
 }));
@@ -340,6 +341,37 @@ describe('ConversationTurnBubble — compact tool grouping', () => {
         expect(whisper?.getAttribute('data-commit-count')).toBe('1');
     });
 
+    it('whisper summary includes prCount when shell tools create pull requests', () => {
+        mockToolCompactness = 3;
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    content: 'Done',
+                    timeline: [
+                        ...makeLeafReadTimeline(['t1', 't2']),
+                        {
+                            type: 'tool-start' as const,
+                            toolCall: {
+                                id: 'sh1',
+                                toolName: 'powershell',
+                                args: { command: 'gh pr create --title "feat" --body "body"' },
+                                status: 'completed',
+                                result: 'https://github.com/plusplusoneplusplus/shortcuts/pull/99',
+                            },
+                        },
+                        {
+                            type: 'tool-start' as const,
+                            toolCall: { id: 'tc', toolName: 'task_complete', args: { summary: 'Done' }, status: 'completed' },
+                        },
+                    ],
+                })}
+            />
+        );
+        const whisper = container.querySelector('[data-testid="whisper-collapsed-group"]');
+        expect(whisper).toBeTruthy();
+        expect(whisper?.getAttribute('data-pr-count')).toBe('1');
+    });
+
     it('whisper summary has commitCount 0 when no commits are detected', () => {
         mockToolCompactness = 3;
         const { container } = render(
@@ -359,5 +391,6 @@ describe('ConversationTurnBubble — compact tool grouping', () => {
         const whisper = container.querySelector('[data-testid="whisper-collapsed-group"]');
         expect(whisper).toBeTruthy();
         expect(whisper?.getAttribute('data-commit-count')).toBe('0');
+        expect(whisper?.getAttribute('data-pr-count')).toBe('0');
     });
 });

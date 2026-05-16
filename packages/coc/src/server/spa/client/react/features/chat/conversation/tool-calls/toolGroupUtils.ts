@@ -4,6 +4,7 @@
  */
 import type { DetectedCommit } from '../commitDetection';
 import { detectCommitsInToolGroup } from '../commitDetection';
+import { detectPullRequestsInToolGroup, type DetectedPullRequest } from '../pullRequestDetection';
 import { getApplyPatchText, parseApplyPatchFileChanges } from '../../../../utils/applyPatchParser';
 
 export type ToolGroupCategory = 'read' | 'write' | 'shell' | 'agent';
@@ -485,6 +486,10 @@ export interface WhisperSummary {
     commits?: DetectedCommit[];
     /** Fixup/squash/amend commits detected across all collapsed tool calls. */
     fixupCommits?: DetectedCommit[];
+    /** Number of pull requests detected across all collapsed tool calls. */
+    prCount?: number;
+    /** Pull requests detected across all collapsed tool calls. */
+    pullRequests?: DetectedPullRequest[];
     /** Number of unique skill invocations. */
     skillCount?: number;
     /** Names of unique skills invoked. */
@@ -623,6 +628,8 @@ export function filterWhisperChunks(
     const fixupCommits = detectedCommits.filter(c => c.isFixup);
     const commitCount = regularCommits.length;
     const fixupCommitCount = fixupCommits.length;
+    const pullRequests = detectPullRequestsInToolGroup(allToolCalls);
+    const prCount = pullRequests.length;
 
     // Count unique skill invocations
     const skillNameSet = new Set<string>();
@@ -739,6 +746,7 @@ export function filterWhisperChunks(
         messageCount,
         ...(commitCount > 0 ? { commitCount, commits: regularCommits } : {}),
         ...(fixupCommitCount > 0 ? { fixupCommitCount, fixupCommits } : {}),
+        ...(prCount > 0 ? { prCount, pullRequests } : {}),
         ...(skillNameSet.size > 0 ? { skillCount: skillNameSet.size, skillNames: [...skillNameSet].sort() } : {}),
         ...(memoryActions.length > 0 ? { memoryCount: memoryActions.length, memoryActions } : {}),
         ...(fileEdits.length > 0 ? { fileEditCount: fileEdits.length, fileEdits } : {}),
