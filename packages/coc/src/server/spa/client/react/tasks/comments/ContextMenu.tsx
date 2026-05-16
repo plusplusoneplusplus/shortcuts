@@ -146,6 +146,16 @@ function SubmenuItem({
                                 />
                             );
                         }
+                        if (child.children && child.children.length > 0) {
+                            return (
+                                <SubmenuItem
+                                    key={ci}
+                                    item={child}
+                                    idx={ci}
+                                    onClose={onClose}
+                                />
+                            );
+                        }
                         return (
                             <button
                                 key={ci}
@@ -214,17 +224,19 @@ export function ContextMenu({ position, items, onClose }: ContextMenuProps) {
 
     if (isMobile) {
         const flatItems: { item: ContextMenuItem; sectionHeader?: string }[] = [];
-        for (const item of items) {
-            if (item.separator) continue;
-            if (item.children && item.children.length > 0) {
-                flatItems.push({ item, sectionHeader: item.label });
-                for (const child of item.children) {
-                    if (!child.separator) flatItems.push({ item: child });
+        const flattenItems = (menuItems: ContextMenuItem[], parentLabel?: string) => {
+            for (const item of menuItems) {
+                if (item.separator) continue;
+                if (item.children && item.children.length > 0) {
+                    const header = parentLabel ? `${parentLabel} › ${item.label}` : item.label;
+                    flatItems.push({ item, sectionHeader: header });
+                    flattenItems(item.children, header);
+                } else {
+                    flatItems.push({ item });
                 }
-            } else {
-                flatItems.push({ item });
             }
-        }
+        };
+        flattenItems(items);
 
         return (
             <BottomSheet isOpen={true} onClose={onClose} data-testid="context-menu-bottomsheet">

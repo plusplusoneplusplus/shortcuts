@@ -381,6 +381,85 @@ describe('ContextMenu', () => {
         expect(submenu.className).not.toContain('left-full');
     });
 
+    // ── Nested submenu (children within children) ──────────────────
+
+    it('renders nested submenu item with arrow indicator instead of flat button', () => {
+        render(
+            <ContextMenu
+                position={{ x: 0, y: 0 }}
+                items={[
+                    {
+                        label: 'Use Skill',
+                        icon: '⚡',
+                        onClick: vi.fn(),
+                        children: [
+                            { label: 'skill-a', onClick: vi.fn() },
+                            { label: '', separator: true, onClick: vi.fn() },
+                            {
+                                label: 'More…',
+                                onClick: vi.fn(),
+                                children: [
+                                    { label: 'skill-b', onClick: vi.fn() },
+                                    { label: 'skill-c', onClick: vi.fn() },
+                                ],
+                            },
+                        ],
+                    },
+                ]}
+                onClose={vi.fn()}
+            />
+        );
+        // Open first-level submenu
+        fireEvent.mouseEnter(screen.getByTestId('context-menu-item-0'));
+        const submenu = screen.getByTestId('context-submenu-0');
+        expect(submenu).toBeTruthy();
+        // "More…" is at ci=2 (after skill-a at 0, separator at 1).
+        // Nested SubmenuItem wrapping div uses data-testid="context-menu-item-${ci}"
+        const moreItem = screen.getByTestId('context-menu-item-2');
+        expect(moreItem.querySelector('[aria-haspopup="true"]')).toBeTruthy();
+        expect(moreItem.textContent).toContain('More…');
+    });
+
+    it('opens nested submenu on hover and clicking nested child calls onClick', () => {
+        const nestedClick = vi.fn();
+        const onClose = vi.fn();
+        render(
+            <ContextMenu
+                position={{ x: 0, y: 0 }}
+                items={[
+                    {
+                        label: 'Use Skill',
+                        icon: '⚡',
+                        onClick: vi.fn(),
+                        children: [
+                            { label: 'skill-a', onClick: vi.fn() },
+                            {
+                                label: 'More…',
+                                onClick: vi.fn(),
+                                children: [
+                                    { label: 'skill-b', onClick: nestedClick },
+                                ],
+                            },
+                        ],
+                    },
+                ]}
+                onClose={onClose}
+            />
+        );
+        // Open first-level submenu
+        fireEvent.mouseEnter(screen.getByTestId('context-menu-item-0'));
+        // "More…" is at ci=1, rendered as nested SubmenuItem with data-testid="context-menu-item-1"
+        const moreItem = screen.getByTestId('context-menu-item-1');
+        fireEvent.mouseEnter(moreItem);
+        // The nested submenu uses data-testid="context-submenu-1" (idx=ci=1)
+        const nestedSubmenu = screen.getByTestId('context-submenu-1');
+        expect(nestedSubmenu).toBeTruthy();
+        // Click the nested child
+        fireEvent.click(screen.getByTestId('context-submenu-1-item-0'));
+        expect(nestedClick).toHaveBeenCalledOnce();
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
     it('submenu items count correctly alongside regular items', () => {
         render(
             <ContextMenu
