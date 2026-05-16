@@ -83,5 +83,10 @@ export const BUNDLED_SKILLS_REGISTRY: readonly BundledSkill[] = [
         name: 'loop',
         description: 'Schedule recurring follow-up messages into the current conversation. Supports fixed-interval monitoring and one-shot wakeups for dynamic self-pacing',
         relativePath: 'loop',
+    },
+    {
+        name: 'classify-diff',
+        description: 'Classify every hunk in a pull request diff by change type (logic, mechanical, test, generated) so reviewers can focus on what matters',
+        relativePath: 'classify-diff',
     }
 ];
