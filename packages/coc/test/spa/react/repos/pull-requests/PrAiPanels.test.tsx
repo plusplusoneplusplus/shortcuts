@@ -188,6 +188,59 @@ describe('PrFilesPanel', () => {
         render(<PrFilesPanel files={binaryDiff} />);
         expect(screen.getByText(/Binary file/i)).toBeTruthy();
     });
+
+    it('shows file rows by basename (not full path) inside their parent folder', () => {
+        render(<PrFilesPanel files={realDiff} />);
+        const rows = screen.getAllByTestId('pr-file-row');
+        const labels = rows.map(row => row.querySelector('[data-testid="pr-file-basename"]')?.textContent);
+        expect(labels.sort()).toEqual(['foo.ts', 'readme.md', 'worker.ts']);
+    });
+
+    it('renders folder rows in tree mode by default', () => {
+        render(<PrFilesPanel files={realDiff} />);
+        const folders = screen.getAllByTestId('pr-file-tree-folder');
+        const names = folders.map(f => f.getAttribute('data-folder-path'));
+        expect(names.sort()).toEqual(['docs', 'src', 'test'].sort());
+    });
+
+    it('collapses a folder when its row is clicked, hiding its files', () => {
+        render(<PrFilesPanel files={realDiff} />);
+        const docsFolder = screen
+            .getAllByTestId('pr-file-tree-folder')
+            .find(f => f.getAttribute('data-folder-path') === 'docs');
+        expect(docsFolder).toBeTruthy();
+        expect(docsFolder!.getAttribute('data-collapsed')).toBe('false');
+        // Initially readme.md is visible (folder expanded).
+        expect(
+            screen.getAllByTestId('pr-file-row').some(r => r.getAttribute('data-file-path') === 'docs/readme.md'),
+        ).toBe(true);
+        fireEvent.click(docsFolder!);
+        // After collapse, docs/readme.md row should be gone.
+        const visible = screen
+            .getAllByTestId('pr-file-row')
+            .map(r => r.getAttribute('data-file-path'));
+        expect(visible).not.toContain('docs/readme.md');
+        // src/foo.ts and test/worker.ts stay visible.
+        expect(visible).toContain('src/foo.ts');
+        expect(visible).toContain('test/worker.ts');
+    });
+
+    it('switches to flat mode when the Flat toggle is clicked and shows dirname above basename', () => {
+        render(<PrFilesPanel files={realDiff} />);
+        fireEvent.click(screen.getByTestId('pr-file-view-flat'));
+        // Folders disappear in flat mode.
+        expect(screen.queryByTestId('pr-file-tree-folder')).toBeNull();
+        // Each row shows the basename (no slash) inside `pr-file-basename`.
+        const basenames = screen
+            .getAllByTestId('pr-file-row')
+            .map(row => row.querySelector('[data-testid="pr-file-basename"]')?.textContent);
+        expect(basenames.sort()).toEqual(['foo.ts', 'readme.md', 'worker.ts']);
+        // And the dirname is rendered as a separate muted line — every row
+        // includes the trailing slash that the flat renderer adds.
+        screen.getAllByTestId('pr-file-row').forEach(row => {
+            expect(row.textContent ?? '').toMatch(/\//);
+        });
+    });
 });
 
 // suppress unused import warning when running through transformer

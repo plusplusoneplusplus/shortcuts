@@ -422,7 +422,14 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                 </nav>
             </section>
 
-            <div className="flex-1 overflow-y-auto">
+            <div
+                className={cn(
+                    'flex-1 min-h-0',
+                    // Files tab manages its own independent file-list /
+                    // diff scrollers, so swallow the outer scroll there.
+                    detailTab === 'files' ? 'overflow-hidden' : 'overflow-y-auto',
+                )}
+            >
                 {detailTab === 'overview' && (
                     <div className="w-full px-2.5 pb-7 pt-2" data-testid="overview-tab">
                         <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_264px]">
@@ -462,20 +469,25 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                 )}
 
                 {detailTab === 'files' && (
-                    <div className="w-full px-2.5 pb-7 pt-2" data-testid="files-tab">
+                    <div
+                        className="flex h-full min-h-0 w-full flex-col px-2.5 pb-2 pt-2"
+                        data-testid="files-tab"
+                    >
                         {diffError && (
                             <div
-                                className="mb-2 rounded-[5px] border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-700 dark:border-red-700 dark:bg-red-900/30 dark:text-red-200"
+                                className="mb-2 shrink-0 rounded-[5px] border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-700 dark:border-red-700 dark:bg-red-900/30 dark:text-red-200"
                                 data-testid="pr-diff-error"
                             >
                                 Failed to load diff: {diffError}
                             </div>
                         )}
-                        <PrFilesPanel
-                            files={diff.files}
-                            annotations={aiAnnotationByPath.annotations}
-                            focusByPath={aiAnnotationByPath.focus}
-                        />
+                        <div className="min-h-0 flex-1">
+                            <PrFilesPanel
+                                files={diff.files}
+                                annotations={aiAnnotationByPath.annotations}
+                                focusByPath={aiAnnotationByPath.focus}
+                            />
+                        </div>
                     </div>
                 )}
 
