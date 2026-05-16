@@ -18,6 +18,7 @@ export { getConversationTurns } from './chatConversationUtils';
 
 // Utilities
 export { detectCommitsInToolGroup } from './commitDetection';
+export { detectPullRequestsInToolGroup } from './pullRequestDetection';
 export type { DetectedCommit } from './commitDetection';
 export { isJsonResponse } from '../../../ui/json-utils';
 export { mergeConsecutiveContentItems } from './timeline-utils';

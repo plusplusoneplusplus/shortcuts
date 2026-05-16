@@ -122,6 +122,60 @@ describe('WhisperCollapsedGroup — header text', () => {
         expect(text).toMatch(/4 tool calls\s*·\s*2 messages\s*·\s*2 commits/);
     });
 
+    it('shows singular "PR" when prCount === 1', () => {
+        const { container } = renderHeader({
+            toolCallCount: 2,
+            messageCount: 1,
+            prCount: 1,
+        });
+        const text = getHeaderText(container);
+        expect(text).toContain('1 PR');
+        expect(text).not.toContain('1 PRs');
+    });
+
+    it('shows plural "PRs" when prCount > 1', () => {
+        const { container } = renderHeader({
+            toolCallCount: 3,
+            messageCount: 1,
+            prCount: 2,
+        });
+        const text = getHeaderText(container);
+        expect(text).toContain('2 PRs');
+    });
+
+    it('omits PR segment when prCount is 0', () => {
+        const { container } = renderHeader({
+            toolCallCount: 3,
+            messageCount: 1,
+            prCount: 0,
+        });
+        const text = getHeaderText(container);
+        expect(text).not.toContain('PR');
+    });
+
+    it('omits PR segment when prCount is undefined', () => {
+        const { container } = renderHeader({
+            toolCallCount: 3,
+            messageCount: 1,
+        });
+        const text = getHeaderText(container);
+        expect(text).not.toContain('PR');
+    });
+
+    it('dot-separates PRs after commits and before duration', () => {
+        const { container } = renderHeader({
+            toolCallCount: 4,
+            messageCount: 2,
+            fileEditCount: 1,
+            commitCount: 1,
+            prCount: 1,
+            startTime: 1000,
+            endTime: 2000,
+        });
+        const text = getHeaderText(container);
+        expect(text).toMatch(/2 messages\s*·\s*1 file\s*·\s*1 commit\s*·\s*1 PR\s*\(1\.0s\)/);
+    });
+
     it('shows duration when start and end times are set', () => {
         const { container } = renderHeader({
             toolCallCount: 1,

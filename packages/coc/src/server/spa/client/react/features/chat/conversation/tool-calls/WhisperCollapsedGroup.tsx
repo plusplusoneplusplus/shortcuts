@@ -818,7 +818,7 @@ export function WhisperCollapsedGroup({
 }: WhisperCollapsedGroupProps) {
     const [expanded, setExpanded] = useState(false);
 
-    const headerParts: Array<{ text: string; title?: string; kind?: 'commit' | 'fixup' | 'file' | 'removed-file' | 'skill' | 'memory' }> = [];
+    const headerParts: Array<{ text: string; title?: string; kind?: 'commit' | 'fixup' | 'pr' | 'file' | 'removed-file' | 'skill' | 'memory' }> = [];
     if (summary.toolCallCount > 0) {
         headerParts.push({ text: `${summary.toolCallCount} tool call${summary.toolCallCount !== 1 ? 's' : ''}` });
     }
@@ -839,6 +839,9 @@ export function WhisperCollapsedGroup({
     }
     if (summary.fixupCommitCount && summary.fixupCommitCount > 0) {
         headerParts.push({ text: `${summary.fixupCommitCount} fixup${summary.fixupCommitCount !== 1 ? 's' : ''}`, kind: 'fixup' });
+    }
+    if (summary.prCount && summary.prCount > 0) {
+        headerParts.push({ text: `${summary.prCount} PR${summary.prCount !== 1 ? 's' : ''}`, kind: 'pr' });
     }
     if (summary.skillCount && summary.skillCount > 0) {
         headerParts.push({
