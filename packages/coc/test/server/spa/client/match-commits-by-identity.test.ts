@@ -3,7 +3,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { matchCommitsByIdentity } from '../../../../src/server/spa/client/react/features/git/RepoGitTab';
+import {
+    buildBranchRangeSkillPrompt,
+    matchCommitsByIdentity,
+} from '../../../../src/server/spa/client/react/features/git/RepoGitTab';
 
 interface GitCommitItem {
     hash: string;
@@ -100,5 +103,25 @@ describe('matchCommitsByIdentity', () => {
         const old = [makeCommit({ hash: 'aaa111', authorEmail: 'alice@a.com' })];
         const nw = [makeCommit({ hash: 'bbb222', authorEmail: 'alice@b.com' })];
         expect(matchCommitsByIdentity(old, nw)).toEqual([]);
+    });
+});
+
+describe('buildBranchRangeSkillPrompt', () => {
+    it('preserves remote-qualified base refs for branch-range skill prompts', () => {
+        expect(buildBranchRangeSkillPrompt({
+            baseRef: 'origin/main',
+            headRef: 'HEAD',
+        })).toBe('<commit-range>origin/main..HEAD</commit-range>');
+    });
+
+    it('preserves non-main remote base refs', () => {
+        expect(buildBranchRangeSkillPrompt({
+            baseRef: 'origin/master',
+            headRef: 'HEAD',
+        })).toBe('<commit-range>origin/master..HEAD</commit-range>');
+    });
+
+    it('falls back to the current branch name when range data is missing a head ref', () => {
+        expect(buildBranchRangeSkillPrompt(null, 'feature/demo')).toBe('<commit-range>main..feature/demo</commit-range>');
     });
 });
