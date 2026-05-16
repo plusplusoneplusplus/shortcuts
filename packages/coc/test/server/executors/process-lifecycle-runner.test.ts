@@ -1113,3 +1113,96 @@ describe('ProcessLifecycleRunner — partial conversation turn on error', () => 
         expect(proc?.error).toBe('timeout');
     });
 });
+
+// ============================================================================
+// Follow-up lifecycle status ordering
+// ============================================================================
+
+describe('ProcessLifecycleRunner — follow-up lifecycle status ordering', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    let runner: ProcessLifecycleRunner;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        store = createMockProcessStore();
+        runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn());
+    });
+
+    it('marks the target process as running BEFORE invoking executeFollowUpFn', async () => {
+        const processId = 'existing-process';
+        store.processes.set(processId, {
+            id: processId,
+            type: 'clarification',
+            promptPreview: 'test',
+            fullPrompt: 'test',
+            status: 'completed',
+            startTime: new Date(),
+            conversationTurns: [
+                { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                { role: 'assistant', content: 'reply', timestamp: new Date(), turnIndex: 1, timeline: [] },
+            ],
+        } as any);
+
+        const callOrder: string[] = [];
+        (store.updateProcess as any).mockImplementation(async (id: string, updates: any) => {
+            if (updates?.status === 'running' && id === processId) {
+                callOrder.push('updateProcess:running');
+            }
+            const existing = store.processes.get(id);
+            if (existing) { store.processes.set(id, { ...existing, ...updates }); }
+        });
+        const executeFollowUpFn = vi.fn(async () => {
+            callOrder.push('executeFollowUpFn');
+        });
+
+        const followUpTask = makeTask({
+            id: 'followup-task-1',
+            payload: {
+                kind: 'chat',
+                prompt: 'Follow-up question',
+                processId,
+                workspaceId: 'ws-abc',
+            } as any,
+        });
+
+        const result = await runner.run(followUpTask, makeOpts({ executeFollowUpFn }));
+
+        expect(result.success).toBe(true);
+        expect(executeFollowUpFn).toHaveBeenCalledOnce();
+        expect(callOrder.indexOf('updateProcess:running')).toBeGreaterThanOrEqual(0);
+        expect(callOrder.indexOf('updateProcess:running'))
+            .toBeLessThan(callOrder.indexOf('executeFollowUpFn'));
+    });
+
+    it('fails the task fail-loud if the pre-execution status update throws', async () => {
+        const processId = 'existing-process';
+        store.processes.set(processId, {
+            id: processId,
+            type: 'clarification',
+            promptPreview: 'test',
+            fullPrompt: 'test',
+            status: 'completed',
+            startTime: new Date(),
+            conversationTurns: [],
+        } as any);
+
+        (store.updateProcess as any).mockRejectedValueOnce(new Error('db down'));
+        const executeFollowUpFn = vi.fn().mockResolvedValue(undefined);
+
+        const followUpTask = makeTask({
+            id: 'followup-task-2',
+            payload: {
+                kind: 'chat',
+                prompt: 'Follow-up',
+                processId,
+                workspaceId: 'ws-abc',
+            } as any,
+        });
+
+        const result = await runner.run(followUpTask, makeOpts({ executeFollowUpFn }));
+
+        expect(result.success).toBe(false);
+        expect(result.error?.message).toBe('db down');
+        expect(executeFollowUpFn).not.toHaveBeenCalled();
+    });
+});
