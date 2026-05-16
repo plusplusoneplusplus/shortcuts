@@ -192,6 +192,46 @@ export class RequestRunner {
             const sessionLog = createSessionLogger(session.sessionId);
             options.onSessionCreated?.(session.sessionId);
 
+            if (options.onMcpOAuthRequired && typeof session.on === 'function') {
+                try {
+                    session.on('mcp.oauth_required', (event: { id?: string; data: { requestId: string; serverName: string; serverUrl: string } }) => {
+                        const evtData = event.data;
+                        // Defensive: try the experimental RPC if the SDK exposes it.
+                        // The method may not exist on the installed SDK build, so we
+                        // probe it dynamically and never let a failure here disrupt
+                        // the session.
+                        const rpc = (session as unknown as { rpc?: { mcp?: { oauth?: { login?: (p: { serverName: string }) => Promise<{ authorizationUrl?: string }> } } } }).rpc;
+                        const loginFn = rpc?.mcp?.oauth?.login;
+                        const dispatch = (authorizationUrl?: string) => {
+                            try {
+                                options.onMcpOAuthRequired!({
+                                    serverName: evtData.serverName,
+                                    serverUrl: evtData.serverUrl,
+                                    authorizationUrl,
+                                    requestId: evtData.requestId,
+                                    sessionId: session!.sessionId,
+                                });
+                            } catch (cbErr) {
+                                sessionLog.warn({ err: cbErr instanceof Error ? cbErr.message : String(cbErr) }, 'onMcpOAuthRequired callback threw');
+                            }
+                        };
+                        if (typeof loginFn === 'function') {
+                            Promise.resolve()
+                                .then(() => loginFn.call(rpc!.mcp!.oauth, { serverName: evtData.serverName }))
+                                .then(loginResult => dispatch(loginResult?.authorizationUrl))
+                                .catch(loginErr => {
+                                    sessionLog.warn({ serverName: evtData.serverName, err: loginErr instanceof Error ? loginErr.message : String(loginErr) }, 'mcp.oauth.login RPC failed; dispatching without URL');
+                                    dispatch(undefined);
+                                });
+                        } else {
+                            dispatch(undefined);
+                        }
+                    });
+                } catch (subErr) {
+                    sessionLog.warn({ err: subErr instanceof Error ? subErr.message : String(subErr) }, 'Failed to subscribe to mcp.oauth_required');
+                }
+            }
+
             if (switchModelAfterSessionCreate) {
                 await session.setModel(options.model!, { reasoningEffort: options.reasoningEffort });
                 sessionLog.debug({ model: options.model, reasoningEffort: options.reasoningEffort }, 'Model set after session creation');

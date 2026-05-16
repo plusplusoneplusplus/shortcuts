@@ -78,6 +78,8 @@ import { registerRalphPromoteRoutes } from './ralph-promote-routes';
 import { registerLoopRoutes } from '../loops/loop-handler';
 import type { LoopStore } from '../loops/loop-store';
 import type { LoopExecutor } from '../loops/loop-executor';
+import { registerMcpOauthRoutes } from '../mcp-oauth';
+import type { McpOauthManager } from '../mcp-oauth';
 
 /** Collect git commits made between headBefore and current HEAD. Non-fatal — returns [] on error. */
 function collectWorkItemCommits(
@@ -120,6 +122,7 @@ export interface RegisterRoutesOptions {
     remoteServerConnector?: DevTunnelConnector;
     loopStore?: LoopStore;
     loopExecutor?: LoopExecutor;
+    mcpOauthManager?: McpOauthManager;
 }
 
 export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined } {
@@ -225,6 +228,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                 }
             },
         });
+    }
+
+    // MCP OAuth routes (feature-flagged via mcpOauth.enabled)
+    if (opts.mcpOauthManager) {
+        registerMcpOauthRoutes(routes, { manager: opts.mcpOauthManager });
     }
 
     registerMemoryRoutes(routes, dataDir);

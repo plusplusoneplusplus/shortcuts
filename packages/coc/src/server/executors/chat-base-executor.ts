@@ -100,6 +100,8 @@ export interface ChatModeExecutorOptions {
     resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
     /** Late-bound loop infrastructure (getter because loop infra is created after executor registry). */
     getLoopInfra?: () => LoopInfraDeps | undefined;
+    /** Late-bound MCP OAuth manager (getter to allow optional/feature-flagged wiring). */
+    getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
 }
 
 /** Return type for the AI call result. */
@@ -139,6 +141,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly resolveSkillConfigFn: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     protected readonly resolveWorkspaceIdForPathFn: (rootPath: string) => Promise<string>;
     protected readonly getLoopInfra?: () => LoopInfraDeps | undefined;
+    protected readonly getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
 
     constructor(store: ProcessStore, options: ChatModeExecutorOptions, dataDir?: string) {
         super(store, dataDir);
@@ -152,6 +155,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.resolveSkillConfigFn = options.resolveSkillConfig;
         this.resolveWorkspaceIdForPathFn = options.resolveWorkspaceIdForPath;
         this.getLoopInfra = options.getLoopInfra;
+        this.getMcpOauthManager = options.getMcpOauthManager;
     }
 
     /**
@@ -527,6 +531,24 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                     }
                     : toolEventHandler,
                 onBackgroundTasksChanged: this.buildBackgroundTaskHandler(processId),
+                onMcpOAuthRequired: (() => {
+                    const manager = this.getMcpOauthManager?.();
+                    if (!manager) return undefined;
+                    return (event: { serverName: string; serverUrl: string; authorizationUrl?: string; requestId: string }) => {
+                        try {
+                            manager.addPending({
+                                requestId: event.requestId,
+                                serverName: event.serverName,
+                                serverUrl: event.serverUrl,
+                                authorizationUrl: event.authorizationUrl,
+                                processId,
+                                workspaceId: payload.workspaceId,
+                            });
+                        } catch {
+                            // Non-fatal: OAuth dispatch must not interrupt the session.
+                        }
+                    };
+                })(),
             };
 
             let result;

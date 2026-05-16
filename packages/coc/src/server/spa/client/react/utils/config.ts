@@ -20,6 +20,7 @@ interface DashboardConfig {
     vimNavigationEnabled?: boolean;
     containerMode?: boolean;
     loopsEnabled?: boolean;
+    mcpOauthEnabled?: boolean;
     bindAddress?: string;
 }
 
@@ -119,6 +120,10 @@ export function isContainerMode(): boolean {
 
 export function isLoopsEnabled(): boolean {
     return getConfig().loopsEnabled === true;
+}
+
+export function isMcpOauthEnabled(): boolean {
+    return getConfig().mcpOauthEnabled === true;
 }
 
 /** Returns the raw bind address the server is listening on (e.g., '0.0.0.0'), if known. */

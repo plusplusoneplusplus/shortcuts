@@ -94,6 +94,7 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
         vimNavigationEnabled,
         containerMode,
         loopsEnabled,
+        mcpOauthEnabled,
         reviewFilePath,
         projectDir,
         bindAddress,
@@ -141,7 +142,8 @@ ${getBundleCss()}
             ralphEnabled: ${!!ralphEnabled},
             vimNavigationEnabled: ${!!vimNavigationEnabled},
             containerMode: ${!!containerMode},
-            loopsEnabled: ${!!loopsEnabled}${bindAddress ? `,
+            loopsEnabled: ${!!loopsEnabled},
+            mcpOauthEnabled: ${!!mcpOauthEnabled}${bindAddress ? `,
             bindAddress: '${escapeHtml(bindAddress)}'` : ''}
         };
     </script>${reviewFilePath ? `

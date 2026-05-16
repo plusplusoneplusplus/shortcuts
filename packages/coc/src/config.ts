@@ -121,6 +121,10 @@ export interface CLIConfig {
     loops?: {
         enabled?: boolean;
     };
+    /** MCP OAuth support (auto-detect mcp.oauth_required events). Disabled by default. */
+    mcpOauth?: {
+        enabled?: boolean;
+    };
     /** Vim-style navigation configuration (hjkl pane focus, j/k message stepping). Disabled by default. */
     vimNavigation?: {
         enabled?: boolean;
@@ -281,6 +285,10 @@ export interface ResolvedCLIConfig {
     loops: {
         enabled: boolean;
     };
+    /** MCP OAuth subsystem configuration. */
+    mcpOauth: {
+        enabled: boolean;
+    };
     /** Vim-style navigation configuration. */
     vimNavigation: {
         enabled: boolean;
@@ -400,6 +408,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
     },
     loops: {
+        enabled: false,
+    },
+    mcpOauth: {
         enabled: false,
     },
     vimNavigation: {

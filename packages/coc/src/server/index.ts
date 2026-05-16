@@ -31,6 +31,7 @@ import { ensureMyWorkWorkspace } from './workspaces/my-work-workspace';
 import { ensureMyLifeWorkspace } from './workspaces/my-life-workspace';
 import { createScheduleInfrastructure } from './infrastructure/schedule-infrastructure';
 import { createLoopInfrastructure } from './infrastructure/loop-infrastructure';
+import { createMcpOauthInfrastructure } from './mcp-oauth';
 import { createCleanupInfrastructure } from './infrastructure/cleanup-infrastructure';
 import { createWebSocketInfrastructure } from './infrastructure/websocket-infrastructure';
 import { createWatcherInfrastructure } from './infrastructure/watcher-infrastructure';
@@ -76,6 +77,7 @@ interface CloseHandlerDeps {
     autoPromoteScheduler?: { dispose(): void };
     loopExecutor?: { shutdownAll(): void };
     loopInfraDispose?: () => void;
+    mcpOauthDispose?: () => void;
     activeSockets: Set<import('net').Socket>;
     server: http.Server;
 }
@@ -97,6 +99,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.scheduleInfraDispose();
         deps.loopExecutor?.shutdownAll();
         deps.loopInfraDispose?.();
+        deps.mcpOauthDispose?.();
         gitInfoCache.dispose();
         deps.notesGitTimerManager.dispose();
         deps.autoPromoteScheduler?.dispose();
@@ -160,6 +163,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Forward declaration — loop infra is created after queue infra
     let loopInfra: ReturnType<typeof createLoopInfrastructure> | undefined;
 
+    // MCP OAuth infra — gated by mcpOauth.enabled feature flag (default false).
+    const mcpOauthEnabled = resolvedConfig.mcpOauth?.enabled ?? false;
+    const mcpOauthInfra = mcpOauthEnabled ? createMcpOauthInfrastructure() : undefined;
+
     const { registry, bridge, queuePersistence, queueFacade } = createQueueInfrastructure(
         store, dataDir, options, defaultTimeoutMs,
         resolvedConfig.chat.followUpSuggestions, resolvedConfig.chat.askUser, () => wsServer,
@@ -201,6 +208,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 },
             };
         },
+        () => mcpOauthInfra?.manager,
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
@@ -347,6 +355,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         remoteServerConnector,
         loopStore: loopInfra?.loopStore,
         loopExecutor: loopInfra?.loopExecutor,
+        mcpOauthManager: mcpOauthInfra?.manager,
     });
     // Restore auto-commit timers for all workspaces that had it enabled
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });
@@ -354,7 +363,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const rawHostname = os.hostname();
     const displayHostname = resolvedConfig.serve?.serverName || shortenHostname(rawHostname);
     const handler = createRequestHandler({
-        routes, spaHtml: () => generateDashboardHtml({ enableWiki: true, hostname: displayHostname, terminalEnabled: resolvedConfig.terminal?.enabled ?? true, notesEnabled: resolvedConfig.notes?.enabled ?? true, myWorkEnabled: resolvedConfig.myWork?.enabled ?? false, myLifeEnabled: resolvedConfig.myLife?.enabled ?? false, scratchpadEnabled: resolvedConfig.scratchpad?.enabled ?? false, scratchpadLayout: resolvedConfig.scratchpad?.layout ?? 'horizontal', workflowsEnabled: resolvedConfig.workflows?.enabled ?? false, pullRequestsEnabled: resolvedConfig.pullRequests?.enabled ?? false, serversEnabled: resolvedConfig.servers?.enabled ?? false, ralphEnabled: resolvedConfig.ralph?.enabled ?? false, vimNavigationEnabled: resolvedConfig.vimNavigation?.enabled ?? false, loopsEnabled, bindAddress: host }),
+        routes, spaHtml: () => generateDashboardHtml({ enableWiki: true, hostname: displayHostname, terminalEnabled: resolvedConfig.terminal?.enabled ?? true, notesEnabled: resolvedConfig.notes?.enabled ?? true, myWorkEnabled: resolvedConfig.myWork?.enabled ?? false, myLifeEnabled: resolvedConfig.myLife?.enabled ?? false, scratchpadEnabled: resolvedConfig.scratchpad?.enabled ?? false, scratchpadLayout: resolvedConfig.scratchpad?.layout ?? 'horizontal', workflowsEnabled: resolvedConfig.workflows?.enabled ?? false, pullRequestsEnabled: resolvedConfig.pullRequests?.enabled ?? false, serversEnabled: resolvedConfig.servers?.enabled ?? false, ralphEnabled: resolvedConfig.ralph?.enabled ?? false, vimNavigationEnabled: resolvedConfig.vimNavigation?.enabled ?? false, loopsEnabled, mcpOauthEnabled, bindAddress: host }),
         store, spaETag: getBundleETag,
         staticDir: path.join(__dirname, 'spa', 'client', 'dist'),
         getIconSvg: () => generateIconSvg(rawHostname),
@@ -410,6 +419,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             autoPromoteScheduler,
             loopExecutor: loopInfra?.loopExecutor,
             loopInfraDispose: loopInfra?.dispose,
+            mcpOauthDispose: mcpOauthInfra?.dispose,
             activeSockets, server,
         }),
     };
