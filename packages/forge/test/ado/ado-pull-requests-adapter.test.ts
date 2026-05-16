@@ -49,6 +49,14 @@ const mockAdoReviewer = {
     isRequired: true,
 };
 
+const mockAdoCommit = {
+    commitId: 'abcdef1234567890',
+    comment: 'Fix bug\n\nDetailed body',
+    author: { name: 'Alice', email: 'alice@example.com', date: new Date('2024-01-04T00:00:00Z') },
+    committer: { name: 'CI', email: 'ci@example.com', date: new Date('2024-01-04T01:00:00Z') },
+    remoteUrl: 'https://dev.azure.com/org/proj/_git/repo/commit/abcdef1234567890',
+};
+
 function makeMockService(overrides: Partial<Record<string, ReturnType<typeof vi.fn>>> = {}): AdoPullRequestsService {
     return {
         listPullRequests: vi.fn().mockResolvedValue([mockAdoPr]),
@@ -59,6 +67,7 @@ function makeMockService(overrides: Partial<Record<string, ReturnType<typeof vi.
         createThread: vi.fn().mockResolvedValue(mockAdoThread),
         getReviewers: vi.fn().mockResolvedValue([mockAdoReviewer]),
         addReviewers: vi.fn().mockResolvedValue([mockAdoReviewer]),
+        getPullRequestCommits: vi.fn().mockResolvedValue([mockAdoCommit]),
         getPullRequestIterations: vi.fn().mockResolvedValue([]),
         getPullRequestIterationChanges: vi.fn().mockResolvedValue({ changeEntries: [] }),
         getFileContent: vi.fn().mockResolvedValue(''),
@@ -352,6 +361,26 @@ describe('AdoPullRequestsAdapter', () => {
         });
     });
 
+    // ── getCommits ──────────────────────────────────────────
+
+    describe('getCommits', () => {
+        it('maps ADO PR commits to canonical commits', async () => {
+            const commits = await adapter.getCommits('repo-id', 42);
+            expect(service.getPullRequestCommits).toHaveBeenCalledWith('repo-id', 42, 'my-project');
+            expect(commits).toHaveLength(1);
+            expect(commits[0]).toMatchObject({
+                sha: 'abcdef1234567890',
+                shortSha: 'abcdef1',
+                title: 'Fix bug',
+                message: 'Fix bug\n\nDetailed body',
+                author: { displayName: 'Alice', email: 'alice@example.com' },
+                url: 'https://dev.azure.com/org/proj/_git/repo/commit/abcdef1234567890',
+            });
+            expect(commits[0].authoredAt).toEqual(new Date('2024-01-04T00:00:00Z'));
+            expect(commits[0].committedAt).toEqual(new Date('2024-01-04T01:00:00Z'));
+        });
+    });
+
     // ── addReviewers ─────────────────────────────────────────
 
     describe('addReviewers', () => {
@@ -636,6 +665,9 @@ describe('AdoPullRequestsAdapter', () => {
             await adapterWithRepo.getReviewers('ws-48cyxk', 1);
             expect(svc.getReviewers).toHaveBeenCalledWith('my-repo', 1, 'my-project');
 
+            await adapterWithRepo.getCommits('ws-48cyxk', 1);
+            expect(svc.getPullRequestCommits).toHaveBeenCalledWith('my-repo', 1, 'my-project');
+
             await adapterWithRepo.addReviewers('ws-48cyxk', 1, ['u1']);
             expect(svc.addReviewers).toHaveBeenCalledWith('my-repo', 1, [{ id: 'u1' }], 'my-project');
         });
@@ -646,6 +678,9 @@ describe('AdoPullRequestsAdapter', () => {
 
             await adapterNoRepo.listPullRequests('fallback-repo');
             expect(svc.listPullRequests).toHaveBeenCalledWith('fallback-repo', expect.any(Object), 'my-project', undefined, undefined);
+
+            await adapterNoRepo.getCommits('fallback-repo', 1);
+            expect(svc.getPullRequestCommits).toHaveBeenCalledWith('fallback-repo', 1, 'my-project');
         });
 
         it('preserves repositoryId in mapped PullRequest even when repo override is used', async () => {

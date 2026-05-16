@@ -13,7 +13,6 @@
  *   - AI summary panel (risk, confidence, findings, metrics)
  *   - Persona lenses
  *   - Conversation timeline
- *   - Commit intent table (also: no commit REST endpoint exists yet)
  *   - Checks / merge-readiness (also: no check REST endpoint yet)
  *   - Inline AI annotations on file diffs
  *   - Assistant chat drawer
@@ -31,7 +30,7 @@ import { PrAiSummaryPanel } from './PrAiSummaryPanel';
 import { PrQuickReviewWorkflow } from './PrQuickReviewWorkflow';
 import { PrConversationPanel } from './PrConversationPanel';
 import { PrAiGroupedThreads } from './PrAiGroupedThreads';
-import { PrCommitTable } from './PrCommitTable';
+import { PrCommitTable, type PrCommitRow } from './PrCommitTable';
 import { PrChecksTable, PrMergeReadiness } from './PrChecksAndReadiness';
 import { PrFilesPanel } from './PrFilesPanel';
 import { PrAiAssistantDrawer } from './PrAiAssistantDrawer';
@@ -39,7 +38,6 @@ import {
     buildAiThreadGroupsFromThreads,
     getMockAiSummary,
     getMockCheckRows,
-    getMockCommitRows,
     getMockFiles,
     getMockMergeReadiness,
     getMockPersonaLenses,
@@ -83,6 +81,8 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     const { state, dispatch } = useApp();
     const [pr, setPr] = useState<PullRequest | null>(null);
     const [threads, setThreads] = useState<CommentThread[]>([]);
+    const [commits, setCommits] = useState<PrCommitRow[]>([]);
+    const [commitsError, setCommitsError] = useState<string | null>(null);
     const [diff, setDiff] = useState<ParsedDiff>(EMPTY_DIFF);
     const [diffError, setDiffError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
@@ -109,6 +109,8 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
         setError(null);
         setDiff(EMPTY_DIFF);
         setDiffError(null);
+        setCommits([]);
+        setCommitsError(null);
         const client = getSpaCocClient();
         const prIdStr = String(prId);
         const repoIdStr = String(repoId);
@@ -122,6 +124,13 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                 .then(body => (body.threads ?? []) as CommentThread[])
                 .catch(() => [] as CommentThread[]),
             client.pullRequests
+                .getCommits(repoIdStr, prIdStr)
+                .then(body => ({ kind: 'ok' as const, commits: (body.commits ?? []) as PrCommitRow[] }))
+                .catch((err: unknown) => ({
+                    kind: 'err' as const,
+                    message: getSpaCocClientErrorMessage(err, 'Failed to load commits'),
+                })),
+            client.pullRequests
                 .getDiff(repoIdStr, prIdStr)
                 .then(text => ({ kind: 'ok' as const, parsed: parseUnifiedDiff(text) }))
                 .catch((err: unknown) => ({
@@ -129,9 +138,14 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                     message: getSpaCocClientErrorMessage(err, 'Failed to load diff'),
                 })),
         ])
-            .then(([prData, threadsData, diffResult]) => {
+            .then(([prData, threadsData, commitsResult, diffResult]) => {
                 setPr(prData);
                 setThreads(threadsData);
+                if (commitsResult.kind === 'ok') {
+                    setCommits(commitsResult.commits);
+                } else {
+                    setCommitsError(commitsResult.message);
+                }
                 if (diffResult.kind === 'ok') {
                     setDiff(diffResult.parsed);
                 } else {
@@ -153,7 +167,6 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     const personaLenses = useMemo(() => getMockPersonaLenses(), []);
     const timeline = useMemo(() => getMockTimeline(), []);
     const threadGroups = useMemo(() => buildAiThreadGroupsFromThreads(threads), [threads]);
-    const commitRows = useMemo(() => getMockCommitRows(), []);
     const checkRows = useMemo(() => getMockCheckRows(), []);
     const mergeReadiness = useMemo(() => getMockMergeReadiness(), []);
 
@@ -385,7 +398,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                     {TAB_DEFINITIONS.map(tab => {
                         const isActive = detailTab === tab.id;
                         const count = tabCount(tab.id, {
-                            commits: commitRows.length,
+                            commits: commits.length,
                             files: diff.fileCount,
                             checks: checkRows.length,
                             overview: threads.length,
@@ -493,11 +506,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
 
                 {detailTab === 'commits' && (
                     <div className="w-full px-2.5 pb-7 pt-2" data-testid="commits-tab">
-                        <PreviewOnlyNotice
-                            label="Commit list is AI-mocked"
-                            body="The server does not yet expose a per-PR commit endpoint. Intent labels and the commit log shown below are placeholder fixtures."
-                        />
-                        <PrCommitTable rows={commitRows} />
+                        <PrCommitTable rows={commits} error={commitsError} />
                     </div>
                 )}
 

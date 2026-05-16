@@ -19,7 +19,6 @@ import {
     buildAiThreadGroupsFromThreads,
     getMockAiSummary,
     getMockCheckRows,
-    getMockCommitRows,
     getMockMergeReadiness,
     getMockPersonaLenses,
     getMockTimeline,
@@ -96,8 +95,29 @@ describe('PrAiGroupedThreads', () => {
 
 describe('PrCommitTable', () => {
     it('renders one row per commit', () => {
-        render(<PrCommitTable rows={getMockCommitRows()} />);
-        expect(screen.getAllByTestId('pr-commit-row').length).toBeGreaterThanOrEqual(5);
+        render(<PrCommitTable rows={[
+            {
+                sha: 'abcdef1234567890',
+                shortSha: 'abcdef1',
+                title: 'Fix retry handling',
+                author: { displayName: 'Alice' },
+                committedAt: '2024-01-01T00:00:00Z',
+            },
+            {
+                sha: '123456abcdef7890',
+                shortSha: '123456a',
+                title: 'Add retry tests',
+                author: { displayName: 'Bob' },
+                committedAt: '2024-01-02T00:00:00Z',
+            },
+        ]} />);
+        expect(screen.getAllByTestId('pr-commit-row')).toHaveLength(2);
+        expect(screen.getByText('Fix retry handling')).toBeInTheDocument();
+    });
+
+    it('renders an empty state', () => {
+        render(<PrCommitTable rows={[]} />);
+        expect(screen.getByTestId('pr-commits-empty')).toBeInTheDocument();
     });
 });
 

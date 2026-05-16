@@ -15,6 +15,7 @@ function makeMockGitApi(overrides: Record<string, unknown> = {}) {
         getThreads: vi.fn().mockResolvedValue([]),
         createPullRequestReviewers: vi.fn().mockResolvedValue([]),
         getPullRequestReviewers: vi.fn().mockResolvedValue([]),
+        getPullRequestCommits: vi.fn().mockResolvedValue([]),
         getPullRequestIterations: vi.fn().mockResolvedValue([]),
         getPullRequestIterationChanges: vi.fn().mockResolvedValue({ changeEntries: [] }),
         getItemText: vi.fn().mockResolvedValue(null),
@@ -176,6 +177,33 @@ describe('AdoPullRequestsService', () => {
 
         expect(gitApi.getPullRequestReviewers).toHaveBeenCalledWith('repo-id', 1, 'proj');
         expect(result).toEqual(reviewers);
+    });
+
+    // ── getPullRequestCommits ───────────────────────────────
+
+    it('getPullRequestCommits delegates to gitApi.getPullRequestCommits and returns array', async () => {
+        const commits = [{ commitId: 'abc123', comment: 'Fix bug' }];
+        gitApi.getPullRequestCommits.mockResolvedValue(commits);
+
+        const result = await service.getPullRequestCommits('repo-id', 42, 'proj');
+
+        expect(gitApi.getPullRequestCommits).toHaveBeenCalledWith('repo-id', 42, 'proj');
+        expect(result).toEqual(commits);
+    });
+
+    it('getPullRequestCommits returns [] when API returns undefined', async () => {
+        gitApi.getPullRequestCommits.mockResolvedValue(undefined);
+
+        const result = await service.getPullRequestCommits('repo-id', 42);
+
+        expect(result).toEqual([]);
+    });
+
+    it('getPullRequestCommits throws AdoPullRequestError when the API rejects', async () => {
+        gitApi.getPullRequestCommits.mockRejectedValue(new Error('timeout'));
+
+        await expect(service.getPullRequestCommits('repo-id', 42)).rejects.toThrow(AdoPullRequestError);
+        await expect(service.getPullRequestCommits('repo-id', 42)).rejects.toThrow('Failed to get commits for PR 42');
     });
 
     // ── getGitApi caching ────────────────────────────────────

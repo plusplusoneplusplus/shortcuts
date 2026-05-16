@@ -23,6 +23,7 @@ export {
     type GitPullRequestIteration,
     type GitPullRequestIterationChanges,
     type GitPullRequestChange,
+    type GitCommitRef,
 } from './pull-requests-service';
 export { AdoPullRequestsAdapter } from './ado-pull-requests-adapter';
 export { AdoWorkItemsAdapter } from './ado-work-items-adapter';

@@ -859,6 +859,7 @@ export {
     type PullRequestStatus as ProviderPullRequestStatus,
     type ReviewVote,
     type Reviewer,
+    type PullRequestCommit,
     type PullRequest as ProviderPullRequest,
     type WorkItem as ProviderWorkItem,
     type SearchCriteria as ProviderSearchCriteria,

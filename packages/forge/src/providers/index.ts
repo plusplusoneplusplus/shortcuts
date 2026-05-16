@@ -6,6 +6,7 @@ export {
     type PullRequestStatus,
     type ReviewVote,
     type Reviewer,
+    type PullRequestCommit,
     type PullRequest,
     type WorkItem,
     type SearchCriteria,
