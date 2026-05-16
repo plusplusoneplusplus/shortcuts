@@ -13,7 +13,7 @@ import { useEffect, useSyncExternalStore } from 'react';
 import type { UiLayoutMode } from '../../types/dashboard';
 import { getSpaCocClient } from '../../api/cocClient';
 
-const DEFAULT_MODE: UiLayoutMode = 'classic';
+const DEFAULT_MODE: UiLayoutMode = 'dev-workflow';
 
 // ── Module-level shared store ────────────────────────────────────────────────
 let currentMode: UiLayoutMode = DEFAULT_MODE;

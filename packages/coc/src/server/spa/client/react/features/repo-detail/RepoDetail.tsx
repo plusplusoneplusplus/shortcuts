@@ -8,6 +8,7 @@ import { useQueue } from '../../contexts/QueueContext';
 import { useWorkItems, loadUnseenWorkItemIds } from '../../contexts/WorkItemContext';
 import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { Button, cn } from '../../ui';
+import { getRepoDisplayName } from './RepoTabStrip';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { RepoInfoTab } from './RepoInfoTab';
 import { TemplatesTab } from '../templates/TemplatesTab';
@@ -49,10 +50,10 @@ interface RepoDetailProps {
 
 export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] = [
     { key: 'chats', label: 'Chats', shortcut: 'Alt+A' },
+    { key: 'explorer', label: 'Explorer', shortcut: 'Alt+E' },
     { key: 'git', label: 'Git', shortcut: 'Alt+G' },
     { key: 'work-items', label: 'Work Items', shortcut: 'Alt+I' },
     { key: 'schedules', label: 'Schedules', shortcut: 'Alt+S' },
-    { key: 'explorer', label: 'Explorer', shortcut: 'Alt+E' },
     { key: 'workflows', label: 'Workflows', shortcut: 'Alt+W' },
     { key: 'pull-requests', label: 'Pull Requests', shortcut: 'Alt+R' },
     { key: 'tasks', label: 'Tasks (Dep.)', shortcut: 'Alt+T' },
@@ -372,7 +373,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                 className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
                 style={{ background: color }}
             />
-            <h1 className="text-[10px] font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate group-active:opacity-70 min-w-0">{ws.name}</h1>
+            <h1 className="text-[10px] font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate group-active:opacity-70 min-w-0">{getRepoDisplayName(ws)}</h1>
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3 flex-shrink-0 text-[#999999] dark:text-[#666666]">
                 <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
             </svg>
@@ -394,7 +395,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                 className="inline-block w-3 h-3 md:w-3.5 md:h-3.5 rounded-full flex-shrink-0"
                                 style={{ background: color }}
                             />
-                            <h1 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1 truncate">{ws.name}</h1>
+                            <h1 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1 truncate">{getRepoDisplayName(ws)}</h1>
                         </div>
                         {/* Sub-tab bar */}
                         <div className="relative flex-1 min-w-0" data-testid="repo-sub-tab-strip-container">

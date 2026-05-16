@@ -64,7 +64,10 @@ export function ReposView() {
     // My Life virtual workspace — personal goals, journal, life admin
     const isMyLife = myLifeEnabled && state.selectedRepoId === MY_LIFE_WORKSPACE_ID;
 
-    const selectedRepo = repos.find(r => r.workspace.id === state.selectedRepoId) || null;
+    const selectedRepo = repos.find(r =>
+        r.workspace.id === state.selectedRepoId &&
+        (!state.currentAgentId || !r.workspace.agentId || r.workspace.agentId === state.currentAgentId)
+    ) || repos.find(r => r.workspace.id === state.selectedRepoId) || null;
 
     return (
         <div id="view-repos" className={`flex ${heightClass} overflow-hidden`}>
@@ -83,7 +86,7 @@ export function ReposView() {
                 hasSelection && selectedRepo ? (
                     <div className="flex-1 min-w-0 min-h-0 flex flex-col">
                         <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden">
-                            <RepoDetail repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
+                            <RepoDetail key={`${selectedRepo.workspace.id}-${state.currentAgentId ?? ''}`} repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
                         </main>
                     </div>
                 ) : (
@@ -95,7 +98,7 @@ export function ReposView() {
                 // ── Tablet / Desktop: full-width content, repo selected via top-bar tabs ──
                 <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden">
                     {selectedRepo ? (
-                        <RepoDetail repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
+                        <RepoDetail key={`${selectedRepo.workspace.id}-${state.currentAgentId ?? ''}`} repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
                     ) : (
                         <div id="repo-detail-empty" data-testid="repo-detail-empty" className="flex-1 flex items-center justify-center text-sm text-[#848484]">
                             Select a repository to view details
