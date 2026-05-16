@@ -796,6 +796,7 @@ timeout: 300
                 '  enabled: true',
                 'features:',
                 '  autoMemoryPromotion: true',
+                '  focusedDiff: true',
                 'memoryPromotion:',
                 '  batchSize: 25',
                 '  timeoutMs: 80000',
@@ -879,6 +880,7 @@ timeout: 300
                 '  enabled: true',
                 'features:',
                 '  autoMemoryPromotion: true',
+                '  focusedDiff: true',
                 'memoryPromotion:',
                 '  batchSize: 10',
                 '  timeoutMs: 70000',
@@ -922,6 +924,7 @@ timeout: 300
                   },
                   "features": {
                     "autoMemoryPromotion": true,
+                    "focusedDiff": true,
                   },
                   "groupSingleLineMessages": false,
                   "logging": {
@@ -1034,6 +1037,7 @@ timeout: 300
                   "chat.followUpSuggestions.count": "file",
                   "chat.followUpSuggestions.enabled": "file",
                   "features.autoMemoryPromotion": "file",
+                  "features.focusedDiff": "file",
                   "groupSingleLineMessages": "file",
                   "loops.enabled": "file",
                   "mcpConfig": "file",

@@ -392,6 +392,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 vimNavigationEnabled: liveConfig.vimNavigation?.enabled ?? false,
                 loopsEnabled: liveConfig.loops?.enabled ?? false,
                 mcpOauthEnabled: liveConfig.mcpOauth?.enabled ?? false,
+                focusedDiffEnabled: liveConfig.features?.focusedDiff ?? false,
                 bindAddress: host,
             });
         },
