@@ -62,6 +62,7 @@ export function createQueueInfrastructure(
     getWsServer: () => ProcessWebSocketServer,
     memoryPromotion: MemoryPromoteConfig | undefined,
     getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined,
+    getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined,
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.
     let db: Database.Database;
@@ -91,6 +92,7 @@ export function createQueueInfrastructure(
         memoryPromotion,
         initialDelayMs: options.queue?.restartPickupDelayMs,
         getLoopInfra,
+        getMcpOauthManager,
     });
 
     const queuePersistence = new SqliteQueuePersistence(bridge, db, {

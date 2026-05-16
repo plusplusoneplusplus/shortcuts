@@ -50,6 +50,7 @@ export {
     Attachment,
     // Message types
     SendMessageOptions,
+    McpOAuthEvent,
     SystemMessageConfig,
     TokenUsage,
     SDKInvocationResult,

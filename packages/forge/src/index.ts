@@ -175,6 +175,7 @@ export {
     MCPControlOptions,
     Attachment,
     SendMessageOptions,
+    McpOAuthEvent,
     SystemMessageConfig,
     SDKInvocationResult,
     SDKAvailabilityResult,

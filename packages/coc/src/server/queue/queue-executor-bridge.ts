@@ -24,6 +24,7 @@ export interface CLITaskExecutorOptions {
     memoryPromotion?: MemoryPromoteConfig;
     getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
     getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined;
+    getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
 }
 export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
     maxConcurrency?: number; sharedConcurrency?: number; exclusiveConcurrency?: number;
@@ -102,6 +103,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             onBackgroundReview: (pid: string, wsId: string, turns: ConversationTurn[]) => this.enqueueBackgroundReview(pid, wsId, turns),
             getWsServer: options.getWsServer,
             getLoopInfra: options.getLoopInfra,
+            getMcpOauthManager: options.getMcpOauthManager,
         });
         this.getLoopInfra = options.getLoopInfra;
     }

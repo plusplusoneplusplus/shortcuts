@@ -477,6 +477,48 @@ export interface SendMessageOptions {
      * Defaults to `'immediate'` when omitted.
      */
     deliveryMode?: DeliveryMode;
+
+    /**
+     * Callback invoked when the underlying SDK session emits an
+     * `mcp.oauth_required` event for an MCP server requiring OAuth.
+     *
+     * The runner subscribes to the event on the per-request session and
+     * forwards each occurrence to this callback. When the SDK exposes a
+     * proactive `session.rpc.mcp.oauth.login` RPC, the runner invokes it
+     * defensively and includes the resulting `authorizationUrl` in the
+     * event. Otherwise `authorizationUrl` is left undefined and consumers
+     * should surface the `serverName`/`serverUrl` so the user can complete
+     * authentication out-of-band.
+     *
+     * The handler is observational only: it must not throw, and it must
+     * not block message dispatch.
+     *
+     * @experimental Subject to change as the SDK exposes a stable RPC.
+     */
+    onMcpOAuthRequired?: (event: McpOAuthEvent) => void;
+}
+
+/**
+ * Event emitted when an MCP server requires OAuth authentication during a
+ * Copilot SDK session.
+ *
+ * @experimental
+ */
+export interface McpOAuthEvent {
+    /** Display name of the MCP server requiring OAuth. */
+    serverName: string;
+    /** URL of the MCP server requiring OAuth. */
+    serverUrl: string;
+    /**
+     * Authorization URL the user must open in a browser to complete the
+     * OAuth flow. Undefined if cached tokens are valid or the proactive
+     * login RPC is not exposed by the SDK build in use.
+     */
+    authorizationUrl?: string;
+    /** Unique identifier for this OAuth request (matches the SDK event id). */
+    requestId: string;
+    /** SDK session that emitted the event. */
+    sessionId: string;
 }
 
 /**

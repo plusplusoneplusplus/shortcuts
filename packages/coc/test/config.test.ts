@@ -792,6 +792,8 @@ timeout: 300
                 '  enabled: true',
                 'loops:',
                 '  enabled: true',
+                'mcpOauth:',
+                '  enabled: true',
                 'features:',
                 '  autoMemoryPromotion: true',
                 'memoryPromotion:',
@@ -937,6 +939,9 @@ timeout: 300
                     "enabled": true,
                   },
                   "mcpConfig": "\${HOME}/mcp.json",
+                  "mcpOauth": {
+                    "enabled": false,
+                  },
                   "memoryPromotion": {
                     "aiNormalization": {
                       "enabled": true,
@@ -1032,6 +1037,7 @@ timeout: 300
                   "groupSingleLineMessages": "file",
                   "loops.enabled": "file",
                   "mcpConfig": "file",
+                  "mcpOauth.enabled": "default",
                   "memoryPromotion.aiNormalization.enabled": "file",
                   "memoryPromotion.aiNormalization.model": "file",
                   "memoryPromotion.aiNormalization.timeoutMs": "file",

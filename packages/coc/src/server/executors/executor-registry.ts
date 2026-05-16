@@ -43,6 +43,7 @@ export interface ExecutorRegistryOptions {
     getMemoryStore?: (workspaceId: string) => import('@plusplusoneplusplus/forge').BoundedMemoryStore | undefined;
     getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
     getLoopInfra?: () => import('./chat-base-executor').LoopInfraDeps | undefined;
+    getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
 }
 
 /**
@@ -93,6 +94,7 @@ export class ExecutorRegistry {
             resolveSkillConfig: options.resolveSkillConfig,
             resolveWorkspaceIdForPath: options.resolveWorkspaceIdForPath,
             getLoopInfra: options.getLoopInfra,
+            getMcpOauthManager: options.getMcpOauthManager,
         };
 
         this.strategyRegistry = new TaskStrategyRegistry();
