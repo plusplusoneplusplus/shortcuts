@@ -176,6 +176,27 @@ describe('WhisperCollapsedGroup — header text', () => {
         expect(text).toMatch(/2 messages\s*·\s*1 file\s*·\s*1 commit\s*·\s*1 PR\s*\(1\.0s\)/);
     });
 
+    it('renders PR hover span with data-testid when pull request metadata is available', () => {
+        const { container } = renderHeader({
+            toolCallCount: 2,
+            messageCount: 1,
+            prCount: 1,
+            pullRequests: [
+                {
+                    number: 101,
+                    url: 'https://github.com/org/repo/pull/101',
+                    provider: 'github',
+                    owner: 'org',
+                    repo: 'repo',
+                    toolCallId: 'tool-1',
+                },
+            ],
+        });
+        const span = container.querySelector('[data-testid="whisper-pr-hover"]');
+        expect(span).not.toBeNull();
+        expect(span?.textContent).toContain('1 PR');
+    });
+
     it('shows duration when start and end times are set', () => {
         const { container } = renderHeader({
             toolCallCount: 1,
@@ -186,6 +207,111 @@ describe('WhisperCollapsedGroup — header text', () => {
         });
         const text = getHeaderText(container);
         expect(text).toContain('(2.5s)');
+    });
+});
+
+// ── PullRequestHoverPopover tests ──────────────────────────────────────────
+
+describe('WhisperCollapsedGroup — PullRequestHoverPopover', () => {
+    function renderAndHoverPullRequests() {
+        const { container } = renderHeader({
+            toolCallCount: 3,
+            messageCount: 0,
+            prCount: 2,
+            pullRequests: [
+                {
+                    number: 101,
+                    url: 'https://github.com/org/repo/pull/101',
+                    provider: 'github',
+                    owner: 'org',
+                    repo: 'repo',
+                    toolCallId: 'tool-1',
+                },
+                {
+                    number: 102,
+                    url: 'https://github.com/org/repo/pull/102',
+                    provider: 'github',
+                    owner: 'org',
+                    repo: 'repo',
+                    toolCallId: 'tool-2',
+                },
+            ],
+        });
+        const span = container.querySelector('[data-testid="whisper-pr-hover"]') as HTMLElement;
+        if (span) {
+            fireEvent.mouseEnter(span);
+        }
+        return { container, body: document.body, span };
+    }
+
+    it('popover renders linked PR rows', () => {
+        const { body } = renderAndHoverPullRequests();
+        const popover = body.querySelector('[data-testid="pr-hover-popover"]');
+        expect(popover).not.toBeNull();
+        const rows = body.querySelectorAll('[data-testid^="pr-popover-row-"]');
+        expect(rows).toHaveLength(2);
+        expect(rows[0].textContent).toContain('org/repo#101');
+        expect(rows[1].textContent).toContain('org/repo#102');
+    });
+
+    it('PR rows open external pull request URLs in a new tab', () => {
+        const { body } = renderAndHoverPullRequests();
+        const row = body.querySelector('[data-testid="pr-popover-row-101"]') as HTMLAnchorElement;
+        expect(row).not.toBeNull();
+        expect(row.href).toBe('https://github.com/org/repo/pull/101');
+        expect(row.target).toBe('_blank');
+        expect(row.rel).toContain('noopener');
+        expect(row.rel).toContain('noreferrer');
+    });
+
+    it('popover disappears on mouse leave', () => {
+        vi.useFakeTimers();
+        const { body, span } = renderAndHoverPullRequests();
+        expect(body.querySelector('[data-testid="pr-hover-popover"]')).not.toBeNull();
+
+        fireEvent.mouseLeave(span);
+        act(() => { vi.advanceTimersByTime(200); });
+
+        expect(body.querySelector('[data-testid="pr-hover-popover"]')).toBeNull();
+        vi.useRealTimers();
+    });
+
+    it('renders the PR popover in a document.body portal at viewport coordinates', () => {
+        const { container } = renderHeader({
+            toolCallCount: 1,
+            messageCount: 0,
+            prCount: 1,
+            pullRequests: [
+                {
+                    number: 101,
+                    url: 'https://github.com/org/repo/pull/101',
+                    provider: 'github',
+                    owner: 'org',
+                    repo: 'repo',
+                    toolCallId: 'tool-1',
+                },
+            ],
+        });
+        const span = container.querySelector('[data-testid="whisper-pr-hover"]') as HTMLElement;
+        vi.spyOn(span, 'getBoundingClientRect').mockReturnValue({
+            top: 70,
+            bottom: 92,
+            left: 44,
+            right: 88,
+            width: 44,
+            height: 22,
+            x: 44,
+            y: 70,
+            toJSON: () => ({}),
+        } as DOMRect);
+
+        fireEvent.mouseEnter(span);
+
+        const popover = document.body.querySelector('[data-testid="pr-hover-popover"]') as HTMLElement;
+        expect(popover).not.toBeNull();
+        expect(container.querySelector('[data-testid="pr-hover-popover"]')).toBeNull();
+        expect(popover.style.top).toBe('96px');
+        expect(popover.style.left).toBe('44px');
     });
 });
 
