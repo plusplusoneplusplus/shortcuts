@@ -56,6 +56,71 @@ export interface Reviewer {
     isRequired: boolean;
 }
 
+// ── Canonical pull-request check / status ────────────────────
+
+/**
+ * Generic, provider-agnostic status for a pull-request check or CI run.
+ * Adapters map their native shapes (GitHub check-runs / commit statuses,
+ * ADO pull-request statuses / commit statuses) into this fixed vocabulary.
+ *
+ * - `pending`   queued / not yet started
+ * - `running`   in progress
+ * - `success`   completed successfully (GitHub success/neutral, ADO succeeded)
+ * - `failure`   completed with failure or error
+ * - `cancelled` cancelled before completion
+ * - `skipped`   skipped or not applicable (GitHub skipped, ADO notApplicable/partiallySucceeded treated as warning)
+ * - `warning`   completed with non-blocking issues (GitHub action_required, ADO partiallySucceeded)
+ * - `unknown`   unmapped state
+ */
+export type CheckStatus =
+    | 'pending'
+    | 'running'
+    | 'success'
+    | 'failure'
+    | 'cancelled'
+    | 'skipped'
+    | 'warning'
+    | 'unknown';
+
+/**
+ * Source kind for a pull-request check. Used to distinguish modern check
+ * runs from legacy commit statuses in the UI when desired.
+ *
+ * - `check`   GitHub check-run or ADO PR status (richer model)
+ * - `status`  Legacy commit-status (per-context state on the head commit)
+ */
+export type CheckSource = 'check' | 'status';
+
+/**
+ * Canonical pull-request check / CI status. Adapters map native shapes
+ * (GitHub check-runs, GitHub commit statuses, ADO pull-request statuses,
+ * ADO commit statuses) into this shape.
+ */
+export interface PullRequestCheck {
+    /** Stable, provider-scoped identifier (used for React keys). */
+    id: string;
+    /** Display name of the check (GitHub check-run name, ADO context name). */
+    name: string;
+    /** Optional group/category — GitHub app name, ADO status `genre`, etc. */
+    group?: string;
+    /** Generic status (see `CheckStatus`). */
+    status: CheckStatus;
+    /** Source kind — modern check vs. legacy commit-status. */
+    source: CheckSource;
+    /** Provider-specific description (e.g. summary line). */
+    description?: string;
+    /** Web URL with full check details, when exposed by the provider. */
+    detailsUrl?: string;
+    /** When the check started, if known. */
+    startedAt?: Date;
+    /** When the check completed, if known. */
+    completedAt?: Date;
+    /** Convenience: derived duration in milliseconds. */
+    durationMs?: number;
+    /** Provider-specific raw object, for fields not in the canonical shape. */
+    raw?: unknown;
+}
+
 // ── Canonical commit on a pull request ───────────────────────
 
 /**

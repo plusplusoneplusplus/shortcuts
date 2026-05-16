@@ -81,13 +81,20 @@ function textResponse(body: string) {
     } as unknown as Response;
 }
 
-/** Mock the full PR detail fetch quartet (pr, threads, diff, commits). */
-function mockFetchDetail(pr: any, threads: any[] = [], diffText = '', commits: any[] = []) {
+/** Mock the full PR detail fetch quintet (pr, threads, diff, commits, checks). */
+function mockFetchDetail(
+    pr: any,
+    threads: any[] = [],
+    diffText = '',
+    commits: any[] = [],
+    checks: any[] = [],
+) {
     global.fetch = vi.fn()
         .mockResolvedValueOnce(jsonResponse(pr))
         .mockResolvedValueOnce(jsonResponse({ threads }))
         .mockResolvedValueOnce(textResponse(diffText))
-        .mockResolvedValueOnce(jsonResponse({ commits }));
+        .mockResolvedValueOnce(jsonResponse({ commits }))
+        .mockResolvedValueOnce(jsonResponse({ checks }));
 }
 
 function mockFetchPrError(status = 500, message = 'Server error') {
@@ -95,7 +102,8 @@ function mockFetchPrError(status = 500, message = 'Server error') {
         .mockResolvedValueOnce(jsonResponse({ message }, false, status))
         .mockResolvedValueOnce(jsonResponse({ threads: [] }))
         .mockResolvedValueOnce(textResponse(''))
-        .mockResolvedValueOnce(jsonResponse({ commits: [] }));
+        .mockResolvedValueOnce(jsonResponse({ commits: [] }))
+        .mockResolvedValueOnce(jsonResponse({ checks: [] }));
 }
 
 const SAMPLE_DIFF = [
@@ -381,7 +389,8 @@ describe('tabs', () => {
             .mockResolvedValueOnce(jsonResponse(makePr()))
             .mockResolvedValueOnce(jsonResponse({ threads: [] }))
             .mockResolvedValueOnce(textResponse(''))
-            .mockResolvedValueOnce(jsonResponse({ error: 'boom' }, false, 500));
+            .mockResolvedValueOnce(jsonResponse({ error: 'boom' }, false, 500))
+            .mockResolvedValueOnce(jsonResponse({ checks: [] }));
         await act(async () => { await renderDetail(); });
         await waitFor(() => expect(screen.getByTestId('tab-commits')).toBeInTheDocument());
         fireEvent.click(screen.getByTestId('tab-commits'));
@@ -389,7 +398,7 @@ describe('tabs', () => {
         expect(screen.queryByTestId('pr-commit-table')).not.toBeInTheDocument();
     });
 
-    it('switches to the Checks tab and renders the checks + merge readiness panels with a preview notice', async () => {
+    it('renders an empty-state in the Checks tab when /checks returns no checks', async () => {
         mockFetchDetail(makePr());
         await act(async () => { await renderDetail(); });
         await waitFor(() => expect(screen.getByTestId('tab-checks')).toBeInTheDocument());
@@ -397,7 +406,67 @@ describe('tabs', () => {
         expect(screen.getByTestId('checks-tab')).toBeInTheDocument();
         expect(screen.getByTestId('pr-checks-table')).toBeInTheDocument();
         expect(screen.getByTestId('pr-merge-readiness')).toBeInTheDocument();
-        expect(screen.getByTestId('pr-tab-preview-notice').textContent).toMatch(/Checks are AI-mocked/i);
+        expect(screen.getByTestId('pr-checks-empty').textContent).toMatch(/No CI checks reported/i);
+        // Preview notice is gone now that checks come from real data.
+        expect(screen.queryByTestId('pr-tab-preview-notice')).not.toBeInTheDocument();
+    });
+
+    it('renders real check rows + derived merge readiness when /checks returns data', async () => {
+        const checks = [
+            {
+                id: 'check-1',
+                name: 'build',
+                status: 'success',
+                source: 'check',
+                durationMs: 198000,
+                detailsUrl: 'https://example.com/runs/1',
+            },
+            {
+                id: 'check-2',
+                name: 'lint',
+                status: 'failure',
+                source: 'check',
+                description: 'eslint failed',
+                durationMs: 45000,
+            },
+        ];
+        mockFetchDetail(makePr(), [], '', [], checks);
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('tab-checks')).toBeInTheDocument());
+        fireEvent.click(screen.getByTestId('tab-checks'));
+
+        const rows = screen.getAllByTestId('pr-check-row');
+        expect(rows).toHaveLength(2);
+        expect(rows[0].textContent).toContain('build');
+        expect(rows[0].textContent).toContain('Passed');
+        expect(rows[1].textContent).toContain('lint');
+        expect(rows[1].textContent).toContain('Failed');
+        expect(rows[1].textContent).toContain('eslint failed');
+
+        // External link rendered for checks with detailsUrl.
+        const checkLink = screen.getAllByTestId('pr-check-link');
+        expect(checkLink[0]).toHaveAttribute('href', 'https://example.com/runs/1');
+
+        // Merge readiness reflects the failing check.
+        const readiness = screen.getAllByTestId('pr-merge-readiness-item');
+        const blocking = readiness.find(el => /1 check failing/i.test(el.textContent ?? ''));
+        expect(blocking).toBeDefined();
+
+        // Tab badge shows passing/total.
+        expect(screen.getByTestId('tab-checks').textContent).toContain('1/2');
+    });
+
+    it('surfaces an error banner when the /checks endpoint fails', async () => {
+        global.fetch = vi.fn()
+            .mockResolvedValueOnce(jsonResponse(makePr()))
+            .mockResolvedValueOnce(jsonResponse({ threads: [] }))
+            .mockResolvedValueOnce(textResponse(''))
+            .mockResolvedValueOnce(jsonResponse({ commits: [] }))
+            .mockResolvedValueOnce(jsonResponse({ error: 'boom' }, false, 500));
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('tab-checks')).toBeInTheDocument());
+        fireEvent.click(screen.getByTestId('tab-checks'));
+        expect(screen.getByTestId('pr-checks-error').textContent).toMatch(/Failed to load checks/);
     });
 });
 

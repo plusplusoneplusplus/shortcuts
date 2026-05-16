@@ -11,6 +11,7 @@
  * GET  /api/repos/:repoId/pull-requests/:prId/commits    — get commits
  * GET  /api/repos/:repoId/pull-requests/:prId/diff       — get unified diff
  * GET  /api/repos/:repoId/pull-requests/:prId/commits    — get commits
+ * GET  /api/repos/:repoId/pull-requests/:prId/checks     — get CI/check statuses
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -287,6 +288,47 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
 
                 const commits = await prSvc.getCommits(repoId, prId);
                 sendJson(res, { commits });
+            } catch (err) {
+                if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
+                    send404(res, err.message);
+                } else if (isAuthError(err)) {
+                    sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 401);
+                } else {
+                    send500(res, err instanceof Error ? err.message : String(err));
+                }
+            }
+        },
+    });
+
+    // -- Get checks / CI statuses --------------------------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/([^/]+)\/checks$/,
+        handler: async (_req, res, match) => {
+            try {
+                const repoId = decodeURIComponent(match![1]);
+                const prId = decodeURIComponent(match![2]);
+
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+
+                const cfg = await readProvidersConfig(dataDir);
+                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+                if (!prSvc || isNoAdoCredentials(prSvc)) {
+                    if (isNoAdoCredentials(prSvc)) {
+                        return sendJson(res, { error: 'no-ado-credentials' }, 401);
+                    }
+                    const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
+                    return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
+                }
+
+                if (typeof prSvc.getChecks !== 'function') {
+                    return sendJson(res, { checks: [] });
+                }
+
+                const checks = await prSvc.getChecks(repoId, prId);
+                sendJson(res, { checks });
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
                     send404(res, err.message);

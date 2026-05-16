@@ -54,3 +54,45 @@ export interface PullRequestReviewersResponse {
 export interface PullRequestCommitsResponse {
   commits: unknown[];
 }
+
+// ── PR checks / CI status (provider-agnostic) ──────────────────────
+
+/**
+ * Status of a pull-request check. Mirrors the `CheckStatus` union from
+ * `@plusplusoneplusplus/forge`'s provider abstraction.
+ */
+export type PullRequestCheckStatus =
+  | 'pending'
+  | 'running'
+  | 'success'
+  | 'failure'
+  | 'cancelled'
+  | 'skipped'
+  | 'warning'
+  | 'unknown';
+
+export type PullRequestCheckSource = 'check' | 'status';
+
+/**
+ * Generic, provider-agnostic check result. The server returns this shape
+ * for both GitHub (check-runs + commit statuses) and ADO (PR statuses +
+ * commit statuses) pull requests.
+ */
+export interface PullRequestCheck {
+  id: string;
+  name: string;
+  group?: string;
+  status: PullRequestCheckStatus;
+  source: PullRequestCheckSource;
+  description?: string;
+  detailsUrl?: string;
+  /** ISO 8601 string. */
+  startedAt?: string;
+  /** ISO 8601 string. */
+  completedAt?: string;
+  durationMs?: number;
+}
+
+export interface PullRequestChecksResponse {
+  checks: PullRequestCheck[];
+}

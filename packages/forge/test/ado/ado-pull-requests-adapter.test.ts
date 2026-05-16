@@ -93,6 +93,8 @@ function makeMockService(overrides: Partial<Record<string, ReturnType<typeof vi.
         getPullRequestIterationChanges: vi.fn().mockResolvedValue({ changeEntries: [] }),
         getFileContent: vi.fn().mockResolvedValue(''),
         getPullRequestCommits: vi.fn().mockResolvedValue([mockAdoCommit]),
+        getPullRequestStatuses: vi.fn().mockResolvedValue([]),
+        getCommitStatuses: vi.fn().mockResolvedValue([]),
         ...overrides,
     } as unknown as AdoPullRequestsService;
 }
@@ -574,6 +576,152 @@ describe('AdoPullRequestsAdapter', () => {
             const a = new AdoPullRequestsAdapter(svc, 'my-project');
             const commits = await a.getCommits('repo-id', 42);
             expect(commits).toEqual([]);
+        });
+    });
+
+    // ── getChecks ────────────────────────────────────────────
+
+    describe('getChecks', () => {
+        const samplePrStatus = {
+            id: 7001,
+            state: 2, // Succeeded
+            description: 'Build succeeded',
+            targetUrl: 'https://example.com/builds/7001',
+            creationDate: new Date('2024-02-01T10:00:00Z'),
+            updatedDate: new Date('2024-02-01T10:03:00Z'),
+            context: { genre: 'ci', name: 'build' },
+        };
+
+        const sampleCommitStatus = {
+            id: 8001,
+            state: 3, // Failed
+            description: 'Lint failed',
+            targetUrl: 'https://example.com/lint/8001',
+            creationDate: new Date('2024-02-01T11:00:00Z'),
+            updatedDate: new Date('2024-02-01T11:00:30Z'),
+            context: { genre: 'ci', name: 'lint' },
+        };
+
+        const iteration = {
+            id: 1,
+            sourceRefCommit: { commitId: 'head-sha-checks' },
+            commonRefCommit: { commitId: 'base-sha-checks' },
+        };
+
+        it('maps PR statuses and commit statuses into the canonical PullRequestCheck shape', async () => {
+            const svc = makeMockService({
+                getPullRequestStatuses: vi.fn().mockResolvedValue([samplePrStatus]),
+                getPullRequestIterations: vi.fn().mockResolvedValue([iteration]),
+                getCommitStatuses: vi.fn().mockResolvedValue([sampleCommitStatus]),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const checks = await a.getChecks('repo-id', 42);
+
+            expect(svc.getPullRequestStatuses).toHaveBeenCalledWith('repo-id', 42, 'my-project');
+            expect(svc.getCommitStatuses).toHaveBeenCalledWith('repo-id', 'head-sha-checks', 'my-project');
+            expect(checks).toHaveLength(2);
+
+            const prCheck = checks.find(c => c.source === 'check');
+            expect(prCheck).toBeDefined();
+            expect(prCheck!.id).toBe('pr-status-7001');
+            expect(prCheck!.name).toBe('ci/build');
+            expect(prCheck!.group).toBe('ci');
+            expect(prCheck!.status).toBe('success');
+            expect(prCheck!.description).toBe('Build succeeded');
+            expect(prCheck!.detailsUrl).toBe('https://example.com/builds/7001');
+            expect(prCheck!.durationMs).toBe(3 * 60 * 1000);
+
+            const commitCheck = checks.find(c => c.source === 'status');
+            expect(commitCheck).toBeDefined();
+            expect(commitCheck!.id).toBe('commit-status-8001');
+            expect(commitCheck!.name).toBe('ci/lint');
+            expect(commitCheck!.status).toBe('failure');
+        });
+
+        it.each([
+            [0, 'pending'],                  // NotSet
+            [1, 'running'],                  // Pending
+            [2, 'success'],                  // Succeeded
+            [3, 'failure'],                  // Failed
+            [4, 'failure'],                  // Error
+            [5, 'skipped'],                  // NotApplicable
+            [6, 'warning'],                  // PartiallySucceeded
+            [99 as unknown as number, 'unknown'],
+        ] as const)('maps ADO state %d to %s', async (state, expected) => {
+            const svc = makeMockService({
+                getPullRequestStatuses: vi.fn().mockResolvedValue([{ ...samplePrStatus, state }]),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const [check] = await a.getChecks('repo-id', 42);
+            expect(check.status).toBe(expected);
+        });
+
+        it('dedupes (source, name) keeping the most recently updated entry', async () => {
+            const older = {
+                ...samplePrStatus,
+                id: 1,
+                updatedDate: new Date('2024-02-01T09:00:00Z'),
+                description: 'older',
+            };
+            const newer = {
+                ...samplePrStatus,
+                id: 2,
+                updatedDate: new Date('2024-02-01T10:00:00Z'),
+                description: 'newer',
+            };
+            const svc = makeMockService({
+                getPullRequestStatuses: vi.fn().mockResolvedValue([older, newer]),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const checks = await a.getChecks('repo-id', 42);
+            expect(checks).toHaveLength(1);
+            expect(checks[0].description).toBe('newer');
+        });
+
+        it('returns PR statuses even when iteration lookup fails', async () => {
+            const svc = makeMockService({
+                getPullRequestStatuses: vi.fn().mockResolvedValue([samplePrStatus]),
+                getPullRequestIterations: vi.fn().mockRejectedValue(new Error('boom')),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const checks = await a.getChecks('repo-id', 42);
+            expect(checks).toHaveLength(1);
+            expect(checks[0].source).toBe('check');
+        });
+
+        it('skips commit status fetch when no iterations are returned', async () => {
+            const svc = makeMockService({
+                getPullRequestStatuses: vi.fn().mockResolvedValue([]),
+                getPullRequestIterations: vi.fn().mockResolvedValue([]),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const checks = await a.getChecks('repo-id', 42);
+            expect(checks).toEqual([]);
+            expect(svc.getCommitStatuses).not.toHaveBeenCalled();
+        });
+
+        it('uses constructor repo override instead of repositoryId', async () => {
+            const svc = makeMockService({
+                getPullRequestStatuses: vi.fn().mockResolvedValue([samplePrStatus]),
+                getPullRequestIterations: vi.fn().mockResolvedValue([iteration]),
+                getCommitStatuses: vi.fn().mockResolvedValue([]),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project', 'my-repo');
+            await a.getChecks('ws-48cyxk', 99);
+            expect(svc.getPullRequestStatuses).toHaveBeenCalledWith('my-repo', 99, 'my-project');
+            expect(svc.getCommitStatuses).toHaveBeenCalledWith('my-repo', 'head-sha-checks', 'my-project');
+        });
+
+        it('falls back to a sensible name when context is missing', async () => {
+            const svc = makeMockService({
+                getPullRequestStatuses: vi.fn().mockResolvedValue([{
+                    ...samplePrStatus,
+                    context: undefined,
+                }]),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const [check] = await a.getChecks('repo-id', 42);
+            expect(check.name).toBe('status-7001');
         });
     });
 

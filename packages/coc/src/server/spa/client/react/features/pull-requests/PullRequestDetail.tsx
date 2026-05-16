@@ -9,13 +9,14 @@
  *     heuristic inferred from the commit subject (editable).
  *   - The "AI grouped threads" sidebar groups REAL threads — only the
  *     severity tag is AI-derived (deterministic, mocked for now).
+ *   - Checks / CI table and merge-readiness (via /checks endpoint —
+ *     provider-agnostic; works for both GitHub and ADO).
  *
  * AI-flavored sections still backed by deterministic fixtures in
  * `pr-mock-data.ts` (until an AI backend is wired up):
  *   - AI summary panel (risk, confidence, findings, metrics)
  *   - Persona lenses
  *   - Conversation timeline
- *   - Checks / merge-readiness (no check REST endpoint yet)
  *   - Assistant chat drawer
  */
 
@@ -37,17 +38,17 @@ import { PrFilesPanel } from './PrFilesPanel';
 import { PrAiAssistantDrawer } from './PrAiAssistantDrawer';
 import {
     buildAiThreadGroupsFromThreads,
+    buildCheckRowsFromChecks,
     buildCommitRowsFromPrCommits,
+    buildMergeReadinessFromData,
     getMockAiSummary,
-    getMockCheckRows,
     getMockFiles,
-    getMockMergeReadiness,
     getMockPersonaLenses,
     getMockReviewSummaryText,
     getMockTimeline,
     riskPillClass,
 } from './pr-mock-data';
-import type { PullRequest, PullRequestCommit, CommentThread } from './pr-utils';
+import type { PullRequest, PullRequestCommit, CommentThread, PullRequestCheck } from './pr-utils';
 import type { PrDetailTab } from '../../types/dashboard';
 import { parseUnifiedDiff, type ParsedDiff } from './unified-diff-parser';
 
@@ -87,6 +88,8 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     const [commitsError, setCommitsError] = useState<string | null>(null);
     const [diff, setDiff] = useState<ParsedDiff>(EMPTY_DIFF);
     const [diffError, setDiffError] = useState<string | null>(null);
+    const [checks, setChecks] = useState<PullRequestCheck[]>([]);
+    const [checksError, setChecksError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const initialTab = (state.selectedPrDetailTab as PrDetailTab) ?? 'overview';
@@ -113,6 +116,8 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
         setDiffError(null);
         setCommits([]);
         setCommitsError(null);
+        setChecks([]);
+        setChecksError(null);
         const client = getSpaCocClient();
         const prIdStr = String(prId);
         const repoIdStr = String(repoId);
@@ -139,8 +144,15 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                     kind: 'err' as const,
                     message: getSpaCocClientErrorMessage(err, 'Failed to load commits'),
                 })),
+            client.pullRequests
+                .getChecks(repoIdStr, prIdStr)
+                .then(body => ({ kind: 'ok' as const, checks: (body.checks ?? []) as PullRequestCheck[] }))
+                .catch((err: unknown) => ({
+                    kind: 'err' as const,
+                    message: getSpaCocClientErrorMessage(err, 'Failed to load checks'),
+                })),
         ])
-            .then(([prData, threadsData, diffResult, commitsResult]) => {
+            .then(([prData, threadsData, diffResult, commitsResult, checksResult]) => {
                 setPr(prData);
                 setThreads(threadsData);
                 if (diffResult.kind === 'ok') {
@@ -152,6 +164,11 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                     setCommits(commitsResult.commits);
                 } else {
                     setCommitsError(commitsResult.message);
+                }
+                if (checksResult.kind === 'ok') {
+                    setChecks(checksResult.checks);
+                } else {
+                    setChecksError(checksResult.message);
                 }
             })
             .catch(err => setError(getSpaCocClientErrorMessage(err, 'Failed to load pull request')))
@@ -170,8 +187,11 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     const timeline = useMemo(() => getMockTimeline(), []);
     const threadGroups = useMemo(() => buildAiThreadGroupsFromThreads(threads), [threads]);
     const commitRows = useMemo(() => buildCommitRowsFromPrCommits(commits), [commits]);
-    const checkRows = useMemo(() => getMockCheckRows(), []);
-    const mergeReadiness = useMemo(() => getMockMergeReadiness(), []);
+    const checkRows = useMemo(() => buildCheckRowsFromChecks(checks), [checks]);
+    const mergeReadiness = useMemo(
+        () => buildMergeReadinessFromData({ checks, threads, reviewers: pr?.reviewers ?? [] }),
+        [checks, threads, pr],
+    );
 
     const threadsByPath = useMemo(() => {
         const byPath: Record<string, CommentThread[]> = {};
@@ -393,10 +413,12 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                 <nav className="flex gap-0.5 overflow-x-auto border-t border-gray-100 px-2.5 dark:border-gray-800" aria-label="Pull request sections">
                     {TAB_DEFINITIONS.map(tab => {
                         const isActive = detailTab === tab.id;
+                        const passingChecks = checkRows.filter(r => r.status === 'success').length;
                         const count = tabCount(tab.id, {
                             commits: commits.length,
                             files: diff.fileCount,
                             checks: checkRows.length,
+                            checksPassing: passingChecks,
                             overview: threads.length,
                         });
                         return (
@@ -523,10 +545,14 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
 
                 {detailTab === 'checks' && (
                     <div className="w-full px-2.5 pb-7 pt-2" data-testid="checks-tab">
-                        <PreviewOnlyNotice
-                            label="Checks are AI-mocked"
-                            body="The server does not yet expose a per-PR check / status endpoint. Results and merge readiness shown below are placeholder fixtures."
-                        />
+                        {checksError && (
+                            <div
+                                className="mb-2 rounded-[5px] border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-700 dark:border-red-700 dark:bg-red-900/30 dark:text-red-200"
+                                data-testid="pr-checks-error"
+                            >
+                                Failed to load checks: {checksError}
+                            </div>
+                        )}
                         <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_264px]">
                             <PrChecksTable rows={checkRows} />
                             <PrMergeReadiness items={mergeReadiness} />
@@ -548,31 +574,16 @@ function normalizeThreadPath(filePath: string | null | undefined): string {
     return (filePath ?? '').replace(/\\/g, '/').replace(/^\/+/, '');
 }
 
-interface PreviewOnlyNoticeProps {
-    label: string;
-    body: string;
-}
-
-function PreviewOnlyNotice({ label, body }: PreviewOnlyNoticeProps) {
-    return (
-        <div
-            className="mb-2 rounded-[5px] border border-yellow-200 bg-yellow-50 px-2 py-1.5 text-[11px] text-yellow-800 dark:border-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-200"
-            data-testid="pr-tab-preview-notice"
-        >
-            <strong>{label}.</strong> {body}
-        </div>
-    );
-}
-
 function tabCount(
     tab: PrDetailTab,
-    counts: { commits: number; files: number; checks: number; overview: number },
+    counts: { commits: number; files: number; checks: number; checksPassing: number; overview: number },
 ): string | number | null {
     switch (tab) {
         case 'overview': return counts.overview > 0 ? counts.overview : null;
         case 'files':    return counts.files;
         case 'commits':  return counts.commits;
-        case 'checks':   return `${counts.checks}/${counts.checks}`;
+        case 'checks':
+            return counts.checks > 0 ? `${counts.checksPassing}/${counts.checks}` : null;
     }
 }
 

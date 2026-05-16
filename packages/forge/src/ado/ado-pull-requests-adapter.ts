@@ -1,12 +1,21 @@
-import type { GitCommitRef, GitPullRequest, GitPullRequestCommentThread, IdentityRefWithVote } from 'azure-devops-node-api/interfaces/GitInterfaces';
+import type {
+    GitCommitRef,
+    GitPullRequest,
+    GitPullRequestCommentThread,
+    GitPullRequestStatus,
+    GitStatus,
+    IdentityRefWithVote,
+} from 'azure-devops-node-api/interfaces/GitInterfaces';
 import { PullRequestStatus as AdoPrStatus } from 'azure-devops-node-api/interfaces/GitInterfaces';
 import type { IPullRequestsService } from '../providers/interfaces';
 import type {
+    CheckStatus,
     Comment,
     CommentThread,
     CreatePullRequestInput,
     Identity,
     PullRequest,
+    PullRequestCheck,
     PullRequestCommit,
     PullRequestStatus,
     Reviewer,
@@ -16,7 +25,7 @@ import type {
 } from '../providers/types';
 import type { AdoPullRequestsService } from './pull-requests-service';
 import type { GitCommitRef } from './pull-requests-service';
-import { VersionControlChangeType } from './pull-requests-service';
+import { GitStatusState, VersionControlChangeType } from './pull-requests-service';
 import { buildUnifiedDiff } from './diff-builder';
 import { getLogger, LogCategory } from '../logger';
 
@@ -188,6 +197,69 @@ function mapAdoThreadContext(t: GitPullRequestCommentThread): CommentThread['thr
         endLine: context.rightFileEnd?.line ?? context.leftFileEnd?.line ?? line,
         side: rightLine != null ? 'right' : leftLine != null ? 'left' : 'unknown',
     };
+}
+
+function mapAdoStatusState(state: number | undefined): CheckStatus {
+    switch (state) {
+        case GitStatusState.Pending:            return 'running';
+        case GitStatusState.Succeeded:          return 'success';
+        case GitStatusState.Failed:             return 'failure';
+        case GitStatusState.Error:              return 'failure';
+        case GitStatusState.NotApplicable:      return 'skipped';
+        case GitStatusState.PartiallySucceeded: return 'warning';
+        case GitStatusState.NotSet:             return 'pending';
+        default:                                return 'unknown';
+    }
+}
+
+function adoStatusName(status: GitStatus): string {
+    const ctx = status.context;
+    if (!ctx) return `status-${status.id ?? 0}`;
+    if (ctx.genre && ctx.name) return `${ctx.genre}/${ctx.name}`;
+    return ctx.name ?? ctx.genre ?? `status-${status.id ?? 0}`;
+}
+
+function mapAdoCheck(
+    status: GitPullRequestStatus | GitStatus,
+    source: 'check' | 'status',
+    idPrefix: string,
+): PullRequestCheck {
+    const createdAt = status.creationDate ? new Date(status.creationDate) : undefined;
+    const updatedAt = status.updatedDate ? new Date(status.updatedDate) : undefined;
+    return {
+        id: `${idPrefix}-${status.id ?? 0}`,
+        name: adoStatusName(status),
+        group: status.context?.genre ?? undefined,
+        status: mapAdoStatusState(status.state),
+        source,
+        description: status.description ?? undefined,
+        detailsUrl: status.targetUrl ?? undefined,
+        startedAt: createdAt,
+        completedAt: updatedAt,
+        durationMs:
+            createdAt && updatedAt
+                ? Math.max(0, updatedAt.getTime() - createdAt.getTime())
+                : undefined,
+        raw: status,
+    };
+}
+
+function dedupeChecks(checks: PullRequestCheck[]): PullRequestCheck[] {
+    // Keep the most recently updated entry per (source, name) — ADO can post
+    // multiple status records per context across retries.
+    const byKey = new Map<string, PullRequestCheck>();
+    for (const check of checks) {
+        const key = `${check.source}::${check.name.toLowerCase()}`;
+        const existing = byKey.get(key);
+        if (!existing) {
+            byKey.set(key, check);
+            continue;
+        }
+        const a = existing.completedAt?.getTime() ?? existing.startedAt?.getTime() ?? 0;
+        const b = check.completedAt?.getTime() ?? check.startedAt?.getTime() ?? 0;
+        if (b >= a) byKey.set(key, check);
+    }
+    return Array.from(byKey.values());
 }
 
 function mapAdoThread(t: GitPullRequestCommentThread): CommentThread {
@@ -404,6 +476,56 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
             `getCommits: returned ${commits.length} commit(s) for PR #${pullRequestId}`,
         );
         return commits.map(mapAdoCommit);
+    }
+
+    async getChecks(repositoryId: string, pullRequestId: number | string): Promise<PullRequestCheck[]> {
+        const logger = getLogger();
+        const effectiveRepo = this.repo ?? repositoryId;
+        logger.info(
+            LogCategory.ADO,
+            `getChecks: repo=${effectiveRepo} PR #${pullRequestId} project=${this.project ?? '(default)'}`,
+        );
+
+        const out: PullRequestCheck[] = [];
+
+        // Per-PR statuses (e.g. build/CI postings against the PR itself).
+        const prStatuses = await this.service.getPullRequestStatuses(
+            effectiveRepo,
+            Number(pullRequestId),
+            this.project,
+        );
+        for (const status of prStatuses) {
+            out.push(mapAdoCheck(status, 'check', 'pr-status'));
+        }
+
+        // Per-commit statuses on the head SHA (latest iteration). Best-effort.
+        try {
+            const iterations = await this.service.getPullRequestIterations(
+                effectiveRepo,
+                Number(pullRequestId),
+                this.project,
+            );
+            const headSha = iterations.length
+                ? iterations[iterations.length - 1].sourceRefCommit?.commitId
+                : undefined;
+            if (headSha) {
+                const commitStatuses = await this.service.getCommitStatuses(
+                    effectiveRepo,
+                    headSha,
+                    this.project,
+                );
+                for (const status of commitStatuses) {
+                    out.push(mapAdoCheck(status, 'status', 'commit-status'));
+                }
+            }
+        } catch (err) {
+            logger.warn(
+                LogCategory.ADO,
+                `getChecks: commit-status fetch failed for PR #${pullRequestId}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+        }
+
+        return dedupeChecks(out);
     }
 
     async getDiff(repositoryId: string, pullRequestId: number | string): Promise<string> {

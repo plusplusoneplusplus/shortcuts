@@ -5,7 +5,9 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+    buildCheckRowsFromChecks,
     buildCommitRowsFromPrCommits,
+    buildMergeReadinessFromData,
     checkStatusClass,
     commitIntentClass,
     findingTagClass,
@@ -31,7 +33,13 @@ import {
     queueRiskClass,
     riskPillClass,
 } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-mock-data';
-import type { PullRequest, PullRequestCommit } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-utils';
+import type {
+    CommentThread,
+    PullRequest,
+    PullRequestCheck,
+    PullRequestCommit,
+    Reviewer,
+} from '../../../../../src/server/spa/client/react/features/pull-requests/pr-utils';
 
 const basePr: PullRequest = {
     id: 4289,
@@ -107,7 +115,7 @@ describe('AI mock data', () => {
 
     it('returns commit, check, merge-readiness, and file fixtures', () => {
         expect(getMockCommitRows().length).toBeGreaterThanOrEqual(5);
-        expect(getMockCheckRows().some(row => row.status === 'warn')).toBe(true);
+        expect(getMockCheckRows().some(row => row.status === 'warning')).toBe(true);
         expect(getMockMergeReadiness().some(item => item.tag === 'risk')).toBe(true);
         const files = getMockFiles();
         expect(files.some(file => file.annotation)).toBe(true);
@@ -138,9 +146,14 @@ describe('AI mock data', () => {
         expect(commitIntentClass('fix')).toContain('yellow');
         expect(commitIntentClass('refactor')).toContain('purple');
 
-        expect(checkStatusClass('ok')).toContain('green');
-        expect(checkStatusClass('warn')).toContain('yellow');
-        expect(checkStatusClass('fail')).toContain('red');
+        expect(checkStatusClass('success')).toContain('green');
+        expect(checkStatusClass('warning')).toContain('yellow');
+        expect(checkStatusClass('failure')).toContain('red');
+        expect(checkStatusClass('pending')).toContain('blue');
+        expect(checkStatusClass('running')).toContain('blue');
+        expect(checkStatusClass('cancelled')).toContain('gray');
+        expect(checkStatusClass('skipped')).toContain('gray');
+        expect(checkStatusClass('unknown')).toContain('gray');
 
         expect(riskPillClass('Low')).toContain('green');
         expect(riskPillClass('Medium')).toContain('yellow');
@@ -226,6 +239,209 @@ describe('buildCommitRowsFromPrCommits', () => {
 
     it('returns an empty array when given no commits', () => {
         expect(buildCommitRowsFromPrCommits([])).toEqual([]);
+    });
+});
+
+describe('buildCheckRowsFromChecks', () => {
+    const makeCheck = (over: Partial<PullRequestCheck> = {}): PullRequestCheck => ({
+        id: 'c1',
+        name: 'build',
+        status: 'success',
+        source: 'check',
+        ...over,
+    });
+
+    it('maps every generic check status to a UI row with status + interpretation text', () => {
+        const checks: PullRequestCheck[] = [
+            makeCheck({ id: '1', name: 'unit-tests', status: 'success', durationMs: 12000 }),
+            makeCheck({ id: '2', name: 'lint', status: 'failure', description: 'eslint failed' }),
+            makeCheck({ id: '3', name: 'flaky', status: 'warning' }),
+            makeCheck({ id: '4', name: 'queued', status: 'pending' }),
+            makeCheck({ id: '5', name: 'inflight', status: 'running' }),
+            makeCheck({ id: '6', name: 'aborted', status: 'cancelled' }),
+            makeCheck({ id: '7', name: 'skipme', status: 'skipped' }),
+            makeCheck({ id: '8', name: 'mystery', status: 'unknown' }),
+        ];
+        const rows = buildCheckRowsFromChecks(checks);
+        expect(rows).toHaveLength(8);
+        expect(rows[0]).toMatchObject({ id: '1', name: 'unit-tests', status: 'success', duration: '12s' });
+        expect(rows[0].interpretation).toMatch(/Completed successfully/i);
+        expect(rows[1]).toMatchObject({ id: '2', name: 'lint', status: 'failure', interpretation: 'eslint failed' });
+        expect(rows[2].status).toBe('warning');
+        expect(rows[3].status).toBe('pending');
+        expect(rows[4].status).toBe('running');
+        expect(rows[5].status).toBe('cancelled');
+        expect(rows[6].status).toBe('skipped');
+        expect(rows[7].status).toBe('unknown');
+        // Default interpretation per-status when no description is supplied.
+        expect(rows[3].interpretation).toMatch(/queue|wait/i);
+        expect(rows[5].interpretation).toMatch(/cancel/i);
+        expect(rows[7].interpretation).toMatch(/not reported|unknown/i);
+    });
+
+    it('preserves detailsUrl, group, and source fields on the row, and prefixes group in the display name', () => {
+        const rows = buildCheckRowsFromChecks([
+            makeCheck({
+                id: 'x',
+                name: 'ci',
+                detailsUrl: 'https://ex/1',
+                group: 'github-actions',
+                source: 'check',
+            }),
+        ]);
+        expect(rows[0].detailsUrl).toBe('https://ex/1');
+        expect(rows[0].group).toBe('github-actions');
+        expect(rows[0].source).toBe('check');
+        expect(rows[0].name).toBe('github-actions / ci');
+    });
+
+    it('returns an empty list when given no checks', () => {
+        expect(buildCheckRowsFromChecks([])).toEqual([]);
+    });
+
+    it('formats duration in m ss format for longer runs and omits when missing', () => {
+        const rows = buildCheckRowsFromChecks([
+            makeCheck({ id: 'long', name: 'integration', status: 'success', durationMs: 185_000 }),
+            makeCheck({ id: 'none', name: 'no-duration', status: 'success' }),
+        ]);
+        expect(rows[0].duration).toBe('3m 05s');
+        expect(rows[1].duration).toBe('');
+    });
+});
+
+describe('buildMergeReadinessFromData', () => {
+    const failingCheck: PullRequestCheck = { id: 'f', name: 'lint', status: 'failure', source: 'check' };
+    const runningCheck: PullRequestCheck = { id: 'r', name: 'build', status: 'running', source: 'check' };
+    const warningCheck: PullRequestCheck = { id: 'w', name: 'cover', status: 'warning', source: 'check' };
+    const passingCheck: PullRequestCheck = { id: 'p', name: 'build', status: 'success', source: 'check' };
+
+    it('flags failing checks as a blocking merge-readiness item', () => {
+        const items = buildMergeReadinessFromData({
+            checks: [failingCheck, passingCheck],
+            threads: [],
+            reviewers: [],
+        });
+        const checksItem = items.find(item => item.label === 'Block');
+        expect(checksItem).toBeDefined();
+        expect(checksItem?.body).toMatch(/1 check failing/i);
+        expect(checksItem?.tag).toBe('risk');
+    });
+
+    it('reports clean checks when all checks pass', () => {
+        const items = buildMergeReadinessFromData({
+            checks: [passingCheck],
+            threads: [],
+            reviewers: [],
+        });
+        const checksItem = items.find(item => item.label === 'Pass');
+        expect(checksItem).toBeDefined();
+        expect(checksItem?.tag).toBe('good');
+    });
+
+    it('reports a wait-state when checks are still running', () => {
+        const items = buildMergeReadinessFromData({
+            checks: [runningCheck, passingCheck],
+            threads: [],
+            reviewers: [],
+        });
+        const checksItem = items.find(item => item.label === 'Wait');
+        expect(checksItem).toBeDefined();
+        expect(checksItem?.body).toMatch(/still running/i);
+    });
+
+    it('reports a review-state when checks finished with warnings', () => {
+        const items = buildMergeReadinessFromData({
+            checks: [warningCheck, passingCheck],
+            threads: [],
+            reviewers: [],
+        });
+        const checksItem = items.find(item => item.label === 'Review');
+        expect(checksItem).toBeDefined();
+        expect(checksItem?.body).toMatch(/warning/i);
+    });
+
+    it('flags unresolved blocking threads', () => {
+        const threads: CommentThread[] = [
+            {
+                id: 't1',
+                status: 'active',
+                comments: [{ id: 'c1', author: { displayName: 'a' }, body: 'change please' }],
+            },
+        ];
+        const items = buildMergeReadinessFromData({
+            checks: [passingCheck],
+            threads,
+            reviewers: [],
+        });
+        const threadsItem = items.find(item => item.label === 'Threads');
+        expect(threadsItem).toBeDefined();
+        expect(threadsItem?.tag).toBe('risk');
+        expect(threadsItem?.body).toMatch(/unresolved/i);
+    });
+
+    it('reports resolved threads as good when nothing is active', () => {
+        const threads: CommentThread[] = [
+            {
+                id: 't1',
+                status: 'fixed',
+                comments: [{ id: 'c1', author: { displayName: 'a' }, body: 'done' }],
+            },
+        ];
+        const items = buildMergeReadinessFromData({
+            checks: [passingCheck],
+            threads,
+            reviewers: [],
+        });
+        const threadsItem = items.find(item => item.label === 'Threads');
+        expect(threadsItem?.tag).toBe('good');
+    });
+
+    it('flags missing required-reviewer approval', () => {
+        const reviewers: Reviewer[] = [
+            { identity: { displayName: 'gatekeeper' }, vote: 'noVote', isRequired: true },
+        ];
+        const items = buildMergeReadinessFromData({
+            checks: [passingCheck],
+            threads: [],
+            reviewers,
+        });
+        const reviewerItem = items.find(item => item.label === 'Reviewers');
+        expect(reviewerItem).toBeDefined();
+        expect(reviewerItem?.body).toMatch(/required reviewer/i);
+        expect(reviewerItem?.tag).toBe('note');
+    });
+
+    it('flags rejected reviewers as a blocking risk', () => {
+        const reviewers: Reviewer[] = [
+            { identity: { displayName: 'blocker' }, vote: 'rejected' },
+        ];
+        const items = buildMergeReadinessFromData({
+            checks: [passingCheck],
+            threads: [],
+            reviewers,
+        });
+        const reviewerItem = items.find(item => item.label === 'Reviewers');
+        expect(reviewerItem?.tag).toBe('risk');
+    });
+
+    it('reports clean reviewers when everything is approved', () => {
+        const reviewers: Reviewer[] = [
+            { identity: { displayName: 'ok' }, vote: 'approved', isRequired: true },
+        ];
+        const items = buildMergeReadinessFromData({
+            checks: [passingCheck],
+            threads: [],
+            reviewers,
+        });
+        const reviewerItem = items.find(item => item.label === 'Reviewers');
+        expect(reviewerItem?.tag).toBe('good');
+    });
+
+    it('reports a note when there are no checks at all', () => {
+        const items = buildMergeReadinessFromData({ checks: [], threads: [], reviewers: [] });
+        const checksItem = items.find(item => item.label === 'Checks');
+        expect(checksItem?.tag).toBe('note');
+        expect(checksItem?.body).toMatch(/No CI checks/i);
     });
 });
 

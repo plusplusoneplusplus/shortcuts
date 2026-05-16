@@ -35,6 +35,37 @@ export interface CommentThread {
     };
 }
 
+/**
+ * Provider-agnostic check status as returned by
+ * /api/repos/:id/pull-requests/:prId/checks. Mirrors `CheckStatus` in
+ * `@plusplusoneplusplus/forge`'s provider abstraction.
+ */
+export type PullRequestCheckStatus =
+    | 'pending'
+    | 'running'
+    | 'success'
+    | 'failure'
+    | 'cancelled'
+    | 'skipped'
+    | 'warning'
+    | 'unknown';
+
+export type PullRequestCheckSource = 'check' | 'status';
+
+/** Provider-agnostic check / CI status as returned by /checks. */
+export interface PullRequestCheck {
+    id: string;
+    name: string;
+    group?: string;
+    status: PullRequestCheckStatus;
+    source: PullRequestCheckSource;
+    description?: string;
+    detailsUrl?: string;
+    startedAt?: string;
+    completedAt?: string;
+    durationMs?: number;
+}
+
 /** Shape of a single commit as returned by the /api/repos/:id/pull-requests/:prId/commits endpoint. */
 export interface PullRequestCommit {
     id: string;

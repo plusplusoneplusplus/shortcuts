@@ -4,6 +4,8 @@ import type {
     GitPullRequest,
     GitPullRequestSearchCriteria,
     GitPullRequestCommentThread,
+    GitPullRequestStatus,
+    GitStatus,
     IdentityRefWithVote,
     GitPullRequestIteration,
     GitPullRequestIterationChanges,
@@ -12,6 +14,7 @@ import type {
     GitVersionDescriptor,
 } from 'azure-devops-node-api/interfaces/GitInterfaces';
 import {
+    GitStatusState,
     VersionControlChangeType,
     GitVersionType,
 } from 'azure-devops-node-api/interfaces/GitInterfaces';
@@ -21,7 +24,8 @@ import { getLogger, LogCategory } from '../logger';
 export type { GitPullRequest, GitPullRequestSearchCriteria, GitPullRequestCommentThread };
 export type { IdentityRefWithVote };
 export type { GitPullRequestIteration, GitPullRequestIterationChanges, GitPullRequestChange, GitCommitRef };
-export { VersionControlChangeType, GitVersionType };
+export type { GitPullRequestStatus, GitStatus };
+export { GitStatusState, VersionControlChangeType, GitVersionType };
 export { PullRequestStatus } from 'azure-devops-node-api/interfaces/GitInterfaces';
 
 /** Error class for pull-request operations. */
@@ -336,6 +340,72 @@ export class AdoPullRequestsService {
                 `Failed to get commits for PR ${pullRequestId}`,
                 err,
             );
+        }
+    }
+
+    /**
+     * Fetch all per-PR statuses (e.g. build/CI statuses posted against the
+     * pull request itself). Returns an empty list on failure (best-effort).
+     */
+    async getPullRequestStatuses(
+        repositoryId: string,
+        pullRequestId: number,
+        project?: string,
+    ): Promise<GitPullRequestStatus[]> {
+        const logger = getLogger();
+        const api = await this.getGitApi();
+        try {
+            logger.info(
+                LogCategory.ADO,
+                `getPullRequestStatuses: repo=${repositoryId} PR #${pullRequestId} project=${project ?? '(default)'}`,
+            );
+            const result = await api.getPullRequestStatuses(repositoryId, pullRequestId, project);
+            const statuses = (result as unknown as GitPullRequestStatus[] | undefined) ?? [];
+            logger.info(
+                LogCategory.ADO,
+                `getPullRequestStatuses: returned ${statuses.length} status(es) for PR #${pullRequestId}`,
+            );
+            return statuses;
+        } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            logger.warn(
+                LogCategory.ADO,
+                `getPullRequestStatuses failed: repo=${repositoryId} PR #${pullRequestId}: ${errMsg}`,
+            );
+            return [];
+        }
+    }
+
+    /**
+     * Fetch per-commit statuses for a given commit SHA (latest run per
+     * context). Returns an empty list on failure (best-effort).
+     */
+    async getCommitStatuses(
+        repositoryId: string,
+        commitId: string,
+        project?: string,
+    ): Promise<GitStatus[]> {
+        const logger = getLogger();
+        const api = await this.getGitApi();
+        try {
+            logger.info(
+                LogCategory.ADO,
+                `getCommitStatuses: repo=${repositoryId} commit=${commitId} project=${project ?? '(default)'}`,
+            );
+            const result = await api.getStatuses(commitId, repositoryId, project, undefined, undefined, true);
+            const statuses = (result as unknown as GitStatus[] | undefined) ?? [];
+            logger.info(
+                LogCategory.ADO,
+                `getCommitStatuses: returned ${statuses.length} status(es) for commit ${commitId}`,
+            );
+            return statuses;
+        } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            logger.warn(
+                LogCategory.ADO,
+                `getCommitStatuses failed: repo=${repositoryId} commit=${commitId}: ${errMsg}`,
+            );
+            return [];
         }
     }
 

@@ -19,6 +19,8 @@ function makeMockGitApi(overrides: Record<string, unknown> = {}) {
         getPullRequestIterations: vi.fn().mockResolvedValue([]),
         getPullRequestIterationChanges: vi.fn().mockResolvedValue({ changeEntries: [] }),
         getPullRequestCommits: vi.fn().mockResolvedValue([]),
+        getPullRequestStatuses: vi.fn().mockResolvedValue([]),
+        getStatuses: vi.fn().mockResolvedValue([]),
         getItemText: vi.fn().mockResolvedValue(null),
         ...overrides,
     };
@@ -338,6 +340,58 @@ describe('AdoPullRequestsService', () => {
 
         await expect(service.getPullRequestCommits('repo-1', 42)).rejects.toThrow(AdoPullRequestError);
         await expect(service.getPullRequestCommits('repo-1', 42)).rejects.toThrow('Failed to get commits for PR 42');
+    });
+
+    // ── getPullRequestStatuses ───────────────────────────────
+
+    it('getPullRequestStatuses delegates to gitApi.getPullRequestStatuses and returns the array', async () => {
+        const statuses = [{ id: 1, state: 2 }, { id: 2, state: 3 }];
+        gitApi.getPullRequestStatuses.mockResolvedValue(statuses);
+
+        const result = await service.getPullRequestStatuses('repo-1', 42, 'proj');
+
+        expect(gitApi.getPullRequestStatuses).toHaveBeenCalledWith('repo-1', 42, 'proj');
+        expect(result).toEqual(statuses);
+    });
+
+    it('getPullRequestStatuses returns [] (best-effort) when the API rejects', async () => {
+        gitApi.getPullRequestStatuses.mockRejectedValue(new Error('forbidden'));
+        const result = await service.getPullRequestStatuses('repo-1', 42);
+        expect(result).toEqual([]);
+        const warnCalls = (mockLogger.warn as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
+        expect(warnCalls.some(m => m.includes('getPullRequestStatuses failed') && m.includes('forbidden'))).toBe(true);
+    });
+
+    it('getPullRequestStatuses returns [] when the API resolves with undefined', async () => {
+        gitApi.getPullRequestStatuses.mockResolvedValue(undefined);
+        const result = await service.getPullRequestStatuses('repo-1', 42);
+        expect(result).toEqual([]);
+    });
+
+    // ── getCommitStatuses ────────────────────────────────────
+
+    it('getCommitStatuses delegates to gitApi.getStatuses with latestOnly=true and returns the array', async () => {
+        const statuses = [{ id: 10, state: 2 }];
+        gitApi.getStatuses.mockResolvedValue(statuses);
+
+        const result = await service.getCommitStatuses('repo-1', 'sha-1', 'proj');
+
+        expect(gitApi.getStatuses).toHaveBeenCalledWith('sha-1', 'repo-1', 'proj', undefined, undefined, true);
+        expect(result).toEqual(statuses);
+    });
+
+    it('getCommitStatuses returns [] (best-effort) when the API rejects', async () => {
+        gitApi.getStatuses.mockRejectedValue(new Error('boom'));
+        const result = await service.getCommitStatuses('repo-1', 'sha-1');
+        expect(result).toEqual([]);
+        const warnCalls = (mockLogger.warn as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
+        expect(warnCalls.some(m => m.includes('getCommitStatuses failed') && m.includes('boom'))).toBe(true);
+    });
+
+    it('getCommitStatuses returns [] when the API resolves with undefined', async () => {
+        gitApi.getStatuses.mockResolvedValue(undefined);
+        const result = await service.getCommitStatuses('repo-1', 'sha-1');
+        expect(result).toEqual([]);
     });
 
     // ── getFileContent ───────────────────────────────────────

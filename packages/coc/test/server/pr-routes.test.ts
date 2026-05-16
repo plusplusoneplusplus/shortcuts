@@ -12,7 +12,7 @@ import { registerPrRoutes, clearPrListCache } from '../../src/server/repos/pr-ro
 import type { Route } from '../../src/server/types';
 import type { IPullRequestsService } from '@plusplusoneplusplus/forge';
 import type { PullRequest, CommentThread, Reviewer } from '@plusplusoneplusplus/forge';
-import type { ProviderPullRequestCommit } from '@plusplusoneplusplus/forge';
+import type { ProviderPullRequestCheck, ProviderPullRequestCommit } from '@plusplusoneplusplus/forge';
 
 // ── Mock ProviderFactory and RepoTreeService ─────────────────────────────────
 
@@ -91,6 +91,18 @@ const mockCommit: ProviderPullRequestCommit = {
     url: 'https://github.com/org/repo/commit/abc1234',
 };
 
+const mockCheck: ProviderPullRequestCheck = {
+    id: 'check-1',
+    name: 'build',
+    status: 'success',
+    source: 'check',
+    description: 'All targets built.',
+    detailsUrl: 'https://github.com/org/repo/runs/1',
+    startedAt: new Date('2024-01-04T12:00:00Z'),
+    completedAt: new Date('2024-01-04T12:03:18Z'),
+    durationMs: 198000,
+};
+
 // ── Server helpers ────────────────────────────────────────────────────────────
 
 let tmpDir: string;
@@ -137,6 +149,7 @@ beforeEach(async () => {
         getCommits: vi.fn().mockResolvedValue([mockCommit]),
         getDiff: vi.fn().mockResolvedValue('diff --git a/foo.ts b/foo.ts\n'),
         getCommits: vi.fn().mockResolvedValue([mockCommit]),
+        getChecks: vi.fn().mockResolvedValue([mockCheck]),
     };
 
     (RepoTreeService as ReturnType<typeof vi.fn>).mockImplementation(function () { return ({
@@ -539,6 +552,61 @@ describe('GET /api/repos/:id/pull-requests/:prId/commits', () => {
     it('returns 500 on unexpected error', async () => {
         (mockSvc.getCommits as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network'));
         const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/commits`);
+        expect(res.status).toBe(500);
+    });
+});
+
+// ── GET /api/repos/:id/pull-requests/:prId/checks ─────────────────────────────
+
+describe('GET /api/repos/:id/pull-requests/:prId/checks', () => {
+    it('returns checks array on success', async () => {
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { checks: Array<{ id: string; name: string; status: string; source: string }> };
+        expect(Array.isArray(body.checks)).toBe(true);
+        expect(body.checks).toHaveLength(1);
+        expect(body.checks[0].id).toBe('check-1');
+        expect(body.checks[0].name).toBe('build');
+        expect(body.checks[0].status).toBe('success');
+        expect(body.checks[0].source).toBe('check');
+    });
+
+    it('returns empty array when getChecks is not implemented', async () => {
+        const svcWithoutChecks = { ...mockSvc };
+        delete (svcWithoutChecks as any).getChecks;
+        (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(svcWithoutChecks);
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { checks: unknown[] };
+        expect(body.checks).toEqual([]);
+    });
+
+    it('returns 404 when repo not found', async () => {
+        mockResolveRepo.mockResolvedValueOnce(null);
+        const res = await fetch(`${baseUrl}/api/repos/unknown/pull-requests/42/checks`);
+        expect(res.status).toBe(404);
+    });
+
+    it('returns 401 when unconfigured', async () => {
+        (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+        expect(res.status).toBe(401);
+        const body = await res.json() as { error: string };
+        expect(body.error).toBe('unconfigured');
+    });
+
+    it('returns 401 with no-ado-credentials when ADO az CLI fails', async () => {
+        (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue({ error: 'no-ado-credentials' });
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
+        expect(res.status).toBe(401);
+        const body = await res.json() as { error: string };
+        expect(body.error).toBe('no-ado-credentials');
+    });
+
+    it('returns 500 on unexpected error', async () => {
+        (mockSvc.getChecks as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network'));
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
         expect(res.status).toBe(500);
     });
 });

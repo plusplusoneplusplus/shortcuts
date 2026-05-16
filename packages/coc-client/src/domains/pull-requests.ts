@@ -1,5 +1,6 @@
 import type {
   ProviderConfigRequest,
+  PullRequestChecksResponse,
   PullRequestCommitsResponse,
   PullRequestListQuery,
   PullRequestListResponse,
@@ -82,6 +83,12 @@ export class PullRequestsClient {
 
   getCommits(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestCommitsResponse> {
     return this.transport.request<PullRequestCommitsResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/commits`, {
+      signal: options?.signal,
+    });
+  }
+
+  getChecks(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestChecksResponse> {
+    return this.transport.request<PullRequestChecksResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/checks`, {
       signal: options?.signal,
     });
   }
