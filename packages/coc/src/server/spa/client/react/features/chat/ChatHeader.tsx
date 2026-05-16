@@ -84,8 +84,10 @@ export interface ChatHeaderProps {
     onFork?: () => void;
     /** Whether a fork operation is in progress */
     forking?: boolean;
-    /** Number of active loops for this conversation */
-    activeLoopCount?: number;
+    /** Number of non-cancelled loops for this conversation */
+    loopCount?: number;
+    /** Whether any non-cancelled loops are actively running */
+    hasActiveLoops?: boolean;
     /** Called when the user clicks the loop badge */
     onToggleLoopPanel?: () => void;
 }
@@ -303,7 +305,8 @@ export function ChatHeader({
     onOpenScratchpad,
     onFork,
     forking,
-    activeLoopCount,
+    loopCount,
+    hasActiveLoops = false,
     onToggleLoopPanel,
 }: ChatHeaderProps) {
     const { isMobile } = useBreakpoint();
@@ -428,8 +431,8 @@ export function ChatHeader({
                         iconOnly={!isWide}
                     />
                 )}
-                {isLoopsEnabled() && (activeLoopCount ?? 0) > 0 && (
-                    <LoopBadge activeCount={activeLoopCount!} onClick={onToggleLoopPanel} />
+                {isLoopsEnabled() && (loopCount ?? 0) > 0 && (
+                    <LoopBadge count={loopCount!} hasActiveLoops={hasActiveLoops} onClick={onToggleLoopPanel} />
                 )}
                 {/* References — only in wide tier (live ctx + duration moved into pill / composer) */}
                 {isWide && (
