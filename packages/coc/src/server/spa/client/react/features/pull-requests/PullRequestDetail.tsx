@@ -245,119 +245,61 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     return (
         <div className="flex h-full flex-col overflow-hidden bg-gray-50 dark:bg-gray-950" data-testid="pr-detail">
             <section className="shrink-0 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
-                <div className="px-2 pb-1 pt-1.5">
-                    {isMobile && (
-                        <button
-                            className="mb-1 text-xs text-blue-600 hover:underline dark:text-blue-400"
-                            onClick={handleBack}
-                            data-testid="back-button"
-                        >
-                            ← Back to list
-                        </button>
-                    )}
+                {isMobile && (
+                    <button
+                        className="px-2 pt-1.5 text-xs text-blue-600 hover:underline dark:text-blue-400"
+                        onClick={handleBack}
+                        data-testid="back-button"
+                    >
+                        ← Back to list
+                    </button>
+                )}
 
-                    <div className="mb-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+                <div
+                    className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1.5 text-[11px] text-gray-500 dark:text-gray-400"
+                    data-testid="pr-hero-row"
+                >
+                    <span
+                        className={cn(
+                            'inline-flex min-h-[20px] shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold',
+                            badge.className,
+                        )}
+                        data-testid="pr-status-badge"
+                    >
+                        {badge.emoji} {badge.label}
+                    </span>
+
+                    <h1 className="m-0 inline-flex min-w-0 max-w-full items-baseline gap-1.5 truncate text-[15px] font-semibold leading-[1.2] tracking-normal text-gray-900 dark:text-gray-100">
+                        <span className="truncate" data-testid="pr-title">{pr.title}</span>
+                        {pr.number != null && (
+                            <span className="shrink-0 font-normal text-gray-400 dark:text-gray-500" data-testid="pr-number">
+                                #{pr.number}
+                            </span>
+                        )}
+                    </h1>
+
+                    {aiSummary && (
                         <span
                             className={cn(
-                                'inline-flex min-h-[20px] items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold shrink-0',
-                                badge.className,
+                                'inline-flex min-h-[20px] shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold',
+                                riskPillClass(aiSummary.risk),
                             )}
-                            data-testid="pr-status-badge"
+                            data-testid="pr-risk-pill"
                         >
-                            {badge.emoji} {badge.label}
+                            AI risk: {aiSummary.risk}
                         </span>
-                        <span>
-                            <strong className="font-mono text-gray-700 dark:text-gray-300">
-                                {pr.author?.displayName ?? 'unknown'}
-                            </strong>{' '}
-                            wants to merge into{' '}
-                            <span className="font-mono text-gray-700 dark:text-gray-300">{pr.targetBranch}</span>
+                    )}
+                    {unresolvedCount > 0 && (
+                        <span className="inline-flex min-h-[20px] shrink-0 items-center gap-1 rounded-full bg-yellow-100 px-1.5 py-0.5 text-[11px] font-semibold text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200">
+                            {unresolvedCount} unresolved
                         </span>
-                        {aiSummary && (
-                            <span
-                                className={cn(
-                                    'inline-flex min-h-[20px] items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold',
-                                    riskPillClass(aiSummary.risk),
-                                )}
-                                data-testid="pr-risk-pill"
-                            >
-                                AI risk: {aiSummary.risk}
-                            </span>
-                        )}
-                        {unresolvedCount > 0 && (
-                            <span className="inline-flex min-h-[20px] items-center gap-1 rounded-full bg-yellow-100 px-1.5 py-0.5 text-[11px] font-semibold text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200">
-                                {unresolvedCount} unresolved
-                            </span>
-                        )}
-                    </div>
+                    )}
 
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                        <h1 className="m-0 min-w-0 max-w-full flex-1 truncate text-[21px] font-semibold leading-[1.15] tracking-normal text-gray-900 dark:text-gray-100">
-                            <span data-testid="pr-title">{pr.title}</span>
-                            {pr.number != null && (
-                                <span className="ml-1.5 font-normal text-gray-400 dark:text-gray-500" data-testid="pr-number">
-                                    #{pr.number}
-                                </span>
-                            )}
-                        </h1>
-                        <div className="flex flex-wrap items-center justify-end gap-1">
-                            <button
-                                type="button"
-                                className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-transparent bg-green-600 px-1.5 py-0.5 text-[11px] font-semibold text-white shadow-sm hover:bg-green-700"
-                                data-testid="pr-merge-when-ready"
-                            >
-                                Merge
-                            </button>
-                            <button
-                                type="button"
-                                disabled={aiPassRunning}
-                                onClick={handleRunAiPass}
-                                className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-transparent bg-gradient-to-br from-purple-500 to-blue-500 px-1.5 py-0.5 text-[11px] font-semibold text-white shadow-sm hover:opacity-95 disabled:opacity-60"
-                                data-testid="pr-run-ai-pass"
-                            >
-                                {aiPassRunning ? 'Reviewing…' : aiPassDone ? 'AI done' : 'AI review'}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setAssistantOpen(true)}
-                                className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-purple-300 bg-purple-50 px-1.5 py-0.5 text-[11px] font-semibold text-purple-700 hover:bg-purple-100 dark:border-purple-700 dark:bg-purple-900/30 dark:text-purple-200"
-                                data-testid="pr-open-ai-assistant"
-                            >
-                                Ask AI
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleCopySummary}
-                                className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-gray-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                                data-testid="pr-copy-summary"
-                            >
-                                {summaryCopied ? 'Copied' : 'Copy'}
-                            </button>
-                            <button
-                                type="button"
-                                className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-gray-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-red-600 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-gray-700"
-                                data-testid="pr-request-changes"
-                            >
-                                Changes
-                            </button>
-                            {pr.url && (
-                                <a
-                                    href={pr.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-gray-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                                    data-testid="header-external-link"
-                                >
-                                    Open 🔗
-                                </a>
-                            )}
-                        </div>
-                    </div>
-
-                    <div
-                        className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-gray-500 dark:text-gray-400"
-                        data-testid="pr-branches"
-                    >
+                    <span className="inline-flex shrink-0 items-center gap-1" data-testid="pr-branches">
+                        <strong className="font-mono text-gray-700 dark:text-gray-300">
+                            {pr.author?.displayName ?? 'unknown'}
+                        </strong>
+                        <span>wants to merge</span>
                         <span className="rounded-[5px] border border-gray-200 bg-gray-50 px-1.5 py-px font-mono text-[11px] text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
                             {pr.sourceBranch}
                         </span>
@@ -365,27 +307,77 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                         <span className="rounded-[5px] border border-gray-200 bg-gray-50 px-1.5 py-px font-mono text-[11px] text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
                             {pr.targetBranch}
                         </span>
-                        {deltaText && (
-                            <span className="font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-400" data-testid="pr-delta">
-                                {deltaText}
-                            </span>
-                        )}
-                        {fileCountText && (
-                            <span
-                                className="font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-400"
-                                data-testid="pr-file-count"
+                    </span>
+                    {deltaText && (
+                        <span className="shrink-0 font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-400" data-testid="pr-delta">
+                            {deltaText}
+                        </span>
+                    )}
+                    {fileCountText && (
+                        <span
+                            className="shrink-0 font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-400"
+                            data-testid="pr-file-count"
+                        >
+                            {fileCountText}
+                        </span>
+                    )}
+                    {pr.createdAt && (
+                        <span className="shrink-0">· {formatTimestamp(pr.createdAt)}</span>
+                    )}
+                    {pr.updatedAt && pr.updatedAt !== pr.createdAt && (
+                        <span className="shrink-0">· upd {formatTimestamp(pr.updatedAt)}</span>
+                    )}
+
+                    <div className="ml-auto flex shrink-0 items-center gap-1">
+                        <button
+                            type="button"
+                            className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-transparent bg-green-600 px-1.5 py-0.5 text-[11px] font-semibold text-white shadow-sm hover:bg-green-700"
+                            data-testid="pr-merge-when-ready"
+                        >
+                            Merge
+                        </button>
+                        <button
+                            type="button"
+                            disabled={aiPassRunning}
+                            onClick={handleRunAiPass}
+                            className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-transparent bg-gradient-to-br from-purple-500 to-blue-500 px-1.5 py-0.5 text-[11px] font-semibold text-white shadow-sm hover:opacity-95 disabled:opacity-60"
+                            data-testid="pr-run-ai-pass"
+                        >
+                            {aiPassRunning ? 'Reviewing…' : aiPassDone ? 'AI done' : 'AI review'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setAssistantOpen(true)}
+                            className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-purple-300 bg-purple-50 px-1.5 py-0.5 text-[11px] font-semibold text-purple-700 hover:bg-purple-100 dark:border-purple-700 dark:bg-purple-900/30 dark:text-purple-200"
+                            data-testid="pr-open-ai-assistant"
+                        >
+                            Ask AI
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleCopySummary}
+                            className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-gray-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                            data-testid="pr-copy-summary"
+                        >
+                            {summaryCopied ? 'Copied' : 'Copy'}
+                        </button>
+                        <button
+                            type="button"
+                            className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-gray-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-red-600 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-gray-700"
+                            data-testid="pr-request-changes"
+                        >
+                            Changes
+                        </button>
+                        {pr.url && (
+                            <a
+                                href={pr.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex min-h-[24px] items-center justify-center gap-1 rounded-[5px] border border-gray-300 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                                data-testid="header-external-link"
                             >
-                                {fileCountText}
-                            </span>
-                        )}
-                        {pr.author?.displayName && (
-                            <span>· @{pr.author.displayName}</span>
-                        )}
-                        {pr.createdAt && (
-                            <span>· Created {formatTimestamp(pr.createdAt)}</span>
-                        )}
-                        {pr.updatedAt && (
-                            <span>· Updated {formatTimestamp(pr.updatedAt)}</span>
+                                Open 🔗
+                            </a>
                         )}
                     </div>
                 </div>
