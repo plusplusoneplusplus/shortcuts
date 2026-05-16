@@ -138,6 +138,15 @@ describe('CoCContainer Server Integration', () => {
         expect(res.body).toContain('containerMode: true');
     });
 
+    it('should embed pullRequestsEnabled: true in the dashboard HTML', async () => {
+        // Regression: the container previously omitted pullRequestsEnabled from
+        // generateDashboardHtml(), causing isPullRequestsEnabled() to return false
+        // and hiding the Pull Requests tab unconditionally in container mode.
+        const res = await httpRequest(containerUrl + '/');
+        expect(res.status).toBe(200);
+        expect(res.body).toContain('pullRequestsEnabled: true');
+    });
+
     it('should return empty agents list initially', async () => {
         const res = await httpRequest(containerUrl + '/api/container/agents');
         expect(res.status).toBe(200);

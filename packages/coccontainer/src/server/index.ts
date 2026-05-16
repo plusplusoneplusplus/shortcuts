@@ -48,6 +48,7 @@ function generateContainerHtml(): string {
         terminalEnabled: false,
         notesEnabled: false,
         workflowsEnabled: false,
+        pullRequestsEnabled: true,
     });
     return cachedHtml;
 }
