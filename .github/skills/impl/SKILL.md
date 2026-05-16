@@ -22,7 +22,8 @@ Use this skill when the user asks you to **implement** a change in the codebase 
    - Confirm any ambiguous requirements before coding.
 
 3. **Establish baseline**
-   - Run the repo’s existing lint/build/test commands to understand the current baseline.
+   - Inspect the available scripts before running validation commands. For npm repositories, check `package.json` scripts first; do not assume `npm run build` exists at the repository root.
+   - Run the repo’s existing lint/build/test commands to understand the current baseline. If the root package has no build script, use the documented root aggregate script (for example `build:packages`) or the relevant package/workspace build script for the files being changed.
    - If baseline fails, only address failures that are required for the requested change.
 
 4. **Implement the change (minimal, surgical edits)**
@@ -37,7 +38,7 @@ Use this skill when the user asks you to **implement** a change in the codebase 
    - Ensure tests avoid OS-specific path assumptions (use `path` helpers, normalize separators, etc.).
 
 6. **Verify build and tests pass before committing**
-   - Run the repo's build command to confirm there are no compilation errors.
+   - Run the repo's actual build command to confirm there are no compilation errors. Use only scripts that exist in `package.json` or are documented by the repository; do not invent root-level commands.
    - Run the full test suite and ensure all tests pass.
    - If the repo uses a monorepo/workspace structure, also run the build and tests for any sub-packages that contain changed code.
    - **Do not proceed to commit until the build is clean and all tests pass.**
@@ -64,6 +65,7 @@ Use this skill when the user asks you to **implement** a change in the codebase 
 ## Notes
 
 - Prefer existing repo commands rather than introducing new tooling.
+- For monorepos, prefer the smallest existing validation command that covers the changed package, then run documented aggregate commands when broader confidence is needed.
 - If the change impacts multiple packages/workspaces, ensure the build and tests for each affected package pass — not just the root-level command.
 - Pause commits if the build or any tests are failing. Resolve the issues first, verify that the build and tests pass, and then proceed with committing the changes.
 
