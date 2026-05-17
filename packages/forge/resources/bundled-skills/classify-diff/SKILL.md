@@ -33,9 +33,11 @@ Each classification also includes an intensity:
 | `high` | Core change — deserves careful review (e.g. new business logic, critical bug fix, complex test) |
 | `low` | Minor change within the category (e.g. small refactor, trivial test update, simple rename) |
 
-## Output Schema
+## Output
 
-Return a JSON object with one entry per hunk. Each hunk is identified by its file path and a 0-based hunk index within that file.
+When the runtime provides a `saveClassification` tool, call it exactly once at the end with the full array of per-hunk classifications. The tool persists the result and validates the schema — if it returns an error, fix the offending entries and call it again.
+
+When the tool is NOT available, return the result as a single JSON object matching this shape, wrapped in a ```json code fence:
 
 ```json
 {
@@ -72,7 +74,7 @@ You are classifying the hunks of a pull request diff. You have access to git and
    - `high` = reviewer should read this carefully
    - `low` = reviewer can skim or skip
 5. **Provide a brief reason** (one sentence) explaining why you chose that category and intensity.
-6. **Output the final result** as a single JSON object matching the schema above, wrapped in a ```json code fence.
+6. **Persist the result**: if a `saveClassification` tool is available, call it once with the full array. Otherwise emit the JSON shape shown in the Output section above, wrapped in a ```json code fence.
 
 ## Anti-Patterns
 

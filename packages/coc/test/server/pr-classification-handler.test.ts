@@ -1,68 +1,16 @@
 /**
- * Tests for pr-classification-handler — unit tests for the classification route handler.
+ * Tests for pr-classification-handler — unit tests for prompt and tag helpers.
+ *
+ * Route-level behavior (POST/GET) is covered indirectly via the file-based
+ * classification-store tests. The legacy `extractClassificationFromResult`
+ * has been removed in favour of the `saveClassification` LLM tool.
  */
 
 import { describe, it, expect } from 'vitest';
 import {
-    extractClassificationFromResult,
     classificationCacheTag,
     buildClassificationPrompt,
 } from '../../src/server/repos/pr-classification-handler';
-import type { DiffClassificationResult } from '../../src/server/spa/client/react/features/pull-requests/classification-types';
-
-// ── extractClassificationFromResult ──────────────────────────────────────────
-
-describe('extractClassificationFromResult', () => {
-    const validResult: DiffClassificationResult = {
-        classifications: [
-            { file: 'src/main.ts', hunkIndex: 0, category: 'logic', intensity: 'high', reason: 'New feature logic' },
-            { file: 'src/utils.ts', hunkIndex: 1, category: 'mechanical', intensity: 'low', reason: 'Import reorder' },
-        ],
-    };
-
-    it('should parse a plain JSON string', () => {
-        const input = JSON.stringify(validResult);
-        const result = extractClassificationFromResult(input);
-        expect(result).toEqual(validResult);
-    });
-
-    it('should parse JSON inside a code fence', () => {
-        const input = 'Here is the classification:\n```json\n' + JSON.stringify(validResult) + '\n```\nDone.';
-        const result = extractClassificationFromResult(input);
-        expect(result).toEqual(validResult);
-    });
-
-    it('should parse JSON embedded in text without fence', () => {
-        const input = 'The result is: ' + JSON.stringify(validResult) + ' — that is all.';
-        const result = extractClassificationFromResult(input);
-        expect(result).toEqual(validResult);
-    });
-
-    it('should return undefined for empty input', () => {
-        expect(extractClassificationFromResult(undefined)).toBeUndefined();
-        expect(extractClassificationFromResult('')).toBeUndefined();
-    });
-
-    it('should return undefined for invalid JSON', () => {
-        expect(extractClassificationFromResult('not json at all')).toBeUndefined();
-    });
-
-    it('should return undefined when classifications array has invalid entries', () => {
-        const invalid = { classifications: [{ file: 'a.ts' }] }; // missing fields
-        expect(extractClassificationFromResult(JSON.stringify(invalid))).toBeUndefined();
-    });
-
-    it('should return undefined when JSON has no classifications key', () => {
-        expect(extractClassificationFromResult('{"hunks": []}')).toBeUndefined();
-    });
-
-    it('should handle pretty-printed JSON in code fence', () => {
-        const pretty = JSON.stringify(validResult, null, 2);
-        const input = '```json\n' + pretty + '\n```';
-        const result = extractClassificationFromResult(input);
-        expect(result).toEqual(validResult);
-    });
-});
 
 // ── classificationCacheTag ───────────────────────────────────────────────────
 
@@ -110,10 +58,8 @@ describe('buildClassificationPrompt', () => {
         expect(prompt).toContain('gh');
     });
 
-    it('should include JSON schema guidance', () => {
+    it('should mention the saveClassification tool', () => {
         const prompt = buildClassificationPrompt('repo', '42');
-        expect(prompt).toContain('"classifications"');
-        expect(prompt).toContain('"category"');
-        expect(prompt).toContain('"intensity"');
+        expect(prompt).toContain('saveClassification');
     });
 });

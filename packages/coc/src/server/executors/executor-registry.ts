@@ -1,7 +1,7 @@
 import type { ConversationTurn, CopilotSDKService, FileToolCallCacheStore, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import { approveAllPermissions, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../tasks/task-types';
-import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext, hasCommitChatContext, hasNoteChatContext, hasNoteCreateContext, isBackgroundReviewPayload, isMemoryPromotePayload } from '../tasks/task-types';
+import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext, hasCommitChatContext, hasNoteChatContext, hasNoteCreateContext, hasClassifyDiffContext, isBackgroundReviewPayload, isMemoryPromotePayload } from '../tasks/task-types';
 import type { ChatMode } from '../tasks/task-types';
 import type { ExecutionContext } from '../task-strategies';
 import { TaskStrategyRegistry } from '../task-strategies';
@@ -18,6 +18,7 @@ import { ResolveCommentsExecutor } from './resolve-comments-executor';
 import { CommitChatExecutor } from './commit-chat-executor';
 import { NoteChatExecutor } from './note-chat-executor';
 import { NoteCreateExecutor } from './note-create-executor';
+import { ClassificationExecutor } from './classification-executor';
 import { ProcessLifecycleRunner } from './process-lifecycle-runner';
 import { WrappedTaskExecutor } from './wrapped-task-executor';
 import type { SkillExecuteFn } from './wrapped-task-executor';
@@ -73,6 +74,7 @@ export class ExecutorRegistry {
     private readonly commitChatExecutor: CommitChatExecutor;
     private readonly noteChatExecutor: NoteChatExecutor;
     private readonly noteCreateExecutor: NoteCreateExecutor;
+    private readonly classificationExecutor: ClassificationExecutor;
     private readonly strategyRegistry: TaskStrategyRegistry;
 
     constructor(store: ProcessStore, options: ExecutorRegistryOptions) {
@@ -111,6 +113,7 @@ export class ExecutorRegistry {
         this.commitChatExecutor = new CommitChatExecutor(store, chatOpts, options.getWsServer, options.dataDir);
         this.noteChatExecutor = new NoteChatExecutor(store, chatOpts, options.dataDir);
         this.noteCreateExecutor = new NoteCreateExecutor(store, chatOpts, options.dataDir);
+        this.classificationExecutor = new ClassificationExecutor(store, chatOpts, options.dataDir);
         this.backgroundReviewExecutor = new BackgroundReviewExecutor(
             options.aiService,
             options.getMemoryStore ?? (() => undefined),
@@ -183,6 +186,7 @@ export class ExecutorRegistry {
         if (hasReplicationContext(task.payload)) return { execute: (t: QueuedTask) => this.strategyRegistry.get('replicate-template')!.execute(t, this.buildExecutionContext(t)) };
         if (hasResolveCommentsContext(task.payload) || hasResolveDiffCommentsMultiContext(task.payload) || payload.tools?.includes('resolve-comments')) return { execute: (t: QueuedTask) => this.resolveCommentsExecutor.executeTask(t) };
         if (hasCommitChatContext(task.payload)) return this.commitChatExecutor;
+        if (hasClassifyDiffContext(task.payload)) return this.classificationExecutor;
         if (hasNoteCreateContext(task.payload)) return this.noteCreateExecutor;
         if (hasNoteChatContext(task.payload)) return this.noteChatExecutor;
         const mode = payload.mode;

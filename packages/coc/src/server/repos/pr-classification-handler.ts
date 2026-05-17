@@ -7,8 +7,10 @@
  * POST /api/repos/:repoId/pull-requests/:prId/classify        — trigger classification
  * GET  /api/repos/:repoId/pull-requests/:prId/classification   — get cached result
  *
- * The classification result is stored in the process store as a conversation.
- * Cache key: `classify-diff:<repoId>:<prId>:<headSha>`.
+ * Results are persisted to a file-based store keyed by (workspaceId, repoId,
+ * prId, headSha). The AI writes results via the `saveClassification` LLM
+ * tool injected by `ClassificationExecutor` — there is no JSON extraction
+ * from assistant text or process-store scanning.
  */
 
 import type { Route } from '../types';
@@ -16,10 +18,11 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import { sendJson, send404, send400, send500, readJsonBody } from '../router';
 import { RepoTreeService } from './tree-service';
-import type { DiffClassificationResult, HunkClassification } from '../spa/client/react/features/pull-requests/classification-types';
-
-/** Display name prefix used for classification tasks — doubles as a search token. */
-const CLASSIFY_DISPLAY_PREFIX = 'Classify PR #';
+import {
+    readClassification,
+    readPending,
+    writePending,
+} from './classification-store';
 
 // ============================================================================
 // Types
@@ -34,13 +37,6 @@ interface ClassifyRequestBody {
     workspaceId?: string;
 }
 
-interface ClassificationCacheEntry {
-    result: DiffClassificationResult;
-    headSha: string;
-    createdAt: string;
-    processId: string;
-}
-
 export interface PrClassificationRouteOptions {
     dataDir: string;
     store: ProcessStore;
@@ -52,54 +48,9 @@ export interface PrClassificationRouteOptions {
 // Cache key helpers
 // ============================================================================
 
-/** Build the process store tag used to find a cached classification. */
+/** Legacy tag used to embed a stable marker in the classification prompt. */
 export function classificationCacheTag(repoId: string, prId: string, headSha: string): string {
     return `classify-diff:${repoId}:${prId}:${headSha}`;
-}
-
-// ============================================================================
-// Result extraction
-// ============================================================================
-
-/**
- * Parse the classification JSON from the last assistant turn of a completed process.
- * Expects a JSON block (possibly inside a ```json fence) matching `DiffClassificationResult`.
- */
-export function extractClassificationFromResult(resultText: string | undefined): DiffClassificationResult | undefined {
-    if (!resultText) return undefined;
-
-    // Try to find a JSON code block first
-    const fenceMatch = resultText.match(/```json\s*([\s\S]*?)```/);
-    const jsonStr = fenceMatch ? fenceMatch[1].trim() : resultText.trim();
-
-    try {
-        const parsed = JSON.parse(jsonStr);
-        if (parsed && Array.isArray(parsed.classifications)) {
-            // Validate each entry has required fields
-            const valid = parsed.classifications.every((c: any) =>
-                typeof c.file === 'string' &&
-                typeof c.hunkIndex === 'number' &&
-                typeof c.category === 'string' &&
-                typeof c.intensity === 'string' &&
-                typeof c.reason === 'string',
-            );
-            if (valid) {
-                return { classifications: parsed.classifications as HunkClassification[] };
-            }
-        }
-    } catch {
-        // Not valid JSON — try to find a JSON object in the text
-        const objectMatch = resultText.match(/\{[\s\S]*"classifications"\s*:\s*\[[\s\S]*\]\s*\}/);
-        if (objectMatch) {
-            try {
-                const parsed = JSON.parse(objectMatch[0]);
-                if (Array.isArray(parsed.classifications)) {
-                    return { classifications: parsed.classifications as HunkClassification[] };
-                }
-            } catch { /* give up */ }
-        }
-    }
-    return undefined;
 }
 
 // ============================================================================
@@ -132,28 +83,38 @@ export function registerPrClassificationRoutes(routes: Route[], opts: PrClassifi
                 }
 
                 const headSha = body.headSha.trim();
-                const cacheTag = classificationCacheTag(repoId, prId, headSha);
+                const workspaceId = body.workspaceId || repoId;
 
-                // Check cache — look for an existing process with this tag
-                const cached = await findCachedClassification(store, cacheTag);
+                // Cached result wins.
+                const cached = readClassification(dataDir, workspaceId, repoId, prId, headSha);
                 if (cached) {
                     return sendJson(res, {
-                        status: cached.status === 'completed' ? 'ready' : 'running',
+                        status: 'ready',
                         processId: cached.processId,
-                        ...(cached.result ? { result: cached.result } : {}),
+                        result: cached.result,
+                        createdAt: cached.createdAt,
                     });
                 }
 
-                // Resolve repo to get workspace root for queue routing
+                // In-flight task already running for this exact (repo, pr, headSha)?
+                const pending = readPending(dataDir, workspaceId, repoId, prId, headSha);
+                if (pending) {
+                    return sendJson(res, {
+                        status: 'running',
+                        processId: pending.processId,
+                    });
+                }
+
+                // Resolve repo to get workspace root for queue routing.
                 const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
-                const workspaceId = body.workspaceId || repoId;
-
-                // Build the classification prompt
+                const cacheTag = classificationCacheTag(repoId, prId, headSha);
                 const prompt = buildClassificationPrompt(repoId, prId, cacheTag);
 
-                // Enqueue a chat task with the classify-diff skill
+                // Enqueue a chat task with the classify-diff skill. The
+                // ClassificationExecutor is dispatched because the payload
+                // carries `context.classifyDiff`.
                 const rootPath = repo.localPath ?? process.cwd();
                 bridge.getOrCreateBridge(rootPath);
                 const resolvedRepoId = bridge.getRepoIdForPath(rootPath);
@@ -179,8 +140,16 @@ export function registerPrClassificationRoutes(routes: Route[], opts: PrClassifi
                         },
                     },
                     config: body.model ? { model: body.model } : {},
-                    displayName: `${CLASSIFY_DISPLAY_PREFIX}${prId} [${headSha.slice(0, 7)}]`,
+                    displayName: `Classify PR #${prId} [${headSha.slice(0, 7)}]`,
                 });
+
+                // Write the pending marker so concurrent requests / polls
+                // see a `running` status until the AI calls saveClassification.
+                try {
+                    writePending(dataDir, workspaceId, repoId, prId, headSha, String(taskId));
+                } catch {
+                    /* best-effort */
+                }
 
                 sendJson(res, { status: 'started', taskId }, 202);
             } catch (err) {
@@ -199,27 +168,34 @@ export function registerPrClassificationRoutes(routes: Route[], opts: PrClassifi
                 const repoId = decodeURIComponent(match![1]);
                 const prId = decodeURIComponent(match![2]);
 
-                // headSha is passed as query parameter
                 const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`);
                 const headSha = url.searchParams.get('headSha');
+                const workspaceIdParam = url.searchParams.get('workspaceId');
+                const workspaceId = workspaceIdParam || repoId;
 
                 if (!headSha) {
                     return send400(res, 'Missing required query parameter: headSha');
                 }
 
-                const cacheTag = classificationCacheTag(repoId, prId, headSha);
-                const cached = await findCachedClassification(store, cacheTag);
-
-                if (!cached) {
-                    return sendJson(res, { status: 'none' });
+                const cached = readClassification(dataDir, workspaceId, repoId, prId, headSha);
+                if (cached) {
+                    return sendJson(res, {
+                        status: 'ready',
+                        processId: cached.processId,
+                        result: cached.result,
+                        createdAt: cached.createdAt,
+                    });
                 }
 
-                sendJson(res, {
-                    status: cached.status === 'completed' ? 'ready' : 'running',
-                    processId: cached.processId,
-                    ...(cached.result ? { result: cached.result } : {}),
-                    ...(cached.createdAt ? { createdAt: cached.createdAt } : {}),
-                });
+                const pending = readPending(dataDir, workspaceId, repoId, prId, headSha);
+                if (pending) {
+                    return sendJson(res, {
+                        status: 'running',
+                        processId: pending.processId,
+                    });
+                }
+
+                sendJson(res, { status: 'none' });
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
             }
@@ -239,65 +215,10 @@ export function buildClassificationPrompt(repoId: string, prId: string, cacheTag
         '',
         'For each @@ hunk, produce a classification with: file, hunkIndex (0-based within the file), category (logic|mechanical|test|generated), intensity (high|low), and a one-sentence reason.',
         '',
-        'Output the result as a single JSON object matching this schema:',
-        '```json',
-        '{ "classifications": [ { "file": "...", "hunkIndex": 0, "category": "logic", "intensity": "high", "reason": "..." } ] }',
-        '```',
+        'When you have classified every hunk, persist the results by calling the `saveClassification` tool exactly once with the full array. Do NOT print the classifications as JSON in your response — the persistence layer reads them directly from the tool call.',
     ];
     if (cacheTag) {
         lines.push('', `<!-- cache-key: ${cacheTag} -->`);
     }
     return lines.join('\n');
-}
-
-interface CachedResult {
-    processId: string;
-    status: string;
-    result?: DiffClassificationResult;
-    createdAt?: string;
-}
-
-/**
- * Search the process store for a process whose display name exactly matches
- * the expected classification naming convention:
- *   "Classify PR #<prId> [<shortSha>]"
- *
- * The display name encodes both the PR ID and the head SHA prefix, ensuring
- * stale results from older commits are never returned.
- */
-async function findCachedClassification(store: ProcessStore, cacheTag: string): Promise<CachedResult | undefined> {
-    try {
-        const parts = cacheTag.split(':');
-        const prId = parts[2];
-        const headSha = parts[3];
-        const shortSha = headSha.slice(0, 7);
-        const expectedDisplayName = `${CLASSIFY_DISPLAY_PREFIX}${prId} [${shortSha}]`;
-
-        // Get recent processes (limit search to avoid scanning the entire store)
-        const processes = await store.getAllProcesses({ limit: 50, exclude: ['conversation'] });
-        for (const proc of processes) {
-            // Strict match: display name must contain both PR ID and correct SHA prefix
-            const nameMatch = (proc as any).displayName === expectedDisplayName;
-            const previewMatch = proc.promptPreview?.includes(`Classify PR #${prId}`) &&
-                proc.promptPreview?.includes(shortSha);
-            const promptMatch = proc.fullPrompt?.includes(`pull request #${prId}`) &&
-                proc.fullPrompt?.includes(cacheTag);
-
-            if (nameMatch || previewMatch || promptMatch) {
-                let result: DiffClassificationResult | undefined;
-                if (proc.status === 'completed' && proc.result) {
-                    result = extractClassificationFromResult(proc.result);
-                }
-                return {
-                    processId: proc.id,
-                    status: proc.status,
-                    result,
-                    createdAt: proc.startTime instanceof Date ? proc.startTime.toISOString() : String(proc.startTime),
-                };
-            }
-        }
-    } catch {
-        // Process store query failed — fall through
-    }
-    return undefined;
 }

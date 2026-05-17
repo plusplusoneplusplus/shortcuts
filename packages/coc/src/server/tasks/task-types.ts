@@ -209,6 +209,14 @@ export interface ChatContext {
     scheduleParams?: Record<string, string>;
     /** Ralph-mode orchestration metadata. */
     ralph?: RalphContext;
+    /** PR diff classification context — dispatches to ClassificationExecutor. */
+    classifyDiff?: {
+        repoId: string;
+        prId: string;
+        headSha: string;
+        /** Legacy cache tag (kept for prompt embedding; not used for storage). */
+        cacheTag?: string;
+    };
 }
 
 /** Ralph-mode orchestration context (mirrored verbatim into AIProcess.metadata.ralph). */
@@ -382,6 +390,13 @@ export function hasNoteCreateContext(payload: Record<string, unknown>): boolean 
 /** Check whether a chat payload carries Ralph-mode orchestration context. */
 export function hasRalphContext(payload: Record<string, unknown>): boolean {
     return isChatPayload(payload) && !!payload.context?.ralph;
+}
+
+/** Check whether a chat payload carries PR diff classification context. */
+export function hasClassifyDiffContext(payload: Record<string, unknown>): boolean {
+    if (!isChatPayload(payload)) return false;
+    const ctx = payload.context?.classifyDiff;
+    return !!ctx && typeof ctx.repoId === 'string' && typeof ctx.prId === 'string' && typeof ctx.headSha === 'string';
 }
 
 /** Check whether a chat payload is in Ralph mode. */
