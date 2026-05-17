@@ -275,6 +275,45 @@ describe('PrFilesPanel', () => {
             expect(row.textContent ?? '').toMatch(/\//);
         });
     });
+
+    it('renders a resize handle for the file list panel on desktop', () => {
+        render(<PrFilesPanel files={realDiff} />);
+        const handle = screen.getByTestId('pr-files-panel-resize-handle');
+        expect(handle).toBeInTheDocument();
+        expect(handle.getAttribute('role')).toBe('separator');
+        expect(handle.getAttribute('aria-orientation')).toBe('vertical');
+    });
+
+    it('omits the resize handle when isMobile is set so the file list stacks above the diff', () => {
+        render(<PrFilesPanel files={realDiff} isMobile />);
+        expect(screen.queryByTestId('pr-files-panel-resize-handle')).toBeNull();
+        // Aside should not carry an inline width on mobile (panel takes
+        // the full container width).
+        const aside = screen.getByTestId('pr-file-list-panel');
+        expect(aside.getAttribute('style') ?? '').not.toMatch(/width/);
+    });
+
+    it('gives the file list panel an explicit pixel width on desktop so it can be resized', () => {
+        render(<PrFilesPanel files={realDiff} />);
+        const aside = screen.getByTestId('pr-file-list-panel');
+        expect(aside.getAttribute('style') ?? '').toMatch(/width:\s*\d+px/);
+    });
+
+    it('keeps the basename and +/- delta visible side-by-side in tree rows so the delta is never overflow-hidden', () => {
+        render(<PrFilesPanel files={realDiff} />);
+        const row = screen
+            .getAllByTestId('pr-file-row')
+            .find(r => r.getAttribute('data-file-path') === 'src/foo.ts');
+        expect(row).toBeTruthy();
+        const basename = row!.querySelector('[data-testid="pr-file-basename"]') as HTMLElement;
+        // basename should be allowed to shrink (flex-1 + min-w-0) so the
+        // shrink-0 delta on the right always wins horizontal space.
+        expect(basename.className).toMatch(/flex-1/);
+        expect(basename.className).toMatch(/min-w-0/);
+        expect(basename.className).toMatch(/truncate/);
+        // The delta span (+x -y) must be present and shrink-0.
+        expect(row!.textContent ?? '').toMatch(/\+\d+\s+-\d+/);
+    });
 });
 
 // suppress unused import warning when running through transformer

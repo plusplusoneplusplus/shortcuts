@@ -21,6 +21,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { cn } from '../../ui';
+import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import type { ParsedDiffFile } from './unified-diff-parser';
 import {
     buildFileTree,
@@ -34,7 +35,12 @@ interface PrFilesPanelProps {
     files: ParsedDiffFile[];
     /** Real provider comment threads keyed by repository-relative file path. */
     commentsByPath?: Record<string, CommentThread[] | undefined>;
+    /** When true (small viewports), the file list stacks above the diff
+     *  with full width and no resize handle. */
+    isMobile?: boolean;
 }
+
+const FILES_PANEL_WIDTH_STORAGE_KEY = 'coc:pr-files-panel-width';
 
 type ViewMode = 'tree' | 'flat';
 
@@ -52,10 +58,16 @@ const STATUS_CLASS: Record<ParsedDiffFile['status'], string> = {
     renamed:  'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200',
 };
 
-export function PrFilesPanel({ files, commentsByPath }: PrFilesPanelProps) {
+export function PrFilesPanel({ files, commentsByPath, isMobile = false }: PrFilesPanelProps) {
     const [search, setSearch] = useState('');
     const [viewMode, setViewMode] = useState<ViewMode>('tree');
     const [activePath, setActivePath] = useState<string>(files[0]?.path ?? '');
+    const filesResize = useResizablePanel({
+        initialWidth: 280,
+        minWidth: 200,
+        maxWidth: 480,
+        storageKey: FILES_PANEL_WIDTH_STORAGE_KEY,
+    });
 
     // If the file list changes (e.g. PR detail reloaded), make sure the
     // active selection still exists.
@@ -112,23 +124,30 @@ export function PrFilesPanel({ files, commentsByPath }: PrFilesPanelProps) {
 
     return (
         <div
-            className="flex h-full min-h-0 flex-col gap-2 md:grid md:grid-cols-[224px_minmax(0,1fr)]"
+            className={cn(
+                'flex h-full min-h-0 gap-2',
+                isMobile ? 'flex-col' : 'flex-col md:flex-row md:gap-0',
+            )}
             data-testid="pr-files-panel"
         >
             <aside
-                className="flex min-h-0 flex-col overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+                className={cn(
+                    'flex min-h-0 w-full flex-col overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900',
+                    !isMobile && 'md:shrink-0',
+                )}
+                style={isMobile ? undefined : { width: filesResize.width }}
                 data-testid="pr-file-list-panel"
             >
-                <header className="flex min-h-[30px] shrink-0 items-center justify-between gap-1.5 border-b border-gray-200 bg-gray-50 px-2 py-1 dark:border-gray-700 dark:bg-gray-800/60">
-                    <div className="flex items-center gap-1.5">
-                        <h2 className="m-0 text-[13px] font-semibold leading-tight text-gray-900 dark:text-gray-100">
+                <header className="flex min-h-[30px] shrink-0 flex-wrap items-center justify-between gap-x-1.5 gap-y-1 border-b border-gray-200 bg-gray-50 px-2 py-1 dark:border-gray-700 dark:bg-gray-800/60">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                        <h2 className="m-0 truncate text-[13px] font-semibold leading-tight text-gray-900 dark:text-gray-100">
                             Changed files
                         </h2>
                         <span className="font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-400">
                             {files.length}
                         </span>
                     </div>
-                    <div className="flex items-center gap-px" role="group" aria-label="File list view">
+                    <div className="flex shrink-0 items-center gap-px" role="group" aria-label="File list view">
                         <button
                             type="button"
                             onClick={() => setViewMode('tree')}
@@ -199,8 +218,27 @@ export function PrFilesPanel({ files, commentsByPath }: PrFilesPanelProps) {
                     )}
                 </div>
             </aside>
+            {!isMobile && (
+                <div
+                    className={cn(
+                        'hidden md:flex items-center justify-center w-1 cursor-col-resize shrink-0 transition-colors',
+                        filesResize.isDragging
+                            ? 'bg-blue-500/60'
+                            : 'bg-gray-200 hover:bg-blue-500/40 dark:bg-gray-700',
+                    )}
+                    onMouseDown={filesResize.handleMouseDown}
+                    onTouchStart={filesResize.handleTouchStart}
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize file list panel"
+                    data-testid="pr-files-panel-resize-handle"
+                />
+            )}
             <div
-                className="min-h-0 flex-1 overflow-y-auto md:h-full"
+                className={cn(
+                    'min-h-0 flex-1 overflow-y-auto md:h-full',
+                    !isMobile && 'md:min-w-0',
+                )}
                 data-testid="pr-file-diff-panel"
             >
                 {focusedFile && (
@@ -254,7 +292,7 @@ function FlatFileList({ files, activePath, onSelect }: FlatFileListProps) {
                         type="button"
                         onClick={() => onSelect(file.path)}
                         className={cn(
-                            'flex flex-col items-stretch gap-px rounded px-1.5 py-1 text-left',
+                            'flex min-w-0 flex-col items-stretch gap-px rounded px-1.5 py-1 text-left',
                             isActive
                                 ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100'
                                 : 'text-gray-800 hover:bg-blue-50 dark:text-gray-200 dark:hover:bg-blue-900/30',
@@ -268,8 +306,8 @@ function FlatFileList({ files, activePath, onSelect }: FlatFileListProps) {
                                 {dirname}/
                             </span>
                         )}
-                        <span className="flex items-center justify-between gap-1.5">
-                            <span className="truncate" data-testid="pr-file-basename">
+                        <span className="flex min-w-0 items-center justify-between gap-1.5">
+                            <span className="min-w-0 flex-1 truncate" data-testid="pr-file-basename">
                                 {basename}
                             </span>
                             <span className="shrink-0 text-[11px] text-gray-500 dark:text-gray-400">
@@ -312,20 +350,20 @@ function FileTreeView({
                                 type="button"
                                 onClick={() => onToggleFolder(node.path)}
                                 aria-expanded={!isCollapsed}
-                                className="flex w-full items-center justify-between gap-1.5 rounded px-1.5 py-1 text-left text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800/60"
+                                className="flex w-full min-w-0 items-center justify-between gap-1.5 rounded px-1.5 py-1 text-left text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800/60"
                                 style={{ paddingLeft: `${6 + depth * 10}px` }}
                                 data-testid="pr-file-tree-folder"
                                 data-folder-path={node.path}
                                 data-collapsed={isCollapsed}
                             >
-                                <span className="flex min-w-0 items-center gap-1">
+                                <span className="flex min-w-0 flex-1 items-center gap-1">
                                     <span
                                         className="shrink-0 text-[9px] text-gray-400 dark:text-gray-500"
                                         aria-hidden="true"
                                     >
                                         {isCollapsed ? '▶' : '▼'}
                                     </span>
-                                    <span className="truncate" title={node.path}>
+                                    <span className="min-w-0 flex-1 truncate" title={node.path}>
                                         {node.name}
                                     </span>
                                 </span>
@@ -353,7 +391,7 @@ function FileTreeView({
                         type="button"
                         onClick={() => onSelect(node.path)}
                         className={cn(
-                            'flex items-center justify-between gap-1.5 rounded px-1.5 py-1 text-left',
+                            'flex min-w-0 items-center justify-between gap-1.5 rounded px-1.5 py-1 text-left',
                             isActive
                                 ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100'
                                 : 'text-gray-800 hover:bg-blue-50 dark:text-gray-200 dark:hover:bg-blue-900/30',
@@ -363,7 +401,7 @@ function FileTreeView({
                         data-file-path={node.path}
                         title={node.path}
                     >
-                        <span className="truncate" data-testid="pr-file-basename">
+                        <span className="min-w-0 flex-1 truncate" data-testid="pr-file-basename">
                             {node.name}
                         </span>
                         <span className="shrink-0 text-[11px] text-gray-500 dark:text-gray-400">
