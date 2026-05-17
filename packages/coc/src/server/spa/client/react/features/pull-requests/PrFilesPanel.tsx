@@ -487,6 +487,7 @@ function FlatFileList({ files, activePath, onSelect, classification }: FlatFileL
             {files.map(file => {
                 const { dirname, basename } = splitPath(file.path);
                 const isActive = file.path === activePath;
+                const isDimmed = classification?.isFileDimmed(file.path) ?? false;
                 return (
                     <button
                         key={file.path}
@@ -497,9 +498,11 @@ function FlatFileList({ files, activePath, onSelect, classification }: FlatFileL
                             isActive
                                 ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100'
                                 : 'text-gray-800 hover:bg-blue-50 dark:text-gray-200 dark:hover:bg-blue-900/30',
+                            isDimmed && 'opacity-40',
                         )}
                         data-testid="pr-file-row"
                         data-file-path={file.path}
+                        data-file-dimmed={isDimmed || undefined}
                         title={file.path}
                     >
                         {dirname && (
@@ -593,6 +596,7 @@ function FileTreeView({
                     );
                 }
                 const isActive = node.path === activePath;
+                const isDimmed = classification?.isFileDimmed(node.path) ?? false;
                 return (
                     <button
                         key={`file:${node.path}`}
@@ -603,10 +607,12 @@ function FileTreeView({
                             isActive
                                 ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100'
                                 : 'text-gray-800 hover:bg-blue-50 dark:text-gray-200 dark:hover:bg-blue-900/30',
+                            isDimmed && 'opacity-40',
                         )}
                         style={{ paddingLeft: `${6 + depth * 10}px` }}
                         data-testid="pr-file-row"
                         data-file-path={node.path}
+                        data-file-dimmed={isDimmed || undefined}
                         title={node.path}
                     >
                         <span className="min-w-0 flex-1 truncate" data-testid="pr-file-basename">
