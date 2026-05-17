@@ -76,6 +76,22 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
         wsRelay.connect(agent.id, agent.name, effectiveAddr);
     }
 
+    // ── WhatsApp bridge (only when enabled) ─────────────
+    let whatsappBridge: { stop(): Promise<void>; getWhatsAppStatus(): { enabled: boolean; status: string; qr: string | null; error: string | null; groupJid?: string; userName: string }; updateConfig(patch: { userName?: string; groupJid?: string }): Promise<void>; reconnect(): Promise<void>; listGroups(): Promise<Array<{ jid: string; name: string }>> } | undefined;
+    const waConfig = config.messaging?.whatsapp;
+    if (waConfig?.enabled) {
+        const { WhatsAppBridge } = await import('../messaging/whatsapp-bridge');
+        const bridge = new WhatsAppBridge({
+            config: waConfig,
+            dataDir: config.serve.dataDir,
+            wsRelay,
+            agentStore,
+            tunnelBridge,
+        });
+        await bridge.start();
+        whatsappBridge = bridge;
+    }
+
     const server = http.createServer(async (req, res) => {
         const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
 
@@ -225,6 +241,51 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 return sendJson(res, { notifications: [] });
             }
 
+            // ── Messaging API (WhatsApp status/QR) ────────────────
+            if (url.pathname === '/api/container/messaging/status' && req.method === 'GET') {
+                if (whatsappBridge) {
+                    return sendJson(res, whatsappBridge.getWhatsAppStatus());
+                }
+                return sendJson(res, {
+                    enabled: false,
+                    status: 'disconnected',
+                    qr: null,
+                    error: null,
+                    userName: config.messaging?.whatsapp?.userName ?? 'CoC',
+                });
+            }
+
+            if (url.pathname === '/api/container/messaging/config' && req.method === 'POST') {
+                const body = await readBody(req);
+                const { userName, groupJid } = body as { userName?: string; groupJid?: string };
+                if (whatsappBridge) {
+                    await whatsappBridge.updateConfig({ userName, groupJid });
+                    return sendJson(res, { ok: true, message: 'Config updated' });
+                }
+                return sendJson(res, { ok: false, error: 'WhatsApp not enabled' });
+            }
+
+            if (url.pathname === '/api/container/messaging/reconnect' && req.method === 'POST') {
+                if (whatsappBridge) {
+                    // Run reconnect in background, respond immediately
+                    whatsappBridge.reconnect().catch(err => console.error('[container] WhatsApp reconnect error:', err));
+                    return sendJson(res, { ok: true, message: 'Reconnecting — scan QR when prompted' });
+                }
+                return sendJson(res, { ok: false, error: 'WhatsApp not enabled' });
+            }
+
+            if (url.pathname === '/api/container/messaging/groups' && req.method === 'GET') {
+                if (whatsappBridge) {
+                    try {
+                        const groups = await whatsappBridge.listGroups();
+                        return sendJson(res, { groups });
+                    } catch (err: any) {
+                        return sendJson(res, { groups: [], error: err.message });
+                    }
+                }
+                return sendJson(res, { groups: [], error: 'WhatsApp not enabled' });
+            }
+
             // ── Agent-scoped proxy ──────────────────────────────
             // Routes: /api/agent/:agentId/... → proxy to agent
             const agentProxyMatch = url.pathname.match(/^\/api\/agent\/([^/]+)\/(.*)/);
@@ -330,6 +391,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
 
     return {
         close() {
+            whatsappBridge?.stop();
             healthMonitor.stop();
             tunnelBridge.stopAll();
             sseRelay.disconnectAll();

@@ -2340,6 +2340,10 @@ describe('admin sub-tab deep-link parsing', () => {
     it('handles hash without # prefix', () => {
         expect(parseAdminSubTab('admin/data')).toBe('data');
     });
+
+    it('returns "messaging" for #admin/messaging (container-only tab)', () => {
+        expect(parseAdminSubTab('#admin/messaging')).toBe('messaging');
+    });
 });
 
 // ─── parseAdminDatabaseDeepLink ─────────────────────────────────

@@ -378,14 +378,21 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // Reset impl-fetch guard when switching tasks
     useEffect(() => { implFetchedRef.current = false; }, [taskId]);
 
-    // Reactively sync title from process-updated WS events (via AppContext)
+    // Reactively sync title and status from process-updated WS events (via AppContext)
     useEffect(() => {
         if (!processId) return;
         const proc = appState.processes.find((p: any) => p.id === processId);
-        if (!proc?.title) return;
+        if (!proc) return;
         setTask((prev: any) => {
-            if (!prev || prev.displayName === proc.title) return prev;
-            return { ...prev, displayName: proc.title };
+            if (!prev) return prev;
+            const titleChanged = proc.title && prev.displayName !== proc.title;
+            const statusChanged = proc.status && prev.status !== proc.status;
+            if (!titleChanged && !statusChanged) return prev;
+            return {
+                ...prev,
+                ...(titleChanged ? { displayName: proc.title } : {}),
+                ...(statusChanged ? { status: proc.status } : {}),
+            };
         });
     }, [processId, appState.processes]);
 
