@@ -145,8 +145,12 @@ describe('WhatsAppBridge', () => {
             expect(fetchSpy).toHaveBeenCalledWith(
                 'http://localhost:4000/api/processes/proc-001?workspaceId=ws-frontend'
             );
-            // Only assistant turns are forwarded (user turns skipped)
-            expect(lastBot().send).toHaveBeenCalledTimes(1);
+            // Both user and assistant turns are forwarded
+            expect(lastBot().send).toHaveBeenCalledTimes(2);
+            expect(lastBot().send).toHaveBeenCalledWith(
+                'group@g.us',
+                '*💬 CoC → Agent-A:frontend*\nFix the bug'
+            );
             expect(lastBot().send).toHaveBeenCalledWith(
                 'group@g.us',
                 '*🤖 Agent-A:frontend*\nFixed the bug on line 42'
@@ -204,7 +208,7 @@ describe('WhatsAppBridge', () => {
             const bridge = new WhatsAppBridge(opts);
             await bridge.start();
 
-            // First update: 2 turns (only assistant forwarded)
+            // First update: 2 turns (both forwarded)
             vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
                 new Response(JSON.stringify({
                     process: {
@@ -220,11 +224,11 @@ describe('WhatsAppBridge', () => {
                 process: { id: 'proc-002', workspaceId: 'ws-test', workspaceName: 'test', status: 'running' },
             });
             await new Promise(r => setTimeout(r, 50));
-            expect(lastBot().send).toHaveBeenCalledTimes(1);
+            expect(lastBot().send).toHaveBeenCalledTimes(2);
 
             lastBot().send.mockClear();
 
-            // Second update: 4 turns (1 new assistant)
+            // Second update: 4 turns (2 new — user + assistant)
             vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
                 new Response(JSON.stringify({
                     process: {
@@ -242,7 +246,11 @@ describe('WhatsAppBridge', () => {
                 process: { id: 'proc-002', workspaceId: 'ws-test', workspaceName: 'test', status: 'running' },
             });
             await new Promise(r => setTimeout(r, 50));
-            expect(lastBot().send).toHaveBeenCalledTimes(1);
+            expect(lastBot().send).toHaveBeenCalledTimes(2);
+            expect(lastBot().send).toHaveBeenCalledWith(
+                'group@g.us',
+                '*💬 CoC → Agent-A:test*\nOne more thing'
+            );
             expect(lastBot().send).toHaveBeenCalledWith(
                 'group@g.us',
                 '*🤖 Agent-A:test*\nSure, here it is'

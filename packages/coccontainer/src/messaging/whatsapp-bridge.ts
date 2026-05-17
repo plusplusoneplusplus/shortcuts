@@ -243,15 +243,12 @@ export class WhatsAppBridge {
             const sessionLabel = `${msg.agentName}:${repoName}`;
 
             for (const turn of newTurns) {
-                // Only forward assistant replies — user messages are redundant
-                // since the bot is linked to the same WhatsApp account.
-                // (Bot-sent messages always appear on the right/"sent" side.)
-                if (turn.role === 'user') continue;
-
                 const text = (turn.content ?? turn.text ?? '') as string;
                 if (!text.trim()) continue;
 
-                const prefix = `*🤖 ${sessionLabel}*`;
+                const prefix = turn.role === 'user'
+                    ? `*💬 ${this.opts.config.userName} → ${sessionLabel}*`
+                    : `*🤖 ${sessionLabel}*`;
 
                 try {
                     const waMessageId = await this.bot!.send(target, `${prefix}\n${text}`);
