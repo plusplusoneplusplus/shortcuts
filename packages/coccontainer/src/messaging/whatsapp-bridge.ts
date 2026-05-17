@@ -35,6 +35,7 @@ export class WhatsAppBridge {
     private wsHandler: ((msg: WSRelayMessage) => void) | null = null;
     private _creatingGroup = false;
     private _processingLocks = new Set<string>();
+    private _workspaceNameCache = new Map<string, string>();
 
     constructor(private opts: WhatsAppBridgeOptions) {}
 
@@ -251,7 +252,12 @@ export class WhatsAppBridge {
 
             if (newTurns.length === 0) return;
 
-            const repoName = (proc.workspaceName ?? workspaceId ?? 'unknown') as string;
+            const repoName = await this.resolveWorkspaceName(
+                proc.workspaceName as string | undefined,
+                (processData.metadata as Record<string, unknown> | undefined)?.workspaceName as string | undefined,
+                workspaceId,
+                agentAddr,
+            );
             const title = (processData.title ?? proc.title ?? '') as string;
 
             for (const turn of newTurns) {
@@ -303,6 +309,38 @@ export class WhatsAppBridge {
         }
 
         return chatSection.join('\n') + '\n\n*Message:*\n' + opts.content.trimStart();
+    }
+
+    /** Resolve a workspace ID to a human-readable name, using cache and agent API. */
+    private async resolveWorkspaceName(
+        wsEventName: string | undefined,
+        metadataName: string | undefined,
+        workspaceId: string,
+        agentAddr: string,
+    ): Promise<string> {
+        // Prefer names already available
+        if (wsEventName) return wsEventName;
+        if (metadataName) return metadataName;
+        if (!workspaceId) return 'unknown';
+
+        // Check cache
+        const cached = this._workspaceNameCache.get(workspaceId);
+        if (cached) return cached;
+
+        // Fetch from agent's workspace list API
+        try {
+            const res = await fetch(`${agentAddr}/api/workspaces`);
+            if (res.ok) {
+                const data = await res.json() as { workspaces?: Array<{ id: string; name: string }> };
+                for (const ws of data.workspaces ?? []) {
+                    if (ws.name) this._workspaceNameCache.set(ws.id, ws.name);
+                }
+                const name = this._workspaceNameCache.get(workspaceId);
+                if (name) return name;
+            }
+        } catch { /* ignore — fall through to workspaceId */ }
+
+        return workspaceId;
     }
 
     // ── Inbound: WhatsApp message → CoC session ──────────
