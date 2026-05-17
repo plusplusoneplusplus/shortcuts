@@ -25,6 +25,7 @@ export class WhatsAppBot {
         this._lastError = null;
         this.sock = await createBaileysConnection({
             sessionDir: this.opts.sessionDir,
+            deviceName: this.opts.deviceName,
             onQR: (qr) => {
                 this._lastQR = qr;
                 this._lastError = null;

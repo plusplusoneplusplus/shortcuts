@@ -15,6 +15,8 @@ export interface InboundWAMessage {
 export interface BotOptions {
     /** Directory for Baileys multi-file auth state. */
     sessionDir: string;
+    /** Device name shown in WhatsApp's "Linked Devices" (default: "CoC"). */
+    deviceName?: string;
     /** Called when an inbound text message arrives. */
     onMessage: (msg: InboundWAMessage) => Promise<void>;
     /** If true, print QR to terminal (default: true). */

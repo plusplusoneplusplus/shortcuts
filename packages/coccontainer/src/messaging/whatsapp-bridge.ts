@@ -40,6 +40,7 @@ export class WhatsAppBridge {
         this.store = new MessagingStore(this.opts.dataDir);
         this.bot = new WhatsAppBot({
             sessionDir: this.opts.config.sessionDir,
+            deviceName: this.opts.config.userName,
             onMessage: (msg) => this.onInboundMessage(msg),
         });
         await this.bot.start();

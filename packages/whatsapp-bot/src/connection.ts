@@ -6,6 +6,8 @@ import type { WASocket } from './types';
 
 export interface ConnectionOptions {
     sessionDir: string;
+    /** Device name shown in WhatsApp's "Linked Devices" list (default: "CoC") */
+    deviceName?: string;
     onQR: (qr: string) => void;
     onConnected: () => void;
     onDisconnected: (loggedOut: boolean) => void;
@@ -27,7 +29,7 @@ export async function createBaileysConnection(opts: ConnectionOptions, attempt =
     const sock = makeWASocket({
         auth: state,
         printQRInTerminal: false,
-        browser: Browsers.ubuntu('Chrome'),
+        browser: [opts.deviceName || 'CoC', 'Desktop', '1.0'],
         connectTimeoutMs: 30_000,
         version,
     });
