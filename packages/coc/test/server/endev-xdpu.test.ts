@@ -82,6 +82,7 @@ describe('EnDev-xDpu activation', () => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'endev-xdpu-test-'));
         originalSystemRoot = process.env.SystemRoot;
         process.env.SystemRoot = originalSystemRoot ?? String.raw`C:\Windows`;
+        setEnDevXDpuHostPlatformForTesting('win32');
         setEnDevXDpuWslCommandRunnerForTesting(undefined);
     });
 

@@ -6,6 +6,7 @@ import type { WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import { resolveRunWorkspaceIntegration } from '../../src/commands/run';
 import {
     ENDEV_XDPU_MCP_SERVER_NAME,
+    setEnDevXDpuHostPlatformForTesting,
     setEnDevXDpuWslCommandRunnerForTesting,
 } from '../../src/server/endev/endev-xdpu';
 import type { EnDevXDpuWslCommandRunner } from '../../src/server/endev/endev-xdpu';
@@ -41,10 +42,12 @@ describe('resolveRunWorkspaceIntegration', () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-run-workspace-'));
         originalSystemRoot = process.env.SystemRoot;
         process.env.SystemRoot = originalSystemRoot ?? String.raw`C:\Windows`;
+        setEnDevXDpuHostPlatformForTesting('win32');
         setEnDevXDpuWslCommandRunnerForTesting(undefined);
     });
 
     afterEach(() => {
+        setEnDevXDpuHostPlatformForTesting(undefined);
         setEnDevXDpuWslCommandRunnerForTesting(undefined);
         if (originalSystemRoot === undefined) {
             delete process.env.SystemRoot;
