@@ -378,12 +378,15 @@ export const REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = SHOW_WIKI_TAB
     : Object.fromEntries(Object.entries(ALL_REPO_TAB_SHORTCUTS).filter(([, v]) => v !== 'wiki'));
 
 
-export const VALID_ADMIN_SUB_TABS: Set<string> = new Set(['settings', 'providers', 'data', 'server', 'prompts', 'database', 'agents', 'messaging']);
+export const VALID_ADMIN_SUB_TABS: Set<string> = new Set(['settings', 'providers', 'data', 'server', 'prompts', 'database', 'agents']);
+
+/** Container-only admin sub-tabs (not included in the base set). */
+const CONTAINER_ADMIN_SUB_TABS: Set<string> = new Set(['messaging']);
 
 export function parseAdminSubTab(hash: string): AdminSubTab | null {
     const parts = hash.replace(/^#/, '').split('/');
     if (parts[0] !== 'admin') return null;
-    if (parts.length >= 2 && VALID_ADMIN_SUB_TABS.has(parts[1])) return parts[1] as AdminSubTab;
+    if (parts.length >= 2 && (VALID_ADMIN_SUB_TABS.has(parts[1]) || CONTAINER_ADMIN_SUB_TABS.has(parts[1]))) return parts[1] as AdminSubTab;
     return null;
 }
 

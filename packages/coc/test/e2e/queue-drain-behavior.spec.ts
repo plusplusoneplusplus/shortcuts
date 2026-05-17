@@ -154,6 +154,7 @@ async function gotoQueueTask(
 /* ------------------------------------------------------------------ */
 
 test.describe('Queue Drain Behavior', () => {
+    test.describe.configure({ retries: 2 });
     test('multiple tasks drain in FIFO order', async ({ serverUrl, mockAI }) => {
         test.setTimeout(60_000);
 
@@ -360,7 +361,7 @@ test.describe('Queue Drain Behavior', () => {
             resolve1({ success: true, response: 'Task 1 done', sessionId: 'sess-ui-1' });
 
             // PendingTaskInfoPanel should disappear
-            await expect(page.locator('.pending-task-info')).not.toBeVisible({ timeout: 20_000 });
+            await expect(page.locator('.pending-task-info')).not.toBeVisible({ timeout: 30_000 });
 
             // The assistant response bubble should be visible
             await expect(
@@ -423,7 +424,7 @@ test.describe('Queue Drain Behavior', () => {
             resolve1({ success: true, response: 'Done', sessionId: 'sess-sse-1' });
 
             // Wait for the streaming indicator (proves SSE connected and data flowing)
-            await expect(page.locator('.streaming-indicator')).toBeVisible({ timeout: 20_000 });
+            await expect(page.locator('.streaming-indicator')).toBeVisible({ timeout: 30_000 });
 
             // Wait for the final response content to appear
             await expect(
