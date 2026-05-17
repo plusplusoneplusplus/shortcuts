@@ -170,7 +170,11 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                 contextOverride = { skills: extractedSkills };
             }
 
-            const effectivePrompt = extractedSkills.length > 0 ? cleanedPrompt : trimmed;
+            let effectivePrompt = extractedSkills.length > 0 ? cleanedPrompt : trimmed;
+
+            if (selectedMode === 'ralph') {
+                effectivePrompt += '\n\nWhen you\'ve finished grilling me and have a clear understanding of the goal, write the final goal specification to a `.goal.md` file (e.g. `feature-name.goal.md`).';
+            }
 
             const result = await getSpaCocClient().queue.enqueue({
                 type: 'chat',

@@ -8,7 +8,7 @@ import React from 'react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult } = vi.hoisted(() => ({
+const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled } = vi.hoisted(() => ({
     mockQueueDispatch: vi.fn(),
     mockAppState: {
         workspaces: [{ id: 'ws-1', rootPath: '/home/user/repo' }],
@@ -51,6 +51,7 @@ const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCo
         effectiveModel: undefined as string | undefined,
         effectiveModelName: undefined as string | undefined,
     },
+    mockRalphEnabled: { value: false },
 }));
 
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
@@ -65,7 +66,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '/api',
     getConfig: () => ({ apiBasePath: '/api' }),
-    isRalphEnabled: () => false,
+    isRalphEnabled: () => mockRalphEnabled.value,
     isLoopsEnabled: () => false,
 }));
 
@@ -186,6 +187,7 @@ beforeEach(() => {
     mockHistory.handleKeyDown = vi.fn(() => false);
     mockHistory.reset = vi.fn();
     mockDraftStore.getDraft.mockReturnValue(null);
+    mockRalphEnabled.value = false;
     // Stub fetch for non-queue uses (e.g. useOnboardingPreferences → patchGlobalPreferences)
     globalThis.fetch = mockFetch;
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({}) });
@@ -765,6 +767,58 @@ describe('NewChatArea', () => {
 
             expect(mockDraftStore.newChatDraftKey).toHaveBeenCalledWith(undefined);
             expect(mockDraftStore.getDraft).toHaveBeenCalledWith('new-chat:__global__');
+        });
+    });
+
+    describe('ralph mode – goal.md prompt suffix', () => {
+        beforeEach(() => {
+            mockRalphEnabled.value = true;
+        });
+
+        it('appends goal.md instruction when ralph mode is selected', async () => {
+            mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'ralph-task-1' } });
+            mockSlashCommands.parseAndExtract.mockReturnValue({ skills: [], prompt: '' });
+
+            render(<NewChatArea workspaceId="ws-1" />);
+
+            // Click the ralph pill to select ralph mode
+            const ralphPill = screen.getByTestId('mode-pill-ralph');
+            fireEvent.click(ralphPill);
+
+            // Type a message and send
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: 'Build a CLI tool' } });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            });
+
+            const body = mockEnqueueTask.mock.calls[0][0];
+            expect(body.payload.mode).toBe('ask');
+            expect(body.payload.prompt).toContain('Build a CLI tool');
+            expect(body.payload.prompt).toContain('.goal.md');
+            expect(body.payload.prompt).toContain('finished grilling');
+            expect(body.payload.context.ralph.phase).toBe('grilling');
+            expect(body.payload.context.skills).toContain('grill-me');
+        });
+
+        it('does not append goal.md instruction in non-ralph modes', async () => {
+            mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'ask-task-1' } });
+            mockSlashCommands.parseAndExtract.mockReturnValue({ skills: [], prompt: '' });
+
+            render(<NewChatArea workspaceId="ws-1" />);
+
+            // Stay in ask mode (default)
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            fireEvent.change(input, { target: { value: 'Hello world' } });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            });
+
+            const body = mockEnqueueTask.mock.calls[0][0];
+            expect(body.payload.prompt).toBe('Hello world');
+            expect(body.payload.prompt).not.toContain('.goal.md');
         });
     });
 });
