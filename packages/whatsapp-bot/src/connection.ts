@@ -31,6 +31,7 @@ export async function createBaileysConnection(opts: ConnectionOptions, attempt =
         printQRInTerminal: false,
         browser: [opts.deviceName || 'CoC', 'Desktop', '1.0'],
         connectTimeoutMs: 30_000,
+        fireInitQueries: false,
         version,
     });
 
