@@ -1,10 +1,15 @@
 /**
  * AdminPanel — full admin page replacing vanilla admin.ts.
  * Storage stats, config view, export, import, and data wipe.
+ *
+ * Visuals are driven by `admin-redesign.css` (a Linear-inspired CSS layer
+ * scoped under `.admin-redesign`). Behaviour, testids, and structure are
+ * unchanged — only the look is updated.
  */
 
-import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
-import { Card, Button, Spinner, useToast, ToastContainer } from '../ui';
+import './admin-redesign.css';
+import { useState, useEffect, useCallback, lazy, Suspense, type ReactNode } from 'react';
+import { Spinner, useToast, ToastContainer } from '../ui';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import { invalidateDisplaySettings } from '../hooks/preferences/useDisplaySettings';
 import { invalidateHtmlEmbedPreference } from '../hooks/preferences/useHtmlEmbedPreference';
@@ -684,60 +689,60 @@ export function AdminPanel() {
     const sources: Record<string, string> = config?.sources ?? {};
     const resolved = config?.resolved ?? {};
 
-    const inputClass = 'flex-1 px-2 py-0.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] w-full';
-    const labelClass = 'text-xs w-28 shrink-0 text-[#616161] dark:text-[#999]';
-    const sectionHeadClass = 'text-xs font-semibold text-[#616161] dark:text-[#999] uppercase tracking-wide mb-2';
-    const dividerClass = 'border-t border-[#e0e0e0] dark:border-[#3c3c3c] my-3';
     const baseTabs: AdminSubTab[] = ['settings', 'providers', 'data', 'server', 'prompts', 'database'];
     const tabs: AdminSubTab[] = isContainerMode() ? [...baseTabs, 'agents'] : baseTabs;
 
     return (
-        <div id="view-admin">
-            <div id="admin-page-content" className="responsive-container space-y-2 md:space-y-3">
-                {/* Header with inline stats bar */}
-                <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                    <h1 className="text-xl font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Admin</h1>
-                    <div className="flex items-center gap-3">
-                        {statsLoading ? (
-                            <Spinner size="sm" />
-                        ) : (
-                            <>
-                                <span className="text-xs font-mono text-[#616161] dark:text-[#999]" data-testid="stat-processes">
-                                    <span className="inline-block w-2 h-2 rounded-full bg-[#0078d4] mr-1 align-middle" />
-                                    {stats?.processCount ?? '—'} processes
-                                </span>
-                                <span className="text-xs font-mono text-[#616161] dark:text-[#999]" data-testid="stat-wikis">
-                                    <span className="inline-block w-2 h-2 rounded-full bg-[#0078d4] mr-1 align-middle" />
-                                    {stats?.wikiCount ?? '—'} wikis
-                                </span>
-                                <span className="text-xs font-mono text-[#616161] dark:text-[#999]" data-testid="stat-disk">
-                                    <span className="inline-block w-2 h-2 rounded-full bg-[#0078d4] mr-1 align-middle" />
-                                    {stats?.totalBytes != null ? formatBytes(stats.totalBytes) : '—'}
-                                </span>
-                            </>
-                        )}
-                        <button
-                            id="admin-refresh-stats"
-                            onClick={loadStats}
-                            title="Refresh stats"
-                            className="text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-base leading-none"
-                        >↻</button>
+        <div id="view-admin" className="admin-redesign">
+            <div id="admin-page-content" className="ar-page">
+                {/* Page header with inline stats pills */}
+                <header className="ar-page-header">
+                    <div className="ar-page-header-row">
+                        <div>
+                            <h1 className="ar-page-title">Admin</h1>
+                            <p className="ar-page-desc">
+                                Configure how this CoC server runs — settings, providers, storage, and lifecycle.
+                            </p>
+                        </div>
+                        <div className="ar-pill-row">
+                            {statsLoading ? (
+                                <Spinner size="sm" />
+                            ) : (
+                                <>
+                                    <span className="ar-pill" data-testid="stat-processes">
+                                        <span className="ar-pill-dot" />
+                                        {stats?.processCount ?? '—'} processes
+                                    </span>
+                                    <span className="ar-pill" data-testid="stat-wikis">
+                                        <span className="ar-pill-dot" />
+                                        {stats?.wikiCount ?? '—'} wikis
+                                    </span>
+                                    <span className="ar-pill" data-testid="stat-disk">
+                                        <span className="ar-pill-dot" />
+                                        {stats?.totalBytes != null ? formatBytes(stats.totalBytes) : '—'}
+                                    </span>
+                                </>
+                            )}
+                            <button
+                                id="admin-refresh-stats"
+                                onClick={loadStats}
+                                title="Refresh stats"
+                                className="ar-refresh-btn"
+                                aria-label="Refresh stats"
+                            >↻</button>
+                        </div>
                     </div>
                 </header>
 
                 <FeatureTip tipId="admin-intro" />
 
                 {/* Tab bar — desktop: underline tabs; mobile: select */}
-                <div className="hidden md:flex border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                <div className="ar-tabbar hidden md:flex">
                     {tabs.map(tab => (
                         <button
                             key={tab}
-                            className={[
-                                'px-4 py-2 text-xs font-medium border-b-2 transition-colors',
-                                activeTab === tab
-                                    ? 'border-[#0078d4] text-[#0078d4]'
-                                    : 'border-transparent text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
-                            ].join(' ')}
+                            type="button"
+                            className={`ar-tab${activeTab === tab ? ' is-active' : ''}`}
                             onClick={() => handleTabChange(tab)}
                             data-testid={`admin-tab-${tab}`}
                         >
@@ -746,7 +751,7 @@ export function AdminPanel() {
                     ))}
                 </div>
                 <select
-                    className="md:hidden w-full px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
+                    className="ar-tab-select md:hidden"
                     value={activeTab}
                     onChange={e => handleTabChange(e.target.value as AdminSubTab)}
                     aria-label="Select admin section"
@@ -760,13 +765,13 @@ export function AdminPanel() {
                 {activeTab === 'settings' && (
                     <div className="space-y-3" data-testid="settings-cards">
                         {configLoading ? (
-                            <Card className="p-3 md:p-4">
-                                <div className="flex items-center gap-2 text-sm text-[#848484]"><Spinner size="sm" /> Loading…</div>
-                            </Card>
+                            <section className="ar-card">
+                                <div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>
+                            </section>
                         ) : configError ? (
-                            <Card className="p-3 md:p-4">
-                                <div data-testid="admin-config-error" className="text-sm text-red-500">{configError}</div>
-                            </Card>
+                            <section className="ar-card">
+                                <div data-testid="admin-config-error" className="ar-section" style={{ color: 'var(--ar-danger)' }}>{configError}</div>
+                            </section>
                         ) : (
                             <>
                                 {/* ── 1. AI & Execution ── */}
@@ -779,54 +784,63 @@ export function AdminPanel() {
                                     onCancel={handleCancelAiExec}
                                     data-testid="settings-ai-execution"
                                 >
-                                    <div className="flex flex-col md:flex-row items-start md:items-center gap-1.5">
-                                        <label className={labelClass} title="AI model identifier (leave blank to use server default)">Model</label>
+                                    <AdminRow
+                                        name="Model"
+                                        hint="AI model identifier (leave blank to use server default)."
+                                    >
                                         <input
                                             id="admin-config-model"
-                                            className={inputClass}
+                                            className="ar-input ar-long ar-mono"
                                             value={configForm.model}
                                             onChange={e => setConfigForm(f => ({ ...f, model: e.target.value }))}
                                         />
                                         <SourceBadge source={sources['model']} />
-                                    </div>
-                                    <div className="flex flex-col md:flex-row items-start md:items-center gap-1.5">
-                                        <label className={labelClass} title="Number of parallel AI tasks">Parallelism</label>
+                                    </AdminRow>
+                                    <AdminRow
+                                        name="Parallelism"
+                                        hint="Number of parallel AI tasks. Read-write tasks always run sequentially."
+                                    >
                                         <input
                                             id="admin-config-parallel"
                                             type="number"
                                             min={1}
-                                            className={inputClass}
+                                            className="ar-input ar-short"
                                             value={configForm.parallel}
                                             onChange={e => setConfigForm(f => ({ ...f, parallel: e.target.value }))}
                                         />
                                         <SourceBadge source={sources['parallel']} />
-                                    </div>
-                                    <div className="flex flex-col md:flex-row items-start md:items-center gap-1.5">
-                                        <label className={labelClass} title="AI task execution timeout in seconds. Leave empty for 1-hour default.">Timeout</label>
-                                        <input
-                                            id="admin-config-timeout"
-                                            type="number"
-                                            min={1}
-                                            placeholder="3600 (1 h default)"
-                                            className={inputClass}
-                                            value={configForm.timeout}
-                                            onChange={e => setConfigForm(f => ({ ...f, timeout: e.target.value }))}
-                                        />
-                                        <span className="inline-block px-1.5 py-0.5 text-[10px] rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">s</span>
+                                    </AdminRow>
+                                    <AdminRow
+                                        name="Timeout"
+                                        hint="Per-task wall-clock limit. Leave blank for the 1-hour default."
+                                    >
+                                        <AdminInputSuffix suffix="sec">
+                                            <input
+                                                id="admin-config-timeout"
+                                                type="number"
+                                                min={1}
+                                                placeholder="3600"
+                                                className="ar-input ar-short"
+                                                value={configForm.timeout}
+                                                onChange={e => setConfigForm(f => ({ ...f, timeout: e.target.value }))}
+                                            />
+                                        </AdminInputSuffix>
                                         <SourceBadge source={sources['timeout']} />
-                                    </div>
-                                    <div className="flex flex-col md:flex-row items-start md:items-center gap-1.5">
-                                        <label className={labelClass} title="Default output format for CLI">Output</label>
+                                    </AdminRow>
+                                    <AdminRow
+                                        name="Output"
+                                        hint="Default format for CLI commands that print structured data."
+                                    >
                                         <select
                                             id="admin-config-output"
-                                            className={inputClass}
+                                            className="ar-select ar-med"
                                             value={configForm.output}
                                             onChange={e => setConfigForm(f => ({ ...f, output: e.target.value }))}
                                         >
                                             {VALID_OUTPUT_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
                                         </select>
                                         <SourceBadge source={sources['output']} />
-                                    </div>
+                                    </AdminRow>
                                 </SettingsCard>
 
                                 {/* ── 2. Chat Experience ── */}
@@ -839,110 +853,71 @@ export function AdminPanel() {
                                     onCancel={handleCancelChat}
                                     data-testid="settings-chat"
                                 >
-                                    <div className="flex items-center justify-between">
-                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="Generate clickable follow-up suggestions after each response">
-                                            Follow-up suggestions
-                                        </label>
-                                        <div className="flex items-center gap-2">
-                                            <SourceBadge source={sources['chat.followUpSuggestions.enabled']} />
-                                            <label className="relative inline-flex items-center cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only peer"
-                                                    checked={chatFollowUpEnabled}
-                                                    onChange={e => setChatFollowUpEnabled(e.target.checked)}
-                                                    data-testid="toggle-chat-followup-enabled"
-                                                />
-                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div className="flex flex-col md:flex-row items-start md:items-center gap-1.5">
-                                        <label className={labelClass} title="Number of follow-up suggestions (1–5)">Count</label>
+                                    <AdminRow
+                                        name="Follow-up suggestions"
+                                        hint="Generate clickable next-question chips after each response."
+                                    >
+                                        <SourceBadge source={sources['chat.followUpSuggestions.enabled']} />
+                                        <AdminToggle
+                                            checked={chatFollowUpEnabled}
+                                            onChange={setChatFollowUpEnabled}
+                                            data-testid="toggle-chat-followup-enabled"
+                                        />
+                                    </AdminRow>
+                                    <AdminRow
+                                        name="Count"
+                                        hint="Number of follow-up suggestions to generate (1–5)."
+                                    >
                                         <input
                                             type="number"
                                             min={1}
                                             max={5}
-                                            className={inputClass}
+                                            className="ar-input ar-short"
                                             value={chatFollowUpCount}
                                             onChange={e => setChatFollowUpCount(e.target.value)}
                                             data-testid="input-chat-followup-count"
                                         />
                                         <SourceBadge source={sources['chat.followUpSuggestions.count']} />
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="Allow the AI to ask interactive questions during a conversation">
-                                            Ask user (interactive questions)
-                                        </label>
-                                        <div className="flex items-center gap-2">
-                                            <SourceBadge source={sources['chat.askUser.enabled']} />
-                                            <label className="relative inline-flex items-center cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only peer"
-                                                    checked={chatAskUserEnabled}
-                                                    onChange={e => setChatAskUserEnabled(e.target.checked)}
-                                                    data-testid="toggle-chat-askuser-enabled"
-                                                />
-                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="Show or hide report_intent tool calls in the conversation view">
-                                            Intent announcements
-                                        </label>
-                                        <div className="flex items-center gap-2">
-                                            <SourceBadge source={sources['showReportIntent']} />
-                                            <label className="relative inline-flex items-center cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only peer"
-                                                    checked={showReportIntent}
-                                                    onChange={e => setShowReportIntent(e.target.checked)}
-                                                    data-testid="toggle-show-report-intent"
-                                                />
-                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="How much detail to show for tool calls in the conversation view">
-                                            Tool call verbosity
-                                        </label>
-                                        <div className="flex items-center gap-2">
-                                            <SourceBadge source={sources['toolCompactness']} />
-                                            <div
-                                                className="flex rounded-md overflow-hidden border border-[#e0e0e0] dark:border-[#3c3c3c]"
-                                                role="group"
-                                                aria-label="Tool call verbosity"
-                                            >
-                                                {([
-                                                    [0, 'Full'],
-                                                    [1, 'Compact'],
-                                                    [2, 'Minimal'],
-                                                    [3, 'Whisper'],
-                                                ] as const).map(([level, label]) => (
-                                                    <button
-                                                        key={level}
-                                                        type="button"
-                                                        onClick={() => setToolCompactness(level)}
-                                                        data-testid={`tool-compactness-${label.toLowerCase()}`}
-                                                        className={[
-                                                            'px-3 py-1 text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0078d4]',
-                                                            'border-r last:border-r-0 border-[#e0e0e0] dark:border-[#3c3c3c]',
-                                                            toolCompactness === level
-                                                                ? 'bg-[#0078d4] text-white'
-                                                                : 'bg-transparent text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
-                                                        ].join(' ')}
-                                                        aria-pressed={toolCompactness === level}
-                                                    >
-                                                        {label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
+                                    </AdminRow>
+                                    <AdminRow
+                                        name="Ask user (interactive questions)"
+                                        hint="Allow the AI to pause and ask the user a question mid-task instead of guessing."
+                                    >
+                                        <SourceBadge source={sources['chat.askUser.enabled']} />
+                                        <AdminToggle
+                                            checked={chatAskUserEnabled}
+                                            onChange={setChatAskUserEnabled}
+                                            data-testid="toggle-chat-askuser-enabled"
+                                        />
+                                    </AdminRow>
+                                    <AdminRow
+                                        name="Intent announcements"
+                                        hint="Show the report_intent badge above each tool call (“I'm about to read X…”)."
+                                    >
+                                        <SourceBadge source={sources['showReportIntent']} />
+                                        <AdminToggle
+                                            checked={showReportIntent}
+                                            onChange={setShowReportIntent}
+                                            data-testid="toggle-show-report-intent"
+                                        />
+                                    </AdminRow>
+                                    <AdminRow
+                                        name="Tool call verbosity"
+                                        hint="How much detail to show for each tool invocation in the transcript."
+                                    >
+                                        <SourceBadge source={sources['toolCompactness']} />
+                                        <AdminSeg<0 | 1 | 2 | 3>
+                                            value={toolCompactness}
+                                            onChange={setToolCompactness}
+                                            aria-label="Tool call verbosity"
+                                            options={[
+                                                { value: 0, label: 'Full', testId: 'tool-compactness-full' },
+                                                { value: 1, label: 'Compact', testId: 'tool-compactness-compact' },
+                                                { value: 2, label: 'Minimal', testId: 'tool-compactness-minimal' },
+                                                { value: 3, label: 'Whisper', testId: 'tool-compactness-whisper' },
+                                            ]}
+                                        />
+                                    </AdminRow>
                                 </SettingsCard>
 
                                 {/* ── 3. Appearance & Navigation ── */}
@@ -956,10 +931,9 @@ export function AdminPanel() {
                                     onCancel={handleCancelAppearance}
                                     data-testid="settings-appearance"
                                 >
-                                    <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
-                                        <label className={labelClass}>Theme</label>
+                                    <AdminRow name="Theme" hint="Color scheme for this device. Auto follows the OS preference.">
                                         <select
-                                            className={inputClass}
+                                            className="ar-select ar-med"
                                             value={theme}
                                             onChange={e => setTheme(e.target.value as 'light' | 'dark' | 'auto')}
                                             data-testid="pref-theme"
@@ -968,11 +942,10 @@ export function AdminPanel() {
                                             <option value="light">light</option>
                                             <option value="dark">dark</option>
                                         </select>
-                                    </div>
-                                    <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
-                                        <label className={labelClass}>UI Mode</label>
+                                    </AdminRow>
+                                    <AdminRow name="UI Mode" hint="Classic shows the activity tab. Dev workflow uses chats, work items, and tasks.">
                                         <select
-                                            className={inputClass}
+                                            className="ar-select ar-long"
                                             value={uiLayoutMode}
                                             onChange={e => setUiLayoutMode(e.target.value as 'classic' | 'dev-workflow')}
                                             data-testid="pref-ui-layout-mode"
@@ -980,132 +953,74 @@ export function AdminPanel() {
                                             <option value="dev-workflow">Dev Workflow (Chats + Work Items + Tasks)</option>
                                             <option value="classic">Classic (Activity)</option>
                                         </select>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Repos sidebar collapsed</div>
-                                            <div className="text-xs text-[#616161] dark:text-[#999]">Whether the repos sidebar is collapsed on load.</div>
-                                        </div>
-                                        <label className="relative inline-flex items-center cursor-pointer ml-4">
-                                            <input
-                                                type="checkbox"
-                                                className="sr-only peer"
-                                                checked={reposSidebarCollapsed}
-                                                onChange={e => setReposSidebarCollapsed(e.target.checked)}
-                                                data-testid="pref-repos-sidebar-collapsed"
-                                            />
-                                            <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                        </label>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Inline HTML previews</div>
-                                            <div className="text-xs text-[#616161] dark:text-[#999]">
-                                                Render local <span className="font-mono">.html</span> links titled <span className="font-mono">embed</span> as sandboxed chat previews.
-                                            </div>
-                                        </div>
-                                        <label className="relative inline-flex items-center cursor-pointer ml-4">
-                                            <input
-                                                type="checkbox"
-                                                className="sr-only peer"
-                                                checked={htmlEmbedEnabled}
-                                                onChange={e => setHtmlEmbedEnabled(e.target.checked)}
-                                                data-testid="pref-html-embed-enabled"
-                                            />
-                                            <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                        </label>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Prompt ghost text</div>
-                                            <div className="text-xs text-[#616161] dark:text-[#999]">
-                                                Show inline autocomplete in Queue Task and follow-up inputs.
-                                            </div>
-                                        </div>
-                                        <label className="relative inline-flex items-center cursor-pointer ml-4">
-                                            <input
-                                                type="checkbox"
-                                                className="sr-only peer"
-                                                checked={promptAutocompleteEnabled}
-                                                onChange={e => setPromptAutocompleteEnabled(e.target.checked)}
-                                                data-testid="pref-prompt-autocomplete-enabled"
-                                            />
-                                            <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                        </label>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">AI prompt ghost text</div>
-                                            <div className="text-xs text-[#616161] dark:text-[#999]">
-                                                Generate ghost text with AI using workspace-scoped user history. Disabled by default.
-                                            </div>
-                                        </div>
-                                        <label className="relative inline-flex items-center cursor-pointer ml-4">
-                                            <input
-                                                type="checkbox"
-                                                className="sr-only peer"
-                                                checked={promptAutocompleteAiEnabled}
-                                                disabled={!promptAutocompleteEnabled}
-                                                onChange={e => setPromptAutocompleteAiEnabled(e.target.checked)}
-                                                data-testid="pref-prompt-autocomplete-ai-enabled"
-                                            />
-                                            <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-disabled:opacity-50 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                        </label>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]" title="Density of task cards in the activity tab">
-                                            Task card density
-                                        </label>
-                                        <div className="flex items-center gap-2">
-                                            <SourceBadge source={sources['taskCardDensity']} />
-                                            <div
-                                                className="flex rounded-md overflow-hidden border border-[#e0e0e0] dark:border-[#3c3c3c]"
-                                                role="group"
-                                                aria-label="Task card density"
-                                            >
-                                                {([
-                                                    ['compact', 'Compact'],
-                                                    ['dense', 'Dense'],
-                                                ] as const).map(([value, label]) => (
-                                                    <button
-                                                        key={value}
-                                                        type="button"
-                                                        onClick={() => setTaskCardDensity(value)}
-                                                        data-testid={`task-card-density-${label.toLowerCase()}`}
-                                                        className={[
-                                                            'px-3 py-1 text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0078d4]',
-                                                            'border-r last:border-r-0 border-[#e0e0e0] dark:border-[#3c3c3c]',
-                                                            taskCardDensity === value
-                                                                ? 'bg-[#0078d4] text-white'
-                                                                : 'bg-transparent text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.04]',
-                                                        ].join(' ')}
-                                                        aria-pressed={taskCardDensity === value}
-                                                    >
-                                                        {label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <label className="text-xs text-[#1e1e1e] dark:text-[#cccccc]"
-                                               title="Group related plan and autopilot tasks together in the history list">
-                                            History grouping
-                                        </label>
-                                        <div className="flex items-center gap-2">
-                                            <SourceBadge source={sources['historyGrouping']} />
-                                            <label className="relative inline-flex items-center cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only peer"
-                                                    checked={historyGrouping}
-                                                    onChange={e => setHistoryGrouping(e.target.checked)}
-                                                    data-testid="toggle-history-grouping"
-                                                />
-                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                            </label>
-                                        </div>
-                                    </div>
+                                    </AdminRow>
+                                    <AdminRow
+                                        name="Repos sidebar collapsed"
+                                        hint="Whether the repos sidebar starts collapsed on load."
+                                    >
+                                        <AdminToggle
+                                            checked={reposSidebarCollapsed}
+                                            onChange={setReposSidebarCollapsed}
+                                            data-testid="pref-repos-sidebar-collapsed"
+                                        />
+                                    </AdminRow>
+                                    <AdminRow
+                                        name="Inline HTML previews"
+                                        hint={<>Render local <span className="ar-mono">.html</span> links titled <span className="ar-mono">embed</span> as sandboxed chat previews.</>}
+                                    >
+                                        <AdminToggle
+                                            checked={htmlEmbedEnabled}
+                                            onChange={setHtmlEmbedEnabled}
+                                            data-testid="pref-html-embed-enabled"
+                                        />
+                                    </AdminRow>
+                                    <AdminRow
+                                        name="Prompt ghost text"
+                                        hint="Show inline autocomplete in Queue Task and follow-up inputs."
+                                    >
+                                        <AdminToggle
+                                            checked={promptAutocompleteEnabled}
+                                            onChange={setPromptAutocompleteEnabled}
+                                            data-testid="pref-prompt-autocomplete-enabled"
+                                        />
+                                    </AdminRow>
+                                    <AdminRow
+                                        name="AI prompt ghost text"
+                                        hint="Generate ghost text with AI using workspace-scoped user history. Disabled by default."
+                                    >
+                                        <AdminToggle
+                                            checked={promptAutocompleteAiEnabled}
+                                            disabled={!promptAutocompleteEnabled}
+                                            onChange={setPromptAutocompleteAiEnabled}
+                                            data-testid="pref-prompt-autocomplete-ai-enabled"
+                                        />
+                                    </AdminRow>
+                                    <AdminRow
+                                        name="Task card density"
+                                        hint="Density of task cards in the activity tab."
+                                    >
+                                        <SourceBadge source={sources['taskCardDensity']} />
+                                        <AdminSeg<'compact' | 'dense'>
+                                            value={taskCardDensity}
+                                            onChange={setTaskCardDensity}
+                                            aria-label="Task card density"
+                                            options={[
+                                                { value: 'compact', label: 'Compact', testId: 'task-card-density-compact' },
+                                                { value: 'dense', label: 'Dense', testId: 'task-card-density-dense' },
+                                            ]}
+                                        />
+                                    </AdminRow>
+                                    <AdminRow
+                                        name="History grouping"
+                                        hint="Group related plan and autopilot tasks together in the history list."
+                                    >
+                                        <SourceBadge source={sources['historyGrouping']} />
+                                        <AdminToggle
+                                            checked={historyGrouping}
+                                            onChange={setHistoryGrouping}
+                                            data-testid="toggle-history-grouping"
+                                        />
+                                    </AdminRow>
                                 </SettingsCard>
 
                                 {/* ── 4. Workspace Features ── */}
@@ -1118,279 +1033,97 @@ export function AdminPanel() {
                                     onCancel={handleCancelFeatures}
                                     data-testid="settings-features"
                                 >
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Terminal</div>
-                                            <div className="text-xs text-[#616161] dark:text-[#999]">Web terminal for shell access to the server machine.</div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <SourceBadge source={sources['terminal.enabled']} />
-                                            <label className="relative inline-flex items-center cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only peer"
-                                                    checked={terminalEnabled}
-                                                    onChange={e => setTerminalEnabled(e.target.checked)}
-                                                    data-testid="toggle-terminal-enabled"
-                                                />
-                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Notes</div>
-                                            <div className="text-xs text-[#616161] dark:text-[#999]">Markdown notebooks for creating and editing notes.</div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <SourceBadge source={sources['notes.enabled']} />
-                                            <label className="relative inline-flex items-center cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only peer"
-                                                    checked={notesEnabled}
-                                                    onChange={e => setNotesEnabled(e.target.checked)}
-                                                    data-testid="toggle-notes-enabled"
-                                                />
-                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">My Work</div>
-                                            <div className="text-xs text-[#616161] dark:text-[#999]">Personal landing page with action items and weekly summaries.</div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <SourceBadge source={sources['myWork.enabled']} />
-                                            <label className="relative inline-flex items-center cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only peer"
-                                                    checked={myWorkEnabled}
-                                                    onChange={e => setMyWorkEnabled(e.target.checked)}
-                                                    data-testid="toggle-mywork-enabled"
-                                                />
-                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">My Life</div>
-                                            <div className="text-xs text-[#616161] dark:text-[#999]">Personal page with goals, journal, and life admin.</div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <SourceBadge source={sources['myLife.enabled']} />
-                                            <label className="relative inline-flex items-center cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only peer"
-                                                    checked={myLifeEnabled}
-                                                    onChange={e => setMyLifeEnabled(e.target.checked)}
-                                                    data-testid="toggle-mylife-enabled"
-                                                />
-                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Scratchpad panel</div>
-                                            <div className="text-xs text-[#616161] dark:text-[#999]">Bottom-split note editor inside the chat detail view.</div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <SourceBadge source={sources['scratchpad.enabled']} />
-                                            <label className="relative inline-flex items-center cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only peer"
-                                                    checked={scratchpadEnabled}
-                                                    onChange={e => setScratchpadEnabled(e.target.checked)}
-                                                    data-testid="toggle-scratchpad-enabled"
-                                                />
-                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                            </label>
-                                        </div>
-                                    </div>
+                                    <AdminRow name="Terminal" hint="Web terminal for shell access to the server machine.">
+                                        <SourceBadge source={sources['terminal.enabled']} />
+                                        <AdminToggle checked={terminalEnabled} onChange={setTerminalEnabled} data-testid="toggle-terminal-enabled" />
+                                    </AdminRow>
+                                    <AdminRow name="Notes" hint="Markdown notebooks for creating and editing notes.">
+                                        <SourceBadge source={sources['notes.enabled']} />
+                                        <AdminToggle checked={notesEnabled} onChange={setNotesEnabled} data-testid="toggle-notes-enabled" />
+                                    </AdminRow>
+                                    <AdminRow name="My Work" hint="Personal landing page with action items and weekly summaries.">
+                                        <SourceBadge source={sources['myWork.enabled']} />
+                                        <AdminToggle checked={myWorkEnabled} onChange={setMyWorkEnabled} data-testid="toggle-mywork-enabled" />
+                                    </AdminRow>
+                                    <AdminRow name="My Life" hint="Personal page with goals, journal, and life admin.">
+                                        <SourceBadge source={sources['myLife.enabled']} />
+                                        <AdminToggle checked={myLifeEnabled} onChange={setMyLifeEnabled} data-testid="toggle-mylife-enabled" />
+                                    </AdminRow>
+                                    <AdminRow name="Scratchpad panel" hint="Bottom-split note editor inside the chat detail view.">
+                                        <SourceBadge source={sources['scratchpad.enabled']} />
+                                        <AdminToggle checked={scratchpadEnabled} onChange={setScratchpadEnabled} data-testid="toggle-scratchpad-enabled" />
+                                    </AdminRow>
                                     {scratchpadEnabled && (
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Layout</div>
-                                                <div className="text-xs text-[#616161] dark:text-[#999]">Split direction for conversation and scratchpad.</div>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <SourceBadge source={sources['scratchpad.layout']} />
-                                                <select
-                                                    className="text-xs border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] rounded px-2 py-1"
-                                                    value={scratchpadLayout}
-                                                    onChange={e => setScratchpadLayout(e.target.value as 'horizontal' | 'vertical')}
-                                                    data-testid="select-scratchpad-layout"
-                                                >
-                                                    <option value="horizontal">Horizontal (top/bottom)</option>
-                                                    <option value="vertical">Vertical (left/right)</option>
-                                                </select>
-                                            </div>
-                                        </div>
+                                        <AdminRow name="Layout" hint="Split direction for conversation and scratchpad.">
+                                            <SourceBadge source={sources['scratchpad.layout']} />
+                                            <select
+                                                className="ar-select ar-med"
+                                                value={scratchpadLayout}
+                                                onChange={e => setScratchpadLayout(e.target.value as 'horizontal' | 'vertical')}
+                                                data-testid="select-scratchpad-layout"
+                                            >
+                                                <option value="horizontal">Horizontal (top/bottom)</option>
+                                                <option value="vertical">Vertical (left/right)</option>
+                                            </select>
+                                        </AdminRow>
                                     )}
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Workflows Tab</div>
-                                            <div className="text-xs text-[#616161] dark:text-[#999]">YAML workflow runner tab in repo view.</div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <SourceBadge source={sources['workflows.enabled']} />
-                                            <label className="relative inline-flex items-center cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only peer"
-                                                    checked={workflowsEnabled}
-                                                    onChange={e => setWorkflowsEnabled(e.target.checked)}
-                                                    data-testid="toggle-workflows-enabled"
-                                                />
-                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Pull Requests Tab</div>
-                                            <div className="text-xs text-[#616161] dark:text-[#999]">Pull request list tab in repo view.</div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <SourceBadge source={sources['pullRequests.enabled']} />
-                                            <label className="relative inline-flex items-center cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only peer"
-                                                    checked={pullRequestsEnabled}
-                                                    onChange={e => setPullRequestsEnabled(e.target.checked)}
-                                                    data-testid="toggle-pull-requests-enabled"
-                                                />
-                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Servers</div>
-                                            <div className="text-xs text-[#616161] dark:text-[#999]">Multi-server connection manager (devtunnel).</div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <SourceBadge source={sources['servers.enabled']} />
-                                            <label className="relative inline-flex items-center cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only peer"
-                                                    checked={serversEnabled}
-                                                    onChange={e => setServersEnabled(e.target.checked)}
-                                                    data-testid="toggle-servers-enabled"
-                                                />
-                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Ralph Mode</div>
-                                            <div className="text-xs text-[#616161] dark:text-[#999]">Autonomous iterative coding loop — stateless agents with fresh context per iteration.</div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <SourceBadge source={sources['ralph.enabled']} />
-                                            <label className="relative inline-flex items-center cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only peer"
-                                                    checked={ralphEnabled}
-                                                    onChange={e => setRalphEnabled(e.target.checked)}
-                                                    data-testid="toggle-ralph-enabled"
-                                                />
-                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Vim-style navigation</div>
-                                            <div className="text-xs text-[#616161] dark:text-[#999]">Enable hjkl pane navigation, j/k to step through chats and messages, gg/G to jump, i to focus the input, Esc to blur. Disabled by default.</div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <SourceBadge source={sources['vimNavigation.enabled']} />
-                                            <label className="relative inline-flex items-center cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only peer"
-                                                    checked={vimNavigationEnabled}
-                                                    onChange={e => setVimNavigationEnabled(e.target.checked)}
-                                                    data-testid="toggle-vim-navigation-enabled"
-                                                />
-                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Loops &amp; Wakeups</div>
-                                            <div className="text-xs text-[#616161] dark:text-[#999]">Recurring follow-up loops and one-shot scheduleWakeup tool. Disabled by default — toggling requires a server restart to (de)wire infrastructure.</div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <SourceBadge source={sources['loops.enabled']} />
-                                            <label className="relative inline-flex items-center cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only peer"
-                                                    checked={loopsEnabled}
-                                                    onChange={e => setLoopsEnabled(e.target.checked)}
-                                                    data-testid="toggle-loops-enabled"
-                                                />
-                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">Focused Diff</div>
-                                            <div className="text-xs text-[#616161] dark:text-[#999]">AI-powered hunk classification for PR diffs. Highlights logic changes and dims mechanical edits.</div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <SourceBadge source={sources['features.focusedDiff']} />
-                                            <label className="relative inline-flex items-center cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only peer"
-                                                    checked={focusedDiffEnabled}
-                                                    onChange={e => setFocusedDiffEnabled(e.target.checked)}
-                                                    data-testid="toggle-focused-diff-enabled"
-                                                />
-                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                            </label>
-                                        </div>
-                                    </div>
+                                    <AdminRow name="Workflows Tab" hint="YAML workflow runner tab in repo view.">
+                                        <SourceBadge source={sources['workflows.enabled']} />
+                                        <AdminToggle checked={workflowsEnabled} onChange={setWorkflowsEnabled} data-testid="toggle-workflows-enabled" />
+                                    </AdminRow>
+                                    <AdminRow name="Pull Requests Tab" hint="Pull request list tab in repo view.">
+                                        <SourceBadge source={sources['pullRequests.enabled']} />
+                                        <AdminToggle checked={pullRequestsEnabled} onChange={setPullRequestsEnabled} data-testid="toggle-pull-requests-enabled" />
+                                    </AdminRow>
+                                    <AdminRow name="Servers" hint="Multi-server connection manager (devtunnel).">
+                                        <SourceBadge source={sources['servers.enabled']} />
+                                        <AdminToggle checked={serversEnabled} onChange={setServersEnabled} data-testid="toggle-servers-enabled" />
+                                    </AdminRow>
+                                    <AdminRow
+                                        name={<>Ralph Mode <span className="ar-badge ar-badge-accent">Experimental</span></>}
+                                        hint="Autonomous iterative coding loop — stateless agents with fresh context per iteration."
+                                    >
+                                        <SourceBadge source={sources['ralph.enabled']} />
+                                        <AdminToggle checked={ralphEnabled} onChange={setRalphEnabled} data-testid="toggle-ralph-enabled" />
+                                    </AdminRow>
+                                    <AdminRow
+                                        name="Vim-style navigation"
+                                        hint="Enable hjkl pane navigation, j/k to step through chats and messages, gg/G to jump, i to focus the input, Esc to blur. Disabled by default."
+                                    >
+                                        <SourceBadge source={sources['vimNavigation.enabled']} />
+                                        <AdminToggle checked={vimNavigationEnabled} onChange={setVimNavigationEnabled} data-testid="toggle-vim-navigation-enabled" />
+                                    </AdminRow>
+                                    <AdminRow
+                                        name={<>Loops &amp; Wakeups <span className="ar-badge ar-badge-warning">Restart</span></>}
+                                        hint="Recurring follow-up loops and one-shot scheduleWakeup tool. Disabled by default — toggling requires a server restart to (de)wire infrastructure."
+                                    >
+                                        <SourceBadge source={sources['loops.enabled']} />
+                                        <AdminToggle checked={loopsEnabled} onChange={setLoopsEnabled} data-testid="toggle-loops-enabled" />
+                                    </AdminRow>
+                                    <AdminRow
+                                        name="Focused Diff"
+                                        hint="AI-powered hunk classification for PR diffs. Highlights logic changes and dims mechanical edits."
+                                    >
+                                        <SourceBadge source={sources['features.focusedDiff']} />
+                                        <AdminToggle checked={focusedDiffEnabled} onChange={setFocusedDiffEnabled} data-testid="toggle-focused-diff-enabled" />
+                                    </AdminRow>
                                 </SettingsCard>
 
                                 {/* ── 5. Link Handlers ── */}
                                 <SettingsCard
+                                    title="Link handlers"
                                     badge="Global"
                                     description="Open specific URLs in desktop apps instead of a browser tab. Requires the desktop app to be installed."
                                     data-testid="settings-link-handlers"
                                 >
                                     {getLinkHandlersMeta().map(meta => (
-                                        <div key={meta.name} className="flex items-center justify-between">
-                                            <div>
-                                                <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc]">{meta.label}</div>
-                                                <div className="text-xs text-[#616161] dark:text-[#999]">{meta.description}</div>
-                                            </div>
-                                            <label className="relative inline-flex items-center cursor-pointer ml-4">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only peer"
-                                                    checked={linkHandlersConfig[meta.name] === true}
-                                                    onChange={e => setHandlerEnabled(meta.name, e.target.checked)}
-                                                    data-testid={`toggle-link-handler-${meta.name}`}
-                                                />
-                                                <div className="w-9 h-5 bg-gray-300 dark:bg-gray-600 peer-focus:ring-2 peer-focus:ring-[#0078d4] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0078d4]" />
-                                            </label>
-                                        </div>
+                                        <AdminRow key={meta.name} name={meta.label} hint={meta.description}>
+                                            <AdminToggle
+                                                checked={linkHandlersConfig[meta.name] === true}
+                                                onChange={checked => setHandlerEnabled(meta.name, checked)}
+                                                data-testid={`toggle-link-handler-${meta.name}`}
+                                            />
+                                        </AdminRow>
                                     ))}
                                 </SettingsCard>
 
@@ -1400,27 +1133,34 @@ export function AdminPanel() {
                                     description="Read-only diagnostics and recovery actions."
                                     data-testid="settings-advanced"
                                 >
-                                    <div className="text-xs space-y-1 text-[#616161] dark:text-[#999]">
-                                        <div>Approve Permissions: {String(resolved.approvePermissions ?? '—')} <SourceBadge source={sources['approvePermissions']} /></div>
-                                        <div>MCP Config: {String(resolved.mcpConfig ?? '—')} <SourceBadge source={sources['mcpConfig']} /></div>
-                                        <div>Persist: {String(resolved.persist ?? '—')} <SourceBadge source={sources['persist']} /></div>
-                                    </div>
+                                    <AdminRow name="Approve Permissions" hint={<>Resolved value from your environment.</>}>
+                                        <span className="ar-mono ar-muted" style={{ fontSize: 12.5 }}>{String(resolved.approvePermissions ?? '—')}</span>
+                                        <SourceBadge source={sources['approvePermissions']} />
+                                    </AdminRow>
+                                    <AdminRow name="MCP Config" hint="Path to the MCP servers config loaded at startup.">
+                                        <span className="ar-mono ar-muted" style={{ fontSize: 12.5 }}>{String(resolved.mcpConfig ?? '—')}</span>
+                                        <SourceBadge source={sources['mcpConfig']} />
+                                    </AdminRow>
+                                    <AdminRow name="Persist" hint="Whether sessions are persisted to disk.">
+                                        <span className="ar-mono ar-muted" style={{ fontSize: 12.5 }}>{String(resolved.persist ?? '—')}</span>
+                                        <SourceBadge source={sources['persist']} />
+                                    </AdminRow>
                                     {SHOW_WELCOME_TUTORIAL && (
-                                        <div className="mt-3 pt-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] space-y-1">
-                                            <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">Welcome Tour</div>
-                                            <div className="text-xs text-[#616161] dark:text-[#999]">
-                                                Re-show the welcome modal and reset onboarding progress.
-                                            </div>
-                                            <Button
-                                                variant="secondary"
-                                                size="sm"
-                                                loading={relaunchingWelcome}
+                                        <AdminRow
+                                            name="Welcome Tour"
+                                            hint="Re-show the welcome modal and reset onboarding progress."
+                                        >
+                                            <button
+                                                type="button"
+                                                className="ar-btn ar-btn-secondary ar-btn-sm"
                                                 onClick={handleRelaunchWelcome}
+                                                disabled={relaunchingWelcome}
                                                 data-testid="relaunch-welcome-btn"
                                             >
+                                                {relaunchingWelcome && <Spinner size="sm" />}
                                                 Relaunch Welcome Tour
-                                            </Button>
-                                        </div>
+                                            </button>
+                                        </AdminRow>
                                     )}
                                 </SettingsCard>
                             </>
@@ -1430,173 +1170,237 @@ export function AdminPanel() {
 
                 {/* ── Providers tab ── */}
                 {activeTab === 'providers' && (
-                    <Card className="p-2 md:p-3" data-testid="provider-tokens-section">
-                        <ProviderTokensSection
-                            onError={msg => addToast(msg, 'error')}
-                            onSuccess={msg => addToast(msg, 'success')}
-                        />
-                    </Card>
+                    <section className="ar-card" data-testid="provider-tokens-section">
+                        <div style={{ padding: 4 }}>
+                            <ProviderTokensSection
+                                onError={msg => addToast(msg, 'error')}
+                                onSuccess={msg => addToast(msg, 'success')}
+                            />
+                        </div>
+                    </section>
                 )}
 
                 {/* ── Data tab ── */}
                 {activeTab === 'data' && (
-                    <Card className="p-2 md:p-3">
-                        {/* Storage Backend */}
-                        <Suspense fallback={<Spinner size="sm" />}>
-                            <StorageSection />
-                        </Suspense>
-                        <hr className={dividerClass} />
-
-                        {/* Export */}
-                        <div>
-                            <div className={sectionHeadClass}>Export</div>
-                            <div className="flex items-center gap-3">
-                                <Button id="admin-export-btn" variant="secondary" size="sm" onClick={handleExport}>Export JSON ↓</Button>
-                                {exportStatus && <span id="admin-export-status" className="text-xs text-[#848484]">{exportStatus}</span>}
+                    <>
+                        <section className="ar-card">
+                            <div style={{ padding: 4 }}>
+                                <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
+                                    <StorageSection />
+                                </Suspense>
                             </div>
-                        </div>
+                        </section>
 
-                        <hr className={dividerClass} />
-
-                        {/* Import */}
-                        <div>
-                            <div className={sectionHeadClass}>Import</div>
-                            <div className="flex flex-col gap-2">
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <input
-                                        id="admin-import-file"
-                                        type="file"
-                                        accept=".json,application/json"
-                                        className="text-xs"
-                                        onChange={e => setImportFile(e.target.files?.[0] ?? null)}
-                                    />
-                                    <div className="flex items-center gap-3 text-xs">
-                                        <label className="flex items-center gap-1">
-                                            <input type="radio" name="import-mode" value="replace" checked={importMode === 'replace'} onChange={() => setImportMode('replace')} /> Replace
-                                        </label>
-                                        <label className="flex items-center gap-1">
-                                            <input type="radio" name="import-mode" value="merge" checked={importMode === 'merge'} onChange={() => setImportMode('merge')} /> Merge
-                                        </label>
+                        <section className="ar-card">
+                            <header className="ar-card-head">
+                                <div className="min-w-0 flex-1">
+                                    <h3>Backup</h3>
+                                    <p className="ar-card-desc">Export everything as JSON or restore from a previous export.</p>
+                                </div>
+                            </header>
+                            <div className="ar-card-body">
+                                <AdminRow
+                                    name="Export all data"
+                                    hint="Includes processes, workspaces, wikis, and preferences. Tokens are not exported."
+                                >
+                                    <button id="admin-export-btn" type="button" className="ar-btn ar-btn-secondary ar-btn-sm" onClick={handleExport}>
+                                        Export JSON ↓
+                                    </button>
+                                    {exportStatus && <span id="admin-export-status" className="ar-muted" style={{ fontSize: 12 }}>{exportStatus}</span>}
+                                </AdminRow>
+                                <AdminRow
+                                    name="Import from JSON"
+                                    hint="Replace wipes existing rows; merge adds and updates only."
+                                >
+                                    <div className="ar-hstack">
+                                        <AdminSeg<'replace' | 'merge'>
+                                            value={importMode}
+                                            onChange={setImportMode}
+                                            aria-label="Import mode"
+                                            options={[
+                                                { value: 'replace', label: 'Replace' },
+                                                { value: 'merge', label: 'Merge' },
+                                            ]}
+                                        />
+                                        <input
+                                            id="admin-import-file"
+                                            type="file"
+                                            accept=".json,application/json"
+                                            className="ar-input"
+                                            style={{ padding: '4px 8px', fontSize: 12 }}
+                                            onChange={e => setImportFile(e.target.files?.[0] ?? null)}
+                                        />
+                                        <button id="admin-import-preview-btn" type="button" className="ar-btn ar-btn-ghost ar-btn-sm" onClick={handlePreviewImport}>Preview</button>
+                                        <button id="admin-import-btn" type="button" className="ar-btn ar-btn-primary ar-btn-sm" onClick={handleImport}>Import</button>
+                                        {importStatus && <span id="admin-import-status" className="ar-muted" style={{ fontSize: 12 }}>{importStatus}</span>}
                                     </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Button id="admin-import-preview-btn" variant="secondary" size="sm" onClick={handlePreviewImport}>Preview</Button>
-                                    <Button id="admin-import-btn" size="sm" onClick={handleImport}>Import</Button>
-                                    {importStatus && <span id="admin-import-status" className="text-xs text-[#848484]">{importStatus}</span>}
-                                </div>
-                            </div>
-                            {importPreview && (
-                                <pre id="admin-import-preview" className="mt-2 text-xs bg-black/5 dark:bg-white/5 p-2 rounded whitespace-pre-wrap">{importPreview}</pre>
-                            )}
-                        </div>
-
-                        <hr className={dividerClass} />
-
-                        {/* Danger Zone */}
-                        <div>
-                            <div className={`${sectionHeadClass} text-red-600 dark:text-red-400`}>Danger Zone</div>
-                            <div className="flex flex-wrap items-center gap-3 mb-2">
-                                <label className="flex items-center gap-1 text-xs">
-                                    <input id="admin-include-wikis" type="checkbox" checked={includeWikis} onChange={e => setIncludeWikis(e.target.checked)} className="accent-red-500" />
-                                    Include wikis
-                                </label>
-                                <Button id="admin-preview-wipe" variant="secondary" size="sm" onClick={handlePreviewWipe}>Preview</Button>
-                                {wipeToken === null ? (
-                                    <Button id="admin-wipe-btn" variant="danger" size="sm" onClick={handleWipeStep1}>Wipe Data</Button>
-                                ) : (
-                                    <>
-                                        <Button id="admin-wipe-confirm" variant="danger" size="sm" onClick={handleWipeConfirm}>Confirm Wipe</Button>
-                                        <Button id="admin-wipe-cancel" variant="secondary" size="sm" onClick={handleWipeCancel}>Cancel</Button>
-                                    </>
+                                </AdminRow>
+                                {importPreview && (
+                                    <div className="ar-section">
+                                        <pre id="admin-import-preview" className="ar-pre">{importPreview}</pre>
+                                    </div>
                                 )}
-                                {wipeStatus && <span id="admin-wipe-status" className="text-xs text-[#848484]">{wipeStatus}</span>}
                             </div>
-                            {wipePreview && (
-                                <pre id="admin-wipe-preview" className="text-xs bg-black/5 dark:bg-white/5 p-2 rounded whitespace-pre-wrap">{wipePreview}</pre>
-                            )}
-                        </div>
-                    </Card>
+                        </section>
+
+                        <section className="ar-card is-danger">
+                            <header className="ar-card-head">
+                                <div className="min-w-0 flex-1">
+                                    <h3>Danger Zone</h3>
+                                    <p className="ar-card-desc">Permanent destructive operations. Always preview before confirming.</p>
+                                </div>
+                                <div className="ar-badge-row">
+                                    <span className="ar-badge ar-badge-danger">Irreversible</span>
+                                </div>
+                            </header>
+                            <div className="ar-card-body">
+                                <AdminRow
+                                    name="Erase everything"
+                                    hint="Deletes every process, conversation, and workspace. Tokens and preferences are kept."
+                                >
+                                    <label className="ar-hstack" style={{ fontSize: 12, color: 'var(--ar-text-mute)', cursor: 'pointer' }}>
+                                        <input
+                                            id="admin-include-wikis"
+                                            type="checkbox"
+                                            checked={includeWikis}
+                                            onChange={e => setIncludeWikis(e.target.checked)}
+                                            style={{ accentColor: 'var(--ar-danger)' }}
+                                        />
+                                        Include wikis
+                                    </label>
+                                    <button id="admin-preview-wipe" type="button" className="ar-btn ar-btn-ghost ar-btn-sm" onClick={handlePreviewWipe}>Preview</button>
+                                    {wipeToken === null ? (
+                                        <button id="admin-wipe-btn" type="button" className="ar-btn ar-btn-danger-outline ar-btn-sm" onClick={handleWipeStep1}>Wipe Data</button>
+                                    ) : (
+                                        <>
+                                            <button id="admin-wipe-confirm" type="button" className="ar-btn ar-btn-danger ar-btn-sm" onClick={handleWipeConfirm}>Confirm Wipe</button>
+                                            <button id="admin-wipe-cancel" type="button" className="ar-btn ar-btn-ghost ar-btn-sm" onClick={handleWipeCancel}>Cancel</button>
+                                        </>
+                                    )}
+                                    {wipeStatus && <span id="admin-wipe-status" className="ar-muted" style={{ fontSize: 12 }}>{wipeStatus}</span>}
+                                </AdminRow>
+                                {wipePreview && (
+                                    <div className="ar-section">
+                                        <pre id="admin-wipe-preview" className="ar-pre">{wipePreview}</pre>
+                                    </div>
+                                )}
+                            </div>
+                        </section>
+                    </>
                 )}
 
                 {/* ── Server tab ── */}
                 {activeTab === 'server' && (
-                    <Card className="p-2 md:p-3">
-                        {/* Server info */}
-                        <div className="space-y-1 text-xs text-[#616161] dark:text-[#999]">
-                            {config?.configFilePath && (
-                                <div>Config file: <code className="bg-black/5 dark:bg-white/5 px-1 rounded">{config.configFilePath}</code></div>
-                            )}
-                            <div>
-                                Serve{' '}
-                                <span className="font-mono">{resolved.serve?.host ?? '127.0.0.1'}:{resolved.serve?.port ?? '4000'}</span>
-                                {resolved.serve?.dataDir && <span className="ml-2 font-mono">{resolved.serve.dataDir}</span>}
-                            </div>
-                            {versionInfo && (
-                                <div>
-                                    Version: <code className="bg-black/5 dark:bg-white/5 px-1 rounded">{versionInfo.version}</code>
-                                    {' · '}Commit: <code className="bg-black/5 dark:bg-white/5 px-1 rounded" title={versionInfo.commit}>{versionInfo.commit.slice(0, 7)}</code>
+                    <>
+                        <section className="ar-card">
+                            <header className="ar-card-head">
+                                <div className="min-w-0 flex-1">
+                                    <h3>Runtime</h3>
+                                    <p className="ar-card-desc">Live information about this server process.</p>
                                 </div>
-                            )}
-                        </div>
-
-                        <hr className={dividerClass} />
-
-                        {/* Server name */}
-                        <div>
-                            <div className={sectionHeadClass}>Display Name</div>
-                            <p className="text-xs text-[#616161] dark:text-[#999] mb-2">
-                                Short name shown in the dashboard title bar (e.g. <code className="bg-black/5 dark:bg-white/5 px-1 rounded">MBP</code>).
-                                Leave blank to use the auto-shortened hostname.
-                                Takes effect on next page reload.
-                            </p>
-                            <div className="flex items-center gap-2">
-                                <label className={labelClass} htmlFor="admin-server-name">Name</label>
-                                <input
-                                    id="admin-server-name"
-                                    type="text"
-                                    maxLength={64}
-                                    placeholder={resolved.serve?.host ? `auto (${resolved.serve.host})` : 'auto'}
-                                    value={serverName}
-                                    onChange={e => setServerName(e.target.value)}
-                                    onKeyDown={e => { if (e.key === 'Enter') handleSaveServerName(); }}
-                                    className={inputClass}
-                                />
-                                <SourceBadge source={sources['serve.serverName']} />
-                                <Button id="admin-server-name-save" variant="secondary" size="sm" onClick={handleSaveServerName}>Save</Button>
+                                <div className="ar-badge-row">
+                                    <span className="ar-pill"><span className="ar-pill-dot" /> Healthy</span>
+                                </div>
+                            </header>
+                            <div className="ar-card-body">
+                                {config?.configFilePath && (
+                                    <AdminRow name="Config file">
+                                        <code className="ar-code">{config.configFilePath}</code>
+                                    </AdminRow>
+                                )}
+                                <AdminRow name="Listening on">
+                                    <code className="ar-code">{resolved.serve?.host ?? '127.0.0.1'}:{resolved.serve?.port ?? '4000'}</code>
+                                </AdminRow>
+                                {resolved.serve?.dataDir && (
+                                    <AdminRow name="Data directory">
+                                        <code className="ar-code">{resolved.serve.dataDir}</code>
+                                    </AdminRow>
+                                )}
+                                {versionInfo && (
+                                    <AdminRow name="Version">
+                                        <code className="ar-code">{versionInfo.version}</code>
+                                        <span className="ar-muted" style={{ fontSize: 12 }}>commit</span>
+                                        <code className="ar-code" title={versionInfo.commit}>{versionInfo.commit.slice(0, 7)}</code>
+                                    </AdminRow>
+                                )}
                             </div>
-                        </div>
+                        </section>
 
-                        <hr className={dividerClass} />
-
-                        {/* Restart */}
-                        <div>
-                            <div className={sectionHeadClass}>Restart</div>
-                            <p className="text-xs text-[#616161] dark:text-[#999] mb-2">Rebuild and restart the CoC server process.</p>
-                            <div className="flex items-center gap-3">
-                                <Button id="admin-restart-btn" variant="secondary" size="sm" onClick={handleRestart} disabled={restarting}>
-                                    {restarting ? <><Spinner size="sm" /> Restarting…</> : 'Rebuild & Restart'}
-                                </Button>
-                                {restartStatus && <span id="admin-restart-status" className="text-xs text-[#848484]">{restartStatus}</span>}
+                        <section className="ar-card">
+                            <header className="ar-card-head">
+                                <div className="min-w-0 flex-1">
+                                    <h3>Display name</h3>
+                                    <p className="ar-card-desc">
+                                        Short name shown in the dashboard title bar (e.g. <code className="ar-code">MBP</code>). Leave blank to use the auto-shortened hostname. Takes effect on next page reload.
+                                    </p>
+                                </div>
+                            </header>
+                            <div className="ar-card-body">
+                                <AdminRow name="Name">
+                                    <input
+                                        id="admin-server-name"
+                                        type="text"
+                                        maxLength={64}
+                                        placeholder={resolved.serve?.host ? `auto (${resolved.serve.host})` : 'auto'}
+                                        value={serverName}
+                                        onChange={e => setServerName(e.target.value)}
+                                        onKeyDown={e => { if (e.key === 'Enter') handleSaveServerName(); }}
+                                        className="ar-input ar-long ar-mono"
+                                    />
+                                    <SourceBadge source={sources['serve.serverName']} />
+                                    <button id="admin-server-name-save" type="button" className="ar-btn ar-btn-primary ar-btn-sm" onClick={handleSaveServerName}>Save</button>
+                                </AdminRow>
                             </div>
-                        </div>
-                    </Card>
+                        </section>
+
+                        <section className="ar-card">
+                            <header className="ar-card-head">
+                                <div className="min-w-0 flex-1">
+                                    <h3>Lifecycle</h3>
+                                    <p className="ar-card-desc">Rebuild and restart the CoC server process. Active sessions reconnect automatically.</p>
+                                </div>
+                            </header>
+                            <div className="ar-card-body">
+                                <AdminRow
+                                    name="Rebuild & restart"
+                                    hint="Runs npm rebuild and re-launches the server."
+                                >
+                                    <button
+                                        id="admin-restart-btn"
+                                        type="button"
+                                        className="ar-btn ar-btn-secondary ar-btn-sm"
+                                        onClick={handleRestart}
+                                        disabled={restarting}
+                                    >
+                                        {restarting && <Spinner size="sm" />}
+                                        {restarting ? 'Restarting…' : 'Rebuild & Restart'}
+                                    </button>
+                                    {restartStatus && <span id="admin-restart-status" className="ar-muted" style={{ fontSize: 12 }}>{restartStatus}</span>}
+                                </AdminRow>
+                            </div>
+                        </section>
+                    </>
                 )}
 
                 {/* ── Prompts tab ── */}
                 {activeTab === 'prompts' && (
-                    <Card className="p-2 md:p-3">
-                        <PromptsPanel onError={msg => addToast(msg, 'error')} />
-                    </Card>
+                    <section className="ar-card">
+                        <div style={{ padding: 16 }}>
+                            <PromptsPanel onError={msg => addToast(msg, 'error')} />
+                        </div>
+                    </section>
                 )}
 
                 {activeTab === 'database' && (
-                    <Card className="p-2 md:p-3">
-                        <DbBrowserSection />
-                    </Card>
+                    <section className="ar-card">
+                        <div style={{ padding: 16 }}>
+                            <DbBrowserSection />
+                        </div>
+                    </section>
                 )}
 
                 {activeTab === 'agents' && isContainerMode() && (
-                    <Suspense fallback={<div className="flex items-center gap-2 text-sm text-[#848484]"><Spinner size="sm" /> Loading…</div>}>
+                    <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
                         <AgentManagementPanel />
                     </Suspense>
                 )}
@@ -1609,15 +1413,97 @@ export function AdminPanel() {
 
 function SourceBadge({ source }: { source?: string }) {
     const s = source || 'default';
-    const colors: Record<string, string> = {
-        default: 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300',
-        file: 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300',
-        cli: 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300',
-        env: 'bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300',
-    };
+    const variant =
+        s === 'cli' ? 'ar-src-cli' :
+        s === 'env' ? 'ar-src-env' :
+        s === 'file' || s === 'config' ? 'ar-src-config' :
+        '';
+    return <span className={`ar-src ${variant}`.trim()} title={`Source: ${s}`}>{s}</span>;
+}
+
+/* ── Row primitives that produce the new visual without changing behaviour ── */
+
+interface AdminRowProps {
+    name: ReactNode;
+    hint?: ReactNode;
+    children: ReactNode;
+    'data-testid'?: string;
+}
+function AdminRow({ name, hint, children, 'data-testid': dataTestId }: AdminRowProps) {
     return (
-        <span className={`inline-block px-1.5 py-0.5 text-[10px] rounded ${colors[s] || colors.default}`}>
-            {s}
+        <div className="ar-row" data-testid={dataTestId}>
+            <div className="ar-label-block">
+                <div className="ar-name">{name}</div>
+                {hint && <div className="ar-hint">{hint}</div>}
+            </div>
+            <div className="ar-control">{children}</div>
+        </div>
+    );
+}
+
+interface AdminToggleProps {
+    checked: boolean;
+    onChange: (checked: boolean) => void;
+    disabled?: boolean;
+    'data-testid'?: string;
+    'aria-label'?: string;
+}
+function AdminToggle({ checked, onChange, disabled, 'data-testid': dataTestId, 'aria-label': ariaLabel }: AdminToggleProps) {
+    return (
+        <label className="ar-toggle">
+            <input
+                type="checkbox"
+                checked={checked}
+                disabled={disabled}
+                onChange={e => onChange(e.target.checked)}
+                data-testid={dataTestId}
+                aria-label={ariaLabel}
+            />
+            <span className="ar-track" />
+            <span className="ar-knob" />
+        </label>
+    );
+}
+
+interface AdminSegOption<T extends string | number> {
+    value: T;
+    label: string;
+    testId?: string;
+}
+interface AdminSegProps<T extends string | number> {
+    value: T;
+    onChange: (value: T) => void;
+    options: ReadonlyArray<AdminSegOption<T>>;
+    'aria-label'?: string;
+}
+function AdminSeg<T extends string | number>({ value, onChange, options, 'aria-label': ariaLabel }: AdminSegProps<T>) {
+    return (
+        <div className="ar-seg" role="group" aria-label={ariaLabel}>
+            {options.map(opt => (
+                <button
+                    key={String(opt.value)}
+                    type="button"
+                    className={value === opt.value ? 'is-on' : ''}
+                    aria-pressed={value === opt.value}
+                    onClick={() => onChange(opt.value)}
+                    data-testid={opt.testId}
+                >
+                    {opt.label}
+                </button>
+            ))}
+        </div>
+    );
+}
+
+interface AdminInputSuffixProps {
+    suffix: string;
+    children: ReactNode;
+}
+function AdminInputSuffix({ suffix, children }: AdminInputSuffixProps) {
+    return (
+        <span className="ar-input-suffix">
+            {children}
+            <span className="ar-suffix">{suffix}</span>
         </span>
     );
 }
