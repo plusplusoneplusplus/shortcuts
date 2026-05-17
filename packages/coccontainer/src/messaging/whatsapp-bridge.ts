@@ -355,6 +355,7 @@ export class WhatsAppBridge {
         let agentId: string | undefined;
         let workspaceId: string | undefined;
         let isFollowUp = false;
+        const text = msg.text.trim();
 
         // Check if replying to a specific bot message → continue that session
         if (msg.quotedMessageId) {
@@ -367,17 +368,35 @@ export class WhatsAppBridge {
             }
         }
 
-        // Check for existing global session if no reply binding found
-        if (!isFollowUp) {
+        // [global] prefix → switch to global session
+        const globalPrefix = /^\[global\]\s*/i;
+        if (!isFollowUp && globalPrefix.test(text)) {
+            const stripped = text.replace(globalPrefix, '');
             const existing = this.store.getGlobalSession(msg.senderJid);
             if (existing) {
                 processId = existing.processId;
                 agentId = existing.agentId;
                 isFollowUp = true;
+                msg = { ...msg, text: stripped };
+            } else {
+                msg = { ...msg, text: stripped };
+                ({ processId, agentId } = await this.resolveGlobalSession(msg.senderJid, stripped));
+                isFollowUp = false;
             }
         }
 
-        // No existing session → create a new chat
+        // No reply, no [global] → continue the last active session
+        if (!isFollowUp && !processId) {
+            const last = this.store.getLastActiveSession();
+            if (last) {
+                processId = last.processId;
+                agentId = last.agentId;
+                workspaceId = last.workspaceId;
+                isFollowUp = true;
+            }
+        }
+
+        // Still nothing → create a new chat via global session
         if (!isFollowUp || !processId || !agentId) {
             ({ processId, agentId } = await this.resolveGlobalSession(msg.senderJid, msg.text));
             isFollowUp = false;

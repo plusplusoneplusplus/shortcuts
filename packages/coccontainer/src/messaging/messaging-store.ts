@@ -56,6 +56,21 @@ export class MessagingStore {
         return row?.wa_message_id ?? null;
     }
 
+    /** Get the most recently active session (last outbound message). */
+    getLastActiveSession(): MessageBinding | null {
+        const row = this.db.prepare(
+            `SELECT wa_message_id, process_id, agent_id, session_label, workspace_id FROM wa_message_map ORDER BY created_at DESC LIMIT 1`
+        ).get() as { wa_message_id: string; process_id: string; agent_id: string; session_label: string; workspace_id: string | null } | undefined;
+        if (!row) return null;
+        return {
+            processId: row.process_id,
+            agentId: row.agent_id,
+            sessionLabel: row.session_label,
+            workspaceId: row.workspace_id ?? undefined,
+            waMessageId: row.wa_message_id,
+        };
+    }
+
     /** Get the global session for a WA sender. */
     getGlobalSession(senderJid: string): GlobalSession | null {
         const row = this.db.prepare(
