@@ -45,15 +45,6 @@ export interface PrClassificationRouteOptions {
 }
 
 // ============================================================================
-// Cache key helpers
-// ============================================================================
-
-/** Legacy tag used to embed a stable marker in the classification prompt. */
-export function classificationCacheTag(repoId: string, prId: string, headSha: string): string {
-    return `classify-diff:${repoId}:${prId}:${headSha}`;
-}
-
-// ============================================================================
 // Route registration
 // ============================================================================
 
@@ -109,8 +100,7 @@ export function registerPrClassificationRoutes(routes: Route[], opts: PrClassifi
                 const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
-                const cacheTag = classificationCacheTag(repoId, prId, headSha);
-                const prompt = buildClassificationPrompt(repoId, prId, cacheTag);
+                const prompt = buildClassificationPrompt(repoId, prId);
 
                 // Enqueue a chat task with the classify-diff skill. The
                 // ClassificationExecutor is dispatched because the payload
@@ -135,7 +125,6 @@ export function registerPrClassificationRoutes(routes: Route[], opts: PrClassifi
                                 repoId,
                                 prId,
                                 headSha,
-                                cacheTag,
                             },
                         },
                     },
@@ -207,8 +196,8 @@ export function registerPrClassificationRoutes(routes: Route[], opts: PrClassifi
 // Helpers
 // ============================================================================
 
-export function buildClassificationPrompt(repoId: string, prId: string, cacheTag?: string): string {
-    const lines = [
+export function buildClassificationPrompt(repoId: string, prId: string): string {
+    return [
         `Classify every hunk in pull request #${prId} of this repository.`,
         '',
         'Use the available git and gh CLI tools to read the PR diff. Do NOT ask me for the diff — fetch it yourself.',
@@ -216,9 +205,5 @@ export function buildClassificationPrompt(repoId: string, prId: string, cacheTag
         'For each @@ hunk, produce a classification with: file, hunkIndex (0-based within the file), category (logic|mechanical|test|generated), intensity (high|low), and a one-sentence reason.',
         '',
         'When you have classified every hunk, persist the results by calling the `saveClassification` tool exactly once with the full array. Do NOT print the classifications as JSON in your response — the persistence layer reads them directly from the tool call.',
-    ];
-    if (cacheTag) {
-        lines.push('', `<!-- cache-key: ${cacheTag} -->`);
-    }
-    return lines.join('\n');
+    ].join('\n');
 }

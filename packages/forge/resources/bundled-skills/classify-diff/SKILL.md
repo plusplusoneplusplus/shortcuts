@@ -35,30 +35,21 @@ Each classification also includes an intensity:
 
 ## Output
 
-When the runtime provides a `saveClassification` tool, call it exactly once at the end with the full array of per-hunk classifications. The tool persists the result and validates the schema — if it returns an error, fix the offending entries and call it again.
+Call the `saveClassification` tool exactly once at the end with the full array of per-hunk classifications. The tool persists the result and validates the schema — if it returns an error, fix the offending entries and call it again.
 
-When the tool is NOT available, return the result as a single JSON object matching this shape, wrapped in a ```json code fence:
+Each classification entry has this shape:
 
 ```json
 {
-  "classifications": [
-    {
-      "file": "src/server/auth.ts",
-      "hunkIndex": 0,
-      "category": "logic",
-      "intensity": "high",
-      "reason": "Adds JWT token refresh logic with expiry check"
-    },
-    {
-      "file": "src/server/auth.ts",
-      "hunkIndex": 1,
-      "category": "mechanical",
-      "intensity": "low",
-      "reason": "Import reordering, no behavioral change"
-    }
-  ]
+  "file": "src/server/auth.ts",
+  "hunkIndex": 0,
+  "category": "logic",
+  "intensity": "high",
+  "reason": "Adds JWT token refresh logic with expiry check"
 }
 ```
+
+Do NOT print the classifications as JSON in your response — the persistence layer reads them directly from the tool call.
 
 ## Instructions
 
@@ -74,7 +65,7 @@ You are classifying the hunks of a pull request diff. You have access to git and
    - `high` = reviewer should read this carefully
    - `low` = reviewer can skim or skip
 5. **Provide a brief reason** (one sentence) explaining why you chose that category and intensity.
-6. **Persist the result**: if a `saveClassification` tool is available, call it once with the full array. Otherwise emit the JSON shape shown in the Output section above, wrapped in a ```json code fence.
+6. **Persist the result** by calling the `saveClassification` tool once with the full array.
 
 ## Anti-Patterns
 

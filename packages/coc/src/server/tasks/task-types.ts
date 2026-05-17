@@ -214,8 +214,6 @@ export interface ChatContext {
         repoId: string;
         prId: string;
         headSha: string;
-        /** Legacy cache tag (kept for prompt embedding; not used for storage). */
-        cacheTag?: string;
     };
 }
 
