@@ -9,8 +9,7 @@ import { NoteContextBanner } from './NoteContextBanner';
 import { useModels } from '../../../hooks/useModels';
 import { useSlashCommands } from '../../chat/hooks/useSlashCommands';
 import { useModelCommand } from '../../chat/hooks/useModelCommand';
-import { SlashCommandMenu } from '../../chat/SlashCommandMenu';
-import type { SkillItem } from '../../chat/SlashCommandMenu';
+import { SlashCommandMenu, META_SKILL_ITEMS, type SkillItem } from '../../chat/SlashCommandMenu';
 import { ModelCommandMenu } from '../../chat/ModelCommandMenu';
 import { NoteReferenceChips } from './NoteReferenceChips';
 import { formatNoteReferences } from './useNoteReferences';
@@ -55,14 +54,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
     const { models: availableModels } = useModels();
     const enabledModels = availableModels.filter(m => m.enabled);
     const [skills, setSkills] = useState<SkillItem[]>([]);
-    const augmentedSkills = useMemo(
-        () => [
-            ...skills,
-            { name: 'model', description: 'Switch AI model' },
-            { name: 'loop', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
-        ],
-        [skills],
-    );
+    const augmentedSkills = useMemo(() => [...skills, ...META_SKILL_ITEMS], [skills]);
     const slashCommands = useSlashCommands(augmentedSkills);
     const modelCommand = useModelCommand(enabledModels);
 

@@ -6,7 +6,7 @@
 /* @vitest-environment jsdom */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { SlashCommandMenu } from '../../../../src/server/spa/client/react/features/chat/SlashCommandMenu';
+import { SlashCommandMenu, META_SKILL_ITEMS } from '../../../../src/server/spa/client/react/features/chat/SlashCommandMenu';
 
 const SKILLS = [
     { name: 'spec', description: 'Ask the agent to draft a Markdown spec instead of code' },
@@ -216,10 +216,13 @@ describe('SlashCommandMenu (redesigned card)', () => {
         expect(row?.textContent).not.toContain('[');
     });
 
-    it('loop meta-command entry has correct shape', () => {
-        const loop = { name: 'loop', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' };
-        expect(loop.name).toBe('loop');
-        expect(loop.args).toBe('[interval] <prompt>');
-        expect(loop.description).toBeTruthy();
+    it('META_SKILL_ITEMS includes model and loop with correct shape', () => {
+        const model = META_SKILL_ITEMS.find(s => s.name === 'model');
+        const loop = META_SKILL_ITEMS.find(s => s.name === 'loop');
+        expect(model).toBeDefined();
+        expect(model?.description).toBeTruthy();
+        expect(loop).toBeDefined();
+        expect(loop?.description).toBeTruthy();
+        expect(loop?.args).toBe('[interval] <prompt>');
     });
 });

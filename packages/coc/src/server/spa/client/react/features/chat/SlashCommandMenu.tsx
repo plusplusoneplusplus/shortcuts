@@ -16,6 +16,11 @@ export interface SkillItem {
     args?: string;
 }
 
+export const META_SKILL_ITEMS: SkillItem[] = [
+    { name: 'model', description: 'Switch AI model' },
+    { name: 'loop', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
+];
+
 interface SlashCommandMenuProps {
     skills: SkillItem[];
     filter: string;
