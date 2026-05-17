@@ -146,18 +146,48 @@ describe('WhatsAppBridge', () => {
                 'http://localhost:4000/api/processes/proc-001?workspaceId=ws-frontend'
             );
             expect(lastBot().send).toHaveBeenCalledTimes(2);
-            // User turn
+            // User turn — shows configured userName
             expect(lastBot().send).toHaveBeenCalledWith(
                 'group@g.us',
-                '💬 *Task:*\n  Agent: Agent-A\n  Repo: frontend\n  Title: Fix bug XYZ\n*Message:*\nFix the bug',
+                '*CoC*\n*Chat:*\n  Agent: Agent-A\n  Repo: frontend\n  Title: Fix bug XYZ\n\n*Message:*\nFix the bug',
             );
-            // Assistant turn
+            // Assistant turn — shows "CoC Agent"
             expect(lastBot().send).toHaveBeenCalledWith(
                 'group@g.us',
-                '🤖 *Task:*\n  Agent: Agent-A\n  Repo: frontend\n  Title: Fix bug XYZ\n*Message:*\nFixed the bug on line 42',
+                '*CoC Agent*\n*Chat:*\n  Agent: Agent-A\n  Repo: frontend\n  Title: Fix bug XYZ\n\n*Message:*\nFixed the bug on line 42',
             );
 
             fetchSpy.mockRestore();
+            await bridge.stop();
+        });
+
+        it('should show "You" when userName is not set', async () => {
+            opts.config.userName = '';
+            const bridge = new WhatsAppBridge(opts);
+            await bridge.start();
+
+            vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+                new Response(JSON.stringify({
+                    process: {
+                        conversationTurns: [
+                            { role: 'user', content: 'Hello' },
+                        ],
+                    },
+                }))
+            );
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-noname', workspaceId: 'ws-test', workspaceName: 'test', status: 'completed' },
+            });
+            await new Promise(r => setTimeout(r, 50));
+
+            expect(lastBot().send).toHaveBeenCalledWith(
+                'group@g.us',
+                '*You*\n*Chat:*\n  Agent: Agent-A\n  Repo: test\n\n*Message:*\nHello',
+            );
+
+            vi.restoreAllMocks();
             await bridge.stop();
         });
 
@@ -183,7 +213,7 @@ describe('WhatsAppBridge', () => {
 
             expect(lastBot().send).toHaveBeenCalledWith(
                 'group@g.us',
-                '🤖 *Task:*\n  Agent: Agent-A\n  Repo: test\n*Message:*\nDone',
+                '*CoC Agent*\n*Chat:*\n  Agent: Agent-A\n  Repo: test\n\n*Message:*\nDone',
             );
 
             vi.restoreAllMocks();

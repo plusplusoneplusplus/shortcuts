@@ -246,6 +246,7 @@ export class WhatsAppBridge {
                     repo: repoName,
                     title,
                     content,
+                    userName: this.opts.config.userName,
                 });
 
                 try {
@@ -261,20 +262,22 @@ export class WhatsAppBridge {
         }
     }
 
-    /** Format a structured WhatsApp message with task metadata. */
-    formatOutboundMessage(opts: { role: string; agent: string; repo: string; title: string; content: string }): string {
-        const icon = opts.role === 'user' ? '💬' : '🤖';
-        const header = [
-            `${icon} *Task:*`,
-            `  Agent: ${opts.agent}`,
-            `  Repo: ${opts.repo}`,
-        ];
+    /** Format a structured WhatsApp message with two sections. */
+    formatOutboundMessage(opts: { role: string; agent: string; repo: string; title: string; content: string; userName?: string }): string {
+        const sender = opts.role === 'user'
+            ? (opts.userName || 'You')
+            : 'CoC Agent';
+
+        const chatSection = [`*${sender}*`, '*Chat:*'];
+        chatSection.push(`  Agent: ${opts.agent}`);
+        chatSection.push(`  Repo: ${opts.repo}`);
         if (opts.title) {
-            header.push(`  Title: ${opts.title}`);
+            chatSection.push(`  Title: ${opts.title}`);
         }
-        header.push(`*Message:*`);
-        header.push(opts.content);
-        return header.join('\n');
+
+        const messageSection = ['*Message:*', opts.content];
+
+        return chatSection.join('\n') + '\n\n' + messageSection.join('\n');
     }
 
     // ── Inbound: WhatsApp message → CoC session ──────────
