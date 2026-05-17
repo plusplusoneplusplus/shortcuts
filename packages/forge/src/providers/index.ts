@@ -8,7 +8,6 @@ export {
     type Reviewer,
     type PullRequestCommit,
     type PullRequest,
-    type PullRequestCommit,
     type CheckStatus,
     type CheckSource,
     type PullRequestCheck,

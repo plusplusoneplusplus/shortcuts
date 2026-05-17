@@ -24,7 +24,6 @@ import type {
     UpdatePullRequestInput,
 } from '../providers/types';
 import type { AdoPullRequestsService } from './pull-requests-service';
-import type { GitCommitRef } from './pull-requests-service';
 import { GitStatusState, VersionControlChangeType } from './pull-requests-service';
 import { buildUnifiedDiff } from './diff-builder';
 import { getLogger, LogCategory } from '../logger';
@@ -122,11 +121,6 @@ function mapAdoPullRequest(pr: GitPullRequest, repositoryId: string): PullReques
         labels: (pr.labels ?? []).map((l: { name?: string }) => l.name ?? '').filter(Boolean),
         raw: pr,
     };
-}
-
-function firstLine(text: string): string {
-    const idx = text.indexOf('\n');
-    return idx === -1 ? text : text.slice(0, idx);
 }
 
 function mapAdoCommitIdentity(
@@ -274,30 +268,6 @@ function mapAdoThread(t: GitPullRequestCommentThread): CommentThread {
         status: statusMap[t.status ?? 0] ?? 'unknown',
         createdAt: t.publishedDate ? new Date(t.publishedDate) : new Date(0),
         threadContext: mapAdoThreadContext(t),
-    };
-}
-
-function mapAdoCommit(commit: GitCommitRef): PullRequestCommit {
-    const extra = commit as GitCommitRef & { commitIdString?: string; objectId?: string };
-    const sha = String(commit.commitId ?? extra.commitIdString ?? extra.objectId ?? '');
-    const author = commit.author ?? {};
-    const committer = commit.committer ?? {};
-    const authoredAt = author.date ? new Date(author.date) : undefined;
-    const committedAt = committer.date ? new Date(committer.date) : authoredAt;
-    return {
-        sha,
-        shortSha: sha.slice(0, 7),
-        title: firstLine(commit.comment),
-        message: commit.comment ?? '',
-        author: {
-            id: author.email ?? author.name ?? '',
-            displayName: author.name ?? author.email ?? '',
-            email: author.email,
-        },
-        authoredAt,
-        committedAt,
-        url: commit.remoteUrl ?? commit.url,
-        raw: commit,
     };
 }
 
@@ -586,18 +556,5 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
             );
             return '';
         }
-    }
-
-    async getCommits(repositoryId: string, pullRequestId: number | string): Promise<PullRequestCommit[]> {
-        const logger = getLogger();
-        const effectiveRepo = this.repo ?? repositoryId;
-        logger.info(LogCategory.ADO, `getCommits: repo=${effectiveRepo} PR #${pullRequestId} project=${this.project ?? '(default)'}`);
-        const commits = await this.service.getPullRequestCommits(
-            effectiveRepo,
-            Number(pullRequestId),
-            this.project,
-        );
-        logger.info(LogCategory.ADO, `getCommits: mapped ${commits.length} commit(s) for PR #${pullRequestId}`);
-        return commits.map(mapAdoCommit);
     }
 }

@@ -55,14 +55,6 @@ const mockAdoReviewer = {
 };
 
 const mockAdoCommit = {
-    commitId: 'abcdef1234567890',
-    comment: 'Fix bug\n\nDetailed body',
-    author: { name: 'Alice', email: 'alice@example.com', date: new Date('2024-01-04T00:00:00Z') },
-    committer: { name: 'CI', email: 'ci@example.com', date: new Date('2024-01-04T01:00:00Z') },
-    remoteUrl: 'https://dev.azure.com/org/proj/_git/repo/commit/abcdef1234567890',
-};
-
-const mockAdoCommit = {
     commitId: 'abc1234deadbeef0000000000000000000000000',
     comment: 'feat: stream JSONL parser\n\nMore details.',
     author: {
@@ -92,7 +84,6 @@ function makeMockService(overrides: Partial<Record<string, ReturnType<typeof vi.
         getPullRequestIterations: vi.fn().mockResolvedValue([]),
         getPullRequestIterationChanges: vi.fn().mockResolvedValue({ changeEntries: [] }),
         getFileContent: vi.fn().mockResolvedValue(''),
-        getPullRequestCommits: vi.fn().mockResolvedValue([mockAdoCommit]),
         getPullRequestStatuses: vi.fn().mockResolvedValue([]),
         getCommitStatuses: vi.fn().mockResolvedValue([]),
         ...overrides,
@@ -389,26 +380,6 @@ describe('AdoPullRequestsAdapter', () => {
             expect(reviewers).toHaveLength(1);
             expect(reviewers[0].identity.id).toBe('user-2');
             expect(reviewers[0].vote).toBe('approved');
-        });
-    });
-
-    // ── getCommits ──────────────────────────────────────────
-
-    describe('getCommits', () => {
-        it('maps ADO PR commits to canonical commits', async () => {
-            const commits = await adapter.getCommits('repo-id', 42);
-            expect(service.getPullRequestCommits).toHaveBeenCalledWith('repo-id', 42, 'my-project');
-            expect(commits).toHaveLength(1);
-            expect(commits[0]).toMatchObject({
-                sha: 'abcdef1234567890',
-                shortSha: 'abcdef1',
-                title: 'Fix bug',
-                message: 'Fix bug\n\nDetailed body',
-                author: { displayName: 'Alice', email: 'alice@example.com' },
-                url: 'https://dev.azure.com/org/proj/_git/repo/commit/abcdef1234567890',
-            });
-            expect(commits[0].authoredAt).toEqual(new Date('2024-01-04T00:00:00Z'));
-            expect(commits[0].committedAt).toEqual(new Date('2024-01-04T01:00:00Z'));
         });
     });
 

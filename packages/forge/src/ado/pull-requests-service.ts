@@ -10,7 +10,6 @@ import type {
     GitPullRequestIteration,
     GitPullRequestIterationChanges,
     GitPullRequestChange,
-    GitCommitRef,
     GitVersionDescriptor,
 } from 'azure-devops-node-api/interfaces/GitInterfaces';
 import {
@@ -234,26 +233,6 @@ export class AdoPullRequestsService {
             const errMsg = err instanceof Error ? err.message : String(err);
             logger.error(LogCategory.ADO, `getReviewers failed: repo=${repositoryId} PR #${pullRequestId}: ${errMsg}`);
             throw new AdoPullRequestError(`Failed to get reviewers for PR ${pullRequestId}`, err);
-        }
-    }
-
-    async getPullRequestCommits(
-        repositoryId: string,
-        pullRequestId: number,
-        project?: string,
-    ): Promise<GitCommitRef[]> {
-        const logger = getLogger();
-        logger.info(LogCategory.ADO, `getPullRequestCommits: repo=${repositoryId} PR #${pullRequestId} project=${project ?? '(default)'}`);
-        const api = await this.getGitApi();
-        try {
-            const result = await api.getPullRequestCommits(repositoryId, pullRequestId, project);
-            const commits = result ?? [];
-            logger.info(LogCategory.ADO, `getPullRequestCommits: returned ${commits.length} commit(s) for PR #${pullRequestId}`);
-            return commits;
-        } catch (err) {
-            const errMsg = err instanceof Error ? err.message : String(err);
-            logger.error(LogCategory.ADO, `getPullRequestCommits failed: repo=${repositoryId} PR #${pullRequestId}: ${errMsg}`);
-            throw new AdoPullRequestError(`Failed to get commits for PR ${pullRequestId}`, err);
         }
     }
 
