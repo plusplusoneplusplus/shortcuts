@@ -68,6 +68,17 @@ describe('PrQueueGroupSection', () => {
         expect(screen.getByTestId('pr-queue-group-rows').textContent).toContain('row content');
     });
 
+    it('hides the section label when compact', () => {
+        render(
+            <PrQueueGroupSection section="needs-review" label="Needs review" compact>
+                <div data-testid="row-stub">row content</div>
+            </PrQueueGroupSection>,
+        );
+        const section = screen.getByTestId('pr-queue-group');
+        expect(section.textContent).not.toContain('Needs review');
+        expect(screen.getByTestId('pr-queue-group-rows').textContent).toContain('row content');
+    });
+
     it('exposes both queue sections distinctly', () => {
         render(
             <>

@@ -67,6 +67,22 @@ function formatFetchedAt(ts: number): string {
 }
 
 const STATUS_FILTER: PrStatus = 'open';
+const QUEUE_COLLAPSED_KEY = 'pr-queue-collapsed';
+const QUEUE_COLLAPSED_WIDTH = 44;
+
+function loadQueueCollapsed(): boolean {
+    try {
+        return localStorage.getItem(QUEUE_COLLAPSED_KEY) === 'true';
+    } catch {
+        return false;
+    }
+}
+
+function persistQueueCollapsed(value: boolean): void {
+    try {
+        localStorage.setItem(QUEUE_COLLAPSED_KEY, String(value));
+    } catch { /* ignore */ }
+}
 
 /** Map a queue filter pill to the server scope it requires. */
 function scopeForFilter(filter: QueueFilter): 'mine' | 'all' {
@@ -105,6 +121,20 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     const [selectedPrIds, setSelectedPrIds] = useState<Set<string>>(new Set());
     const [anchorPrId, setAnchorPrId] = useState<string | null>(null);
     const [batchMode, setBatchMode] = useState(false);
+    const [queueCollapsed, setQueueCollapsed] = useState<boolean>(() => loadQueueCollapsed());
+
+    const toggleQueueCollapsed = useCallback(() => {
+        setQueueCollapsed(prev => {
+            const next = !prev;
+            persistQueueCollapsed(next);
+            if (next) {
+                setBatchMode(false);
+                setSelectedPrIds(new Set());
+                setAnchorPrId(null);
+            }
+            return next;
+        });
+    }, []);
 
     const skipRef = useRef(0);
     const abortRef = useRef<AbortController | null>(null);
@@ -315,169 +345,207 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         }
     }
 
+    const queueHeader = (
+        <div
+            className={cn(
+                'flex shrink-0 items-center border-b border-gray-200 dark:border-gray-700',
+                queueCollapsed
+                    ? 'justify-center gap-0 px-1 py-1'
+                    : 'justify-between gap-1.5 px-2.5 py-1',
+            )}
+            data-testid="pr-queue-header"
+            data-collapsed={queueCollapsed}
+        >
+            {!queueCollapsed && (
+                <span className="min-w-0 truncate text-xs font-semibold text-gray-900 dark:text-gray-100">
+                    PR queue
+                </span>
+            )}
+            <button
+                type="button"
+                onClick={toggleQueueCollapsed}
+                aria-expanded={!queueCollapsed}
+                aria-label={queueCollapsed ? 'Expand PR queue' : 'Collapse PR queue'}
+                aria-controls="pr-queue-content"
+                title={queueCollapsed ? 'Expand PR queue' : 'Collapse PR queue'}
+                data-testid="pr-queue-toggle"
+                className="inline-grid h-6 w-6 shrink-0 place-items-center rounded-md border border-gray-300 bg-white text-xs font-semibold text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+                {queueCollapsed ? '>' : '<'}
+            </button>
+        </div>
+    );
+
     const queuePanel = (
         <>
-            <div
-                className="flex items-center gap-1.5 border-b border-gray-200 px-2.5 py-1.5 dark:border-gray-700"
-                data-testid="pr-queue-toolbar"
-            >
-                <input
-                    className="min-w-0 flex-1 rounded-md border border-gray-300 bg-white px-1.5 py-0.5 text-xs text-gray-900 outline-none placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-                    placeholder="Search PRs…"
-                    value={searchText}
-                    onChange={e => setSearchText(e.target.value)}
-                    data-testid="search-input"
-                />
-                <button
-                    type="button"
-                    onClick={() => fetchPrs(true, true)}
-                    disabled={loading}
-                    title="Refresh pull requests"
-                    data-testid="refresh-button"
-                    className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            {queueHeader}
+            {!queueCollapsed && (
+                <div
+                    className="flex shrink-0 items-center gap-1.5 border-b border-gray-200 px-2.5 py-1.5 dark:border-gray-700"
+                    data-testid="pr-queue-toolbar"
                 >
-                    <svg
-                        className={loading ? 'animate-spin' : ''}
-                        width="12" height="12" viewBox="0 0 24 24"
-                        fill="none" stroke="currentColor" strokeWidth="2"
-                        strokeLinecap="round" strokeLinejoin="round"
+                    <input
+                        className="min-w-0 flex-1 rounded-md border border-gray-300 bg-white px-1.5 py-0.5 text-xs text-gray-900 outline-none placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                        placeholder="Search PRs…"
+                        value={searchText}
+                        onChange={e => setSearchText(e.target.value)}
+                        data-testid="search-input"
+                    />
+                    <button
+                        type="button"
+                        onClick={() => fetchPrs(true, true)}
+                        disabled={loading}
+                        title="Refresh pull requests"
+                        data-testid="refresh-button"
+                        className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
                     >
-                        <path d="M21 2v6h-6" />
-                        <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
-                        <path d="M3 22v-6h6" />
-                        <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
-                    </svg>
-                </button>
-                <button
-                    type="button"
-                    onClick={handleToggleBatchMode}
-                    aria-pressed={batchMode}
-                    data-testid="select-mode-button"
-                    className={cn(
-                        'inline-flex h-[22px] shrink-0 items-center rounded-md border px-1.5 text-[11px] font-semibold transition-colors',
-                        batchMode
-                            ? 'border-blue-500 bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300'
-                            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700',
+                        <svg
+                            className={loading ? 'animate-spin' : ''}
+                            width="12" height="12" viewBox="0 0 24 24"
+                            fill="none" stroke="currentColor" strokeWidth="2"
+                            strokeLinecap="round" strokeLinejoin="round"
+                        >
+                            <path d="M21 2v6h-6" />
+                            <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+                            <path d="M3 22v-6h6" />
+                            <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+                        </svg>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleToggleBatchMode}
+                        aria-pressed={batchMode}
+                        data-testid="select-mode-button"
+                        className={cn(
+                            'inline-flex h-[22px] shrink-0 items-center rounded-md border px-1.5 text-[11px] font-semibold transition-colors',
+                            batchMode
+                                ? 'border-blue-500 bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300'
+                                : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700',
+                        )}
+                    >
+                        {batchMode ? 'Cancel' : 'Select'}
+                    </button>
+                </div>
+            )}
+
+            <div id="pr-queue-content" className="flex min-h-0 flex-1 flex-col">
+                {!queueCollapsed && (
+                    <PrQueueFilters
+                        active={activeFilter}
+                        counts={filterCounts}
+                        onChange={handleFilterChange}
+                    />
+                )}
+
+                {!queueCollapsed && batchMode && selectedPrIds.size > 0 && (
+                    <div
+                        className="flex items-center justify-between border-b border-blue-100 bg-blue-50 px-2.5 py-0.5 text-[11px] font-medium text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300"
+                        data-testid="selection-count-bar"
+                    >
+                        <span>{selectedPrIds.size} PR{selectedPrIds.size !== 1 ? 's' : ''} selected</span>
+                        <button
+                            className="text-xs text-blue-600 hover:underline dark:text-blue-400"
+                            onClick={() => {
+                                setSelectedPrIds(new Set());
+                                setAnchorPrId(null);
+                            }}
+                            data-testid="clear-selection"
+                        >
+                            Clear
+                        </button>
+                    </div>
+                )}
+
+                {!queueCollapsed && fetchedAt != null && !loading && !error && !unconfigured && (
+                    <div
+                        className="border-b border-gray-200 px-2.5 py-0.5 text-[11px] text-gray-500 dark:border-gray-700 dark:text-gray-400"
+                        data-testid="fetched-at"
+                    >
+                        {formatFetchedAt(fetchedAt)}
+                    </div>
+                )}
+
+                {!queueCollapsed && unconfigured && (
+                    <ProviderConfigPanel
+                        detected={unconfigured.detected}
+                        remoteUrl={unconfigured.remoteUrl}
+                        noCredentials={unconfigured.noCredentials}
+                        onConfigured={() => fetchPrs(true)}
+                    />
+                )}
+
+                {!queueCollapsed && error && (
+                    <div className="px-4 py-2 text-sm text-red-500 dark:text-red-400" data-testid="error-message">
+                        {error}
+                    </div>
+                )}
+
+                {!queueCollapsed && loading && prs.length === 0 && (
+                    <div className="flex items-center justify-center py-8" data-testid="loading-spinner">
+                        <span className="text-sm text-gray-500">Loading pull requests…</span>
+                    </div>
+                )}
+
+                <div className="flex-1 overflow-y-auto" data-testid="pr-list">
+                    {!error && !unconfigured && !(loading && prs.length === 0) && filteredByPill.length > 0 && (
+                        groupedPrs
+                            .filter(({ prs: sectionPrs }) => sectionPrs.length > 0)
+                            .map(({ config, prs: sectionPrs }) => (
+                                <PrQueueGroupSection
+                                    key={config.section}
+                                    section={config.section}
+                                    label={config.label}
+                                    compact={queueCollapsed}
+                                >
+                                    {sectionPrs.map(pr => (
+                                        <PullRequestRow
+                                            key={pr.id}
+                                            pr={pr}
+                                            onClick={() => handleRowClick(pr)}
+                                            isSelected={(pr.number ?? pr.id) === state.selectedPrId}
+                                            isChecked={selectedPrIds.has(getPrSelectionId(pr))}
+                                            onSelect={(id, checked, shiftKey) =>
+                                                handlePrSelect(id, checked, shiftKey, sectionPrs)
+                                            }
+                                            batchMode={batchMode && !queueCollapsed}
+                                            compact={queueCollapsed}
+                                        />
+                                    ))}
+                                </PrQueueGroupSection>
+                            ))
                     )}
-                >
-                    {batchMode ? 'Cancel' : 'Select'}
-                </button>
-            </div>
-
-            <PrQueueFilters
-                active={activeFilter}
-                counts={filterCounts}
-                onChange={handleFilterChange}
-            />
-
-            {batchMode && selectedPrIds.size > 0 && (
-                <div
-                    className="flex items-center justify-between border-b border-blue-100 bg-blue-50 px-2.5 py-0.5 text-[11px] font-medium text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300"
-                    data-testid="selection-count-bar"
-                >
-                    <span>{selectedPrIds.size} PR{selectedPrIds.size !== 1 ? 's' : ''} selected</span>
-                    <button
-                        className="text-xs text-blue-600 hover:underline dark:text-blue-400"
-                        onClick={() => {
-                            setSelectedPrIds(new Set());
-                            setAnchorPrId(null);
-                        }}
-                        data-testid="clear-selection"
-                    >
-                        Clear
-                    </button>
+                    {!queueCollapsed && !loading && !error && !unconfigured && prs.length > 0 && filteredByPill.length === 0 && (
+                        <div className="px-4 py-6 text-center text-sm text-gray-500" data-testid="no-results">
+                            No pull requests match your filters.
+                        </div>
+                    )}
+                    {!queueCollapsed && !loading && !error && !unconfigured && prs.length === 0 && (
+                        <div className="pr-empty-state px-4 py-6 text-center text-sm text-gray-500" data-testid="empty-state">
+                            No pull requests found.
+                        </div>
+                    )}
                 </div>
-            )}
 
-            {fetchedAt != null && !loading && !error && !unconfigured && (
-                <div
-                    className="border-b border-gray-200 px-2.5 py-0.5 text-[11px] text-gray-500 dark:border-gray-700 dark:text-gray-400"
-                    data-testid="fetched-at"
-                >
-                    {formatFetchedAt(fetchedAt)}
-                </div>
-            )}
-
-            {/* Loading / unconfigured / error states share the same scroll body */}
-            {unconfigured && (
-                <ProviderConfigPanel
-                    detected={unconfigured.detected}
-                    remoteUrl={unconfigured.remoteUrl}
-                    noCredentials={unconfigured.noCredentials}
-                    onConfigured={() => fetchPrs(true)}
-                />
-            )}
-
-            {error && (
-                <div className="px-4 py-2 text-sm text-red-500 dark:text-red-400" data-testid="error-message">
-                    {error}
-                </div>
-            )}
-
-            {loading && prs.length === 0 && (
-                <div className="flex items-center justify-center py-8" data-testid="loading-spinner">
-                    <span className="text-sm text-gray-500">Loading pull requests…</span>
-                </div>
-            )}
-
-            {/* Queue rows */}
-            <div className="flex-1 overflow-y-auto" data-testid="pr-list">
-                {!error && !unconfigured && !(loading && prs.length === 0) && filteredByPill.length > 0 && (
-                    groupedPrs
-                        .filter(({ prs: sectionPrs }) => sectionPrs.length > 0)
-                        .map(({ config, prs: sectionPrs }) => (
-                            <PrQueueGroupSection
-                                key={config.section}
-                                section={config.section}
-                                label={config.label}
-                            >
-                                {sectionPrs.map(pr => (
-                                    <PullRequestRow
-                                        key={pr.id}
-                                        pr={pr}
-                                        onClick={() => handleRowClick(pr)}
-                                        isSelected={(pr.number ?? pr.id) === state.selectedPrId}
-                                        isChecked={selectedPrIds.has(getPrSelectionId(pr))}
-                                        onSelect={(id, checked, shiftKey) =>
-                                            handlePrSelect(id, checked, shiftKey, sectionPrs)
-                                        }
-                                        batchMode={batchMode}
-                                    />
-                                ))}
-                            </PrQueueGroupSection>
-                        ))
-                )}
-                {!loading && !error && !unconfigured && prs.length > 0 && filteredByPill.length === 0 && (
-                    <div className="px-4 py-6 text-center text-sm text-gray-500" data-testid="no-results">
-                        No pull requests match your filters.
+                {!queueCollapsed && hasMore && !loading && (
+                    <div className="border-t border-gray-200 px-2.5 py-1.5 dark:border-gray-700">
+                        <button
+                            className="w-full py-0.5 text-xs text-blue-600 hover:underline dark:text-blue-400"
+                            onClick={() => fetchPrs(false)}
+                            data-testid="load-more"
+                        >
+                            Load more
+                        </button>
                     </div>
                 )}
-                {!loading && !error && !unconfigured && prs.length === 0 && (
-                    <div className="pr-empty-state px-4 py-6 text-center text-sm text-gray-500" data-testid="empty-state">
-                        No pull requests found.
+
+                {!queueCollapsed && loading && prs.length > 0 && (
+                    <div className="px-2.5 py-1.5 text-center text-xs text-gray-500" data-testid="loading-more">
+                        Loading…
                     </div>
                 )}
+
+                {!queueCollapsed && <PrQueueFooter />}
             </div>
-
-            {hasMore && !loading && (
-                <div className="border-t border-gray-200 px-2.5 py-1.5 dark:border-gray-700">
-                    <button
-                        className="w-full py-0.5 text-xs text-blue-600 hover:underline dark:text-blue-400"
-                        onClick={() => fetchPrs(false)}
-                        data-testid="load-more"
-                    >
-                        Load more
-                    </button>
-                </div>
-            )}
-
-            {loading && prs.length > 0 && (
-                <div className="px-2.5 py-1.5 text-center text-xs text-gray-500" data-testid="loading-more">
-                    Loading…
-                </div>
-            )}
-
-            <PrQueueFooter />
         </>
     );
 
@@ -528,26 +596,31 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     // Suppress unused-warning when mock helper is only re-exported for tests.
     void getMockQueueRisk;
 
+    const effectiveLeftPanelWidth = queueCollapsed ? QUEUE_COLLAPSED_WIDTH : leftPanelWidth;
+
     return (
         <div className={cn('flex h-full overflow-hidden', isDragging && 'select-none')} data-testid="pr-split-panel">
             <div
                 className="flex-shrink-0 border-r border-gray-200 flex flex-col overflow-hidden bg-white dark:border-gray-700 dark:bg-gray-900"
-                style={{ width: leftPanelWidth }}
+                style={{ width: effectiveLeftPanelWidth }}
                 data-testid="pr-list-panel"
+                data-collapsed={queueCollapsed}
             >
                 {queuePanel}
             </div>
 
-            <div
-                className="flex items-center justify-center w-1 cursor-col-resize hover:bg-blue-400/30 active:bg-blue-400/50 transition-colors flex-shrink-0"
-                onMouseDown={handleMouseDown}
-                onTouchStart={handleTouchStart}
-                data-testid="pr-resize-handle"
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Resize pull requests panel"
-                tabIndex={0}
-            />
+            {!queueCollapsed && (
+                <div
+                    className="flex items-center justify-center w-1 cursor-col-resize hover:bg-blue-400/30 active:bg-blue-400/50 transition-colors flex-shrink-0"
+                    onMouseDown={handleMouseDown}
+                    onTouchStart={handleTouchStart}
+                    data-testid="pr-resize-handle"
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize pull requests panel"
+                    tabIndex={0}
+                />
+            )}
 
             <div className="flex-1 min-w-0 overflow-y-auto" data-testid="pr-detail-panel">
                 {detailContent}

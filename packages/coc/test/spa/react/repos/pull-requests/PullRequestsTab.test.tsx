@@ -101,10 +101,18 @@ describe('successful fetch', () => {
         expect(screen.getByText('PR Two')).toBeInTheDocument();
     });
 
+    it('renders the PR queue header with title and collapse toggle', async () => {
+        mockFetchOk([]);
+        await act(async () => { await renderTab(); });
+        const header = screen.getByTestId('pr-queue-header');
+        expect(header).toBeInTheDocument();
+        expect(header.textContent).toContain('PR queue');
+        expect(screen.getByTestId('pr-queue-toggle')).toBeInTheDocument();
+    });
+
     it('renders the search input, refresh, and select controls', async () => {
         mockFetchOk([]);
         await act(async () => { await renderTab(); });
-        expect(screen.queryByTestId('pr-queue-header')).not.toBeInTheDocument();
         expect(screen.getByTestId('search-input')).toBeInTheDocument();
         expect(screen.getByTestId('refresh-button')).toBeInTheDocument();
         expect(screen.getByTestId('select-mode-button')).toBeInTheDocument();
@@ -405,6 +413,88 @@ describe('split-panel layout', () => {
         // List panel must still be in the DOM
         expect(screen.getByTestId('pr-list-panel')).toBeInTheDocument();
         expect(screen.getByTestId('pr-list')).toBeInTheDocument();
+    });
+});
+
+// ── Queue collapse toggle ─────────────────────────────────────────────────────
+
+describe('queue collapse toggle', () => {
+    beforeEach(() => {
+        try { localStorage.removeItem('pr-queue-collapsed'); } catch { /* ignore */ }
+    });
+
+    it('starts expanded by default', async () => {
+        mockFetchOk([]);
+        await act(async () => { await renderTab(); });
+        const header = screen.getByTestId('pr-queue-header');
+        expect(header.getAttribute('data-collapsed')).toBe('false');
+        expect(screen.getByTestId('pr-queue-toggle').getAttribute('aria-expanded')).toBe('true');
+        expect(screen.getByTestId('pr-queue-toggle').textContent).toContain('<');
+    });
+
+    it('collapses queue when toggle is clicked, hiding toolbar and filters', async () => {
+        mockFetchOk([makePr({ id: 1, title: 'Hidden Title' })]);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('pr-row')).toBeInTheDocument());
+
+        await act(async () => { fireEvent.click(screen.getByTestId('pr-queue-toggle')); });
+
+        const header = screen.getByTestId('pr-queue-header');
+        expect(header.getAttribute('data-collapsed')).toBe('true');
+        expect(screen.getByTestId('pr-queue-toggle').textContent).toContain('>');
+        expect(screen.queryByTestId('search-input')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('refresh-button')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('select-mode-button')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('pr-queue-filter-all')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('pr-queue-footer')).not.toBeInTheDocument();
+        expect(screen.queryByText('Hidden Title')).not.toBeInTheDocument();
+    });
+
+    it('renders compact PR rows that show only the state dot when collapsed', async () => {
+        mockFetchOk([makePr({ id: 1, title: 'Compact PR' })]);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('pr-row')).toBeInTheDocument());
+
+        await act(async () => { fireEvent.click(screen.getByTestId('pr-queue-toggle')); });
+
+        const row = screen.getByTestId('pr-row');
+        expect(row.getAttribute('data-compact')).toBe('true');
+        expect(screen.getByTestId('pr-state-dot')).toBeInTheDocument();
+        expect(screen.queryByText('Compact PR')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('pr-risk-pill')).not.toBeInTheDocument();
+    });
+
+    it('hides the resize handle when collapsed', async () => {
+        mockFetchOk([]);
+        await act(async () => { await renderTab(); });
+        expect(screen.getByTestId('pr-resize-handle')).toBeInTheDocument();
+
+        await act(async () => { fireEvent.click(screen.getByTestId('pr-queue-toggle')); });
+        expect(screen.queryByTestId('pr-resize-handle')).not.toBeInTheDocument();
+    });
+
+    it('persists collapsed state across remounts via localStorage', async () => {
+        mockFetchOk([]);
+        const { unmount } = await renderTab();
+        await act(async () => { fireEvent.click(screen.getByTestId('pr-queue-toggle')); });
+        expect(screen.getByTestId('pr-queue-header').getAttribute('data-collapsed')).toBe('true');
+        unmount();
+
+        await act(async () => { await renderTab(); });
+        expect(screen.getByTestId('pr-queue-header').getAttribute('data-collapsed')).toBe('true');
+    });
+
+    it('restores expanded state when toggle is clicked again', async () => {
+        mockFetchOk([makePr({ id: 1, title: 'Toggle PR' })]);
+        await act(async () => { await renderTab(); });
+        await act(async () => { fireEvent.click(screen.getByTestId('pr-queue-toggle')); });
+        expect(screen.getByTestId('pr-queue-header').getAttribute('data-collapsed')).toBe('true');
+
+        await act(async () => { fireEvent.click(screen.getByTestId('pr-queue-toggle')); });
+        expect(screen.getByTestId('pr-queue-header').getAttribute('data-collapsed')).toBe('false');
+        expect(screen.getByTestId('search-input')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-queue-filter-all')).toBeInTheDocument();
+        expect(screen.getByText('Toggle PR')).toBeInTheDocument();
     });
 });
 
