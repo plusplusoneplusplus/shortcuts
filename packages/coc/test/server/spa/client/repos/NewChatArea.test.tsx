@@ -35,6 +35,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => 'http://localhost:4000/api',
     isRalphEnabled: () => false,
+    isLoopsEnabled: () => false,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -147,6 +148,8 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/useDefaultModelForMode
 vi.mock('../../../../../src/server/spa/client/react/features/chat/SlashCommandMenu', () => ({
     SlashCommandMenu: () => null,
     META_SKILL_ITEMS: [],
+    getMetaSkillItems: () => [],
+    mergeSkillsWithMeta: (skills: any[]) => skills,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/features/chat/ModelCommandMenu', () => ({
