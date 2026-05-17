@@ -200,7 +200,8 @@ export function ReposProvider({ children }: { children: ReactNode }) {
                     for (const data of responses) Object.assign(merged, data?.results || {});
                     setRepos(prev => prev.map(r => ({
                         ...r,
-                        gitInfo: merged[r.workspace.id] || undefined,
+                        // Preserve Phase 1 gitInfo (has isGitRepo) when batch result is absent
+                        gitInfo: merged[r.workspace.id] || r.gitInfo || undefined,
                         gitInfoLoading: false,
                     })));
                 }).catch((err: unknown) => {

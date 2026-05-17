@@ -30,6 +30,7 @@ vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalPanel
 });
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '/api',
 }));
 

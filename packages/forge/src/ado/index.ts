@@ -16,13 +16,17 @@ export {
     PullRequestStatus,
     VersionControlChangeType,
     GitVersionType,
+    GitStatusState,
     type GitPullRequest,
     type GitPullRequestSearchCriteria,
     type GitPullRequestCommentThread,
+    type GitPullRequestStatus,
+    type GitStatus,
     type IdentityRefWithVote,
     type GitPullRequestIteration,
     type GitPullRequestIterationChanges,
     type GitPullRequestChange,
+    type GitCommitRef,
 } from './pull-requests-service';
 export { AdoPullRequestsAdapter } from './ado-pull-requests-adapter';
 export { AdoWorkItemsAdapter } from './ado-work-items-adapter';

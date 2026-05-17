@@ -9,7 +9,9 @@ vi.mock('https', () => ({
 }));
 vi.mock('azure-devops-node-api', () => ({
     getBearerHandler: vi.fn(() => ({ token: 'fake-token' })),
-    WebApi: vi.fn(() => ({})),
+    // Use a regular function (not arrow) so the mock is constructible with `new`.
+    // In vitest 4, arrow functions cannot be invoked as constructors.
+    WebApi: vi.fn(function (this: any) {}),
 }));
 
 import * as fs from 'fs/promises';

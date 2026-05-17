@@ -221,8 +221,11 @@ test.describe('Section 8: Server Restart Recovery', () => {
 
             let activeRoute: WebSocketRoute | null = null;
 
-            // Intercept WebSocket connections so we can control disconnect/reconnect
-            await page.routeWebSocket(`ws://127.0.0.1:${server.port}/ws`, async (ws) => {
+            // Intercept WebSocket connections so we can control disconnect/reconnect.
+            // The SPA builds the WS URL from `location.host`, so derive the pattern
+            // from `server.url` to handle display-host mapping (e.g. 127.0.0.1 → localhost).
+            const wsUrl = `${server.url.replace(/^http/, 'ws')}/ws`;
+            await page.routeWebSocket(wsUrl, async (ws) => {
                 activeRoute = ws;
                 ws.connectToServer();
             });

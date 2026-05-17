@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-  Build forge and coc, then verify the tarball includes forge.
+  Build forge, coc, and coc-client, then verify the tarballs.
 .DESCRIPTION
   Run from the monorepo root:  .\scripts\build-coc-publish.ps1
 #>
@@ -42,8 +42,32 @@ if ($entries -match 'node_modules[\\/]@plusplusoneplusplus[\\/]forge') {
 Remove-Item -Force $tarball -ErrorAction SilentlyContinue
 
 Write-Host ""
+Write-Host "==> Packing and verifying coc-client tarball..."
+Set-Location (Join-Path $RepoRoot 'packages' 'coc-client')
+$clientTarball = (npm pack 2>&1 | Select-Object -Last 1).Trim()
+$clientEntries = tar tzf $clientTarball 2>&1 | Out-String
+
+if ($clientEntries -match 'dist/') {
+    $clientCount = ($clientEntries -split "`n" | Where-Object { $_ -match 'dist/' }).Count
+    Write-Host "`n✅  coc-client dist is present in the tarball ($clientCount files)."
+} else {
+    Remove-Item -Force $clientTarball -ErrorAction SilentlyContinue
+    Write-Host "`n❌  dist/ was NOT found in the coc-client tarball. Run 'npm run build' in packages/coc-client."
+    exit 1
+}
+Remove-Item -Force $clientTarball -ErrorAction SilentlyContinue
+
+Write-Host ""
 Write-Host "=== Next steps (manual) ==="
+Write-Host ""
+Write-Host "  # coc"
 Write-Host "  cd packages\coc"
+Write-Host "  npm version patch   # or minor / major"
+Write-Host "  npm login            # if needed"
+Write-Host "  npm publish"
+Write-Host ""
+Write-Host "  # coc-client"
+Write-Host "  cd packages\coc-client"
 Write-Host "  npm version patch   # or minor / major"
 Write-Host "  npm login            # if needed"
 Write-Host "  npm publish"

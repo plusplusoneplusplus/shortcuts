@@ -17,6 +17,7 @@ export {
     Attachment,
     // Message types
     SendMessageOptions,
+    McpOAuthEvent,
     // System message types
     SystemMessageConfig,
     TokenUsage,

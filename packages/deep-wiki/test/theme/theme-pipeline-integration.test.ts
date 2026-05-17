@@ -75,15 +75,15 @@ const {
 // Mocks
 // ============================================================================
 
-vi.mock('../../src/ai-invoker', () => ({
+vi.mock('../../src/ai-invoker', function () { return ({
     checkAIAvailability: vi.fn().mockResolvedValue({ available: true }),
-}));
+}); });
 
-vi.mock('../../src/cache', () => ({
+vi.mock('../../src/cache', function () { return ({
     getFolderHeadHash: vi.fn().mockResolvedValue('abc123def456abc123def456abc123def456abc1'),
-}));
+}); });
 
-vi.mock('../../src/cache/theme-cache', () => ({
+vi.mock('../../src/cache/theme-cache', function () { return ({
     getCachedThemeProbe: vi.fn().mockReturnValue(null),
     saveThemeProbe: vi.fn(),
     getCachedThemeOutline: vi.fn().mockReturnValue(null),
@@ -94,9 +94,9 @@ vi.mock('../../src/cache/theme-cache', () => ({
     saveThemeArticle: vi.fn(),
     isThemeCacheValid: vi.fn().mockReturnValue(false),
     clearThemeCache: vi.fn().mockReturnValue(false),
-}));
+}); });
 
-vi.mock('../../src/theme', () => ({
+vi.mock('../../src/theme', function () { return ({
     loadWikiGraph: vi.fn().mockReturnValue(null),
     listThemeAreas: vi.fn().mockReturnValue([]),
     checkThemeCoverage: vi.fn().mockReturnValue({ status: 'new', relatedComponents: [] }),
@@ -106,21 +106,21 @@ vi.mock('../../src/theme', () => ({
     generateThemeArticles: vi.fn().mockResolvedValue(MOCK_ARTICLES),
     writeThemeArticles: vi.fn().mockReturnValue({ writtenFiles: ['index.md', 'auth.md'], themeDir: 'themes/authentication' }),
     integrateThemeIntoWiki: vi.fn().mockReturnValue({ writtenFiles: ['index.md', 'auth.md'], updatedFiles: [] }),
-}));
+}); });
 
-vi.mock('../../src/writing', () => ({
+vi.mock('../../src/writing', function () { return ({
     generateWebsite: vi.fn().mockReturnValue(['index.html']),
-}));
+}); });
 
-vi.mock('../../src/logger', () => ({
-    Spinner: vi.fn().mockImplementation(() => ({
+vi.mock('../../src/logger', function () { return ({
+    Spinner: vi.fn().mockImplementation(function () { return ({
         start: vi.fn(),
         update: vi.fn(),
         stop: vi.fn(),
         succeed: vi.fn(),
         fail: vi.fn(),
         warn: vi.fn(),
-    })),
+    }); }),
     printSuccess: vi.fn(),
     printError: vi.fn(),
     printWarning: vi.fn(),
@@ -129,7 +129,7 @@ vi.mock('../../src/logger', () => ({
     printKeyValue: vi.fn(),
     bold: (s: string) => s,
     gray: (s: string) => s,
-}));
+}); });
 
 // ============================================================================
 // Imports (after mocks)

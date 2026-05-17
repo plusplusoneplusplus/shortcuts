@@ -10,6 +10,7 @@ import {
 } from '../../../src/server/spa/client/react/queue/hooks/useQueueTaskGeneration';
 
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '/api',
 }));
 

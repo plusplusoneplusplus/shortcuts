@@ -100,6 +100,9 @@ export const CLIConfigSchema = z.object({
     loops: z.object({
         enabled: z.boolean().optional(),
     }).passthrough().optional(),
+    mcpOauth: z.object({
+        enabled: z.boolean().optional(),
+    }).passthrough().optional(),
     features: z.object({
         autoMemoryPromotion: z.boolean().optional(),
     }).passthrough().optional(),

@@ -362,6 +362,41 @@ describe('FollowUpExecutor', () => {
         expect(metadataUpdateCall).toBeUndefined();
     });
 
+    it('preserves process mode when follow-up supplies no mode override', async () => {
+        // Regression: loop ticks invoke executeFollowUp without a mode.
+        // The process's existing mode (e.g. Ask) must not be overwritten,
+        // and `previousMode` must not be recorded.
+        const proc = makeProcess({
+            id: 'proc-preserve-ask',
+            metadata: { type: 'chat', mode: 'ask' },
+        });
+        await store.addProcess(proc);
+        const updateSpy = vi.mocked(store.updateProcess);
+        updateSpy.mockClear();
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-preserve-ask', 'msg');
+
+        const metadataUpdateCall = updateSpy.mock.calls.find(
+            ([, updates]) =>
+                'metadata' in updates &&
+                ((updates as any).metadata?.previousMode !== undefined ||
+                    ((updates as any).metadata?.mode !== undefined &&
+                        (updates as any).metadata?.mode !== 'ask')),
+        );
+        expect(metadataUpdateCall).toBeUndefined();
+
+        // Process metadata mode remains 'ask' and no previousMode field added
+        const final = store.processes.get('proc-preserve-ask');
+        expect(final?.metadata?.mode).toBe('ask');
+        expect(final?.metadata?.previousMode).toBeUndefined();
+
+        // sendMessage receives Ask's agent mode ('interactive')
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalled();
+        const sendOpts = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(sendOpts.mode).toBe('interactive');
+    });
+
     // -------------------------------------------------------------------------
     // onTitleNeeded callback
     // -------------------------------------------------------------------------
@@ -591,7 +626,9 @@ describe('FollowUpExecutor', () => {
         const executor = makeExecutor(store, {
             askUser: { enabled: true },
         });
-        await executor.executeFollowUp('proc-autopilot-user', 'continue autonomously');
+        // After the single-source-of-truth fix, callers must pass mode
+        // explicitly; the executor no longer infers it from process metadata.
+        await executor.executeFollowUp('proc-autopilot-user', 'continue autonomously', undefined, 'autopilot');
 
         expect(mockBuildChatToolBundle).toHaveBeenCalledWith(expect.objectContaining({
             askUser: expect.objectContaining({

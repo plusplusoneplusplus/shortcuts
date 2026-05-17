@@ -1776,6 +1776,98 @@ describe('Per-Repo Preferences REST API', () => {
         expect(JSON.parse(res.body).error).toBe('`since` must be an ISO date-time string');
     });
 
+    // -- commit-scoped skill usage --
+
+    it('PATCH commit-skill-usage records only to commitSkillUsageMap', async () => {
+        // Pre-populate the general skillUsageMap to verify isolation
+        writeRepoPreferences(tmpDir, decodeURIComponent(repoId), {
+            skillUsageMap: { impl: '2026-05-01T00:00:00.000Z' },
+        });
+
+        const res = await patchJSON(`${repoUrl(repoId)}/commit-skill-usage`, { skillName: 'go-deep' });
+        expect(res.status).toBe(200);
+
+        const body = JSON.parse(res.body);
+        expect(body.skillName).toBe('go-deep');
+        expect(typeof body.timestamp).toBe('string');
+
+        const prefs = readRepoPreferences(tmpDir, decodeURIComponent(repoId));
+        expect(prefs.commitSkillUsageMap?.['go-deep']).toBe(body.timestamp);
+        // General map must be untouched
+        expect(prefs.skillUsageMap?.impl).toBe('2026-05-01T00:00:00.000Z');
+        expect(prefs.skillUsageMap?.['go-deep']).toBeUndefined();
+    });
+
+    it('PATCH commit-skill-usage returns 400 when skillName is missing', async () => {
+        const res = await patchJSON(`${repoUrl(repoId)}/commit-skill-usage`, {});
+        expect(res.status).toBe(400);
+    });
+
+    it('GET commit-skill-usage returns entries sorted by newest first', async () => {
+        writeRepoPreferences(tmpDir, decodeURIComponent(repoId), {
+            commitSkillUsageMap: {
+                draft: '2026-05-02T08:30:00.000Z',
+                impl: '2026-05-02T09:05:00.000Z',
+                'code-review': '2026-05-02T09:10:00.000Z',
+            },
+        });
+
+        const res = await getJSON(`${repoUrl(repoId)}/commit-skill-usage`);
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({
+            usage: [
+                { skillName: 'code-review', timestamp: '2026-05-02T09:10:00.000Z' },
+                { skillName: 'impl', timestamp: '2026-05-02T09:05:00.000Z' },
+                { skillName: 'draft', timestamp: '2026-05-02T08:30:00.000Z' },
+            ],
+        });
+    });
+
+    it('GET commit-skill-usage filters by skillName and since', async () => {
+        writeRepoPreferences(tmpDir, decodeURIComponent(repoId), {
+            commitSkillUsageMap: {
+                impl: '2026-05-02T09:05:00.000Z',
+                draft: '2026-05-02T08:30:00.000Z',
+                'code-review': '2026-05-02T09:10:00.000Z',
+            },
+        });
+
+        const res = await getJSON(`${repoUrl(repoId)}/commit-skill-usage?skillName=impl&since=${encodeURIComponent('2026-05-02T09:00:00.000Z')}`);
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({
+            usage: [
+                { skillName: 'impl', timestamp: '2026-05-02T09:05:00.000Z' },
+            ],
+        });
+    });
+
+    it('GET commit-skill-usage returns 400 for invalid since timestamps', async () => {
+        const res = await getJSON(`${repoUrl(repoId)}/commit-skill-usage?since=not-a-date`);
+        expect(res.status).toBe(400);
+    });
+
+    it('general skill-usage PATCH does not modify commitSkillUsageMap', async () => {
+        writeRepoPreferences(tmpDir, decodeURIComponent(repoId), {
+            commitSkillUsageMap: { impl: '2026-05-01T00:00:00.000Z' },
+        });
+
+        await patchJSON(`${repoUrl(repoId)}/skill-usage`, { skillName: 'impl' });
+
+        const prefs = readRepoPreferences(tmpDir, decodeURIComponent(repoId));
+        // commitSkillUsageMap should still have the original timestamp
+        expect(prefs.commitSkillUsageMap?.impl).toBe('2026-05-01T00:00:00.000Z');
+    });
+
+    it('commitSkillUsageMap round-trips through PATCH preferences', async () => {
+        await patchJSON(repoUrl(repoId), {
+            commitSkillUsageMap: { impl: '2026-05-10T10:00:00.000Z' },
+        });
+        const res = await getJSON(repoUrl(repoId));
+        expect(JSON.parse(res.body).commitSkillUsageMap).toEqual({
+            impl: '2026-05-10T10:00:00.000Z',
+        });
+    });
+
     // -- filesViewMode --
 
     it('filesViewMode round-trips through PUT and GET', async () => {

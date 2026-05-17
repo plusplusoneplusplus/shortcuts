@@ -165,6 +165,7 @@ describe('ChatHeader', () => {
         mockBreakpoint.isTablet = false;
         mockBreakpoint.isDesktop = true;
         mockBreakpoint.breakpoint = 'desktop';
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', loopsEnabled: true };
     });
 
     describe('wide tier (>= 700px)', () => {
@@ -245,6 +246,15 @@ describe('ChatHeader', () => {
             expect(screen.queryByTestId('references-dropdown')).toBeNull();
             expect(screen.queryByTestId('resume-cli-btn')).toBeNull();
             expect(screen.queryByTestId('context-window')).toBeNull();
+        });
+
+        it('shows the loop badge for paused non-cancelled loops', () => {
+            render(<ChatHeader {...defaultProps({ loopCount: 1, hasActiveLoops: false })} />);
+
+            const badge = screen.getByTestId('loop-badge');
+            expect(badge).toBeTruthy();
+            expect(badge.textContent).toContain('1');
+            expect(badge.title).toBe('1 loop — click to manage');
         });
 
         it('hides inline HTML copy and metadata', () => {

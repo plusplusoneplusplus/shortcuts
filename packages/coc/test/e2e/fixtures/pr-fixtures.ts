@@ -1,5 +1,6 @@
 import type {
     PullRequest,
+    PullRequestCommit,
     Reviewer,
     PrComment,
     CommentThread,
@@ -140,6 +141,26 @@ export const MOCK_PR_OPEN: PullRequest = createMockPullRequest({
         }),
     ],
 });
+
+/** Two real commits on the open PR. */
+export const MOCK_PR_COMMITS: PullRequestCommit[] = [
+    {
+        id: 'abc1234deadbeef0000000000000000000000000',
+        shortId: 'abc1234',
+        message: 'feat: detailed open PR initial commit',
+        subject: 'feat: detailed open PR initial commit',
+        author: { displayName: 'Alice Developer', email: 'alice@example.com' },
+        authoredAt: '2024-01-15T10:00:00.000Z',
+    },
+    {
+        id: 'def5678deadbeef0000000000000000000000000',
+        shortId: 'def5678',
+        message: 'fix: address review feedback',
+        subject: 'fix: address review feedback',
+        author: { displayName: 'Alice Developer', email: 'alice@example.com' },
+        authoredAt: '2024-01-15T11:00:00.000Z',
+    },
+];
 
 /** Two comment threads: one active with a file path, one resolved. */
 export const MOCK_PR_THREADS: CommentThread[] = [

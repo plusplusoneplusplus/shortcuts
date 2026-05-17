@@ -12,6 +12,7 @@ global.fetch = fetchMock as any;
 
 // Mock getApiBase
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '',
 }));
 

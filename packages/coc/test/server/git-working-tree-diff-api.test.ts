@@ -27,14 +27,14 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
-        WorkingTreeService: vi.fn().mockImplementation(() => ({
+        WorkingTreeService: vi.fn().mockImplementation(function () { return ({
             getAllChanges: mockGetAllChanges,
             stageFile: vi.fn().mockResolvedValue({ success: true }),
             unstageFile: vi.fn().mockResolvedValue({ success: true }),
             discardChanges: vi.fn().mockResolvedValue({ success: true }),
             deleteUntrackedFile: vi.fn().mockResolvedValue({ success: true }),
             getFileDiff: mockGetFileDiff,
-        })),
+        }); }),
     };
 });
 

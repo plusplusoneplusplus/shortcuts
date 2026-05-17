@@ -94,8 +94,10 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
         vimNavigationEnabled,
         containerMode,
         loopsEnabled,
+        mcpOauthEnabled,
         reviewFilePath,
         projectDir,
+        bindAddress,
     } = options;
 
     const themeAttr = theme === 'auto' ? '' : ` data-theme="${theme === 'dark' ? 'dark' : 'light'}"`;
@@ -140,7 +142,9 @@ ${getBundleCss()}
             ralphEnabled: ${!!ralphEnabled},
             vimNavigationEnabled: ${!!vimNavigationEnabled},
             containerMode: ${!!containerMode},
-            loopsEnabled: ${!!loopsEnabled}
+            loopsEnabled: ${!!loopsEnabled},
+            mcpOauthEnabled: ${!!mcpOauthEnabled}${bindAddress ? `,
+            bindAddress: '${escapeHtml(bindAddress)}'` : ''}
         };
     </script>${reviewFilePath ? `
     <script>

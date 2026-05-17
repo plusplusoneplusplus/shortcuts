@@ -136,6 +136,39 @@ export interface LifecycleRunnerOptions {
      * next iteration (or emit a session-complete event).
      */
     onRalphNext?: (processId: string, task: QueuedTask, responseText: string) => void;
+    /**
+     * Called after a loop-originated follow-up task finishes (success or failure).
+     * The bridge uses this to invoke `LoopExecutor.onTickComplete()` so the
+     * loop's tickCount/lastTickAt advance and the next timer is armed.
+     *
+     * Only invoked when the follow-up's payload context identifies a loop
+     * (`context.source === 'loop'` and `typeof context.loopId === 'string'`).
+     */
+    onLoopTickComplete?: (loopId: string, success: boolean) => Promise<void> | void;
+}
+
+/**
+ * Invoke `opts.onLoopTickComplete` when the follow-up's payload context
+ * identifies a loop-originated tick. Errors are logged but never rethrown,
+ * so that bookkeeping failures cannot mask the follow-up's actual outcome.
+ */
+async function notifyLoopTickComplete(
+    opts: LifecycleRunnerOptions,
+    ctx: Record<string, unknown> | undefined,
+    success: boolean,
+    logger: ReturnType<typeof getLogger>,
+): Promise<void> {
+    if (!opts.onLoopTickComplete) return;
+    if (!ctx || ctx.source !== 'loop') return;
+    if (typeof ctx.loopId !== 'string' || ctx.loopId.length === 0) return;
+    try {
+        await opts.onLoopTickComplete(ctx.loopId, success);
+    } catch (err) {
+        logger.warn(
+            LogCategory.AI,
+            `[QueueExecutor] onLoopTickComplete(${ctx.loopId}, success=${success}) failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+    }
 }
 
 // ============================================================================
@@ -202,6 +235,22 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     ...(typeof ctx.wakeupId === 'string' ? { wakeupId: ctx.wakeupId } : {}),
                 };
             }
+            // Mark the target process as running BEFORE invoking the follow-up
+            // executor. This closes a race where the queue has already broadcast
+            // that this task is running while the process row still reads as
+            // 'completed' from the prior turn, which caused the same conversation
+            // to briefly appear in both Running Tasks and Completed Tasks in the
+            // Activity view. Fail loud — proceeding with inconsistent state would
+            // reintroduce the duplicate.
+            try {
+                await this.store.updateProcess(followUpPayload.processId!, { status: 'running' });
+            } catch (err) {
+                const errorMsg = err instanceof Error ? err.message : String(err);
+                logger.warn(LogCategory.AI, `[QueueExecutor] Failed to mark follow-up process ${followUpPayload.processId} as running: ${errorMsg}`);
+                await notifyLoopTickComplete(opts, ctx, false, logger);
+                if (imageTempDir) { cleanupTempDir(imageTempDir); }
+                return { success: false, error: err instanceof Error ? err : new Error(errorMsg), durationMs: Date.now() - startTime };
+            }
             try {
                 await opts.executeFollowUpFn(
                     followUpPayload.processId!,
@@ -224,11 +273,15 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         logger.warn(LogCategory.AI, `[QueueExecutor] Failed to drain pending messages for ${followUpPayload.processId} — messages may be stranded: ${err instanceof Error ? err.message : String(err)}`);
                     }
                 }
+                // Notify loop executor that a loop-originated tick has finished successfully
+                await notifyLoopTickComplete(opts, ctx, true, logger);
                 return { success: true, durationMs: duration };
             } catch (error) {
                 const errorMsg = error instanceof Error ? error.message : String(error);
                 const duration = Date.now() - startTime;
                 logger.debug(LogCategory.AI, `[QueueExecutor] Follow-up task ${task.id} failed in ${duration}ms: ${errorMsg}`);
+                // Notify loop executor that a loop-originated tick has failed
+                await notifyLoopTickComplete(opts, ctx, false, logger);
                 return { success: false, error: error instanceof Error ? error : new Error(errorMsg), durationMs: duration };
             } finally {
                 if (imageTempDir) { cleanupTempDir(imageTempDir); }

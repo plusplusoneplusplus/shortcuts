@@ -1016,9 +1016,11 @@ test.describe('Queue Task Conversation – Streaming Intermediate State', () => 
 
             await expect(page.locator('.streaming-indicator')).toBeVisible({ timeout: 8000 });
             await sseConnected;
+            // Allow SSE connection to fully establish before releasing chunks
+            await page.waitForTimeout(500);
 
             await gate.releaseNext();
-            await expect(page.locator('.chat-message.assistant').last())
+            await expect(page.locator('.chat-message.assistant .chat-message-content').last())
                 .toContainText('Part one', { timeout: 5000 });
             // Indicator still visible — stream not complete
             await expect(page.locator('.streaming-indicator')).toBeVisible();

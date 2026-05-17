@@ -15,6 +15,7 @@ import { renderHook, act } from '@testing-library/react';
 // ── Mocks ────────────────────────────────────────────────────────────
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '/api',
 }));
 

@@ -43,6 +43,7 @@ import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextM
 import type { GitCommitItem } from './commits/CommitList';
 import type { BranchRangeInfo } from './branches/BranchChanges';
 import { buildFixupGroups } from './fixup-utils';
+import { rankSkillsByRecency, MRU_SKILL_LIMIT } from './skill-menu-ranking';
 
 /**
  * Best-effort rebind of commit-chat binding when a hash changes.
@@ -110,6 +111,15 @@ export function matchCommitsByIdentity(
     return pairs;
 }
 
+export function buildBranchRangeSkillPrompt(
+    branchRangeData: Pick<BranchRangeInfo, 'baseRef' | 'headRef'> | null | undefined,
+    branchName?: string
+): string {
+    const base = branchRangeData?.baseRef ?? 'main';
+    const head = branchRangeData?.headRef ?? branchName ?? 'HEAD';
+    return `<commit-range>${base}..${head}</commit-range>`;
+}
+
 interface RepoGitTabProps {
     workspaceId: string;
 }
@@ -171,6 +181,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
 
     // Skills + context menu state
     const [skills, setSkills] = useState<Array<{ name: string; description?: string }>>([]);
+    const [commitSkillUsageMap, setCommitSkillUsageMap] = useState<Record<string, string>>({});
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: 'commit' | 'branch-range' | 'multi-commit'; commit?: GitCommitItem; commits?: GitCommitItem[] } | null>(null);
     const [enqueueToast, setEnqueueToast] = useState<string | null>(null);
     const [pendingSkillRun, setPendingSkillRun] = useState<{ skillName: string; type: 'commit' | 'multi-commit' | 'branch-range'; commit?: GitCommitItem; commits?: GitCommitItem[] } | null>(null);
@@ -363,7 +374,17 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             .catch(() => {});
     }, [workspaceId]);
 
-    // Debounced search: when searchQuery changes, reset pagination and re-fetch
+    // Fetch commit-scoped skill usage map per workspace
+    useEffect(() => {
+        setCommitSkillUsageMap({});
+        getSpaCocClient().preferences.getRepo(workspaceId)
+            .then(prefs => {
+                if (prefs?.commitSkillUsageMap) {
+                    setCommitSkillUsageMap(prefs.commitSkillUsageMap);
+                }
+            })
+            .catch(() => {});
+    }, [workspaceId]);
     useEffect(() => {
         if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
         searchDebounceRef.current = setTimeout(() => {
@@ -886,9 +907,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         } else if (pendingSkillRun.type === 'multi-commit' && pendingSkillRun.commits?.length) {
             promptContent = `<commits>\n${pendingSkillRun.commits.map(c => c.hash).join('\n')}\n</commits>`;
         } else {
-            const base = (branchRangeData?.baseRef ?? 'main').replace(/^origin\//, '');
-            const head = branchRangeData?.headRef ?? branchName ?? 'HEAD';
-            promptContent = `<commit-range>${base}..${head}</commit-range>`;
+            promptContent = buildBranchRangeSkillPrompt(branchRangeData, branchName);
         }
 
         if (userContext) {
@@ -922,6 +941,11 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         setPendingSkillRun(null);
         setEnqueueToast(`Skill "${pendingSkillRun.skillName}" enqueued`);
         setTimeout(() => setEnqueueToast(null), 3000);
+
+        // Record commit-scoped skill usage (best-effort) and optimistic local update
+        const skillName = pendingSkillRun.skillName;
+        setCommitSkillUsageMap(prev => ({ ...prev, [skillName]: new Date().toISOString() }));
+        getSpaCocClient().preferences.recordCommitSkillUsage(workspaceId, skillName).catch(() => {});
     }, [pendingSkillRun, workspaceId, branchRangeData, branchName, state.workspaces]);
 
     const handleSquashCommits = useCallback(async () => {
@@ -1241,19 +1265,46 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             if (items.length > 0) {
                 items.push({ label: '', separator: true, onClick: () => {} });
             }
-            items.push({
-                label: 'Use Skill',
-                icon: '⚡',
-                onClick: () => {},
-                children: skills.map(skill => ({
-                    label: skill.name,
-                    onClick: () => handleEnqueueSkill(skill.name),
-                })),
-            });
+            const ranked = rankSkillsByRecency(skills, commitSkillUsageMap);
+            if (ranked.length <= MRU_SKILL_LIMIT) {
+                items.push({
+                    label: 'Use Skill',
+                    icon: '⚡',
+                    onClick: () => {},
+                    children: ranked.map(skill => ({
+                        label: skill.name,
+                        onClick: () => handleEnqueueSkill(skill.name),
+                    })),
+                });
+            } else {
+                const top = ranked.slice(0, MRU_SKILL_LIMIT);
+                const rest = ranked.slice(MRU_SKILL_LIMIT)
+                    .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+                items.push({
+                    label: 'Use Skill',
+                    icon: '⚡',
+                    onClick: () => {},
+                    children: [
+                        ...top.map(skill => ({
+                            label: skill.name,
+                            onClick: () => handleEnqueueSkill(skill.name),
+                        })),
+                        { label: '', separator: true, onClick: () => {} },
+                        {
+                            label: 'More…',
+                            onClick: () => {},
+                            children: rest.map(skill => ({
+                                label: skill.name,
+                                onClick: () => handleEnqueueSkill(skill.name),
+                            })),
+                        },
+                    ],
+                });
+            }
         }
 
         return items;
-    }, [contextMenu, skills, handleEnqueueSkill, handleSquashCommits, handleBranchAskAI, handleSelect, handleOpenAsPopup, handleHardReset, handleCherryPick, commits, closeContextMenu, queueDispatch, workspaceId, fixupGroupsForMenu, handleRebaseAutosquash, handlePushToCommit, unpushedCount]);
+    }, [contextMenu, skills, commitSkillUsageMap, handleEnqueueSkill, handleSquashCommits, handleBranchAskAI, handleSelect, handleOpenAsPopup, handleHardReset, handleCherryPick, commits, closeContextMenu, queueDispatch, workspaceId, fixupGroupsForMenu, handleRebaseAutosquash, handlePushToCommit, unpushedCount]);
 
     // Keyboard shortcuts:
     //   - R: refresh

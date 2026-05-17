@@ -39,6 +39,11 @@ const mockAdoThread = {
     ],
     status: 1, // active
     publishedDate: new Date('2024-01-02T00:00:00Z'),
+    threadContext: {
+        filePath: '/src/foo.ts',
+        rightFileStart: { line: 8, offset: 1 },
+        rightFileEnd: { line: 9, offset: 4 },
+    },
 };
 
 const mockAdoReviewer = {
@@ -47,6 +52,22 @@ const mockAdoReviewer = {
     uniqueName: 'bob@example.com',
     vote: 10,
     isRequired: true,
+};
+
+const mockAdoCommit = {
+    commitId: 'abc1234deadbeef0000000000000000000000000',
+    comment: 'feat: stream JSONL parser\n\nMore details.',
+    author: {
+        name: 'Alice',
+        email: 'alice@example.com',
+        date: new Date('2024-01-04T12:34:56Z'),
+    },
+    committer: {
+        name: 'Alice',
+        email: 'alice@example.com',
+        date: new Date('2024-01-04T12:34:56Z'),
+    },
+    remoteUrl: 'https://dev.azure.com/org/proj/_git/repo/commit/abc1234',
 };
 
 function makeMockService(overrides: Partial<Record<string, ReturnType<typeof vi.fn>>> = {}): AdoPullRequestsService {
@@ -59,9 +80,12 @@ function makeMockService(overrides: Partial<Record<string, ReturnType<typeof vi.
         createThread: vi.fn().mockResolvedValue(mockAdoThread),
         getReviewers: vi.fn().mockResolvedValue([mockAdoReviewer]),
         addReviewers: vi.fn().mockResolvedValue([mockAdoReviewer]),
+        getPullRequestCommits: vi.fn().mockResolvedValue([mockAdoCommit]),
         getPullRequestIterations: vi.fn().mockResolvedValue([]),
         getPullRequestIterationChanges: vi.fn().mockResolvedValue({ changeEntries: [] }),
         getFileContent: vi.fn().mockResolvedValue(''),
+        getPullRequestStatuses: vi.fn().mockResolvedValue([]),
+        getCommitStatuses: vi.fn().mockResolvedValue([]),
         ...overrides,
     } as unknown as AdoPullRequestsService;
 }
@@ -323,6 +347,13 @@ describe('AdoPullRequestsAdapter', () => {
             expect(comment.id).toBe(10);
             expect(comment.body).toBe('LGTM');
             expect(comment.author.email).toBe('alice@example.com');
+            expect(thread.threadContext).toEqual({
+                filePath: '/src/foo.ts',
+                line: 9,
+                startLine: 8,
+                endLine: 9,
+                side: 'right',
+            });
         });
     });
 
@@ -482,6 +513,189 @@ describe('AdoPullRequestsAdapter', () => {
         });
     });
 
+    // ── getCommits ───────────────────────────────────────────
+
+    describe('getCommits', () => {
+        it('maps ADO commits to canonical PullRequestCommit', async () => {
+            const commits = await adapter.getCommits('repo-id', 42);
+            expect(commits).toHaveLength(1);
+            const commit = commits[0];
+            expect(commit.id).toBe('abc1234deadbeef0000000000000000000000000');
+            expect(commit.shortId).toBe('abc1234');
+            expect(commit.subject).toBe('feat: stream JSONL parser');
+            expect(commit.message).toBe('feat: stream JSONL parser\n\nMore details.');
+            expect(commit.author.displayName).toBe('Alice');
+            expect(commit.author.email).toBe('alice@example.com');
+            expect(commit.committer?.displayName).toBe('Alice');
+            expect(commit.authoredAt).toEqual(new Date('2024-01-04T12:34:56Z'));
+            expect(commit.committedAt).toEqual(new Date('2024-01-04T12:34:56Z'));
+            expect(commit.url).toBe('https://dev.azure.com/org/proj/_git/repo/commit/abc1234');
+            expect(service.getPullRequestCommits).toHaveBeenCalledWith('repo-id', 42, 'my-project');
+        });
+
+        it('uses constructor repo override instead of repositoryId', async () => {
+            const svc = makeMockService();
+            const adapterWithRepo = new AdoPullRequestsAdapter(svc, 'my-project', 'my-repo');
+            await adapterWithRepo.getCommits('ws-48cyxk', 99);
+            expect(svc.getPullRequestCommits).toHaveBeenCalledWith('my-repo', 99, 'my-project');
+        });
+
+        it('returns an empty array when ADO returns no commits', async () => {
+            const svc = makeMockService({
+                getPullRequestCommits: vi.fn().mockResolvedValue([]),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const commits = await a.getCommits('repo-id', 42);
+            expect(commits).toEqual([]);
+        });
+    });
+
+    // ── getChecks ────────────────────────────────────────────
+
+    describe('getChecks', () => {
+        const samplePrStatus = {
+            id: 7001,
+            state: 2, // Succeeded
+            description: 'Build succeeded',
+            targetUrl: 'https://example.com/builds/7001',
+            creationDate: new Date('2024-02-01T10:00:00Z'),
+            updatedDate: new Date('2024-02-01T10:03:00Z'),
+            context: { genre: 'ci', name: 'build' },
+        };
+
+        const sampleCommitStatus = {
+            id: 8001,
+            state: 3, // Failed
+            description: 'Lint failed',
+            targetUrl: 'https://example.com/lint/8001',
+            creationDate: new Date('2024-02-01T11:00:00Z'),
+            updatedDate: new Date('2024-02-01T11:00:30Z'),
+            context: { genre: 'ci', name: 'lint' },
+        };
+
+        const iteration = {
+            id: 1,
+            sourceRefCommit: { commitId: 'head-sha-checks' },
+            commonRefCommit: { commitId: 'base-sha-checks' },
+        };
+
+        it('maps PR statuses and commit statuses into the canonical PullRequestCheck shape', async () => {
+            const svc = makeMockService({
+                getPullRequestStatuses: vi.fn().mockResolvedValue([samplePrStatus]),
+                getPullRequestIterations: vi.fn().mockResolvedValue([iteration]),
+                getCommitStatuses: vi.fn().mockResolvedValue([sampleCommitStatus]),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const checks = await a.getChecks('repo-id', 42);
+
+            expect(svc.getPullRequestStatuses).toHaveBeenCalledWith('repo-id', 42, 'my-project');
+            expect(svc.getCommitStatuses).toHaveBeenCalledWith('repo-id', 'head-sha-checks', 'my-project');
+            expect(checks).toHaveLength(2);
+
+            const prCheck = checks.find(c => c.source === 'check');
+            expect(prCheck).toBeDefined();
+            expect(prCheck!.id).toBe('pr-status-7001');
+            expect(prCheck!.name).toBe('ci/build');
+            expect(prCheck!.group).toBe('ci');
+            expect(prCheck!.status).toBe('success');
+            expect(prCheck!.description).toBe('Build succeeded');
+            expect(prCheck!.detailsUrl).toBe('https://example.com/builds/7001');
+            expect(prCheck!.durationMs).toBe(3 * 60 * 1000);
+
+            const commitCheck = checks.find(c => c.source === 'status');
+            expect(commitCheck).toBeDefined();
+            expect(commitCheck!.id).toBe('commit-status-8001');
+            expect(commitCheck!.name).toBe('ci/lint');
+            expect(commitCheck!.status).toBe('failure');
+        });
+
+        it.each([
+            [0, 'pending'],                  // NotSet
+            [1, 'running'],                  // Pending
+            [2, 'success'],                  // Succeeded
+            [3, 'failure'],                  // Failed
+            [4, 'failure'],                  // Error
+            [5, 'skipped'],                  // NotApplicable
+            [6, 'warning'],                  // PartiallySucceeded
+            [99 as unknown as number, 'unknown'],
+        ] as const)('maps ADO state %d to %s', async (state, expected) => {
+            const svc = makeMockService({
+                getPullRequestStatuses: vi.fn().mockResolvedValue([{ ...samplePrStatus, state }]),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const [check] = await a.getChecks('repo-id', 42);
+            expect(check.status).toBe(expected);
+        });
+
+        it('dedupes (source, name) keeping the most recently updated entry', async () => {
+            const older = {
+                ...samplePrStatus,
+                id: 1,
+                updatedDate: new Date('2024-02-01T09:00:00Z'),
+                description: 'older',
+            };
+            const newer = {
+                ...samplePrStatus,
+                id: 2,
+                updatedDate: new Date('2024-02-01T10:00:00Z'),
+                description: 'newer',
+            };
+            const svc = makeMockService({
+                getPullRequestStatuses: vi.fn().mockResolvedValue([older, newer]),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const checks = await a.getChecks('repo-id', 42);
+            expect(checks).toHaveLength(1);
+            expect(checks[0].description).toBe('newer');
+        });
+
+        it('returns PR statuses even when iteration lookup fails', async () => {
+            const svc = makeMockService({
+                getPullRequestStatuses: vi.fn().mockResolvedValue([samplePrStatus]),
+                getPullRequestIterations: vi.fn().mockRejectedValue(new Error('boom')),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const checks = await a.getChecks('repo-id', 42);
+            expect(checks).toHaveLength(1);
+            expect(checks[0].source).toBe('check');
+        });
+
+        it('skips commit status fetch when no iterations are returned', async () => {
+            const svc = makeMockService({
+                getPullRequestStatuses: vi.fn().mockResolvedValue([]),
+                getPullRequestIterations: vi.fn().mockResolvedValue([]),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const checks = await a.getChecks('repo-id', 42);
+            expect(checks).toEqual([]);
+            expect(svc.getCommitStatuses).not.toHaveBeenCalled();
+        });
+
+        it('uses constructor repo override instead of repositoryId', async () => {
+            const svc = makeMockService({
+                getPullRequestStatuses: vi.fn().mockResolvedValue([samplePrStatus]),
+                getPullRequestIterations: vi.fn().mockResolvedValue([iteration]),
+                getCommitStatuses: vi.fn().mockResolvedValue([]),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project', 'my-repo');
+            await a.getChecks('ws-48cyxk', 99);
+            expect(svc.getPullRequestStatuses).toHaveBeenCalledWith('my-repo', 99, 'my-project');
+            expect(svc.getCommitStatuses).toHaveBeenCalledWith('my-repo', 'head-sha-checks', 'my-project');
+        });
+
+        it('falls back to a sensible name when context is missing', async () => {
+            const svc = makeMockService({
+                getPullRequestStatuses: vi.fn().mockResolvedValue([{
+                    ...samplePrStatus,
+                    context: undefined,
+                }]),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+            const [check] = await a.getChecks('repo-id', 42);
+            expect(check.name).toBe('status-7001');
+        });
+    });
+
     // ── URL mapping ────────────────────────────────────────────
 
     describe('URL mapping', () => {
@@ -636,6 +850,9 @@ describe('AdoPullRequestsAdapter', () => {
             await adapterWithRepo.getReviewers('ws-48cyxk', 1);
             expect(svc.getReviewers).toHaveBeenCalledWith('my-repo', 1, 'my-project');
 
+            await adapterWithRepo.getCommits('ws-48cyxk', 1);
+            expect(svc.getPullRequestCommits).toHaveBeenCalledWith('my-repo', 1, 'my-project');
+
             await adapterWithRepo.addReviewers('ws-48cyxk', 1, ['u1']);
             expect(svc.addReviewers).toHaveBeenCalledWith('my-repo', 1, [{ id: 'u1' }], 'my-project');
         });
@@ -646,6 +863,9 @@ describe('AdoPullRequestsAdapter', () => {
 
             await adapterNoRepo.listPullRequests('fallback-repo');
             expect(svc.listPullRequests).toHaveBeenCalledWith('fallback-repo', expect.any(Object), 'my-project', undefined, undefined);
+
+            await adapterNoRepo.getCommits('fallback-repo', 1);
+            expect(svc.getPullRequestCommits).toHaveBeenCalledWith('fallback-repo', 1, 'my-project');
         });
 
         it('preserves repositoryId in mapped PullRequest even when repo override is used', async () => {

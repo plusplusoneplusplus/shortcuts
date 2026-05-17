@@ -39,6 +39,16 @@ describe('bundled loop skill', () => {
         expect(content).toContain('confirm');
     });
 
+    it('SKILL.md documents slash-compatible fixed interval mode', () => {
+        const skillPath = path.join(getBundledSkillsPath(), 'loop', 'SKILL.md');
+        const content = fs.readFileSync(skillPath, 'utf-8');
+        expect(content).toContain('Slash-Compatible Fixed Interval Mode');
+        expect(content).toContain("`1m what's the time now?`");
+        expect(content).toContain('Call `createLoop` with the parsed interval and remaining prompt');
+        expect(content).toContain('Do not call `scheduleWakeup`');
+        expect(content).toContain("the user's command is the confirmation");
+    });
+
     it('SKILL.md documents circuit breakers', () => {
         const skillPath = path.join(getBundledSkillsPath(), 'loop', 'SKILL.md');
         const content = fs.readFileSync(skillPath, 'utf-8');

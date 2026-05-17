@@ -14,6 +14,7 @@ import { ToastProvider } from '../../../../src/server/spa/client/react/contexts/
 // ── Mocks ───────────────────────────────────────────────────────────────────
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => 'http://localhost:4000/api',
 }));
 

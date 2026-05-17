@@ -55,7 +55,7 @@ export type AdminSubTab = 'settings' | 'providers' | 'data' | 'server' | 'prompt
 
 /** UI layout mode: 'classic' shows unified Activity tab; 'dev-workflow' shows Chats + Work Items + Tasks */
 export type UiLayoutMode = 'classic' | 'dev-workflow';
-export type PrDetailTab = 'overview' | 'threads' | 'files';
+export type PrDetailTab = 'overview' | 'files' | 'commits' | 'checks';
 
 /** Tool call status for the SPA client (timestamps are ISO strings) */
 export interface ClientToolCall {

@@ -9,11 +9,11 @@ import { BottomNav } from '../../../../src/server/spa/client/react/layout/Bottom
 
 // ── Mock ResizeObserver (not available in jsdom) ──────────────────────
 
-vi.stubGlobal('ResizeObserver', vi.fn().mockImplementation(() => ({
+vi.stubGlobal('ResizeObserver', vi.fn().mockImplementation(function () { return ({
     observe: vi.fn(),
     unobserve: vi.fn(),
     disconnect: vi.fn(),
-})));
+}); }));
 
 // ── Mock AppContext ────────────────────────────────────────────────────
 
@@ -22,17 +22,17 @@ let mockActiveTab = 'repos';
 let mockSelectedRepoId: string | null = null;
 let mockActiveRepoSubTab = 'info';
 
-vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
-    useApp: () => ({
+vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', function () { return ({
+    useApp: function () { return ({
         state: {
             activeTab: mockActiveTab,
             selectedRepoId: mockSelectedRepoId,
             activeRepoSubTab: mockActiveRepoSubTab,
         },
         dispatch: mockDispatch,
-    }),
+    }); },
     AppProvider: ({ children }: { children: React.ReactNode }) => children,
-}));
+}); });
 
 describe('BottomNav', () => {
     let viewportCleanup: (() => void) | undefined;

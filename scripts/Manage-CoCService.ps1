@@ -34,6 +34,11 @@
     Microsoft Dev Tunnel alongside the CoC server. Run config-devtunnel.ps1 first.
     Cannot be combined with -Port.
 
+.PARAMETER BindAddress
+    install: network address that `coc serve` binds to (default: 127.0.0.1).
+    Use 0.0.0.0 to expose the server on all interfaces. Named -BindAddress to
+    avoid colliding with PowerShell's automatic `$Host` variable.
+
 .PARAMETER LogLines
     logs: number of trailing lines to display (default: 50).
 
@@ -66,6 +71,8 @@ param(
     [switch]$NoBuildSkip,
 
     [string]$TunnelId = '',
+
+    [string]$BindAddress = '127.0.0.1',
 
     [int]$LogLines = 50,
 
@@ -132,6 +139,9 @@ function Assert-Admin {
     if (-not [string]::IsNullOrWhiteSpace($TunnelId)) {
         $argParts += @('-TunnelId', "`"$TunnelId`"")
     }
+    if ($PSBoundParameters.ContainsKey('BindAddress')) {
+        $argParts += @('-BindAddress', "`"$BindAddress`"")
+    }
 
     $proc = Start-Process powershell.exe -Verb RunAs -ArgumentList ($argParts -join ' ') -Wait -PassThru
     exit $proc.ExitCode
@@ -187,6 +197,7 @@ function Invoke-Install {
         $loopArgs += " -TunnelId `"$TunnelId`""
     }
     $loopArgs += " -LogFile `"$Script:LogFile`""
+    $loopArgs += " -BindAddress `"$BindAddress`""
     if (-not $NoBuildSkip) { $loopArgs += ' -SkipInitialBuild' }
 
     # Optionally run initial build now (before registering the task)

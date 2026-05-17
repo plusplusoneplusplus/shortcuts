@@ -8,6 +8,7 @@ import { useProcessSearch } from '../../../src/server/spa/client/react/processes
 
 // Stub config
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '',
 }));
 

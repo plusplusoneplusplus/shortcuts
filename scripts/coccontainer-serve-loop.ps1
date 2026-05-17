@@ -4,7 +4,7 @@
     Hit POST /api/admin/restart from any browser/node to trigger a rebuild + restart.
 
 .DESCRIPTION
-    1. Builds all packages (forge → coc → coccontainer) and npm-links them.
+    1. Builds all packages (forge -> coc -> coccontainer) and npm-links them.
     2. Starts `coccontainer serve --no-open`.
     3. When the server exits with code 75 (restart requested), loops back to step 1.
     4. Any other exit code (0 = clean shutdown, Ctrl+C, etc.) stops the loop.
@@ -15,14 +15,21 @@
 .PARAMETER SkipInitialBuild
     Skip the first build (useful when you've just built manually).
 
+.PARAMETER BindAddress
+    Network address that `coccontainer serve` binds to (default: 127.0.0.1).
+    Use 0.0.0.0 to expose on all interfaces. Named -BindAddress to avoid
+    collision with PowerShell's automatic `$Host` variable.
+
 .EXAMPLE
     .\scripts\coccontainer-serve-loop.ps1
     .\scripts\coccontainer-serve-loop.ps1 -Port 8080
+    .\scripts\coccontainer-serve-loop.ps1 -BindAddress 0.0.0.0
     .\scripts\coccontainer-serve-loop.ps1 -SkipInitialBuild
 #>
 param(
     [int]$Port = 5000,
-    [switch]$SkipInitialBuild
+    [switch]$SkipInitialBuild,
+    [string]$BindAddress = '127.0.0.1'
 )
 
 $RESTART_EXIT_CODE = 75
@@ -43,7 +50,7 @@ function Build-CocContainer {
             return $false
         }
         Write-Host "`n=== Building coccontainer packages ===" -ForegroundColor Cyan
-        # Build forge → coccontainer, then npm link
+        # Build forge -> coccontainer, then npm link
         Push-Location (Join-Path $repoRoot "packages\forge")
         npm run build
         if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Host "forge build failed" -ForegroundColor Red; return $false }
@@ -83,10 +90,10 @@ while ($true) {
     $first = $false
 
     # Serve step
-    Write-Host "`n=== Starting coccontainer serve (port $Port) ===" -ForegroundColor Cyan
+    Write-Host "`n=== Starting coccontainer serve (host $BindAddress, port $Port) ===" -ForegroundColor Cyan
     Write-Host "POST /api/admin/restart to rebuild & restart.`n" -ForegroundColor DarkGray
 
-    & coccontainer serve --no-open --port $Port
+    & coccontainer serve --no-open --port $Port --host $BindAddress
     $exitCode = $LASTEXITCODE
 
     if ($exitCode -eq $RESTART_EXIT_CODE) {

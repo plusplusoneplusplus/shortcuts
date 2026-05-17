@@ -990,7 +990,9 @@ describe('ReposContext — async git-info', () => {
     it('fetches git-info via batch endpoint in phase 2', () => {
         const phase2Idx = source.indexOf('Phase 2');
         expect(phase2Idx).toBeGreaterThan(-1);
-        const phase2Body = source.substring(phase2Idx, phase2Idx + 800);
+        // Window widened to 2500 so container-mode branching (added in
+        // a0bc2fb40) doesn't push the non-container batch call out of range.
+        const phase2Body = source.substring(phase2Idx, phase2Idx + 2500);
         expect(phase2Body).toContain('getWorkspaceGitInfoBatch');
     });
 

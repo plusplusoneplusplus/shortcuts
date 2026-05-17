@@ -17,6 +17,7 @@ import { GitReviewPopOutProvider } from './contexts/GitReviewPopOutContext';
 import { FloatingChatsProvider } from './contexts/FloatingChatsContext';
 import { ThemeProvider } from './layout/ThemeProvider';
 import { TopBar } from './layout/TopBar';
+import { SecurityBanner } from './layout/SecurityBanner';
 import { BottomNav } from './layout/BottomNav';
 import { Router } from './layout/Router';
 import { FloatingChatManager } from './layout/FloatingChatManager';
@@ -161,6 +162,12 @@ function AppInner() {
 
     const onMessage = useCallback((msg: any) => {
         if (!msg || !msg.type) return;
+
+        // Rebroadcast loop-* WebSocket messages as a generic custom event so
+        // useLoops / useAllLoops hooks refresh without each switch case here.
+        if (typeof msg.type === 'string' && msg.type.startsWith('loop-')) {
+            window.dispatchEvent(new CustomEvent('coc-ws-message', { detail: msg }));
+        }
 
         switch (msg.type) {
             case 'process-added':
@@ -423,6 +430,7 @@ function AppInner() {
         <ToastProvider value={{ addToast, removeToast, toasts }}>
             <ReposProvider>
                 <div className="flex flex-col h-full">
+                    <SecurityBanner />
                     <TopBar onAdminOpen={handleAdminOpen} onLogsOpen={handleLogsOpen} />
                     <main className="flex-1 overflow-hidden min-h-0 pt-[var(--bottom-nav-height,0px)] md:pt-0">
                         <Router />

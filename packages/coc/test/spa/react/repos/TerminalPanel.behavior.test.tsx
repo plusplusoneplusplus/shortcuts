@@ -5,47 +5,47 @@ import { cleanup, render, waitFor } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const terminalWebSocketMock = vi.hoisted(() => ({
+const terminalWebSocketMock = vi.hoisted(function () { return ({
     connect: vi.fn(),
     disconnect: vi.fn(),
     sendInput: vi.fn(),
     sendResize: vi.fn(),
-}));
+}); });
 
-vi.mock('@xterm/xterm', () => ({
-    Terminal: vi.fn().mockImplementation(() => ({
+vi.mock('@xterm/xterm', function () { return ({
+    Terminal: vi.fn().mockImplementation(function () { return ({
         cols: 98,
         rows: 41,
         loadAddon: vi.fn(),
         open: vi.fn(),
         dispose: vi.fn(),
         write: vi.fn(),
-        onData: vi.fn(() => ({ dispose: vi.fn() })),
+        onData: vi.fn(function () { return ({ dispose: vi.fn() }); }),
         options: {},
-    })),
-}));
+    }); }),
+}); });
 
-vi.mock('@xterm/addon-fit', () => ({
-    FitAddon: vi.fn().mockImplementation(() => ({
+vi.mock('@xterm/addon-fit', function () { return ({
+    FitAddon: vi.fn().mockImplementation(function () { return ({
         fit: vi.fn(),
-    })),
-}));
+    }); }),
+}); });
 
-vi.mock('@xterm/addon-web-links', () => ({
-    WebLinksAddon: vi.fn().mockImplementation(() => ({})),
-}));
+vi.mock('@xterm/addon-web-links', function () { return ({
+    WebLinksAddon: vi.fn().mockImplementation(function () { return ({}); }),
+}); });
 
-vi.mock('@xterm/xterm/css/xterm.css', () => ({}));
+vi.mock('@xterm/xterm/css/xterm.css', function () { return ({}); });
 
-vi.mock('../../../../src/server/spa/client/react/features/terminal/hooks/useTerminalWebSocket', () => ({
-    useTerminalWebSocket: () => ({
+vi.mock('../../../../src/server/spa/client/react/features/terminal/hooks/useTerminalWebSocket', function () { return ({
+    useTerminalWebSocket: function () { return ({
         status: 'closed',
         connect: terminalWebSocketMock.connect,
         disconnect: terminalWebSocketMock.disconnect,
         sendInput: terminalWebSocketMock.sendInput,
         sendResize: terminalWebSocketMock.sendResize,
-    }),
-}));
+    }); },
+}); });
 
 import { TerminalPanel } from '../../../../src/server/spa/client/react/features/terminal/TerminalPanel';
 

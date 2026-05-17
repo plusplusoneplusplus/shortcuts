@@ -49,7 +49,9 @@ describe('PullRequestsClient', () => {
     await client.get('repo/a', 'pr/1');
     await client.getThreads('repo/a', 'pr/1');
     await client.getReviewers('repo/a', 'pr/1');
+    await client.getCommits('repo/a', 'pr/1');
     await client.getDiff('repo/a', 'pr/1');
+    await client.getCommits('repo/a', 'pr/1');
 
     expect(adapter.calls).toMatchObject([
       {
@@ -59,7 +61,9 @@ describe('PullRequestsClient', () => {
       { path: '/repos/repo%2Fa/pull-requests/pr%2F1' },
       { path: '/repos/repo%2Fa/pull-requests/pr%2F1/threads' },
       { path: '/repos/repo%2Fa/pull-requests/pr%2F1/reviewers' },
+      { path: '/repos/repo%2Fa/pull-requests/pr%2F1/commits' },
       { path: '/repos/repo%2Fa/pull-requests/pr%2F1/diff' },
+      { path: '/repos/repo%2Fa/pull-requests/pr%2F1/commits' },
     ]);
   });
 
@@ -84,7 +88,9 @@ describe('PullRequestsClient', () => {
     await client.get('r1', '10', { signal: controller.signal });
     await client.getThreads('r1', '10', { signal: controller.signal });
     await client.getReviewers('r1', '10', { signal: controller.signal });
+    await client.getCommits('r1', '10', { signal: controller.signal });
     await client.getDiff('r1', '10', { signal: controller.signal });
+    await client.getCommits('r1', '10', { signal: controller.signal });
 
     for (const call of adapter.calls) {
       expect(call.options?.signal).toBe(controller.signal);
@@ -99,7 +105,9 @@ describe('PullRequestsClient', () => {
     await client.get('r1', '1');
     await client.getThreads('r1', '1');
     await client.getReviewers('r1', '1');
+    await client.getCommits('r1', '1');
     await client.getDiff('r1', '1');
+    await client.getCommits('r1', '1');
 
     for (const call of adapter.calls) {
       expect(call.options?.signal).toBeUndefined();

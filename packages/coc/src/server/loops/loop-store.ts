@@ -25,6 +25,7 @@ export class LoopStore {
     private readonly stmtUpdate: Database.Statement;
     private readonly stmtGetById: Database.Statement;
     private readonly stmtGetByProcess: Database.Statement;
+    private readonly stmtGetByWorkspace: Database.Statement;
     private readonly stmtGetActive: Database.Statement;
     private readonly stmtGetAll: Database.Statement;
     private readonly stmtDelete: Database.Statement;
@@ -41,12 +42,12 @@ export class LoopStore {
                 id, process_id, description, interval_ms, status,
                 created_at, last_tick_at, next_tick_at, tick_count,
                 consecutive_failures, expires_at, paused_reason,
-                prompt, model
+                prompt, model, workspace_id
             ) VALUES (
                 @id, @processId, @description, @intervalMs, @status,
                 @createdAt, @lastTickAt, @nextTickAt, @tickCount,
                 @consecutiveFailures, @expiresAt, @pausedReason,
-                @prompt, @model
+                @prompt, @model, @workspaceId
             )
         `);
 
@@ -62,12 +63,14 @@ export class LoopStore {
                 expires_at = @expiresAt,
                 paused_reason = @pausedReason,
                 prompt = @prompt,
-                model = @model
+                model = @model,
+                workspace_id = @workspaceId
             WHERE id = @id
         `);
 
         this.stmtGetById = db.prepare('SELECT * FROM loops WHERE id = ?');
         this.stmtGetByProcess = db.prepare('SELECT * FROM loops WHERE process_id = ? ORDER BY created_at DESC');
+        this.stmtGetByWorkspace = db.prepare('SELECT * FROM loops WHERE workspace_id = ? ORDER BY created_at DESC');
         this.stmtGetActive = db.prepare("SELECT * FROM loops WHERE status = 'active' ORDER BY created_at ASC");
         this.stmtGetAll = db.prepare('SELECT * FROM loops ORDER BY created_at DESC');
         this.stmtDelete = db.prepare('DELETE FROM loops WHERE id = ?');
@@ -112,6 +115,12 @@ export class LoopStore {
         return rows.map(rowToEntry);
     }
 
+    /** Get all loops for a given workspace, newest first. */
+    getByWorkspace(workspaceId: string): LoopEntry[] {
+        const rows = this.stmtGetByWorkspace.all(workspaceId) as LoopRow[];
+        return rows.map(rowToEntry);
+    }
+
     /** Get all active loops. */
     getActive(): LoopEntry[] {
         const rows = this.stmtGetActive.all() as LoopRow[];
@@ -140,10 +149,7 @@ export class LoopStore {
         return (this.stmtCountActive.get() as { cnt: number }).cnt;
     }
 
-    /**
-     * Pause all active loops with the given reason.
-     * Used during server shutdown to mark loops as paused for restart.
-     */
+    /** Pause all active loops with the given reason. */
     pauseAllActive(reason: string): number {
         const result = this.stmtPauseActive.run({ reason });
         return result.changes;
@@ -174,12 +180,21 @@ export class LoopStore {
                 expires_at            TEXT NOT NULL,
                 paused_reason         TEXT,
                 prompt                TEXT NOT NULL DEFAULT '',
-                model                 TEXT
+                model                 TEXT,
+                workspace_id          TEXT
             )
         `);
+
+        // Migrate existing databases that lack the workspace_id column.
+        const cols = this.db.pragma('table_info(loops)') as Array<{ name: string }>;
+        if (!cols.some(c => c.name === 'workspace_id')) {
+            this.db.exec('ALTER TABLE loops ADD COLUMN workspace_id TEXT');
+        }
+
         this.db.exec(`
             CREATE INDEX IF NOT EXISTS idx_loops_process_id ON loops(process_id);
             CREATE INDEX IF NOT EXISTS idx_loops_status ON loops(status);
+            CREATE INDEX IF NOT EXISTS idx_loops_workspace_id ON loops(workspace_id);
         `);
     }
 }
@@ -203,6 +218,7 @@ interface LoopRow {
     paused_reason: string | null;
     prompt: string;
     model: string | null;
+    workspace_id: string | null;
 }
 
 function rowToEntry(row: LoopRow): LoopEntry {
@@ -221,6 +237,7 @@ function rowToEntry(row: LoopRow): LoopEntry {
         pausedReason: row.paused_reason,
         prompt: row.prompt,
         model: row.model,
+        ...(row.workspace_id != null ? { workspaceId: row.workspace_id } : {}),
     };
 }
 
@@ -240,5 +257,6 @@ function toRow(entry: LoopEntry): Record<string, unknown> {
         pausedReason: entry.pausedReason ?? null,
         prompt: entry.prompt,
         model: entry.model ?? null,
+        workspaceId: entry.workspaceId ?? null,
     };
 }

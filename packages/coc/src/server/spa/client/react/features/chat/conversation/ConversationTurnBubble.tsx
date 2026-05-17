@@ -11,6 +11,7 @@ import { ToolCallView } from './tool-calls/ToolCallView';
 import { JsonResponseView } from '../../../ui/JsonResponseView';
 import { isJsonResponse } from '../../../ui/json-utils';
 import { mergeConsecutiveContentItems } from './timeline-utils';
+import { LoopIcon } from '../icons/LoopIcon';
 import { Marked } from 'marked';
 import { useDisplaySettings } from '../../../hooks/preferences/useDisplaySettings';
 import { useHtmlEmbedPreference } from '../../../hooks/preferences/useHtmlEmbedPreference';
@@ -1160,7 +1161,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                             }
                             data-testid="turn-source-badge"
                         >
-                            <span aria-hidden="true">{turn.turnSource.source === 'loop' ? '🔁' : '⏰'}</span>
+                            <span aria-hidden="true">{turn.turnSource.source === 'loop' ? <LoopIcon className="w-3 h-3 inline-block" /> : '⏰'}</span>
                             <span>{turn.turnSource.source === 'loop' ? 'loop' : 'wakeup'}</span>
                         </span>
                     )}

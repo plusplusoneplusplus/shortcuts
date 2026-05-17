@@ -58,17 +58,19 @@ describe('withToolCallCache', () => {
         baseOpts = { model: 'test-model' };
         cacheOpts = { store: mockStore, filter: alwaysFilter };
 
-        // Setup ToolCallCapture mock
+        // Setup ToolCallCapture mock — use a regular function (not arrow) so the mock
+        // is constructible with `new`. In vitest 4, mocks invoke their implementation
+        // as a constructor when called with `new`, and arrow functions cannot be.
         mockCaptureHandler = vi.fn();
-        (ToolCallCapture as unknown as Mock).mockImplementation(() => ({
-            createToolEventHandler: vi.fn().mockReturnValue(mockCaptureHandler),
-        }));
+        (ToolCallCapture as unknown as Mock).mockImplementation(function (this: any) {
+            this.createToolEventHandler = vi.fn().mockReturnValue(mockCaptureHandler);
+        });
 
-        // Setup ToolCallCacheAggregator mock
+        // Setup ToolCallCacheAggregator mock (same reasoning as above).
         mockAggregateIfNeeded = vi.fn().mockResolvedValue(false);
-        (ToolCallCacheAggregator as unknown as Mock).mockImplementation(() => ({
-            aggregateIfNeeded: mockAggregateIfNeeded,
-        }));
+        (ToolCallCacheAggregator as unknown as Mock).mockImplementation(function (this: any) {
+            this.aggregateIfNeeded = mockAggregateIfNeeded;
+        });
     });
 
     it('wires onToolEvent correctly', async () => {
@@ -140,7 +142,7 @@ describe('withToolCallCache', () => {
     });
 
     it('graceful on capture creation error', async () => {
-        (ToolCallCapture as unknown as Mock).mockImplementation(() => {
+        (ToolCallCapture as unknown as Mock).mockImplementation(function (this: any) {
             throw new Error('capture init failed');
         });
 

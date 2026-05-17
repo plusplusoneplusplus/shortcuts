@@ -49,11 +49,9 @@
     "@xterm/xterm": "6.0.0",
     "azure-devops-node-api": "^14.1.0",
     "commander": "^12.1.0",
-    "copy-webpack-plugin": "14.0.0",
     "diff": "^5.2.0",
     "js-yaml": "^4.1.0",
-    "mocha": "7.2.0",
-    "monaco-editor": "^0.53.0",
+    "monaco-editor": "^0.55.1",
     "pino": "^9.0.0",
     "pino-pretty": "^11.0.0",
     "react": "^18.3.1",
@@ -75,9 +73,9 @@
     "@types/react-dom": "^18.3.1",
     "@types/turndown": "^5.0.6",
     "@types/ws": "^8.5.0",
-    "@vitest/coverage-v8": "^4.1.5",
+    "@vitest/coverage-v8": "^1.6.1",
     "autoprefixer": "^10.4.0",
-    "esbuild": "^0.28.0",
+    "esbuild": "^0.21.5",
     "fast-check": "^4.6.0",
     "highlight.js": "^11.9.0",
     "jsdom": "^27.0.1",
@@ -86,7 +84,7 @@
     "postcss-cli": "^11.0.0",
     "tailwindcss": "^3.4.0",
     "typescript": "^5.3.0",
-    "vitest": "^4.1.5"
+    "vitest": "^1.0.0"
   },
   "optionalDependencies": {
     "node-pty": "^1.0.0"

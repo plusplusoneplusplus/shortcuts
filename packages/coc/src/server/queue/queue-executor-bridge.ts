@@ -25,6 +25,7 @@ export interface CLITaskExecutorOptions {
     memoryPromotion?: MemoryPromoteConfig;
     getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
     getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined;
+    getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
 }
 export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
     maxConcurrency?: number; sharedConcurrency?: number; exclusiveConcurrency?: number;
@@ -72,6 +73,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private readonly executors: ExecutorRegistry;
     private readonly titleGenerationService: TitleGenerationService;
     private readonly getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
+    private readonly getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined;
 
     constructor(store: ProcessStore, options: CLITaskExecutorOptions = {}) {
         super(store, options.dataDir);
@@ -104,7 +106,9 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             onBackgroundReview: (pid: string, wsId: string, turns: ConversationTurn[]) => this.enqueueBackgroundReview(pid, wsId, turns),
             getWsServer: options.getWsServer,
             getLoopInfra: options.getLoopInfra,
+            getMcpOauthManager: options.getMcpOauthManager,
         });
+        this.getLoopInfra = options.getLoopInfra;
     }
 
     setQueueManager(qm: TaskQueueManager): void {
@@ -289,6 +293,11 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 getWorkingDirectoryFn: (t) => this.executors.getWorkingDirectory(t),
                 onDrainPendingMessages: (processId, taskId) => this.drainPendingMessages(processId, taskId),
                 onRalphNext: (processId, completedTask, responseText) => this.enqueueRalphNextIteration(processId, completedTask, responseText),
+                onLoopTickComplete: (loopId, success) => {
+                    const infra = this.getLoopInfra?.();
+                    if (!infra) return;
+                    return infra.executor.onTickComplete(loopId, success);
+                },
             });
         } finally {
             this.cancelledTasks.delete(task.id);

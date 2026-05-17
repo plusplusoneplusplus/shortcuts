@@ -7,7 +7,7 @@
  * - Enqueues follow-up tasks via `TaskQueueManager` (chat with processId)
  * - Tracks execution results, updates store
  * - Reschedules next tick after execution
- * - Handles server shutdown (pause all active loops)
+ * - Handles server shutdown (disarm timers without mutating persisted loops)
  *
  * Pure execution — no CRUD or REST knowledge.
  */
@@ -19,6 +19,7 @@ import type { ScheduleTimerRegistry } from '../schedule/schedule-timer-registry'
 import type { LoopStore } from './loop-store';
 import type { LoopEntry, LoopChangeEvent } from './loop-types';
 import { MAX_CONSECUTIVE_FAILURES, MAX_CONSECUTIVE_WAKEUPS_PER_PROCESS } from './loop-types';
+import { resolveFollowUpMode } from '../executors/follow-up-mode';
 
 // ============================================================================
 // Types
@@ -109,17 +110,16 @@ export class LoopExecutor {
     }
 
     /**
-     * Pause all active loops (e.g. on server shutdown).
-     * Cancels all timers, persists paused status.
+     * Disarm active loop timers during server shutdown without mutating
+     * persisted loop state. Active loops are re-armed on the next startup.
      */
-    shutdownAll(reason: string): void {
+    shutdownAll(): void {
         const logger = getLogger();
         const activeLoops = this.deps.store.getActive();
         for (const loop of activeLoops) {
             this.disarmTimer(loop.id);
         }
-        const count = this.deps.store.pauseAllActive(reason);
-        logger.info(LogCategory.AI, `[LoopExecutor] Paused ${count} active loop(s) with reason: ${reason}`);
+        logger.info(LogCategory.AI, `[LoopExecutor] Disarmed ${activeLoops.length} active loop timer(s) for shutdown`);
     }
 
     /**
@@ -261,11 +261,16 @@ export class LoopExecutor {
         const existingTask = queueManager.getTask(taskId);
 
         if (existingTask && existingTask.status === 'completed') {
-            // Requeue from history with the loop prompt
+            // Requeue from history with the loop prompt.
+            // Re-resolve mode (don't trust stale value on the existing task —
+            // the process's metadata.mode may have changed since the original
+            // turn was enqueued).
+            const mode = await resolveFollowUpMode(this.deps.processStore, loop.processId);
             queueManager.updateTask(taskId, {
                 displayName: `[Loop] ${loop.description || loop.prompt.substring(0, 40)}`,
                 payload: {
                     ...existingTask.payload,
+                    mode,
                     prompt: loop.prompt,
                     processId: loop.processId,
                     ...(loop.model ? { model: loop.model } : {}),
@@ -294,13 +299,14 @@ export class LoopExecutor {
     private async enqueueNewFollowUpTask(loop: LoopEntry): Promise<void> {
         const queueManager = this.deps.queueManager!;
         const workspaceId = await this.deps.resolveWorkspaceId(loop.processId);
+        const mode = await resolveFollowUpMode(this.deps.processStore, loop.processId);
 
         queueManager.enqueue({
             type: 'chat',
             priority: 'normal',
             payload: {
                 kind: 'chat',
-                mode: 'autopilot',
+                mode,
                 prompt: loop.prompt,
                 processId: loop.processId,
                 ...(loop.model ? { model: loop.model } : {}),

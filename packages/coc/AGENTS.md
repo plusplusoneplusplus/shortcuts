@@ -34,6 +34,8 @@ Recurring follow-up subsystem in `src/server/loops/`. Separate from schedules.
 - **Infrastructure:** `infrastructure/loop-infrastructure.ts` wires store + executor + timer registry
 - **LLM tools:** `llm-tools/loop-tools.ts` — `createLoop`/`cancelLoop`/`listLoops` (skill-gated), `scheduleWakeup` (always available)
 - **Dashboard:** `LoopBadge`, `LoopManagementPanel`, turn source badges in `ConversationTurnBubble`
+- **Restart behavior:** active loops stay persisted as `active` on shutdown and are re-armed from `nextTickAt` on startup; manually paused/cancelled/expired loops stay inactive.
+- **Tick completion wiring:** `ProcessLifecycleRunner` invokes the `onLoopTickComplete(loopId, success)` lifecycle option after a loop-originated follow-up (`context.source === 'loop'` with string `context.loopId`) finishes. The queue-executor-bridge routes this to `LoopExecutor.onTickComplete()`, which advances `tickCount`/`lastTickAt`, clears the in-flight guard, and re-arms the next timer. Bookkeeping errors are logged but never mask the follow-up's actual success/failure result.
 
 ## EnDev xDPU
 

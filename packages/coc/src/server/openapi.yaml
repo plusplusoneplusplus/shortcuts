@@ -490,6 +490,78 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /api/workspaces/{id}/preferences/commit-skill-usage:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: URL-encoded workspace identifier.
+        schema:
+          type: string
+
+    get:
+      operationId: getCommitSkillUsage
+      summary: Read commit-scoped skill usage timestamps
+      description: >-
+        Returns commit-scoped skill usage entries from `commitSkillUsageMap`,
+        optionally filtered by exact skill name and entries recorded at or after `since`.
+      tags: [Preferences]
+      parameters:
+        - name: skillName
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Exact skill name to include.
+        - name: since
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Only include usage timestamps at or after this ISO timestamp.
+      responses:
+        '200':
+          description: Matching skill usage entries sorted by newest timestamp first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillUsageListResponse'
+        '400':
+          description: Invalid `since` value.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    patch:
+      operationId: recordCommitSkillUsage
+      summary: Record a commit-scoped skill usage timestamp
+      description: >-
+        Records the current timestamp for the given skill name in the repo's
+        `commitSkillUsageMap`. Used to order the Git tab "Use Skill" context
+        menu by recency, separate from the general `skillUsageMap`.
+      tags: [Preferences]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SkillUsageRequest'
+      responses:
+        '200':
+          description: The recorded skill name and timestamp.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillUsageResponse'
+        '400':
+          description: Missing or empty `skillName`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   # ── Seen-State ──────────────────────────────────────────────
 
   /api/workspaces/{id}/seen-state:

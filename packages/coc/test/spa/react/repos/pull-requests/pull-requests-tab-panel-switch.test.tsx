@@ -6,6 +6,7 @@ const mockFetchApi = vi.hoisted(() => vi.fn());
 const mockSelectedPrId = vi.hoisted(() => ({ value: null as number | string | null }));
 
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '',
 }));
 

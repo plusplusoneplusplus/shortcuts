@@ -14,6 +14,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/ToastContext', () => (
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '/api',
 }));
 

@@ -38,21 +38,21 @@ const mockStageFiles = vi.fn();
 const mockUnstageFiles = vi.fn();
 
 const mockExecSync = vi.fn();
-vi.mock('child_process', () => ({
+vi.mock('child_process', function () { return ({
     execSync: (...args: any[]) => mockExecSync(...args),
     execFileSync: vi.fn(),
-}));
+}); });
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
-        GitRangeService: vi.fn().mockImplementation(() => ({
+        GitRangeService: vi.fn().mockImplementation(function () { return ({
             detectCommitRange: mockDetectCommitRange,
             getRangeDiff: mockGetRangeDiff,
             getFileDiff: mockGetFileDiff,
-        })),
-        WorkingTreeService: vi.fn().mockImplementation(() => ({
+        }); }),
+        WorkingTreeService: vi.fn().mockImplementation(function () { return ({
             getAllChanges: mockGetAllChanges,
             stageFile: mockStageFile,
             unstageFile: mockUnstageFile,
@@ -61,7 +61,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             getFileDiff: mockGetWorkingFileDiff,
             stageFiles: mockStageFiles,
             unstageFiles: mockUnstageFiles,
-        })),
+        }); }),
     };
 });
 

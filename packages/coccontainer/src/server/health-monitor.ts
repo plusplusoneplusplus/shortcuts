@@ -5,6 +5,7 @@
  */
 
 import type { AgentStore } from '../store';
+import type { TunnelBridge } from '../proxy/tunnel-bridge';
 import { checkAgentHealth } from '../proxy/health';
 
 export class AgentHealthMonitor {
@@ -12,7 +13,8 @@ export class AgentHealthMonitor {
 
     constructor(
         private store: AgentStore,
-        private intervalMs: number = 30_000
+        private intervalMs: number = 30_000,
+        private tunnelBridge?: TunnelBridge
     ) {}
 
     start(): void {
@@ -31,7 +33,9 @@ export class AgentHealthMonitor {
         const agents = this.store.list();
         await Promise.all(
             agents.map(async (agent) => {
-                const healthy = await checkAgentHealth(agent.address);
+                // Use tunnel bridge local URL if available
+                const effectiveAddr = this.tunnelBridge?.getLocalUrl(agent.id) || agent.address;
+                const healthy = await checkAgentHealth(effectiveAddr);
                 this.store.updateStatus(agent.id, healthy ? 'online' : 'offline');
             })
         );

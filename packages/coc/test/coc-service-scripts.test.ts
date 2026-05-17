@@ -409,8 +409,8 @@ if ($errors.Count -gt 0) {
       const result = runPowerShellFile('coc-serve-loop.ps1', ['-SkipInitialBuild'], fake.env);
       const output = `${result.stdout}\n${result.stderr}`;
       expect(result.status, output).toBe(0);
-      expect(output).toContain('=== Starting coc serve (port 4000) ===');
-      expect(readLogLines(fake.cocLogPath)).toContain('serve\t--no-open\t--port\t4000');
+      expect(output).toContain('=== Starting coc serve (host 127.0.0.1, port 4000) ===');
+      expect(readLogLines(fake.cocLogPath)).toContain('serve\t--no-open\t--port\t4000\t--host\t127.0.0.1');
       expect(readLogLines(fake.logPath)).toEqual([]);
     } finally {
       fake.cleanup();
@@ -423,8 +423,8 @@ if ($errors.Count -gt 0) {
       const result = runPowerShellFile('coc-serve-loop.ps1', ['-SkipInitialBuild', '-Port', '51235'], fake.env);
       const output = `${result.stdout}\n${result.stderr}`;
       expect(result.status, output).toBe(0);
-      expect(output).toContain('=== Starting coc serve (port 51235) ===');
-      expect(readLogLines(fake.cocLogPath)).toContain('serve\t--no-open\t--port\t51235');
+      expect(output).toContain('=== Starting coc serve (host 127.0.0.1, port 51235) ===');
+      expect(readLogLines(fake.cocLogPath)).toContain('serve\t--no-open\t--port\t51235\t--host\t127.0.0.1');
       expect(readLogLines(fake.logPath)).toEqual([]);
     } finally {
       fake.cleanup();
@@ -439,7 +439,7 @@ if ($errors.Count -gt 0) {
       expect(result.status, output).toBe(0);
       expect(output).toContain("Using dev tunnel 'existing-coc' configured HTTP port 51234.");
       expect(output).toContain('Dev tunnel URL: https://fake.devtunnels.ms');
-      expect(readLogLines(fake.cocLogPath)).toContain('serve\t--no-open\t--port\t51234');
+      expect(readLogLines(fake.cocLogPath)).toContain('serve\t--no-open\t--port\t51234\t--host\t127.0.0.1');
       expect(readDevTunnelLog(fake.logPath)).toEqual(['port\tlist\texisting-coc', 'host\texisting-coc']);
     } finally {
       fake.cleanup();
@@ -453,10 +453,10 @@ if ($errors.Count -gt 0) {
       const output = `${result.stdout}\n${result.stderr}`;
       expect(result.status, output).toBe(0);
       expect(output).toContain("Using dev tunnel 'existing-coc' configured HTTP port 53910.");
-      expect(output).toContain('=== Starting coc serve (port 53910) ===');
+      expect(output).toContain('=== Starting coc serve (host 127.0.0.1, port 53910) ===');
       expect(output).toContain('Dev tunnel URL: https://fake.devtunnels.ms:53910');
       expect(output).not.toContain('Dev tunnel URL: https://fake.devtunnels.ms:4000');
-      expect(readLogLines(fake.cocLogPath)).toContain('serve\t--no-open\t--port\t53910');
+      expect(readLogLines(fake.cocLogPath)).toContain('serve\t--no-open\t--port\t53910\t--host\t127.0.0.1');
       expect(readDevTunnelLog(fake.logPath)).toEqual(['port\tlist\texisting-coc', 'host\texisting-coc']);
     } finally {
       fake.cleanup();

@@ -28,16 +28,16 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal() as any;
     return {
         ...actual,
-        BranchService: vi.fn().mockImplementation(() => ({
+        BranchService: vi.fn().mockImplementation(function () { return ({
             hasUncommittedChanges: vi.fn(async () => false),
             getBranchStatus: vi.fn(async () => null),
-        })),
-        GitRangeService: vi.fn().mockImplementation(() => ({
+        }); }),
+        GitRangeService: vi.fn().mockImplementation(function () { return ({
             getCurrentBranch: vi.fn(async () => 'main'),
-        })),
-        WorkingTreeService: vi.fn().mockImplementation(() => ({
+        }); }),
+        WorkingTreeService: vi.fn().mockImplementation(function () { return ({
             getAllChanges: vi.fn(async () => []),
-        })),
+        }); }),
         detectRemoteUrl: vi.fn(async () => undefined),
     };
 });

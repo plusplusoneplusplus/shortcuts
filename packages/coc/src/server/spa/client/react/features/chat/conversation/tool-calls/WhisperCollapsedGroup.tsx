@@ -14,6 +14,7 @@ import { ToolCallVariantProvider } from './ToolCallVariant';
 import { MarkdownView } from '../../../../shared/MarkdownView';
 import { detectCommitsInToolGroup } from '../commitDetection';
 import type { DetectedCommit } from '../commitDetection';
+import type { DetectedPullRequest } from '../pullRequestDetection';
 import { CommitStrip } from '../CommitStrip';
 import { buildGitReviewPopOutUrl } from '../../../../layout/Router';
 import { useGitReviewPopOut, gitReviewPopOutKey } from '../../../../contexts/GitReviewPopOutContext';
@@ -805,6 +806,120 @@ function CommitHoverSpan({ text, commits, workspaceId, testId }: CommitHoverSpan
     );
 }
 
+// ---------------------------------------------------------------------------
+// PullRequestHoverPopover — shown when hovering over "N PRs"
+// ---------------------------------------------------------------------------
+
+interface PullRequestHoverPopoverProps {
+    pullRequests: DetectedPullRequest[];
+    anchorRef: React.RefObject<HTMLSpanElement | null>;
+    popoverRef: React.RefObject<HTMLDivElement | null>;
+    onMouseEnter: () => void;
+    onMouseLeave: () => void;
+}
+
+function formatPullRequestLabel(pr: DetectedPullRequest): string {
+    const repo = pr.owner && pr.repo ? `${pr.owner}/${pr.repo}` : undefined;
+    return repo ? `${repo}#${pr.number}` : `#${pr.number}`;
+}
+
+function PullRequestHoverPopover({ pullRequests, anchorRef, popoverRef, onMouseEnter, onMouseLeave }: PullRequestHoverPopoverProps) {
+    if (!anchorRef.current) return null;
+    const rect = anchorRef.current.getBoundingClientRect();
+    const pos = clampPopoverPosition(rect, 460, pullRequests.length * 32 + 8);
+
+    return ReactDOM.createPortal(
+        <div
+            ref={popoverRef}
+            className="fixed z-50 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg overflow-hidden min-w-[240px] max-w-[460px]"
+            style={{ top: pos.top, left: pos.left }}
+            data-testid="pr-hover-popover"
+            onMouseEnter={onMouseEnter}
+            onMouseLeave={onMouseLeave}
+        >
+            {pullRequests.map(pr => (
+                <a
+                    key={pr.url}
+                    href={pr.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-2.5 py-1.5 text-xs cursor-pointer hover:bg-[#e1effe] dark:hover:bg-[#1f2d42] no-underline"
+                    data-testid={`pr-popover-row-${pr.number}`}
+                    onClick={e => e.stopPropagation()}
+                    title={pr.url}
+                    aria-label={`Open pull request ${formatPullRequestLabel(pr)}`}
+                >
+                    <span className="shrink-0">🔗</span>
+                    <span className="font-mono shrink-0 text-[#0969da] dark:text-[#58a6ff]">
+                        {formatPullRequestLabel(pr)}
+                    </span>
+                    <span className="text-[#1e1e1e] dark:text-[#ccc] truncate min-w-0 flex-1">
+                        Open PR
+                    </span>
+                    <span className="shrink-0 text-[#848484]" aria-hidden="true">↗</span>
+                </a>
+            ))}
+        </div>,
+        document.body,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// PullRequestHoverSpan — a span that shows a PR popover on hover
+// ---------------------------------------------------------------------------
+
+interface PullRequestHoverSpanProps {
+    text: string;
+    pullRequests: DetectedPullRequest[];
+    testId?: string;
+}
+
+function PullRequestHoverSpan({ text, pullRequests, testId }: PullRequestHoverSpanProps) {
+    const [hovered, setHovered] = useState(false);
+    const anchorRef = useRef<HTMLSpanElement | null>(null);
+    const popoverRef = useRef<HTMLDivElement | null>(null);
+    const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const showPopover = useCallback(() => {
+        if (graceTimer.current) { clearTimeout(graceTimer.current); graceTimer.current = null; }
+        setHovered(true);
+    }, []);
+
+    const hidePopover = useCallback(() => {
+        graceTimer.current = setTimeout(() => setHovered(false), 150);
+    }, []);
+    const dismissPopover = useCallback(() => {
+        if (graceTimer.current) {
+            clearTimeout(graceTimer.current);
+            graceTimer.current = null;
+        }
+        setHovered(false);
+    }, []);
+
+    useHoverPopoverDismissal(hovered, anchorRef, popoverRef, dismissPopover);
+
+    return (
+        <span
+            ref={anchorRef}
+            onMouseEnter={showPopover}
+            onMouseLeave={hidePopover}
+            className="underline decoration-dotted cursor-default"
+            data-testid={testId}
+        >
+            {text}
+            {hovered && pullRequests.length > 0 && (
+                <PullRequestHoverPopover
+                    pullRequests={pullRequests}
+                    anchorRef={anchorRef}
+                    popoverRef={popoverRef}
+                    onMouseEnter={showPopover}
+                    onMouseLeave={hidePopover}
+                />
+            )}
+        </span>
+    );
+}
+
 export function WhisperCollapsedGroup({
     precedingChunks,
     summary,
@@ -818,7 +933,7 @@ export function WhisperCollapsedGroup({
 }: WhisperCollapsedGroupProps) {
     const [expanded, setExpanded] = useState(false);
 
-    const headerParts: Array<{ text: string; title?: string; kind?: 'commit' | 'fixup' | 'file' | 'removed-file' | 'skill' | 'memory' }> = [];
+    const headerParts: Array<{ text: string; title?: string; kind?: 'commit' | 'fixup' | 'pr' | 'file' | 'removed-file' | 'skill' | 'memory' }> = [];
     if (summary.toolCallCount > 0) {
         headerParts.push({ text: `${summary.toolCallCount} tool call${summary.toolCallCount !== 1 ? 's' : ''}` });
     }
@@ -839,6 +954,9 @@ export function WhisperCollapsedGroup({
     }
     if (summary.fixupCommitCount && summary.fixupCommitCount > 0) {
         headerParts.push({ text: `${summary.fixupCommitCount} fixup${summary.fixupCommitCount !== 1 ? 's' : ''}`, kind: 'fixup' });
+    }
+    if (summary.prCount && summary.prCount > 0) {
+        headerParts.push({ text: `${summary.prCount} PR${summary.prCount !== 1 ? 's' : ''}`, kind: 'pr' });
     }
     if (summary.skillCount && summary.skillCount > 0) {
         headerParts.push({
@@ -865,6 +983,10 @@ export function WhisperCollapsedGroup({
         } else if (part.kind === 'fixup' && summary.fixupCommits && summary.fixupCommits.length > 0) {
             headerElements.push(
                 <CommitHoverSpan key={`part-${idx}`} text={part.text} commits={summary.fixupCommits} workspaceId={workspaceId} testId="whisper-fixup-hover" />,
+            );
+        } else if (part.kind === 'pr' && summary.pullRequests && summary.pullRequests.length > 0) {
+            headerElements.push(
+                <PullRequestHoverSpan key={`part-${idx}`} text={part.text} pullRequests={summary.pullRequests} testId="whisper-pr-hover" />,
             );
         } else if (part.kind === 'file' && summary.fileEdits && summary.fileEdits.length > 0) {
             headerElements.push(

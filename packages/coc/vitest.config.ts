@@ -20,7 +20,11 @@ export default defineConfig({
         globalSetup: ['test/global-setup.ts'],
         coverage: {
             provider: 'v8',
-            reporter: ['text', 'html', 'lcov', 'cobertura'],
+            // 'json' produces coverage-final.json (istanbul format) which is required to
+            // merge coverage across CI shards via `nyc report --temp-dir`. Without it,
+            // sharded coverage runs only emit lcov.info per shard, which cannot be
+            // accurately merged.
+            reporter: ['text', 'html', 'lcov', 'cobertura', 'json'],
             reportsDirectory: './coverage',
             include: ['src/**/*.ts'],
             exclude: ['src/**/*.d.ts', 'src/**/index.ts']

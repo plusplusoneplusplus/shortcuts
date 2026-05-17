@@ -62,6 +62,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '/api',
     getConfig: () => ({ apiBasePath: '/api' }),
     isRalphEnabled: () => false,

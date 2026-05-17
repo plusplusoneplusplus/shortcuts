@@ -174,6 +174,11 @@ export interface PerRepoPreferences {
     lastSkills?: LastSkillsByMode;
     /** Skill usage timestamps for ordering skill dropdowns (skillName → ISO timestamp). */
     skillUsageMap?: Record<string, string>;
+    /** Skill usage timestamps for the Git tab commit/range "Use Skill"
+     *  context menu (skillName → ISO timestamp). Scoped to the Git tab so
+     *  ordering reflects only commit-based runs, not Enqueue / Work-Item /
+     *  other surfaces. */
+    commitSkillUsageMap?: Record<string, string>;
     /** IDs of workspaces whose skill folders are linked via "Extra Skill Folders". */
     linkedRepoIds?: string[];
     /** Saved run-script templates from the Run Script dialog. */
@@ -534,6 +539,18 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
         }
         if (Object.keys(validated).length > 0) {
             result.skillUsageMap = validated;
+        }
+    }
+
+    if (typeof obj.commitSkillUsageMap === 'object' && obj.commitSkillUsageMap !== null && !Array.isArray(obj.commitSkillUsageMap)) {
+        const validated: Record<string, string> = {};
+        for (const [key, value] of Object.entries(obj.commitSkillUsageMap as Record<string, unknown>)) {
+            if (typeof key === 'string' && key.length > 0 && typeof value === 'string') {
+                validated[key] = value;
+            }
+        }
+        if (Object.keys(validated).length > 0) {
+            result.commitSkillUsageMap = validated;
         }
     }
 
@@ -1082,6 +1099,58 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
             const timestamp = new Date().toISOString();
             const usageMap = { ...(existingRepo.skillUsageMap ?? {}), [skillName]: timestamp };
             const merged: PerRepoPreferences = { ...existingRepo, skillUsageMap: usageMap };
+            writeRepoPreferences(dataDir, repoId, merged);
+            sendJSON(res, 200, { skillName, timestamp });
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // GET /api/workspaces/:id/preferences/commit-skill-usage — Read commit-scoped skill usage
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/preferences\/commit-skill-usage$/,
+        handler: async (req, res, match) => {
+            const parsed = new URL(req.url ?? '/', 'http://localhost');
+            const skillName = parsed.searchParams.get('skillName') ?? undefined;
+            const since = parsed.searchParams.get('since') ?? undefined;
+
+            if (since && Number.isNaN(Date.parse(since))) {
+                return sendError(res, 400, '`since` must be an ISO date-time string');
+            }
+
+            const repoId = decodeURIComponent(match![1]);
+            const usageMap = readRepoPreferences(dataDir, repoId).commitSkillUsageMap ?? {};
+            const usage: SkillUsageEntry[] = Object.entries(usageMap)
+                .filter(([name]) => !skillName || name === skillName)
+                .filter(([, timestamp]) => !since || timestamp >= since)
+                .sort((a, b) => b[1].localeCompare(a[1]))
+                .map(([name, timestamp]) => ({ skillName: name, timestamp }));
+
+            sendJSON(res, 200, { usage });
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // PATCH /api/workspaces/:id/preferences/commit-skill-usage — Record a commit-scoped skill usage
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'PATCH',
+        pattern: /^\/api\/workspaces\/([^/]+)\/preferences\/commit-skill-usage$/,
+        handler: async (req, res, match) => {
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+
+            if (!body || typeof body.skillName !== 'string' || body.skillName.length === 0) {
+                return sendError(res, 400, '`skillName` is required');
+            }
+
+            const repoId = decodeURIComponent(match![1]);
+            const skillName: string = body.skillName;
+            const existingRepo = readRepoPreferences(dataDir, repoId);
+            const timestamp = new Date().toISOString();
+            const usageMap = { ...(existingRepo.commitSkillUsageMap ?? {}), [skillName]: timestamp };
+            const merged: PerRepoPreferences = { ...existingRepo, commitSkillUsageMap: usageMap };
             writeRepoPreferences(dataDir, repoId, merged);
             sendJSON(res, 200, { skillName, timestamp });
         },

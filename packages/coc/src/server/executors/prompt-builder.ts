@@ -551,7 +551,12 @@ export function buildLoopToolsAddon(
 
     const suffix =
         '\n\nYou have access to loop management tools: `createLoop` (recurring follow-ups), ' +
-        '`cancelLoop`, and `listLoops`. These are active because the /loop skill was selected.';
+        '`cancelLoop`, and `listLoops`. These are active because the /loop skill was selected. ' +
+        'When /loop is selected and the user message begins with an interval followed by a task ' +
+        '(for example "1m check status" or "30s what is the time now?"), treat it as a fixed-interval ' +
+        'recurring loop request: answer or perform the task now, then call `createLoop` with that interval ' +
+        'and the remaining task as the loop prompt. Do not use `scheduleWakeup` for this pattern; ' +
+        '`scheduleWakeup` is only for one-shot delayed follow-ups.';
 
     return { tools: [createTool, cancelTool, listTool], suffix };
 }

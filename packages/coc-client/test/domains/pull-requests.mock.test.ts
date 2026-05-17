@@ -136,6 +136,17 @@ describe('PullRequestsClient mock coverage', () => {
     expectEmptyRequest(mock.requests[0], 'GET', '/api/repos/repo%2Fa/pull-requests/42/reviewers');
   });
 
+  it('gets commits for a PR', async () => {
+    mock = await startMockServer();
+    const commits = [{ sha: 'abcdef1234567890', shortSha: 'abcdef1', title: 'Fix bug' }];
+    mock.on('GET', '/api/repos/repo%2Fa/pull-requests/42/commits', { body: { commits } });
+    const client = createClient(mock);
+
+    await expect(client.pullRequests.getCommits('repo/a', '42')).resolves.toEqual({ commits });
+
+    expectEmptyRequest(mock.requests[0], 'GET', '/api/repos/repo%2Fa/pull-requests/42/commits');
+  });
+
   it('gets unified diff as text/plain string via the raw-text transport path', async () => {
     mock = await startMockServer();
     const diff = '--- a/file.ts\n+++ b/file.ts\n@@ -1,3 +1,4 @@\n+import { foo } from "bar";\n export const x = 1;';
@@ -148,6 +159,17 @@ describe('PullRequestsClient mock coverage', () => {
     await expect(client.pullRequests.getDiff('repo/a', '42')).resolves.toBe(diff);
 
     expectEmptyRequest(mock.requests[0], 'GET', '/api/repos/repo%2Fa/pull-requests/42/diff');
+  });
+
+  it('gets commits for a PR', async () => {
+    mock = await startMockServer();
+    const commits = [{ id: 'abc1234deadbeef', shortId: 'abc1234', subject: 'feat: x' }];
+    mock.on('GET', '/api/repos/repo%2Fa/pull-requests/42/commits', { body: { commits } });
+    const client = createClient(mock);
+
+    await expect(client.pullRequests.getCommits('repo/a', '42')).resolves.toEqual({ commits });
+
+    expectEmptyRequest(mock.requests[0], 'GET', '/api/repos/repo%2Fa/pull-requests/42/commits');
   });
 
   it('propagates 404 on missing PRs as CocApiError', async () => {

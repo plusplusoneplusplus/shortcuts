@@ -79,7 +79,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     return {
         ...actual,
         execGit: (...args: any[]) => mockForgeExecGit(...args),
-        BranchService: vi.fn().mockImplementation(() => ({
+        BranchService: vi.fn().mockImplementation(function () { return ({
             getLocalBranchesPaginated: mockGetLocalBranchesPaginated,
             getRemoteBranchesPaginated: mockGetRemoteBranchesPaginated,
             getBranchStatus: vi.fn(async (...args: any[]) => mockGetBranchStatus(...args)),
@@ -102,16 +102,16 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             mergeAbort: mockMergeAbort,
             rewordCommit: mockRewordCommit,
             pushUpTo: mockPushUpTo,
-        })),
+        }); }),
         detectRemoteUrl: vi.fn(async () => undefined),
     };
 });
 
 // Mock child_process to prevent real git calls from other routes
 const mockExecSync = vi.fn();
-vi.mock('child_process', () => ({
+vi.mock('child_process', function () { return ({
     execSync: (...args: any[]) => mockExecSync(...args),
-}));
+}); });
 
 // ============================================================================
 // Test Helpers

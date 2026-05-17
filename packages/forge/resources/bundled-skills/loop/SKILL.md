@@ -41,12 +41,30 @@ Minimum interval for `createLoop` is **10 seconds**. Minimum delay for `schedule
 | One-time delayed check ("check in 30 minutes") | `scheduleWakeup` |
 | Dynamic pacing ("come back when the deploy finishes") | `scheduleWakeup` — check once, then schedule another if not done |
 
+## Slash-Compatible Fixed Interval Mode
+
+When this skill was explicitly selected and the user message starts with a duration followed by a task, treat it as a request for a recurring fixed-interval loop.
+
+Examples:
+- `1m what's the time now?` -> create a loop every 1 minute with prompt `what's the time now?`
+- `30s check the build` -> create a loop every 30 seconds with prompt `check the build`
+- `2h remind me to stretch` -> create a loop every 2 hours with prompt `remind me to stretch`
+
+In this mode:
+1. Run or answer the prompt immediately in the current turn.
+2. Call `createLoop` with the parsed interval and remaining prompt.
+3. Do not call `scheduleWakeup`; that tool is for one-shot delayed follow-ups.
+4. Use the default TTL unless the user specifies a duration or stop condition.
+5. If the remaining prompt is empty or nonsensical, ask for clarification instead of creating a loop.
+
 ## User Confirmation
 
 Before creating a loop, **always confirm with the user**:
 1. What you will monitor and why.
 2. The proposed interval and how long it will run.
 3. The stop condition — when you will cancel the loop.
+
+For explicit fixed-interval slash-compatible input such as `1m check status`, the user's command is the confirmation. Do not ask an extra confirmation unless the interval, task, or stop condition is ambiguous or risky.
 
 Example confirmation:
 > I'll check the CI pipeline status every 5 minutes for up to 3 hours, and stop once all checks pass or a clear failure is detected. Shall I set this up?

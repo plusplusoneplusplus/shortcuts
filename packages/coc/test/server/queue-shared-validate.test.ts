@@ -99,6 +99,35 @@ describe('validateAndParseTask – chat kind injection (existing behavior)', () 
         expect(result.valid).toBe(true);
         expect((result.input!.payload as any).kind).toBe('chat');
     });
+
+    it('defaults payload.mode to autopilot for new chats (no processId)', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello' },
+        });
+        expect(result.valid).toBe(true);
+        expect((result.input!.payload as any).mode).toBe('autopilot');
+    });
+
+    it('leaves payload.mode untouched for follow-ups (processId set)', () => {
+        // Follow-ups must arrive with mode already resolved by the caller —
+        // queue-shared must not silently default to autopilot for them.
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello', processId: 'queue_xyz' },
+        });
+        expect(result.valid).toBe(true);
+        expect((result.input!.payload as any).mode).toBeUndefined();
+    });
+
+    it('preserves an explicit follow-up payload.mode', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello', processId: 'queue_xyz', mode: 'ask' },
+        });
+        expect(result.valid).toBe(true);
+        expect((result.input!.payload as any).mode).toBe('ask');
+    });
 });
 
 // ============================================================================

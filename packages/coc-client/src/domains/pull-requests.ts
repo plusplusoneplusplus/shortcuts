@@ -1,5 +1,7 @@
 import type {
   ProviderConfigRequest,
+  PullRequestChecksResponse,
+  PullRequestCommitsResponse,
   PullRequestListQuery,
   PullRequestListResponse,
   PullRequestReviewersResponse,
@@ -64,11 +66,23 @@ export class PullRequestsClient {
     });
   }
 
+  getCommits(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestCommitsResponse> {
+    return this.transport.request<PullRequestCommitsResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/commits`, {
+      signal: options?.signal,
+    });
+  }
+
   getDiff(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<string> {
     const reqOptions: CocRequestOptions = { signal: options?.signal };
     if (this.transport.requestText) {
       return this.transport.requestText(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/diff`, reqOptions);
     }
     return this.transport.request<string>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/diff`, reqOptions);
+  }
+
+  getChecks(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestChecksResponse> {
+    return this.transport.request<PullRequestChecksResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/checks`, {
+      signal: options?.signal,
+    });
   }
 }

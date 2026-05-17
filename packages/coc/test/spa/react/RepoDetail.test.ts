@@ -227,6 +227,17 @@ describe('RepoDetail Activity badge wiring', () => {
 
 });
 
+describe('RepoDetail Notes tab badge wiring', () => {
+    it('does not render an auto-commit indicator in the Notes tab', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('data-testid="notes-autocommit-badge"');
+        expect(REPO_DETAIL_SOURCE).not.toContain('Auto-commit active');
+    });
+
+    it('does not subscribe the repo tab strip to notes auto-commit state', () => {
+        expect(REPO_DETAIL_SOURCE).not.toContain('useNotesAutoCommit');
+    });
+});
+
 describe('RepoDetail Resume Queue button in header', () => {
     it('renders resume button with data-testid when queue is paused', () => {
         expect(REPO_DETAIL_SOURCE).toContain('data-testid="repo-header-resume-btn"');

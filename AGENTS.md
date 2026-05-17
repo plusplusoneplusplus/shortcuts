@@ -70,7 +70,7 @@ Manages `coc-serve-loop.ps1` as a Windows Task Scheduler task running under the 
 | `status`     | Show task state, running PIDs, log file size, and last log line. |
 | `logs`       | Print the last N log lines. Use `-Follow` for continuous tail. |
 
-Key options: `-Port` (default 4000, non-tunnel mode only), `-TunnelId` (host the configured Microsoft Dev Tunnel and use its persisted HTTP port binding), `-NoBuildSkip` (build on every start, not just install), `-LogLines` (default 50), `-Follow`, `-TaskName` (default `CoCServer`). Configure the tunnel first with `.\scripts\config-devtunnel.ps1 [-TunnelId <id>] [-Port <port>]`; the service loop reads the configured tunnel port and only starts/stops `devtunnel host`.
+Key options: `-Port` (default 4000, non-tunnel mode only), `-BindAddress` (default `127.0.0.1`; use `0.0.0.0` to expose on all interfaces — named `-BindAddress` to avoid PowerShell's `$Host` automatic variable), `-TunnelId` (host the configured Microsoft Dev Tunnel and use its persisted HTTP port binding), `-NoBuildSkip` (build on every start, not just install), `-LogLines` (default 50), `-Follow`, `-TaskName` (default `CoCServer`). Configure the tunnel first with `.\scripts\config-devtunnel.ps1 [-TunnelId <id>] [-Port <port>]`; the service loop reads the configured tunnel port and only starts/stops `devtunnel host`.
 
 **Log file:** `~/.coc/logs/coc-service.log` — rotated automatically at 10 MB.
 
@@ -113,6 +113,7 @@ Standalone CLI for YAML AI workflows. Consumes `forge`. Server functionality (HT
 - **Infrastructure:** `loop-infrastructure.ts` factory creates LoopStore + LoopExecutor + ScheduleTimerRegistry. Wired into `createExecutionServer`. On shutdown, active loops are paused with `pausedReason: 'server-restart'` (no auto-resume).
 - **Dashboard UI:** `LoopBadge` (header badge with active count), `LoopManagementPanel` (list/pause/resume/cancel), turn source badge on `ConversationTurnBubble` for loop/wakeup turns.
 - **Turn metadata:** `turnSource` field on `ConversationTurn` (`{ source: 'loop'|'wakeup', loopId/wakeupId }`) propagated through follow-up executor pipeline.
+- **Follow-up mode resolution:** `resolveFollowUpMode(store, processId, explicit?)` in `executors/follow-up-mode.ts` is the single source of truth for "what mode does this follow-up run in?". Every programmatic follow-up enqueue site (loop ticks, wakeup timer, requeue) must call it and set `payload.mode`. `validateAndParseTask` only defaults `payload.mode` to `autopilot` for new chats (no `processId`); REST follow-ups must supply mode. `FollowUpExecutor.executeFollowUp` requires `mode` and logs a fail-loud warning + defaults to `'ask'` if missing.
 
 **Testing:** 627+ Vitest test files under `packages/coc/test/server/`.
 

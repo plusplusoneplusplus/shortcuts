@@ -2,6 +2,7 @@
  * Serve command — starts the CoCContainer aggregation dashboard.
  */
 
+import * as readline from 'readline';
 import { resolveConfig, ensureDataDir, type ResolvedContainerConfig } from '../config';
 import { createContainerServer } from '../server';
 
@@ -32,16 +33,26 @@ export async function executeServe(opts: {
         exec(`${cmd} ${url}`);
     }
 
-    // Keep alive
+    // Keep alive until shutdown signal
     await new Promise<void>((resolve) => {
-        process.on('SIGINT', () => {
+        const onSignal = () => {
             console.log('\nShutting down...');
             server.close();
             resolve();
-        });
-        process.on('SIGTERM', () => {
-            server.close();
-            resolve();
-        });
+        };
+
+        process.on('SIGINT', onSignal);
+        process.on('SIGTERM', onSignal);
+
+        // On Windows, SIGINT may not fire in all terminal environments.
+        // Use readline interface to reliably capture Ctrl+C.
+        if (process.platform === 'win32') {
+            const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+            rl.on('SIGINT', onSignal);
+            rl.on('close', onSignal);
+        }
     });
+
+    // Force exit — open SSE/WS connections may keep the event loop alive
+    process.exit(0);
 }

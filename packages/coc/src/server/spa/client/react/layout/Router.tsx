@@ -167,7 +167,7 @@ export function parseWorkflowDeepLink(hash: string): { repoId: string; processId
     return null;
 }
 
-export const VALID_PR_DETAIL_TABS: Set<string> = new Set(['overview', 'threads', 'files']);
+export const VALID_PR_DETAIL_TABS: Set<string> = new Set(['overview', 'files', 'commits', 'checks']);
 
 export function parsePrDetailTab(hash: string): PrDetailTab {
     const cleaned = hash.replace(/^#/, '');

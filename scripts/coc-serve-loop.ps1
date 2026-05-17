@@ -26,9 +26,15 @@
     stable tunnel ID. The HTTP port is read from the tunnel binding created by
     config-devtunnel.ps1.
 
+.PARAMETER BindAddress
+    Network address that `coc serve` binds to (default: 127.0.0.1). Use
+    0.0.0.0 to expose the server on all interfaces. Note: PowerShell reserves
+    `$Host` as an automatic variable, so this parameter is named -BindAddress.
+
 .EXAMPLE
     .\scripts\coc-serve-loop.ps1
     .\scripts\coc-serve-loop.ps1 -Port 8080
+    .\scripts\coc-serve-loop.ps1 -BindAddress 0.0.0.0
     .\scripts\config-devtunnel.ps1 -TunnelId my-remote-coc
     .\scripts\coc-serve-loop.ps1 -TunnelId my-remote-coc
     .\scripts\coc-serve-loop.ps1 -SkipInitialBuild
@@ -38,7 +44,8 @@ param(
     [int]$Port = 4000,
     [switch]$SkipInitialBuild,
     [string]$LogFile = '',
-    [string]$TunnelId = ''
+    [string]$TunnelId = '',
+    [string]$BindAddress = '127.0.0.1'
 )
 
 $RESTART_EXIT_CODE = 75
@@ -286,7 +293,7 @@ while ($true) {
     $first = $false
 
     # Serve step
-    Write-Log "=== Starting coc serve (port $Port) ===" -Color Cyan
+    Write-Log "=== Starting coc serve (host $BindAddress, port $Port) ===" -Color Cyan
     Write-Log 'POST /api/admin/restart to rebuild and restart.'
 
     $tunnelSession = $null
@@ -302,13 +309,13 @@ while ($true) {
     try {
         if ($Script:LogFile) {
             # Pipe coc serve output through Write-Log so it lands in the log file with timestamps
-            & coc serve --no-open --port $Port 2>&1 | ForEach-Object {
+            & coc serve --no-open --port $Port --host $BindAddress 2>&1 | ForEach-Object {
                 $entry = "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] $_"
                 Write-Host $entry
                 try { Add-Content -Path $Script:LogFile -Value $entry -Encoding UTF8 } catch {}
             }
         } else {
-            & coc serve --no-open --port $Port
+            & coc serve --no-open --port $Port --host $BindAddress
         }
         $exitCode = $LASTEXITCODE
     } finally {

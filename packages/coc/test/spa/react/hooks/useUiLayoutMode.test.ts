@@ -8,6 +8,7 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 
 // Mock getApiBase before importing the hook
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '/api',
 }));
 

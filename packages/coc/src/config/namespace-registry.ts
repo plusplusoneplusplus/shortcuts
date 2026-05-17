@@ -32,6 +32,7 @@ export type ResolvedConfigNamespaceValues = Pick<
     | 'ralph'
     | 'vimNavigation'
     | 'loops'
+    | 'mcpOauth'
     | 'features'
     | 'memoryPromotion'
     | 'store'
@@ -67,6 +68,7 @@ const SERVERS_SOURCE_KEYS = ['servers.enabled'] as const;
 const RALPH_SOURCE_KEYS = ['ralph.enabled'] as const;
 const VIM_NAVIGATION_SOURCE_KEYS = ['vimNavigation.enabled'] as const;
 const LOOPS_SOURCE_KEYS = ['loops.enabled'] as const;
+const MCP_OAUTH_SOURCE_KEYS = ['mcpOauth.enabled'] as const;
 const FEATURES_SOURCE_KEYS = ['features.autoMemoryPromotion'] as const;
 
 const MEMORY_PROMOTION_SOURCE_KEYS = [
@@ -96,6 +98,7 @@ export const CONFIG_NAMESPACE_SOURCE_KEYS = [
     ...RALPH_SOURCE_KEYS,
     ...VIM_NAVIGATION_SOURCE_KEYS,
     ...LOOPS_SOURCE_KEYS,
+    ...MCP_OAUTH_SOURCE_KEYS,
     ...FEATURES_SOURCE_KEYS,
     ...MEMORY_PROMOTION_SOURCE_KEYS,
     ...MEMORY_PROMOTION_AI_NORMALIZATION_SOURCE_KEYS,
@@ -237,6 +240,11 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
             name: 'loops',
             sourceDescriptors: [source('loops.', ['loops'], LOOPS_SOURCE_KEYS)],
             merge: (base, override) => ({ loops: { enabled: override?.loops?.enabled ?? base.loops?.enabled ?? false } }),
+        },
+        {
+            name: 'mcpOauth',
+            sourceDescriptors: [source('mcpOauth.', ['mcpOauth'], MCP_OAUTH_SOURCE_KEYS)],
+            merge: (base, override) => ({ mcpOauth: { enabled: override?.mcpOauth?.enabled ?? base.mcpOauth?.enabled ?? false } }),
         },
         {
             name: 'features',

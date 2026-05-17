@@ -11,6 +11,7 @@ import {
 } from '../../../src/server/spa/client/react/tasks/hooks/useTaskGeneration';
 
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '/api',
 }));
 

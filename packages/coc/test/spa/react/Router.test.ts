@@ -1996,9 +1996,14 @@ describe('handleHash pull-requests dispatch simulation', () => {
         expect(dispatches).toContainEqual({ type: 'SET_PR_DETAIL_TAB', tab: 'overview' });
     });
 
-    it('dispatches SET_PR_DETAIL_TAB threads for #repos/r1/pull-requests/42/threads', () => {
-        const dispatches = simulatePrHash('#repos/r1/pull-requests/42/threads');
-        expect(dispatches).toContainEqual({ type: 'SET_PR_DETAIL_TAB', tab: 'threads' });
+    it('dispatches SET_PR_DETAIL_TAB commits for #repos/r1/pull-requests/42/commits', () => {
+        const dispatches = simulatePrHash('#repos/r1/pull-requests/42/commits');
+        expect(dispatches).toContainEqual({ type: 'SET_PR_DETAIL_TAB', tab: 'commits' });
+    });
+
+    it('dispatches SET_PR_DETAIL_TAB checks for #repos/r1/pull-requests/42/checks', () => {
+        const dispatches = simulatePrHash('#repos/r1/pull-requests/42/checks');
+        expect(dispatches).toContainEqual({ type: 'SET_PR_DETAIL_TAB', tab: 'checks' });
     });
 
     it('dispatches SET_PR_DETAIL_TAB files for #repos/r1/pull-requests/42/files', () => {
@@ -2028,12 +2033,16 @@ describe('parsePrDetailTab', () => {
         expect(parsePrDetailTab('#repos/r1/pull-requests/42/overview')).toBe('overview');
     });
 
-    it('returns "threads" for threads sub-tab', () => {
-        expect(parsePrDetailTab('#repos/r1/pull-requests/42/threads')).toBe('threads');
-    });
-
     it('returns "files" for files sub-tab', () => {
         expect(parsePrDetailTab('#repos/r1/pull-requests/42/files')).toBe('files');
+    });
+
+    it('returns "commits" for commits sub-tab', () => {
+        expect(parsePrDetailTab('#repos/r1/pull-requests/42/commits')).toBe('commits');
+    });
+
+    it('returns "checks" for checks sub-tab', () => {
+        expect(parsePrDetailTab('#repos/r1/pull-requests/42/checks')).toBe('checks');
     });
 
     it('returns "overview" for invalid sub-tab', () => {
@@ -2052,14 +2061,15 @@ describe('parsePrDetailTab', () => {
 // ─── VALID_PR_DETAIL_TABS ──────────────────────────────────────────
 
 describe('VALID_PR_DETAIL_TABS', () => {
-    it('contains overview, threads, files', () => {
+    it('contains overview, files, commits, checks', () => {
         expect(VALID_PR_DETAIL_TABS.has('overview')).toBe(true);
-        expect(VALID_PR_DETAIL_TABS.has('threads')).toBe(true);
         expect(VALID_PR_DETAIL_TABS.has('files')).toBe(true);
+        expect(VALID_PR_DETAIL_TABS.has('commits')).toBe(true);
+        expect(VALID_PR_DETAIL_TABS.has('checks')).toBe(true);
     });
 
-    it('has exactly 3 entries', () => {
-        expect(VALID_PR_DETAIL_TABS.size).toBe(3);
+    it('has exactly 4 entries', () => {
+        expect(VALID_PR_DETAIL_TABS.size).toBe(4);
     });
 });
 
@@ -2283,8 +2293,8 @@ describe('memory sub-tab deep-link parsing', () => {
 // ─── admin sub-tab deep-link parsing ────────────────────────────
 
 describe('admin sub-tab deep-link parsing', () => {
-    it('VALID_ADMIN_SUB_TABS contains all 6 tabs', () => {
-        expect(VALID_ADMIN_SUB_TABS).toEqual(new Set(['settings', 'providers', 'data', 'server', 'prompts', 'database']));
+    it('VALID_ADMIN_SUB_TABS contains all 7 tabs', () => {
+        expect(VALID_ADMIN_SUB_TABS).toEqual(new Set(['settings', 'providers', 'data', 'server', 'prompts', 'database', 'agents']));
     });
 
     it('returns "settings" for #admin/settings', () => {

@@ -77,7 +77,9 @@ import { registerRalphContinueRoutes } from './ralph-continue-routes';
 import { registerRalphPromoteRoutes } from './ralph-promote-routes';
 import { registerLoopRoutes } from '../loops/loop-handler';
 import type { LoopStore } from '../loops/loop-store';
-import type { LoopExecutor } from '../loops/loop-executor';
+import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
+import { registerMcpOauthRoutes } from '../mcp-oauth';
+import type { McpOauthManager } from '../mcp-oauth';
 
 /** Collect git commits made between headBefore and current HEAD. Non-fatal — returns [] on error. */
 function collectWorkItemCommits(
@@ -120,6 +122,8 @@ export interface RegisterRoutesOptions {
     remoteServerConnector?: DevTunnelConnector;
     loopStore?: LoopStore;
     loopExecutor?: LoopExecutor;
+    mcpOauthManager?: McpOauthManager;
+    loopEmit?: LoopEventEmit;
 }
 
 export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined } {
@@ -214,17 +218,13 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         registerLoopRoutes(routes, {
             store: opts.loopStore,
             executor: opts.loopExecutor,
-            resolveWorkspaceId: async (processId: string) => {
-                // Look up workspace via the queue task (which carries repoId)
-                try {
-                    const taskId = processId.startsWith('queue_') ? processId.slice(6) : processId;
-                    const task = bridge.getTask(taskId);
-                    return task?.repoId;
-                } catch {
-                    return undefined;
-                }
-            },
+            emit: opts.loopEmit,
         });
+    }
+
+    // MCP OAuth routes (feature-flagged via mcpOauth.enabled)
+    if (opts.mcpOauthManager) {
+        registerMcpOauthRoutes(routes, { manager: opts.mcpOauthManager });
     }
 
     registerMemoryRoutes(routes, dataDir);

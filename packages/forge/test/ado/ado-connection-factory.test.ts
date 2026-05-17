@@ -1,9 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('azure-devops-node-api', () => {
-    const mockWebApi = vi.fn().mockImplementation(() => ({
-        getWorkItemTrackingApi: vi.fn(),
-    }));
+    // Use a regular function (not arrow) so the mock is constructible with `new`.
+    // In vitest 4, mocks invoke their implementation as a constructor when called
+    // with `new`, and arrow functions do not have [[Construct]].
+    const mockWebApi = vi.fn(function (this: any) {
+        this.getWorkItemTrackingApi = vi.fn();
+    });
     return {
         WebApi: mockWebApi,
         getBearerHandler: vi.fn().mockReturnValue({ token: 'mock-bearer-handler' }),
@@ -228,7 +231,7 @@ describe('AdoConnectionFactory', () => {
 
     describe('connect — error handling', () => {
         it('returns connected false when WebApi constructor throws', async () => {
-            vi.mocked(azdev.WebApi).mockImplementationOnce(() => {
+            vi.mocked(azdev.WebApi).mockImplementationOnce(function (this: any) {
                 throw new Error('network failure');
             });
             mockedExecAsync

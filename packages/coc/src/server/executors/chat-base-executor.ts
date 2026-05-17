@@ -69,6 +69,8 @@ import { buildChatToolBundle } from './chat-tool-builder';
 export interface LoopInfraDeps {
     store: import('../loops/loop-store').LoopStore;
     executor: import('../loops/loop-executor').LoopExecutor;
+    /** Loop event emitter (used by LLM tools to broadcast state changes). */
+    emit?: import('../loops/loop-executor').LoopEventEmit;
     resolveWorkspaceId: (processId: string) => Promise<string | undefined>;
     enqueueWakeup: (opts: {
         processId: string;
@@ -103,6 +105,8 @@ export interface ChatModeExecutorOptions {
     resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
     /** Late-bound loop infrastructure (getter because loop infra is created after executor registry). */
     getLoopInfra?: () => LoopInfraDeps | undefined;
+    /** Late-bound MCP OAuth manager (getter to allow optional/feature-flagged wiring). */
+    getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
 }
 
 /** Return type for the AI call result. */
@@ -143,6 +147,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly resolveMcpConfigFn?: (wsId: string | undefined, workDir?: string) => Promise<{ mcpServers?: Record<string, MCPServerConfig> }>;
     protected readonly resolveWorkspaceIdForPathFn: (rootPath: string) => Promise<string>;
     protected readonly getLoopInfra?: () => LoopInfraDeps | undefined;
+    protected readonly getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
 
     constructor(store: ProcessStore, options: ChatModeExecutorOptions, dataDir?: string) {
         super(store, dataDir);
@@ -157,6 +162,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.resolveMcpConfigFn = options.resolveMcpConfig;
         this.resolveWorkspaceIdForPathFn = options.resolveWorkspaceIdForPath;
         this.getLoopInfra = options.getLoopInfra;
+        this.getMcpOauthManager = options.getMcpOauthManager;
     }
 
     /**
@@ -181,6 +187,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 store: infra.store,
                 executor: infra.executor,
                 processId,
+                resolveWorkspaceId: infra.resolveWorkspaceId,
+                emit: infra.emit,
             },
         };
     }
@@ -534,6 +542,24 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                     }
                     : toolEventHandler,
                 onBackgroundTasksChanged: this.buildBackgroundTaskHandler(processId),
+                onMcpOAuthRequired: (() => {
+                    const manager = this.getMcpOauthManager?.();
+                    if (!manager) return undefined;
+                    return (event: { serverName: string; serverUrl: string; authorizationUrl?: string; requestId: string }) => {
+                        try {
+                            manager.addPending({
+                                requestId: event.requestId,
+                                serverName: event.serverName,
+                                serverUrl: event.serverUrl,
+                                authorizationUrl: event.authorizationUrl,
+                                processId,
+                                workspaceId: payload.workspaceId,
+                            });
+                        } catch {
+                            // Non-fatal: OAuth dispatch must not interrupt the session.
+                        }
+                    };
+                })(),
             };
 
             let result;

@@ -20,27 +20,27 @@ import { ChatDetail } from '../../../src/server/spa/client/react/features/chat/C
 
 // Mock useDisplaySettings — controls report_intent visibility
 const mockDisplaySettings = { showReportIntent: false };
-vi.mock('../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
+vi.mock('../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', function () { return ({
     useDisplaySettings: () => mockDisplaySettings,
     invalidateDisplaySettings: vi.fn(),
-}));
+}); });
 
-vi.mock('../../../src/server/spa/client/react/features/chat/hooks/useContainerWidth', () => ({
-    useContainerWidth: () => ({ width: 800, tier: 'wide', isWide: true, isMedium: false, isNarrow: false }),
-}));
+vi.mock('../../../src/server/spa/client/react/features/chat/hooks/useContainerWidth', function () { return ({
+    useContainerWidth: function () { return ({ width: 800, tier: 'wide', isWide: true, isMedium: false, isNarrow: false }); },
+}); });
 
-vi.mock('../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
+vi.mock('../../../src/server/spa/client/react/contexts/ChatPreferencesContext', function () { return ({
     ChatPrefsSync: () => null,
-    useChatPrefs: () => ({
+    useChatPrefs: function () { return ({
         archivedChatIds: new Set<string>(),
         unarchiveChat: vi.fn(),
         pinnedChatIds: new Set<string>(),
         pinChat: vi.fn(),
         unpinChat: vi.fn(),
         archiveChat: vi.fn(),
-    }),
+    }); },
     ChatPreferencesProvider: ({ children }: { children: React.ReactNode }) => children,
-}));
+}); });
 
 vi.mock('../../../src/server/spa/client/react/utils/config', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
@@ -929,7 +929,7 @@ describe('ChatDetail metadata popover', () => {
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: async () => ({
+                    json: async function () { return ({
                         process: {
                             id: processId,
                             type: 'queue-ai-clarification',
@@ -946,20 +946,20 @@ describe('ChatDetail metadata popover', () => {
                                 { role: 'assistant', content: 'Your last question was ...', timeline: [] },
                             ],
                         },
-                    }),
+                    }); },
                 });
             }
             if (url.endsWith('/api/queue/task-meta-1') && method === 'GET') {
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: async () => ({ task: { id: 'task-meta-1', processId, status: 'completed', type: 'chat' } }),
+                    json: async function () { return ({ task: { id: 'task-meta-1', processId, status: 'completed', type: 'chat' } }); },
                 });
             }
             return Promise.resolve({
                 ok: false,
                 status: 404,
-                json: async () => ({ error: 'not found' }),
+                json: async function () { return ({ error: 'not found' }); },
             });
         });
         (global as any).fetch = fetchMock;
@@ -1009,7 +1009,7 @@ describe('ChatDetail follow-up input', () => {
                     return Promise.resolve({
                         ok: true,
                         status: 200,
-                        json: async () => ({
+                        json: async function () { return ({
                             process: {
                                 id: processId,
                                 status: 'completed',
@@ -1020,14 +1020,14 @@ describe('ChatDetail follow-up input', () => {
                                     { role: 'assistant', content: 'First answer', timeline: [] },
                                 ],
                             },
-                        }),
+                        }); },
                     });
                 }
 
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: async () => ({
+                    json: async function () { return ({
                         process: {
                             id: processId,
                             status: 'completed',
@@ -1040,7 +1040,7 @@ describe('ChatDetail follow-up input', () => {
                                 { role: 'assistant', content: 'Follow-up answer', timeline: [] },
                             ],
                         },
-                    }),
+                    }); },
                 });
             }
 
@@ -1048,7 +1048,7 @@ describe('ChatDetail follow-up input', () => {
                 return Promise.resolve({
                     ok: true,
                     status: 202,
-                    json: async () => ({ processId, turnIndex: 2 }),
+                    json: async function () { return ({ processId, turnIndex: 2 }); },
                 });
             }
 
@@ -1056,14 +1056,14 @@ describe('ChatDetail follow-up input', () => {
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: async () => ({ task: { id: 'task-follow-1', processId, status: 'completed', type: 'chat' } }),
+                    json: async function () { return ({ task: { id: 'task-follow-1', processId, status: 'completed', type: 'chat' } }); },
                 });
             }
 
             return Promise.resolve({
                 ok: false,
                 status: 404,
-                json: async () => ({ error: 'not found' }),
+                json: async function () { return ({ error: 'not found' }); },
             });
         });
 
@@ -1113,7 +1113,7 @@ describe('ChatDetail follow-up input', () => {
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: async () => ({
+                    json: async function () { return ({
                         process: {
                             id: processId,
                             status: 'completed',
@@ -1124,7 +1124,7 @@ describe('ChatDetail follow-up input', () => {
                                 { role: 'assistant', content: 'Done', timeline: [] },
                             ],
                         },
-                    }),
+                    }); },
                 });
             }
 
@@ -1132,7 +1132,7 @@ describe('ChatDetail follow-up input', () => {
                 return Promise.resolve({
                     ok: false,
                     status: 410,
-                    json: async () => ({ error: 'session_expired' }),
+                    json: async function () { return ({ error: 'session_expired' }); },
                 });
             }
 
@@ -1140,14 +1140,14 @@ describe('ChatDetail follow-up input', () => {
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: async () => ({ task: { id: 'task-expired-1', processId, status: 'completed', type: 'chat' } }),
+                    json: async function () { return ({ task: { id: 'task-expired-1', processId, status: 'completed', type: 'chat' } }); },
                 });
             }
 
             return Promise.resolve({
                 ok: false,
                 status: 404,
-                json: async () => ({ error: 'not found' }),
+                json: async function () { return ({ error: 'not found' }); },
             });
         });
 
@@ -1198,7 +1198,7 @@ describe('ChatDetail semantic hooks', () => {
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: async () => ({
+                    json: async function () { return ({
                         process: {
                             id: processId,
                             status: 'completed',
@@ -1207,17 +1207,17 @@ describe('ChatDetail semantic hooks', () => {
                                 { role: 'assistant', content: 'Hi', timeline: [] },
                             ],
                         },
-                    }),
+                    }); },
                 });
             }
             if (url.endsWith('/api/queue/task-hooks-1')) {
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: async () => ({ task: { id: 'task-hooks-1', processId, status: 'completed', type: 'chat' } }),
+                    json: async function () { return ({ task: { id: 'task-hooks-1', processId, status: 'completed', type: 'chat' } }); },
                 });
             }
-            return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+            return Promise.resolve({ ok: false, status: 404, json: async function () { return ({}); } });
         });
         (global as any).EventSource = undefined;
 
@@ -1244,7 +1244,7 @@ describe('ChatDetail semantic hooks', () => {
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: async () => ({
+                    json: async function () { return ({
                         process: {
                             id: processId,
                             status: 'completed',
@@ -1255,24 +1255,24 @@ describe('ChatDetail semantic hooks', () => {
                                 { role: 'assistant', content: 'A', timeline: [] },
                             ],
                         },
-                    }),
+                    }); },
                 });
             }
             if (url.endsWith(`/api/processes/${processId}/message`) && method === 'POST') {
                 return Promise.resolve({
                     ok: false,
                     status: 500,
-                    json: async () => ({ error: 'Internal server error' }),
+                    json: async function () { return ({ error: 'Internal server error' }); },
                 });
             }
             if (url.endsWith('/api/queue/task-err-1') && method === 'GET') {
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: async () => ({ task: { id: 'task-err-1', processId, status: 'completed', type: 'chat' } }),
+                    json: async function () { return ({ task: { id: 'task-err-1', processId, status: 'completed', type: 'chat' } }); },
                 });
             }
-            return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+            return Promise.resolve({ ok: false, status: 404, json: async function () { return ({}); } });
         });
         (global as any).EventSource = undefined;
 
@@ -1306,7 +1306,7 @@ describe('ChatDetail semantic hooks', () => {
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: async () => ({
+                    json: async function () { return ({
                         process: {
                             id: processId,
                             status: 'completed',
@@ -1317,7 +1317,7 @@ describe('ChatDetail semantic hooks', () => {
                                 { role: 'assistant', content: 'A', timeline: [] },
                             ],
                         },
-                    }),
+                    }); },
                 });
             }
             if (url.endsWith(`/api/processes/${processId}/message`) && method === 'POST') {
@@ -1327,10 +1327,10 @@ describe('ChatDetail semantic hooks', () => {
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: async () => ({ task: { id: 'task-retry-1', processId, status: 'completed', type: 'chat' } }),
+                    json: async function () { return ({ task: { id: 'task-retry-1', processId, status: 'completed', type: 'chat' } }); },
                 });
             }
-            return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+            return Promise.resolve({ ok: false, status: 404, json: async function () { return ({}); } });
         });
         (global as any).EventSource = undefined;
 
@@ -1363,7 +1363,7 @@ describe('ChatDetail semantic hooks', () => {
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: async () => ({
+                    json: async function () { return ({
                         process: {
                             id: processId,
                             status: 'completed',
@@ -1372,17 +1372,17 @@ describe('ChatDetail semantic hooks', () => {
                                 { role: 'assistant', content: 'pong', timeline: [] },
                             ],
                         },
-                    }),
+                    }); },
                 });
             }
             if (url.endsWith('/api/queue/task-scroll-1')) {
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: async () => ({ task: { id: 'task-scroll-1', processId, status: 'completed', type: 'chat' } }),
+                    json: async function () { return ({ task: { id: 'task-scroll-1', processId, status: 'completed', type: 'chat' } }); },
                 });
             }
-            return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+            return Promise.resolve({ ok: false, status: 404, json: async function () { return ({}); } });
         });
         (global as any).EventSource = undefined;
 
@@ -1409,7 +1409,7 @@ describe('ChatDetail semantic hooks', () => {
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: async () => ({
+                    json: async function () { return ({
                         process: {
                             id: processId,
                             status: 'completed',
@@ -1418,17 +1418,17 @@ describe('ChatDetail semantic hooks', () => {
                                 { role: 'assistant', content: 'There', timeline: [] },
                             ],
                         },
-                    }),
+                    }); },
                 });
             }
             if (url.endsWith('/api/queue/task-rel-1')) {
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: async () => ({ task: { id: 'task-rel-1', processId, status: 'completed', type: 'chat' } }),
+                    json: async function () { return ({ task: { id: 'task-rel-1', processId, status: 'completed', type: 'chat' } }); },
                 });
             }
-            return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+            return Promise.resolve({ ok: false, status: 404, json: async function () { return ({}); } });
         });
         (global as any).EventSource = undefined;
 
@@ -1457,7 +1457,7 @@ describe('ChatDetail semantic hooks', () => {
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: async () => ({
+                    json: async function () { return ({
                         process: {
                             id: processId,
                             status: 'running',
@@ -1465,24 +1465,24 @@ describe('ChatDetail semantic hooks', () => {
                                 { role: 'user', content: 'Go', timeline: [] },
                             ],
                         },
-                    }),
+                    }); },
                 });
             }
             if (url.endsWith('/api/queue/task-stream-1')) {
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: async () => ({ task: { id: 'task-stream-1', processId, status: 'running', type: 'chat' } }),
+                    json: async function () { return ({ task: { id: 'task-stream-1', processId, status: 'running', type: 'chat' } }); },
                 });
             }
-            return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+            return Promise.resolve({ ok: false, status: 404, json: async function () { return ({}); } });
         });
-        (global as any).EventSource = vi.fn().mockImplementation(() => ({
+        (global as any).EventSource = vi.fn().mockImplementation(function () { return ({
             addEventListener: vi.fn(),
             close: vi.fn(),
             onmessage: null,
             onerror: null,
-        }));
+        }); });
 
         const { container } = render(
             <Wrap>
@@ -1509,7 +1509,7 @@ describe('ChatDetail semantic hooks', () => {
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: async () => ({
+                    json: async function () { return ({
                         process: {
                             id: processId,
                             status: 'completed',
@@ -1520,24 +1520,24 @@ describe('ChatDetail semantic hooks', () => {
                                 { role: 'assistant', content: 'A', timeline: [] },
                             ],
                         },
-                    }),
+                    }); },
                 });
             }
             if (url.endsWith(`/api/processes/${processId}/message`) && method === 'POST') {
                 return Promise.resolve({
                     ok: false,
                     status: 410,
-                    json: async () => ({ error: 'session_expired' }),
+                    json: async function () { return ({ error: 'session_expired' }); },
                 });
             }
             if (url.endsWith('/api/queue/task-410-1') && method === 'GET') {
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: async () => ({ task: { id: 'task-410-1', processId, status: 'completed', type: 'chat' } }),
+                    json: async function () { return ({ task: { id: 'task-410-1', processId, status: 'completed', type: 'chat' } }); },
                 });
             }
-            return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+            return Promise.resolve({ ok: false, status: 404, json: async function () { return ({}); } });
         });
         (global as any).EventSource = undefined;
 

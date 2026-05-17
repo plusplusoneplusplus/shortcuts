@@ -1,6 +1,6 @@
 /**
  * AgentManagementPanel — full agent management page for container mode.
- * Add, rename, remove agents. Shows status, address, repo count.
+ * Add, edit (name/address/tunnelId), remove agents. Shows status, address, tunnel info, repo count.
  */
 
 import { useState, useCallback } from 'react';
@@ -9,26 +9,48 @@ import { useRepos } from '../contexts/ReposContext';
 import { Button, Card, Spinner } from '../ui';
 import { AddAgentDialog } from './AddAgentDialog';
 
+function isDevTunnelAddress(address: string): boolean {
+    try {
+        return new URL(address).hostname.endsWith('.devtunnels.ms');
+    } catch {
+        return false;
+    }
+}
+
 export function AgentManagementPanel() {
-    const { agents, loading, refresh, addAgent, removeAgent, renameAgent } = useContainerAgents();
+    const { agents, loading, refresh, addAgent, removeAgent, updateAgent } = useContainerAgents();
     const { repos } = useRepos();
     const [addOpen, setAddOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
-    const [editName, setEditName] = useState('');
+    const [editFields, setEditFields] = useState<{ name: string; address: string; tunnelId: string }>({ name: '', address: '', tunnelId: '' });
+    const [editError, setEditError] = useState<string | null>(null);
+    const [editSaving, setEditSaving] = useState(false);
     const [removing, setRemoving] = useState<string | null>(null);
 
     const repoCountByAgent = useCallback((agentId: string) => {
         return repos.filter(r => r.workspace.agentId === agentId).length;
     }, [repos]);
 
-    const handleRename = async (id: string) => {
-        if (!editName.trim()) return;
+    const startEdit = (agent: ContainerAgent) => {
+        setEditingId(agent.id);
+        setEditFields({ name: agent.name, address: agent.address, tunnelId: agent.tunnelId || '' });
+        setEditError(null);
+    };
+
+    const handleSaveEdit = async (id: string) => {
+        setEditSaving(true);
+        setEditError(null);
         try {
-            await renameAgent(id, editName.trim());
+            await updateAgent(id, {
+                name: editFields.name.trim() || undefined,
+                address: editFields.address.trim() || undefined,
+                tunnelId: editFields.tunnelId.trim() || null,
+            });
+            setEditingId(null);
         } catch (e: any) {
-            alert('Failed to rename: ' + e.message);
+            setEditError(e.message || 'Failed to save');
         }
-        setEditingId(null);
+        setEditSaving(false);
     };
 
     const handleRemove = async (agent: ContainerAgent) => {
@@ -95,6 +117,7 @@ export function AgentManagementPanel() {
                         const count = repoCountByAgent(agent.id);
                         const isEditing = editingId === agent.id;
                         const isRemoving = removing === agent.id;
+                        const showTunnelHint = isDevTunnelAddress(agent.address);
                         return (
                             <Card key={agent.id} className="p-4">
                                 <div className="flex items-start gap-4">
@@ -109,39 +132,87 @@ export function AgentManagementPanel() {
                                     {/* Agent info */}
                                     <div className="flex-1 min-w-0">
                                         {isEditing ? (
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <input
-                                                    type="text"
-                                                    value={editName}
-                                                    onChange={e => setEditName(e.target.value)}
-                                                    onKeyDown={e => {
-                                                        if (e.key === 'Enter') handleRename(agent.id);
-                                                        if (e.key === 'Escape') setEditingId(null);
-                                                    }}
-                                                    className="px-2 py-1 text-sm rounded border border-[#0078d4] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none flex-1"
-                                                    autoFocus
-                                                />
-                                                <Button variant="primary" size="sm" onClick={() => handleRename(agent.id)}>Save</Button>
-                                                <Button variant="ghost" size="sm" onClick={() => setEditingId(null)}>Cancel</Button>
+                                            <div className="flex flex-col gap-2">
+                                                <label className="text-xs text-[#848484]">
+                                                    Name
+                                                    <input
+                                                        type="text"
+                                                        value={editFields.name}
+                                                        onChange={e => setEditFields(f => ({ ...f, name: e.target.value }))}
+                                                        className="mt-0.5 w-full px-2 py-1 text-xs rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]"
+                                                        autoFocus
+                                                    />
+                                                </label>
+                                                <label className="text-xs text-[#848484]">
+                                                    Address
+                                                    <input
+                                                        type="text"
+                                                        value={editFields.address}
+                                                        onChange={e => setEditFields(f => ({ ...f, address: e.target.value }))}
+                                                        className="mt-0.5 w-full px-2 py-1 text-xs rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4] font-mono"
+                                                    />
+                                                </label>
+                                                {isDevTunnelAddress(editFields.address) && (
+                                                    <label className="text-xs text-[#848484]">
+                                                        Tunnel ID
+                                                        <input
+                                                            type="text"
+                                                            value={editFields.tunnelId}
+                                                            onChange={e => setEditFields(f => ({ ...f, tunnelId: e.target.value }))}
+                                                            placeholder="e.g. amusing-book-s4hcgw2.usw2"
+                                                            className="mt-0.5 w-full px-2 py-1 text-xs rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4] font-mono"
+                                                        />
+                                                        <span className="text-[10px] text-[#6e6e6e] dark:text-[#888888] block mt-0.5">
+                                                            For server-side auth (no browser popup). Run <code>devtunnel list</code> to find it.
+                                                        </span>
+                                                    </label>
+                                                )}
+                                                {editError && (
+                                                    <div className="text-xs text-[#f14c4c] bg-[#f14c4c]/10 rounded px-2 py-1">{editError}</div>
+                                                )}
+                                                <div className="flex gap-2">
+                                                    <Button variant="primary" size="sm" onClick={() => handleSaveEdit(agent.id)} disabled={editSaving}>
+                                                        {editSaving ? 'Saving…' : 'Save'}
+                                                    </Button>
+                                                    <Button variant="ghost" size="sm" onClick={() => setEditingId(null)}>Cancel</Button>
+                                                </div>
                                             </div>
                                         ) : (
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <span className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">{agent.name}</span>
-                                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                                                    agent.status === 'online'
-                                                        ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                                                        : agent.status === 'offline'
-                                                            ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
-                                                            : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
-                                                }`}>{statusLabel(agent.status)}</span>
-                                            </div>
+                                            <>
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">{agent.name}</span>
+                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                                        agent.status === 'online'
+                                                            ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                                                            : agent.status === 'offline'
+                                                                ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                                                                : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
+                                                    }`}>{statusLabel(agent.status)}</span>
+                                                </div>
+                                                <div className="text-xs text-[#848484] space-y-0.5">
+                                                    <div>Address: <span className="font-mono text-[#1e1e1e] dark:text-[#cccccc]">{agent.address}</span></div>
+                                                    {agent.tunnelId && (
+                                                        <div>
+                                                            Tunnel: <span className="font-mono text-[#1e1e1e] dark:text-[#cccccc]">{agent.tunnelId}</span>
+                                                            <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
+                                                                local bridge
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    {agent.bridgeUrl && (
+                                                        <div>
+                                                            Bridge: <span className="font-mono text-[#1e1e1e] dark:text-[#cccccc]">{agent.bridgeUrl}</span>
+                                                        </div>
+                                                    )}
+                                                    {showTunnelHint && !agent.tunnelId && (
+                                                        <div className="text-[#e5a100] dark:text-[#f5c842]">
+                                                            ⚠ No tunnel ID — browser popup auth required
+                                                        </div>
+                                                    )}
+                                                    <div>Repos: <span className="font-medium">{count}</span></div>
+                                                </div>
+                                            </>
                                         )}
-                                        <div className="text-xs text-[#848484] space-y-0.5">
-                                            <div>Address: <span className="font-mono text-[#1e1e1e] dark:text-[#cccccc]">{agent.address}</span></div>
-                                            <div>Repos: <span className="font-medium">{count}</span></div>
-                                            {agent.addedAt && <div>Added: {new Date(agent.addedAt).toLocaleDateString()}</div>}
-                                            {agent.lastHealthCheck && <div>Last seen: {new Date(agent.lastHealthCheck).toLocaleString()}</div>}
-                                        </div>
                                     </div>
 
                                     {/* Actions */}
@@ -150,8 +221,8 @@ export function AgentManagementPanel() {
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
-                                                onClick={() => { setEditingId(agent.id); setEditName(agent.name); }}
-                                                title="Rename agent"
+                                                onClick={() => startEdit(agent)}
+                                                title="Edit agent"
                                             >
                                                 ✏️
                                             </Button>
@@ -176,8 +247,8 @@ export function AgentManagementPanel() {
             <AddAgentDialog
                 open={addOpen}
                 onClose={() => setAddOpen(false)}
-                onAdd={async (address, name) => {
-                    await addAgent(address, name);
+                onAdd={async (address, name, tunnelId) => {
+                    await addAgent(address, name, tunnelId);
                     setAddOpen(false);
                 }}
             />

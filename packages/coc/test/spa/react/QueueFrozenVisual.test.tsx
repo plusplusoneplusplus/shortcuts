@@ -67,6 +67,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/preferences/useDisplaySettin
     invalidateDisplaySettings: vi.fn(),
 }));
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => '/api',
     getWsPath: () => '/ws',
     getWsUrl: () => 'ws://localhost/ws',

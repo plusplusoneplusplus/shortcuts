@@ -19,6 +19,7 @@ function makeMockLoopToolDeps() {
             disarmTimer: vi.fn(),
         } as any,
         processId: 'proc-test',
+        resolveWorkspaceId: vi.fn().mockResolvedValue('ws-test'),
     };
 }
 
@@ -49,5 +50,16 @@ describe('buildLoopToolsAddon', () => {
         expect(result.suffix).toContain('cancelLoop');
         expect(result.suffix).toContain('listLoops');
         expect(result.suffix).toContain('/loop skill');
+    });
+
+    it('instructs leading interval loop requests to prefer createLoop over scheduleWakeup', () => {
+        const deps = makeMockLoopToolDeps();
+        const result = buildLoopToolsAddon(deps);
+
+        expect(result.suffix).toContain('user message begins with an interval followed by a task');
+        expect(result.suffix).toContain('fixed-interval');
+        expect(result.suffix).toContain('call `createLoop`');
+        expect(result.suffix).toContain('Do not use `scheduleWakeup` for this pattern');
+        expect(result.suffix).toContain('one-shot delayed follow-ups');
     });
 });

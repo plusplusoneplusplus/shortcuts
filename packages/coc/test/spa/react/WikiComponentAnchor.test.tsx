@@ -14,6 +14,7 @@ import { render, screen, fireEvent, waitFor, configure } from '@testing-library/
 configure({ asyncUtilTimeout: 5000 });
 
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
     getApiBase: () => 'http://localhost:4000/api',
     getDashboardConfig: () => ({ apiBase: 'http://localhost:4000/api' }),
 }));

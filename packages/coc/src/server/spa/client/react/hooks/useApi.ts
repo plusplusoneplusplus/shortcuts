@@ -4,7 +4,7 @@
  */
 
 import { requestSpaApi } from '../api/cocClient';
-import { getApiBase, isContainerMode } from '../utils/config';
+import { getApiBase, getRawApiBase, isContainerMode } from '../utils/config';
 
 export async function fetchApi(path: string, options?: RequestInit): Promise<any> {
     return requestSpaApi(path, options);
@@ -17,7 +17,7 @@ export async function fetchApi(path: string, options?: RequestInit): Promise<any
  */
 export function getAgentApiBase(agentId?: string): string {
     if (isContainerMode() && agentId) {
-        return getApiBase() + '/agent/' + encodeURIComponent(agentId);
+        return getRawApiBase() + '/agent/' + encodeURIComponent(agentId);
     }
     return getApiBase();
 }

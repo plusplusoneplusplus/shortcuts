@@ -538,6 +538,7 @@ export class MultiRepoQueueRouter extends EventEmitter {
                 }
                 return undefined;
             },
+            updateTask: (id: string, updates: any): boolean => findManagerForTask(id)?.updateTask(id, updates) ?? false,
             getStats: aggregateStats,
             cancelTask: (id: string): boolean => {
                 // Route through QueueExecutor so both cancelledTasks sets are updated

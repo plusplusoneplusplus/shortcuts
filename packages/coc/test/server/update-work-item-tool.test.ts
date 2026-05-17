@@ -12,13 +12,13 @@ import * as os from 'os';
 const mockGetWorkItem = vi.fn();
 const mockUpdateWorkItem = vi.fn();
 const mockSavePlanVersion = vi.fn();
-vi.mock('../../src/server/work-items/work-item-store', () => ({
-    FileWorkItemStore: vi.fn().mockImplementation(() => ({
+vi.mock('../../src/server/work-items/work-item-store', function () { return ({
+    FileWorkItemStore: vi.fn().mockImplementation(function () { return ({
         getWorkItem: mockGetWorkItem,
         updateWorkItem: mockUpdateWorkItem,
         savePlanVersion: mockSavePlanVersion,
-    })),
-}));
+    }); }),
+}); });
 
 import { createUpdateWorkItemTool } from '../../src/server/llm-tools/update-work-item-tool';
 

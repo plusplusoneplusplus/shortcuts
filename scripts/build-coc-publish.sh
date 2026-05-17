@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build forge and coc, then verify the tarball includes forge.
+# Build forge, coc, and coc-client, then verify the tarballs.
 # Run from the monorepo root: ./scripts/build-coc-publish.sh
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -33,8 +33,30 @@ fi
 rm -f "$TARBALL"
 
 echo ""
+echo "==> Packing and verifying coc-client tarball..."
+cd "$REPO_ROOT/packages/coc-client"
+CLIENT_TARBALL=$(npm pack 2>&1 | tail -1)
+if tar tzf "$CLIENT_TARBALL" | grep -q "dist/"; then
+  CLIENT_FILES=$(tar tzf "$CLIENT_TARBALL" | grep -c "dist/")
+  echo "✅  coc-client dist is present in the tarball ($CLIENT_FILES files)."
+else
+  rm -f "$CLIENT_TARBALL"
+  echo "❌  dist/ was NOT found in the coc-client tarball. Run 'npm run build' in packages/coc-client."
+  exit 1
+fi
+rm -f "$CLIENT_TARBALL"
+
+echo ""
 echo "=== Next steps (manual) ==="
+echo ""
+echo "  # coc"
 echo "  cd packages/coc"
+echo "  npm version patch   # or minor / major"
+echo "  npm login            # if needed"
+echo "  npm publish"
+echo ""
+echo "  # coc-client"
+echo "  cd packages/coc-client"
 echo "  npm version patch   # or minor / major"
 echo "  npm login            # if needed"
 echo "  npm publish"
