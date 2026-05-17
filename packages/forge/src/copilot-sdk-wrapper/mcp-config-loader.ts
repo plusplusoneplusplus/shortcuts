@@ -360,6 +360,7 @@ export function loadEffectiveMcpConfig(options: {
     workingDirectory?: string;
     explicitMcpServers?: Record<string, MCPServerConfig>;
     loadDefaultMcpConfig?: boolean;
+    forceReload?: boolean;
 }): MCPConfigLoadResult {
     const shouldLoadDefaultMcp = options.loadDefaultMcpConfig !== false;
 
@@ -372,9 +373,9 @@ export function loadEffectiveMcpConfig(options: {
         };
     }
 
-    const globalConfig = loadDefaultMcpConfig();
+    const globalConfig = loadDefaultMcpConfig(options.forceReload);
     const workspaceConfig = options.workingDirectory
-        ? loadWorkspaceMcpConfig(options.workingDirectory)
+        ? loadWorkspaceMcpConfig(options.workingDirectory, options.forceReload)
         : {
             success: true,
             mcpServers: {},

@@ -83,11 +83,11 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
     const [mcpSources, setMcpSources] = useState<McpServerSources | undefined>(undefined);
     const [enabledMcpServers, setEnabledMcpServers] = useState<string[] | null>(null);
 
-    useEffect(() => {
+    const fetchMcpConfig = useCallback((forceReload = false) => {
         setLoading(true);
         setError(null);
         setMcpSources(undefined);
-        fetchApi(`/workspaces/${workspaceId}/mcp-config`)
+        fetchApi(`/workspaces/${workspaceId}/mcp-config${forceReload ? '?forceReload=true' : ''}`)
             .then((data) => {
                 setAvailableServers(data.availableServers ?? []);
                 setMcpSources(data.sources);
@@ -96,6 +96,10 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
             .catch((e: any) => setError(e.message ?? 'Failed to load MCP config'))
             .finally(() => setLoading(false));
     }, [workspaceId]);
+
+    useEffect(() => {
+        fetchMcpConfig();
+    }, [fetchMcpConfig]);
 
     const isEnabled = (name: string) =>
         enabledMcpServers === null || enabledMcpServers.includes(name);
@@ -491,6 +495,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                         sources={mcpSources}
                         isEnabled={isEnabled}
                         onToggle={handleToggle}
+                        onRefresh={() => fetchMcpConfig(true)}
                     />
                 )}
                 {activeSection === 'skills' && (

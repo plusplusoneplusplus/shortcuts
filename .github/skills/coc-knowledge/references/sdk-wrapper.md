@@ -85,12 +85,15 @@ Installed once when SDK module loads. Absorbs `ERR_STREAM_DESTROYED` errors via 
 SendMessageOptions.mcpServers            →  explicit config
 loadEffectiveMcpConfig: global < workspace < explicit; {} disables all MCP
 loadDefaultMcpConfig: false              →  skips global/workspace files
+forceReload: true                        →  bypasses the path-keyed config cache
 ```
 
 Workspace MCP loading is resolved from the per-request `workingDirectory`, not
 the process current directory, so concurrent repos do not share MCP state. VS
 Code workspace config uses a top-level `servers` map, which is normalized into
 Forge's existing `mcpServers` shape before passing configuration to the SDK.
+Config load results include source-scoped `success`/`error` metadata so callers
+can continue with valid sources when another source is malformed.
 
 ## Model Resolution
 

@@ -626,6 +626,46 @@ describe('MCP Config Loader', () => {
                 explicit: { type: 'local', command: 'explicit' },
             });
         });
+
+        it('force reload bypasses cached global and workspace configs', () => {
+            fs.mkdirSync(mockCopilotDir, { recursive: true });
+            fs.mkdirSync(path.dirname(workspaceConfigPath), { recursive: true });
+            fs.writeFileSync(mockConfigPath, JSON.stringify({
+                mcpServers: {
+                    globalOld: { type: 'local', command: 'global-old' },
+                },
+            }));
+            fs.writeFileSync(workspaceConfigPath, JSON.stringify({
+                servers: {
+                    workspaceOld: { type: 'local', command: 'workspace-old' },
+                },
+            }));
+
+            const first = loadEffectiveMcpConfig({ workingDirectory: workspaceDir });
+            expect(first.mcpServers).toHaveProperty('globalOld');
+            expect(first.mcpServers).toHaveProperty('workspaceOld');
+
+            fs.writeFileSync(mockConfigPath, JSON.stringify({
+                mcpServers: {
+                    globalNew: { type: 'local', command: 'global-new' },
+                },
+            }));
+            fs.writeFileSync(workspaceConfigPath, JSON.stringify({
+                servers: {
+                    workspaceNew: { type: 'local', command: 'workspace-new' },
+                },
+            }));
+
+            const cached = loadEffectiveMcpConfig({ workingDirectory: workspaceDir });
+            expect(cached.mcpServers).toHaveProperty('globalOld');
+            expect(cached.mcpServers).toHaveProperty('workspaceOld');
+
+            const reloaded = loadEffectiveMcpConfig({ workingDirectory: workspaceDir, forceReload: true });
+            expect(reloaded.mcpServers).toHaveProperty('globalNew');
+            expect(reloaded.mcpServers).toHaveProperty('workspaceNew');
+            expect(reloaded.mcpServers).not.toHaveProperty('globalOld');
+            expect(reloaded.mcpServers).not.toHaveProperty('workspaceOld');
+        });
     });
 
     describe('clearMcpConfigCache', () => {

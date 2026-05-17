@@ -95,11 +95,13 @@ describe('McpServersPanel — source sections', () => {
                 global: {
                     configPath: '~/.copilot/mcp-config.json',
                     fileExists: false,
+                    success: true,
                     servers: [],
                 },
                 workspace: {
                     configPath: '.vscode/mcp.json',
                     fileExists: false,
+                    success: true,
                     servers: [],
                 },
             },
@@ -121,6 +123,7 @@ describe('McpServersPanel — source sections', () => {
                 global: {
                     configPath: '~/.copilot/mcp-config.json',
                     fileExists: true,
+                    success: true,
                     servers: [
                         { name: 'shared', type: 'stdio', command: 'global-cmd', source: 'global', effective: false, overriddenBy: 'workspace' },
                     ],
@@ -128,6 +131,7 @@ describe('McpServersPanel — source sections', () => {
                 workspace: {
                     configPath: '.vscode/mcp.json',
                     fileExists: true,
+                    success: true,
                     servers: [
                         { name: 'shared', type: 'stdio', command: 'workspace-cmd', source: 'workspace', effective: true },
                     ],
@@ -145,5 +149,40 @@ describe('McpServersPanel — source sections', () => {
 
         await user.click(workspaceToggle);
         expect(onToggle).toHaveBeenCalledWith('shared', false);
+    });
+
+    it('shows source-scoped errors without hiding the other source section', () => {
+        renderPanel({
+            sources: {
+                global: {
+                    configPath: '~/.copilot/mcp-config.json',
+                    fileExists: true,
+                    success: false,
+                    error: 'Failed to parse MCP config: bad global JSON',
+                    servers: [],
+                },
+                workspace: {
+                    configPath: '.vscode/mcp.json',
+                    fileExists: true,
+                    success: true,
+                    servers: [
+                        { name: 'workspace-only', type: 'stdio', command: 'workspace-cmd', source: 'workspace', effective: true },
+                    ],
+                },
+            },
+        });
+
+        expect(screen.getByText('Failed to parse MCP config: bad global JSON')).toBeTruthy();
+        expect(screen.getByText('Workspace MCP servers')).toBeTruthy();
+        expect(screen.getByText('workspace-only')).toBeTruthy();
+    });
+
+    it('calls onRefresh when the refresh button is clicked', async () => {
+        const user = userEvent.setup();
+        const onRefresh = vi.fn();
+        renderPanel({ onRefresh });
+
+        await user.click(screen.getByRole('button', { name: 'Refresh' }));
+        expect(onRefresh).toHaveBeenCalledTimes(1);
     });
 });

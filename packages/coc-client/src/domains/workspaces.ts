@@ -116,8 +116,10 @@ export class WorkspacesClient {
     });
   }
 
-  getMcpConfig(workspaceId: string): Promise<WorkspaceMcpConfigResponse> {
-    return this.transport.request<WorkspaceMcpConfigResponse>(`/workspaces/${encodePathSegment(workspaceId)}/mcp-config`);
+  getMcpConfig(workspaceId: string, options?: { forceReload?: boolean }): Promise<WorkspaceMcpConfigResponse> {
+    return this.transport.request<WorkspaceMcpConfigResponse>(`/workspaces/${encodePathSegment(workspaceId)}/mcp-config`, {
+      query: options?.forceReload ? { forceReload: true } : undefined,
+    });
   }
 
   updateMcpConfig(workspaceId: string, request: UpdateWorkspaceMcpConfigRequest): Promise<{ workspace: WorkspaceInfo }> {

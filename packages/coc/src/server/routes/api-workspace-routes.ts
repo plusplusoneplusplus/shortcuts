@@ -64,6 +64,14 @@ interface WorkspaceMcpServerEntry {
     overriddenBy?: WorkspaceMcpServerSource;
 }
 
+interface WorkspaceMcpSourceSection {
+    configPath: string;
+    fileExists: boolean;
+    success: boolean;
+    error?: string;
+    servers: WorkspaceMcpServerEntry[];
+}
+
 function toMcpServerEntry(
     name: string,
     config: MCPServerConfig,
@@ -81,9 +89,22 @@ function toMcpServerEntry(
     };
 }
 
-function buildMcpConfigResponse(ws: WorkspaceInfo) {
-    const globalConfig = loadDefaultMcpConfig();
-    const workspaceConfig = loadWorkspaceMcpConfig(ws.rootPath);
+function toMcpSourceSection(
+    config: ReturnType<typeof loadDefaultMcpConfig>,
+    servers: WorkspaceMcpServerEntry[],
+): WorkspaceMcpSourceSection {
+    return {
+        configPath: config.configPath ?? '',
+        fileExists: Boolean(config.fileExists),
+        success: config.success !== false,
+        ...(config.error ? { error: config.error } : {}),
+        servers,
+    };
+}
+
+function buildMcpConfigResponse(ws: WorkspaceInfo, forceReload = false) {
+    const globalConfig = loadDefaultMcpConfig(forceReload);
+    const workspaceConfig = loadWorkspaceMcpConfig(ws.rootPath, forceReload);
     const workspaceNames = new Set(Object.keys(workspaceConfig.mcpServers));
 
     const globalServers = Object.entries(globalConfig.mcpServers).map(([name, config]) =>
@@ -103,16 +124,8 @@ function buildMcpConfigResponse(ws: WorkspaceInfo) {
         availableServers,
         enabledMcpServers: ws.enabledMcpServers ?? null,
         sources: {
-            global: {
-                configPath: globalConfig.configPath ?? '',
-                fileExists: Boolean(globalConfig.fileExists),
-                servers: globalServers,
-            },
-            workspace: {
-                configPath: workspaceConfig.configPath ?? '',
-                fileExists: Boolean(workspaceConfig.fileExists),
-                servers: workspaceServers,
-            },
+            global: toMcpSourceSection(globalConfig, globalServers),
+            workspace: toMcpSourceSection(workspaceConfig, workspaceServers),
         },
     };
 }
@@ -363,10 +376,12 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
     routes.push({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/mcp-config$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
-            sendJSON(res, 200, buildMcpConfigResponse(ws));
+            const parsed = url.parse(req.url || '/', true);
+            const forceReload = parsed.query.forceReload === 'true' || parsed.query.refresh === 'true';
+            sendJSON(res, 200, buildMcpConfigResponse(ws, forceReload));
         },
     });
 

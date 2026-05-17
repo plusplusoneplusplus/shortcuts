@@ -87,6 +87,8 @@ The **Repository Settings Tab** provides a centralized configuration interface f
 - **Then** global and workspace MCP server sources are shown as separate cards with toggle switches for effective servers
 - **When** the user toggles a server
 - **Then** `PUT .../mcp-config` updates the enabled set; `null` means all enabled
+- **When** the user clicks Refresh
+- **Then** `GET .../mcp-config?forceReload=true` reloads both MCP config files without a file watcher
 
 ---
 
@@ -181,7 +183,8 @@ The **Repository Settings Tab** provides a centralized configuration interface f
 | Override handling | Workspace servers replace global servers with the same name; overridden global rows show "Overridden by workspace" and have disabled toggles |
 | Toggle behavior | `null` enabled set means all enabled; specific set means only those |
 | Sidebar badge | MCP badge shows the enabled effective server count, excluding overridden global rows |
-| Error handling | Load error on panel; save reverts enabled list on failure |
+| Refresh | Refresh button force-reloads global and workspace MCP sources |
+| Error handling | Overall load failure shows on panel; source-specific load errors appear in that source card without hiding valid sources; save reverts enabled list on failure |
 
 ### 4.5 Agent Skills Section
 

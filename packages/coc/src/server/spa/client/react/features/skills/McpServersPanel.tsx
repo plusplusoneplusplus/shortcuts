@@ -12,6 +12,8 @@ export type McpServerEntry = {
 export type McpServerSourceSection = {
     configPath: string;
     fileExists: boolean;
+    success: boolean;
+    error?: string;
     servers: McpServerEntry[];
 };
 
@@ -28,6 +30,7 @@ interface McpServersPanelProps {
     sources?: McpServerSources;
     isEnabled: (name: string) => boolean;
     onToggle: (serverName: string, checked: boolean) => void;
+    onRefresh?: () => void;
 }
 
 type SourceKey = keyof McpServerSources;
@@ -86,6 +89,9 @@ function SourceCard({
                     </span>
                 </div>
                 <p className="text-xs text-[#616161] dark:text-[#999] mt-2">{labels.description}</p>
+                {!section.success && section.error && (
+                    <p className="text-xs text-red-500 mt-2">{section.error}</p>
+                )}
             </div>
 
             <div className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -136,17 +142,20 @@ export function McpServersPanel({
     sources,
     isEnabled,
     onToggle,
+    onRefresh,
 }: McpServersPanelProps) {
     const hasSourceSections = Boolean(sources);
     const legacySources: McpServerSources | undefined = sources ?? (availableServers.length > 0 ? {
         global: {
             configPath: '~/.copilot/mcp-config.json',
             fileExists: true,
+            success: true,
             servers: availableServers,
         },
         workspace: {
             configPath: '.vscode/mcp.json',
             fileExists: false,
+            success: true,
             servers: [],
         },
     } : undefined);
@@ -155,6 +164,18 @@ export function McpServersPanel({
         <div className="space-y-4">
             {loading && <p className="text-sm text-gray-500">Loading…</p>}
             {error && <p className="text-sm text-red-500">{error}</p>}
+            {onRefresh && (
+                <div className="flex justify-end">
+                    <button
+                        type="button"
+                        className="text-xs px-2 py-1 rounded border border-[#d0d0d0] dark:border-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] disabled:opacity-60"
+                        onClick={onRefresh}
+                        disabled={loading}
+                    >
+                        Refresh
+                    </button>
+                </div>
+            )}
             {!loading && !error && !legacySources && (
                 <p className="text-sm text-gray-400">No MCP servers configured.</p>
             )}

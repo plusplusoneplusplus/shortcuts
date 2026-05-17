@@ -167,6 +167,7 @@ describe('MCP Config API endpoints', () => {
             expect(data.sources.global).toMatchObject({
                 configPath: '~/.copilot/mcp-config.json',
                 fileExists: true,
+                success: true,
             });
             expect(data.sources.global.servers).toHaveLength(2);
             expect(data.sources.workspace.servers).toEqual([]);
@@ -265,11 +266,13 @@ describe('MCP Config API endpoints', () => {
             expect(data.sources.global).toMatchObject({
                 configPath: '~/.copilot/mcp-config.json',
                 fileExists: false,
+                success: true,
                 servers: [],
             });
             expect(data.sources.workspace).toMatchObject({
                 configPath: '/projects/my/.vscode/mcp.json',
                 fileExists: false,
+                success: true,
                 servers: [],
             });
         });
@@ -291,6 +294,77 @@ describe('MCP Config API endpoints', () => {
             expect(server.type).toBe('sse');
             expect(server.url).toBe('http://0.0.0.0:8000/sse');
             expect(server.headers).toBeUndefined();
+        });
+
+        it('passes forceReload=true to both config loaders when requested', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config?forceReload=true`);
+            expect(res.status).toBe(200);
+            expect(mockLoadDefaultMcpConfig).toHaveBeenCalledWith(true);
+            expect(mockLoadWorkspaceMcpConfig).toHaveBeenCalledWith('/projects/my', true);
+        });
+
+        it('returns scoped global source error while keeping valid workspace servers', async () => {
+            mockLoadDefaultMcpConfig.mockReturnValue({
+                configPath: '~/.copilot/mcp-config.json',
+                fileExists: true,
+                success: false,
+                error: 'Failed to parse MCP config: bad global JSON',
+                mcpServers: {},
+            });
+            mockLoadWorkspaceMcpConfig.mockReturnValue({
+                configPath: '/projects/my/.vscode/mcp.json',
+                fileExists: true,
+                success: true,
+                mcpServers: {
+                    workspace: { command: 'workspace-cmd', env: { TOKEN: 'secret' } },
+                },
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`);
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.availableServers).toEqual([
+                { name: 'workspace', type: 'stdio', command: 'workspace-cmd', source: 'workspace', effective: true },
+            ]);
+            expect(data.sources.global).toMatchObject({
+                success: false,
+                error: 'Failed to parse MCP config: bad global JSON',
+                servers: [],
+            });
+            expect(data.sources.workspace.success).toBe(true);
+            expect(data.sources.workspace.servers[0].env).toBeUndefined();
+        });
+
+        it('returns scoped workspace source error while keeping valid global servers', async () => {
+            mockLoadDefaultMcpConfig.mockReturnValue({
+                configPath: '~/.copilot/mcp-config.json',
+                fileExists: true,
+                success: true,
+                mcpServers: {
+                    global: { command: 'global-cmd', args: ['secret-arg'] },
+                },
+            });
+            mockLoadWorkspaceMcpConfig.mockReturnValue({
+                configPath: '/projects/my/.vscode/mcp.json',
+                fileExists: true,
+                success: false,
+                error: 'Failed to parse MCP config: bad workspace JSON',
+                mcpServers: {},
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`);
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.availableServers).toEqual([
+                { name: 'global', type: 'stdio', command: 'global-cmd', source: 'global', effective: true },
+            ]);
+            expect(data.sources.global.success).toBe(true);
+            expect(data.sources.global.servers[0].args).toBeUndefined();
+            expect(data.sources.workspace).toMatchObject({
+                success: false,
+                error: 'Failed to parse MCP config: bad workspace JSON',
+                servers: [],
+            });
         });
     });
 

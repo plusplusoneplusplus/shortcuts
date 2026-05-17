@@ -51,6 +51,8 @@ calls this endpoint via `coc-client`'s `processes.promoteToRalph` helper.
 override global entries with the same name. The endpoint only exposes safe row
 metadata (`name`, `type`, optional `url`/`command`, source/effective flags) and
 must not return secrets such as `env`, headers, or full argument arrays.
+`?forceReload=true` bypasses the path-keyed MCP config cache for manual dashboard
+refreshes; no file watcher is used.
 
 `PUT /api/workspaces/:id/mcp-config` stores only the name-based
 `enabledMcpServers` allow-list. Workflow run filtering must resolve that list

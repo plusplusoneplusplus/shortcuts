@@ -28,6 +28,8 @@ export interface WorkspaceMcpServerEntry {
 export interface WorkspaceMcpSourceSection {
   configPath: string;
   fileExists: boolean;
+  success: boolean;
+  error?: string;
   servers: WorkspaceMcpServerEntry[];
 }
 
@@ -39,7 +41,7 @@ export interface WorkspaceMcpSources {
 export interface WorkspaceMcpConfigResponse {
   availableServers: WorkspaceMcpServerEntry[];
   enabledMcpServers: string[] | null;
-  sources?: WorkspaceMcpSources;
+  sources: WorkspaceMcpSources;
 }
 
 export interface UpdateWorkspaceMcpConfigRequest {
