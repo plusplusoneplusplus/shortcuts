@@ -26,6 +26,7 @@ const mockCreateNode = vi.fn();
 const mockRenameNode = vi.fn();
 const mockDeleteNode = vi.fn();
 const mockCreateWithAI = vi.fn();
+const mockGetGitStatus = vi.fn().mockResolvedValue({ initialized: false });
 const mockClipboardWriteText = vi.fn();
 
 vi.mock('../../../src/server/spa/client/react/features/notes/notesApi', () => ({
@@ -35,6 +36,7 @@ vi.mock('../../../src/server/spa/client/react/features/notes/notesApi', () => ({
         renameNode: (...args: any[]) => mockRenameNode(...args),
         deleteNode: (...args: any[]) => mockDeleteNode(...args),
         createWithAI: (...args: any[]) => mockCreateWithAI(...args),
+        getGitStatus: (...args: any[]) => mockGetGitStatus(...args),
     },
 }));
 
@@ -85,6 +87,7 @@ describe('NotesSidebar', () => {
         mockCreateNode.mockResolvedValue({ path: 'new', type: 'page' });
         mockRenameNode.mockResolvedValue({ oldPath: 'x', newPath: 'y' });
         mockDeleteNode.mockResolvedValue(undefined);
+        mockGetGitStatus.mockResolvedValue({ initialized: false });
     });
 
     afterEach(() => {
@@ -109,22 +112,23 @@ describe('NotesSidebar', () => {
         expect(empty.className).toContain('italic');
     });
 
-    it('renders notebooks, sections, and pages with correct icons', async () => {
+    it('renders notebooks, sections, and pages with folder chevrons', async () => {
         const { findByTestId } = renderSidebar();
         const nb1 = await findByTestId('notes-tree-item-Notebook1');
         expect(nb1).toBeTruthy();
+
+        // Folders show a chevron; pages do not
+        expect(nb1.querySelector('[data-testid="chevron"]')).toBeTruthy();
 
         // Expand notebook to see children
         fireEvent.click(nb1);
 
         const section = await findByTestId('notes-tree-item-Section1');
         expect(section).toBeTruthy();
+        expect(section.querySelector('[data-testid="chevron"]')).toBeTruthy();
 
-        // Check icon texts — notebook has 📓, section has 📁, page has 📄
-        const allIcons = document.querySelectorAll('[data-testid="node-icon"]');
-        const iconTexts = Array.from(allIcons).map(el => el.textContent);
-        expect(iconTexts).toContain('📓');
-        expect(iconTexts).toContain('📁');
+        const page = await findByTestId('notes-tree-item-TopPage');
+        expect(page.querySelector('[data-testid="chevron"]')).toBeNull();
     });
 
     it('expands and collapses folders on click', async () => {
@@ -160,19 +164,19 @@ describe('NotesSidebar', () => {
     it('indents nested items by depth', async () => {
         const { findByTestId } = renderSidebar();
 
-        // Depth 0 — notebook
+        // Depth 0 — notebook (base 10px indent + depth * 16px)
         const nb1 = await findByTestId('notes-tree-item-Notebook1');
-        expect(nb1.style.paddingLeft).toBe('0px');
+        expect(nb1.style.paddingLeft).toBe('10px');
 
         // Expand to depth 1
         fireEvent.click(nb1);
         const section = await findByTestId('notes-tree-item-Section1');
-        expect(section.style.paddingLeft).toBe('16px');
+        expect(section.style.paddingLeft).toBe('26px');
 
         // Expand section to depth 2
         fireEvent.click(section);
         const page = await findByTestId('notes-tree-item-Page1');
-        expect(page.style.paddingLeft).toBe('32px');
+        expect(page.style.paddingLeft).toBe('42px');
     });
 
     it('shows context menu on right-click', async () => {
@@ -878,5 +882,123 @@ describe('NotesSidebar', () => {
 
         // Verify no call with wrong prefix (queue- hyphen)
         expect(processIds.includes('queue-abc-123')).toBe(false);
+    });
+
+    // ── Redesigned header / meta / search ─────────────────────────────────
+
+    it('renders the redesigned panel header with Notes title and "New" button', async () => {
+        const { findByTestId } = renderSidebar();
+        await findByTestId('notes-tree');
+
+        const sidebar = await findByTestId('notes-sidebar');
+        expect(sidebar.textContent).toContain('Notes');
+
+        const newBtn = await findByTestId('add-note-btn');
+        expect(newBtn.textContent).toContain('New');
+    });
+
+    it('renders the pages count pill reflecting total pages in the tree', async () => {
+        const { findByTestId } = renderSidebar();
+        // SAMPLE_TREE has 2 pages: TopPage and Section1/Page1
+        const pill = await findByTestId('notes-pages-pill');
+        expect(pill.textContent).toBe('2 pages');
+    });
+
+    it('shows the updated pill only when at least one page is unseen', async () => {
+        window.localStorage.setItem('coc-notes-seen-ws1', JSON.stringify({
+            'Notebook1/TopPage': '2024-01-01T00:00:00.000Z',
+        }));
+        mockGetTree.mockResolvedValue({
+            tree: [
+                {
+                    ...SAMPLE_TREE[0],
+                    children: [
+                        SAMPLE_TREE[0].children![0],
+                        {
+                            ...SAMPLE_TREE[0].children![1],
+                            lastModifiedAt: '2024-01-02T00:00:00.000Z',
+                        },
+                    ],
+                },
+                SAMPLE_TREE[1],
+            ],
+            notesRoot: '/mock/notes',
+        });
+
+        const { findByTestId } = renderSidebar();
+        const pill = await findByTestId('notes-updated-pill');
+        expect(pill.textContent).toContain('1 updated');
+    });
+
+    it('hides the updated pill when nothing is new', async () => {
+        const { findByTestId, queryByTestId } = renderSidebar();
+        await findByTestId('notes-tree');
+        expect(queryByTestId('notes-updated-pill')).toBeNull();
+    });
+
+    it('shows the tracked pill when notes git reports initialized', async () => {
+        mockGetGitStatus.mockResolvedValue({ initialized: true });
+        const { findByTestId } = renderSidebar();
+        await findByTestId('notes-tree');
+
+        await waitFor(() => {
+            expect(document.querySelector('[data-testid="notes-tracked-pill"]')).toBeTruthy();
+        });
+    });
+
+    it('omits the tracked pill when notes git is not initialized', async () => {
+        const { findByTestId, queryByTestId } = renderSidebar();
+        await findByTestId('notes-tree');
+        // Allow the getGitStatus promise to resolve
+        await waitFor(() => {
+            expect(mockGetGitStatus).toHaveBeenCalled();
+        });
+        expect(queryByTestId('notes-tracked-pill')).toBeNull();
+    });
+
+    it('renders a search input that filters tree rows by name', async () => {
+        const { findByTestId, queryByTestId } = renderSidebar();
+        await findByTestId('notes-tree');
+
+        const input = await findByTestId('notes-search-input') as HTMLInputElement;
+        expect(input).toBeTruthy();
+
+        // Type a query that matches only TopPage — Section1/Page1 should disappear
+        fireEvent.change(input, { target: { value: 'TopPage' } });
+
+        await waitFor(() => {
+            expect(queryByTestId('notes-tree-item-TopPage')).toBeTruthy();
+            expect(queryByTestId('notes-tree-item-Page1')).toBeNull();
+        });
+    });
+
+    it('renders an empty-state message when no notes match the search query', async () => {
+        const { findByTestId } = renderSidebar();
+        await findByTestId('notes-tree');
+
+        const input = await findByTestId('notes-search-input') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'no-such-page' } });
+
+        await waitFor(() => {
+            const empty = document.querySelector('[data-testid="notes-search-empty"]');
+            expect(empty).toBeTruthy();
+            expect(empty!.textContent).toContain('no-such-page');
+        });
+    });
+
+    it('renders a recursive page-count badge on folder rows', async () => {
+        const { findByTestId } = renderSidebar();
+        const nb1 = await findByTestId('notes-tree-item-Notebook1');
+
+        // Notebook1 contains 2 descendant pages (Section1/Page1 and TopPage)
+        const badge = nb1.querySelector('[data-testid="folder-page-count"]');
+        expect(badge).toBeTruthy();
+        expect(badge!.textContent).toBe('2');
+    });
+
+    it('does not render a page-count badge on empty folders', async () => {
+        const { findByTestId } = renderSidebar();
+        const nb2 = await findByTestId('notes-tree-item-Notebook2');
+        expect(nb2.querySelector('[data-testid="folder-page-count"]')).toBeNull();
     });
 });

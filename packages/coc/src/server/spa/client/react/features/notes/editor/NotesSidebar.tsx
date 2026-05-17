@@ -1,13 +1,12 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type { NoteTreeNode } from '../notesApi';
 import type { ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import { ContextMenu } from '../../../tasks/comments/ContextMenu';
-import { Button } from '../../../ui/Button';
 import { Spinner } from '../../../ui/Spinner';
 import { NotesTree } from './NotesTree';
 import { NotesDialogs } from './NotesDialogs';
 import { useNotesTree } from './useNotesTree';
-import { useNotesContextMenu, type NoteDialogAction } from './useNotesContextMenu';
+import { useNotesContextMenu } from './useNotesContextMenu';
 import { useNotesDragDrop, getNotesParentPath, type NoteDragItem, type DropPosition } from '../hooks/useNotesDragDrop';
 import { useNoteSeenState } from '../hooks/useNoteSeenState';
 import { getSpaCocClient } from '../../../api/cocClient';
@@ -24,6 +23,82 @@ function getAncestorPaths(notePath: string): string[] {
         ancestors.push(segments.slice(0, i).join('/'));
     }
     return ancestors;
+}
+
+/** Recursively count `page` nodes inside the subtree (excluding the root node itself). */
+function countDescendantPages(node: NoteTreeNode): number {
+    if (!node.children || node.children.length === 0) return 0;
+    let total = 0;
+    for (const child of node.children) {
+        if (child.type === 'page') total += 1;
+        else total += countDescendantPages(child);
+    }
+    return total;
+}
+
+/** Sum of pages across the entire top-level tree. */
+function countTotalPages(tree: NoteTreeNode[]): number {
+    let total = 0;
+    const walk = (nodes: NoteTreeNode[]) => {
+        for (const n of nodes) {
+            if (n.type === 'page') total += 1;
+            else if (n.children) walk(n.children);
+        }
+    };
+    walk(tree);
+    return total;
+}
+
+/** Count of page nodes that the seen-state hook marks as updated. */
+function countUpdatedPages(tree: NoteTreeNode[], isUpdated: (node: NoteTreeNode) => boolean): number {
+    let total = 0;
+    const walk = (nodes: NoteTreeNode[]) => {
+        for (const n of nodes) {
+            if (n.type === 'page') {
+                if (isUpdated(n)) total += 1;
+            } else if (n.children) walk(n.children);
+        }
+    };
+    walk(tree);
+    return total;
+}
+
+interface VisibilityFilter {
+    visible: Set<string>;
+    expand: Set<string>;
+}
+
+/**
+ * Build a search-driven visibility filter. A node is visible if its name
+ * matches the query or any descendant matches. Ancestors of any match are
+ * expanded so the user can actually see the hits.
+ */
+function buildVisibilityFilter(tree: NoteTreeNode[], query: string): VisibilityFilter | null {
+    const q = query.trim().toLowerCase();
+    if (!q) return null;
+
+    const visible = new Set<string>();
+    const expand = new Set<string>();
+
+    const walk = (nodes: NoteTreeNode[], ancestors: string[]): boolean => {
+        let anyMatch = false;
+        for (const n of nodes) {
+            const nameMatch = n.name.toLowerCase().includes(q);
+            const childMatch = n.children ? walk(n.children, [...ancestors, n.path]) : false;
+            if (nameMatch || childMatch) {
+                visible.add(n.path);
+                if (childMatch) expand.add(n.path);
+                for (const a of ancestors) {
+                    visible.add(a);
+                    expand.add(a);
+                }
+                anyMatch = true;
+            }
+        }
+        return anyMatch;
+    };
+    walk(tree, []);
+    return { visible, expand };
 }
 
 export interface NotesSidebarProps {
@@ -48,6 +123,8 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     const { isNoteUpdated, markAsSeen, syncSeenState } = useNoteSeenState(workspaceId);
     const { ctxMenu, dialog, openContextMenu, closeContextMenu, openDialog, closeDialog, setSubmitting } = useNotesContextMenu();
     const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+    const [searchQuery, setSearchQuery] = useState('');
+    const [gitInitialized, setGitInitialized] = useState(false);
     const deepLinkAppliedRef = useRef<string | null>(null);
     const dragDrop = useNotesDragDrop();
     const [addDropdownOpen, setAddDropdownOpen] = useState(false);
@@ -112,6 +189,28 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         };
         return () => { (markSeenRef as React.MutableRefObject<(() => void) | null>).current = null; };
     }, [markSeenRef, selectedPath, markAsSeen]);
+
+    // One-shot fetch of notes git status for the "tracked" meta pill.
+    // Refreshed when the server emits `notes-changed` for this workspace.
+    useEffect(() => {
+        let cancelled = false;
+        const fetchStatus = () => {
+            notesApi.getGitStatus(workspaceId)
+                .then(s => { if (!cancelled) setGitInitialized(Boolean(s?.initialized)); })
+                .catch(() => { /* silently ignore — pill simply stays hidden */ });
+        };
+        fetchStatus();
+        const handler = (e: Event) => {
+            const detail = (e as CustomEvent).detail as { wsId?: string } | undefined;
+            if (detail?.wsId !== workspaceId) return;
+            fetchStatus();
+        };
+        window.addEventListener('notes-changed', handler);
+        return () => {
+            cancelled = true;
+            window.removeEventListener('notes-changed', handler);
+        };
+    }, [workspaceId]);
 
     // Scroll the selected tree item into view after tree renders
     useEffect(() => {
@@ -384,79 +483,173 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         ];
     };
 
+    // ── Derived values for the redesigned header / meta row ────────────────
+
+    const totalPages = useMemo(() => (tree ? countTotalPages(tree) : 0), [tree]);
+    const updatedCount = useMemo(
+        () => (tree ? countUpdatedPages(tree, isNoteUpdated) : 0),
+        [tree, isNoteUpdated],
+    );
+
+    const filter = useMemo(
+        () => (tree ? buildVisibilityFilter(tree, searchQuery) : null),
+        [tree, searchQuery],
+    );
+
+    /** Combined expansion set: user-controlled plus search-driven expansion. */
+    const effectiveExpanded = useMemo(() => {
+        if (!filter) return expandedPaths;
+        const combined = new Set(expandedPaths);
+        for (const p of filter.expand) combined.add(p);
+        return combined;
+    }, [filter, expandedPaths]);
+
     return (
-        <div className="flex flex-col h-full" data-testid="notes-sidebar">
-            {/* Toolbar */}
-            <div className="h-10 flex items-center gap-1 px-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                <Button
-                    variant="ghost"
-                    size="sm"
+        <div className="flex flex-col h-full bg-[#f6f8fa] dark:bg-[#252526]" data-testid="notes-sidebar">
+            {/* Panel header — back / title / refresh / primary "New" button */}
+            <div className="flex items-center min-h-[36px] px-2 py-1 gap-1.5 border-b border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e]">
+                <button
+                    type="button"
+                    className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-transparent text-[#1f2328] dark:text-[#cccccc] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2d2e] disabled:opacity-40 disabled:cursor-not-allowed"
                     onClick={onGoBack}
                     disabled={!canGoBack}
+                    aria-label="Previous note"
+                    title="Previous note"
                     data-testid="notes-back-btn"
-                    aria-label="Go to previous note"
-                    title="Go to previous note"
-                    className={!canGoBack ? 'opacity-40 cursor-not-allowed' : ''}
                 >
-                    ←
-                </Button>
-                <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] flex-1">Notes</span>
-                <Button
-                    variant="ghost"
-                    size="sm"
+                    <svg className="w-4 h-4" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M10 12L6 8l4-4" />
+                    </svg>
+                </button>
+                <span className="flex-1 min-w-0 text-[13px] font-semibold text-[#1f2328] dark:text-[#cccccc] truncate">
+                    Notes
+                </span>
+                <button
+                    type="button"
+                    className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-transparent text-[#1f2328] dark:text-[#cccccc] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2d2e] disabled:opacity-40 disabled:cursor-not-allowed"
                     onClick={refresh}
                     disabled={loading}
-                    data-testid="refresh-notes-btn"
                     aria-label="Refresh Notes"
                     title="Refresh Notes"
+                    data-testid="refresh-notes-btn"
                 >
-                    ↻
-                </Button>
+                    <svg className="w-4 h-4" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M13 8a5 5 0 1 1-1.46-3.54" />
+                        <path d="M13 3.5V7h-3.5" />
+                    </svg>
+                </button>
                 <div className="relative" ref={addDropdownRef}>
-                    <Button
-                        variant="ghost"
-                        size="sm"
+                    <button
+                        type="button"
+                        className="inline-flex items-center justify-center gap-1.5 min-h-[28px] px-2.5 rounded-md border border-black/15 bg-[#1f883d] text-white text-[13px] font-semibold leading-none shadow-[0_1px_0_rgba(31,35,40,0.1)] hover:bg-[#1a7f37] disabled:opacity-50 disabled:cursor-not-allowed"
                         onClick={() => setAddDropdownOpen(prev => !prev)}
                         data-testid="add-note-btn"
-                        aria-label="Add"
-                        title="Add"
+                        aria-label="New"
+                        aria-haspopup="menu"
+                        aria-expanded={addDropdownOpen}
+                        title="New"
                     >
-                        + ▾
-                    </Button>
+                        <svg className="w-4 h-4" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 8h10M8 3v10" />
+                        </svg>
+                        <span>New</span>
+                    </button>
                     {addDropdownOpen && (
                         <div
-                            className="absolute right-0 top-full mt-1 z-30 min-w-[180px] bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded shadow-lg py-1"
+                            className="absolute right-0 top-full mt-1 z-30 min-w-[200px] bg-white dark:bg-[#252526] border border-[#d0d7de] dark:border-[#3c3c3c] rounded-md shadow-[0_8px_24px_rgba(140,149,159,0.2)] py-1"
                             data-testid="add-note-dropdown"
+                            role="menu"
                         >
                             <button
-                                className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]"
+                                className="w-full text-left px-3 py-1.5 text-xs text-[#1f2328] dark:text-[#cccccc] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2d2e]"
                                 onClick={handleNewNotebook}
                                 data-testid="add-note-new-notebook"
+                                role="menuitem"
                             >
                                 📓 New Notebook
                             </button>
                             <button
                                 className={`w-full text-left px-3 py-1.5 text-xs ${
                                     findCurrentNotebook()
-                                        ? 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]'
-                                        : 'text-[#999] dark:text-[#555] cursor-not-allowed'
+                                        ? 'text-[#1f2328] dark:text-[#cccccc] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2d2e]'
+                                        : 'text-[#8c959f] dark:text-[#555] cursor-not-allowed'
                                 }`}
                                 onClick={handleNewPage}
                                 disabled={!findCurrentNotebook()}
                                 data-testid="add-note-new-page"
+                                role="menuitem"
                             >
                                 📄 New Page
                             </button>
                             <button
-                                className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]"
+                                className="w-full text-left px-3 py-1.5 text-xs text-[#1f2328] dark:text-[#cccccc] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2d2e]"
                                 onClick={handleNewPageWithAI}
                                 data-testid="add-note-ai-create"
+                                role="menuitem"
                             >
                                 🤖 New Page with AI…
                             </button>
                         </div>
                     )}
                 </div>
+            </div>
+
+            {/* Search */}
+            <div className="px-2 py-1.5 border-b border-[#d8dee4] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e]">
+                <div className="relative flex items-center">
+                    <svg
+                        className="pointer-events-none absolute left-2 w-3.5 h-3.5 text-[#656d76] dark:text-[#9d9d9d]"
+                        viewBox="0 0 16 16"
+                        aria-hidden="true"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                    >
+                        <circle cx="7" cy="7" r="4.25" />
+                        <path d="M10.3 10.3L13 13" />
+                    </svg>
+                    <input
+                        type="search"
+                        placeholder="Search notes"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full h-7 pl-7 pr-2 rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[13px] text-[#1f2328] dark:text-[#cccccc] outline-none focus:border-[#0969da] dark:focus:border-[#3794ff] focus:shadow-[0_0_0_3px_rgba(9,105,218,0.18)]"
+                        aria-label="Search notes"
+                        data-testid="notes-search-input"
+                    />
+                </div>
+            </div>
+
+            {/* Meta row — counts + tracked status */}
+            <div
+                className="flex items-center gap-1 px-2 py-1.5 border-b border-[#eaeef2] dark:border-[#3c3c3c] bg-[#f6f8fa] dark:bg-[#252526]"
+                data-testid="notes-tree-meta"
+            >
+                {updatedCount > 0 && (
+                    <span
+                        className="inline-flex items-center gap-1 min-h-[18px] px-1.5 rounded-full border border-[#b6e3ff] dark:border-[#3a567e] bg-[#ddf4ff] dark:bg-[#0a3b66]/40 text-[#0969da] dark:text-[#79c0ff] text-[12px] whitespace-nowrap"
+                        data-testid="notes-updated-pill"
+                    >
+                        {updatedCount} updated
+                    </span>
+                )}
+                <span
+                    className="inline-flex items-center gap-1 min-h-[18px] px-1.5 rounded-full border border-[#d8dee4] dark:border-[#3c3c3c] bg-white dark:bg-transparent text-[#656d76] dark:text-[#9d9d9d] text-[12px] whitespace-nowrap"
+                    data-testid="notes-pages-pill"
+                >
+                    {totalPages} {totalPages === 1 ? 'page' : 'pages'}
+                </span>
+                {gitInitialized && (
+                    <span
+                        className="inline-flex items-center gap-1 min-h-[18px] px-1.5 rounded-full border border-[#aceebb] dark:border-[#2ea043]/40 bg-[#dafbe1] dark:bg-[#0f5132]/30 text-[#1a7f37] dark:text-[#56d364] text-[12px] whitespace-nowrap"
+                        data-testid="notes-tracked-pill"
+                        title="Notes are tracked by git"
+                    >
+                        tracked
+                    </span>
+                )}
             </div>
 
             {/* Tree area */}
@@ -474,7 +667,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                 )}
 
                 {!loading && !error && tree && tree.length === 0 && (
-                    <div className="py-6 px-4 text-center text-xs text-[#848484] dark:text-[#666] italic" data-testid="notes-empty">
+                    <div className="py-6 px-4 text-center text-xs text-[#656d76] dark:text-[#666] italic" data-testid="notes-empty">
                         No notebooks yet
                     </div>
                 )}
@@ -483,12 +676,14 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                     <NotesTree
                         nodes={tree}
                         selectedPath={selectedPath}
-                        expandedPaths={expandedPaths}
+                        expandedPaths={effectiveExpanded}
                         systemFolders={systemFolders}
                         onToggleExpand={handleToggleExpand}
                         onSelectPage={onSelectPage}
                         onContextMenu={handleContextMenu}
                         isNoteUpdated={isNoteUpdated}
+                        visiblePaths={filter?.visible ?? null}
+                        countDescendantPages={countDescendantPages}
                         dragDrop={{
                             createDragStartHandler: dragDrop.createDragStartHandler,
                             createDragEndHandler: dragDrop.createDragEndHandler,
@@ -501,6 +696,12 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                             onDrop: handleNoteDrop,
                         }}
                     />
+                )}
+
+                {!loading && !error && tree && tree.length > 0 && filter && filter.visible.size === 0 && (
+                    <div className="py-6 px-4 text-center text-xs text-[#656d76] dark:text-[#9d9d9d] italic" data-testid="notes-search-empty">
+                        No notes match “{searchQuery.trim()}”
+                    </div>
                 )}
             </div>
 
