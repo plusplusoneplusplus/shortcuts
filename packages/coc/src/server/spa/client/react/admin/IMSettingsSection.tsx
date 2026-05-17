@@ -14,6 +14,7 @@ interface WhatsAppStatus {
     enabled: boolean;
     status: 'disconnected' | 'connecting' | 'qr-pending' | 'connected';
     qr: string | null;
+    error: string | null;
     groupJid?: string;
     userName: string;
 }
@@ -200,6 +201,15 @@ export function IMSettingsSection() {
                 <div className="flex flex-col items-center gap-4 py-4">
                     {status?.qr ? (
                         <QRCodeDisplay value={status.qr} />
+                    ) : status?.error ? (
+                        <div className="flex flex-col items-center gap-2 py-8">
+                            <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                                <span className="text-3xl">✕</span>
+                            </div>
+                            <p className="text-sm font-medium text-red-700 dark:text-red-400">Connection failed</p>
+                            <p className="text-xs text-[#999] text-center max-w-[300px]">{status.error}</p>
+                            <p className="text-xs text-[#999]">Check network connectivity and try restarting the container.</p>
+                        </div>
                     ) : status?.status === 'connecting' ? (
                         <div className="flex flex-col items-center gap-2 py-8">
                             <Spinner size="md" />

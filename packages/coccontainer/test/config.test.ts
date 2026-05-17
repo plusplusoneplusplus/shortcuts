@@ -30,9 +30,9 @@ describe('config', () => {
         expect(dir).toBe(path.join(os.homedir(), '.coccontainer'));
     });
 
-    it('should default whatsapp to disabled', () => {
+    it('should default whatsapp to enabled', () => {
         const config = resolveConfig();
-        expect(config.messaging.whatsapp.enabled).toBe(false);
+        expect(config.messaging.whatsapp.enabled).toBe(true);
         expect(config.messaging.whatsapp.userName).toBe('CoC');
         expect(config.messaging.whatsapp.sessionDir).toContain('whatsapp-session');
     });

@@ -10,6 +10,7 @@ export class WhatsAppBot {
     private readonly opts: Required<Pick<BotOptions, 'sessionDir' | 'onMessage' | 'printQR'>> & BotOptions;
     private _status: BotStatus = 'disconnected';
     private _lastQR: string | null = null;
+    private _lastError: string | null = null;
 
     constructor(opts: BotOptions) {
         this.opts = {
@@ -21,10 +22,12 @@ export class WhatsAppBot {
     /** Connect to WhatsApp. Prints QR on first run. */
     async start(): Promise<void> {
         this.setStatus('connecting');
+        this._lastError = null;
         this.sock = await createBaileysConnection({
             sessionDir: this.opts.sessionDir,
             onQR: (qr) => {
                 this._lastQR = qr;
+                this._lastError = null;
                 this.setStatus('qr-pending');
                 if (this.opts.printQR) {
                     try {
@@ -38,6 +41,7 @@ export class WhatsAppBot {
             },
             onConnected: () => {
                 this._lastQR = null;
+                this._lastError = null;
                 this.setStatus('connected');
                 console.log('[whatsapp-bot] Connected to WhatsApp');
             },
@@ -46,6 +50,9 @@ export class WhatsAppBot {
                 if (loggedOut) {
                     console.log('[whatsapp-bot] Logged out from WhatsApp');
                 }
+            },
+            onError: (error) => {
+                this._lastError = error;
             },
         });
 
@@ -85,6 +92,11 @@ export class WhatsAppBot {
     /** Last QR code string (null when connected or never received). */
     getLastQR(): string | null {
         return this._lastQR;
+    }
+
+    /** Last connection error message, if any. */
+    getLastError(): string | null {
+        return this._lastError;
     }
 
     private setStatus(status: BotStatus): void {

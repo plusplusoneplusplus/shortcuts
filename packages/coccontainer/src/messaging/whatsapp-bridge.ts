@@ -24,6 +24,7 @@ export interface WhatsAppStatus {
     enabled: boolean;
     status: BotStatus;
     qr: string | null;
+    error: string | null;
     groupJid?: string;
     userName: string;
 }
@@ -64,6 +65,7 @@ export class WhatsAppBridge {
             enabled: true,
             status: this.bot?.getStatus() ?? 'disconnected',
             qr: this.bot?.getLastQR() ?? null,
+            error: this.bot?.getLastError() ?? null,
             groupJid: this.opts.config.groupJid,
             userName: this.opts.config.userName,
         };

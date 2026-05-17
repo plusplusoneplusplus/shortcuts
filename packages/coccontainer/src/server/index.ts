@@ -77,7 +77,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
     }
 
     // ── WhatsApp bridge (only when enabled) ─────────────
-    let whatsappBridge: { stop(): Promise<void>; getWhatsAppStatus(): { enabled: boolean; status: string; qr: string | null; groupJid?: string; userName: string } } | undefined;
+    let whatsappBridge: { stop(): Promise<void>; getWhatsAppStatus(): { enabled: boolean; status: string; qr: string | null; error: string | null; groupJid?: string; userName: string } } | undefined;
     const waConfig = config.messaging?.whatsapp;
     if (waConfig?.enabled) {
         const { WhatsAppBridge } = await import('../messaging/whatsapp-bridge');
@@ -250,6 +250,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                     enabled: false,
                     status: 'disconnected',
                     qr: null,
+                    error: null,
                     userName: config.messaging?.whatsapp?.userName ?? 'CoC',
                 });
             }
