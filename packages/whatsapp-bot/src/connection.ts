@@ -20,14 +20,16 @@ const BASE_DELAY_MS = 3000;
  * with exponential backoff (up to MAX_RETRIES attempts).
  */
 export async function createBaileysConnection(opts: ConnectionOptions, attempt = 0): Promise<WASocket> {
-    const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers } = await import('@whiskeysockets/baileys');
+    const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers, fetchLatestBaileysVersion } = await import('@whiskeysockets/baileys');
 
+    const { version } = await fetchLatestBaileysVersion();
     const { state, saveCreds } = await useMultiFileAuthState(opts.sessionDir);
     const sock = makeWASocket({
         auth: state,
         printQRInTerminal: false,
         browser: Browsers.ubuntu('Chrome'),
         connectTimeoutMs: 30_000,
+        version,
     });
 
     sock.ev.on('creds.update', saveCreds);
