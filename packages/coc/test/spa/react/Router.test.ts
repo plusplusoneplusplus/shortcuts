@@ -2293,8 +2293,8 @@ describe('memory sub-tab deep-link parsing', () => {
 // ─── admin sub-tab deep-link parsing ────────────────────────────
 
 describe('admin sub-tab deep-link parsing', () => {
-    it('VALID_ADMIN_SUB_TABS contains all 7 tabs', () => {
-        expect(VALID_ADMIN_SUB_TABS).toEqual(new Set(['settings', 'providers', 'data', 'server', 'prompts', 'database', 'agents']));
+    it('VALID_ADMIN_SUB_TABS contains all 8 tabs', () => {
+        expect(VALID_ADMIN_SUB_TABS).toEqual(new Set(['settings', 'providers', 'data', 'server', 'prompts', 'database', 'agents', 'messaging']));
     });
 
     it('returns "settings" for #admin/settings', () => {
