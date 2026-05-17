@@ -119,31 +119,31 @@ export class WhatsAppBridge {
         if (this._creatingGroup) return;
         if (!this.bot) return;
         this._creatingGroup = true;
+        const groupName = `${this.opts.config.userName || 'CoC'} Bridge`;
+        // Try immediately, then retry with delays if connection isn't stable yet
+        const retryDelays = [0, 15_000, 25_000];
         try {
-            const groupName = `${this.opts.config.userName || 'CoC'} Bridge`;
-            // Retry with increasing delays — Baileys needs time to stabilize after pairing
-            const delays = [15_000, 20_000, 30_000];
-            for (let i = 0; i < delays.length; i++) {
-                console.log(`[whatsapp-bridge] Waiting ${delays[i] / 1000}s for connection to stabilize...`);
-                await new Promise(resolve => setTimeout(resolve, delays[i]));
+            for (let i = 0; i < retryDelays.length; i++) {
+                if (retryDelays[i] > 0) {
+                    console.log(`[whatsapp-bridge] Retrying in ${retryDelays[i] / 1000}s...`);
+                    await new Promise(resolve => setTimeout(resolve, retryDelays[i]));
+                }
                 if (!this.bot || this.bot.getStatus() !== 'connected') {
-                    console.log('[whatsapp-bridge] Connection lost, will retry on next connect');
+                    console.log('[whatsapp-bridge] Not connected, will retry on next connect');
                     return;
                 }
                 try {
-                    console.log(`[whatsapp-bridge] Creating group "${groupName}" (attempt ${i + 1}/${delays.length})...`);
+                    console.log(`[whatsapp-bridge] Creating group "${groupName}" (attempt ${i + 1}/${retryDelays.length})...`);
                     const jid = await this.bot.createGroup(groupName);
                     this.opts.config.groupJid = jid;
                     console.log(`[whatsapp-bridge] Group created: ${jid}`);
                     await this.persistGroupJid(jid);
                     return;
                 } catch (err: any) {
-                    console.warn(`[whatsapp-bridge] Group creation attempt ${i + 1} failed: ${err.message}`);
-                    if (i === delays.length - 1) {
-                        console.error('[whatsapp-bridge] All group creation attempts failed. Set groupJid manually or re-pair.');
-                    }
+                    console.warn(`[whatsapp-bridge] Attempt ${i + 1} failed: ${err.message}`);
                 }
             }
+            console.error('[whatsapp-bridge] All group creation attempts failed. Will retry on next connect.');
         } finally {
             this._creatingGroup = false;
         }
