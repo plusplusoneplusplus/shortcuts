@@ -166,4 +166,73 @@ describe('resolveReasoningEffort', () => {
             model: model('plain-model', { supportsReasoning: false }),
         })).toBeUndefined();
     });
+
+    // =========================================================================
+    // Suffix-based fallback (no raw CAPI capabilities)
+    // =========================================================================
+
+    it('infers xhigh effort from model ID suffix when raw capabilities are absent and contract data is stale', () => {
+        // Reproduces: CAPIError 400 reasoning_effort "medium" is not supported
+        // by model claude-opus-4.7-xhigh; supported values: [xhigh]
+        expect(resolveReasoningSelection({
+            modelId: 'claude-opus-4.7-xhigh',
+            model: model('claude-opus-4.7-xhigh', {
+                // No rawEfforts — CAPI capability field missing from metadata
+                supportedEfforts: ['medium'],
+                defaultEffort: 'medium',
+            }),
+        })).toEqual({
+            modelId: 'claude-opus-4.7',
+            reasoningEffort: 'xhigh',
+        });
+    });
+
+    it('infers high effort from model ID suffix when no model metadata is available', () => {
+        expect(resolveReasoningSelection({
+            modelId: 'claude-opus-4.7-high',
+            // No model metadata at all (store not initialized)
+        })).toEqual({
+            modelId: 'claude-opus-4.7',
+            reasoningEffort: 'high',
+        });
+    });
+
+    it('infers effort from suffix when metadata has no reasoning support info', () => {
+        expect(resolveReasoningSelection({
+            modelId: 'some-model-medium',
+            model: model('some-model-medium', { supportsReasoning: false }),
+        })).toEqual({
+            modelId: 'some-model',
+            reasoningEffort: 'medium',
+        });
+    });
+
+    it('does not apply suffix inference when raw CAPI capabilities are present', () => {
+        // Raw capabilities are authoritative — suffix inference should not interfere
+        expect(resolveReasoningSelection({
+            modelId: 'claude-opus-4.7-xhigh',
+            model: model('claude-opus-4.7-xhigh', {
+                family: 'claude-opus-4.7',
+                rawEfforts: ['xhigh'],
+                supportedEfforts: ['medium'],
+                defaultEffort: 'medium',
+            }),
+        })).toEqual({
+            modelId: 'claude-opus-4.7',
+            reasoningEffort: 'xhigh',
+        });
+    });
+
+    it('does not apply suffix inference for model IDs not ending with a known effort', () => {
+        expect(resolveReasoningSelection({
+            modelId: 'claude-opus-4.7-internal',
+            model: model('claude-opus-4.7-internal', {
+                supportedEfforts: ['medium', 'high'],
+                defaultEffort: 'medium',
+            }),
+        })).toEqual({
+            modelId: 'claude-opus-4.7-internal',
+            reasoningEffort: 'medium',
+        });
+    });
 });
