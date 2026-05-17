@@ -237,10 +237,6 @@ export interface PerRepoPreferences {
      * Range: 1..200. When unset, server falls back to {@link RALPH_DEFAULT_MAX_ITERATIONS} (20).
      */
     maxRalphIterations?: number;
-    /** EnDev xDPU wrapper skill preference. Eligible workspaces default to enabled when absent. */
-    endevXDpu?: {
-        enabled: boolean;
-    };
 }
 
 /** Hardcoded fallback for Ralph max iterations when no preference is set. */
@@ -718,13 +714,6 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
         && obj.maxRalphIterations >= 1
         && obj.maxRalphIterations <= RALPH_MAX_ITERATIONS_LIMIT) {
         result.maxRalphIterations = obj.maxRalphIterations;
-    }
-
-    if (typeof obj.endevXDpu === 'object' && obj.endevXDpu !== null && !Array.isArray(obj.endevXDpu)) {
-        const raw = obj.endevXDpu as Record<string, unknown>;
-        if (typeof raw.enabled === 'boolean') {
-            result.endevXDpu = { enabled: raw.enabled };
-        }
     }
 
     if (typeof obj.defaultModels === 'object' && obj.defaultModels !== null && !Array.isArray(obj.defaultModels)) {

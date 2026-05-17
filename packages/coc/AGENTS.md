@@ -89,10 +89,12 @@ cached under `~/.coc/repos/<workspaceId>/endev/eligibility.json` and requires a
 native WSL host, xDPU workspace markers, EnDev setup files, and a successful
 short-timeout `endev doctor`. `GET /api/workspaces/:id/endev/status` reads the
 cache by default; `?refresh=true` or `POST /api/workspaces/:id/endev/revalidate`
-forces revalidation and clears the workspace skill cache. The per-repo
-`endevXDpu.enabled` preference defaults to enabled only when the workspace is
-eligible, hides only the `EnDev-xDpu` wrapper skill from picker lists when false,
-and must not disable EnDev MCP servers or EnDev plugin skills.
+forces revalidation and clears the workspace skill cache. The `EnDev-xDpu`
+wrapper skill and auto-discovered EnDev plugin skill folders are surfaced only
+when the workspace is eligible — hidden otherwise from skill lists, pickers,
+and recents. There is no separate per-repo toggle; users disable the wrapper
+via the standard `disabledSkills` mechanism if needed. EnDev MCP servers and
+EnDev plugin skills follow their own settings independently.
 
 ## Loops
 

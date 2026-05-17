@@ -2492,26 +2492,3 @@ describe('validatePerRepoPreferences — maxRalphIterations', () => {
         }
     });
 });
-
-describe('validatePerRepoPreferences — endevXDpu', () => {
-    it('accepts an explicit EnDev xDPU enabled preference', () => {
-        expect(validatePerRepoPreferences({ endevXDpu: { enabled: true } }).endevXDpu).toEqual({ enabled: true });
-        expect(validatePerRepoPreferences({ endevXDpu: { enabled: false } }).endevXDpu).toEqual({ enabled: false });
-    });
-
-    it('rejects invalid EnDev xDPU preference shapes', () => {
-        expect(validatePerRepoPreferences({ endevXDpu: true }).endevXDpu).toBeUndefined();
-        expect(validatePerRepoPreferences({ endevXDpu: { enabled: 'yes' } }).endevXDpu).toBeUndefined();
-        expect(validatePerRepoPreferences({ endevXDpu: null }).endevXDpu).toBeUndefined();
-    });
-
-    it('round-trips through write and read', () => {
-        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-endev-pref-'));
-        try {
-            writeRepoPreferences(tmpDir, 'r', { endevXDpu: { enabled: false } });
-            expect(readRepoPreferences(tmpDir, 'r').endevXDpu).toEqual({ enabled: false });
-        } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
-        }
-    });
-});

@@ -12,7 +12,6 @@ import { createMockProcessStore } from './helpers/mock-process-store';
 import type { Route } from '../../src/server/types';
 import { getRepoDataPath, type WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import { ENDEV_STATUS_CACHE_FILE, ENDEV_XDPU_SKILL_NAME } from '../../src/server/endev/endev-detector';
-import { writeRepoPreferences } from '../../src/server/preferences-handler';
 
 // ============================================================================
 // Test Helpers
@@ -171,27 +170,6 @@ describe('registerSkillRoutes', () => {
 
             expect(statusCode).toBe(200);
             expect(body.skills.map((s: any) => s.name)).toContain(ENDEV_XDPU_SKILL_NAME);
-        });
-
-        it('hides only the EnDev wrapper when the preference is disabled', async () => {
-            const skillsDir = path.join(workspaceDir, '.github', 'skills', ENDEV_XDPU_SKILL_NAME);
-            fs.mkdirSync(skillsDir, { recursive: true });
-            fs.writeFileSync(path.join(skillsDir, 'SKILL.md'), '# EnDev xDPU');
-            const pluginSkillFolder = path.join(workspaceDir, '.endev', 'copilot', 'skills');
-            const pluginSkill = path.join(pluginSkillFolder, 'endev-plugin-skill');
-            fs.mkdirSync(pluginSkill, { recursive: true });
-            fs.writeFileSync(path.join(pluginSkill, 'SKILL.md'), '# EnDev Plugin Skill');
-            writeEnDevStatus(true, pluginSkillFolder);
-            writeRepoPreferences(dataDir, workspaceId, { endevXDpu: { enabled: false } });
-
-            const { statusCode, body } = await dispatchRoute(
-                routesWithDataDir, 'GET', `/api/workspaces/${workspaceId}/skills`
-            );
-            const names = body.skills.map((s: any) => s.name);
-
-            expect(statusCode).toBe(200);
-            expect(names).not.toContain(ENDEV_XDPU_SKILL_NAME);
-            expect(names).toContain('endev-plugin-skill');
         });
     });
 

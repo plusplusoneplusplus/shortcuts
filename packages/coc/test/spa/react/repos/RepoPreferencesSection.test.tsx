@@ -67,8 +67,6 @@ function mockDefaultFetches(overrides?: {
     models?: any[];
     skills?: any;
     linkedPrefs?: Record<string, any>;
-    endevStatus?: Record<string, any>;
-    revalidateEndevStatus?: Record<string, any>;
 }) {
     const prefs = overrides?.preferences ?? {};
     const models = overrides?.models ?? [
@@ -81,32 +79,11 @@ function mockDefaultFetches(overrides?: {
         { name: 'go-deep', description: 'Deep research', source: 'global' },
     ] };
     const linkedPrefs = overrides?.linkedPrefs ?? { linkedRepoIds: [] };
-    const endevStatus = overrides?.endevStatus ?? {
-        workspaceId: 'repo-a',
-        workspaceRoot: '/a',
-        eligible: false,
-        reason: 'missing-setup-files',
-        nativeWsl: true,
-        xDpuWorkspace: true,
-        hasSetupFiles: false,
-        setupFiles: [],
-        checkedAt: '2026-05-17T00:00:00.000Z',
-        cached: true,
-    };
-    const revalidateEndevStatus = overrides?.revalidateEndevStatus ?? endevStatus;
 
     mockFetch.mockImplementation((url: string, opts?: any) => {
-        // POST /endev/revalidate
-        if (opts?.method === 'POST' && url.includes('/endev/revalidate')) {
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(revalidateEndevStatus) });
-        }
         // PATCH requests
         if (opts?.method === 'PATCH') {
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-        }
-        // GET /endev/status
-        if (url.includes('/endev/status')) {
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(endevStatus) });
         }
         // GET /models
         if (url.includes('/models')) {
@@ -359,102 +336,23 @@ describe('RepoPreferencesSection', () => {
         });
     });
 
-    describe('EnDev xDPU preference', () => {
-        const eligibleEndevStatus = {
-            workspaceId: 'repo-a',
-            workspaceRoot: '/a',
-            eligible: true,
-            reason: 'eligible',
-            nativeWsl: true,
-            xDpuWorkspace: true,
-            hasSetupFiles: true,
-            setupFiles: ['.endev'],
-            pluginSkillFolder: '/a/.endev/skills',
-            checkedAt: '2026-05-17T00:00:00.000Z',
-            cached: true,
-        };
-
-        it('hides the EnDev section when the workspace is ineligible', async () => {
-            mockDefaultFetches();
+    describe('EnDev xDPU (no UI)', () => {
+        it('does not render any EnDev preference UI even when the wrapper skill is in the workspace skill list', async () => {
+            mockDefaultFetches({
+                skills: { merged: [{ name: 'EnDev-xDpu', description: 'EnDev wrapper', source: 'global' }] },
+            });
             await act(async () => { renderSection(); });
 
             await waitFor(() => {
                 expect(screen.getByTestId('section-skills')).toBeDefined();
             });
             expect(screen.queryByTestId('section-endev-xdpu')).toBeNull();
-        });
+            expect(screen.queryByTestId('pref-endev-xdpu-enabled')).toBeNull();
+            expect(screen.queryByTestId('pref-endev-xdpu-revalidate')).toBeNull();
 
-        it('shows an enabled-by-default EnDev toggle for eligible workspaces', async () => {
-            mockDefaultFetches({ endevStatus: eligibleEndevStatus });
-            await act(async () => { renderSection(); });
-
-            await waitFor(() => {
-                expect(screen.getByTestId('section-endev-xdpu')).toBeDefined();
-            });
-            const checkbox = screen.getByTestId('pref-endev-xdpu-enabled') as HTMLInputElement;
-            expect(checkbox.checked).toBe(true);
-            expect(screen.getByTestId('pref-endev-xdpu-status').textContent).toContain('Eligible');
-            expect(screen.getByTestId('pref-endev-xdpu-plugin-folder').textContent).toContain('/a/.endev/skills');
-        });
-
-        it('reflects and persists an explicit disabled EnDev preference', async () => {
-            mockDefaultFetches({
-                endevStatus: eligibleEndevStatus,
-                preferences: { endevXDpu: { enabled: false } },
-            });
-            await act(async () => { renderSection(); });
-
-            await waitFor(() => {
-                expect(screen.getByTestId('pref-endev-xdpu-enabled')).toBeDefined();
-            });
-            const checkbox = screen.getByTestId('pref-endev-xdpu-enabled') as HTMLInputElement;
-            expect(checkbox.checked).toBe(false);
-
-            await act(async () => {
-                fireEvent.click(checkbox);
-            });
-
-            await waitFor(() => {
-                const patchCall = mockFetch.mock.calls.find(([url, opts]: [string, any]) => {
-                    if (opts?.method !== 'PATCH' || !url.includes('/preferences')) return false;
-                    return Boolean(JSON.parse(opts.body).endevXDpu);
-                });
-                expect(patchCall).toBeDefined();
-                expect(JSON.parse(patchCall![1].body).endevXDpu).toEqual({ enabled: true });
-            });
-            const skillFetches = mockFetch.mock.calls.filter(([url]: [string]) => url.includes('/skills/all'));
-            expect(skillFetches.length).toBeGreaterThan(1);
-        });
-
-        it('revalidates EnDev eligibility and refreshes the skill list', async () => {
-            const refreshedStatus = {
-                ...eligibleEndevStatus,
-                cached: false,
-                pluginSkillFolder: '/a/.endev/plugins/copilot/skills',
-            };
-            mockDefaultFetches({
-                endevStatus: eligibleEndevStatus,
-                revalidateEndevStatus: refreshedStatus,
-            });
-            await act(async () => { renderSection(); });
-
-            await waitFor(() => {
-                expect(screen.getByTestId('pref-endev-xdpu-revalidate')).toBeDefined();
-            });
-
-            await act(async () => {
-                fireEvent.click(screen.getByTestId('pref-endev-xdpu-revalidate'));
-            });
-
-            await waitFor(() => {
-                expect(mockFetch.mock.calls.some(([url, opts]: [string, any]) =>
-                    url.includes('/endev/revalidate') && opts?.method === 'POST',
-                )).toBe(true);
-                expect(screen.getByTestId('pref-endev-xdpu-plugin-folder').textContent)
-                    .toContain('/a/.endev/plugins/copilot/skills');
-            });
-            const skillFetches = mockFetch.mock.calls.filter(([url]: [string]) => url.includes('/skills/all'));
-            expect(skillFetches.length).toBeGreaterThan(1);
+            const endevCalls = mockFetch.mock.calls.filter(([url]: [string]) =>
+                url.includes('/endev/status') || url.includes('/endev/revalidate'));
+            expect(endevCalls).toHaveLength(0);
         });
     });
 

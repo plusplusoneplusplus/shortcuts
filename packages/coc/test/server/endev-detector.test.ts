@@ -10,7 +10,6 @@ import {
     getEffectiveEnDevExtraSkillFolders,
     isEnDevWrapperSkillVisible,
 } from '../../src/server/endev/endev-detector';
-import { writeRepoPreferences } from '../../src/server/preferences-handler';
 
 describe('EnDev xDPU eligibility detection', () => {
     let dataDir: string;
@@ -144,13 +143,11 @@ describe('EnDev xDPU eligibility detection', () => {
         await expect(isEnDevWrapperSkillVisible(dataDir, workspace)).resolves.toBe(true);
     });
 
-    it('uses the EnDev wrapper preference only for wrapper visibility', async () => {
-        fs.mkdirSync(path.join(workspaceDir, '.endev'), { recursive: true });
+    it('hides the wrapper skill when the workspace is ineligible', async () => {
         await detectEnDevEligibility(dataDir, workspace, {
-            isNativeWsl: true,
+            isNativeWsl: false,
             doctorRunner: async () => ({ ok: true }),
         });
-        writeRepoPreferences(dataDir, workspace.id, { endevXDpu: { enabled: false } });
 
         await expect(isEnDevWrapperSkillVisible(dataDir, workspace)).resolves.toBe(false);
     });

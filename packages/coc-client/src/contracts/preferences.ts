@@ -41,10 +41,6 @@ export interface PerRepoPreferences {
   defaultModels?: Record<string, string | undefined>;
   /** Max iterations a Ralph loop runs before stopping. Range 1..200. */
   maxRalphIterations?: number;
-  /** EnDev xDPU wrapper skill preference. Eligible workspaces default to enabled when absent. */
-  endevXDpu?: {
-    enabled: boolean;
-  };
   boundedMemory?: {
     enabled?: boolean;
     charLimit?: number;

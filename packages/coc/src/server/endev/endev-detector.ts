@@ -4,7 +4,6 @@ import * as path from 'path';
 import type { WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import { normalizeExecutionPath, resolvePathForHostFilesystem } from '@plusplusoneplusplus/forge';
 import { getRepoDataPath } from '../paths';
-import { readRepoPreferences } from '../preferences-handler';
 
 export const ENDEV_XDPU_SKILL_NAME = 'EnDev-xDpu';
 export const ENDEV_STATUS_CACHE_FILE = path.join('endev', 'eligibility.json');
@@ -319,10 +318,6 @@ export async function isEnDevWrapperSkillVisible(
         return false;
     }
     const status = await detectEnDevEligibility(dataDir, workspace, options);
-    if (!status.eligible) {
-        return false;
-    }
-    const preference = readRepoPreferences(dataDir, workspace.id).endevXDpu;
-    return preference?.enabled ?? true;
+    return status.eligible;
 }
 

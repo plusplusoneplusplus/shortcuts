@@ -11,8 +11,7 @@ import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { useGlobalToast } from '../../contexts/ToastContext';
 import { useRepos } from '../../contexts/ReposContext';
 import { SkillPicker, type SkillOption } from '../../queue/SkillPicker';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
-import type { EnDevEligibilityStatus } from '@plusplusoneplusplus/coc-client';
+import { getSpaCocClient } from '../../api/cocClient';
 
 interface RepoPreferencesSectionProps {
     workspaceId: string;
@@ -22,7 +21,6 @@ const labelClass = 'text-xs w-28 shrink-0 text-[#616161] dark:text-[#999]';
 const selectClass = 'flex-1 px-2 py-0.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] w-full';
 const sectionHeadClass = 'text-xs font-semibold text-[#616161] dark:text-[#999] uppercase tracking-wide mb-2';
 const dividerClass = 'border-t border-[#e0e0e0] dark:border-[#3c3c3c] my-3';
-const checkboxClass = 'h-4 w-4 rounded border-[#c8c8c8] text-[#0078d4] focus:ring-[#0078d4]';
 
 const MODE_LABELS: Record<string, string> = {
     task: 'Task',
@@ -72,44 +70,14 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
     const [defaultModel, setDefaultModelState] = useState('');
     const [defaultModels, setDefaultModelsState] = useState<Record<string, string>>({});
     const [showPerModeDefaults, setShowPerModeDefaults] = useState(false);
-    const [endevStatus, setEndevStatus] = useState<EnDevEligibilityStatus | null>(null);
-    const [endevStatusLoading, setEndevStatusLoading] = useState(true);
-    const [endevStatusError, setEndevStatusError] = useState<string | null>(null);
-    const [endevEnabled, setEndevEnabled] = useState(true);
-    const [endevSaving, setEndevSaving] = useState(false);
-    const [endevRefreshing, setEndevRefreshing] = useState(false);
-
-    // Fetch cached EnDev eligibility when Preferences opens.
-    useEffect(() => {
-        let cancelled = false;
-        setEndevStatus(null);
-        setEndevStatusError(null);
-        setEndevStatusLoading(true);
-        getSpaCocClient().preferences.getEnDevStatus(workspaceId)
-            .then(status => {
-                if (!cancelled) setEndevStatus(status);
-            })
-            .catch(error => {
-                if (!cancelled) {
-                    setEndevStatus(null);
-                    setEndevStatusError(getSpaCocClientErrorMessage(error, 'Unable to check EnDev status'));
-                }
-            })
-            .finally(() => {
-                if (!cancelled) setEndevStatusLoading(false);
-            });
-        return () => { cancelled = true; };
-    }, [workspaceId]);
 
     // Fetch linked repo IDs from preferences
     useEffect(() => {
         setLinkedRepoLoading(true);
-        setEndevEnabled(true);
         getSpaCocClient().preferences.getRepo(workspaceId)
             .then(data => {
                 setLinkedRepoIds(data?.linkedRepoIds ?? []);
                 setDefaultModelState(typeof data?.defaultModel === 'string' ? data.defaultModel : '');
-                setEndevEnabled(data?.endevXDpu?.enabled ?? true);
                 const dm = data?.defaultModels;
                 if (dm && typeof dm === 'object') {
                     const cleaned: Record<string, string> = {};
@@ -195,38 +163,6 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
         });
         getSpaCocClient().preferences.patchRepo(workspaceId, { defaultModels: { [mode]: v } }).catch(() => {});
     }, [workspaceId]);
-
-    const handleEnDevToggle = useCallback(async (enabled: boolean) => {
-        const previous = endevEnabled;
-        setEndevEnabled(enabled);
-        setEndevSaving(true);
-        try {
-            await getSpaCocClient().preferences.patchRepo(workspaceId, { endevXDpu: { enabled } });
-            await fetchAvailableSkills();
-        } catch (error) {
-            setEndevEnabled(previous);
-            addToast(getSpaCocClientErrorMessage(error, 'Failed to save EnDev preference'), 'error');
-        } finally {
-            setEndevSaving(false);
-        }
-    }, [workspaceId, endevEnabled, fetchAvailableSkills, addToast]);
-
-    const handleEnDevRevalidate = useCallback(async () => {
-        setEndevRefreshing(true);
-        setEndevStatusError(null);
-        try {
-            const status = await getSpaCocClient().preferences.revalidateEnDev(workspaceId);
-            setEndevStatus(status);
-            await fetchAvailableSkills();
-            addToast(status.eligible ? 'EnDev status refreshed' : 'EnDev is not eligible for this workspace', 'info');
-        } catch (error) {
-            setEndevStatusError(getSpaCocClientErrorMessage(error, 'Failed to refresh EnDev status'));
-            addToast(getSpaCocClientErrorMessage(error, 'Failed to refresh EnDev status'), 'error');
-        } finally {
-            setEndevRefreshing(false);
-            setEndevStatusLoading(false);
-        }
-    }, [workspaceId, fetchAvailableSkills, addToast]);
 
     // Available repos for linked repo picker (exclude self and already-linked)
     const linkableRepos = repos
@@ -372,63 +308,6 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
             </div>
 
             <div className={dividerClass} />
-
-            {endevStatus?.eligible && (
-                <>
-                    {/* -- EnDev xDPU -- */}
-                    <div className={sectionHeadClass} data-testid="section-endev-xdpu">EnDev xDPU</div>
-                    <div className="flex flex-col gap-2 mb-1" data-testid="pref-endev-xdpu-section">
-                        <div className="flex flex-col md:flex-row items-start gap-1 md:gap-2">
-                            <label className={`${labelClass} mt-0.5`}>Wrapper Skill</label>
-                            <div className="flex-1 min-w-0">
-                                <label className="inline-flex items-center gap-2 text-sm text-[#1e1e1e] dark:text-[#cccccc]">
-                                    <input
-                                        type="checkbox"
-                                        className={checkboxClass}
-                                        checked={endevEnabled}
-                                        disabled={endevSaving || endevRefreshing}
-                                        onChange={e => handleEnDevToggle(e.target.checked)}
-                                        data-testid="pref-endev-xdpu-enabled"
-                                    />
-                                    <span>Show EnDev-xDpu in skill pickers for this workspace</span>
-                                </label>
-                                <p className="text-[11px] text-[#848484] mt-1">
-                                    This only controls the wrapper skill. EnDev MCP servers and EnDev plugin skills keep using their own settings.
-                                </p>
-                            </div>
-                        </div>
-                        <div className="flex flex-col md:flex-row items-start gap-1 md:gap-2">
-                            <label className={`${labelClass} mt-0.5`}>Status</label>
-                            <div className="flex-1 min-w-0 text-xs text-[#616161] dark:text-[#999]">
-                                <div data-testid="pref-endev-xdpu-status">
-                                    Eligible{endevStatus.cached ? ' (cached)' : ''} · checked {endevStatus.checkedAt}
-                                </div>
-                                {endevStatus.pluginSkillFolder && (
-                                    <div className="mt-1 break-all" data-testid="pref-endev-xdpu-plugin-folder">
-                                        Plugin skills: <code className="font-mono">{endevStatus.pluginSkillFolder}</code>
-                                    </div>
-                                )}
-                                {endevStatusError && (
-                                    <div className="mt-1 text-red-600 dark:text-red-400" data-testid="pref-endev-xdpu-error">
-                                        {endevStatusError}
-                                    </div>
-                                )}
-                                <button
-                                    type="button"
-                                    className="mt-2 px-2 py-1 text-xs rounded border border-[#e0e0e0] dark:border-[#555] bg-white dark:bg-[#3c3c3c] hover:border-[#0078d4] transition-colors disabled:opacity-50"
-                                    onClick={handleEnDevRevalidate}
-                                    disabled={endevStatusLoading || endevRefreshing || endevSaving}
-                                    data-testid="pref-endev-xdpu-revalidate"
-                                >
-                                    {endevRefreshing ? 'Refreshing…' : 'Revalidate EnDev'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className={dividerClass} />
-                </>
-            )}
 
             {/* ── Skills ── */}
             <div className={sectionHeadClass} data-testid="section-skills">Skills</div>
