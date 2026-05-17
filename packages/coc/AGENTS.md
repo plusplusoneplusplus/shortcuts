@@ -5,6 +5,22 @@ root `AGENTS.md` for the cross-package overview, build/test commands, and the
 "repo-scoped data" convention. Deeper architecture references live under
 `.github/skills/coc-knowledge/`.
 
+## Admin Config
+
+Editable admin config fields are defined in a single registry:
+`src/server/admin/admin-config-fields.ts` (`ADMIN_CONFIG_FIELDS`).
+
+Each entry provides a flat key (e.g. `'loops.enabled'`), a `validate()` function, and an `apply()` function. The PUT `/api/admin/config` handler derives `editableKeys`, validation, and merge logic entirely from this registry — **no changes to `admin-handler.ts` are needed when adding a new editable field**.
+
+To expose a new config field via the admin API, add ONE entry to `ADMIN_CONFIG_FIELDS`. Also update:
+1. `CLIConfig` / `ResolvedCLIConfig` / `DEFAULT_CONFIG` in `src/config.ts`
+2. `CLIConfigSchema` in `src/config/schema.ts`
+3. Namespace registry in `src/config/namespace-registry.ts` (nested fields)
+4. `AdminResolvedConfig` / `AdminConfigUpdate` in `packages/coc-client/src/contracts/admin.ts`
+5. `AdminPanel.tsx` for the UI control
+
+The `spaHtml` function in `src/server/index.ts` re-reads the config file on every page request, so feature-flag changes (e.g. `terminal.enabled`) take effect on the next browser reload — no server restart required.
+
 ## Ralph
 
 Ralph sessions live under

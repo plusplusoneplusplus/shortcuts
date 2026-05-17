@@ -28,6 +28,7 @@ import { StorageMigrationEngine } from '../storage/storage-migration';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { Route } from '../types';
 import { sendSSE } from '../wiki/ask-handler';
+import { ADMIN_CONFIG_FIELDS, ADMIN_EDITABLE_KEYS } from './admin-config-fields';
 
 // ============================================================================
 // Token Management
@@ -141,9 +142,6 @@ export interface AdminRouteOptions {
  * Register admin API routes on the given route table.
  * Mutates the `routes` array in-place.
  */
-/** Allowed output values for PUT validation. */
-const VALID_OUTPUT_VALUES = ['table', 'json', 'csv', 'markdown'] as const;
-
 export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions): void {
     const { store, dataDir, getWsServer, configPath, configFunctions } = options;
     const wiper = new DataWiper(dataDir, store);
@@ -216,268 +214,29 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
 
             // Reject empty body (no editable keys)
-            const editableKeys = ['model', 'parallel', 'timeout', 'output', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages', 'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count', 'chat.askUser.enabled', 'serve.serverName', 'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled', 'scratchpad.enabled', 'scratchpad.layout', 'workflows.enabled', 'pullRequests.enabled', 'servers.enabled', 'ralph.enabled', 'vimNavigation.enabled', 'loops.enabled'];
-            const hasEditableKey = editableKeys.some(k => k in body);
+            const hasEditableKey = ADMIN_EDITABLE_KEYS.some(k => k in body);
             if (!hasEditableKey) {
                 return handleAPIError(res, badRequest('Request body must contain at least one editable field'));
             }
 
-            // Validate editable fields
+            // Validate all present editable fields via registry
             const errors: string[] = [];
-
-            if ('model' in body) {
-                if (typeof body.model !== 'string' || body.model.length === 0) {
-                    errors.push('model must be a non-empty string');
+            for (const field of ADMIN_CONFIG_FIELDS) {
+                if (field.key in body) {
+                    const err = field.validate(body[field.key]);
+                    if (err) { errors.push(err); }
                 }
             }
-            if ('parallel' in body) {
-                if (typeof body.parallel !== 'number' || body.parallel <= 0) {
-                    errors.push('parallel must be a number greater than 0');
-                }
-            }
-            if ('timeout' in body) {
-                if (body.timeout !== null && (typeof body.timeout !== 'number' || body.timeout <= 0)) {
-                    errors.push('timeout must be a number greater than 0, or null to clear');
-                }
-            }
-            if ('output' in body) {
-                if (typeof body.output !== 'string' || !(VALID_OUTPUT_VALUES as readonly string[]).includes(body.output)) {
-                    errors.push(`output must be one of: ${VALID_OUTPUT_VALUES.join(', ')}`);
-                }
-            }
-            if ('showReportIntent' in body) {
-                if (typeof body.showReportIntent !== 'boolean') {
-                    errors.push('showReportIntent must be a boolean');
-                }
-            }
-            if ('toolCompactness' in body) {
-                if (
-                    typeof body.toolCompactness !== 'number' ||
-                    !Number.isInteger(body.toolCompactness) ||
-                    body.toolCompactness < 0 ||
-                    body.toolCompactness > 3
-                ) {
-                    errors.push('toolCompactness must be 0, 1, 2, or 3');
-                }
-            }
-            if ('taskCardDensity' in body) {
-                if (body.taskCardDensity !== 'compact' && body.taskCardDensity !== 'dense') {
-                    errors.push('taskCardDensity must be "compact" or "dense"');
-                }
-            }
-            if ('groupSingleLineMessages' in body) {
-                if (typeof body.groupSingleLineMessages !== 'boolean') {
-                    errors.push('groupSingleLineMessages must be a boolean');
-                }
-            }
-            if ('serve.serverName' in body) {
-                const val = body['serve.serverName'];
-                if (val !== null && val !== undefined && (typeof val !== 'string' || val.length > 64)) {
-                    errors.push('serve.serverName must be a string of at most 64 characters, or null to clear');
-                }
-            }
-            if ('terminal.enabled' in body) {
-                if (typeof body['terminal.enabled'] !== 'boolean') {
-                    errors.push('terminal.enabled must be a boolean');
-                }
-            }
-            if ('notes.enabled' in body) {
-                if (typeof body['notes.enabled'] !== 'boolean') {
-                    errors.push('notes.enabled must be a boolean');
-                }
-            }
-            if ('myWork.enabled' in body) {
-                if (typeof body['myWork.enabled'] !== 'boolean') {
-                    errors.push('myWork.enabled must be a boolean');
-                }
-            }
-            if ('myLife.enabled' in body) {
-                if (typeof body['myLife.enabled'] !== 'boolean') {
-                    errors.push('myLife.enabled must be a boolean');
-                }
-            }
-            if ('scratchpad.enabled' in body) {
-                if (typeof body['scratchpad.enabled'] !== 'boolean') {
-                    errors.push('scratchpad.enabled must be a boolean');
-                }
-            }
-            if ('scratchpad.layout' in body) {
-                if (body['scratchpad.layout'] !== 'horizontal' && body['scratchpad.layout'] !== 'vertical') {
-                    errors.push('scratchpad.layout must be "horizontal" or "vertical"');
-                }
-            }
-            if ('workflows.enabled' in body) {
-                if (typeof body['workflows.enabled'] !== 'boolean') {
-                    errors.push('workflows.enabled must be a boolean');
-                }
-            }
-            if ('pullRequests.enabled' in body) {
-                if (typeof body['pullRequests.enabled'] !== 'boolean') {
-                    errors.push('pullRequests.enabled must be a boolean');
-                }
-            }
-            if ('servers.enabled' in body) {
-                if (typeof body['servers.enabled'] !== 'boolean') {
-                    errors.push('servers.enabled must be a boolean');
-                }
-            }
-            if ('ralph.enabled' in body) {
-                if (typeof body['ralph.enabled'] !== 'boolean') {
-                    errors.push('ralph.enabled must be a boolean');
-                }
-            }
-            if ('vimNavigation.enabled' in body) {
-                if (typeof body['vimNavigation.enabled'] !== 'boolean') {
-                    errors.push('vimNavigation.enabled must be a boolean');
-                }
-            }
-            if ('loops.enabled' in body) {
-                if (typeof body['loops.enabled'] !== 'boolean') {
-                    errors.push('loops.enabled must be a boolean');
-                }
-            }
-
-            // Validate nested chat.followUpSuggestions fields
-            const chatBody = body['chat.followUpSuggestions.enabled'] !== undefined || body['chat.followUpSuggestions.count'] !== undefined
-                ? body : null;
-            if (chatBody && 'chat.followUpSuggestions.enabled' in chatBody) {
-                if (typeof chatBody['chat.followUpSuggestions.enabled'] !== 'boolean') {
-                    errors.push('chat.followUpSuggestions.enabled must be a boolean');
-                }
-            }
-            if (chatBody && 'chat.followUpSuggestions.count' in chatBody) {
-                const count = chatBody['chat.followUpSuggestions.count'];
-                if (typeof count !== 'number' || !Number.isInteger(count) || count < 1 || count > 5) {
-                    errors.push('chat.followUpSuggestions.count must be an integer between 1 and 5');
-                }
-            }
-
-            // Validate nested chat.askUser fields
-            if ('chat.askUser.enabled' in body) {
-                if (typeof body['chat.askUser.enabled'] !== 'boolean') {
-                    errors.push('chat.askUser.enabled must be a boolean');
-                }
-            }
-
             if (errors.length > 0) {
                 return handleAPIError(res, badRequest(errors.join('; ')));
             }
 
-            // Merge with existing config
+            // Merge with existing config via registry
             const existing: CLIConfig = configFunctions?.loadConfigFile?.(configPath) ?? {};
-            if ('model' in body) { existing.model = body.model as string; }
-            if ('parallel' in body) { existing.parallel = body.parallel as number; }
-            if ('timeout' in body) {
-                if (body.timeout === null) {
-                    delete existing.timeout;
-                } else {
-                    existing.timeout = body.timeout as number;
+            for (const field of ADMIN_CONFIG_FIELDS) {
+                if (field.key in body) {
+                    field.apply(existing, body[field.key]);
                 }
-            }
-            if ('output' in body) { existing.output = body.output as CLIConfig['output']; }
-            if ('showReportIntent' in body) { existing.showReportIntent = body.showReportIntent as boolean; }
-            if ('toolCompactness' in body) { existing.toolCompactness = body.toolCompactness as CLIConfig['toolCompactness']; }
-            if ('taskCardDensity' in body) { existing.taskCardDensity = body.taskCardDensity as CLIConfig['taskCardDensity']; }
-            if ('groupSingleLineMessages' in body) { existing.groupSingleLineMessages = body.groupSingleLineMessages as boolean; }
-
-            // Handle serve.serverName (cosmetic override for dashboard title)
-            if ('serve.serverName' in body) {
-                const val = body['serve.serverName'];
-                if (val === null || val === '') {
-                    if (existing.serve) { delete existing.serve.serverName; }
-                } else {
-                    if (!existing.serve) { existing.serve = {}; }
-                    existing.serve.serverName = val as string;
-                }
-            }
-
-            // Handle nested chat.followUpSuggestions fields
-            if ('chat.followUpSuggestions.enabled' in body) {
-                if (!existing.chat) { existing.chat = {}; }
-                if (!existing.chat.followUpSuggestions) { existing.chat.followUpSuggestions = {}; }
-                existing.chat.followUpSuggestions.enabled = body['chat.followUpSuggestions.enabled'] as boolean;
-            }
-            if ('chat.followUpSuggestions.count' in body) {
-                if (!existing.chat) { existing.chat = {}; }
-                if (!existing.chat.followUpSuggestions) { existing.chat.followUpSuggestions = {}; }
-                existing.chat.followUpSuggestions.count = body['chat.followUpSuggestions.count'] as number;
-            }
-
-            // Handle nested chat.askUser fields
-            if ('chat.askUser.enabled' in body) {
-                if (!existing.chat) { existing.chat = {}; }
-                if (!existing.chat.askUser) { existing.chat.askUser = {}; }
-                existing.chat.askUser.enabled = body['chat.askUser.enabled'] as boolean;
-            }
-
-            // Handle nested terminal.enabled field
-            if ('terminal.enabled' in body) {
-                if (!existing.terminal) { existing.terminal = {}; }
-                existing.terminal.enabled = body['terminal.enabled'] as boolean;
-            }
-
-            // Handle nested notes.enabled field
-            if ('notes.enabled' in body) {
-                if (!existing.notes) { existing.notes = {}; }
-                existing.notes.enabled = body['notes.enabled'] as boolean;
-            }
-
-            // Handle nested myWork.enabled field
-            if ('myWork.enabled' in body) {
-                if (!existing.myWork) { existing.myWork = {}; }
-                existing.myWork.enabled = body['myWork.enabled'] as boolean;
-            }
-
-            // Handle nested myLife.enabled field
-            if ('myLife.enabled' in body) {
-                if (!existing.myLife) { existing.myLife = {}; }
-                existing.myLife.enabled = body['myLife.enabled'] as boolean;
-            }
-
-            // Handle nested scratchpad fields
-            if ('scratchpad.enabled' in body) {
-                if (!existing.scratchpad) { existing.scratchpad = {}; }
-                existing.scratchpad.enabled = body['scratchpad.enabled'] as boolean;
-            }
-            if ('scratchpad.layout' in body) {
-                if (!existing.scratchpad) { existing.scratchpad = {}; }
-                existing.scratchpad.layout = body['scratchpad.layout'] as 'horizontal' | 'vertical';
-            }
-
-            // Handle nested workflows.enabled field
-            if ('workflows.enabled' in body) {
-                if (!existing.workflows) { existing.workflows = {}; }
-                existing.workflows.enabled = body['workflows.enabled'] as boolean;
-            }
-
-            // Handle nested pullRequests.enabled field
-            if ('pullRequests.enabled' in body) {
-                if (!existing.pullRequests) { existing.pullRequests = {}; }
-                existing.pullRequests.enabled = body['pullRequests.enabled'] as boolean;
-            }
-
-            // Handle nested servers.enabled field
-            if ('servers.enabled' in body) {
-                if (!existing.servers) { existing.servers = {}; }
-                existing.servers.enabled = body['servers.enabled'] as boolean;
-            }
-
-            // Handle nested ralph.enabled field
-            if ('ralph.enabled' in body) {
-                if (!existing.ralph) { existing.ralph = {}; }
-                existing.ralph.enabled = body['ralph.enabled'] as boolean;
-            }
-
-            // Handle nested vimNavigation.enabled field
-            if ('vimNavigation.enabled' in body) {
-                if (!existing.vimNavigation) { existing.vimNavigation = {}; }
-                existing.vimNavigation.enabled = body['vimNavigation.enabled'] as boolean;
-            }
-
-            // Handle nested loops.enabled field
-            if ('loops.enabled' in body) {
-                if (!existing.loops) { existing.loops = {}; }
-                existing.loops.enabled = body['loops.enabled'] as boolean;
             }
 
             configFunctions?.writeConfigFile?.(resolvedConfigPath, existing);
