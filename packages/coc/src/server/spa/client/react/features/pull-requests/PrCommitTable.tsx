@@ -72,37 +72,42 @@ export function PrCommitTable({ rows, loading = false, error = null }: PrCommitT
                                 </td>
                             </tr>
                         )}
-                        {rows.map(row => (
-                            <tr
-                                key={row.sha}
-                                className="border-b border-gray-100 last:border-0 dark:border-gray-800"
-                                data-testid="pr-commit-row"
-                            >
-                                <td className="px-[7px] py-[5px] align-top text-[12px] text-gray-800 dark:text-gray-200">
-                                    {row.url ? (
-                                        <a
-                                            href={row.url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="font-medium text-blue-600 hover:underline dark:text-blue-400"
-                                        >
-                                            {row.title || row.sha}
-                                        </a>
-                                    ) : (
-                                        <span className="font-medium">{row.title || row.sha}</span>
-                                    )}
-                                </td>
-                                <td className="px-[7px] py-[5px] align-top text-[11px] text-gray-600 dark:text-gray-300">
-                                    {row.author?.displayName || row.author?.email || 'Unknown'}
-                                </td>
-                                <td className="px-[7px] py-[5px] align-top text-[11px] text-gray-500 dark:text-gray-400">
-                                    {formatCommitDate(row.committedAt ?? row.authoredAt)}
-                                </td>
-                                <td className="px-[7px] py-[5px] align-top font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-400">
-                                    {row.shortSha || row.sha.slice(0, 7)}
-                                </td>
-                            </tr>
-                        ))}
+                        {rows.map((row, index) => {
+                            const sha = row.sha ?? '';
+                            const shortSha = row.shortSha || (sha ? sha.slice(0, 7) : '');
+                            const label = row.title || shortSha || sha || '(commit)';
+                            return (
+                                <tr
+                                    key={sha || `commit-${index}`}
+                                    className="border-b border-gray-100 last:border-0 dark:border-gray-800"
+                                    data-testid="pr-commit-row"
+                                >
+                                    <td className="px-[7px] py-[5px] align-top text-[12px] text-gray-800 dark:text-gray-200">
+                                        {row.url ? (
+                                            <a
+                                                href={row.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="font-medium text-blue-600 hover:underline dark:text-blue-400"
+                                            >
+                                                {label}
+                                            </a>
+                                        ) : (
+                                            <span className="font-medium">{label}</span>
+                                        )}
+                                    </td>
+                                    <td className="px-[7px] py-[5px] align-top text-[11px] text-gray-600 dark:text-gray-300">
+                                        {row.author?.displayName || row.author?.email || 'Unknown'}
+                                    </td>
+                                    <td className="px-[7px] py-[5px] align-top text-[11px] text-gray-500 dark:text-gray-400">
+                                        {formatCommitDate(row.committedAt ?? row.authoredAt)}
+                                    </td>
+                                    <td className="px-[7px] py-[5px] align-top font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-400">
+                                        {shortSha}
+                                    </td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>

@@ -11,6 +11,7 @@
 
 import type { PullRequest, PullRequestCommit, CommentThread } from './pr-utils';
 import type { PullRequestCheck, PullRequestCheckStatus, Reviewer } from './pr-utils';
+import type { PrCommitRow } from './PrCommitTable';
 
 export type FindingTag = 'good' | 'risk' | 'note' | 'ai';
 export type CommitIntent = 'feat' | 'fix' | 'docs' | 'test' | 'refactor' | 'chore';
@@ -574,16 +575,23 @@ const INTENT_NOTE: Record<CommitIntent, string> = {
     chore: 'Chore — low review value.',
 };
 
-/** Map real `PullRequestCommit` records to AI-style rows for the commit table. */
-export function buildCommitRowsFromPrCommits(commits: PullRequestCommit[]): AiCommitRow[] {
+/** Map real `PullRequestCommit` records to the row shape consumed by `PrCommitTable`. */
+export function buildCommitRowsFromPrCommits(commits: PullRequestCommit[]): PrCommitRow[] {
     return commits.map(commit => {
-        const intent = inferCommitIntent(commit.subject || commit.message);
+        const sha = commit.id ?? '';
+        const shortSha = commit.shortId || (sha ? sha.slice(0, 7) : '');
+        const subjectLine =
+            commit.subject ||
+            (commit.message ? commit.message.split('\n', 1)[0] : '');
         return {
-            id: commit.id,
-            title: commit.subject || commit.message || commit.shortId || commit.id,
-            intent,
-            note: INTENT_NOTE[intent],
-            hash: commit.shortId || commit.id.slice(0, 7),
+            sha,
+            shortSha,
+            title: subjectLine || shortSha || sha,
+            message: commit.message,
+            author: commit.author,
+            authoredAt: commit.authoredAt,
+            committedAt: commit.committedAt,
+            url: commit.url,
         };
     });
 }

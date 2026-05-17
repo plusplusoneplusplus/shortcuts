@@ -200,6 +200,10 @@ describe('buildCommitRowsFromPrCommits', () => {
             shortId: 'abc1234',
             message: 'feat: stream JSONL parser',
             subject: 'feat: stream JSONL parser',
+            author: { displayName: 'Alice', email: 'alice@example.com' },
+            authoredAt: '2024-01-04T12:34:56Z',
+            committedAt: '2024-01-04T12:35:00Z',
+            url: 'https://example.com/commit/abc1234',
         },
         {
             id: 'def5678deadbeef0000000000000000000000000',
@@ -209,32 +213,44 @@ describe('buildCommitRowsFromPrCommits', () => {
         },
     ];
 
-    it('maps real provider commits to rows with inferred intent and short hash', () => {
+    it('maps real provider commits to PrCommitRow shape with short SHA and metadata', () => {
         const rows = buildCommitRowsFromPrCommits(realCommits);
         expect(rows).toHaveLength(2);
-        expect(rows[0]).toMatchObject({
-            id: 'abc1234deadbeef0000000000000000000000000',
+        expect(rows[0]).toEqual({
+            sha: 'abc1234deadbeef0000000000000000000000000',
+            shortSha: 'abc1234',
             title: 'feat: stream JSONL parser',
-            intent: 'feat',
-            hash: 'abc1234',
+            message: 'feat: stream JSONL parser',
+            author: { displayName: 'Alice', email: 'alice@example.com' },
+            authoredAt: '2024-01-04T12:34:56Z',
+            committedAt: '2024-01-04T12:35:00Z',
+            url: 'https://example.com/commit/abc1234',
         });
         expect(rows[1]).toMatchObject({
-            id: 'def5678deadbeef0000000000000000000000000',
+            sha: 'def5678deadbeef0000000000000000000000000',
+            shortSha: 'def5678',
             title: 'fix: handle abort cleanly',
-            intent: 'fix',
-            hash: 'def5678',
         });
-        expect(rows[0].note.length).toBeGreaterThan(0);
     });
 
-    it('falls back to the full id when shortId is missing', () => {
+    it('uses the first line of the message when subject is missing', () => {
+        const rows = buildCommitRowsFromPrCommits([{
+            id: 'ffffffffffffffffffffffffffffffffffffffff',
+            shortId: 'fffffff',
+            message: 'docs: tweak readme\n\nbody text',
+            subject: '',
+        }]);
+        expect(rows[0].title).toBe('docs: tweak readme');
+    });
+
+    it('falls back to truncating the full id when shortId is missing', () => {
         const rows = buildCommitRowsFromPrCommits([{
             id: 'longshaaaa',
             shortId: '',
             message: 'docs: tweak readme',
             subject: 'docs: tweak readme',
         }]);
-        expect(rows[0].hash).toBe('longsha');
+        expect(rows[0].shortSha).toBe('longsha');
     });
 
     it('returns an empty array when given no commits', () => {
