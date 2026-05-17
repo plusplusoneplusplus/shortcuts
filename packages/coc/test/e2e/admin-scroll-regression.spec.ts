@@ -1,13 +1,19 @@
 /**
  * Admin page scroll regression E2E test.
  *
- * Regression: after ProviderTokensSection was added to AdminPanel (commit
- * 1c4b9b1e), the admin page became unscrollable because the page renders
- * AdminPanel inline inside <main class="overflow-hidden">, but AdminPanel
- * had no scroll container of its own.
+ * Layout invariants the admin page must preserve:
+ *   - The whole admin route must never scroll as a single page. The outer
+ *     `admin-scroll-container` is bounded by the viewport and uses
+ *     `overflow: hidden` so the page chrome (sidebar + topbar) always
+ *     stays in place.
+ *   - The right pane (`.ar-main`) is the only scroll region. When card
+ *     content overflows, only that pane scrolls; the left sidebar and
+ *     topbar remain pinned.
  *
- * Fix: Router.tsx wraps AdminPanel in <div class="h-full overflow-y-auto">
- * so the admin page can scroll within the bounded main area.
+ * Historical context: a much earlier regression (commit 1c4b9b1e) had the
+ * admin page completely unscrollable. Today the layout is fit-to-viewport
+ * with the main pane providing the single internal scroller — this test
+ * locks that contract in.
  */
 
 import { test, expect } from './fixtures/server-fixture';
@@ -24,13 +30,13 @@ async function navigateToAdmin(page: import('@playwright/test').Page, serverUrl:
 test.describe('Admin page scrollability regression', () => {
     test.use({ viewport: VIEWPORTS.desktop });
 
-    test('admin scroll container has overflow-y:auto and scrollable content', async ({ page, serverUrl }) => {
+    test('outer admin scroll container is bounded and does not scroll itself', async ({ page, serverUrl }) => {
         await navigateToAdmin(page, serverUrl);
 
-        const scrollContainer = page.locator('[data-testid="admin-scroll-container"]');
-        await expect(scrollContainer).toBeVisible();
+        const outer = page.locator('[data-testid="admin-scroll-container"]');
+        await expect(outer).toBeVisible();
 
-        const metrics = await scrollContainer.evaluate((el) => {
+        const metrics = await outer.evaluate((el) => {
             const style = getComputedStyle(el);
             return {
                 overflowY: style.overflowY,
@@ -39,59 +45,100 @@ test.describe('Admin page scrollability regression', () => {
             };
         });
 
-        // Must be scrollable
+        // The outer container is no longer a scroller — it must clip overflow.
+        expect(['hidden', 'clip']).toContain(metrics.overflowY);
+        // Its own scrollHeight should match its clientHeight (no internal scroll).
+        expect(metrics.scrollHeight).toBe(metrics.clientHeight);
+
+        const box = await outer.boundingBox();
+        expect(box).not.toBeNull();
+        const viewportHeight = page.viewportSize()?.height ?? 800;
+        // The outer container must fit within the viewport.
+        expect(box!.height).toBeLessThanOrEqual(viewportHeight);
+    });
+
+    test('right main pane is the scroll container with scrollable content', async ({ page, serverUrl }) => {
+        await navigateToAdmin(page, serverUrl);
+
+        const main = page.locator('#view-admin .ar-main');
+        await expect(main).toBeVisible();
+
+        const metrics = await main.evaluate((el) => {
+            const style = getComputedStyle(el);
+            return {
+                overflowY: style.overflowY,
+                scrollHeight: el.scrollHeight,
+                clientHeight: el.clientHeight,
+            };
+        });
+
+        // .ar-main must be the scroll region.
         expect(['auto', 'scroll']).toContain(metrics.overflowY);
-        // Admin panel has enough content to require scrolling
+        // It should be bounded (clientHeight <= viewport).
+        const box = await main.boundingBox();
+        expect(box).not.toBeNull();
+        const viewportHeight = page.viewportSize()?.height ?? 800;
+        expect(box!.height).toBeLessThanOrEqual(viewportHeight);
+        // The Settings tab has enough cards to force overflow on a desktop viewport.
         expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
     });
 
-    test('admin scroll container is bounded by viewport height (not taller)', async ({ page, serverUrl }) => {
+    test('mouse wheel scrolls the main pane, not the document', async ({ page, serverUrl }) => {
         await navigateToAdmin(page, serverUrl);
 
-        const scrollContainer = page.locator('[data-testid="admin-scroll-container"]');
-        const box = await scrollContainer.boundingBox();
-        expect(box).not.toBeNull();
+        const main = page.locator('#view-admin .ar-main');
+        await expect(main).toBeVisible();
 
-        const viewportHeight = page.viewportSize()?.height ?? 800;
-        // The scroll container should fill the viewport area (not exceed it)
-        expect(box!.height).toBeLessThanOrEqual(viewportHeight);
-
-        // But content should exceed the visible area (otherwise there's nothing to scroll)
-        const scrollHeight = await scrollContainer.evaluate((el) => el.scrollHeight);
-        expect(scrollHeight).toBeGreaterThan(box!.height);
-    });
-
-    test('admin page scrolls with mouse wheel', async ({ page, serverUrl }) => {
-        await navigateToAdmin(page, serverUrl);
-
-        const scrollContainer = page.locator('[data-testid="admin-scroll-container"]');
-        await expect(scrollContainer).toBeVisible();
-
-        const before = await scrollContainer.evaluate((el) => (el as HTMLElement).scrollTop);
-        const box = await scrollContainer.boundingBox();
+        const before = await main.evaluate((el) => (el as HTMLElement).scrollTop);
+        const box = await main.boundingBox();
         expect(box).not.toBeNull();
 
         await page.mouse.move(box!.x + box!.width / 2, box!.y + Math.min(200, box!.height / 2));
         await page.mouse.wheel(0, 1200);
         await page.waitForTimeout(200);
 
-        const after = await scrollContainer.evaluate((el) => (el as HTMLElement).scrollTop);
+        const after = await main.evaluate((el) => (el as HTMLElement).scrollTop);
         expect(after).toBeGreaterThan(before);
+
+        // The outer container must remain unscrolled.
+        const outerScrollTop = await page
+            .locator('[data-testid="admin-scroll-container"]')
+            .evaluate((el) => (el as HTMLElement).scrollTop);
+        expect(outerScrollTop).toBe(0);
     });
 
-    test('admin page bottom content (Danger Zone) is reachable by scroll', async ({ page, serverUrl }) => {
+    test('sidebar stays pinned while the main pane scrolls', async ({ page, serverUrl }) => {
         await navigateToAdmin(page, serverUrl);
-        await page.click('[data-testid="admin-tab-data"]');
 
-        // Scroll to the bottom
-        await page.locator('#view-admin').evaluate((el) => {
-            (el.parentElement!).scrollTop = el.parentElement!.scrollHeight;
+        const sidebar = page.locator('#view-admin .ar-sidebar');
+        await expect(sidebar).toBeVisible();
+        const beforeBox = await sidebar.boundingBox();
+        expect(beforeBox).not.toBeNull();
+
+        // Force the main pane to scroll to the bottom.
+        await page.locator('#view-admin .ar-main').evaluate((el) => {
+            (el as HTMLElement).scrollTop = (el as HTMLElement).scrollHeight;
         });
         await page.waitForTimeout(100);
 
-        // "Danger Zone" card should be in the DOM and reachable
+        const afterBox = await sidebar.boundingBox();
+        expect(afterBox).not.toBeNull();
+        // The sidebar must still be visible at the same top offset.
+        expect(Math.round(afterBox!.y)).toBe(Math.round(beforeBox!.y));
+        expect(Math.round(afterBox!.height)).toBe(Math.round(beforeBox!.height));
+    });
+
+    test('admin page bottom content (Danger Zone) is reachable by scrolling the main pane', async ({ page, serverUrl }) => {
+        await navigateToAdmin(page, serverUrl);
+        await page.click('[data-testid="admin-tab-data"]');
+
+        // Scroll the main pane to the bottom.
+        await page.locator('#view-admin .ar-main').evaluate((el) => {
+            (el as HTMLElement).scrollTop = (el as HTMLElement).scrollHeight;
+        });
+        await page.waitForTimeout(100);
+
         const dangerZone = page.getByText('Danger Zone');
         await expect(dangerZone).toBeVisible({ timeout: 3000 });
     });
 });
-
