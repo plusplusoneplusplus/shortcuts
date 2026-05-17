@@ -157,7 +157,7 @@ export class WhatsAppBridge {
             const fs = await import('fs');
             const path = await import('path');
             const jsYaml = await import('js-yaml');
-            const configPath = path.join(this.opts.dataDir, '..', 'config.yaml');
+            const configPath = path.join(this.opts.dataDir, 'config.yaml');
             let doc: Record<string, any> = {};
             try {
                 const raw = fs.readFileSync(configPath, 'utf8');
@@ -184,38 +184,43 @@ export class WhatsAppBridge {
             return;
         }
 
-        // Listen for process-updated events where status changed to completed
+        console.log(`[whatsapp-bridge] WS event: type=${parsed.type} from=${msg.agentName}`);
+
         if (parsed.type !== 'process-updated') return;
         const proc = parsed.process as Record<string, unknown> | undefined;
-        if (!proc) return;
+        if (!proc) { console.log('[whatsapp-bridge] No process in event'); return; }
 
         const status = proc.status as string;
         const processId = proc.id as string;
+        console.log(`[whatsapp-bridge] Process ${processId} status=${status}`);
         if (!processId) return;
 
-        // Only forward completed turns (avoid spamming on every status change)
         if (status !== 'completed' && status !== 'running') return;
 
         const target = this.opts.config.groupJid;
-        if (!target) return;
+        if (!target) { console.log('[whatsapp-bridge] No groupJid set, skipping'); return; }
 
-        // Fetch full conversation from the agent to get the latest turn
         const agentId = msg.agentId;
         const agentAddr = this.getAgentAddress(agentId);
-        if (!agentAddr) return;
+        if (!agentAddr) { console.log(`[whatsapp-bridge] No address for agent ${agentId}`); return; }
 
         try {
             const workspaceId = (proc.workspaceId ?? proc.workspace) as string || '';
-            const res = await fetch(`${agentAddr}/api/workspaces/${workspaceId}/processes/${processId}`);
-            if (!res.ok) return;
-            const fullProcess = await res.json() as Record<string, unknown>;
-            const turns = fullProcess.turns as Array<{ role: string; content?: string; text?: string }> | undefined;
+            const url = `${agentAddr}/api/processes/${processId}?workspaceId=${encodeURIComponent(workspaceId)}`;
+            console.log(`[whatsapp-bridge] Fetching turns from ${url}`);
+            const res = await fetch(url);
+            if (!res.ok) { console.log(`[whatsapp-bridge] Fetch failed: ${res.status}`); return; }
+            const body = await res.json() as Record<string, unknown>;
+            // Response shape: { process: { turns: [...] }, children, total }
+            const processData = (body.process ?? body) as Record<string, unknown>;
+            const turns = (processData.conversation ?? processData.turns) as Array<{ role: string; content?: string; text?: string }> | undefined;
+            console.log(`[whatsapp-bridge] Got ${turns?.length ?? 0} turns`);
             if (!turns || turns.length === 0) return;
 
-            // Find new turns we haven't sent yet
             const lastSeen = this.lastTurnCount.get(processId) ?? 0;
             const newTurns = turns.slice(lastSeen);
             this.lastTurnCount.set(processId, turns.length);
+            console.log(`[whatsapp-bridge] lastSeen=${lastSeen} newTurns=${newTurns.length}`);
 
             if (newTurns.length === 0) return;
 
@@ -233,6 +238,7 @@ export class WhatsAppBridge {
                 try {
                     const waMessageId = await this.bot!.send(target, `${prefix}\n${text}`);
                     this.store!.bindMessage(waMessageId, processId, agentId, sessionLabel);
+                    console.log(`[whatsapp-bridge] Sent to WA: ${waMessageId}`);
                 } catch (err) {
                     console.error('[whatsapp-bridge] Failed to send outbound message:', err);
                 }

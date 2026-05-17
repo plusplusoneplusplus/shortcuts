@@ -122,15 +122,17 @@ describe('WhatsAppBridge', () => {
             const bridge = new WhatsAppBridge(opts);
             await bridge.start();
 
-            // Mock fetch to return process with turns
+            // Mock fetch to return process with conversation (matches real CoC API shape)
             const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
                 new Response(JSON.stringify({
-                    id: 'proc-001',
-                    workspaceId: 'ws-frontend',
-                    turns: [
-                        { role: 'user', content: 'Fix the bug' },
-                        { role: 'assistant', content: 'Fixed the bug on line 42' },
-                    ],
+                    process: {
+                        id: 'proc-001',
+                        workspaceId: 'ws-frontend',
+                        conversation: [
+                            { role: 'user', content: 'Fix the bug' },
+                            { role: 'assistant', content: 'Fixed the bug on line 42' },
+                        ],
+                    },
                 }))
             );
 
@@ -141,7 +143,7 @@ describe('WhatsAppBridge', () => {
             await new Promise(r => setTimeout(r, 50));
 
             expect(fetchSpy).toHaveBeenCalledWith(
-                'http://localhost:4000/api/workspaces/ws-frontend/processes/proc-001'
+                'http://localhost:4000/api/processes/proc-001?workspaceId=ws-frontend'
             );
             expect(lastBot().send).toHaveBeenCalledTimes(2);
             expect(lastBot().send).toHaveBeenCalledWith(
