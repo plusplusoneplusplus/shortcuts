@@ -143,4 +143,37 @@ describe('MessagingStore', () => {
         expect(store2.getGlobalSession('carol@s.whatsapp.net')?.processId).toBe('proc-888');
         store2.close();
     });
+
+    describe('push watermarks', () => {
+        it('should return 0 for unknown process', () => {
+            expect(store.getWatermark('proc-unknown')).toBe(0);
+        });
+
+        it('should set and get watermark', () => {
+            store.setWatermark('proc-001', 5);
+            expect(store.getWatermark('proc-001')).toBe(5);
+        });
+
+        it('should update watermark', () => {
+            store.setWatermark('proc-001', 3);
+            store.setWatermark('proc-001', 7);
+            expect(store.getWatermark('proc-001')).toBe(7);
+        });
+
+        it('should persist watermarks across re-open', () => {
+            store.setWatermark('proc-001', 10);
+            store.close();
+
+            const store2 = new MessagingStore(tmpDir);
+            expect(store2.getWatermark('proc-001')).toBe(10);
+            store2.close();
+        });
+
+        it('should track independent watermarks per process', () => {
+            store.setWatermark('proc-a', 3);
+            store.setWatermark('proc-b', 8);
+            expect(store.getWatermark('proc-a')).toBe(3);
+            expect(store.getWatermark('proc-b')).toBe(8);
+        });
+    });
 });

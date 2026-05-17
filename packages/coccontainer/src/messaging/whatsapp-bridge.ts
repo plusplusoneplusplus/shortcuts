@@ -34,8 +34,6 @@ export class WhatsAppBridge {
     private bot: WhatsAppBot | null = null;
     private wsHandler: ((msg: WSRelayMessage) => void) | null = null;
     private _creatingGroup = false;
-    /** Track last-seen turn count per process to detect new turns. */
-    private lastTurnCount = new Map<string, number>();
 
     constructor(private opts: WhatsAppBridgeOptions) {}
 
@@ -235,7 +233,7 @@ export class WhatsAppBridge {
             console.log(`[whatsapp-bridge] Got ${turns?.length ?? 0} turns`);
             if (!turns || turns.length === 0) return;
 
-            const lastSeen = this.lastTurnCount.get(processId) ?? 0;
+            const lastSeen = this.store!.getWatermark(processId);
 
             // Skip streaming turns to avoid advancing watermark past incomplete content
             let sendableEnd = turns.length;
@@ -245,9 +243,6 @@ export class WhatsAppBridge {
             }
 
             const newTurns = turns.slice(lastSeen, sendableEnd);
-            if (sendableEnd > lastSeen) {
-                this.lastTurnCount.set(processId, sendableEnd);
-            }
             console.log(`[whatsapp-bridge] lastSeen=${lastSeen} sendableEnd=${sendableEnd} newTurns=${newTurns.length}`);
 
             if (newTurns.length === 0) return;
@@ -275,6 +270,11 @@ export class WhatsAppBridge {
                 } catch (err) {
                     console.error('[whatsapp-bridge] Failed to send outbound message:', err);
                 }
+            }
+
+            // Persist watermark after all sends so restarts don't re-push
+            if (sendableEnd > lastSeen) {
+                this.store!.setWatermark(processId, sendableEnd);
             }
         } catch (err) {
             console.error('[whatsapp-bridge] Failed to fetch process turns:', err);

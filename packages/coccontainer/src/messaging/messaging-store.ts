@@ -72,6 +72,21 @@ export class MessagingStore {
         ).run(senderJid, processId, agentId);
     }
 
+    /** Get the last pushed turn index for a process (0 = nothing pushed yet). */
+    getWatermark(processId: string): number {
+        const row = this.db.prepare(
+            `SELECT last_turn_index FROM wa_push_watermarks WHERE process_id = ?`
+        ).get(processId) as { last_turn_index: number } | undefined;
+        return row?.last_turn_index ?? 0;
+    }
+
+    /** Update the last pushed turn index for a process. */
+    setWatermark(processId: string, lastTurnIndex: number): void {
+        this.db.prepare(
+            `INSERT OR REPLACE INTO wa_push_watermarks (process_id, last_turn_index, updated_at) VALUES (?, ?, unixepoch())`
+        ).run(processId, lastTurnIndex);
+    }
+
     /** Close the database. */
     close(): void {
         this.db.close();
@@ -93,6 +108,12 @@ export class MessagingStore {
                 process_id      TEXT NOT NULL,
                 agent_id        TEXT NOT NULL,
                 created_at      INTEGER NOT NULL DEFAULT (unixepoch())
+            );
+
+            CREATE TABLE IF NOT EXISTS wa_push_watermarks (
+                process_id      TEXT PRIMARY KEY,
+                last_turn_index INTEGER NOT NULL DEFAULT 0,
+                updated_at      INTEGER NOT NULL DEFAULT (unixepoch())
             );
         `);
         // Migration: add workspace_id if table already exists without it
