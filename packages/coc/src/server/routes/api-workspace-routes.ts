@@ -8,8 +8,8 @@
 import * as url from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
-import type { ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
-import { BranchService, loadDefaultMcpConfig, detectRemoteUrl, resolvePathForHostFilesystem } from '@plusplusoneplusplus/forge';
+import type { MCPServerConfig, ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
+import { BranchService, loadDefaultMcpConfig, loadWorkspaceMcpConfig, detectRemoteUrl, resolvePathForHostFilesystem } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJSON } from '../core/api-handler';
 import { handleAPIError, missingFields, notFound, badRequest } from '../errors';
@@ -50,6 +50,71 @@ function hasGitDirectory(rootPath: string): boolean {
     } catch {
         return false;
     }
+}
+
+type WorkspaceMcpServerSource = 'global' | 'workspace';
+
+interface WorkspaceMcpServerEntry {
+    name: string;
+    type: string;
+    url?: string;
+    command?: string;
+    source?: WorkspaceMcpServerSource;
+    effective?: boolean;
+    overriddenBy?: WorkspaceMcpServerSource;
+}
+
+function toMcpServerEntry(
+    name: string,
+    config: MCPServerConfig,
+    source: WorkspaceMcpServerSource,
+    effective: boolean,
+): WorkspaceMcpServerEntry {
+    return {
+        name,
+        type: config.type ?? 'stdio',
+        source,
+        effective,
+        ...('url' in config && config.url ? { url: config.url } : {}),
+        ...('command' in config && config.command ? { command: config.command } : {}),
+        ...(!effective ? { overriddenBy: 'workspace' as const } : {}),
+    };
+}
+
+function buildMcpConfigResponse(ws: WorkspaceInfo) {
+    const globalConfig = loadDefaultMcpConfig();
+    const workspaceConfig = loadWorkspaceMcpConfig(ws.rootPath);
+    const workspaceNames = new Set(Object.keys(workspaceConfig.mcpServers));
+
+    const globalServers = Object.entries(globalConfig.mcpServers).map(([name, config]) =>
+        toMcpServerEntry(name, config, 'global', !workspaceNames.has(name))
+    );
+    const workspaceServers = Object.entries(workspaceConfig.mcpServers).map(([name, config]) =>
+        toMcpServerEntry(name, config, 'workspace', true)
+    );
+    const availableServers = Object.entries({
+        ...globalConfig.mcpServers,
+        ...workspaceConfig.mcpServers,
+    }).map(([name, config]) =>
+        toMcpServerEntry(name, config, workspaceNames.has(name) ? 'workspace' : 'global', true)
+    );
+
+    return {
+        availableServers,
+        enabledMcpServers: ws.enabledMcpServers ?? null,
+        sources: {
+            global: {
+                configPath: globalConfig.configPath ?? '',
+                fileExists: Boolean(globalConfig.fileExists),
+                servers: globalServers,
+            },
+            workspace: {
+                configPath: workspaceConfig.configPath ?? '',
+                fileExists: Boolean(workspaceConfig.fileExists),
+                servers: workspaceServers,
+            },
+        },
+    };
 }
 
 /**
@@ -301,14 +366,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
         handler: async (_req, res, match) => {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
-            const { mcpServers } = loadDefaultMcpConfig();
-            const availableServers = Object.entries(mcpServers).map(([name, config]) => ({
-                name,
-                type: config.type ?? 'stdio',
-                ...('url' in config && config.url ? { url: config.url } : {}),
-            }));
-            const enabledMcpServers = ws.enabledMcpServers ?? null;
-            sendJSON(res, 200, { availableServers, enabledMcpServers });
+            sendJSON(res, 200, buildMcpConfigResponse(ws));
         },
     });
 

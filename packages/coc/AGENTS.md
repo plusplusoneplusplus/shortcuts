@@ -41,6 +41,21 @@ synthesis follow-up turn (mode=ask, `context.skills=['grill-me']`,
 shows a "Promote to Ralph" pill in the follow-up area for eligible chats and
 calls this endpoint via `coc-client`'s `processes.promoteToRalph` helper.
 
+## MCP Settings
+
+`GET /api/workspaces/:id/mcp-config` returns both the effective
+`availableServers` list and source-separated `sources.global` /
+`sources.workspace` sections. Global servers come from
+`~/.copilot/mcp-config.json`; workspace servers come from
+`<repo>/.vscode/mcp.json` via Forge MCP loader helpers. Workspace entries
+override global entries with the same name. The endpoint only exposes safe row
+metadata (`name`, `type`, optional `url`/`command`, source/effective flags) and
+must not return secrets such as `env`, headers, or full argument arrays.
+
+`PUT /api/workspaces/:id/mcp-config` stores only the name-based
+`enabledMcpServers` allow-list. Workflow run filtering must resolve that list
+against the same effective global-plus-workspace MCP merge used at runtime.
+
 ## Loops
 
 Recurring follow-up subsystem in `src/server/loops/`. Separate from schedules.

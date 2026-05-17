@@ -16,19 +16,39 @@ import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 
-// Mock loadDefaultMcpConfig from pipeline-core to control the global MCP config in tests.
+// Mock MCP config loaders from pipeline-core to control effective MCP config in tests.
 // executePipeline is also mocked to avoid actual AI execution in workflow-run tests.
-const mockLoadDefaultMcpConfig = vi.fn().mockReturnValue({
+const mockLoadDefaultMcpConfig = vi.hoisted(() => vi.fn().mockReturnValue({
     mcpServers: {} as Record<string, any>,
     configPath: '',
-    loadedAt: 0,
-});
+    fileExists: false,
+}));
+const mockLoadWorkspaceMcpConfig = vi.hoisted(() => vi.fn().mockReturnValue({
+    mcpServers: {} as Record<string, any>,
+    configPath: '',
+    fileExists: false,
+}));
+const mockLoadEffectiveMcpConfig = vi.hoisted(() => vi.fn((options?: { workingDirectory?: string }) => {
+    const globalConfig = mockLoadDefaultMcpConfig();
+    const workspaceConfig = mockLoadWorkspaceMcpConfig(options?.workingDirectory);
+    return {
+        success: true,
+        mcpServers: {
+            ...globalConfig.mcpServers,
+            ...workspaceConfig.mcpServers,
+        },
+        configPath: workspaceConfig.configPath || globalConfig.configPath,
+        fileExists: Boolean(globalConfig.fileExists || workspaceConfig.fileExists),
+    };
+}));
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
         loadDefaultMcpConfig: () => mockLoadDefaultMcpConfig(),
+        loadWorkspaceMcpConfig: (workingDirectory: string) => mockLoadWorkspaceMcpConfig(workingDirectory),
+        loadEffectiveMcpConfig: (options: { workingDirectory?: string }) => mockLoadEffectiveMcpConfig(options),
         executePipeline: vi.fn().mockResolvedValue({
             executionStats: { totalItems: 0, successfulItems: 0, failedItems: 0, durationMs: 0 },
             output: { formattedOutput: '' },
@@ -462,8 +482,15 @@ reduce:
             mockLoadDefaultMcpConfig.mockReturnValue({
                 mcpServers: {},
                 configPath: '',
-                loadedAt: 0,
+                fileExists: false,
             });
+            mockLoadWorkspaceMcpConfig.mockReset();
+            mockLoadWorkspaceMcpConfig.mockReturnValue({
+                mcpServers: {},
+                configPath: '',
+                fileExists: false,
+            });
+            mockLoadEffectiveMcpConfig.mockClear();
         });
 
         async function runAndGetTask(srv: ExecutionServer, wsId: string, pipeName: string) {
@@ -503,7 +530,7 @@ reduce:
             mockLoadDefaultMcpConfig.mockReturnValue({
                 mcpServers: { serverA: { command: 'npx', args: ['serverA'] } },
                 configPath: '',
-                loadedAt: 0,
+                fileExists: true,
             });
             await putJSON(`${srv.url}/api/workspaces/${wsId}/mcp-config`, { enabledMcpServers: [] });
             const task = await runAndGetTask(srv, wsId, 'mcp-pipe-empty');
@@ -521,21 +548,51 @@ reduce:
                     serverB: { command: 'npx', args: ['-y', 'serverB'] },
                 },
                 configPath: '',
-                loadedAt: 0,
+                fileExists: true,
             });
             await putJSON(`${srv.url}/api/workspaces/${wsId}/mcp-config`, { enabledMcpServers: ['serverA'] });
             const task = await runAndGetTask(srv, wsId, 'mcp-pipe-filter');
             expect(task.payload.mcpServers).toEqual({ serverA: serverAConfig });
         });
 
-        it('should produce {} when named server is absent from global config', async () => {
+        it('should filter against workspace-over-global effective MCP config', async () => {
+            createPipelines({ 'mcp-pipe-workspace': JOB_YAML });
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const workspaceServerConfig = { command: 'workspace-cmd' };
+            mockLoadDefaultMcpConfig.mockReturnValue({
+                mcpServers: {
+                    shared: { command: 'global-cmd' },
+                    globalOnly: { command: 'global-only' },
+                },
+                configPath: '',
+                fileExists: true,
+            });
+            mockLoadWorkspaceMcpConfig.mockReturnValue({
+                mcpServers: {
+                    shared: workspaceServerConfig,
+                    workspaceOnly: { command: 'workspace-only' },
+                },
+                configPath: '',
+                fileExists: true,
+            });
+            await putJSON(`${srv.url}/api/workspaces/${wsId}/mcp-config`, { enabledMcpServers: ['shared', 'workspaceOnly'] });
+            const task = await runAndGetTask(srv, wsId, 'mcp-pipe-workspace');
+            expect(mockLoadEffectiveMcpConfig).toHaveBeenCalledWith({ workingDirectory: workspaceDir });
+            expect(task.payload.mcpServers).toEqual({
+                shared: workspaceServerConfig,
+                workspaceOnly: { command: 'workspace-only' },
+            });
+        });
+
+        it('should produce {} when named server is absent from effective config', async () => {
             createPipelines({ 'mcp-pipe-absent': JOB_YAML });
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
             mockLoadDefaultMcpConfig.mockReturnValue({
                 mcpServers: { serverA: { command: 'npx', args: ['serverA'] } },
                 configPath: '',
-                loadedAt: 0,
+                fileExists: true,
             });
             await putJSON(`${srv.url}/api/workspaces/${wsId}/mcp-config`, { enabledMcpServers: ['serverX'] });
             const task = await runAndGetTask(srv, wsId, 'mcp-pipe-absent');

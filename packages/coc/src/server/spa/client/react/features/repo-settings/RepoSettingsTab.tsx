@@ -11,7 +11,7 @@ import { useGlobalToast } from '../../contexts/ToastContext';
 import { useApp } from '../../contexts/AppContext';
 import { formatRelativeTime } from '../../utils/format';
 import { McpServersPanel } from '../skills/McpServersPanel';
-import type { McpServerEntry } from '../skills/McpServersPanel';
+import type { McpServerEntry, McpServerSources } from '../skills/McpServersPanel';
 import { AgentSkillsPanel } from '../skills/AgentSkillsPanel';
 import type { Skill, SkillDetail } from '../skills/AgentSkillsPanel';
 import { CustomInstructionsPanel } from '../skills/CustomInstructionsPanel';
@@ -80,14 +80,17 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [availableServers, setAvailableServers] = useState<McpServerEntry[]>([]);
+    const [mcpSources, setMcpSources] = useState<McpServerSources | undefined>(undefined);
     const [enabledMcpServers, setEnabledMcpServers] = useState<string[] | null>(null);
 
     useEffect(() => {
         setLoading(true);
         setError(null);
+        setMcpSources(undefined);
         fetchApi(`/workspaces/${workspaceId}/mcp-config`)
             .then((data) => {
                 setAvailableServers(data.availableServers ?? []);
+                setMcpSources(data.sources);
                 setEnabledMcpServers(data.enabledMcpServers ?? null);
             })
             .catch((e: any) => setError(e.message ?? 'Failed to load MCP config'))
@@ -485,6 +488,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                         error={error}
                         saving={saving}
                         availableServers={availableServers}
+                        sources={mcpSources}
                         isEnabled={isEnabled}
                         onToggle={handleToggle}
                     />
