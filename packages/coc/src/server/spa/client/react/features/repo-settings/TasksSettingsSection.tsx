@@ -87,8 +87,6 @@ export function TasksSettingsSection({ workspaceId }: TasksSettingsSectionProps)
 
     return (
         <div data-testid="tasks-settings-section">
-            <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-3">Plans Folder</h3>
-
             {/* Primary folder (read-only) */}
             <div className="mb-4">
                 <div className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] mb-1.5">Primary folder</div>
