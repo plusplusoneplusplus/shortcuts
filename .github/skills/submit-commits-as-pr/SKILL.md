@@ -19,6 +19,7 @@ Trigger on requests like:
 - "Submit commits `abc123..def456` as a PR."
 - "PR-ify the last 3 commits on this branch."
 - "Send these commits upstream as a draft PR."
+- "Submit this commit as a PR with auto-merge."
 
 Do **not** use this skill to author new commits — use the `impl` skill for
 that. This skill only republishes commits that already exist.
@@ -58,6 +59,8 @@ Useful options:
 | `--title <t>` / `--body <b>` | PR metadata (otherwise `gh --fill` is used) |
 | `--draft` | Open as draft |
 | `--gh-arg <arg>` | Pass an extra arg through to `gh pr create` (repeat as needed, e.g. `--gh-arg --reviewer --gh-arg alice`) |
+| `--auto-merge` | Enable auto-merge after the PR is created |
+| `--merge-method <method>` | Merge method for auto-merge: `merge` (default), `squash`, or `rebase` |
 
 Examples:
 
@@ -71,6 +74,10 @@ python .github/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start
 # Last 3 commits, draft PR with custom title
 python .github/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start HEAD~3..HEAD \
     --draft --title "Refactor task queue retry path"
+
+# Single commit with auto-merge enabled
+python .github/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start abc1234 \
+    --auto-merge --merge-method merge
 ```
 
 ### Continue (after a conflict)
@@ -106,7 +113,8 @@ switches back to the original branch, and removes the state file.
 6. Rebases onto `<remote>/<base>` (usually a no-op, but guards against races). On conflict → pause as above.
 7. `git push -u <remote> <new-branch>`.
 8. `gh pr create` with the chosen options.
-9. `git checkout <original-branch>` and removes the state file.
+9. If `--auto-merge` is set, run `gh pr merge --auto --<method>` on the new PR.
+10. `git checkout <original-branch>` and removes the state file.
 
 State (remaining commits, current phase, PR metadata, branch names) is
 persisted in `.git/submit_commits_as_pr.state.json` so `--continue` picks up
