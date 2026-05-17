@@ -138,7 +138,7 @@ describe('NotesTreeItem — drag and drop props', () => {
             />,
         );
         const el = getByTestId('notes-tree-item-NB');
-        expect(el.className).toContain('ring-[#007acc]');
+        expect(el.className).toContain('ring-[#0969da]');
     });
 
     it('does not render drop indicators when isDragOver is false', () => {
