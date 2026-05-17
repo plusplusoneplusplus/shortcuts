@@ -19,6 +19,8 @@ describe('PreferencesClient', () => {
     await client.updateTaskSettings('repo/a', { folderPaths: ['tasks', 'plans'] });
     await client.getLlmToolsConfig('repo/a');
     await client.updateLlmToolsConfig('repo/a', { disabledLlmTools: [] });
+    await client.getEnDevStatus('repo/a', { refresh: true });
+    await client.revalidateEnDev('repo/a');
 
     expect(adapter.calls).toMatchObject([
       { path: '/preferences' },
@@ -38,6 +40,14 @@ describe('PreferencesClient', () => {
       {
         path: '/workspaces/repo%2Fa/llm-tools-config',
         options: { method: 'PUT', body: { disabledLlmTools: [] } },
+      },
+      {
+        path: '/workspaces/repo%2Fa/endev/status',
+        options: { query: { refresh: 'true' } },
+      },
+      {
+        path: '/workspaces/repo%2Fa/endev/revalidate',
+        options: { method: 'POST' },
       },
     ]);
   });

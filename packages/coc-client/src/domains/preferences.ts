@@ -1,5 +1,6 @@
 import type {
   GlobalPreferences,
+  EnDevEligibilityStatus,
   LlmToolsConfig,
   LlmToolsConfigUpdate,
   PerRepoPreferences,
@@ -114,6 +115,18 @@ export class PreferencesClient {
     return this.transport.request<LlmToolsConfig>(workspacePath(workspaceId, '/llm-tools-config'), {
       method: 'PUT',
       body: { disabledLlmTools: [...config.disabledLlmTools] },
+    });
+  }
+
+  getEnDevStatus(workspaceId: string, options?: { refresh?: boolean }): Promise<EnDevEligibilityStatus> {
+    return this.transport.request<EnDevEligibilityStatus>(workspacePath(workspaceId, '/endev/status'), {
+      query: options?.refresh ? { refresh: 'true' } : undefined,
+    });
+  }
+
+  revalidateEnDev(workspaceId: string): Promise<EnDevEligibilityStatus> {
+    return this.transport.request<EnDevEligibilityStatus>(workspacePath(workspaceId, '/endev/revalidate'), {
+      method: 'POST',
     });
   }
 }

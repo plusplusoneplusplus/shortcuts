@@ -24,6 +24,8 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | GET | `/api/workspaces/:id/preferences` | Per-repo preferences |
 | PATCH | `/api/workspaces/:id/preferences` | Update per-repo preferences |
 | GET | `/api/workspaces/:id/summary` | Aggregated workspace summary |
+| GET | `/api/workspaces/:id/endev/status` | Cached EnDev xDPU eligibility status; `?refresh=true` revalidates |
+| POST | `/api/workspaces/:id/endev/revalidate` | Force EnDev xDPU eligibility revalidation |
 
 ## Processes
 

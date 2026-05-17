@@ -19,6 +19,7 @@ import {
     resolveWorkspaceExecutionContext,
     translatePathForExecution,
 } from '@plusplusoneplusplus/forge';
+import { getEffectiveEnDevExtraSkillFolders } from '../endev/endev-detector';
 
 export async function resolveSkillConfig(
     store: ProcessStore,
@@ -36,8 +37,11 @@ export async function resolveSkillConfig(
             if (ws?.disabledSkills && ws.disabledSkills.length > 0) {
                 disabledSkills = [...ws.disabledSkills];
             }
-            if (ws?.extraSkillFolders && ws.extraSkillFolders.length > 0) {
-                extraSkillFolders = [...ws.extraSkillFolders];
+            if (ws) {
+                const effectiveExtraSkillFolders = await getEffectiveEnDevExtraSkillFolders(dataDir, ws);
+                if (effectiveExtraSkillFolders.length > 0) {
+                    extraSkillFolders = effectiveExtraSkillFolders;
+                }
             }
         } catch {
             // Non-fatal: continue without workspace config

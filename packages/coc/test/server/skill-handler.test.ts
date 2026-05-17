@@ -10,7 +10,9 @@ import * as os from 'os';
 import { registerSkillRoutes, sortSkillsByUsage, skillCache, SKILL_CACHE_TTL_MS } from '../../src/server/skills/skill-handler';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { Route } from '../../src/server/types';
-import type { WorkspaceInfo } from '@plusplusoneplusplus/forge';
+import { getRepoDataPath, type WorkspaceInfo } from '@plusplusoneplusplus/forge';
+import { ENDEV_STATUS_CACHE_FILE, ENDEV_XDPU_SKILL_NAME } from '../../src/server/endev/endev-detector';
+import { writeRepoPreferences } from '../../src/server/preferences-handler';
 
 // ============================================================================
 // Test Helpers
@@ -109,6 +111,88 @@ describe('registerSkillRoutes', () => {
             rootPath: workspaceDir,
         } as WorkspaceInfo]);
         registerSkillRoutes(routes, store);
+    });
+
+    describe('EnDev xDPU wrapper visibility', () => {
+        let dataDir: string;
+        let routesWithDataDir: Route[];
+
+        function writeEnDevStatus(eligible: boolean, pluginSkillFolder?: string): void {
+            const statusPath = getRepoDataPath(dataDir, workspaceId, ENDEV_STATUS_CACHE_FILE);
+            fs.mkdirSync(path.dirname(statusPath), { recursive: true });
+            fs.writeFileSync(statusPath, JSON.stringify({
+                workspaceId,
+                workspaceRoot: workspaceDir,
+                eligible,
+                reason: eligible ? 'eligible' : 'not-xdpu-workspace',
+                nativeWsl: true,
+                xDpuWorkspace: eligible,
+                hasSetupFiles: eligible,
+                setupFiles: eligible ? ['.endev'] : [],
+                pluginSkillFolder,
+                checkedAt: new Date().toISOString(),
+                cached: false,
+            }));
+        }
+
+        beforeEach(() => {
+            dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-endev-data-'));
+            routesWithDataDir = [];
+            registerSkillRoutes(routesWithDataDir, store, dataDir);
+        });
+
+        afterEach(() => {
+            fs.rmSync(dataDir, { recursive: true, force: true });
+        });
+
+        it('hides EnDev-xDpu from workspace skill lists when the workspace is ineligible', async () => {
+            const skillsDir = path.join(workspaceDir, '.github', 'skills', ENDEV_XDPU_SKILL_NAME);
+            fs.mkdirSync(skillsDir, { recursive: true });
+            fs.writeFileSync(path.join(skillsDir, 'SKILL.md'), '# EnDev xDPU');
+            writeEnDevStatus(false);
+
+            const { statusCode, body } = await dispatchRoute(
+                routesWithDataDir, 'GET', `/api/workspaces/${workspaceId}/skills`
+            );
+
+            expect(statusCode).toBe(200);
+            expect(body.skills.map((s: any) => s.name)).not.toContain(ENDEV_XDPU_SKILL_NAME);
+        });
+
+        it('shows EnDev-xDpu by default when the workspace is eligible', async () => {
+            const skillsDir = path.join(workspaceDir, '.github', 'skills', ENDEV_XDPU_SKILL_NAME);
+            fs.mkdirSync(skillsDir, { recursive: true });
+            fs.writeFileSync(path.join(skillsDir, 'SKILL.md'), '# EnDev xDPU');
+            writeEnDevStatus(true);
+
+            const { statusCode, body } = await dispatchRoute(
+                routesWithDataDir, 'GET', `/api/workspaces/${workspaceId}/skills`
+            );
+
+            expect(statusCode).toBe(200);
+            expect(body.skills.map((s: any) => s.name)).toContain(ENDEV_XDPU_SKILL_NAME);
+        });
+
+        it('hides only the EnDev wrapper when the preference is disabled', async () => {
+            const skillsDir = path.join(workspaceDir, '.github', 'skills', ENDEV_XDPU_SKILL_NAME);
+            fs.mkdirSync(skillsDir, { recursive: true });
+            fs.writeFileSync(path.join(skillsDir, 'SKILL.md'), '# EnDev xDPU');
+            const pluginSkillFolder = path.join(workspaceDir, '.endev', 'copilot', 'skills');
+            const pluginSkill = path.join(pluginSkillFolder, 'endev-plugin-skill');
+            fs.mkdirSync(pluginSkill, { recursive: true });
+            fs.writeFileSync(path.join(pluginSkill, 'SKILL.md'), '# EnDev Plugin Skill');
+            writeEnDevStatus(true, pluginSkillFolder);
+            writeRepoPreferences(dataDir, workspaceId, { endevXDpu: { enabled: false } });
+
+            const { statusCode, body } = await dispatchRoute(
+                routesWithDataDir, 'GET', `/api/workspaces/${workspaceId}/skills`
+            );
+            const names = body.skills.map((s: any) => s.name);
+
+            expect(statusCode).toBe(200);
+            expect(names).not.toContain(ENDEV_XDPU_SKILL_NAME);
+            expect(names).toContain('endev-plugin-skill');
+        });
     });
 
     afterEach(() => {
@@ -803,4 +887,3 @@ describe('sortSkillsByUsage', () => {
         expect(skills).toEqual(copy);
     });
 });
-

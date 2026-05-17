@@ -82,6 +82,18 @@ refreshes; no file watcher is used.
 `enabledMcpServers` allow-list. Workflow run filtering must resolve that list
 against the same effective global-plus-workspace MCP merge used at runtime.
 
+## EnDev xDPU
+
+Workspace-scoped EnDev support lives in `src/server/endev/`. Eligibility is
+cached under `~/.coc/repos/<workspaceId>/endev/eligibility.json` and requires a
+native WSL host, xDPU workspace markers, EnDev setup files, and a successful
+short-timeout `endev doctor`. `GET /api/workspaces/:id/endev/status` reads the
+cache by default; `?refresh=true` or `POST /api/workspaces/:id/endev/revalidate`
+forces revalidation and clears the workspace skill cache. The per-repo
+`endevXDpu.enabled` preference defaults to enabled only when the workspace is
+eligible, hides only the `EnDev-xDpu` wrapper skill from picker lists when false,
+and must not disable EnDev MCP servers or EnDev plugin skills.
+
 ## Loops
 
 Recurring follow-up subsystem in `src/server/loops/`. Separate from schedules.
