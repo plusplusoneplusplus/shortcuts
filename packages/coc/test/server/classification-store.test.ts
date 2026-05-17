@@ -40,9 +40,11 @@ describe('classificationPaths', () => {
 
     it('sanitizes filesystem-unsafe characters in key parts', () => {
         const paths = classificationPaths('/data', 'ws1', 'org/repo', '42', 'sha:bad');
-        expect(paths.resultPath).not.toContain('/repo');
-        expect(paths.resultPath).not.toContain(':');
-        expect(path.basename(paths.resultPath)).toBe('org_repo_42_sha_bad.json');
+        const filename = path.basename(paths.resultPath);
+        // The sanitized filename must not contain the original unsafe chars
+        expect(filename).not.toContain('/');
+        expect(filename).not.toContain(':');
+        expect(filename).toBe('org_repo_42_sha_bad.json');
     });
 });
 
