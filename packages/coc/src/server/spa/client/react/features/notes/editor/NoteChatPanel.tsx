@@ -9,13 +9,14 @@ import { NoteContextBanner } from './NoteContextBanner';
 import { useModels } from '../../../hooks/useModels';
 import { useSlashCommands } from '../../chat/hooks/useSlashCommands';
 import { useModelCommand } from '../../chat/hooks/useModelCommand';
-import { SlashCommandMenu, META_SKILL_ITEMS, type SkillItem } from '../../chat/SlashCommandMenu';
+import { SlashCommandMenu, getMetaSkillItems, mergeSkillsWithMeta, type SkillItem } from '../../chat/SlashCommandMenu';
 import { ModelCommandMenu } from '../../chat/ModelCommandMenu';
 import { NoteReferenceChips } from './NoteReferenceChips';
 import { formatNoteReferences } from './useNoteReferences';
 import type { NoteTextReference } from './useNoteReferences';
 import type { ChatMode } from '../../../repos/modeConfig';
 import { getSpaCocClient } from '../../../api/cocClient';
+import { isLoopsEnabled } from '../../../utils/config';
 import { useFileAttachments } from '../../chat/hooks/useFileAttachments';
 import { AttachmentPreviews } from '../../../ui/AttachmentPreviews';
 
@@ -54,7 +55,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
     const { models: availableModels } = useModels();
     const enabledModels = availableModels.filter(m => m.enabled);
     const [skills, setSkills] = useState<SkillItem[]>([]);
-    const augmentedSkills = useMemo(() => [...skills, ...META_SKILL_ITEMS], [skills]);
+    const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isLoopsEnabled())), [skills]);
     const slashCommands = useSlashCommands(augmentedSkills);
     const modelCommand = useModelCommand(enabledModels);
 

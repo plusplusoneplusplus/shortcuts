@@ -34,6 +34,16 @@ import type { Route } from '../types';
 /** Skill names that collide with sub-routes and must be rejected. */
 const RESERVED_SKILL_NAMES = new Set(['bundled', 'scan', 'install', 'all']);
 
+/** Remove duplicate skills by name, keeping the first occurrence. */
+function dedupByName<T extends { name: string }>(skills: T[]): T[] {
+    const seen = new Set<string>();
+    return skills.filter(s => {
+        if (seen.has(s.name)) return false;
+        seen.add(s.name);
+        return true;
+    });
+}
+
 function getSkillsInstallPath(workspaceRoot: string): string {
     return resolvePathForHostFilesystem(workspaceRoot, DEFAULT_SKILLS_SETTINGS.installPath);
 }
@@ -349,7 +359,7 @@ async function loadSkillsForWorkspace(
         }
     }
 
-    let skills = [...localSkills, ...globalSkills, ...extraSkills];
+    let skills = dedupByName([...localSkills, ...globalSkills, ...extraSkills]);
     if (dataDir) {
         try {
             const repoPrefsPath = getRepoDataPath(dataDir, id, 'preferences.json');

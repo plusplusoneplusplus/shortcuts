@@ -21,6 +21,33 @@ export const META_SKILL_ITEMS: SkillItem[] = [
     { name: 'loop', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
 ];
 
+/**
+ * Return meta skill items filtered by feature flags.
+ * `/loop` is excluded when the loops feature is disabled.
+ */
+export function getMetaSkillItems(loopsEnabled: boolean): SkillItem[] {
+    return META_SKILL_ITEMS.filter(m => m.name !== 'loop' || loopsEnabled);
+}
+
+/**
+ * Merge server-fetched skills with meta skill items, deduplicating by name.
+ * When a server skill and a meta item share the same name, the server skill's
+ * description is preferred but the meta item's `args` hint is overlaid if the
+ * server skill lacks one.
+ */
+export function mergeSkillsWithMeta(skills: SkillItem[], metaItems: SkillItem[]): SkillItem[] {
+    const metaByName = new Map(metaItems.map(m => [m.name, m]));
+    const merged = skills.map(s => {
+        const meta = metaByName.get(s.name);
+        if (meta) {
+            metaByName.delete(s.name);
+            return { ...s, args: s.args || meta.args };
+        }
+        return s;
+    });
+    return [...merged, ...metaByName.values()];
+}
+
 interface SlashCommandMenuProps {
     skills: SkillItem[];
     filter: string;

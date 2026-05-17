@@ -30,6 +30,16 @@ import type { Route } from '../types';
 /** Skill names that collide with global sub-routes and must be rejected. */
 const RESERVED_GLOBAL_SKILL_NAMES = new Set(['bundled', 'scan', 'install', 'config']);
 
+/** Remove duplicate skills by name, keeping the first occurrence. */
+function dedupByName<T extends { name: string }>(skills: T[]): T[] {
+    const seen = new Set<string>();
+    return skills.filter(s => {
+        if (seen.has(s.name)) return false;
+        seen.add(s.name);
+        return true;
+    });
+}
+
 function getGlobalSkillsDir(dataDir: string): string {
     return path.join(dataDir, 'skills');
 }
@@ -223,10 +233,10 @@ export function registerGlobalSkillRoutes(routes: Route[], store: ProcessStore, 
 
             // Merge: repo overrides global for same-named skills
             const repoNames = new Set(repoSkills.map(s => s.name));
-            const merged = [
+            const merged = dedupByName([
                 ...repoSkills,
                 ...globalSkills.filter(s => !repoNames.has(s.name)),
-            ];
+            ]);
 
             sendJSON(res, 200, { global: globalSkills, repo: repoSkills, merged });
         },
