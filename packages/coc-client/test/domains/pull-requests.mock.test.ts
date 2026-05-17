@@ -212,6 +212,47 @@ describe('PullRequestsClient mock coverage', () => {
     expect(result.fetchedAt).toBe(1700000000000);
     expect(result.pullRequests).toEqual([{ id: 1 }]);
   });
+
+  it('lists, gets, creates, and deletes pull-request chat bindings', async () => {
+    mock = await startMockServer();
+    const now = new Date('2026-04-18T00:00:00.000Z').toISOString();
+    mock.on('GET', '/api/workspaces/ws-1/pull-request-chat-bindings', {
+      body: { bindings: { '142': { taskId: 'task-1', createdAt: now } } },
+    });
+    mock.on('GET', '/api/workspaces/ws-1/pull-request-chat-bindings/142', {
+      body: { prId: '142', taskId: 'task-1' },
+    });
+    mock.on('POST', '/api/workspaces/ws-1/pull-request-chat-bindings', {
+      status: 201,
+      body: { prId: '142', taskId: 'task-1' },
+    });
+    mock.on('DELETE', '/api/workspaces/ws-1/pull-request-chat-bindings/142', {
+      status: 204,
+      body: undefined,
+    });
+    const client = createClient(mock);
+
+    await expect(client.pullRequests.listChatBindings('ws-1')).resolves.toEqual({
+      bindings: { '142': { taskId: 'task-1', createdAt: now } },
+    });
+    await expect(client.pullRequests.getChatBinding('ws-1', '142')).resolves.toEqual({
+      prId: '142',
+      taskId: 'task-1',
+    });
+    await expect(client.pullRequests.createChatBinding('ws-1', '142', 'task-1')).resolves.toEqual({
+      prId: '142',
+      taskId: 'task-1',
+    });
+    await expect(client.pullRequests.deleteChatBinding('ws-1', '142')).resolves.toBeUndefined();
+
+    expectEmptyRequest(mock.requests[0], 'GET', '/api/workspaces/ws-1/pull-request-chat-bindings');
+    expectEmptyRequest(mock.requests[1], 'GET', '/api/workspaces/ws-1/pull-request-chat-bindings/142');
+    expectJsonRequest(mock.requests[2], 'POST', '/api/workspaces/ws-1/pull-request-chat-bindings', {
+      prId: '142',
+      taskId: 'task-1',
+    });
+    expect(mock.requests[3]).toMatchObject({ method: 'DELETE', path: '/api/workspaces/ws-1/pull-request-chat-bindings/142' });
+  });
 });
 
 function createClient(mock: MockServer): CocClient {

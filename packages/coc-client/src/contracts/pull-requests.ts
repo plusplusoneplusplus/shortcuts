@@ -96,3 +96,16 @@ export interface PullRequestCheck {
 export interface PullRequestChecksResponse {
   checks: PullRequestCheck[];
 }
+
+// ── PR chat bindings ───────────────────────────────────────────────
+
+/** A single pull-request → chat task binding. */
+export interface PullRequestChatBinding {
+  prId: string;
+  taskId: string;
+}
+
+/** Response shape for listing bindings; map keyed by prId. */
+export interface PullRequestChatBindingListResponse {
+  bindings: Record<string, { taskId: string; createdAt: string }>;
+}

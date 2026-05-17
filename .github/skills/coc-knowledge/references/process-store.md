@@ -18,6 +18,7 @@ Default backend. Single `processes.db` file at `~/.coc/processes.db`. Schema ver
 | `queue_tasks` | Queue task persistence |
 | `schedule_runs` | Schedule execution history |
 | `commit_chat_bindings` | commitHash → taskId mappings |
+| `pull_request_chat_bindings` | prId → taskId mappings (one persistent chat per PR per workspace) |
 
 ### Key Features
 
