@@ -6,7 +6,7 @@
 /* @vitest-environment jsdom */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { SlashCommandMenu } from '../../../../src/server/spa/client/react/features/chat/SlashCommandMenu';
+import { SlashCommandMenu, META_SKILL_ITEMS } from '../../../../src/server/spa/client/react/features/chat/SlashCommandMenu';
 
 const SKILLS = [
     { name: 'spec', description: 'Ask the agent to draft a Markdown spec instead of code' },
@@ -179,5 +179,50 @@ describe('SlashCommandMenu (redesigned card)', () => {
         const rows = document.querySelectorAll('[data-menu-item]');
         expect(rows[0].textContent).toContain('Ask the agent to draft a Markdown spec instead of code');
         expect(rows[2].textContent).toContain('Restrict edits to a path or package');
+    });
+
+    it('renders args as a dim monospace hint when provided', () => {
+        const skillsWithArgs = [
+            { name: 'loop', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
+            { name: 'model', description: 'Switch AI model' },
+        ];
+        render(
+            <SlashCommandMenu
+                skills={skillsWithArgs}
+                filter=""
+                onSelect={() => {}}
+                onDismiss={() => {}}
+                visible={true}
+                highlightIndex={0}
+            />,
+        );
+        const rows = document.querySelectorAll('[data-menu-item]');
+        expect(rows[0].textContent).toContain('[interval] <prompt>');
+        expect(rows[1].textContent).not.toContain('[interval]');
+    });
+
+    it('does not render an args span when args is absent', () => {
+        render(
+            <SlashCommandMenu
+                skills={[{ name: 'spec', description: 'Draft a spec' }]}
+                filter=""
+                onSelect={() => {}}
+                onDismiss={() => {}}
+                visible={true}
+                highlightIndex={0}
+            />,
+        );
+        const row = document.querySelector('[data-menu-item]');
+        expect(row?.textContent).not.toContain('[');
+    });
+
+    it('META_SKILL_ITEMS includes model and loop with correct shape', () => {
+        const model = META_SKILL_ITEMS.find(s => s.name === 'model');
+        const loop = META_SKILL_ITEMS.find(s => s.name === 'loop');
+        expect(model).toBeDefined();
+        expect(model?.description).toBeTruthy();
+        expect(loop).toBeDefined();
+        expect(loop?.description).toBeTruthy();
+        expect(loop?.args).toBe('[interval] <prompt>');
     });
 });
