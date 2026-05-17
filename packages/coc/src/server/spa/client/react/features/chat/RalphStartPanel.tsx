@@ -1,10 +1,12 @@
 /**
- * RalphStartPanel — shown below a completed grilling-phase process.
+ * RalphStartPanel — shown below a completed grilling-phase process,
+ * or when a goal.md / *.goal.md file was created during the conversation.
  *
- * Extracts the goal spec from the last assistant turn, lets the user edit it,
- * then POSTs to /api/processes/:id/ralph-start to begin execution.
+ * Two flows:
+ * - **Turn-based (existing):** extracts the goal spec from the last assistant turn.
+ * - **File-based (new):** reads goal spec from a goal.md file via /api/fs/blob.
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { getApiBase } from '../../utils/config';
 import { cn } from '../../ui/cn';
 import type { ClientConversationTurn } from '../../types/dashboard';
@@ -14,6 +16,8 @@ export interface RalphStartPanelProps {
     workspaceId?: string;
     turns: ClientConversationTurn[];
     onStarted: (newProcessId: string) => void;
+    /** When set, reads goal from this file instead of extracting from turns */
+    goalFilePath?: string;
 }
 
 /** Extract goal spec from last assistant turn: find block starting with ## Goal, or use full content. */
@@ -26,16 +30,36 @@ function extractGoalSpec(turns: ClientConversationTurn[]): string {
     return content.trim();
 }
 
-export function RalphStartPanel({ processId, workspaceId, turns, onStarted }: RalphStartPanelProps) {
+export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goalFilePath }: RalphStartPanelProps) {
     const [open, setOpen] = useState(false);
     const [goalSpec, setGoalSpec] = useState('');
     const [starting, setStarting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [loadingFile, setLoadingFile] = useState(false);
 
-    function handleOpen() {
-        setGoalSpec(extractGoalSpec(turns));
+    async function handleOpen() {
         setError(null);
         setOpen(true);
+        if (goalFilePath) {
+            // File-based flow: fetch goal content from disk
+            setLoadingFile(true);
+            try {
+                const resp = await fetch(
+                    `${getApiBase()}/fs/blob?path=${encodeURIComponent(goalFilePath)}`,
+                );
+                if (!resp.ok) throw new Error(`Failed to read goal file (HTTP ${resp.status})`);
+                const data = await resp.json();
+                setGoalSpec(typeof data.content === 'string' ? data.content : '');
+            } catch (err) {
+                setError(err instanceof Error ? err.message : 'Failed to read goal file');
+                setGoalSpec('');
+            } finally {
+                setLoadingFile(false);
+            }
+        } else {
+            // Turn-based flow: extract from last assistant turn
+            setGoalSpec(extractGoalSpec(turns));
+        }
     }
 
     async function handleConfirm() {
@@ -44,10 +68,17 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted }: Ra
         setStarting(true);
         setError(null);
         try {
-            const resp = await fetch(`${getApiBase()}/processes/${encodeURIComponent(processId)}/ralph-start`, {
+            // Choose endpoint: file-based uses ralph-launch, turn-based uses ralph-start
+            const url = goalFilePath
+                ? `${getApiBase()}/ralph-launch`
+                : `${getApiBase()}/processes/${encodeURIComponent(processId)}/ralph-start`;
+            const body = goalFilePath
+                ? { goalSpec: trimmed, workspaceId }
+                : { goalSpec: trimmed, workspaceId };
+            const resp = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ goalSpec: trimmed, workspaceId }),
+                body: JSON.stringify(body),
             });
             if (!resp.ok) {
                 const text = await resp.text();
@@ -68,6 +99,10 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted }: Ra
         }
     }
 
+    const goalFileName = goalFilePath
+        ? goalFilePath.replace(/^.*[/\\]/, '')
+        : undefined;
+
     if (!open) {
         return (
             <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-4 py-3">
@@ -80,7 +115,9 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted }: Ra
                     🔄 Start Ralph
                 </button>
                 <p className="mt-1 text-xs text-[#848484]">
-                    Review and confirm the goal spec, then start the automated coding loop.
+                    {goalFileName
+                        ? `Launch the Ralph execution loop using the goal spec from ${goalFileName}.`
+                        : 'Review and confirm the goal spec, then start the automated coding loop.'}
                 </p>
             </div>
         );
@@ -108,10 +145,10 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted }: Ra
                 data-testid="ralph-goal-spec-input"
                 value={goalSpec}
                 onChange={e => setGoalSpec(e.target.value)}
-                disabled={starting}
+                disabled={starting || loadingFile}
                 rows={10}
                 className="w-full rounded-md border border-[#d0d0d0] dark:border-[#4a4a4a] bg-white dark:bg-[#1e1e1e] text-sm text-[#1e1e1e] dark:text-[#cccccc] p-2 font-mono resize-y focus:outline-none focus:ring-2 focus:ring-purple-500/30"
-                placeholder="## Goal&#10;..."
+                placeholder={loadingFile ? 'Loading goal file…' : '## Goal\n...'}
             />
             {error && <p className="text-xs text-[#f14c4c]" data-testid="ralph-start-error">{error}</p>}
             <div className="flex items-center gap-2">

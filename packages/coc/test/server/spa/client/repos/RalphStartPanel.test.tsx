@@ -185,4 +185,129 @@ describe('RalphStartPanel', () => {
         expect(textarea.value).toContain('## Goal');
         expect(textarea.value).not.toContain('Some preamble text');
     });
+
+    // -----------------------------------------------------------------------
+    // Goal-file-based flow (goalFilePath prop)
+    // -----------------------------------------------------------------------
+
+    it('shows contextual description when goalFilePath is provided', () => {
+        render(
+            <RalphStartPanel
+                processId="queue_test-goal"
+                workspaceId="ws-1"
+                turns={[]}
+                goalFilePath="/repos/myrepo/auth-refactor.goal.md"
+                onStarted={mockOnStarted}
+            />,
+        );
+
+        expect(screen.getByTestId('ralph-start-btn')).toBeTruthy();
+        expect(screen.getByText(/auth-refactor\.goal\.md/)).toBeTruthy();
+    });
+
+    it('fetches goal content from /api/fs/blob when goalFilePath is provided', async () => {
+        const mockFetch = vi.fn()
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ content: '## Goal\nRefactor auth module', encoding: 'utf-8' }),
+            });
+        vi.stubGlobal('fetch', mockFetch);
+
+        render(
+            <RalphStartPanel
+                processId="queue_test-goal-fetch"
+                workspaceId="ws-1"
+                turns={[]}
+                goalFilePath="/repos/myrepo/goal.md"
+                onStarted={mockOnStarted}
+            />,
+        );
+
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('ralph-start-panel')).toBeTruthy();
+        });
+
+        // Should have fetched from fs/blob
+        expect(mockFetch).toHaveBeenCalledWith(
+            expect.stringContaining('/api/fs/blob?path='),
+        );
+
+        await waitFor(() => {
+            const textarea = screen.getByTestId('ralph-goal-spec-input') as HTMLTextAreaElement;
+            expect(textarea.value).toContain('Refactor auth module');
+        });
+    });
+
+    it('shows error when goal file fetch fails', async () => {
+        const mockFetch = vi.fn()
+            .mockResolvedValueOnce({
+                ok: false,
+                status: 404,
+            });
+        vi.stubGlobal('fetch', mockFetch);
+
+        render(
+            <RalphStartPanel
+                processId="queue_test-goal-fail"
+                workspaceId="ws-1"
+                turns={[]}
+                goalFilePath="/repos/myrepo/missing.goal.md"
+                onStarted={mockOnStarted}
+            />,
+        );
+
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('ralph-start-error')).toBeTruthy();
+        });
+    });
+
+    it('calls /api/ralph-launch instead of ralph-start when goalFilePath is set', async () => {
+        const mockFetch = vi.fn()
+            // First call: fs/blob (goal file content)
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ content: '## Goal\nDo something', encoding: 'utf-8' }),
+            })
+            // Second call: ralph-launch
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ processId: 'queue_launched', sessionId: 'ralph-123' }),
+            });
+        vi.stubGlobal('fetch', mockFetch);
+
+        render(
+            <RalphStartPanel
+                processId="queue_test-launch"
+                workspaceId="ws-1"
+                turns={[]}
+                goalFilePath="/repos/myrepo/goal.md"
+                onStarted={mockOnStarted}
+            />,
+        );
+
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+        await waitFor(() => expect(screen.getByTestId('ralph-start-panel')).toBeTruthy());
+
+        // Wait for goal content to load
+        await waitFor(() => {
+            const textarea = screen.getByTestId('ralph-goal-spec-input') as HTMLTextAreaElement;
+            expect(textarea.value).toContain('Do something');
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('ralph-confirm-start-btn'));
+        });
+
+        await waitFor(() => {
+            expect(mockOnStarted).toHaveBeenCalledWith('queue_launched');
+        });
+
+        // Verify the second fetch call went to ralph-launch, not ralph-start
+        const launchCall = mockFetch.mock.calls[1];
+        expect(launchCall[0]).toContain('/api/ralph-launch');
+    });
 });
