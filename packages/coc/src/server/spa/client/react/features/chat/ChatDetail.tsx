@@ -19,7 +19,7 @@ import { useAttachedContext } from './hooks/useAttachedContext';
 import { useSlashCommands } from './hooks/useSlashCommands';
 import { useModelCommand } from './hooks/useModelCommand';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
-import { META_SKILL_ITEMS, type SkillItem } from './SlashCommandMenu';
+import { getMetaSkillItems, mergeSkillsWithMeta, type SkillItem } from './SlashCommandMenu';
 import { scanTurnsForCreatedFiles } from '../../utils/conversationScan';
 import { toQueueProcessId, isQueueProcessId, toTaskId } from '../../utils/queue-process-id';
 import type { ClientConversationTurn } from '../../types/dashboard';
@@ -170,7 +170,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const { models: availableModels } = useModels();
     const enabledModels = availableModels.filter(m => m.enabled);
     const modelCommand = useModelCommand(enabledModels);
-    const augmentedSkills = useMemo(() => [...skills, ...META_SKILL_ITEMS], [skills]);
+    const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isLoopsEnabled())), [skills]);
     const slashCommands = useSlashCommands(augmentedSkills);
 
     // Loop management

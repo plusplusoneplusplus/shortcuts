@@ -23,14 +23,14 @@ import { useModels } from '../../hooks/useModels';
 import { useDefaultModelForMode } from '../../hooks/useDefaultModelForMode';
 import { useSlashCommands } from './hooks/useSlashCommands';
 import { useModelCommand } from './hooks/useModelCommand';
-import { SlashCommandMenu, META_SKILL_ITEMS, type SkillItem } from './SlashCommandMenu';
+import { SlashCommandMenu, getMetaSkillItems, mergeSkillsWithMeta, type SkillItem } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
 import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION } from './ModePillSelector';
 import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
 import { useChatPromptHistory } from '../../hooks/useChatPromptHistory';
-import { isRalphEnabled } from '../../utils/config';
+import { isRalphEnabled, isLoopsEnabled } from '../../utils/config';
 import { getDraft, setDraft, clearDraft, newChatDraftKey } from './hooks/useDraftStore';
 
 export interface NewChatAreaProps {
@@ -58,7 +58,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     // Model command support
     const { models: availableModels } = useModels();
     const enabledModels = availableModels.filter(m => m.enabled);
-    const augmentedSkills = useMemo(() => [...skills, ...META_SKILL_ITEMS], [skills]);
+    const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isLoopsEnabled())), [skills]);
     const slashCommands = useSlashCommands(augmentedSkills);
     const modelCommand = useModelCommand(enabledModels);
     const { effectiveModel: defaultModelId, effectiveModelName: defaultModelLabel } = useDefaultModelForMode(workspaceId, selectedMode, availableModels);
