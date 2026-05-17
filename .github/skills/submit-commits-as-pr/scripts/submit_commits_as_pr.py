@@ -10,12 +10,16 @@ Workflow:
     6. (Optional) Rebase onto the latest base ref to be safe.
     7. Push the branch.
     8. Create a PR via the `gh` CLI.
-    9. Switch back to the original branch.
+    9. Enable auto-merge on the PR (default; opt out with --no-auto-merge).
+   10. Switch back to the original branch.
 
-If a cherry-pick or rebase produces a merge conflict, the script writes a
-state file (.git/submit_commits_as_pr.state.json) and exits with code 2 so
-the caller (typically the AI agent) can pause, ask the human to resolve the
-conflict, and then re-run the script with `--continue`.
+Conflict policy: if any cherry-pick or rebase produces a merge conflict,
+the script aborts the entire submit — it runs `git cherry-pick --abort`
+or `git rebase --abort`, switches back to the original branch, deletes
+the work branch, clears state, emits an `aborted` status, and exits
+non-zero. AI agents must NOT attempt to resolve merge conflicts on the
+user's behalf; the human is expected to rebase / fix the source commits
+themselves and re-invoke this skill afresh.
 
 The script is intentionally chatty (everything to stderr) and structured
 (machine-readable JSON status messages on stdout, prefixed with `JSON: `)
@@ -111,7 +115,7 @@ class State:
     title: str | None = None
     body: str | None = None
     draft: bool = False
-    auto_merge: bool = False
+    auto_merge: bool = True
     merge_method: str = "merge"  # merge | squash | rebase
     pushed: bool = False
     pr_url: str | None = None
@@ -215,39 +219,66 @@ def derive_branch_name(commits: list[str]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def do_cherry_pick(state: State, *, resume: bool = False) -> None:
-    if resume:
-        # User claims they resolved conflicts; let git finish the in-progress pick.
-        result = git("cherry-pick", "--continue", check=False, capture=True)
-        if result.returncode != 0:
-            emit(
-                "conflict",
-                phase="cherry-pick",
-                detail="cherry-pick --continue failed; resolve and re-run --continue",
-            )
-            state.save()
-            raise SystemExit(2)
-        # Drop the commit that was being applied from the queue if we have one in flight.
-        # We track remaining commits in state.commits; pop the first.
-        if state.commits:
-            state.commits = state.commits[1:]
+def auto_abort_on_conflict(
+    state: State,
+    *,
+    phase: str,
+    detail: str,
+    commit: str | None = None,
+) -> None:
+    """Abort the entire submit when a merge conflict is hit.
 
+    Policy: AI agents must not perform merge-conflict resolution. The user
+    should rebase / fix the source commits manually and re-invoke the
+    skill afresh. So when a cherry-pick or rebase conflicts, we tear
+    everything down: abort the in-progress git operation, switch back to
+    the original branch, delete the work branch, clear state, emit an
+    `aborted` status, and exit non-zero.
+    """
+    log(f"merge conflict during {phase}; aborting the entire submit")
+
+    git("cherry-pick", "--abort", check=False, capture=True)
+    git("rebase", "--abort", check=False, capture=True)
+
+    try:
+        git("checkout", state.original_branch, check=False, capture=True)
+    except Exception:  # noqa: BLE001
+        pass
+
+    if branch_exists(state.new_branch):
+        git("branch", "-D", state.new_branch, check=False, capture=True)
+
+    state.clear()
+
+    payload: dict[str, object] = {
+        "reason": f"{phase}-conflict",
+        "phase": phase,
+        "detail": detail,
+        "original_branch": state.original_branch,
+        "new_branch": state.new_branch,
+    }
+    if commit is not None:
+        payload["commit"] = commit
+    emit("aborted", **payload)
+    raise SystemExit(1)
+
+
+def do_cherry_pick(state: State) -> None:
     while state.commits:
         sha = state.commits[0]
         log(f"cherry-picking {sha}")
         result = git("cherry-pick", sha, check=False, capture=True)
         if result.returncode != 0:
-            emit(
-                "conflict",
+            auto_abort_on_conflict(
+                state,
                 phase="cherry-pick",
                 commit=sha,
                 detail=(
-                    "merge conflict during cherry-pick; resolve in the working "
-                    "tree, then re-run this script with --continue"
+                    "merge conflict during cherry-pick; the entire submit "
+                    "has been aborted. Rebase or fix the source commits "
+                    "manually, then re-invoke the skill."
                 ),
             )
-            state.save()
-            raise SystemExit(2)
         state.commits = state.commits[1:]
         state.save()
 
@@ -255,34 +286,22 @@ def do_cherry_pick(state: State, *, resume: bool = False) -> None:
     state.save()
 
 
-def do_rebase(state: State, *, resume: bool = False) -> None:
+def do_rebase(state: State) -> None:
     target = f"{state.remote}/{state.base_ref}"
-    if resume:
-        result = git("rebase", "--continue", check=False, capture=True)
-        if result.returncode != 0:
-            emit(
-                "conflict",
-                phase="rebase",
-                detail="rebase --continue failed; resolve and re-run --continue",
-            )
-            state.save()
-            raise SystemExit(2)
-    else:
-        # Already cherry-picked onto target, so this is usually a no-op,
-        # but it guards against the base ref moving while we were resolving conflicts.
-        git("fetch", state.remote, state.base_ref)
-        result = git("rebase", target, check=False, capture=True)
-        if result.returncode != 0:
-            emit(
-                "conflict",
-                phase="rebase",
-                detail=(
-                    f"merge conflict while rebasing onto {target}; resolve, then "
-                    "re-run this script with --continue"
-                ),
-            )
-            state.save()
-            raise SystemExit(2)
+    # Already cherry-picked onto target, so this is usually a no-op,
+    # but it guards against the base ref moving while we were working.
+    git("fetch", state.remote, state.base_ref)
+    result = git("rebase", target, check=False, capture=True)
+    if result.returncode != 0:
+        auto_abort_on_conflict(
+            state,
+            phase="rebase",
+            detail=(
+                f"merge conflict while rebasing onto {target}; the entire "
+                "submit has been aborted. Rebase or fix the source commits "
+                "manually, then re-invoke the skill."
+            ),
+        )
 
     state.phase = "push"
     state.save()
@@ -401,13 +420,22 @@ def cmd_start(args: argparse.Namespace) -> None:
     )
     state.save()
 
-    drive(state, resume=False)
+    drive(state)
 
 
 def cmd_continue(_: argparse.Namespace) -> None:
     state = State.load()
     log(f"resuming from phase: {state.phase}")
-    drive(state, resume=True)
+    if state.phase in ("cherry-pick", "rebase"):
+        # Should never happen: conflicts auto-abort and clear state. Defend
+        # against a corrupt state file rather than silently re-driving the
+        # cherry-pick / rebase from scratch.
+        raise SystemExit(
+            f"refusing to resume from phase {state.phase!r}: cherry-pick and "
+            "rebase conflicts now auto-abort, so this state should not exist. "
+            "Run `abort` to clean up and start over."
+        )
+    drive(state)
 
 
 def cmd_abort(_: argparse.Namespace) -> None:
@@ -431,15 +459,14 @@ def cmd_abort(_: argparse.Namespace) -> None:
     emit("aborted", original_branch=state.original_branch, new_branch=state.new_branch)
 
 
-def drive(state: State, *, resume: bool) -> None:
+def drive(state: State) -> None:
     phase = state.phase
-    first = True
     while True:
         if phase == "cherry-pick":
-            do_cherry_pick(state, resume=resume and first)
+            do_cherry_pick(state)
             phase = state.phase
         elif phase == "rebase":
-            do_rebase(state, resume=resume and first)
+            do_rebase(state)
             phase = state.phase
         elif phase == "push":
             do_push(state)
@@ -455,7 +482,6 @@ def drive(state: State, *, resume: bool) -> None:
             return
         else:
             raise SystemExit(f"unknown phase: {phase}")
-        first = False
 
 
 # ---------------------------------------------------------------------------
@@ -488,8 +514,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     start.add_argument(
         "--auto-merge",
-        action="store_true",
-        help="Enable auto-merge on the PR after creation (requires branch protection rules)",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Enable auto-merge on the PR after creation. Default: enabled. "
+            "Use --no-auto-merge to opt out. Requires repo-level auto-merge "
+            "to be allowed; if it isn't, the script logs a warning but the "
+            "PR is still created."
+        ),
     )
     start.add_argument(
         "--merge-method",
@@ -499,7 +531,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     start.set_defaults(func=cmd_start)
 
-    cont = sub.add_parser("continue", help="Resume after resolving a conflict")
+    cont = sub.add_parser(
+        "continue",
+        help=(
+            "Resume after a transient push / `gh pr create` / auto-merge "
+            "failure (e.g. missing gh auth). Cherry-pick / rebase conflicts "
+            "auto-abort and cannot be resumed."
+        ),
+    )
     cont.set_defaults(func=cmd_continue)
 
     ab = sub.add_parser("abort", help="Abort an in-progress submit and clean up")
