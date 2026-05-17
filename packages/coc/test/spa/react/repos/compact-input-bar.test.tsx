@@ -58,6 +58,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '/api',
     getConfig: () => ({ apiBasePath: '/api' }),
     isRalphEnabled: () => false,
+    isLoopsEnabled: () => false,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({
@@ -97,6 +98,8 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useModelCom
 vi.mock('../../../../src/server/spa/client/react/features/chat/SlashCommandMenu', () => ({
     SlashCommandMenu: () => null,
     META_SKILL_ITEMS: [],
+    getMetaSkillItems: () => [],
+    mergeSkillsWithMeta: (skills: any[]) => skills,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/ModelCommandMenu', () => ({
