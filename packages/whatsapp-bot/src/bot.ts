@@ -40,7 +40,12 @@ export class WhatsAppBot {
                 }
                 this.opts.onQR?.(qr);
             },
-            onConnected: () => {
+            onConnected: (newSock) => {
+                // Update socket reference — on reconnect, Baileys creates a new socket
+                this.sock = newSock;
+                this.sock.ev.on('messages.upsert', (upsert: any) => {
+                    this.handleMessages(upsert);
+                });
                 this._lastQR = null;
                 this._lastError = null;
                 this.setStatus('connected');
@@ -55,10 +60,6 @@ export class WhatsAppBot {
             onError: (error) => {
                 this._lastError = error;
             },
-        });
-
-        this.sock.ev.on('messages.upsert', (upsert: any) => {
-            this.handleMessages(upsert);
         });
     }
 

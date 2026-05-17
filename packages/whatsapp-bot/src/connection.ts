@@ -9,7 +9,7 @@ export interface ConnectionOptions {
     /** Device name shown in WhatsApp's "Linked Devices" list (default: "CoC") */
     deviceName?: string;
     onQR: (qr: string) => void;
-    onConnected: () => void;
+    onConnected: (sock: WASocket) => void;
     onDisconnected: (loggedOut: boolean) => void;
     onError?: (error: string) => void;
 }
@@ -43,7 +43,7 @@ export async function createBaileysConnection(opts: ConnectionOptions, attempt =
         }
         if (update.connection === 'open') {
             attempt = 0;
-            opts.onConnected();
+            opts.onConnected(sock as unknown as WASocket);
         }
         if (update.connection === 'close') {
             const statusCode = (update.lastDisconnect?.error as any)?.output?.statusCode;

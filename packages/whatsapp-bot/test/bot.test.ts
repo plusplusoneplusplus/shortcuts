@@ -41,8 +41,8 @@ describe('WhatsAppBot', () => {
         receivedMessages = [];
 
         mockCreateConnection.mockImplementation(async (opts) => {
-            // Simulate connected state
-            setTimeout(() => opts.onConnected(), 0);
+            // Simulate connected state — pass socket back as Baileys does on reconnect
+            setTimeout(() => opts.onConnected(mockSocket as any), 0);
             return mockSocket;
         });
     });
@@ -112,6 +112,8 @@ describe('WhatsAppBot', () => {
             printQR: false,
         });
         await bot.start();
+        // Wait for onConnected to fire and register message handler
+        await new Promise(r => setTimeout(r, 10));
 
         // Simulate messages.upsert
         const handler = mockSocket.handlers.get('messages.upsert');
@@ -145,6 +147,7 @@ describe('WhatsAppBot', () => {
             printQR: false,
         });
         await bot.start();
+        await new Promise(r => setTimeout(r, 10));
 
         const handler = mockSocket.handlers.get('messages.upsert');
         await handler!({
@@ -175,6 +178,7 @@ describe('WhatsAppBot', () => {
             printQR: false,
         });
         await bot.start();
+        await new Promise(r => setTimeout(r, 10));
 
         const handler = mockSocket.handlers.get('messages.upsert');
         await handler!({
@@ -196,6 +200,7 @@ describe('WhatsAppBot', () => {
             printQR: false,
         });
         await bot.start();
+        await new Promise(r => setTimeout(r, 10));
 
         const handler = mockSocket.handlers.get('messages.upsert');
         await handler!({
@@ -217,6 +222,7 @@ describe('WhatsAppBot', () => {
             printQR: false,
         });
         await bot.start();
+        await new Promise(r => setTimeout(r, 10));
 
         const handler = mockSocket.handlers.get('messages.upsert');
         await handler!({
@@ -238,6 +244,7 @@ describe('WhatsAppBot', () => {
             printQR: false,
         });
         await bot.start();
+        await new Promise(r => setTimeout(r, 10));
 
         const handler = mockSocket.handlers.get('messages.upsert');
         await handler!({
@@ -261,6 +268,7 @@ describe('WhatsAppBot', () => {
             printQR: false,
         });
         await bot.start();
+        await new Promise(r => setTimeout(r, 10));
 
         const handler = mockSocket.handlers.get('messages.upsert');
         await handler!({
@@ -308,7 +316,7 @@ describe('WhatsAppBot', () => {
             // Simulate QR then connect
             setTimeout(() => {
                 opts.onQR('test-qr-string');
-                setTimeout(() => opts.onConnected(), 5);
+                setTimeout(() => opts.onConnected(mockSocket as any), 5);
             }, 0);
             return mockSocket;
         });
