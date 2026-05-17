@@ -295,7 +295,7 @@ export class WhatsAppBridge {
             chatSection.push(`  Title: ${opts.title}`);
         }
 
-        return chatSection.join('\n') + '\n\n*Message:*\n' + opts.content;
+        return chatSection.join('\n') + '\n\n*Message:*\n' + opts.content.trimStart();
     }
 
     // ── Inbound: WhatsApp message → CoC session ──────────
