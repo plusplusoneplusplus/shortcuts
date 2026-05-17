@@ -10,6 +10,11 @@ beforeEach(() => {
     vi.restoreAllMocks();
     mockFetch.mockReset();
     global.fetch = mockFetch;
+    // AdminPanel reads the URL fragment to choose the initial Settings sub-tab.
+    // Reset between tests so each one starts on the default ('ai') sub-tab.
+    if (typeof window !== 'undefined') {
+        window.location.hash = '';
+    }
 });
 
 function renderWithProviders() {
@@ -18,6 +23,19 @@ function renderWithProviders() {
             <AdminPanel />
         </AppProvider>
     );
+}
+
+/**
+ * Switch the Settings page to a specific sub-tab. The Settings page renders
+ * one `SettingsCard` per sub-tab (ai / chat / appearance / features /
+ * integrations / advanced), so tests interacting with controls outside of
+ * the default 'ai' sub-tab must call this first.
+ */
+async function gotoSettingsSubTab(sub: 'ai' | 'chat' | 'appearance' | 'features' | 'integrations' | 'advanced'): Promise<void> {
+    await waitFor(() => expect(screen.getByTestId(`settings-subtab-${sub}`)).toBeDefined());
+    await act(async () => {
+        fireEvent.click(screen.getByTestId(`settings-subtab-${sub}`));
+    });
 }
 
 describe('AdminPanel', () => {
@@ -223,6 +241,8 @@ describe('AdminPanel', () => {
             renderWithProviders();
         });
 
+        await gotoSettingsSubTab('chat');
+
         await waitFor(() => {
             expect(screen.getByText('Intent announcements')).toBeDefined();
         });
@@ -372,6 +392,8 @@ describe('AdminPanel', () => {
             renderWithProviders();
         });
 
+        await gotoSettingsSubTab('chat');
+
         await waitFor(() => {
             expect(screen.getByTestId('toggle-show-report-intent')).toBeDefined();
         });
@@ -424,6 +446,7 @@ describe('AdminPanel', () => {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             });
             await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('chat');
             await waitFor(() => {
                 expect(screen.getByTestId('tool-compactness-compact')).toBeDefined();
             });
@@ -436,6 +459,7 @@ describe('AdminPanel', () => {
         it('renders segmented control with correct aria-pressed for initial value', async () => {
             mockConfig(1);
             await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('chat');
             await waitFor(() => {
                 expect(screen.getByTestId('tool-compactness-full')).toBeDefined();
             });
@@ -452,6 +476,7 @@ describe('AdminPanel', () => {
         it('renders Whisper button with correct aria-pressed when toolCompactness is 3', async () => {
             mockConfig(3);
             await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('chat');
             await waitFor(() => {
                 expect(screen.getByTestId('tool-compactness-whisper')).toBeDefined();
             });
@@ -476,6 +501,7 @@ describe('AdminPanel', () => {
             });
 
             await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('chat');
             await waitFor(() => expect(screen.getByTestId('tool-compactness-minimal')).toBeDefined());
 
             // Click Minimal segment — marks Chat card dirty
@@ -506,6 +532,7 @@ describe('AdminPanel', () => {
             });
 
             await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('chat');
             await waitFor(() => expect(screen.getByTestId('tool-compactness-compact')).toBeDefined());
 
             // Click Full segment
@@ -528,6 +555,7 @@ describe('AdminPanel', () => {
         it('renders SourceBadge for toolCompactness source', async () => {
             mockConfig(0, { toolCompactness: 'file' });
             await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('chat');
             await waitFor(() => expect(screen.getByTestId('tool-compactness-full')).toBeDefined());
             expect(screen.getByText('file')).toBeDefined();
         });
@@ -563,6 +591,7 @@ describe('AdminPanel', () => {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             });
             await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('appearance');
             await waitFor(() => {
                 expect(screen.getByTestId('task-card-density-compact')).toBeDefined();
             });
@@ -575,6 +604,7 @@ describe('AdminPanel', () => {
         it('renders Dense button with aria-pressed true when taskCardDensity is dense', async () => {
             mockConfigWithDensity('dense');
             await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('appearance');
             await waitFor(() => {
                 expect(screen.getByTestId('task-card-density-dense')).toBeDefined();
             });
@@ -599,6 +629,7 @@ describe('AdminPanel', () => {
             });
 
             await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('appearance');
             await waitFor(() => expect(screen.getByTestId('task-card-density-dense')).toBeDefined());
 
             // Click Dense segment
@@ -640,6 +671,7 @@ describe('AdminPanel', () => {
             });
 
             await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('appearance');
             await waitFor(() => expect(screen.getByTestId('pref-html-embed-enabled')).toBeDefined());
             capturedBody = null;
 
@@ -683,6 +715,7 @@ describe('AdminPanel', () => {
             });
 
             await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('appearance');
             await waitFor(() => expect(screen.getByTestId('pref-prompt-autocomplete-ai-enabled')).toBeDefined());
             capturedBody = null;
 
@@ -712,6 +745,7 @@ describe('AdminPanel', () => {
             });
 
             await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('appearance');
             await waitFor(() => expect(screen.getByTestId('task-card-density-compact')).toBeDefined());
 
             // Click Dense
@@ -739,6 +773,7 @@ describe('AdminPanel', () => {
             await act(async () => {
                 renderWithProviders();
             });
+            await gotoSettingsSubTab('advanced');
             expect(screen.getByTestId('relaunch-welcome-btn')).toBeDefined();
             expect(screen.getByText('Welcome Tour')).toBeDefined();
             expect(screen.getByText('Re-show the welcome modal and reset onboarding progress.')).toBeDefined();
@@ -754,6 +789,7 @@ describe('AdminPanel', () => {
             await act(async () => {
                 renderWithProviders();
             });
+            await gotoSettingsSubTab('advanced');
             // Clear calls from mount-time PATCH (e.g., settingsVisited)
             mockFetch.mockClear();
             mockFetch.mockImplementation((url: string, options?: any) => {
@@ -796,6 +832,7 @@ describe('AdminPanel', () => {
             await act(async () => {
                 renderWithProviders();
             });
+            await gotoSettingsSubTab('advanced');
             await act(async () => {
                 fireEvent.click(screen.getByTestId('relaunch-welcome-btn'));
             });
@@ -817,6 +854,7 @@ describe('AdminPanel', () => {
             await act(async () => {
                 renderWithProviders();
             });
+            await gotoSettingsSubTab('advanced');
             await act(async () => {
                 fireEvent.click(screen.getByTestId('relaunch-welcome-btn'));
             });
@@ -836,6 +874,7 @@ describe('AdminPanel', () => {
             await act(async () => {
                 renderWithProviders();
             });
+            await gotoSettingsSubTab('advanced');
             const btn = screen.getByTestId('relaunch-welcome-btn');
             await act(async () => {
                 fireEvent.click(btn);
@@ -879,35 +918,65 @@ describe('AdminPanel', () => {
             });
         }
 
-        it('renders 5 settings cards in the Settings tab', async () => {
+        it('renders one settings card per sub-tab', async () => {
+            // Settings is now split into per-sub-tab cards. Cycle through each
+            // sub-tab and verify the corresponding card is mounted.
+            const subTabToCard: Array<[
+                'ai' | 'chat' | 'appearance' | 'features' | 'integrations' | 'advanced',
+                string,
+            ]> = [
+                ['ai', 'settings-ai-execution'],
+                ['chat', 'settings-chat'],
+                ['appearance', 'settings-appearance'],
+                ['features', 'settings-features'],
+                ['integrations', 'settings-link-handlers'],
+                ['advanced', 'settings-advanced'],
+            ];
             mockFullConfig();
             await act(async () => { renderWithProviders(); });
-            await waitFor(() => {
-                expect(screen.getByTestId('settings-ai-execution')).toBeDefined();
-                expect(screen.getByTestId('settings-chat')).toBeDefined();
-                expect(screen.getByTestId('settings-appearance')).toBeDefined();
-                expect(screen.getByTestId('settings-features')).toBeDefined();
-                expect(screen.getByTestId('settings-advanced')).toBeDefined();
-            });
+            for (const [sub, testId] of subTabToCard) {
+                await gotoSettingsSubTab(sub);
+                await waitFor(() => expect(screen.getByTestId(testId)).toBeDefined());
+            }
         });
 
-        it('renders card titles', async () => {
+        it('renders card titles for each sub-tab', async () => {
+            // Each sub-tab maps to a `SettingsCard` whose `<header>` carries
+            // the visible card title. We assert the title is rendered inside
+            // the corresponding card (rather than e.g. the sub-tab button or
+            // the breadcrumb crumb, which share the same text).
+            const subTabToCard: Array<[
+                'ai' | 'chat' | 'appearance' | 'features' | 'integrations' | 'advanced',
+                string,
+                string,
+            ]> = [
+                ['ai', 'settings-ai-execution', 'AI & Execution'],
+                ['chat', 'settings-chat', 'Chat Experience'],
+                ['appearance', 'settings-appearance', 'Appearance & Navigation'],
+                ['features', 'settings-features', 'Workspace Features'],
+                ['integrations', 'settings-link-handlers', 'Link handlers'],
+                ['advanced', 'settings-advanced', 'Advanced & Recovery'],
+            ];
             mockFullConfig();
             await act(async () => { renderWithProviders(); });
-            await waitFor(() => {
-                expect(screen.getByText('AI & Execution')).toBeDefined();
-                expect(screen.getByText('Chat Experience')).toBeDefined();
-                expect(screen.getByText('Appearance & Navigation')).toBeDefined();
-                expect(screen.getByText('Workspace Features')).toBeDefined();
-                expect(screen.getByText('Advanced & Recovery')).toBeDefined();
-            });
+            for (const [sub, cardTestId, title] of subTabToCard) {
+                await gotoSettingsSubTab(sub);
+                await waitFor(() => {
+                    const card = screen.getByTestId(cardTestId);
+                    expect(card.textContent ?? '').toContain(title);
+                });
+            }
         });
 
         it('defaults absent HTML embeds and local file link handler to enabled', async () => {
             mockFullConfig();
             await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('appearance');
             await waitFor(() => {
                 expect((screen.getByTestId('pref-html-embed-enabled') as HTMLInputElement).checked).toBe(true);
+            });
+            await gotoSettingsSubTab('integrations');
+            await waitFor(() => {
                 expect((screen.getByTestId('toggle-link-handler-file') as HTMLInputElement).checked).toBe(true);
             });
         });
@@ -915,10 +984,20 @@ describe('AdminPanel', () => {
         it('Save buttons are disabled when cards are not dirty', async () => {
             mockFullConfig();
             await act(async () => { renderWithProviders(); });
+            // AI sub-tab is the default landing tab.
             await waitFor(() => expect(screen.getByTestId('settings-ai-execution-save')).toBeDefined());
             expect((screen.getByTestId('settings-ai-execution-save') as HTMLButtonElement).disabled).toBe(true);
+
+            await gotoSettingsSubTab('chat');
+            await waitFor(() => expect(screen.getByTestId('settings-chat-save')).toBeDefined());
             expect((screen.getByTestId('settings-chat-save') as HTMLButtonElement).disabled).toBe(true);
+
+            await gotoSettingsSubTab('appearance');
+            await waitFor(() => expect(screen.getByTestId('settings-appearance-save')).toBeDefined());
             expect((screen.getByTestId('settings-appearance-save') as HTMLButtonElement).disabled).toBe(true);
+
+            await gotoSettingsSubTab('features');
+            await waitFor(() => expect(screen.getByTestId('settings-features-save')).toBeDefined());
             expect((screen.getByTestId('settings-features-save') as HTMLButtonElement).disabled).toBe(true);
         });
 
@@ -937,6 +1016,7 @@ describe('AdminPanel', () => {
         it('Workspace Features Save enables when a toggle is changed', async () => {
             mockFullConfig();
             await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('features');
             await waitFor(() => expect(screen.getByTestId('toggle-terminal-enabled')).toBeDefined());
 
             await act(async () => {
@@ -965,6 +1045,7 @@ describe('AdminPanel', () => {
             });
 
             await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('features');
             await waitFor(() => expect(screen.getByTestId('toggle-terminal-enabled')).toBeDefined());
 
             // Enable terminal
@@ -1006,6 +1087,7 @@ describe('AdminPanel', () => {
             });
 
             await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('features');
             await waitFor(() => expect(screen.getByTestId('toggle-servers-enabled')).toBeDefined());
 
             const toggle = screen.getByTestId('toggle-servers-enabled') as HTMLInputElement;
@@ -1050,6 +1132,7 @@ describe('AdminPanel', () => {
             });
 
             await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('features');
             await waitFor(() => expect(screen.getByTestId('toggle-focused-diff-enabled')).toBeDefined());
 
             const toggle = screen.getByTestId('toggle-focused-diff-enabled') as HTMLInputElement;
@@ -1070,6 +1153,7 @@ describe('AdminPanel', () => {
         it('Advanced card shows read-only diagnostics without Save button', async () => {
             mockFullConfig();
             await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('advanced');
             await waitFor(() => expect(screen.getByTestId('settings-advanced')).toBeDefined());
 
             const advancedCard = screen.getByTestId('settings-advanced');

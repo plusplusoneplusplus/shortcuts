@@ -435,6 +435,64 @@
   border-color: var(--ar-border-strong);
 }
 
+/* ── Sub-tabs (within a top-level tab, e.g. Settings) ─────── */
+.admin-redesign .ar-subtab-row {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--ar-border);
+  margin: 0 0 24px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.admin-redesign .ar-subtab-row::-webkit-scrollbar {
+  display: none;
+}
+.admin-redesign .ar-subtab {
+  padding: 9px 12px;
+  background: transparent;
+  border: none;
+  color: var(--ar-text-mute);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  position: relative;
+  white-space: nowrap;
+  margin-bottom: -1px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color .12s;
+}
+.admin-redesign .ar-subtab:hover {
+  color: var(--ar-text);
+}
+.admin-redesign .ar-subtab.is-active {
+  color: var(--ar-text);
+  font-weight: 500;
+}
+.admin-redesign .ar-subtab.is-active::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: -1px;
+  height: 2px;
+  background: var(--ar-accent);
+  border-radius: 2px;
+}
+.admin-redesign .ar-subtab-icon {
+  font-size: 13px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  color: var(--ar-text-mute);
+}
+.admin-redesign .ar-subtab.is-active .ar-subtab-icon {
+  color: var(--ar-accent);
+}
+
 /* Mobile section-select (replaces sidebar on narrow viewports) */
 .admin-redesign .ar-tab-select {
   background: var(--ar-bg-2);

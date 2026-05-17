@@ -65,6 +65,30 @@ const TAB_DESCRIPTIONS: Record<AdminSubTab, string> = {
     database: 'Browse the underlying SQLite tables that back CoC.',
     agents: 'Manage container-mode agents and their lifecycles.',
 };
+// ── Settings sub-tabs (rendered as an underline tab row inside the
+// Settings page, matching the Linear-style design reference). Each entry
+// maps 1:1 to a `SettingsCard` further down. The current selection is
+// kept in component state and synced to the URL fragment so refreshes
+// land on the same section.
+type SettingsSubTab = 'ai' | 'chat' | 'appearance' | 'features' | 'integrations' | 'advanced';
+const SETTINGS_SUBTABS: { id: SettingsSubTab; label: string; icon: string }[] = [
+    { id: 'ai', label: 'AI & Execution', icon: '✦' },
+    { id: 'chat', label: 'Chat', icon: '◌' },
+    { id: 'appearance', label: 'Appearance', icon: '◐' },
+    { id: 'features', label: 'Features', icon: '◫' },
+    { id: 'integrations', label: 'Integrations', icon: '⇄' },
+    { id: 'advanced', label: 'Advanced', icon: '⚙' },
+];
+const DEFAULT_SETTINGS_SUBTAB: SettingsSubTab = 'ai';
+const VALID_SETTINGS_SUBTABS = new Set<SettingsSubTab>(SETTINGS_SUBTABS.map(t => t.id));
+
+function parseSettingsSubTabFromHash(hash: string): SettingsSubTab | null {
+    const parts = hash.replace(/^#/, '').split('/');
+    if (parts[0] !== 'admin' || parts[1] !== 'settings') return null;
+    const candidate = parts[2] as SettingsSubTab | undefined;
+    return candidate && VALID_SETTINGS_SUBTABS.has(candidate) ? candidate : null;
+}
+
 const WELCOME_RESET_PROGRESS = { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false, settingsVisited: false, dismissed: false, hasCompletedTour: false };
 
 export function AdminPanel() {
@@ -74,8 +98,34 @@ export function AdminPanel() {
     const activeTab = state.activeAdminSubTab;
     const handleTabChange = (tab: AdminSubTab) => {
         dispatch({ type: 'SET_ADMIN_SUB_TAB', tab });
-        window.location.hash = `admin/${tab}`;
+        const suffix = tab === 'settings' && settingsSubTab !== DEFAULT_SETTINGS_SUBTAB
+            ? `admin/${tab}/${settingsSubTab}`
+            : `admin/${tab}`;
+        window.location.hash = suffix;
     };
+
+    // Settings sub-tab (only meaningful when activeTab === 'settings'). The
+    // initial value is derived from the URL so refreshing on
+    // `#admin/settings/<sub>` lands on the same section.
+    const [settingsSubTab, setSettingsSubTab] = useState<SettingsSubTab>(() => {
+        if (typeof window === 'undefined') return DEFAULT_SETTINGS_SUBTAB;
+        return parseSettingsSubTabFromHash(window.location.hash) ?? DEFAULT_SETTINGS_SUBTAB;
+    });
+    const handleSettingsSubTabChange = (sub: SettingsSubTab) => {
+        setSettingsSubTab(sub);
+        const suffix = sub === DEFAULT_SETTINGS_SUBTAB ? 'admin/settings' : `admin/settings/${sub}`;
+        window.location.hash = suffix;
+    };
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const onHash = () => {
+            const parsed = parseSettingsSubTabFromHash(window.location.hash);
+            if (parsed) setSettingsSubTab(parsed);
+        };
+        window.addEventListener('hashchange', onHash);
+        return () => window.removeEventListener('hashchange', onHash);
+    }, []);
 
     useEffect(() => {
         if (!state.onboardingProgress?.settingsVisited) {
@@ -782,6 +832,14 @@ export function AdminPanel() {
                     <header className="ar-topbar">
                         <nav className="ar-breadcrumb" aria-label="Breadcrumb">
                             <span className="ar-crumb-now">{activeTabLabel}</span>
+                            {activeTab === 'settings' && (
+                                <>
+                                    <span className="ar-crumb-sep">/</span>
+                                    <span className="ar-crumb-now">
+                                        {SETTINGS_SUBTABS.find(t => t.id === settingsSubTab)?.label ?? activeTabLabel}
+                                    </span>
+                                </>
+                            )}
                         </nav>
                         <select
                             className="ar-tab-select ar-mobile-tab-select"
@@ -820,7 +878,25 @@ export function AdminPanel() {
                             </section>
                         ) : (
                             <>
-                                {/* ── 1. AI & Execution ── */}
+                                <div className="ar-subtab-row" role="tablist" aria-label="Settings sections">
+                                    {SETTINGS_SUBTABS.map(sub => (
+                                        <button
+                                            key={sub.id}
+                                            type="button"
+                                            role="tab"
+                                            aria-selected={settingsSubTab === sub.id}
+                                            className={`ar-subtab${settingsSubTab === sub.id ? ' is-active' : ''}`}
+                                            onClick={() => handleSettingsSubTabChange(sub.id)}
+                                            data-testid={`settings-subtab-${sub.id}`}
+                                        >
+                                            <span className="ar-subtab-icon" aria-hidden="true">{sub.icon}</span>
+                                            {sub.label}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {/* ── AI & Execution ── */}
+                                {settingsSubTab === 'ai' && (
                                 <SettingsCard
                                     title="AI & Execution"
                                     description="Default model, parallelism, timeout, and output format for AI tasks."
@@ -888,8 +964,10 @@ export function AdminPanel() {
                                         <SourceBadge source={sources['output']} />
                                     </AdminRow>
                                 </SettingsCard>
+                                )}
 
-                                {/* ── 2. Chat Experience ── */}
+                                {/* ── Chat Experience ── */}
+                                {settingsSubTab === 'chat' && (
                                 <SettingsCard
                                     title="Chat Experience"
                                     description="Controls how the AI assistant behaves during conversations."
@@ -965,8 +1043,10 @@ export function AdminPanel() {
                                         />
                                     </AdminRow>
                                 </SettingsCard>
+                                )}
 
-                                {/* ── 3. Appearance & Navigation ── */}
+                                {/* ── Appearance & Navigation ── */}
+                                {settingsSubTab === 'appearance' && (
                                 <SettingsCard
                                     title="Appearance & Navigation"
                                     badge="Global"
@@ -1068,8 +1148,10 @@ export function AdminPanel() {
                                         />
                                     </AdminRow>
                                 </SettingsCard>
+                                )}
 
-                                {/* ── 4. Workspace Features ── */}
+                                {/* ── Workspace Features ── */}
+                                {settingsSubTab === 'features' && (
                                 <SettingsCard
                                     title="Workspace Features"
                                     description="Enable or disable optional dashboard features."
@@ -1154,8 +1236,10 @@ export function AdminPanel() {
                                         <AdminToggle checked={focusedDiffEnabled} onChange={setFocusedDiffEnabled} data-testid="toggle-focused-diff-enabled" />
                                     </AdminRow>
                                 </SettingsCard>
+                                )}
 
-                                {/* ── 5. Link Handlers ── */}
+                                {/* ── Link Handlers (Integrations) ── */}
+                                {settingsSubTab === 'integrations' && (
                                 <SettingsCard
                                     title="Link handlers"
                                     badge="Global"
@@ -1172,7 +1256,10 @@ export function AdminPanel() {
                                         </AdminRow>
                                     ))}
                                 </SettingsCard>
+                                )}
 
+                                {/* ── Advanced & Recovery ── */}
+                                {settingsSubTab === 'advanced' && (
                                 <SettingsCard
                                     title="Advanced & Recovery"
                                     badge="Advanced"
@@ -1209,6 +1296,7 @@ export function AdminPanel() {
                                         </AdminRow>
                                     )}
                                 </SettingsCard>
+                                )}
                             </>
                         )}
                     </div>

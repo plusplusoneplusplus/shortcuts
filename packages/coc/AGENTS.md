@@ -32,6 +32,8 @@ The admin route uses a self-contained, Linear-inspired design system that lives 
 - `<main className="ar-main">` contains a sticky topbar (`.ar-topbar` with a `.ar-breadcrumb` showing the current tab) and the page body (`.ar-page` with `.ar-page-header` + cards).
 - The tabs live in the sidebar as `.ar-nav-item` buttons (data-testids `admin-tab-{settings|providers|data|server|prompts|database|agents}` are preserved for tests). A `.ar-mobile-tab-select` appears only under the responsive `@media (max-width: 600px)` rule, which hides the sidebar and falls back to a `<select>`.
 
+**Settings sub-tabs (within the Settings top-level tab):** Settings is split into one `SettingsCard` per sub-tab — `ai`, `chat`, `appearance`, `features`, `integrations`, `advanced` — defined in `SETTINGS_SUBTABS` near the top of `AdminPanel.tsx`. A `.ar-subtab-row` with `.ar-subtab` buttons (data-testids `settings-subtab-{ai|chat|appearance|features|integrations|advanced}`) renders above the cards. Selection is kept in local `settingsSubTab` state, defaults to `ai`, and is synced both directions with `#admin/settings/<sub>` (default `ai` collapses to `#admin/settings`). Tests that interact with controls outside of the default `ai` card must first navigate via the `gotoSettingsSubTab(...)` helper.
+
 When adding UI to the admin page, prefer the existing primitives:
 
 - Section cards: `<SettingsCard title=… description=… badge=… dirty saving onSave onCancel data-testid=…>` (renders `.ar-card` with header/body/footer).
