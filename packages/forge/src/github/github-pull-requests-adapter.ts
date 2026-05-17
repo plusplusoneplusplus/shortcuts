@@ -73,6 +73,8 @@ function mapGitHubPullRequest(pr: GitHubPullRequest, owner: string, repo: string
         repositoryId: `${owner}/${repo}`,
         reviewers: [],
         labels: pr.labels.map(l => l.name),
+        headSha: pr.head.sha,
+        baseSha: pr.base.sha,
         raw: pr,
     };
 }

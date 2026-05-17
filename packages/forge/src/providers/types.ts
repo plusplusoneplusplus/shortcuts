@@ -170,6 +170,10 @@ export interface PullRequest {
     repositoryId: string;
     reviewers: Reviewer[];
     labels: string[];
+    /** SHA of the PR head (source branch tip) commit. */
+    headSha?: string;
+    /** SHA of the PR base (target branch) commit. */
+    baseSha?: string;
     /** Provider-specific raw object, for fields not in the canonical shape. */
     raw?: unknown;
 }

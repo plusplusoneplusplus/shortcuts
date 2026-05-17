@@ -35,6 +35,8 @@ export interface DashboardOptions {
     vimNavigationEnabled?: boolean;
     /** Whether the loops/recurring follow-up subsystem is enabled in server config. */
     loopsEnabled?: boolean;
+    /** Whether the focused-diff classification feature is enabled. */
+    focusedDiffEnabled?: boolean;
     /** Whether the MCP OAuth auto-detection subsystem is enabled in server config. */
     mcpOauthEnabled?: boolean;
     /** When set, injects __REVIEW_CONFIG__ for the review editor page. */

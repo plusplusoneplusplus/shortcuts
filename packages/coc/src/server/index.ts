@@ -52,6 +52,7 @@ import { DevTunnelConnector } from './servers/devtunnel-connector';
 import { RemoteServerStore } from './servers/remote-server-store';
 import { AutoPromoteScheduler } from './memory/auto-promote';
 import { setMemoryCandidateCapturedCallback } from './executors/bounded-memory-addon';
+import { pruneAllStaleClassifications } from './repos/classification-store';
 
 // ============================================================================
 // Close Handler Builder
@@ -392,6 +393,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 vimNavigationEnabled: liveConfig.vimNavigation?.enabled ?? false,
                 loopsEnabled: liveConfig.loops?.enabled ?? false,
                 mcpOauthEnabled: liveConfig.mcpOauth?.enabled ?? false,
+                focusedDiffEnabled: liveConfig.features?.focusedDiff ?? false,
                 bindAddress: host,
             });
         },
@@ -430,6 +432,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         process.stderr.write(`[servers] Failed to start DevTunnel connectors: ${error instanceof Error ? error.message : String(error)}\n`);
     }
     cleanupAllStalePasteFiles(dataDir).catch(() => { /* best-effort */ });
+    try {
+        pruneAllStaleClassifications(dataDir);
+    } catch {
+        /* best-effort */
+    }
 
     const address = server.address();
     const actualPort = typeof address === 'object' && address ? address.port : port;

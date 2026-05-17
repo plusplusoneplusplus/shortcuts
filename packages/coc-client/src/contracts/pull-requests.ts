@@ -109,3 +109,48 @@ export interface PullRequestChatBinding {
 export interface PullRequestChatBindingListResponse {
   bindings: Record<string, { taskId: string; createdAt: string }>;
 }
+
+// ── Classification (focused-diff) ───────────────────────────────────
+
+/** The four hunk categories recognised by the classifier. */
+export type HunkCategory = 'logic' | 'mechanical' | 'test' | 'generated';
+
+/** How important a hunk is within its category. */
+export type HunkIntensity = 'high' | 'low';
+
+/** Classification result for a single `@@` hunk. */
+export interface HunkClassification {
+  file: string;
+  hunkIndex: number;
+  category: HunkCategory;
+  intensity: HunkIntensity;
+  reason: string;
+}
+
+/** Full classification result for a PR diff. */
+export interface DiffClassificationResult {
+  classifications: HunkClassification[];
+}
+
+/** Body for POST /repos/:repoId/pull-requests/:prId/classify. */
+export interface ClassifyDiffRequest {
+  headSha: string;
+  model?: string;
+  workspaceId?: string;
+}
+
+/** Response from POST classify (trigger). */
+export interface ClassifyDiffResponse {
+  status: 'started' | 'ready' | 'running';
+  taskId?: string;
+  processId?: string;
+  result?: DiffClassificationResult;
+}
+
+/** Response from GET classification (cached lookup). */
+export interface ClassificationStatusResponse {
+  status: 'none' | 'ready' | 'running';
+  processId?: string;
+  result?: DiffClassificationResult;
+  createdAt?: string;
+}

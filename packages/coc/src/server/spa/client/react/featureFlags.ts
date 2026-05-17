@@ -5,3 +5,6 @@
 
 /** Enable the welcome modal, first-steps card, and feature tips. */
 export const SHOW_WELCOME_TUTORIAL = true;
+
+/** Enable the focused-diff classification UI on the PR Files Changed tab. */
+export const SHOW_FOCUSED_DIFF = true;

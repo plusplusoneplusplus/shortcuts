@@ -98,6 +98,8 @@ export interface PullRequest {
     labels?: string[];
     reviewers?: Reviewer[];
     commentCount?: number;
+    /** SHA of the PR head commit (used as classification cache key). */
+    headSha?: string;
 }
 
 export interface StatusBadge {
