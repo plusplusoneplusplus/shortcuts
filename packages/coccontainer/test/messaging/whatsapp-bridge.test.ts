@@ -23,6 +23,7 @@ vi.mock('@plusplusoneplusplus/whatsapp-bot', () => {
             start = vi.fn();
             stop = vi.fn();
             send = vi.fn().mockResolvedValue('wamid.out-001');
+            getStatus = vi.fn().mockReturnValue('connected');
             constructor(opts: any) {
                 this.opts = opts;
                 botInstances.push(this as any);

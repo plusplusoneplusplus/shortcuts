@@ -187,7 +187,8 @@ export class WhatsAppBridge {
 
     // ── Outbound: CoC process update → WhatsApp ────────────
     private async onWsMessage(msg: WSRelayMessage): Promise<void> {
-        if (!this.bot || !this.store) return;
+        if (!this.bot) { console.log('[whatsapp-bridge] WS event ignored: bot not started'); return; }
+        if (!this.store) { console.log('[whatsapp-bridge] WS event ignored: store not ready'); return; }
 
         let parsed: Record<string, unknown>;
         try {
@@ -259,6 +260,7 @@ export class WhatsAppBridge {
                 });
 
                 try {
+                    console.log(`[whatsapp-bridge] Sending to WA group ${target}, bot status=${this.bot!.getStatus()}`);
                     const waMessageId = await this.bot!.send(target, waText);
                     this.store!.bindMessage(waMessageId, processId, agentId, `${msg.agentName}:${repoName}`, workspaceId);
                     console.log(`[whatsapp-bridge] Sent to WA: ${waMessageId}`);
