@@ -113,35 +113,25 @@ export class WhatsAppBridge {
 
     /**
      * Ensure a WhatsApp group exists for messaging.
-     * If a groupJid is configured, verify it still exists. If not, create a new one.
+     * If a groupJid is configured, trust it (skip verification to avoid init timeout).
+     * If none is set, create a new one after a short stabilization delay.
      * Called automatically when the bot connects.
      */
     private async ensureGroup(): Promise<void> {
         if (this._creatingGroup) return;
         if (!this.bot) return;
 
-        // If a group is configured, verify it still exists
+        // If a group is already configured, trust it — avoid calling listGroups
+        // right after connect as Baileys' init queries may not have finished yet.
         if (this.opts.config.groupJid) {
-            try {
-                const groups = await this.bot.listGroups();
-                const found = groups.some(g => g.jid === this.opts.config.groupJid);
-                if (found) {
-                    console.log(`[whatsapp-bridge] Group ${this.opts.config.groupJid} verified`);
-                    return;
-                }
-                console.warn(`[whatsapp-bridge] Configured group ${this.opts.config.groupJid} no longer exists, creating new one`);
-                this.opts.config.groupJid = undefined;
-            } catch (err: any) {
-                // Can't verify — assume it exists to avoid unnecessary creation
-                console.warn(`[whatsapp-bridge] Could not verify group: ${err.message}`);
-                return;
-            }
+            console.log(`[whatsapp-bridge] Using configured group ${this.opts.config.groupJid}`);
+            return;
         }
 
         this._creatingGroup = true;
         const groupName = `${this.opts.config.userName || 'CoC'} CoC Chat Group`;
-        // Try immediately, then retry with delays if connection isn't stable yet
-        const retryDelays = [0, 15_000, 25_000];
+        // Wait for Baileys init queries to settle, then retry with delays
+        const retryDelays = [10_000, 15_000, 25_000];
         try {
             for (let i = 0; i < retryDelays.length; i++) {
                 if (retryDelays[i] > 0) {
