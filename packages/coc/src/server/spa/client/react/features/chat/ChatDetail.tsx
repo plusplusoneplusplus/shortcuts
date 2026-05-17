@@ -172,7 +172,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const modelCommand = useModelCommand(enabledModels);
     // Include synthetic /model entry so useSlashCommands keyboard nav works for it
     const augmentedSkills = useMemo(
-        () => [...skills, { name: 'model', description: 'Switch AI model' }],
+        () => [
+            ...skills,
+            { name: 'model', description: 'Switch AI model' },
+            { name: 'loop', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
+        ],
         [skills],
     );
     const slashCommands = useSlashCommands(augmentedSkills);

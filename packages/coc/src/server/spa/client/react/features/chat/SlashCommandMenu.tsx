@@ -13,6 +13,7 @@ import { useEffect, useRef } from 'react';
 export interface SkillItem {
     name: string;
     description?: string;
+    args?: string;
 }
 
 interface SlashCommandMenuProps {
@@ -100,6 +101,11 @@ export function SlashCommandMenu({
                             <span className="font-mono text-[13px] font-semibold text-[#1e1e1e] dark:text-[#d4d4d4] shrink-0">
                                 /{skill.name}
                             </span>
+                            {skill.args && (
+                                <span className="font-mono text-[12px] text-[#9d9d9d] dark:text-[#6e6e6e] shrink-0">
+                                    {skill.args}
+                                </span>
+                            )}
                             {skill.description && (
                                 <span className="text-xs text-[#616161] dark:text-[#9d9d9d] truncate min-w-0 flex-1">
                                     {skill.description}

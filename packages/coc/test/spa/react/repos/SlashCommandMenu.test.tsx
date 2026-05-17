@@ -180,4 +180,46 @@ describe('SlashCommandMenu (redesigned card)', () => {
         expect(rows[0].textContent).toContain('Ask the agent to draft a Markdown spec instead of code');
         expect(rows[2].textContent).toContain('Restrict edits to a path or package');
     });
+
+    it('renders args as a dim monospace hint when provided', () => {
+        const skillsWithArgs = [
+            { name: 'loop', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
+            { name: 'model', description: 'Switch AI model' },
+        ];
+        render(
+            <SlashCommandMenu
+                skills={skillsWithArgs}
+                filter=""
+                onSelect={() => {}}
+                onDismiss={() => {}}
+                visible={true}
+                highlightIndex={0}
+            />,
+        );
+        const rows = document.querySelectorAll('[data-menu-item]');
+        expect(rows[0].textContent).toContain('[interval] <prompt>');
+        expect(rows[1].textContent).not.toContain('[interval]');
+    });
+
+    it('does not render an args span when args is absent', () => {
+        render(
+            <SlashCommandMenu
+                skills={[{ name: 'spec', description: 'Draft a spec' }]}
+                filter=""
+                onSelect={() => {}}
+                onDismiss={() => {}}
+                visible={true}
+                highlightIndex={0}
+            />,
+        );
+        const row = document.querySelector('[data-menu-item]');
+        expect(row?.textContent).not.toContain('[');
+    });
+
+    it('loop meta-command entry has correct shape', () => {
+        const loop = { name: 'loop', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' };
+        expect(loop.name).toBe('loop');
+        expect(loop.args).toBe('[interval] <prompt>');
+        expect(loop.description).toBeTruthy();
+    });
 });

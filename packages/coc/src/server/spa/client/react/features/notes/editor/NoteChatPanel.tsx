@@ -56,7 +56,11 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
     const enabledModels = availableModels.filter(m => m.enabled);
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const augmentedSkills = useMemo(
-        () => [...skills, { name: 'model', description: 'Switch AI model' }],
+        () => [
+            ...skills,
+            { name: 'model', description: 'Switch AI model' },
+            { name: 'loop', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
+        ],
         [skills],
     );
     const slashCommands = useSlashCommands(augmentedSkills);
