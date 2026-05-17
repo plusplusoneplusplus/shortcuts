@@ -33,6 +33,7 @@ export class WhatsAppBridge {
     private store: MessagingStore | null = null;
     private bot: WhatsAppBot | null = null;
     private sseHandler: ((event: SSEEvent) => void) | null = null;
+    private _creatingGroup = false;
 
     constructor(private opts: WhatsAppBridgeOptions) {}
 
@@ -114,18 +115,21 @@ export class WhatsAppBridge {
      * Called automatically when the bot connects.
      */
     private async ensureGroup(): Promise<void> {
-        if (this.opts.config.groupJid) return; // already set
+        if (this.opts.config.groupJid) return;
+        if (this._creatingGroup) return;
         if (!this.bot) return;
+        this._creatingGroup = true;
         try {
             const groupName = `${this.opts.config.userName || 'CoC'} Bridge`;
             console.log(`[whatsapp-bridge] Creating group "${groupName}"...`);
             const jid = await this.bot.createGroup(groupName);
             this.opts.config.groupJid = jid;
             console.log(`[whatsapp-bridge] Group created: ${jid}`);
-            // Persist to config file
             await this.persistGroupJid(jid);
         } catch (err) {
             console.error('[whatsapp-bridge] Failed to create group:', err);
+        } finally {
+            this._creatingGroup = false;
         }
     }
 

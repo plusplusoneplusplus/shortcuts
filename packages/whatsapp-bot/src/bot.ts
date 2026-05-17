@@ -93,15 +93,15 @@ export class WhatsAppBot {
     /** Create a new WhatsApp group and return its JID. */
     async createGroup(name: string): Promise<string> {
         if (!this.sock) throw new Error('WhatsAppBot is not started');
+        const prevStatus = this._status;
         this.setStatus('creating-group');
         try {
             const result = await this.sock.groupCreate(name, []);
             console.log(`[whatsapp-bot] Created group "${name}" → ${result.id}`);
-            this.setStatus('connected');
             return result.id;
-        } catch (err) {
-            this.setStatus('connected');
-            throw err;
+        } finally {
+            // Restore previous status — don't fire 'connected' again
+            this._status = prevStatus;
         }
     }
 
