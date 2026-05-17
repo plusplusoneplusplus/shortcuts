@@ -122,13 +122,13 @@ describe('WhatsAppBridge', () => {
             const bridge = new WhatsAppBridge(opts);
             await bridge.start();
 
-            // Mock fetch to return process with conversation (matches real CoC API shape)
+            // Mock fetch to return process with conversationTurns (matches real CoC API shape)
             const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
                 new Response(JSON.stringify({
                     process: {
                         id: 'proc-001',
                         workspaceId: 'ws-frontend',
-                        conversation: [
+                        conversationTurns: [
                             { role: 'user', content: 'Fix the bug' },
                             { role: 'assistant', content: 'Fixed the bug on line 42' },
                         ],
@@ -210,10 +210,12 @@ describe('WhatsAppBridge', () => {
             // First update: 2 turns
             vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
                 new Response(JSON.stringify({
-                    turns: [
-                        { role: 'user', content: 'Hello' },
-                        { role: 'assistant', content: 'Hi there' },
-                    ],
+                    process: {
+                        conversationTurns: [
+                            { role: 'user', content: 'Hello' },
+                            { role: 'assistant', content: 'Hi there' },
+                        ],
+                    },
                 }))
             );
             emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
@@ -228,11 +230,13 @@ describe('WhatsAppBridge', () => {
             // Second update: 3 turns (1 new)
             vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
                 new Response(JSON.stringify({
-                    turns: [
-                        { role: 'user', content: 'Hello' },
-                        { role: 'assistant', content: 'Hi there' },
-                        { role: 'user', content: 'One more thing' },
-                    ],
+                    process: {
+                        conversationTurns: [
+                            { role: 'user', content: 'Hello' },
+                            { role: 'assistant', content: 'Hi there' },
+                            { role: 'user', content: 'One more thing' },
+                        ],
+                    },
                 }))
             );
             emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {

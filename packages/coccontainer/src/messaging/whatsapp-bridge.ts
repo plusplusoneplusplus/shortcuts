@@ -211,10 +211,10 @@ export class WhatsAppBridge {
             const res = await fetch(url);
             if (!res.ok) { console.log(`[whatsapp-bridge] Fetch failed: ${res.status}`); return; }
             const body = await res.json() as Record<string, unknown>;
-            // Response shape: { process: { turns: [...] }, children, total }
+            // Response shape: { process: { conversationTurns: [...] }, children, total }
             const processData = (body.process ?? body) as Record<string, unknown>;
-            const turns = (processData.conversation ?? processData.turns) as Array<{ role: string; content?: string; text?: string }> | undefined;
-            console.log(`[whatsapp-bridge] Got ${turns?.length ?? 0} turns`);
+            const turns = (processData.conversationTurns ?? processData.conversation ?? processData.turns) as Array<{ role: string; content?: string; text?: string }> | undefined;
+            console.log(`[whatsapp-bridge] Got ${turns?.length ?? 0} turns (keys: ${Object.keys(processData).join(',')})`);
             if (!turns || turns.length === 0) return;
 
             const lastSeen = this.lastTurnCount.get(processId) ?? 0;
