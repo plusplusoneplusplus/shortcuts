@@ -11,15 +11,18 @@ import { RequestRunner } from '../../src/copilot-sdk-wrapper/request-runner';
 import { SessionManager } from '../../src/copilot-sdk-wrapper/session-manager';
 import { createMockSession, createStreamingMockSession } from '../helpers/mock-sdk';
 import { DEFAULT_AI_TIMEOUT_MS } from '../../src/config/defaults';
+import { loadEffectiveMcpConfig } from '../../src/copilot-sdk-wrapper/mcp-config-loader';
 
 setLogger(nullLogger);
 
 vi.mock('../../src/copilot-sdk-wrapper/mcp-config-loader', () => ({
-    loadDefaultMcpConfig: vi.fn().mockReturnValue({ success: false, fileExists: false, mcpServers: {} }),
-    mergeMcpConfigs: vi.fn().mockImplementation(
-        (base: Record<string, unknown>, override?: Record<string, unknown>) => ({ ...base, ...override }),
-    ),
+    loadEffectiveMcpConfig: vi.fn().mockReturnValue({ success: true, fileExists: false, mcpServers: {}, configPath: '' }),
 }));
+
+beforeEach(() => {
+    vi.mocked(loadEffectiveMcpConfig).mockReset();
+    vi.mocked(loadEffectiveMcpConfig).mockReturnValue({ success: true, fileExists: false, mcpServers: {}, configPath: '' });
+});
 
 // ============================================================================
 // Helpers
@@ -346,6 +349,98 @@ describe('RequestRunner.send() — infiniteSessions', () => {
 
         const sessionConfig = mockClient.createSession.mock.calls[0][0];
         expect(sessionConfig.infiniteSessions).toBeUndefined();
+    });
+});
+
+// ============================================================================
+// send() — MCP config loading
+// ============================================================================
+
+describe('RequestRunner.send() — MCP config loading', () => {
+    it('loads effective MCP config using the request working directory', async () => {
+        const mockSession = createMockSession({ sendAndWaitResponse: { data: { content: 'ok' } } });
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        vi.mocked(loadEffectiveMcpConfig).mockReturnValue({
+            success: true,
+            fileExists: true,
+            configPath: 'workspace-config',
+            mcpServers: {
+                workspace: {
+                    type: 'local',
+                    command: 'workspace-server',
+                    tools: ['*'],
+                },
+            },
+        });
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        await runner.send({
+            prompt: 'test',
+            workingDirectory: 'workspace-dir',
+            timeoutMs: 5000,
+        });
+
+        expect(loadEffectiveMcpConfig).toHaveBeenCalledWith({
+            workingDirectory: 'workspace-dir',
+            explicitMcpServers: undefined,
+            loadDefaultMcpConfig: undefined,
+        });
+        const sessionConfig = mockClient.createSession.mock.calls[0][0];
+        expect(sessionConfig.mcpServers).toEqual({
+            workspace: {
+                type: 'local',
+                command: 'workspace-server',
+                tools: ['*'],
+            },
+        });
+    });
+
+    it('does not load workspace MCP config when default MCP loading is disabled', async () => {
+        const mockSession = createMockSession({ sendAndWaitResponse: { data: { content: 'ok' } } });
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        await runner.send({
+            prompt: 'test',
+            workingDirectory: 'workspace-dir',
+            timeoutMs: 5000,
+            loadDefaultMcpConfig: false,
+        });
+
+        expect(loadEffectiveMcpConfig).not.toHaveBeenCalled();
+        const sessionConfig = mockClient.createSession.mock.calls[0][0];
+        expect(sessionConfig.mcpServers).toBeUndefined();
+    });
+
+    it('passes an explicit empty MCP config through to disable all MCP servers', async () => {
+        const mockSession = createMockSession({ sendAndWaitResponse: { data: { content: 'ok' } } });
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        vi.mocked(loadEffectiveMcpConfig).mockReturnValue({
+            success: true,
+            fileExists: true,
+            configPath: 'workspace-config',
+            mcpServers: {},
+        });
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        await runner.send({
+            prompt: 'test',
+            workingDirectory: 'workspace-dir',
+            timeoutMs: 5000,
+            mcpServers: {},
+        });
+
+        const sessionConfig = mockClient.createSession.mock.calls[0][0];
+        expect(sessionConfig.mcpServers).toEqual({});
     });
 });
 

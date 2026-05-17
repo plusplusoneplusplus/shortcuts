@@ -1,7 +1,7 @@
 /**
  * Tests for MCP Config Loader
  *
- * Comprehensive tests for loading MCP server configuration from ~/.copilot/mcp-config.json.
+ * Comprehensive tests for loading MCP server configuration from global and workspace files.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
@@ -12,14 +12,19 @@ import * as os from 'os';
 import {
     getHomeDirectory,
     getMcpConfigPath,
+    getWorkspaceMcpConfigPath,
     loadDefaultMcpConfig,
     loadDefaultMcpConfigAsync,
+    loadWorkspaceMcpConfig,
+    loadEffectiveMcpConfig,
     mergeMcpConfigs,
+    mergeMcpConfigSources,
     clearMcpConfigCache,
     mcpConfigExists,
     getCachedMcpConfig,
     setHomeDirectoryOverride,
-    MCPConfigFile
+    MCPConfigFile,
+    VSCodeMCPConfigFile
 } from '../../src/copilot-sdk-wrapper/mcp-config-loader';
 import { MCPServerConfig, MCPLocalServerConfig, MCPRemoteServerConfig } from '../../src/copilot-sdk-wrapper/types';
 
@@ -27,12 +32,16 @@ describe('MCP Config Loader', () => {
     let tempDir: string;
     let mockCopilotDir: string;
     let mockConfigPath: string;
+    let workspaceDir: string;
+    let workspaceConfigPath: string;
 
     beforeEach(() => {
         // Create a temp directory for testing
         tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-config-test-'));
         mockCopilotDir = path.join(tempDir, '.copilot');
         mockConfigPath = path.join(mockCopilotDir, 'mcp-config.json');
+        workspaceDir = path.join(tempDir, 'workspace');
+        workspaceConfigPath = path.join(workspaceDir, '.vscode', 'mcp.json');
 
         // Set the home directory override to our temp directory
         setHomeDirectoryOverride(tempDir);
@@ -71,6 +80,12 @@ describe('MCP Config Loader', () => {
             const configPath = getMcpConfigPath();
             // Should contain the correct separator for the platform
             expect(configPath).toContain(path.sep);
+        });
+    });
+
+    describe('getWorkspaceMcpConfigPath', () => {
+        it('returns the VS Code workspace MCP config path', () => {
+            expect(getWorkspaceMcpConfigPath(workspaceDir)).toBe(workspaceConfigPath);
         });
     });
 
@@ -306,6 +321,112 @@ describe('MCP Config Loader', () => {
         });
     });
 
+    describe('loadWorkspaceMcpConfig', () => {
+        it('returns success with empty mcpServers when workspace config file does not exist', () => {
+            const result = loadWorkspaceMcpConfig(workspaceDir);
+
+            expect(result.success).toBe(true);
+            expect(result.mcpServers).toEqual({});
+            expect(result.fileExists).toBe(false);
+            expect(result.configPath).toBe(workspaceConfigPath);
+        });
+
+        it('loads VS Code servers from .vscode/mcp.json', () => {
+            const config: VSCodeMCPConfigFile = {
+                servers: {
+                    'workspace-server': {
+                        type: 'local',
+                        command: 'workspace-mcp',
+                        args: ['--flag'],
+                        env: { KEY: 'value' },
+                        tools: ['*'],
+                    } as MCPLocalServerConfig,
+                },
+            };
+
+            fs.mkdirSync(path.dirname(workspaceConfigPath), { recursive: true });
+            fs.writeFileSync(workspaceConfigPath, JSON.stringify(config));
+
+            const result = loadWorkspaceMcpConfig(workspaceDir);
+
+            expect(result.success).toBe(true);
+            expect(result.fileExists).toBe(true);
+            expect(result.mcpServers).toEqual(config.servers);
+        });
+
+        it('normalizes VS Code servers and strips unsupported top-level fields', () => {
+            const config = {
+                servers: {
+                    vscode: {
+                        command: 'server',
+                        args: ['--stdio'],
+                        env: { KEY: 'value' },
+                        gallery: true,
+                    },
+                },
+            };
+
+            fs.mkdirSync(path.dirname(workspaceConfigPath), { recursive: true });
+            fs.writeFileSync(workspaceConfigPath, JSON.stringify(config));
+
+            const result = loadWorkspaceMcpConfig(workspaceDir);
+
+            expect(result.mcpServers['vscode']).toEqual({
+                command: 'server',
+                args: ['--stdio'],
+                env: { KEY: 'value' },
+            });
+        });
+
+        it('returns an error for invalid JSON', () => {
+            fs.mkdirSync(path.dirname(workspaceConfigPath), { recursive: true });
+            fs.writeFileSync(workspaceConfigPath, 'not valid json {{{');
+
+            const result = loadWorkspaceMcpConfig(workspaceDir);
+
+            expect(result.success).toBe(false);
+            expect(result.fileExists).toBe(true);
+            expect(result.mcpServers).toEqual({});
+            expect(result.error).toContain('Failed to parse MCP config');
+        });
+
+        it('uses a path-keyed cache across workspace directories', () => {
+            const workspaceDir1 = path.join(tempDir, 'workspace-1');
+            const workspaceDir2 = path.join(tempDir, 'workspace-2');
+            const workspaceConfigPath1 = getWorkspaceMcpConfigPath(workspaceDir1);
+            const workspaceConfigPath2 = getWorkspaceMcpConfigPath(workspaceDir2);
+
+            fs.mkdirSync(path.dirname(workspaceConfigPath1), { recursive: true });
+            fs.mkdirSync(path.dirname(workspaceConfigPath2), { recursive: true });
+            fs.writeFileSync(workspaceConfigPath1, JSON.stringify({
+                servers: {
+                    one: { command: 'server-one' },
+                },
+            }));
+            fs.writeFileSync(workspaceConfigPath2, JSON.stringify({
+                servers: {
+                    two: { command: 'server-two' },
+                },
+            }));
+
+            const result1 = loadWorkspaceMcpConfig(workspaceDir1);
+            const result2 = loadWorkspaceMcpConfig(workspaceDir2);
+            fs.writeFileSync(workspaceConfigPath1, JSON.stringify({
+                servers: {
+                    changed: { command: 'changed-server' },
+                },
+            }));
+            const cachedResult1 = loadWorkspaceMcpConfig(workspaceDir1);
+
+            expect(result1.mcpServers).toHaveProperty('one');
+            expect(result2.mcpServers).toHaveProperty('two');
+            expect(cachedResult1.mcpServers).toHaveProperty('one');
+            expect(cachedResult1.mcpServers).not.toHaveProperty('changed');
+            expect(getCachedMcpConfig(workspaceConfigPath1)?.mcpServers).toHaveProperty('one');
+            expect(getCachedMcpConfig(workspaceConfigPath2)?.mcpServers).toHaveProperty('two');
+        });
+    });
+
     describe('loadDefaultMcpConfigAsync', () => {
         it('returns the same result as sync version', async () => {
             const config: MCPConfigFile = {
@@ -394,6 +515,116 @@ describe('MCP Config Loader', () => {
             const result = mergeMcpConfigs({}, explicitServers);
 
             expect(result).toEqual(explicitServers);
+        });
+    });
+
+    describe('mergeMcpConfigSources', () => {
+        it('merges global, workspace, and explicit configs with deterministic precedence', () => {
+            const globalServers: Record<string, MCPServerConfig> = {
+                shared: {
+                    type: 'local',
+                    command: 'global-shared',
+                } as MCPLocalServerConfig,
+                globalOnly: {
+                    type: 'local',
+                    command: 'global-only',
+                } as MCPLocalServerConfig,
+            };
+            const workspaceServers: Record<string, MCPServerConfig> = {
+                shared: {
+                    type: 'local',
+                    command: 'workspace-shared',
+                } as MCPLocalServerConfig,
+                workspaceOnly: {
+                    type: 'local',
+                    command: 'workspace-only',
+                } as MCPLocalServerConfig,
+            };
+            const explicitServers: Record<string, MCPServerConfig> = {
+                shared: {
+                    type: 'local',
+                    command: 'explicit-shared',
+                } as MCPLocalServerConfig,
+                explicitOnly: {
+                    type: 'local',
+                    command: 'explicit-only',
+                } as MCPLocalServerConfig,
+            };
+
+            const result = mergeMcpConfigSources(globalServers, workspaceServers, explicitServers);
+
+            expect(result['globalOnly']).toEqual(globalServers['globalOnly']);
+            expect(result['workspaceOnly']).toEqual(workspaceServers['workspaceOnly']);
+            expect(result['explicitOnly']).toEqual(explicitServers['explicitOnly']);
+            expect(result['shared']).toEqual(explicitServers['shared']);
+        });
+
+        it('returns empty object when explicit config is empty', () => {
+            const result = mergeMcpConfigSources(
+                { global: { type: 'local', command: 'global' } as MCPLocalServerConfig },
+                { workspace: { type: 'local', command: 'workspace' } as MCPLocalServerConfig },
+                {},
+            );
+
+            expect(result).toEqual({});
+        });
+    });
+
+    describe('loadEffectiveMcpConfig', () => {
+        it('loads global and workspace configs and applies explicit precedence', () => {
+            fs.mkdirSync(mockCopilotDir, { recursive: true });
+            fs.mkdirSync(path.dirname(workspaceConfigPath), { recursive: true });
+            fs.writeFileSync(mockConfigPath, JSON.stringify({
+                mcpServers: {
+                    shared: { type: 'local', command: 'global-shared' },
+                    globalOnly: { type: 'local', command: 'global-only' },
+                },
+            }));
+            fs.writeFileSync(workspaceConfigPath, JSON.stringify({
+                servers: {
+                    shared: { type: 'local', command: 'workspace-shared' },
+                    workspaceOnly: { type: 'local', command: 'workspace-only' },
+                },
+            }));
+
+            const result = loadEffectiveMcpConfig({
+                workingDirectory: workspaceDir,
+                explicitMcpServers: {
+                    shared: { type: 'local', command: 'explicit-shared' } as MCPLocalServerConfig,
+                },
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.mcpServers['globalOnly']).toEqual({ type: 'local', command: 'global-only' });
+            expect(result.mcpServers['workspaceOnly']).toEqual({ type: 'local', command: 'workspace-only' });
+            expect(result.mcpServers['shared']).toEqual({ type: 'local', command: 'explicit-shared' });
+        });
+
+        it('does not load file sources when default MCP loading is disabled', () => {
+            fs.mkdirSync(mockCopilotDir, { recursive: true });
+            fs.mkdirSync(path.dirname(workspaceConfigPath), { recursive: true });
+            fs.writeFileSync(mockConfigPath, JSON.stringify({
+                mcpServers: {
+                    global: { type: 'local', command: 'global' },
+                },
+            }));
+            fs.writeFileSync(workspaceConfigPath, JSON.stringify({
+                servers: {
+                    workspace: { type: 'local', command: 'workspace' },
+                },
+            }));
+
+            const result = loadEffectiveMcpConfig({
+                workingDirectory: workspaceDir,
+                loadDefaultMcpConfig: false,
+                explicitMcpServers: {
+                    explicit: { type: 'local', command: 'explicit' } as MCPLocalServerConfig,
+                },
+            });
+
+            expect(result.mcpServers).toEqual({
+                explicit: { type: 'local', command: 'explicit' },
+            });
         });
     });
 

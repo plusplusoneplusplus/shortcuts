@@ -11,10 +11,9 @@
 import type { CopilotClient, CopilotSession, SessionConfig, AssistantMessageEvent } from '@github/copilot-sdk';
 import { ToolCall } from '../ai/process-types';
 import { getAIServiceLogger, createSessionLogger } from '../ai-logger';
-import { loadDefaultMcpConfig, mergeMcpConfigs } from './mcp-config-loader';
+import { loadEffectiveMcpConfig } from './mcp-config-loader';
 import { DEFAULT_AI_TIMEOUT_MS } from '../ai/timeouts';
 import {
-    MCPServerConfig,
     SendMessageOptions,
     TokenUsage,
     SDKInvocationResult,
@@ -143,32 +142,40 @@ export class RequestRunner {
             // Load and merge MCP server configurations
             const shouldLoadDefaultMcp = options.loadDefaultMcpConfig !== false;
             if (shouldLoadDefaultMcp || options.mcpServers !== undefined) {
-                let finalMcpServers: Record<string, MCPServerConfig> | undefined;
-                if (shouldLoadDefaultMcp) {
-                    const defaultConfig = loadDefaultMcpConfig();
-                    aiLog.debug({ success: defaultConfig.success, fileExists: defaultConfig.fileExists, serverCount: Object.keys(defaultConfig.mcpServers).length }, 'Default MCP config loaded');
-                    if (defaultConfig.error) aiLog.debug({ error: defaultConfig.error }, 'Default MCP config error');
-                    if (defaultConfig.success && Object.keys(defaultConfig.mcpServers).length > 0) {
-                        aiLog.debug({ serverCount: Object.keys(defaultConfig.mcpServers).length }, 'Default MCP servers loaded');
-                    }
-                    finalMcpServers = mergeMcpConfigs(defaultConfig.mcpServers, options.mcpServers);
-                } else if (options.mcpServers !== undefined) {
-                    finalMcpServers = options.mcpServers;
-                }
+                const effectiveMcpConfig = loadEffectiveMcpConfig({
+                    workingDirectory: options.workingDirectory,
+                    explicitMcpServers: options.mcpServers,
+                    loadDefaultMcpConfig: options.loadDefaultMcpConfig,
+                });
+                const finalMcpServers = effectiveMcpConfig.mcpServers;
+                aiLog.debug({
+                    success: effectiveMcpConfig.success,
+                    fileExists: effectiveMcpConfig.fileExists,
+                    serverCount: Object.keys(finalMcpServers).length,
+                }, 'Effective MCP config loaded');
+                if (effectiveMcpConfig.error) aiLog.debug({ error: effectiveMcpConfig.error }, 'Effective MCP config error');
 
                 if (finalMcpServers && Object.keys(finalMcpServers).length > 0) {
                     // Forge's MCPLocalServerConfig allows optional `args`; the SDK requires `string[]`.
                     // The SDK treats missing args as [] at runtime, so the cast is safe.
                     sessionOptions.mcpServers = finalMcpServers as SessionConfig['mcpServers'];
-                    aiLog.debug({ serverCount: Object.keys(finalMcpServers).length, serverNames: Object.keys(finalMcpServers) }, 'Using MCP servers');
+                    aiLog.debug({ serverCount: Object.keys(finalMcpServers).length }, 'Using MCP servers');
                 } else if (options.mcpServers !== undefined && Object.keys(options.mcpServers).length === 0) {
                     sessionOptions.mcpServers = {};
                     aiLog.debug('MCP servers explicitly disabled');
                 }
             }
 
+            const sessionOptionsForLog = Object.fromEntries(
+                Object.entries(sessionOptions).map(([key, value]) => [
+                    key,
+                    key === 'mcpServers' && value && typeof value === 'object'
+                        ? { serverCount: Object.keys(value).length }
+                        : value,
+                ]),
+            );
             const sessionOptionsStr = Object.keys(sessionOptions).length > 0
-                ? JSON.stringify(sessionOptions)
+                ? JSON.stringify(sessionOptionsForLog)
                 : '(default)';
 
             // Resume an existing SDK session or create a new one
