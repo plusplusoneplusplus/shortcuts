@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { RunSkillPanel } from '../../../src/server/spa/client/react/shared/RunSkillPanel';
 import type { RunSkillPanelProps, SkillItem } from '../../../src/server/spa/client/react/shared/RunSkillPanel';
 
@@ -142,6 +142,28 @@ describe('RunSkillPanel', () => {
         expect(onSubmitSkills).toHaveBeenCalledWith(['impl', 'review']);
     });
 
+    it('excludes the unavailable EnDev wrapper from selected skill submission', () => {
+        const onSubmitSkills = vi.fn();
+        render(<RunSkillPanel {...baseProps({
+            skills: SKILLS,
+            selectionMode: 'multi',
+            selectedSkills: ['impl', 'EnDev-xDpu'],
+            onSubmitSkills,
+        })} />);
+        expect(screen.getByTestId('fp-submit-skills').textContent).toContain('Submit with 1 skill');
+        fireEvent.click(screen.getByTestId('fp-submit-skills'));
+        expect(onSubmitSkills).toHaveBeenCalledWith(['impl']);
+    });
+
+    it('hides submit button when only the unavailable EnDev wrapper is selected', () => {
+        render(<RunSkillPanel {...baseProps({
+            skills: SKILLS,
+            selectionMode: 'multi',
+            selectedSkills: ['EnDev-xDpu'],
+        })} />);
+        expect(screen.queryByTestId('fp-submit-skills')).toBeNull();
+    });
+
     it('uses custom submitLabel when provided', () => {
         render(<RunSkillPanel {...baseProps({ skills: SKILLS, selectionMode: 'multi', selectedSkills: ['impl'], submitLabel: 'Go!' })} />);
         expect(screen.getByTestId('fp-submit-skills').textContent).toBe('Go!');
@@ -208,6 +230,16 @@ describe('RunSkillPanel', () => {
         expect(screen.getByText('Last Used')).toBeDefined();
         const recentButtons = document.querySelectorAll('.fp-recent-item');
         expect(recentButtons.length).toBe(1);
+    });
+
+    it('filters the unavailable EnDev wrapper from Last Used items', () => {
+        const recentItems: SkillItem[] = [{ name: 'impl' }, { name: 'EnDev-xDpu' }];
+        render(<RunSkillPanel {...baseProps({ skills: SKILLS, recentItems })} />);
+        expect(screen.getByText('Last Used')).toBeDefined();
+        expect(screen.queryByText('EnDev-xDpu')).toBeNull();
+        const recentButtons = document.querySelectorAll('.fp-recent-item');
+        expect(recentButtons.length).toBe(1);
+        expect(within(recentButtons[0] as HTMLElement).getByText('impl')).toBeDefined();
     });
 
     it('does not render Last Used when no recent items', () => {
