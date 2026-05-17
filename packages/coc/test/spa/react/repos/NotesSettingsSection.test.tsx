@@ -46,12 +46,14 @@ async function renderSection(opts: {
     autoCommit?: AutoCommitState;
     initializeGit?: ReturnType<typeof vi.fn>;
     deinitGit?: ReturnType<typeof vi.fn>;
+    notesRoot?: string | null;
 }) {
     const {
         gitInitialized = true,
         autoCommit = { enabled: false },
         initializeGit = vi.fn().mockResolvedValue({ initialized: true }),
         deinitGit = vi.fn().mockResolvedValue({ deinitialized: true }),
+        notesRoot = '/home/user/notes',
     } = opts;
 
     const mockHook = mockAutoCommitHook(autoCommit);
@@ -63,6 +65,7 @@ async function renderSection(opts: {
     vi.doMock('../../../../src/server/spa/client/react/features/notes/notesApi', () => ({
         notesApi: {
             getGitStatus: vi.fn().mockResolvedValue({ initialized: gitInitialized }),
+            getTree: vi.fn().mockResolvedValue({ tree: [], notesRoot: notesRoot ?? '/home/user/notes' }),
             initializeGit,
             deinitGit,
         },
@@ -107,6 +110,7 @@ describe('NotesSettingsSection', () => {
         vi.doMock('../../../../src/server/spa/client/react/features/notes/notesApi', () => ({
             notesApi: {
                 getGitStatus: vi.fn().mockResolvedValue({ initialized: true }),
+                getTree: vi.fn().mockResolvedValue({ tree: [], notesRoot: '/home/user/notes' }),
             },
         }));
         const { NotesSettingsSection } = await import(
@@ -360,6 +364,36 @@ describe('NotesSettingsSection', () => {
         await waitFor(() => {
             expect(mockAddToast).toHaveBeenCalledWith('boom-init', 'error');
         });
+    });
+
+    it('shows absolute path from notesRoot', async () => {
+        await renderSection({ gitInitialized: true, notesRoot: '/var/data/my-notes' });
+
+        const el = screen.getByTestId('notes-absolute-path');
+        expect(el.textContent).toBe('/var/data/my-notes');
+        expect(el.getAttribute('title')).toBe('/var/data/my-notes');
+    });
+
+    it('hides path when notesRoot is unavailable', async () => {
+        vi.doMock('../../../../src/server/spa/client/react/features/notes/hooks/useNotesAutoCommit', () => ({
+            useNotesAutoCommit: () => mockAutoCommitHook({ enabled: false }),
+        }));
+        vi.doMock('../../../../src/server/spa/client/react/features/notes/notesApi', () => ({
+            notesApi: {
+                getGitStatus: vi.fn().mockResolvedValue({ initialized: true }),
+                getTree: vi.fn().mockRejectedValue(new Error('not found')),
+                initializeGit: vi.fn(),
+                deinitGit: vi.fn(),
+            },
+        }));
+        const { NotesSettingsSection } = await import(
+            '../../../../src/server/spa/client/react/features/repo-settings/NotesSettingsSection'
+        );
+        render(<NotesSettingsSection workspaceId="ws-1" />);
+        await waitFor(() => {
+            expect(screen.queryByTestId('notes-settings-loading')).toBeNull();
+        });
+        expect(screen.queryByTestId('notes-absolute-path')).toBeNull();
     });
 
     it('shows error toast when deinit fails', async () => {
