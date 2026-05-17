@@ -95,6 +95,23 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/editor/RichEdito
     },
 }));
 
+// Mock config for isRalphEnabled
+let mockRalphEnabled = true;
+vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isContainerMode: () => false,
+    getApiBase: () => 'http://localhost:4000/api',
+    isRalphEnabled: () => mockRalphEnabled,
+}));
+
+// Mock RalphLaunchDialog — renders a simple stub
+const mockRalphLaunchDialogProps = vi.fn();
+vi.mock('../../../../src/server/spa/client/react/shared/RalphLaunchDialog', () => ({
+    RalphLaunchDialog: (props: Record<string, unknown>) => {
+        mockRalphLaunchDialogProps(props);
+        return props.open ? <div data-testid="ralph-launch-dialog-stub" /> : null;
+    },
+}));
+
 import { NoteEditor } from '../../../../src/server/spa/client/react/features/notes/editor/NoteEditor';
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -1641,6 +1658,68 @@ describe('NoteEditor', () => {
             expect(mockQueueDispatch).toHaveBeenCalledWith(
                 expect.objectContaining({ contextTaskName: 'my-feature' }),
             );
+        });
+    });
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Run Ralph button
+    // ══════════════════════════════════════════════════════════════════════
+
+    describe('Run Ralph button', () => {
+        beforeEach(() => {
+            mockRalphEnabled = true;
+            mockRalphLaunchDialogProps.mockClear();
+        });
+
+        it('shows Run Ralph button for goal.md files', async () => {
+            mockLoadContent.mockResolvedValue({ content: '## Goal\nDo something', path: 'goal.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="goal.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+            expect(screen.getByTestId('note-run-ralph-btn')).toBeDefined();
+        });
+
+        it('shows Run Ralph button for *.goal.md files', async () => {
+            mockLoadContent.mockResolvedValue({ content: '## Goal\nRefactor auth', path: 'Plans/auth.goal.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="Plans/auth.goal.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+            expect(screen.getByTestId('note-run-ralph-btn')).toBeDefined();
+        });
+
+        it('does not show Run Ralph button for regular .md files', async () => {
+            mockLoadContent.mockResolvedValue({ content: '# Hello', path: 'regular.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="regular.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+            expect(screen.queryByTestId('note-run-ralph-btn')).toBeNull();
+        });
+
+        it('does not show Run Ralph button when Ralph is disabled', async () => {
+            mockRalphEnabled = false;
+            mockLoadContent.mockResolvedValue({ content: '## Goal\nDo something', path: 'goal.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="goal.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+            expect(screen.queryByTestId('note-run-ralph-btn')).toBeNull();
+        });
+
+        it('clicking Run Ralph button opens the dialog', async () => {
+            mockLoadContent.mockResolvedValue({ content: '## Goal\nBuild feature', path: 'feature.goal.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="feature.goal.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('note-run-ralph-btn'));
+            });
+
+            expect(screen.getByTestId('ralph-launch-dialog-stub')).toBeDefined();
         });
     });
 });
