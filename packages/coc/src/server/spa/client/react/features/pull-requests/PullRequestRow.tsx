@@ -28,6 +28,11 @@ interface PullRequestRowProps {
     /** When true, the selection checkbox is rendered. Hidden by default. */
     batchMode?: boolean;
     /**
+     * When true, the row collapses to a centered state-dot only.
+     * Used by the collapsed PR queue rail.
+     */
+    compact?: boolean;
+    /**
      * Optional override for the state dot. When omitted, the dot is
      * derived from the PR status and the AI-flagged risk level.
      */
@@ -59,6 +64,7 @@ export function PullRequestRow({
     onSelect,
     isChecked,
     batchMode,
+    compact,
     dotState,
     risk,
 }: PullRequestRowProps) {
@@ -66,6 +72,36 @@ export function PullRequestRow({
     const effectiveDot: QueueDotState = dotState ?? deriveDotState(pr, effectiveRisk);
     const fileCount = getMockPrFileCount(pr);
     const minutes = getMockPrReviewMinutes(pr);
+
+    if (compact) {
+        return (
+            <button
+                type="button"
+                title={pr.title}
+                aria-label={pr.title}
+                onClick={onClick}
+                data-testid="pr-row"
+                data-pr-status={pr.status}
+                data-compact="true"
+                className={cn(
+                    'pr-row relative flex w-full cursor-pointer justify-center border-0 bg-white py-[7px] text-left transition-colors dark:bg-gray-900',
+                    isSelected
+                        ? "bg-blue-50 before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-blue-500 before:content-[''] dark:bg-blue-900/30"
+                        : 'hover:bg-gray-50 dark:hover:bg-gray-800/60',
+                )}
+            >
+                <span
+                    aria-hidden="true"
+                    className={cn(
+                        'pr-state-dot h-[13px] w-[13px] shrink-0 rounded-full border-[2.5px]',
+                        queueDotClass(effectiveDot),
+                    )}
+                    data-testid="pr-state-dot"
+                    data-state={effectiveDot}
+                />
+            </button>
+        );
+    }
 
     return (
         <div

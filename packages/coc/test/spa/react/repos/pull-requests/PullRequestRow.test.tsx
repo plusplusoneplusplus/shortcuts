@@ -130,6 +130,31 @@ describe('PullRequestRow — click handling', () => {
     });
 });
 
+describe('PullRequestRow — compact mode', () => {
+    it('renders only the state dot when compact', () => {
+        render(<PullRequestRow pr={makePr({ title: 'Hidden title' })} onClick={vi.fn()} compact risk="med" />);
+        expect(screen.getByTestId('pr-state-dot')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-row').getAttribute('data-compact')).toBe('true');
+        expect(screen.queryByText('Hidden title')).toBeNull();
+        expect(screen.queryByText(/#\d+/)).toBeNull();
+        expect(screen.queryByTestId('pr-risk-pill')).toBeNull();
+    });
+
+    it('still calls onClick when the compact dot is clicked', () => {
+        const onClick = vi.fn();
+        render(<PullRequestRow pr={makePr()} onClick={onClick} compact />);
+        fireEvent.click(screen.getByTestId('pr-row'));
+        expect(onClick).toHaveBeenCalledOnce();
+    });
+
+    it('exposes the PR title via title and aria-label for tooltips', () => {
+        render(<PullRequestRow pr={makePr({ title: 'Tooltip PR' })} onClick={vi.fn()} compact />);
+        const row = screen.getByTestId('pr-row');
+        expect(row.getAttribute('title')).toBe('Tooltip PR');
+        expect(row.getAttribute('aria-label')).toBe('Tooltip PR');
+    });
+});
+
 describe('PullRequestRow — batch mode checkbox', () => {
     it('hides the checkbox by default', () => {
         render(<PullRequestRow pr={makePr()} onClick={vi.fn()} />);
