@@ -2,8 +2,8 @@
  * Mock data for AI-related PR review features.
  *
  * The AI summary, lens grid, grouped threads, conversation timeline,
- * commit intent, checks/CI, merge readiness, file annotations, and
- * AI assistant chat are all driven by the deterministic fixtures
+ * commit intent, checks/CI, merge readiness, and AI assistant chat
+ * are all driven by the deterministic fixtures
  * declared here. Once a real AI backend is available, these can be
  * swapped out for live data without changing the surrounding
  * presentational components.
@@ -91,28 +91,6 @@ export interface MergeReadinessItem {
     tag: MergeReadinessTag;
     label: string;
     body: string;
-}
-
-export interface AiFileAnnotation {
-    title: string;
-    body: string;
-    actions: string[];
-}
-
-export interface AiFileEntry {
-    path: string;
-    additions: number;
-    deletions: number;
-    focus?: 'AI focus file' | 'Coverage gap' | 'Generated';
-    diff?: AiDiffLine[];
-    annotation?: AiFileAnnotation;
-}
-
-export type AiDiffLineKind = 'add' | 'del' | 'ctx';
-export interface AiDiffLine {
-    line: number;
-    kind: AiDiffLineKind;
-    text: string;
 }
 
 export interface AiBranchSnapshot {
@@ -426,62 +404,6 @@ const MERGE_READINESS: MergeReadinessItem[] = [
     },
 ];
 
-const FILES: AiFileEntry[] = [
-    {
-        path: 'packages/ingest/src/jsonl-stream.ts',
-        additions: 164,
-        deletions: 18,
-        focus: 'AI focus file',
-        diff: [
-            { line: 84, kind: 'ctx', text: 'export async function readJsonlStream(source, options) {' },
-            { line: 85, kind: 'add', text: '  const decoder = new TextDecoder();' },
-            { line: 86, kind: 'add', text: '  let buffered = "";' },
-            { line: 87, kind: 'add', text: '  for await (const chunk of source) {' },
-            { line: 88, kind: 'add', text: '    buffered += decoder.decode(chunk, { stream: true });' },
-            { line: 89, kind: 'add', text: '    yield* parseCompleteLines(buffered, options);' },
-            { line: 90, kind: 'ctx', text: '  }' },
-        ],
-        annotation: {
-            title: 'AI annotation: possible replay on abort',
-            body: 'If the stream aborts after line 88 and before line 89, `buffered` can contain a partial record that the retry path replays. Add a test for abort after a split UTF-8 boundary.',
-            actions: ['Apply suggested test', 'Reply'],
-        },
-    },
-    {
-        path: 'packages/ingest/src/worker.ts',
-        additions: 72,
-        deletions: 44,
-    },
-    {
-        path: 'packages/ingest/test/jsonl-stream.test.ts',
-        additions: 211,
-        deletions: 0,
-        focus: 'Coverage gap',
-        diff: [
-            { line: 121, kind: 'ctx', text: 'it("streams large JSONL payloads without buffering the full file", async () => {' },
-            { line: 122, kind: 'add', text: '  const rows = await collect(readJsonlStream(makeLargeFixture()));' },
-            { line: 123, kind: 'add', text: '  expect(rows).toHaveLength(5000);' },
-            { line: 124, kind: 'ctx', text: '});' },
-        ],
-        annotation: {
-            title: 'AI annotation: test shape is useful but too happy-path',
-            body: 'This validates memory behavior, not cancellation semantics. Keep it, then add one test with a slow reader and an aborted consumer.',
-            actions: ['Create task'],
-        },
-    },
-    {
-        path: 'docs/ingest-streaming.md',
-        additions: 54,
-        deletions: 6,
-    },
-    {
-        path: 'fixtures/generated/jsonl-large.fixture',
-        additions: 346,
-        deletions: 0,
-        focus: 'Generated',
-    },
-];
-
 const SUGGESTED_PROMPTS: AiSuggestedPrompt[] = [
     {
         id: 'review-first',
@@ -749,10 +671,6 @@ export function buildMergeReadinessFromData(params: {
     }
 
     return items;
-}
-
-export function getMockFiles(): AiFileEntry[] {
-    return FILES;
 }
 
 export function getMockSuggestedPrompts(): AiSuggestedPrompt[] {

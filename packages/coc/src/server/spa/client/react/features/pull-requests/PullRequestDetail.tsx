@@ -44,7 +44,6 @@ import {
     buildCommitRowsFromPrCommits,
     buildMergeReadinessFromData,
     getMockAiSummary,
-    getMockFiles,
     getMockPersonaLenses,
     getMockReviewSummaryText,
     getMockTimeline,
@@ -528,8 +527,6 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                                 files={diff.files}
                                 commentsByPath={threadsByPath}
                                 isMobile={isMobile}
-                                annotations={aiAnnotationByPath.annotations}
-                                focusByPath={aiAnnotationByPath.focus}
                                 classification={classification}
                             />
                         </div>

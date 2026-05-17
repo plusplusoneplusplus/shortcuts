@@ -34,7 +34,6 @@ import { SHOW_FOCUSED_DIFF } from '../../featureFlags';
 import type { HunkCategory } from './classification-types';
 import { HUNK_CATEGORIES, CATEGORY_LABELS } from './classification-types';
 import type { UseClassificationReturn } from './useClassification';
-import type { AiFileAnnotation } from './pr-mock-data';
 
 interface PrFilesPanelProps {
     files: ParsedDiffFile[];
@@ -43,10 +42,6 @@ interface PrFilesPanelProps {
     /** When true (small viewports), the file list stacks above the diff
      *  with full width and no resize handle. */
     isMobile?: boolean;
-    /** Optional, keyed by file path. Comes from `pr-mock-data` for now. */
-    annotations?: Record<string, AiFileAnnotation | undefined>;
-    /** Optional, keyed by file path. Highlights an AI-flagged file. */
-    focusByPath?: Record<string, string | undefined>;
     /** Classification hook return — enables focused-diff filter bar. */
     classification?: UseClassificationReturn;
 }
@@ -172,7 +167,7 @@ function ClassificationFilterBar({ classification }: { classification: UseClassi
 
 // ── Main component ──────────────────────────────────────────────────
 
-export function PrFilesPanel({ files, commentsByPath, isMobile = false, annotations, focusByPath, classification }: PrFilesPanelProps) {
+export function PrFilesPanel({ files, commentsByPath, isMobile = false, classification }: PrFilesPanelProps) {
     const [search, setSearch] = useState('');
     const [viewMode, setViewMode] = useState<ViewMode>('tree');
     const [activePath, setActivePath] = useState<string>(files[0]?.path ?? '');
@@ -364,8 +359,6 @@ export function PrFilesPanel({ files, commentsByPath, isMobile = false, annotati
                     <FileDiffCard
                         file={focusedFile}
                         threads={getThreadsForFile(commentsByPath, focusedFile)}
-                        annotation={annotations?.[focusedFile.path]}
-                        focus={focusByPath?.[focusedFile.path]}
                         classification={classification}
                     />
                 )}
@@ -552,12 +545,10 @@ function FileTreeView({
 interface FileDiffCardProps {
     file: ParsedDiffFile;
     threads: CommentThread[];
-    annotation?: AiFileAnnotation;
-    focus?: string;
     classification?: UseClassificationReturn;
 }
 
-function FileDiffCard({ file, threads, annotation, focus, classification }: FileDiffCardProps) {
+function FileDiffCard({ file, threads, classification }: FileDiffCardProps) {
     const lineThreads = useMemo(() => groupThreadsByDiffLine(threads), [threads]);
     const fileLevelThreads = useMemo(
         () => threads.filter(thread => !resolveThreadLine(thread)),

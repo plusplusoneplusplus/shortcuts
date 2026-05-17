@@ -16,7 +16,6 @@ import {
     getMockBranchSnapshot,
     getMockCheckRows,
     getMockCommitRows,
-    getMockFiles,
     getMockMergeReadiness,
     getMockPersonaLenses,
     getMockPrFileCount,
@@ -113,12 +112,10 @@ describe('AI mock data', () => {
         expect(groups.some(group => group.severity === 'blocking')).toBe(true);
     });
 
-    it('returns commit, check, merge-readiness, and file fixtures', () => {
+    it('returns commit, check, and merge-readiness fixtures', () => {
         expect(getMockCommitRows().length).toBeGreaterThanOrEqual(5);
         expect(getMockCheckRows().some(row => row.status === 'warning')).toBe(true);
         expect(getMockMergeReadiness().some(item => item.tag === 'risk')).toBe(true);
-        const files = getMockFiles();
-        expect(files.some(file => file.annotation)).toBe(true);
     });
 
     it('returns suggested prompts and seed chat for the assistant', () => {
