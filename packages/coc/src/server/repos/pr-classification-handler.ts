@@ -23,6 +23,7 @@ import {
     readPending,
     writePending,
 } from './classification-store';
+import { TaskDefs } from '../tasks/task-types';
 
 // ============================================================================
 // Types
@@ -102,31 +103,25 @@ export function registerPrClassificationRoutes(routes: Route[], opts: PrClassifi
 
                 const prompt = buildClassificationPrompt(repoId, prId);
 
-                // Enqueue a chat task with the classify-diff skill. The
-                // ClassificationExecutor is dispatched because the payload
-                // carries `context.classifyDiff`.
+                // Enqueue a pr-classification task with the classify-diff skill.
                 const rootPath = repo.localPath ?? process.cwd();
                 bridge.getOrCreateBridge(rootPath);
                 const resolvedRepoId = bridge.getRepoIdForPath(rootPath);
                 const queueManager = bridge.registry.getQueueForRepo(rootPath);
 
                 const taskId = queueManager.enqueue({
-                    type: 'chat',
+                    type: TaskDefs.prClassification.kind,
                     priority: 'normal',
                     repoId: resolvedRepoId,
                     payload: {
-                        kind: 'chat',
-                        mode: 'autopilot',
+                        kind: TaskDefs.prClassification.kind,
                         prompt,
                         workspaceId,
+                        repoId,
+                        prId,
+                        headSha,
+                        workingDirectory: rootPath,
                         skills: ['classify-diff'],
-                        context: {
-                            classifyDiff: {
-                                repoId,
-                                prId,
-                                headSha,
-                            },
-                        },
                     },
                     config: body.model ? { model: body.model } : {},
                     displayName: `Classify PR #${prId} [${headSha.slice(0, 7)}]`,

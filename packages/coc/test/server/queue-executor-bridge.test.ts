@@ -6422,6 +6422,7 @@ describe('defaultIsExclusive', () => {
         { type: 'chat', payload: { kind: 'chat', mode: 'ralph', prompt: 'test' }, expected: true },
         { type: 'chat', payload: { kind: 'chat', mode: 'ask', prompt: 'test' }, expected: false },
         { type: 'chat', payload: { kind: 'chat', mode: 'plan', prompt: 'test' }, expected: false },
+        { type: 'pr-classification', payload: { kind: 'pr-classification', prompt: 'classify', repoId: 'r', prId: '1', headSha: 'abc', workspaceId: 'ws' }, expected: false },
     ])('should classify $type (mode=$payload.mode) as exclusive=$expected', ({ type, payload, expected }) => {
         const task = { type, payload } as QueuedTask;
         expect(defaultIsExclusive(task)).toBe(expected);
@@ -6442,6 +6443,11 @@ describe('defaultIsExclusive', () => {
 
     it('should classify chat as non-exclusive when mode is ask (ralph grilling stays parallel)', () => {
         const task = { type: 'chat', payload: { kind: 'chat', mode: 'ask', prompt: 'test' } } as QueuedTask;
+        expect(defaultIsExclusive(task)).toBe(false);
+    });
+
+    it('should classify pr-classification as non-exclusive (uses shared lane)', () => {
+        const task = { type: 'pr-classification', payload: { kind: 'pr-classification', prompt: 'classify', repoId: 'r', prId: '1', headSha: 'abc', workspaceId: 'ws' } } as QueuedTask;
         expect(defaultIsExclusive(task)).toBe(false);
     });
 
