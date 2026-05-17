@@ -76,7 +76,7 @@ describe('WhatsAppBot', () => {
 
         const msgId = await bot.send('group@g.us', 'Hello world');
         expect(msgId).toBe('wamid.test123');
-        expect(mockSocket.sendMessage).toHaveBeenCalledWith('group@g.us', { text: 'Hello world' });
+        expect(mockSocket.sendMessage).toHaveBeenCalledWith('group@g.us', { text: 'Hello world' }, undefined);
     });
 
     it('should throw when sending before start', async () => {
@@ -86,6 +86,23 @@ describe('WhatsAppBot', () => {
             printQR: false,
         });
         await expect(bot.send('jid', 'text')).rejects.toThrow('WhatsAppBot is not started');
+    });
+
+    it('should send with quoted message for reply threading', async () => {
+        const bot = new WhatsAppBot({
+            sessionDir: '/tmp/test-session',
+            onMessage: async () => {},
+            printQR: false,
+        });
+        await bot.start();
+
+        const msgId = await bot.send('group@g.us', 'Reply text', { quotedId: 'wamid.original' });
+        expect(msgId).toBe('wamid.test123');
+        expect(mockSocket.sendMessage).toHaveBeenCalledWith(
+            'group@g.us',
+            { text: 'Reply text' },
+            { quoted: { key: { remoteJid: 'group@g.us', id: 'wamid.original', fromMe: true } } },
+        );
     });
 
     it('should handle inbound text messages', async () => {

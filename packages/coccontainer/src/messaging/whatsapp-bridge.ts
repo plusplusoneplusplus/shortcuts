@@ -211,27 +211,21 @@ export class WhatsAppBridge {
             const res = await fetch(url);
             if (!res.ok) { console.log(`[whatsapp-bridge] Fetch failed: ${res.status}`); return; }
             const body = await res.json() as Record<string, unknown>;
-            // Response shape: { process: { conversationTurns: [...] }, children, total }
             const processData = (body.process ?? body) as Record<string, unknown>;
-            const turns = (processData.conversationTurns ?? processData.conversation ?? processData.turns) as Array<{ role: string; content?: string; text?: string }> | undefined;
-            console.log(`[whatsapp-bridge] Got ${turns?.length ?? 0} turns (keys: ${Object.keys(processData).join(',')})`);
+            const turns = (processData.conversationTurns ?? processData.conversation ?? processData.turns) as Array<{ role: string; content?: string; text?: string; streaming?: boolean }> | undefined;
+            console.log(`[whatsapp-bridge] Got ${turns?.length ?? 0} turns`);
             if (!turns || turns.length === 0) return;
 
             const lastSeen = this.lastTurnCount.get(processId) ?? 0;
 
-            // Only consider non-streaming turns with actual content.
-            // During 'running' status, the latest assistant turn may still be
-            // streaming with empty/partial content — skip it so we pick it up
-            // on the next update when content is finalized.
+            // Skip streaming turns to avoid advancing watermark past incomplete content
             let sendableEnd = turns.length;
             for (let i = turns.length - 1; i >= lastSeen; i--) {
-                const t = turns[i] as Record<string, unknown>;
-                if (t.streaming) { sendableEnd = i; continue; }
+                if (turns[i].streaming) { sendableEnd = i; continue; }
                 break;
             }
 
             const newTurns = turns.slice(lastSeen, sendableEnd);
-            // Only advance watermark to what we actually processed
             if (sendableEnd > lastSeen) {
                 this.lastTurnCount.set(processId, sendableEnd);
             }
@@ -240,19 +234,25 @@ export class WhatsAppBridge {
             if (newTurns.length === 0) return;
 
             const repoName = (proc.workspaceName ?? workspaceId ?? 'unknown') as string;
-            const sessionLabel = `${msg.agentName}:${repoName}`;
+            const title = (processData.title ?? proc.title ?? '') as string;
+            // Quote the last WA message for this process to create a thread
+            const quotedId = this.store!.getLastMessageId(processId) ?? undefined;
 
             for (const turn of newTurns) {
-                const text = (turn.content ?? turn.text ?? '') as string;
-                if (!text.trim()) continue;
+                const content = (turn.content ?? turn.text ?? '') as string;
+                if (!content.trim()) continue;
 
-                const prefix = turn.role === 'user'
-                    ? `*💬 ${this.opts.config.userName} → ${sessionLabel}*`
-                    : `*🤖 ${sessionLabel}*`;
+                const waText = this.formatOutboundMessage({
+                    role: turn.role,
+                    agent: msg.agentName,
+                    repo: repoName,
+                    title,
+                    content,
+                });
 
                 try {
-                    const waMessageId = await this.bot!.send(target, `${prefix}\n${text}`);
-                    this.store!.bindMessage(waMessageId, processId, agentId, sessionLabel);
+                    const waMessageId = await this.bot!.send(target, waText, { quotedId });
+                    this.store!.bindMessage(waMessageId, processId, agentId, `${msg.agentName}:${repoName}`, workspaceId);
                     console.log(`[whatsapp-bridge] Sent to WA: ${waMessageId}`);
                 } catch (err) {
                     console.error('[whatsapp-bridge] Failed to send outbound message:', err);
@@ -263,23 +263,56 @@ export class WhatsAppBridge {
         }
     }
 
+    /** Format a structured WhatsApp message with task metadata. */
+    formatOutboundMessage(opts: { role: string; agent: string; repo: string; title: string; content: string }): string {
+        const icon = opts.role === 'user' ? '💬' : '🤖';
+        const header = [
+            `${icon} *Task:*`,
+            `  Agent: ${opts.agent}`,
+            `  Repo: ${opts.repo}`,
+        ];
+        if (opts.title) {
+            header.push(`  Title: ${opts.title}`);
+        }
+        header.push(`*Message:*`);
+        header.push(opts.content);
+        return header.join('\n');
+    }
+
     // ── Inbound: WhatsApp message → CoC session ──────────
     private async onInboundMessage(msg: InboundWAMessage): Promise<void> {
         if (!this.store) return;
 
-        let processId: string;
-        let agentId: string;
+        let processId: string | undefined;
+        let agentId: string | undefined;
+        let workspaceId: string | undefined;
+        let isFollowUp = false;
 
+        // Check if replying to a specific bot message → continue that session
         if (msg.quotedMessageId) {
             const entry = this.store.lookupMessage(msg.quotedMessageId);
             if (entry) {
                 processId = entry.processId;
                 agentId = entry.agentId;
-            } else {
-                ({ processId, agentId } = await this.resolveGlobalSession(msg.senderJid, msg.text));
+                workspaceId = entry.workspaceId;
+                isFollowUp = true;
             }
-        } else {
+        }
+
+        // Check for existing global session if no reply binding found
+        if (!isFollowUp) {
+            const existing = this.store.getGlobalSession(msg.senderJid);
+            if (existing) {
+                processId = existing.processId;
+                agentId = existing.agentId;
+                isFollowUp = true;
+            }
+        }
+
+        // No existing session → create a new chat
+        if (!isFollowUp || !processId || !agentId) {
             ({ processId, agentId } = await this.resolveGlobalSession(msg.senderJid, msg.text));
+            isFollowUp = false;
         }
 
         const agentAddr = this.getAgentAddress(agentId);
@@ -289,13 +322,25 @@ export class WhatsAppBridge {
         }
 
         try {
-            await fetch(`${agentAddr}/api/queue/follow-up`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ processId, message: msg.text }),
-            });
+            if (isFollowUp) {
+                // Send a follow-up message to the existing process session
+                const wsParam = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : '';
+                const url = `${agentAddr}/api/processes/${processId}/message${wsParam}`;
+                console.log(`[whatsapp-bridge] Sending follow-up to ${url}`);
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: msg.text }),
+                });
+                if (!res.ok) {
+                    console.error(`[whatsapp-bridge] Follow-up failed: ${res.status}`);
+                }
+            } else {
+                // New chat was already created by resolveGlobalSession
+                console.log(`[whatsapp-bridge] New chat created: ${processId}`);
+            }
         } catch (err) {
-            console.error('[whatsapp-bridge] Failed to inject inbound message:', err);
+            console.error('[whatsapp-bridge] Failed to send inbound message:', err);
         }
     }
 

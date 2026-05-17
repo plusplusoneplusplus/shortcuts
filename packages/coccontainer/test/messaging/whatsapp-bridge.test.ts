@@ -118,16 +118,16 @@ describe('WhatsAppBridge', () => {
     });
 
     describe('outbound (CoC → WA)', () => {
-        it('should forward new turns from process-updated events', async () => {
+        it('should forward new turns with structured format', async () => {
             const bridge = new WhatsAppBridge(opts);
             await bridge.start();
 
-            // Mock fetch to return process with conversationTurns (matches real CoC API shape)
             const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
                 new Response(JSON.stringify({
                     process: {
                         id: 'proc-001',
                         workspaceId: 'ws-frontend',
+                        title: 'Fix bug XYZ',
                         conversationTurns: [
                             { role: 'user', content: 'Fix the bug' },
                             { role: 'assistant', content: 'Fixed the bug on line 42' },
@@ -145,18 +145,51 @@ describe('WhatsAppBridge', () => {
             expect(fetchSpy).toHaveBeenCalledWith(
                 'http://localhost:4000/api/processes/proc-001?workspaceId=ws-frontend'
             );
-            // Both user and assistant turns are forwarded
             expect(lastBot().send).toHaveBeenCalledTimes(2);
+            // User turn — no previous message to quote
             expect(lastBot().send).toHaveBeenCalledWith(
                 'group@g.us',
-                '*💬 CoC → Agent-A:frontend*\nFix the bug'
+                '💬 *Task:*\n  Agent: Agent-A\n  Repo: frontend\n  Title: Fix bug XYZ\n*Message:*\nFix the bug',
+                { quotedId: undefined },
             );
+            // Assistant turn — same batch, same quotedId (none yet)
             expect(lastBot().send).toHaveBeenCalledWith(
                 'group@g.us',
-                '*🤖 Agent-A:frontend*\nFixed the bug on line 42'
+                '🤖 *Task:*\n  Agent: Agent-A\n  Repo: frontend\n  Title: Fix bug XYZ\n*Message:*\nFixed the bug on line 42',
+                { quotedId: undefined },
             );
 
             fetchSpy.mockRestore();
+            await bridge.stop();
+        });
+
+        it('should omit title when not available', async () => {
+            const bridge = new WhatsAppBridge(opts);
+            await bridge.start();
+
+            vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+                new Response(JSON.stringify({
+                    process: {
+                        conversationTurns: [
+                            { role: 'assistant', content: 'Done' },
+                        ],
+                    },
+                }))
+            );
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-notitle', workspaceId: 'ws-test', workspaceName: 'test', status: 'completed' },
+            });
+            await new Promise(r => setTimeout(r, 50));
+
+            expect(lastBot().send).toHaveBeenCalledWith(
+                'group@g.us',
+                '🤖 *Task:*\n  Agent: Agent-A\n  Repo: test\n*Message:*\nDone',
+                { quotedId: undefined },
+            );
+
+            vi.restoreAllMocks();
             await bridge.stop();
         });
 
@@ -208,7 +241,7 @@ describe('WhatsAppBridge', () => {
             const bridge = new WhatsAppBridge(opts);
             await bridge.start();
 
-            // First update: 2 turns (both forwarded)
+            // First update: 2 turns
             vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
                 new Response(JSON.stringify({
                     process: {
@@ -247,14 +280,6 @@ describe('WhatsAppBridge', () => {
             });
             await new Promise(r => setTimeout(r, 50));
             expect(lastBot().send).toHaveBeenCalledTimes(2);
-            expect(lastBot().send).toHaveBeenCalledWith(
-                'group@g.us',
-                '*💬 CoC → Agent-A:test*\nOne more thing'
-            );
-            expect(lastBot().send).toHaveBeenCalledWith(
-                'group@g.us',
-                '*🤖 Agent-A:test*\nSure, here it is'
-            );
 
             vi.restoreAllMocks();
             await bridge.stop();
@@ -290,36 +315,67 @@ describe('WhatsAppBridge', () => {
             await bridge.stop();
         });
 
-        it('should reuse existing global session', async () => {
+        it('should send follow-up when replying to a bound message', async () => {
+            const bridge = new WhatsAppBridge(opts);
+            await bridge.start();
+
+            // First: outbound message creates a binding
+            vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+                new Response(JSON.stringify({
+                    process: {
+                        conversationTurns: [
+                            { role: 'assistant', content: 'Task done' },
+                        ],
+                    },
+                }))
+            );
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-reply-001', workspaceId: 'ws-myrepo', workspaceName: 'myrepo', status: 'completed' },
+            });
+            await new Promise(r => setTimeout(r, 50));
+            expect(lastBot().send).toHaveBeenCalledTimes(1);
+
+            const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response('{}'));
+
+            // Now reply to that WA message
+            await lastBot().opts.onMessage({
+                senderJid: 'bob@s.whatsapp.net',
+                messageId: 'wamid.in-reply',
+                text: 'Can you also fix the tests?',
+                quotedMessageId: 'wamid.out-001',
+            });
+
+            expect(fetchSpy).toHaveBeenCalledWith(
+                'http://localhost:4000/api/processes/proc-reply-001/message?workspaceId=ws-myrepo',
+                expect.objectContaining({
+                    method: 'POST',
+                    body: JSON.stringify({ content: 'Can you also fix the tests?' }),
+                }),
+            );
+
+            fetchSpy.mockRestore();
+            await bridge.stop();
+        });
+
+        it('should fall back to global session for unknown quoted message', async () => {
             const bridge = new WhatsAppBridge(opts);
             await bridge.start();
 
             const fetchSpy = vi.spyOn(globalThis, 'fetch')
-                .mockResolvedValue(new Response(JSON.stringify({ id: 'proc-global-001' })));
+                .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'proc-fallback' })));
 
-            // First message creates global session
             await lastBot().opts.onMessage({
                 senderJid: 'bob@s.whatsapp.net',
-                messageId: 'wamid.in-003',
-                text: 'First message',
+                messageId: 'wamid.in-005',
+                text: 'Reply to unknown',
+                quotedMessageId: 'wamid.unknown-999',
             });
 
-            fetchSpy.mockClear();
-            fetchSpy.mockResolvedValue(new Response('{}'));
-
-            // Second message should reuse session (follow-up, not new chat)
-            await lastBot().opts.onMessage({
-                senderJid: 'bob@s.whatsapp.net',
-                messageId: 'wamid.in-004',
-                text: 'Second message',
-            });
-
+            // Should create a new chat (global session) since quoted message not found
             expect(fetchSpy).toHaveBeenCalledWith(
-                'http://localhost:4000/api/queue/follow-up',
-                expect.objectContaining({
-                    method: 'POST',
-                    body: JSON.stringify({ processId: 'proc-global-001', message: 'Second message' }),
-                }),
+                'http://localhost:4000/api/queue',
+                expect.objectContaining({ method: 'POST' }),
             );
 
             fetchSpy.mockRestore();

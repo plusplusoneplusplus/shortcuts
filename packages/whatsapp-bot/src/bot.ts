@@ -71,12 +71,15 @@ export class WhatsAppBot {
         }
     }
 
-    /** Send a text message. Returns the WA message ID. */
-    async send(jid: string, text: string): Promise<string> {
+    /** Send a text message, optionally quoting another message. Returns the WA message ID. */
+    async send(jid: string, text: string, opts?: { quotedId?: string }): Promise<string> {
         if (!this.sock) {
             throw new Error('WhatsAppBot is not started');
         }
-        const result = await this.sock.sendMessage(jid, { text });
+        const sendOpts = opts?.quotedId
+            ? { quoted: { key: { remoteJid: jid, id: opts.quotedId, fromMe: true } } }
+            : undefined;
+        const result = await this.sock.sendMessage(jid, { text }, sendOpts);
         return result.key.id ?? '';
     }
 
