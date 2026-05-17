@@ -117,10 +117,29 @@ export function resolveReasoningSelection(options: ResolveReasoningEffortOptions
         rawCapabilityEfforts,
     });
 
-    return {
-        modelId: baseModelId ?? options.modelId,
-        reasoningEffort,
-    };
+    if (baseModelId) {
+        return { modelId: baseModelId, reasoningEffort };
+    }
+
+    // Fallback: when raw CAPI capability efforts are absent (stale or missing
+    // metadata), the resolved effort may come from outdated contract fields and
+    // be incompatible with the model. If the model ID itself encodes a known
+    // effort suffix (e.g. "claude-opus-4.7-xhigh"), trust that suffix as the
+    // authoritative signal and strip it to derive the base model ID.
+    if (!rawCapabilityEfforts && options.modelId) {
+        const suffixInferred = inferFromModelIdSuffix(options.modelId);
+        if (suffixInferred) {
+            // When the suffix-derived effort differs from the resolved one,
+            // override — the model ID is the most direct signal from CAPI about
+            // which effort this variant was provisioned for.
+            return {
+                modelId: suffixInferred.baseModelId,
+                reasoningEffort: suffixInferred.effort,
+            };
+        }
+    }
+
+    return { modelId: options.modelId, reasoningEffort };
 }
 
 interface DeriveBaseModelOptions {
@@ -145,6 +164,25 @@ interface DeriveBaseModelOptions {
  *
  * Returns undefined when no rewrite applies.
  */
+/**
+ * Infer reasoning effort and base model ID from a model ID suffix.
+ *
+ * For example, "claude-opus-4.7-xhigh" → { baseModelId: "claude-opus-4.7", effort: "xhigh" }.
+ * Returns undefined when the model ID does not end with a known effort suffix.
+ */
+function inferFromModelIdSuffix(modelId: string): { baseModelId: string; effort: ReasoningEffort } | undefined {
+    for (const effort of KNOWN_REASONING_EFFORTS) {
+        const suffix = `-${effort}`;
+        if (modelId.endsWith(suffix)) {
+            const base = modelId.slice(0, -suffix.length);
+            if (base.length > 0) {
+                return { baseModelId: base, effort };
+            }
+        }
+    }
+    return undefined;
+}
+
 function deriveBaseModelId(options: DeriveBaseModelOptions): string | undefined {
     const { modelId, family, reasoningEffort, rawCapabilityEfforts } = options;
 
