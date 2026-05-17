@@ -34,7 +34,9 @@ describe('PromptCard', () => {
         render(<PromptCard {...defaultProps} />);
 
         const badge = screen.getByText('forge/copilot-sdk-wrapper/types.ts');
-        expect(badge.className).toContain('font-mono');
+        // The redesigned PromptCard uses the `ar-mono` class (which maps to JetBrains Mono
+        // in `admin-redesign.css`) instead of Tailwind's `font-mono`.
+        expect(badge.className).toMatch(/\bar-mono\b/);
     });
 
     it('sets data-testid on the card container', () => {

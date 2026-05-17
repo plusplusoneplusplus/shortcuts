@@ -72,6 +72,14 @@ vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
+beforeEach(() => {
+    // AdminPanel reads the URL fragment to choose the initial Settings sub-tab.
+    // Reset between tests so each one starts on the default ('ai') sub-tab.
+    if (typeof window !== 'undefined') {
+        window.location.hash = '';
+    }
+});
+
 import { AdminPanel } from '../../../../../src/server/spa/client/react/admin/AdminPanel';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -131,6 +139,7 @@ describe('AdminPanel — Scratchpad toggle', () => {
 
     it('renders the scratchpad toggle checkbox', async () => {
         render(<AdminPanel />);
+        await gotoFeaturesSubTab();
         await waitFor(() => {
             expect(screen.getByTestId('toggle-scratchpad-enabled')).toBeTruthy();
         });
@@ -147,12 +156,23 @@ describe('AdminPanel — Scratchpad toggle', () => {
         render(<AdminPanel />);
 
         await waitFor(() => {
-            expect(screen.getByTestId('stat-processes').textContent).toContain('7 processes');
+            // The sidebar stats block renders the count and label in separate
+            // spans, so the row's combined text content is "Processes7".
+            expect(screen.getByTestId('stat-processes').textContent).toMatch(/Processes.*7/);
         });
-        expect(screen.getByTestId('stat-wikis').textContent).toContain('2 wikis');
-        expect(screen.getByTestId('stat-disk').textContent).toContain('1.5 KB');
+        expect(screen.getByTestId('stat-wikis').textContent).toMatch(/Wikis.*2/);
+        expect(screen.getByTestId('stat-disk').textContent).toMatch(/Disk.*1\.5 KB/);
         expect(mockFetch.mock.calls.some(([url]) => String(url).includes('/admin/data/stats?includeWikis=true'))).toBe(true);
     });
+
+    /**
+     * Switch the Settings page to the Features sub-tab. Scratchpad controls
+     * live on the Features card; without the navigation they are not mounted.
+     */
+    async function gotoFeaturesSubTab(): Promise<void> {
+        await waitFor(() => expect(screen.getByTestId('settings-subtab-features')).toBeDefined());
+        fireEvent.click(screen.getByTestId('settings-subtab-features'));
+    }
 
     it('shows scratchpad toggle checked when scratchpad.enabled=true', async () => {
         mockFetch.mockImplementation((url: string) => {
@@ -163,6 +183,7 @@ describe('AdminPanel — Scratchpad toggle', () => {
         });
 
         render(<AdminPanel />);
+        await gotoFeaturesSubTab();
         await waitFor(() => {
             const checkbox = screen.getByTestId('toggle-scratchpad-enabled') as HTMLInputElement;
             expect(checkbox.checked).toBe(true);
@@ -181,6 +202,7 @@ describe('AdminPanel — Scratchpad toggle', () => {
         });
 
         render(<AdminPanel />);
+        await gotoFeaturesSubTab();
 
         // Wait for config to load and checkbox to appear
         await waitFor(() => {
@@ -223,6 +245,7 @@ describe('AdminPanel — Scratchpad toggle', () => {
         });
 
         render(<AdminPanel />);
+        await gotoFeaturesSubTab();
         await waitFor(() => {
             expect(screen.getByTestId('select-scratchpad-layout')).toBeTruthy();
         });
@@ -237,6 +260,7 @@ describe('AdminPanel — Scratchpad toggle', () => {
         });
 
         render(<AdminPanel />);
+        await gotoFeaturesSubTab();
         await waitFor(() => {
             expect(screen.getByTestId('toggle-scratchpad-enabled')).toBeTruthy();
         });
@@ -255,6 +279,7 @@ describe('AdminPanel — Scratchpad toggle', () => {
         });
 
         render(<AdminPanel />);
+        await gotoFeaturesSubTab();
         await waitFor(() => {
             expect(screen.getByTestId('select-scratchpad-layout')).toBeTruthy();
         });

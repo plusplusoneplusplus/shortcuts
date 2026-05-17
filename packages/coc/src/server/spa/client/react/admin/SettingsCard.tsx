@@ -2,13 +2,17 @@
  * SettingsCard — reusable wrapper for a category of settings.
  * Renders a titled card with optional description and badge,
  * and a Save/Cancel footer when dirty.
+ *
+ * Visuals come from `admin-redesign.css` (Linear-inspired). The component
+ * keeps its prior public API (title/description/badge/dirty/saving/onSave/
+ * onCancel/data-testid) so callers and tests need no changes.
  */
 
 import type { ReactNode } from 'react';
-import { Card, Button } from '../ui';
+import { Spinner } from '../ui';
 
 export interface SettingsCardProps {
-    title: string;
+    title?: string;
     description?: string;
     badge?: string;
     dirty?: boolean;
@@ -19,10 +23,10 @@ export interface SettingsCardProps {
     'data-testid'?: string;
 }
 
-const badgeColors: Record<string, string> = {
-    Global: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300',
-    Advanced: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300',
-    Container: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300',
+const badgeVariant: Record<string, string> = {
+    Global: 'ar-badge-accent',
+    Advanced: 'ar-badge-warning',
+    Container: 'ar-badge-success',
 };
 
 export function SettingsCard({
@@ -37,45 +41,54 @@ export function SettingsCard({
     'data-testid': dataTestId,
 }: SettingsCardProps) {
     return (
-        <Card className="p-3 md:p-4" data-testid={dataTestId}>
-            <div className="flex items-center gap-2 mb-1">
-                <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">{title}</h3>
-                {badge && (
-                    <span className={`inline-block px-1.5 py-0.5 text-[10px] rounded font-medium ${badgeColors[badge] ?? badgeColors.Global}`}>
-                        {badge}
-                    </span>
-                )}
-            </div>
-            {description && (
-                <p className="text-xs text-[#616161] dark:text-[#999] mb-3">{description}</p>
+        <section className="ar-card" data-testid={dataTestId}>
+            {(title || description || badge) && (
+                <header className="ar-card-head">
+                    <div className="min-w-0 flex-1">
+                        {title && <h3>{title}</h3>}
+                        {description && <p className="ar-card-desc">{description}</p>}
+                    </div>
+                    {badge && (
+                        <div className="ar-badge-row">
+                            <span className={`ar-badge ${badgeVariant[badge] ?? ''}`}>{badge}</span>
+                        </div>
+                    )}
+                </header>
             )}
-            <div className="space-y-2">
+            <div className="ar-card-body">
                 {children}
             </div>
             {onSave && (
-                <div className="flex justify-end gap-2 mt-3 pt-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
+                <footer className="ar-card-foot">
+                    {dirty && (
+                        <span className="ar-dirty-note">
+                            <span className="ar-dirty-pulse" aria-hidden="true" />
+                            Unsaved changes
+                        </span>
+                    )}
                     {onCancel && (
-                        <Button
-                            variant="secondary"
-                            size="sm"
+                        <button
+                            type="button"
+                            className="ar-btn ar-btn-ghost ar-btn-sm"
                             onClick={onCancel}
                             disabled={saving || !dirty}
                             data-testid={dataTestId ? `${dataTestId}-cancel` : undefined}
                         >
                             Cancel
-                        </Button>
+                        </button>
                     )}
-                    <Button
-                        size="sm"
+                    <button
+                        type="button"
+                        className="ar-btn ar-btn-primary ar-btn-sm"
                         onClick={onSave}
-                        loading={saving}
-                        disabled={!dirty}
+                        disabled={!dirty || saving}
                         data-testid={dataTestId ? `${dataTestId}-save` : undefined}
                     >
+                        {saving && <Spinner size="sm" />}
                         Save
-                    </Button>
-                </div>
+                    </button>
+                </footer>
             )}
-        </Card>
+        </section>
     );
 }
