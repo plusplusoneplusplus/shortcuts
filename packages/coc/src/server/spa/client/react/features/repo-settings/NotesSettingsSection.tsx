@@ -53,6 +53,7 @@ export function NotesSettingsSection({ workspaceId }: NotesSettingsSectionProps)
 
     const [gitInitialized, setGitInitialized] = useState<boolean | null>(null);
     const [gitStatusLoading, setGitStatusLoading] = useState(true);
+    const [notesRoot, setNotesRoot] = useState<string | null>(null);
     const [initBusy, setInitBusy] = useState(false);
     const [deinitBusy, setDeinitBusy] = useState(false);
     const [confirmingDeinit, setConfirmingDeinit] = useState(false);
@@ -60,11 +61,16 @@ export function NotesSettingsSection({ workspaceId }: NotesSettingsSectionProps)
     useEffect(() => {
         let cancelled = false;
         setGitStatusLoading(true);
-        notesApi
-            .getGitStatus(workspaceId)
-            .then(s => { if (!cancelled) setGitInitialized(s.initialized); })
-            .catch(() => { if (!cancelled) setGitInitialized(false); })
-            .finally(() => { if (!cancelled) setGitStatusLoading(false); });
+        Promise.all([
+            notesApi
+                .getGitStatus(workspaceId)
+                .then(s => { if (!cancelled) setGitInitialized(s.initialized); })
+                .catch(() => { if (!cancelled) setGitInitialized(false); }),
+            notesApi
+                .getTree(workspaceId)
+                .then(t => { if (!cancelled) setNotesRoot(t.notesRoot); })
+                .catch(() => {}),
+        ]).finally(() => { if (!cancelled) setGitStatusLoading(false); });
         return () => { cancelled = true; };
     }, [workspaceId]);
 
@@ -122,6 +128,20 @@ export function NotesSettingsSection({ workspaceId }: NotesSettingsSectionProps)
 
     return (
         <div data-testid="notes-settings-section">
+            {/* Notes location */}
+            {notesRoot && (
+                <div className="flex flex-col md:flex-row items-start md:items-center gap-1 md:gap-2 mb-3">
+                    <label className={labelClass}>Location</label>
+                    <span
+                        className="text-xs text-[#616161] dark:text-[#999] font-mono break-all"
+                        data-testid="notes-absolute-path"
+                        title={notesRoot}
+                    >
+                        {notesRoot}
+                    </span>
+                </div>
+            )}
+
             {/* Git Version Tracking */}
             <div className={sectionHeadClass} data-testid="section-git-tracking">
                 Git Version Tracking
