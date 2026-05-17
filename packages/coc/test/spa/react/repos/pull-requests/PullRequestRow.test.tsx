@@ -47,6 +47,24 @@ describe('PullRequestRow — title and meta', () => {
         expect(document.querySelector('.pr-meta')?.textContent).toMatch(/\d+ min/);
     });
 
+    it('renders the last update time when updatedAt is present', () => {
+        render(<PullRequestRow pr={makePr({ updatedAt: '2026-05-17T10:00:00Z' })} onClick={vi.fn()} />);
+        const el = screen.getByTestId('pr-updated-at');
+        expect(el).toBeTruthy();
+        expect(el.textContent).toBeTruthy();
+    });
+
+    it('shows exact timestamp as tooltip on the updated-at element', () => {
+        render(<PullRequestRow pr={makePr({ updatedAt: '2026-05-17T10:00:00Z' })} onClick={vi.fn()} />);
+        const el = screen.getByTestId('pr-updated-at');
+        expect(el.getAttribute('title')).toContain('2026');
+    });
+
+    it('omits the updated-at element when updatedAt is an empty string', () => {
+        render(<PullRequestRow pr={makePr({ updatedAt: '' })} onClick={vi.fn()} />);
+        expect(screen.queryByTestId('pr-updated-at')).toBeNull();
+    });
+
     it('truncates long titles', () => {
         render(<PullRequestRow pr={makePr({ title: 'A'.repeat(200) })} onClick={vi.fn()} />);
         expect(document.querySelector('.pr-title')?.className).toContain('truncate');

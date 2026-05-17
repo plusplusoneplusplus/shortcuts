@@ -9,6 +9,7 @@
  */
 
 import { cn } from '../../ui';
+import { formatRelativeTime } from '../../utils/format';
 import {
     getMockPrFileCount,
     getMockPrReviewMinutes,
@@ -17,6 +18,7 @@ import {
     queueRiskClass,
 } from './pr-mock-data';
 import type { QueueDotState, QueueRiskBadge } from './pr-mock-data';
+import { formatTimestamp } from './pr-utils';
 import type { PullRequest } from './pr-utils';
 
 interface PullRequestRowProps {
@@ -154,6 +156,15 @@ export function PullRequestRow({
                     )}
                     <span>{fileCount} files</span>
                     <span>{minutes} min</span>
+                    {pr.updatedAt && (
+                        <span
+                            className="pr-updated-at"
+                            data-testid="pr-updated-at"
+                            title={formatTimestamp(pr.updatedAt)}
+                        >
+                            {formatRelativeTime(pr.updatedAt)}
+                        </span>
+                    )}
                 </div>
             </div>
             <span
