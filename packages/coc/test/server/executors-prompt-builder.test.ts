@@ -354,6 +354,38 @@ describe('extractPrompt', () => {
         expect(result).toContain("I'm asking about git commit abc123.");
         expect(result).toContain('Commit Chat');
     });
+
+    it('enriches prompt with PR number and title for pullRequestChat context', () => {
+        const task = makeTask({
+            kind: 'chat', mode: 'ask', prompt: 'Can this merge today?',
+            context: { pullRequestChat: { prId: '142', prNumber: 142, prTitle: 'Add retry logic' } },
+        });
+        const result = extractPrompt(task);
+        expect(result).toContain("I'm asking about pull request #142.");
+        expect(result).toContain('PR title: Add retry logic');
+        expect(result).toContain('Can this merge today?');
+    });
+
+    it('falls back to prId label when prNumber is missing for pullRequestChat', () => {
+        const task = makeTask({
+            kind: 'chat', mode: 'ask', prompt: 'What changed?',
+            context: { pullRequestChat: { prId: 'PR-ABC' } },
+        });
+        const result = extractPrompt(task);
+        expect(result).toContain("I'm asking about pull request PR-ABC.");
+        expect(result).not.toContain('PR title:');
+        expect(result).toContain('What changed?');
+    });
+
+    it('uses displayName fallback for pullRequestChat context with empty prompt', () => {
+        const task = makeTask({
+            kind: 'chat', mode: 'ask', prompt: '',
+            context: { pullRequestChat: { prId: '500', prNumber: 500 } },
+        }, 'PR Chat');
+        const result = extractPrompt(task);
+        expect(result).toContain("I'm asking about pull request #500.");
+        expect(result).toContain('PR Chat');
+    });
 });
 
 // ============================================================================

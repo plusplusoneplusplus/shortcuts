@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 /**
  * Read the current schema version from the database.
@@ -315,6 +315,22 @@ export function initializeDatabase(db: Database.Database): void {
                 ON note_chat_bindings(workspace_id, task_id);
         `);
 
+        // ── pull_request_chat_bindings ───────────────────────────────
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS pull_request_chat_bindings (
+                workspace_id  TEXT NOT NULL,
+                pr_id         TEXT NOT NULL,
+                task_id       TEXT NOT NULL,
+                created_at    TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, pr_id)
+            )
+        `);
+
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_pull_request_chat_bindings_workspace
+                ON pull_request_chat_bindings(workspace_id);
+        `);
+
         // ── incremental migrations for existing databases ───────────
         // Guards use only `versionBefore < N` (not `>= 1`) so that
         // databases at version 0 with pre-existing tables still get
@@ -355,6 +371,9 @@ export function initializeDatabase(db: Database.Database): void {
         }
         if (versionBefore < 14) {
             migrateV13toV14(db);
+        }
+        if (versionBefore < 15) {
+            migrateV14toV15(db);
         }
 
         // Stamp the schema version
@@ -521,5 +540,26 @@ function migrateV13toV14(db: Database.Database): void {
     db.exec(`
         CREATE INDEX IF NOT EXISTS idx_note_chat_bindings_task
             ON note_chat_bindings(workspace_id, task_id);
+    `);
+}
+
+/**
+ * V14 → V15: add `pull_request_chat_bindings` table.
+ * The CREATE TABLE IF NOT EXISTS above handles fresh databases;
+ * this migration keeps the version chain explicit for existing DBs.
+ */
+function migrateV14toV15(db: Database.Database): void {
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS pull_request_chat_bindings (
+            workspace_id  TEXT NOT NULL,
+            pr_id         TEXT NOT NULL,
+            task_id       TEXT NOT NULL,
+            created_at    TEXT NOT NULL,
+            PRIMARY KEY (workspace_id, pr_id)
+        )
+    `);
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_pull_request_chat_bindings_workspace
+            ON pull_request_chat_bindings(workspace_id);
     `);
 }

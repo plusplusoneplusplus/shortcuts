@@ -20,6 +20,14 @@ vi.mock('marked', () => ({
     Marked: class {
         parse(md: string) { return `<p>${md}</p>`; }
     },
+    marked: Object.assign(
+        (md: string) => `<p>${md}</p>`,
+        {
+            parse: (md: string) => `<p>${md}</p>`,
+            setOptions: () => {},
+            use: () => {},
+        },
+    ),
 }));
 
 const makePr = (overrides: Partial<any> = {}) => ({

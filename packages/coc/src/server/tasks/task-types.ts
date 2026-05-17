@@ -183,6 +183,17 @@ export interface ChatContext {
         commitHash: string;
         commitMessage?: string;
     };
+    /** Pull-request-chat preset (side-by-side chat anchored to a specific PR). */
+    pullRequestChat?: {
+        /** Stable per-provider PR identifier (numeric for GitHub/ADO). */
+        prId: string;
+        /** Optional repo identifier (workspace ID) the PR belongs to. */
+        repoId?: string;
+        /** Human-readable PR number (typically equal to prId for GitHub/ADO). */
+        prNumber?: number;
+        /** PR title — used to enrich the AI prompt. */
+        prTitle?: string;
+    };
     /** Note-chat preset (side-by-side chat anchored to a specific note). */
     noteChat?: {
         notePath: string;
@@ -351,6 +362,11 @@ export function hasReplicationContext(payload: Record<string, unknown>): boolean
 /** Check whether a chat payload carries commit-chat context. */
 export function hasCommitChatContext(payload: Record<string, unknown>): boolean {
     return isChatPayload(payload) && !!payload.context?.commitChat;
+}
+
+/** Check whether a chat payload carries pull-request-chat context. */
+export function hasPullRequestChatContext(payload: Record<string, unknown>): boolean {
+    return isChatPayload(payload) && !!payload.context?.pullRequestChat;
 }
 
 /** Check whether a chat payload carries note-chat context. */
