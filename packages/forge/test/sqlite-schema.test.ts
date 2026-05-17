@@ -61,6 +61,7 @@ describe('sqlite-schema', () => {
             'idx_loops_status',
             'idx_commit_chat_bindings_workspace',
             'idx_note_chat_bindings_task',
+            'idx_pull_request_chat_bindings_workspace',
         ];
 
         for (const name of expected) {
@@ -134,7 +135,7 @@ describe('sqlite-schema', () => {
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
     });
 
-    it('migrates a V14 database by adding EnDev xDPU workspace settings without data loss', () => {
+    it('migrates a V14 database by adding EnDev xDPU settings and PR chat bindings without data loss', () => {
         db.exec(`
             CREATE TABLE workspaces (
                 id                   TEXT PRIMARY KEY,
@@ -161,6 +162,16 @@ describe('sqlite-schema', () => {
         expect(cols.map(c => c.name)).toContain('endev_xdpu');
         const row = db.prepare("SELECT id, name, root_path, endev_xdpu FROM workspaces WHERE id = 'ws-1'").get() as any;
         expect(row).toEqual({ id: 'ws-1', name: 'Workspace', root_path: '/repo', endev_xdpu: null });
+        const tables = db
+            .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+            .all()
+            .map((r: any) => r.name);
+        expect(tables).toContain('pull_request_chat_bindings');
+        const indexes = db
+            .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%' ORDER BY name")
+            .all()
+            .map((r: any) => r.name);
+        expect(indexes).toContain('idx_pull_request_chat_bindings_workspace');
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
     });
 

@@ -113,4 +113,27 @@ describe('PullRequestsClient', () => {
       expect(call.options?.signal).toBeUndefined();
     }
   });
+
+  it('exposes CRUD methods for pull-request chat bindings', async () => {
+    const adapter = createMockAdapter({ bindings: {} });
+    const client = new PullRequestsClient(adapter);
+
+    await client.listChatBindings('ws/a');
+    await client.getChatBinding('ws/a', '142');
+    await client.createChatBinding('ws/a', '142', 'task-1');
+    await client.deleteChatBinding('ws/a', '142');
+
+    expect(adapter.calls).toEqual([
+      { path: '/workspaces/ws%2Fa/pull-request-chat-bindings', options: undefined },
+      { path: '/workspaces/ws%2Fa/pull-request-chat-bindings/142', options: undefined },
+      {
+        path: '/workspaces/ws%2Fa/pull-request-chat-bindings',
+        options: { method: 'POST', body: { prId: '142', taskId: 'task-1' } },
+      },
+      {
+        path: '/workspaces/ws%2Fa/pull-request-chat-bindings/142',
+        options: { method: 'DELETE' },
+      },
+    ]);
+  });
 });

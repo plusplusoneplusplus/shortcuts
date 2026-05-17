@@ -37,6 +37,7 @@ import { createBugTool } from '../llm-tools/create-bug-tool';
 import type { ChatMode, ChatPayload, RunScriptPayload } from '../tasks/task-types';
 import {
     hasCommitChatContext,
+    hasPullRequestChatContext,
     hasResolveCommentsContext,
     hasTaskGenerationContext,
     isChatPayload,
@@ -221,6 +222,19 @@ export function extractPrompt(task: QueuedTask): string {
             parts.push(`I'm asking about git commit ${commitHash}.`);
             if (commitMessage) {
                 parts.push(`Commit message: ${commitMessage}`);
+            }
+            parts.push(`\n${prompt}`);
+            return parts.join('\n');
+        }
+
+        // Pull request chat: reference the PR by number/id; AI can inspect via tools
+        if (hasPullRequestChatContext(task.payload)) {
+            const { prId, prNumber, prTitle } = ctx!.pullRequestChat!;
+            const parts: string[] = [];
+            const label = prNumber != null ? `#${prNumber}` : prId;
+            parts.push(`I'm asking about pull request ${label}.`);
+            if (prTitle) {
+                parts.push(`PR title: ${prTitle}`);
             }
             parts.push(`\n${prompt}`);
             return parts.join('\n');

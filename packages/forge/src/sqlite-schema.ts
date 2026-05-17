@@ -316,6 +316,22 @@ export function initializeDatabase(db: Database.Database): void {
                 ON note_chat_bindings(workspace_id, task_id);
         `);
 
+        // ── pull_request_chat_bindings ───────────────────────────────
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS pull_request_chat_bindings (
+                workspace_id  TEXT NOT NULL,
+                pr_id         TEXT NOT NULL,
+                task_id       TEXT NOT NULL,
+                created_at    TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, pr_id)
+            )
+        `);
+
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_pull_request_chat_bindings_workspace
+                ON pull_request_chat_bindings(workspace_id);
+        `);
+
         // ── incremental migrations for existing databases ───────────
         // Guards use only `versionBefore < N` (not `>= 1`) so that
         // databases at version 0 with pre-existing tables still get
@@ -529,9 +545,21 @@ function migrateV13toV14(db: Database.Database): void {
 }
 
 /**
- * V14 -> V15: add `endev_xdpu TEXT` to `workspaces` for workspace-only
- * EnDev xDPU settings.
+ * V14 -> V15: add workspace-only EnDev xDPU settings and PR chat bindings.
  */
 function migrateV14toV15(db: Database.Database): void {
     ensureColumn(db, 'workspaces', 'endev_xdpu', 'TEXT');
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS pull_request_chat_bindings (
+            workspace_id  TEXT NOT NULL,
+            pr_id         TEXT NOT NULL,
+            task_id       TEXT NOT NULL,
+            created_at    TEXT NOT NULL,
+            PRIMARY KEY (workspace_id, pr_id)
+        )
+    `);
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_pull_request_chat_bindings_workspace
+            ON pull_request_chat_bindings(workspace_id);
+    `);
 }

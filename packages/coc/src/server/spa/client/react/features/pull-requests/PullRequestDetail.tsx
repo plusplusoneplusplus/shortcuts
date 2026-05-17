@@ -516,6 +516,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                             <PrFilesPanel
                                 files={diff.files}
                                 commentsByPath={threadsByPath}
+                                isMobile={isMobile}
                             />
                         </div>
                     </div>
@@ -564,7 +565,11 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
             <PrAiAssistantDrawer
                 open={assistantOpen}
                 onClose={() => setAssistantOpen(false)}
+                workspaceId={String(repoId)}
+                repoId={String(repoId)}
+                prId={String(prId)}
                 prNumber={pr.number}
+                prTitle={pr.title}
             />
         </div>
     );
