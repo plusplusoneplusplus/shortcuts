@@ -35,8 +35,12 @@ import {
     // MCP Config Loader
     getHomeDirectory,
     getMcpConfigPath,
+    getWorkspaceMcpConfigPath,
     loadDefaultMcpConfig,
+    loadWorkspaceMcpConfig,
+    loadEffectiveMcpConfig,
     mergeMcpConfigs,
+    mergeMcpConfigSources,
     clearMcpConfigCache,
     mcpConfigExists,
     getCachedMcpConfig,
@@ -106,8 +110,12 @@ describe('Copilot SDK Wrapper Module', () => {
         it('should export MCP config loader functions', () => {
             expect(typeof getHomeDirectory).toBe('function');
             expect(typeof getMcpConfigPath).toBe('function');
+            expect(typeof getWorkspaceMcpConfigPath).toBe('function');
             expect(typeof loadDefaultMcpConfig).toBe('function');
+            expect(typeof loadWorkspaceMcpConfig).toBe('function');
+            expect(typeof loadEffectiveMcpConfig).toBe('function');
             expect(typeof mergeMcpConfigs).toBe('function');
+            expect(typeof mergeMcpConfigSources).toBe('function');
             expect(typeof clearMcpConfigCache).toBe('function');
             expect(typeof mcpConfigExists).toBe('function');
             expect(typeof getCachedMcpConfig).toBe('function');

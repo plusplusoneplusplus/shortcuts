@@ -15,6 +15,7 @@ describe('WorkspacesClient', () => {
     await client.gitInfo('repo/a');
     await client.gitInfoBatch(['repo/a', 'repo/b']);
     await client.getMcpConfig('repo/a');
+    await client.getMcpConfig('repo/a', { forceReload: true });
     await client.updateMcpConfig('repo/a', { enabledMcpServers: ['github'] });
     await client.getInstructions('repo/a');
     await client.updateInstruction('repo/a', 'ask', { content: 'Ask carefully' });
@@ -36,6 +37,7 @@ describe('WorkspacesClient', () => {
       '/git-info/batch',
       '/workspaces/repo%2Fa/mcp-config',
       '/workspaces/repo%2Fa/mcp-config',
+      '/workspaces/repo%2Fa/mcp-config',
       '/workspaces/repo%2Fa/instructions',
       '/workspaces/repo%2Fa/instructions/ask',
       '/workspaces/repo%2Fa/instructions/ask',
@@ -53,21 +55,22 @@ describe('WorkspacesClient', () => {
       method: 'POST',
       body: { workspaceIds: ['repo/a', 'repo/b'] },
     });
-    expect(adapter.calls[8].options).toMatchObject({
+    expect(adapter.calls[8].options?.query).toEqual({ forceReload: true });
+    expect(adapter.calls[9].options).toMatchObject({
       method: 'PUT',
       body: { enabledMcpServers: ['github'] },
     });
-    expect(adapter.calls[10].options).toMatchObject({
+    expect(adapter.calls[11].options).toMatchObject({
       method: 'PUT',
       body: { content: 'Ask carefully' },
     });
-    expect(adapter.calls[11].options).toMatchObject({ method: 'DELETE' });
-    expect(adapter.calls[12].options?.query).toEqual({ limit: 100, offset: 200 });
-    expect(adapter.calls[14].options).toMatchObject({
+    expect(adapter.calls[12].options).toMatchObject({ method: 'DELETE' });
+    expect(adapter.calls[13].options?.query).toEqual({ limit: 100, offset: 200 });
+    expect(adapter.calls[15].options).toMatchObject({
       method: 'POST',
       body: { actionItems: ['Review PR'] },
     });
-    expect(adapter.calls[16].options).toMatchObject({
+    expect(adapter.calls[17].options).toMatchObject({
       method: 'POST',
       body: { goals: ['Exercise'] },
     });

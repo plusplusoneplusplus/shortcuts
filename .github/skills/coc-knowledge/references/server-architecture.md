@@ -129,7 +129,7 @@ model: gpt-4
 parallel: 5
 output: table
 approvePermissions: false
-mcpConfig: ~/.copilot/mcp-config.json
+mcpConfig: ~/.copilot/mcp-config.json  # global MCP; repo .vscode/mcp.json is also loaded per workspace
 timeout: 1800
 
 serve:

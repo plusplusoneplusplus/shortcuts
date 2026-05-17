@@ -84,9 +84,11 @@ The **Repository Settings Tab** provides a centralized configuration interface f
 
 - **Given** the MCP Servers section is selected
 - **When** the configuration loads
-- **Then** a list of available MCP servers is shown with toggle switches
+- **Then** global and workspace MCP server sources are shown as separate cards with toggle switches for effective servers
 - **When** the user toggles a server
 - **Then** `PUT .../mcp-config` updates the enabled set; `null` means all enabled
+- **When** the user clicks Refresh
+- **Then** `GET .../mcp-config?forceReload=true` reloads both MCP config files without a file watcher
 
 ---
 
@@ -175,9 +177,14 @@ The **Repository Settings Tab** provides a centralized configuration interface f
 
 | Feature | Acceptance Criteria |
 |---|---|
-| Server list | Available servers with toggle switches |
+| Source cards | Two stacked cards: "Global MCP servers" for `~/.copilot/mcp-config.json` and "Workspace MCP servers" for `.vscode/mcp.json` |
+| Server rows | Each configured server row shows name, type, optional URL or command summary, and an enable toggle |
+| Empty states | Global card shows "No global MCP servers configured."; workspace card shows "No workspace MCP servers configured in .vscode/mcp.json." |
+| Override handling | Workspace servers replace global servers with the same name; overridden global rows show "Overridden by workspace" and have disabled toggles |
 | Toggle behavior | `null` enabled set means all enabled; specific set means only those |
-| Error handling | Load error on panel; save reverts enabled list on failure |
+| Sidebar badge | MCP badge shows the enabled effective server count, excluding overridden global rows |
+| Refresh | Refresh button force-reloads global and workspace MCP sources |
+| Error handling | Overall load failure shows on panel; source-specific load errors appear in that source card without hiding valid sources; save reverts enabled list on failure |
 
 ### 4.5 Agent Skills Section
 

@@ -87,3 +87,102 @@ describe('McpServersPanel — server list', () => {
         expect(disabledToggle.checked).toBe(false);
     });
 });
+
+describe('McpServersPanel — source sections', () => {
+    it('renders global and workspace section headings, paths, and source-specific empty states', () => {
+        renderPanel({
+            sources: {
+                global: {
+                    configPath: '~/.copilot/mcp-config.json',
+                    fileExists: false,
+                    success: true,
+                    servers: [],
+                },
+                workspace: {
+                    configPath: '.vscode/mcp.json',
+                    fileExists: false,
+                    success: true,
+                    servers: [],
+                },
+            },
+        });
+
+        expect(screen.getByText('Global MCP servers')).toBeTruthy();
+        expect(screen.getByText('Workspace MCP servers')).toBeTruthy();
+        expect(screen.getByText('~/.copilot/mcp-config.json')).toBeTruthy();
+        expect(screen.getByText('.vscode/mcp.json')).toBeTruthy();
+        expect(screen.getByText('No global MCP servers configured.')).toBeTruthy();
+        expect(screen.getByText('No workspace MCP servers configured in .vscode/mcp.json.')).toBeTruthy();
+    });
+
+    it('disables overridden global rows and leaves the workspace row toggleable', async () => {
+        const user = userEvent.setup();
+        const { onToggle } = renderPanel({
+            isEnabled: () => true,
+            sources: {
+                global: {
+                    configPath: '~/.copilot/mcp-config.json',
+                    fileExists: true,
+                    success: true,
+                    servers: [
+                        { name: 'shared', type: 'stdio', command: 'global-cmd', source: 'global', effective: false, overriddenBy: 'workspace' },
+                    ],
+                },
+                workspace: {
+                    configPath: '.vscode/mcp.json',
+                    fileExists: true,
+                    success: true,
+                    servers: [
+                        { name: 'shared', type: 'stdio', command: 'workspace-cmd', source: 'workspace', effective: true },
+                    ],
+                },
+            },
+        });
+
+        const globalToggle = screen.getByTestId('mcp-toggle-global-shared') as HTMLInputElement;
+        const workspaceToggle = screen.getByTestId('mcp-toggle-workspace-shared') as HTMLInputElement;
+        expect(screen.getByText('Overridden by workspace')).toBeTruthy();
+        expect(globalToggle.disabled).toBe(true);
+        expect(globalToggle.checked).toBe(false);
+        expect(workspaceToggle.disabled).toBe(false);
+        expect(workspaceToggle.checked).toBe(true);
+
+        await user.click(workspaceToggle);
+        expect(onToggle).toHaveBeenCalledWith('shared', false);
+    });
+
+    it('shows source-scoped errors without hiding the other source section', () => {
+        renderPanel({
+            sources: {
+                global: {
+                    configPath: '~/.copilot/mcp-config.json',
+                    fileExists: true,
+                    success: false,
+                    error: 'Failed to parse MCP config: bad global JSON',
+                    servers: [],
+                },
+                workspace: {
+                    configPath: '.vscode/mcp.json',
+                    fileExists: true,
+                    success: true,
+                    servers: [
+                        { name: 'workspace-only', type: 'stdio', command: 'workspace-cmd', source: 'workspace', effective: true },
+                    ],
+                },
+            },
+        });
+
+        expect(screen.getByText('Failed to parse MCP config: bad global JSON')).toBeTruthy();
+        expect(screen.getByText('Workspace MCP servers')).toBeTruthy();
+        expect(screen.getByText('workspace-only')).toBeTruthy();
+    });
+
+    it('calls onRefresh when the refresh button is clicked', async () => {
+        const user = userEvent.setup();
+        const onRefresh = vi.fn();
+        renderPanel({ onRefresh });
+
+        await user.click(screen.getByRole('button', { name: 'Refresh' }));
+        expect(onRefresh).toHaveBeenCalledTimes(1);
+    });
+});

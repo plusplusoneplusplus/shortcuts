@@ -119,12 +119,18 @@ describe('mock-sdk helpers', () => {
     });
 
     describe('mockMcpConfigLoaderModule', () => {
-        it('returns object with loadDefaultMcpConfig and mergeMcpConfigs', () => {
+        it('returns object with MCP config loader mocks', () => {
             const mod = mockMcpConfigLoaderModule();
             expect(mod.loadDefaultMcpConfig).toBeDefined();
+            expect(mod.loadWorkspaceMcpConfig).toBeDefined();
+            expect(mod.loadEffectiveMcpConfig).toBeDefined();
             expect(mod.mergeMcpConfigs).toBeDefined();
+            expect(mod.mergeMcpConfigSources).toBeDefined();
             expect(vi.isMockFunction(mod.loadDefaultMcpConfig)).toBe(true);
+            expect(vi.isMockFunction(mod.loadWorkspaceMcpConfig)).toBe(true);
+            expect(vi.isMockFunction(mod.loadEffectiveMcpConfig)).toBe(true);
             expect(vi.isMockFunction(mod.mergeMcpConfigs)).toBe(true);
+            expect(vi.isMockFunction(mod.mergeMcpConfigSources)).toBe(true);
         });
     });
 });

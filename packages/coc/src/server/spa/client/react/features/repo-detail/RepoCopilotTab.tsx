@@ -9,7 +9,7 @@ import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClien
 import { useGlobalToast } from '../../contexts/ToastContext';
 import { useApp } from '../../contexts/AppContext';
 import { McpServersPanel } from '../skills/McpServersPanel';
-import type { McpServerEntry } from '../skills/McpServersPanel';
+import type { McpServerEntry, McpServerSources } from '../skills/McpServersPanel';
 import { AgentSkillsPanel } from '../skills/AgentSkillsPanel';
 import type { Skill, SkillDetail } from '../skills/AgentSkillsPanel';
 import { CustomInstructionsPanel } from '../skills/CustomInstructionsPanel';
@@ -37,14 +37,17 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [availableServers, setAvailableServers] = useState<McpServerEntry[]>([]);
+    const [mcpSources, setMcpSources] = useState<McpServerSources | undefined>(undefined);
     const [enabledMcpServers, setEnabledMcpServers] = useState<string[] | null>(null);
 
     useEffect(() => {
         setLoading(true);
         setError(null);
+        setMcpSources(undefined);
         getSpaCocClient().workspaces.getMcpConfig(workspaceId)
             .then((data) => {
                 setAvailableServers(data.availableServers ?? []);
+                setMcpSources(data.sources);
                 setEnabledMcpServers(data.enabledMcpServers ?? null);
             })
             .catch((e: unknown) => setError(getSpaCocClientErrorMessage(e, 'Failed to load MCP config')))
@@ -302,6 +305,7 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
                         error={error}
                         saving={saving}
                         availableServers={availableServers}
+                        sources={mcpSources}
                         isEnabled={isEnabled}
                         onToggle={handleToggle}
                     />

@@ -14,13 +14,18 @@ import type { Route } from '../../src/server/types';
 import { createMockProcessStore } from './helpers/mock-process-store';
 
 // ============================================================================
-// Mock loadDefaultMcpConfig
+// Mock MCP config loaders
 // ============================================================================
 
 const mockLoadDefaultMcpConfig = vi.hoisted(() => vi.fn());
+const mockLoadWorkspaceMcpConfig = vi.hoisted(() => vi.fn());
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
-    return { ...actual, loadDefaultMcpConfig: mockLoadDefaultMcpConfig };
+    return {
+        ...actual,
+        loadDefaultMcpConfig: mockLoadDefaultMcpConfig,
+        loadWorkspaceMcpConfig: mockLoadWorkspaceMcpConfig,
+    };
 });
 
 // ============================================================================
@@ -96,7 +101,9 @@ describe('MCP Config API endpoints', () => {
 
     beforeEach(() => {
         mockLoadDefaultMcpConfig.mockReset();
-        mockLoadDefaultMcpConfig.mockReturnValue({ mcpServers: {} });
+        mockLoadWorkspaceMcpConfig.mockReset();
+        mockLoadDefaultMcpConfig.mockReturnValue({ mcpServers: {}, configPath: '~/.copilot/mcp-config.json', fileExists: false });
+        mockLoadWorkspaceMcpConfig.mockReturnValue({ mcpServers: {}, configPath: '/projects/my/.vscode/mcp.json', fileExists: false });
         (mockStore.getWorkspaces as any).mockResolvedValue([
             { id: WORKSPACE_ID, name: 'My Project', rootPath: '/projects/my' },
         ]);
@@ -134,8 +141,10 @@ describe('MCP Config API endpoints', () => {
             expect(data.enabledMcpServers).toEqual(['github']);
         });
 
-        it('returns availableServers array from loadDefaultMcpConfig', async () => {
+        it('returns global source servers and effective availableServers when only global config exists', async () => {
             mockLoadDefaultMcpConfig.mockReturnValue({
+                configPath: '~/.copilot/mcp-config.json',
+                fileExists: true,
                 mcpServers: {
                     github: { type: 'stdio', command: 'npx', args: ['@modelcontextprotocol/server-github'] },
                     filesystem: { type: 'stdio', command: 'npx', args: ['@modelcontextprotocol/server-filesystem', '/'] },
@@ -150,18 +159,128 @@ describe('MCP Config API endpoints', () => {
             expect(names).toContain('filesystem');
             const github = data.availableServers.find((s: any) => s.name === 'github');
             expect(github.type).toBe('stdio');
+            expect(github.command).toBe('npx');
+            expect(github.args).toBeUndefined();
+            expect(github.env).toBeUndefined();
+            expect(github.source).toBe('global');
+            expect(github.effective).toBe(true);
+            expect(data.sources.global).toMatchObject({
+                configPath: '~/.copilot/mcp-config.json',
+                fileExists: true,
+                success: true,
+            });
+            expect(data.sources.global.servers).toHaveLength(2);
+            expect(data.sources.workspace.servers).toEqual([]);
         });
 
-        it('returns availableServers: [] when loadDefaultMcpConfig returns empty map', async () => {
-            mockLoadDefaultMcpConfig.mockReturnValue({ mcpServers: {} });
+        it('returns workspace source servers when only workspace config exists', async () => {
+            mockLoadWorkspaceMcpConfig.mockReturnValue({
+                configPath: '/projects/my/.vscode/mcp.json',
+                fileExists: true,
+                mcpServers: {
+                    repo: { type: 'sse', url: 'http://localhost:1234/sse' },
+                },
+            });
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`);
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.availableServers).toEqual([{
+                name: 'repo',
+                type: 'sse',
+                url: 'http://localhost:1234/sse',
+                source: 'workspace',
+                effective: true,
+            }]);
+            expect(data.sources.global.servers).toEqual([]);
+            expect(data.sources.workspace.servers).toEqual(data.availableServers);
+        });
+
+        it('returns distinct global and workspace servers in source sections', async () => {
+            mockLoadDefaultMcpConfig.mockReturnValue({
+                configPath: '~/.copilot/mcp-config.json',
+                fileExists: true,
+                mcpServers: {
+                    globalOnly: { command: 'global-cmd' },
+                },
+            });
+            mockLoadWorkspaceMcpConfig.mockReturnValue({
+                configPath: '/projects/my/.vscode/mcp.json',
+                fileExists: true,
+                mcpServers: {
+                    workspaceOnly: { command: 'workspace-cmd' },
+                },
+            });
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`);
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.availableServers.map((server: any) => server.name)).toEqual(['globalOnly', 'workspaceOnly']);
+            expect(data.sources.global.servers.map((server: any) => server.name)).toEqual(['globalOnly']);
+            expect(data.sources.workspace.servers.map((server: any) => server.name)).toEqual(['workspaceOnly']);
+        });
+
+        it('marks global duplicate as overridden and workspace duplicate as effective', async () => {
+            mockLoadDefaultMcpConfig.mockReturnValue({
+                configPath: '~/.copilot/mcp-config.json',
+                fileExists: true,
+                mcpServers: {
+                    shared: { command: 'global-cmd' },
+                    globalOnly: { command: 'global-only' },
+                },
+            });
+            mockLoadWorkspaceMcpConfig.mockReturnValue({
+                configPath: '/projects/my/.vscode/mcp.json',
+                fileExists: true,
+                mcpServers: {
+                    shared: { command: 'workspace-cmd' },
+                },
+            });
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`);
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.availableServers.find((server: any) => server.name === 'shared')).toMatchObject({
+                name: 'shared',
+                command: 'workspace-cmd',
+                source: 'workspace',
+                effective: true,
+            });
+            expect(data.sources.global.servers.find((server: any) => server.name === 'shared')).toMatchObject({
+                name: 'shared',
+                command: 'global-cmd',
+                source: 'global',
+                effective: false,
+                overriddenBy: 'workspace',
+            });
+            expect(data.sources.workspace.servers.find((server: any) => server.name === 'shared')).toMatchObject({
+                name: 'shared',
+                command: 'workspace-cmd',
+                source: 'workspace',
+                effective: true,
+            });
+        });
+
+        it('returns availableServers: [] and empty source sections when neither config exists', async () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`);
             expect(res.status).toBe(200);
             const data = res.json();
             expect(data.availableServers).toEqual([]);
+            expect(data.sources.global).toMatchObject({
+                configPath: '~/.copilot/mcp-config.json',
+                fileExists: false,
+                success: true,
+                servers: [],
+            });
+            expect(data.sources.workspace).toMatchObject({
+                configPath: '/projects/my/.vscode/mcp.json',
+                fileExists: false,
+                success: true,
+                servers: [],
+            });
         });
 
         it('includes url for SSE servers and omits headers', async () => {
             mockLoadDefaultMcpConfig.mockReturnValue({
+                configPath: '~/.copilot/mcp-config.json',
+                fileExists: true,
                 mcpServers: {
                     'mcp-server': { type: 'sse', url: 'http://0.0.0.0:8000/sse', headers: { Authorization: 'Bearer secret' }, tools: ['*'] },
                 },
@@ -175,6 +294,77 @@ describe('MCP Config API endpoints', () => {
             expect(server.type).toBe('sse');
             expect(server.url).toBe('http://0.0.0.0:8000/sse');
             expect(server.headers).toBeUndefined();
+        });
+
+        it('passes forceReload=true to both config loaders when requested', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config?forceReload=true`);
+            expect(res.status).toBe(200);
+            expect(mockLoadDefaultMcpConfig).toHaveBeenCalledWith(true);
+            expect(mockLoadWorkspaceMcpConfig).toHaveBeenCalledWith('/projects/my', true);
+        });
+
+        it('returns scoped global source error while keeping valid workspace servers', async () => {
+            mockLoadDefaultMcpConfig.mockReturnValue({
+                configPath: '~/.copilot/mcp-config.json',
+                fileExists: true,
+                success: false,
+                error: 'Failed to parse MCP config: bad global JSON',
+                mcpServers: {},
+            });
+            mockLoadWorkspaceMcpConfig.mockReturnValue({
+                configPath: '/projects/my/.vscode/mcp.json',
+                fileExists: true,
+                success: true,
+                mcpServers: {
+                    workspace: { command: 'workspace-cmd', env: { TOKEN: 'secret' } },
+                },
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`);
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.availableServers).toEqual([
+                { name: 'workspace', type: 'stdio', command: 'workspace-cmd', source: 'workspace', effective: true },
+            ]);
+            expect(data.sources.global).toMatchObject({
+                success: false,
+                error: 'Failed to parse MCP config: bad global JSON',
+                servers: [],
+            });
+            expect(data.sources.workspace.success).toBe(true);
+            expect(data.sources.workspace.servers[0].env).toBeUndefined();
+        });
+
+        it('returns scoped workspace source error while keeping valid global servers', async () => {
+            mockLoadDefaultMcpConfig.mockReturnValue({
+                configPath: '~/.copilot/mcp-config.json',
+                fileExists: true,
+                success: true,
+                mcpServers: {
+                    global: { command: 'global-cmd', args: ['secret-arg'] },
+                },
+            });
+            mockLoadWorkspaceMcpConfig.mockReturnValue({
+                configPath: '/projects/my/.vscode/mcp.json',
+                fileExists: true,
+                success: false,
+                error: 'Failed to parse MCP config: bad workspace JSON',
+                mcpServers: {},
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`);
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.availableServers).toEqual([
+                { name: 'global', type: 'stdio', command: 'global-cmd', source: 'global', effective: true },
+            ]);
+            expect(data.sources.global.success).toBe(true);
+            expect(data.sources.global.servers[0].args).toBeUndefined();
+            expect(data.sources.workspace).toMatchObject({
+                success: false,
+                error: 'Failed to parse MCP config: bad workspace JSON',
+                servers: [],
+            });
         });
     });
 

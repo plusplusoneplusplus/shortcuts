@@ -12,7 +12,7 @@ import type { ProcessStore, CopilotSDKService, MCPServerConfig } from '@plusplus
 import type { CreateTaskInput } from '@plusplusoneplusplus/forge';
 import type { RunWorkflowPayload } from '../tasks/task-types';
 import { TaskDefs } from '../tasks/task-types';
-import { denyAllPermissions, loadDefaultMcpConfig } from '@plusplusoneplusplus/forge';
+import { denyAllPermissions, loadEffectiveMcpConfig } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
 import type { Route } from '../types';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
@@ -467,8 +467,8 @@ Return the complete modified workflow YAML.`;
             // Resolve MCP filter
             let resolvedMcpServers: Record<string, MCPServerConfig> | undefined;
             if (Array.isArray(ws.enabledMcpServers)) {
-                const defaultMcp = loadDefaultMcpConfig();
-                const allServers = defaultMcp.mcpServers;
+                const effectiveMcp = loadEffectiveMcpConfig({ workingDirectory: ws.rootPath });
+                const allServers = effectiveMcp.mcpServers;
                 resolvedMcpServers = Object.fromEntries(
                     ws.enabledMcpServers
                         .filter(key => key in allServers)
