@@ -84,7 +84,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
         const bridge = new WhatsAppBridge({
             config: waConfig,
             dataDir: config.serve.dataDir,
-            sseRelay,
+            wsRelay,
             agentStore,
             tunnelBridge,
         });

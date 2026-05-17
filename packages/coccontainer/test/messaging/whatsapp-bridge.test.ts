@@ -1,5 +1,5 @@
 /**
- * Tests for WhatsAppBridge — mocks bot, SSERelay, store, and agent store.
+ * Tests for WhatsAppBridge — mocks bot, WS relay, store, and agent store.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -32,7 +32,6 @@ vi.mock('@plusplusoneplusplus/whatsapp-bot', () => {
 });
 
 import { WhatsAppBridge, type WhatsAppBridgeOptions } from '../../src/messaging/whatsapp-bridge';
-import type { SSEEvent } from '../../src/proxy/sse-relay';
 
 function createMockAgentStore() {
     return {
@@ -67,15 +66,24 @@ function lastBot() {
     return botInstances[botInstances.length - 1];
 }
 
+/** Helper: emit a WS relay process-updated message and wait for async processing. */
+function emitProcessUpdate(wsRelay: EventEmitter, agentId: string, agentName: string, processUpdate: Record<string, unknown>) {
+    wsRelay.emit('message', {
+        agentId,
+        agentName,
+        data: JSON.stringify(processUpdate),
+    });
+}
+
 describe('WhatsAppBridge', () => {
     let tmpDir: string;
-    let sseRelay: EventEmitter;
+    let wsRelay: EventEmitter;
     let opts: WhatsAppBridgeOptions;
 
     beforeEach(() => {
         botInstances = [];
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wa-bridge-test-'));
-        sseRelay = new EventEmitter();
+        wsRelay = new EventEmitter();
 
         opts = {
             config: {
@@ -85,7 +93,7 @@ describe('WhatsAppBridge', () => {
                 userName: 'CoC',
             },
             dataDir: tmpDir,
-            sseRelay: sseRelay as any,
+            wsRelay: wsRelay as any,
             agentStore: createMockAgentStore() as any,
             tunnelBridge: createMockTunnelBridge() as any,
         };
@@ -96,96 +104,66 @@ describe('WhatsAppBridge', () => {
         try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* Windows EBUSY */ }
     });
 
-    it('should start and attach SSE listener', async () => {
+    it('should start and attach WS listener', async () => {
         const bridge = new WhatsAppBridge(opts);
         await bridge.start();
 
         expect(botInstances).toHaveLength(1);
         expect(lastBot().start).toHaveBeenCalledOnce();
-        expect(sseRelay.listenerCount('event')).toBe(1);
+        expect(wsRelay.listenerCount('message')).toBe(1);
 
         await bridge.stop();
-        expect(sseRelay.listenerCount('event')).toBe(0);
+        expect(wsRelay.listenerCount('message')).toBe(0);
         expect(lastBot().stop).toHaveBeenCalledOnce();
     });
 
     describe('outbound (CoC → WA)', () => {
-        it('should forward turn:complete events to WhatsApp group', async () => {
+        it('should forward new turns from process-updated events', async () => {
             const bridge = new WhatsAppBridge(opts);
             await bridge.start();
 
-            const event: SSEEvent = {
-                agentId: 'agent-a',
-                agentName: 'Agent-A',
-                data: JSON.stringify({
-                    type: 'turn:complete',
-                    role: 'assistant',
-                    text: 'Fixed the bug',
-                    processId: 'proc-001',
-                    workspaceName: 'frontend',
-                }),
-            };
-
-            sseRelay.emit('event', event);
-            await new Promise(r => setTimeout(r, 10));
-
-            expect(lastBot().send).toHaveBeenCalledWith(
-                'group@g.us',
-                '*Agent-A:frontend*\nFixed the bug'
+            // Mock fetch to return process with turns
+            const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+                new Response(JSON.stringify({
+                    id: 'proc-001',
+                    workspaceId: 'ws-frontend',
+                    turns: [
+                        { role: 'user', content: 'Fix the bug' },
+                        { role: 'assistant', content: 'Fixed the bug on line 42' },
+                    ],
+                }))
             );
 
-            await bridge.stop();
-        });
-
-        it('should format user turns with sender name', async () => {
-            const bridge = new WhatsAppBridge(opts);
-            await bridge.start();
-
-            sseRelay.emit('event', {
-                agentId: 'agent-a',
-                agentName: 'Agent-A',
-                data: JSON.stringify({
-                    type: 'turn:complete',
-                    role: 'user',
-                    text: 'Fix login bug',
-                    userName: 'Alice',
-                    processId: 'proc-001',
-                    workspaceName: 'frontend',
-                }),
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-001', workspaceId: 'ws-frontend', workspaceName: 'frontend', status: 'completed' },
             });
-            await new Promise(r => setTimeout(r, 10));
+            await new Promise(r => setTimeout(r, 50));
 
+            expect(fetchSpy).toHaveBeenCalledWith(
+                'http://localhost:4000/api/workspaces/ws-frontend/processes/proc-001'
+            );
+            expect(lastBot().send).toHaveBeenCalledTimes(2);
             expect(lastBot().send).toHaveBeenCalledWith(
                 'group@g.us',
-                '*Alice → Agent-A:frontend*\nFix login bug'
+                '*CoC → Agent-A:frontend*\nFix the bug'
+            );
+            expect(lastBot().send).toHaveBeenCalledWith(
+                'group@g.us',
+                '*Agent-A:frontend*\nFixed the bug on line 42'
             );
 
+            fetchSpy.mockRestore();
             await bridge.stop();
         });
 
-        it('should skip non turn:complete events', async () => {
+        it('should skip non process-updated events', async () => {
             const bridge = new WhatsAppBridge(opts);
             await bridge.start();
 
-            sseRelay.emit('event', {
-                agentId: 'agent-a',
-                agentName: 'Agent-A',
-                data: JSON.stringify({ type: 'turn:start', text: 'Starting...' }),
-            });
-            await new Promise(r => setTimeout(r, 10));
-
-            expect(lastBot().send).not.toHaveBeenCalled();
-            await bridge.stop();
-        });
-
-        it('should skip events with empty text', async () => {
-            const bridge = new WhatsAppBridge(opts);
-            await bridge.start();
-
-            sseRelay.emit('event', {
-                agentId: 'agent-a',
-                agentName: 'Agent-A',
-                data: JSON.stringify({ type: 'turn:complete', role: 'assistant', text: '', processId: 'p1' }),
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-added',
+                process: { id: 'proc-001', status: 'queued' },
             });
             await new Promise(r => setTimeout(r, 10));
 
@@ -198,10 +176,9 @@ describe('WhatsAppBridge', () => {
             const bridge = new WhatsAppBridge(opts);
             await bridge.start();
 
-            sseRelay.emit('event', {
-                agentId: 'agent-a',
-                agentName: 'Agent-A',
-                data: JSON.stringify({ type: 'turn:complete', role: 'assistant', text: 'Hello', processId: 'p1', workspaceName: 'test' }),
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-001', status: 'completed', workspaceId: 'ws-test' },
             });
             await new Promise(r => setTimeout(r, 10));
 
@@ -213,7 +190,7 @@ describe('WhatsAppBridge', () => {
             const bridge = new WhatsAppBridge(opts);
             await bridge.start();
 
-            sseRelay.emit('event', {
+            wsRelay.emit('message', {
                 agentId: 'agent-a',
                 agentName: 'Agent-A',
                 data: 'not json',
@@ -223,50 +200,56 @@ describe('WhatsAppBridge', () => {
             expect(lastBot().send).not.toHaveBeenCalled();
             await bridge.stop();
         });
-    });
 
-    describe('inbound (WA → CoC)', () => {
-        it('should route quoted messages to the correct process', async () => {
+        it('should only send new turns on subsequent updates', async () => {
             const bridge = new WhatsAppBridge(opts);
             await bridge.start();
 
-            const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'));
-
-            // First send an outbound to create a binding
-            sseRelay.emit('event', {
-                agentId: 'agent-a',
-                agentName: 'Agent-A',
-                data: JSON.stringify({
-                    type: 'turn:complete',
-                    role: 'assistant',
-                    text: 'Found bug on line 42',
-                    processId: 'proc-001',
-                    workspaceName: 'frontend',
-                }),
+            // First update: 2 turns
+            vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+                new Response(JSON.stringify({
+                    turns: [
+                        { role: 'user', content: 'Hello' },
+                        { role: 'assistant', content: 'Hi there' },
+                    ],
+                }))
+            );
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-002', workspaceId: 'ws-test', workspaceName: 'test', status: 'running' },
             });
-            await new Promise(r => setTimeout(r, 10));
+            await new Promise(r => setTimeout(r, 50));
+            expect(lastBot().send).toHaveBeenCalledTimes(2);
 
-            // Now simulate inbound message quoting that outbound
-            const bot = lastBot();
-            await bot.opts.onMessage({
-                senderJid: 'alice@s.whatsapp.net',
-                messageId: 'wamid.in-001',
-                quotedMessageId: 'wamid.out-001',
-                text: 'Can you add a test?',
+            lastBot().send.mockClear();
+
+            // Second update: 3 turns (1 new)
+            vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+                new Response(JSON.stringify({
+                    turns: [
+                        { role: 'user', content: 'Hello' },
+                        { role: 'assistant', content: 'Hi there' },
+                        { role: 'user', content: 'One more thing' },
+                    ],
+                }))
+            );
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-002', workspaceId: 'ws-test', workspaceName: 'test', status: 'running' },
             });
-
-            expect(fetchSpy).toHaveBeenCalledWith(
-                'http://localhost:4000/api/queue/follow-up',
-                expect.objectContaining({
-                    method: 'POST',
-                    body: JSON.stringify({ processId: 'proc-001', message: 'Can you add a test?' }),
-                }),
+            await new Promise(r => setTimeout(r, 50));
+            expect(lastBot().send).toHaveBeenCalledTimes(1);
+            expect(lastBot().send).toHaveBeenCalledWith(
+                'group@g.us',
+                '*CoC → Agent-A:test*\nOne more thing'
             );
 
-            fetchSpy.mockRestore();
+            vi.restoreAllMocks();
             await bridge.stop();
         });
+    });
 
+    describe('inbound (WA → CoC)', () => {
         it('should create global session for plain messages', async () => {
             const bridge = new WhatsAppBridge(opts);
             await bridge.start();

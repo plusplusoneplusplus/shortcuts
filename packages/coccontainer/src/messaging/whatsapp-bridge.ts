@@ -1,12 +1,12 @@
 /**
- * WhatsAppBridge — glue between SSERelay / agent proxy and WhatsAppBot.
+ * WhatsAppBridge — glue between WS relay / agent proxy and WhatsAppBot.
  *
  * Only imported via dynamic import when messaging.whatsapp.enabled is true.
  */
 
 import type { InboundWAMessage, BotStatus } from '@plusplusoneplusplus/whatsapp-bot';
 import { WhatsAppBot } from '@plusplusoneplusplus/whatsapp-bot';
-import type { SSERelay, SSEEvent } from '../proxy/sse-relay';
+import type { WebSocketRelay, WSRelayMessage } from '../proxy/ws-relay';
 import type { AgentStore } from '../store/agent-store';
 import type { TunnelBridge } from '../proxy/tunnel-bridge';
 import type { ResolvedWhatsAppConfig } from '../config';
@@ -15,7 +15,7 @@ import { MessagingStore } from './messaging-store';
 export interface WhatsAppBridgeOptions {
     config: ResolvedWhatsAppConfig;
     dataDir: string;
-    sseRelay: SSERelay;
+    wsRelay: WebSocketRelay;
     agentStore: AgentStore;
     tunnelBridge: TunnelBridge;
 }
@@ -32,8 +32,10 @@ export interface WhatsAppStatus {
 export class WhatsAppBridge {
     private store: MessagingStore | null = null;
     private bot: WhatsAppBot | null = null;
-    private sseHandler: ((event: SSEEvent) => void) | null = null;
+    private wsHandler: ((msg: WSRelayMessage) => void) | null = null;
     private _creatingGroup = false;
+    /** Track last-seen turn count per process to detect new turns. */
+    private lastTurnCount = new Map<string, number>();
 
     constructor(private opts: WhatsAppBridgeOptions) {}
 
@@ -51,14 +53,14 @@ export class WhatsAppBridge {
         });
         await this.bot.start();
 
-        this.sseHandler = (event) => this.onSseEvent(event);
-        this.opts.sseRelay.on('event', this.sseHandler);
+        this.wsHandler = (msg) => this.onWsMessage(msg);
+        this.opts.wsRelay.on('message', this.wsHandler);
     }
 
     async stop(): Promise<void> {
-        if (this.sseHandler) {
-            this.opts.sseRelay.off('event', this.sseHandler);
-            this.sseHandler = null;
+        if (this.wsHandler) {
+            this.opts.wsRelay.off('message', this.wsHandler);
+            this.wsHandler = null;
         }
         await this.bot?.stop();
         this.bot = null;
@@ -171,40 +173,72 @@ export class WhatsAppBridge {
         }
     }
 
-    // ── Outbound: CoC turn → WhatsApp ────────────────────
-    private async onSseEvent(event: SSEEvent): Promise<void> {
+    // ── Outbound: CoC process update → WhatsApp ────────────
+    private async onWsMessage(msg: WSRelayMessage): Promise<void> {
         if (!this.bot || !this.store) return;
 
         let parsed: Record<string, unknown>;
         try {
-            parsed = JSON.parse(event.data);
+            parsed = JSON.parse(msg.data);
         } catch {
             return;
         }
-        if (parsed.type !== 'turn:complete') return;
 
-        const role = parsed.role as string;
-        const text = parsed.text as string;
-        if (!text?.trim()) return;
+        // Listen for process-updated events where status changed to completed
+        if (parsed.type !== 'process-updated') return;
+        const proc = parsed.process as Record<string, unknown> | undefined;
+        if (!proc) return;
 
-        const repoName = (parsed.workspaceName ?? parsed.workspaceId ?? 'unknown') as string;
-        const sessionLabel = `${event.agentName}:${repoName}`;
+        const status = proc.status as string;
+        const processId = proc.id as string;
+        if (!processId) return;
 
-        const prefix = role === 'user'
-            ? `*${(parsed.userName as string) ?? this.opts.config.userName} → ${sessionLabel}*`
-            : `*${sessionLabel}*`;
+        // Only forward completed turns (avoid spamming on every status change)
+        if (status !== 'completed' && status !== 'running') return;
 
         const target = this.opts.config.groupJid;
         if (!target) return;
 
+        // Fetch full conversation from the agent to get the latest turn
+        const agentId = msg.agentId;
+        const agentAddr = this.getAgentAddress(agentId);
+        if (!agentAddr) return;
+
         try {
-            const waMessageId = await this.bot.send(target, `${prefix}\n${text}`);
-            const processId = parsed.processId as string;
-            if (processId) {
-                this.store.bindMessage(waMessageId, processId, event.agentId, sessionLabel);
+            const workspaceId = (proc.workspaceId ?? proc.workspace) as string || '';
+            const res = await fetch(`${agentAddr}/api/workspaces/${workspaceId}/processes/${processId}`);
+            if (!res.ok) return;
+            const fullProcess = await res.json() as Record<string, unknown>;
+            const turns = fullProcess.turns as Array<{ role: string; content?: string; text?: string }> | undefined;
+            if (!turns || turns.length === 0) return;
+
+            // Find new turns we haven't sent yet
+            const lastSeen = this.lastTurnCount.get(processId) ?? 0;
+            const newTurns = turns.slice(lastSeen);
+            this.lastTurnCount.set(processId, turns.length);
+
+            if (newTurns.length === 0) return;
+
+            const repoName = (proc.workspaceName ?? workspaceId ?? 'unknown') as string;
+            const sessionLabel = `${msg.agentName}:${repoName}`;
+
+            for (const turn of newTurns) {
+                const text = (turn.content ?? turn.text ?? '') as string;
+                if (!text.trim()) continue;
+
+                const prefix = turn.role === 'user'
+                    ? `*${this.opts.config.userName} → ${sessionLabel}*`
+                    : `*${sessionLabel}*`;
+
+                try {
+                    const waMessageId = await this.bot!.send(target, `${prefix}\n${text}`);
+                    this.store!.bindMessage(waMessageId, processId, agentId, sessionLabel);
+                } catch (err) {
+                    console.error('[whatsapp-bridge] Failed to send outbound message:', err);
+                }
             }
         } catch (err) {
-            console.error('[whatsapp-bridge] Failed to send outbound message:', err);
+            console.error('[whatsapp-bridge] Failed to fetch process turns:', err);
         }
     }
 
