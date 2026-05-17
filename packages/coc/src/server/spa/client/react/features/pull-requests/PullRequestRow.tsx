@@ -88,7 +88,7 @@ export function PullRequestRow({
                 className={cn(
                     'pr-row relative flex w-full cursor-pointer justify-center border-0 bg-white py-[7px] text-left transition-colors dark:bg-gray-900',
                     isSelected
-                        ? "bg-blue-50 before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-blue-500 before:content-[''] dark:bg-blue-900/30"
+                        ? "bg-gray-100 before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-gray-500 before:content-[''] dark:bg-gray-700/60 dark:before:bg-gray-400"
                         : 'hover:bg-gray-50 dark:hover:bg-gray-800/60',
                 )}
             >
@@ -110,7 +110,7 @@ export function PullRequestRow({
             className={cn(
                 'pr-row grid w-full cursor-pointer items-start gap-[7px] border-b border-l-[3px] border-gray-100 bg-white py-1.5 pl-2.5 pr-2 text-left transition-colors dark:border-gray-800 dark:bg-gray-900',
                 isSelected
-                    ? 'border-l-blue-500 bg-blue-50 dark:bg-blue-900/30'
+                    ? 'border-l-gray-500 bg-gray-100 dark:border-l-gray-400 dark:bg-gray-700/60'
                     : 'border-l-transparent hover:bg-gray-50 dark:hover:bg-gray-800/60',
             )}
             style={{ gridTemplateColumns: '16px minmax(0, 1fr) auto' }}

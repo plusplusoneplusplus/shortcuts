@@ -13,8 +13,9 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
 
 // Mock AppContext to avoid full context setup.
 const mockDispatch = vi.fn();
+let mockSelectedPrId: number | string | null = null;
 vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => ({
-    useApp: () => ({ state: { selectedPrId: null }, dispatch: mockDispatch }),
+    useApp: () => ({ state: { selectedPrId: mockSelectedPrId }, dispatch: mockDispatch }),
 }));
 
 // Default to desktop layout.
@@ -78,6 +79,7 @@ beforeEach(() => {
     vi.resetModules();
     vi.resetAllMocks();
     mockDispatch.mockReset();
+    mockSelectedPrId = null;
 });
 
 // ── Loading state ──────────────────────────────────────────────────────────────
@@ -555,6 +557,44 @@ describe('batch mode toggle', () => {
         fireEvent.click(screen.getByTestId('select-mode-button'));
         fireEvent.click(screen.getByTestId('pr-row-checkbox'));
         await waitFor(() => expect(screen.getByTestId('selection-count-bar')).toHaveTextContent('1 PR selected'));
+    });
+});
+
+// ── Active PR row highlight ────────────────────────────────────────────────────
+
+describe('active PR row highlight', () => {
+    it('marks the matching row isSelected when selectedPrId is a number (click-nav)', async () => {
+        mockSelectedPrId = 42;
+        mockFetchOk([makePr({ id: 1, number: 42, title: 'Active PR' })]);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('pr-row')).toBeInTheDocument());
+
+        const row = screen.getByTestId('pr-row');
+        expect(row.className).toContain('bg-gray-100');
+        expect(row.className).toContain('border-l-gray-500');
+    });
+
+    it('marks the matching row isSelected when selectedPrId is a string (URL deep-link)', async () => {
+        // Router stores the PR id from the hash as a string via decodeURIComponent.
+        mockSelectedPrId = '42';
+        mockFetchOk([makePr({ id: 1, number: 42, title: 'Active PR' })]);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('pr-row')).toBeInTheDocument());
+
+        const row = screen.getByTestId('pr-row');
+        expect(row.className).toContain('bg-gray-100');
+        expect(row.className).toContain('border-l-gray-500');
+    });
+
+    it('does not mark a row selected when the id does not match', async () => {
+        mockSelectedPrId = 99;
+        mockFetchOk([makePr({ id: 1, number: 42, title: 'Other PR' })]);
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('pr-row')).toBeInTheDocument());
+
+        const row = screen.getByTestId('pr-row');
+        expect(row.className).not.toContain('bg-gray-100');
+        expect(row.className).toContain('border-l-transparent');
     });
 });
 
