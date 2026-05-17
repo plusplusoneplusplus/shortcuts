@@ -15,6 +15,13 @@ vi.stubGlobal('ResizeObserver', vi.fn().mockImplementation(function () { return 
     disconnect: vi.fn(),
 }); }));
 
+// ── Mock config ───────────────────────────────────────────────────────
+
+let mockServersEnabled = false;
+vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isServersEnabled: () => mockServersEnabled,
+}));
+
 // ── Mock AppContext ────────────────────────────────────────────────────
 
 const mockDispatch = vi.fn();
@@ -42,6 +49,7 @@ describe('BottomNav', () => {
         mockActiveTab = 'repos';
         mockSelectedRepoId = null;
         mockActiveRepoSubTab = 'info';
+        mockServersEnabled = false;
     });
 
     afterEach(() => {
@@ -54,7 +62,7 @@ describe('BottomNav', () => {
         render(<BottomNav />);
         expect(screen.getByTestId('bottom-nav')).toBeTruthy();
         const buttons = screen.getAllByRole('button');
-        expect(buttons).toHaveLength(4); // processes removed; skills, memory, stats, logs remain
+        expect(buttons).toHaveLength(5); // skills, memory, stats, models, logs (servers disabled by default)
     });
 
     it('hidden on desktop viewport', () => {
@@ -159,6 +167,70 @@ describe('BottomNav', () => {
         expect(screen.getByTestId('bottom-nav').querySelector('[data-tab="processes"]')).toBeNull();
         expect(screen.getByTestId('bottom-nav').querySelector('[data-tab="skills"]')).toBeTruthy();
         expect(screen.getByTestId('bottom-nav').querySelector('[data-tab="memory"]')).toBeTruthy();
+    });
+
+    // ── Models and Servers tabs (responsive additions) ───────────────
+
+    it('includes Models tab on mobile', () => {
+        viewportCleanup = mockViewport(375);
+        render(<BottomNav />);
+        expect(screen.getByText('Models')).toBeTruthy();
+        expect(screen.getByTestId('bottom-nav').querySelector('[data-tab="models"]')).toBeTruthy();
+    });
+
+    it('highlights active models tab', () => {
+        viewportCleanup = mockViewport(375);
+        mockActiveTab = 'models';
+        render(<BottomNav />);
+        const modelsBtn = screen.getByText('Models').closest('button')!;
+        expect(modelsBtn.className).toContain('text-[#0078d4]');
+    });
+
+    it('dispatches SET_ACTIVE_TAB for models on click', () => {
+        viewportCleanup = mockViewport(375);
+        render(<BottomNav />);
+        fireEvent.click(screen.getByText('Models').closest('button')!);
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_ACTIVE_TAB', tab: 'models' });
+    });
+
+    it('hides Servers tab when servers are disabled', () => {
+        viewportCleanup = mockViewport(375);
+        mockServersEnabled = false;
+        render(<BottomNav />);
+        expect(screen.queryByText('Servers')).toBeNull();
+    });
+
+    it('shows Servers tab when servers are enabled', () => {
+        viewportCleanup = mockViewport(375);
+        mockServersEnabled = true;
+        render(<BottomNav />);
+        expect(screen.getByText('Servers')).toBeTruthy();
+        expect(screen.getByTestId('bottom-nav').querySelector('[data-tab="servers"]')).toBeTruthy();
+    });
+
+    it('renders 6 buttons when servers are enabled', () => {
+        viewportCleanup = mockViewport(375);
+        mockServersEnabled = true;
+        render(<BottomNav />);
+        const buttons = screen.getAllByRole('button');
+        expect(buttons).toHaveLength(6); // skills, memory, stats, models, servers, logs
+    });
+
+    it('highlights active servers tab', () => {
+        viewportCleanup = mockViewport(375);
+        mockServersEnabled = true;
+        mockActiveTab = 'servers';
+        render(<BottomNav />);
+        const serversBtn = screen.getByText('Servers').closest('button')!;
+        expect(serversBtn.className).toContain('text-[#0078d4]');
+    });
+
+    it('nav has overflow-x-auto for scrollable mobile layout', () => {
+        viewportCleanup = mockViewport(375);
+        mockServersEnabled = true;
+        render(<BottomNav />);
+        const nav = screen.getByTestId('bottom-nav');
+        expect(nav.className).toContain('overflow-x-auto');
     });
 
     // ── Contextual repo nav ────────────────────────────────────────────
