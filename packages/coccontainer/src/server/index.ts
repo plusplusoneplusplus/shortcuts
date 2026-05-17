@@ -76,6 +76,22 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
         wsRelay.connect(agent.id, agent.name, effectiveAddr);
     }
 
+    // ── WhatsApp bridge (only when enabled) ─────────────
+    let whatsappBridge: { stop(): Promise<void> } | undefined;
+    const waConfig = config.messaging?.whatsapp;
+    if (waConfig?.enabled) {
+        const { WhatsAppBridge } = await import('../messaging/whatsapp-bridge');
+        const bridge = new WhatsAppBridge({
+            config: waConfig,
+            dataDir: config.serve.dataDir,
+            sseRelay,
+            agentStore,
+            tunnelBridge,
+        });
+        await bridge.start();
+        whatsappBridge = bridge;
+    }
+
     const server = http.createServer(async (req, res) => {
         const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
 
@@ -330,6 +346,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
 
     return {
         close() {
+            whatsappBridge?.stop();
             healthMonitor.stop();
             tunnelBridge.stopAll();
             sseRelay.disconnectAll();

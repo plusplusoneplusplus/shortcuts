@@ -29,4 +29,27 @@ describe('config', () => {
         const dir = getDefaultDataDir();
         expect(dir).toBe(path.join(os.homedir(), '.coccontainer'));
     });
+
+    it('should default whatsapp to disabled', () => {
+        const config = resolveConfig();
+        expect(config.messaging.whatsapp.enabled).toBe(false);
+        expect(config.messaging.whatsapp.userName).toBe('CoC');
+        expect(config.messaging.whatsapp.sessionDir).toContain('whatsapp-session');
+    });
+
+    it('should apply whatsapp overrides', () => {
+        const config = resolveConfig({
+            messaging: {
+                whatsapp: {
+                    enabled: true,
+                    groupJid: 'test-group@g.us',
+                    defaultAgentId: 'agent-123',
+                },
+            },
+        });
+        expect(config.messaging.whatsapp.enabled).toBe(true);
+        expect(config.messaging.whatsapp.groupJid).toBe('test-group@g.us');
+        expect(config.messaging.whatsapp.defaultAgentId).toBe('agent-123');
+        expect(config.messaging.whatsapp.userName).toBe('CoC');
+    });
 });
