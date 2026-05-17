@@ -25,12 +25,14 @@ The `spaHtml` function in `src/server/index.ts` re-reads the config file on ever
 
 The admin route uses a self-contained, Linear-inspired design system that lives in `src/server/spa/client/react/admin/admin-redesign.css`. The stylesheet is imported once at the top of `AdminPanel.tsx` so esbuild bundles it into the SPA's CSS. All selectors are scoped under the `.admin-redesign` root class that wraps the entire admin page — styles never leak to other dashboard surfaces, and light/dark themes are driven by the existing `<html data-theme="…">` attribute.
 
-**Layout (sidebar + main):** The admin page is structured as a two-column shell:
+**Layout (sidebar + main, fit-to-viewport):** The admin page is structured as a two-column shell that fills the available vertical space and never scrolls as a whole. Only the right pane is scrollable.
 
-- `<div className="ar-shell">` is a CSS grid (`var(--ar-sidebar-w)` + `1fr`).
-- `<aside className="ar-sidebar">` (sticky to the dashboard scroll container) hosts the brand, the tab navigation (`.ar-nav-item`s — one per `AdminSubTab`), and a stats footer (`.ar-stats-block` with Processes / Wikis / Disk).
-- `<main className="ar-main">` contains a sticky topbar (`.ar-topbar` with a `.ar-breadcrumb` showing the current tab) and the page body (`.ar-page` with `.ar-page-header` + cards).
-- The tabs live in the sidebar as `.ar-nav-item` buttons (data-testids `admin-tab-{settings|providers|data|server|prompts|database|agents}` are preserved for tests). A `.ar-mobile-tab-select` appears only under the responsive `@media (max-width: 600px)` rule, which hides the sidebar and falls back to a `<select>`.
+- The route mounts inside `<div className="h-full overflow-hidden" data-testid="admin-scroll-container">` (Router) or the AdminDialog body (`flex-1 min-h-0 overflow-y-auto`). Both supply a definite height to the panel.
+- The `.admin-redesign` root (on `#view-admin`) is `height: 100%; min-height: 0` so the panel fills that parent exactly.
+- `<div className="ar-shell">` is a CSS grid (`var(--ar-sidebar-w)` + `1fr`) with `height: 100%; min-height: 0; overflow: hidden`.
+- `<aside className="ar-sidebar">` fills the grid row (`height: 100%; min-height: 0`) and only scrolls internally if its own brand/nav/stats stack ever exceeds the viewport. It is **not** sticky and must not use `100vh` — both would break inside the AdminDialog and any nested pane whose container height differs from the viewport.
+- `<main className="ar-main">` is the **single scroll region** of the admin route: `min-height: 0; height: 100%; overflow-y: auto`. The sticky topbar (`.ar-topbar` with the `.ar-breadcrumb`) pins to the top of this scroller, and the page body (`.ar-page` with `.ar-page-header` + cards) flows underneath.
+- The tabs live in the sidebar as `.ar-nav-item` buttons (data-testids `admin-tab-{settings|providers|data|server|prompts|database|agents}` are preserved for tests). A `.ar-mobile-tab-select` appears only under the responsive `@media (max-width: 600px)` rule, which hides the sidebar and falls back to a `<select>` — the main pane still scrolls internally on mobile.
 
 **Settings sub-tabs (within the Settings top-level tab):** Settings is split into one `SettingsCard` per sub-tab — `ai`, `chat`, `appearance`, `features`, `integrations`, `advanced` — defined in `SETTINGS_SUBTABS` near the top of `AdminPanel.tsx`. A `.ar-subtab-row` with `.ar-subtab` buttons (data-testids `settings-subtab-{ai|chat|appearance|features|integrations|advanced}`) renders above the cards. Selection is kept in local `settingsSubTab` state, defaults to `ai`, and is synced both directions with `#admin/settings/<sub>` (default `ai` collapses to `#admin/settings`). Tests that interact with controls outside of the default `ai` card must first navigate via the `gotoSettingsSubTab(...)` helper.
 
