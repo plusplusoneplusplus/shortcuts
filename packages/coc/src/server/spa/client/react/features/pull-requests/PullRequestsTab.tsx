@@ -502,7 +502,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                                             key={pr.id}
                                             pr={pr}
                                             onClick={() => handleRowClick(pr)}
-                                            isSelected={(pr.number ?? pr.id) === state.selectedPrId}
+                                            isSelected={state.selectedPrId != null && String(pr.number ?? pr.id) === String(state.selectedPrId)}
                                             isChecked={selectedPrIds.has(getPrSelectionId(pr))}
                                             onSelect={(id, checked, shiftKey) =>
                                                 handlePrSelect(id, checked, shiftKey, sectionPrs)

@@ -129,8 +129,8 @@ describe('PullRequestRow — selection styling', () => {
     it('applies the selected styling when isSelected is true', () => {
         render(<PullRequestRow pr={makePr()} onClick={vi.fn()} isSelected />);
         const row = screen.getByTestId('pr-row');
-        expect(row.className).toContain('bg-blue-50');
-        expect(row.className).toContain('border-l-blue-500');
+        expect(row.className).toContain('bg-gray-100');
+        expect(row.className).toContain('border-l-gray-500');
     });
 
     it('applies the hover styling when isSelected is false', () => {
