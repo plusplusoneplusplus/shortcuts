@@ -218,9 +218,24 @@ export class WhatsAppBridge {
             if (!turns || turns.length === 0) return;
 
             const lastSeen = this.lastTurnCount.get(processId) ?? 0;
-            const newTurns = turns.slice(lastSeen);
-            this.lastTurnCount.set(processId, turns.length);
-            console.log(`[whatsapp-bridge] lastSeen=${lastSeen} newTurns=${newTurns.length}`);
+
+            // Only consider non-streaming turns with actual content.
+            // During 'running' status, the latest assistant turn may still be
+            // streaming with empty/partial content — skip it so we pick it up
+            // on the next update when content is finalized.
+            let sendableEnd = turns.length;
+            for (let i = turns.length - 1; i >= lastSeen; i--) {
+                const t = turns[i] as Record<string, unknown>;
+                if (t.streaming) { sendableEnd = i; continue; }
+                break;
+            }
+
+            const newTurns = turns.slice(lastSeen, sendableEnd);
+            // Only advance watermark to what we actually processed
+            if (sendableEnd > lastSeen) {
+                this.lastTurnCount.set(processId, sendableEnd);
+            }
+            console.log(`[whatsapp-bridge] lastSeen=${lastSeen} sendableEnd=${sendableEnd} newTurns=${newTurns.length}`);
 
             if (newTurns.length === 0) return;
 
@@ -228,12 +243,15 @@ export class WhatsAppBridge {
             const sessionLabel = `${msg.agentName}:${repoName}`;
 
             for (const turn of newTurns) {
+                // Only forward assistant replies — user messages are redundant
+                // since the bot is linked to the same WhatsApp account.
+                // (Bot-sent messages always appear on the right/"sent" side.)
+                if (turn.role === 'user') continue;
+
                 const text = (turn.content ?? turn.text ?? '') as string;
                 if (!text.trim()) continue;
 
-                const prefix = turn.role === 'user'
-                    ? `*${this.opts.config.userName} → ${sessionLabel}*`
-                    : `*${sessionLabel}*`;
+                const prefix = `*🤖 ${sessionLabel}*`;
 
                 try {
                     const waMessageId = await this.bot!.send(target, `${prefix}\n${text}`);
