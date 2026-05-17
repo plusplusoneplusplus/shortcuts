@@ -84,10 +84,11 @@ export class WhatsAppBridge {
         return this.bot.listGroups();
     }
 
-    /** Update mutable config fields. */
+    /** Update mutable config fields and persist to config.yaml. */
     async updateConfig(patch: { userName?: string; groupJid?: string }): Promise<void> {
         if (patch.userName !== undefined) this.opts.config.userName = patch.userName;
         if (patch.groupJid !== undefined) this.opts.config.groupJid = patch.groupJid;
+        await this.persistWhatsAppConfig(patch);
     }
 
     /** Stop the current bot, clear session, and reconnect (for re-pairing). */
@@ -156,7 +157,7 @@ export class WhatsAppBridge {
                     const jid = await this.bot.createGroup(groupName);
                     this.opts.config.groupJid = jid;
                     console.log(`[whatsapp-bridge] Group created: ${jid}`);
-                    await this.persistGroupJid(jid);
+                    await this.persistWhatsAppConfig({ groupJid: jid });
                     return;
                 } catch (err: any) {
                     console.warn(`[whatsapp-bridge] Attempt ${i + 1} failed: ${err.message}`);
@@ -168,8 +169,8 @@ export class WhatsAppBridge {
         }
     }
 
-    /** Save groupJid to the config file so it persists across restarts. */
-    private async persistGroupJid(jid: string): Promise<void> {
+    /** Save WhatsApp config fields to the config file so they persist across restarts. */
+    private async persistWhatsAppConfig(fields: Record<string, string | undefined>): Promise<void> {
         try {
             const fs = await import('fs');
             const path = await import('path');
@@ -182,11 +183,15 @@ export class WhatsAppBridge {
             } catch { /* file doesn't exist yet */ }
             if (!doc.messaging) doc.messaging = {};
             if (!doc.messaging.whatsapp) doc.messaging.whatsapp = {};
-            doc.messaging.whatsapp.groupJid = jid;
+            for (const [key, value] of Object.entries(fields)) {
+                if (value !== undefined) {
+                    doc.messaging.whatsapp[key] = value;
+                }
+            }
             fs.writeFileSync(configPath, jsYaml.dump(doc), 'utf8');
-            console.log(`[whatsapp-bridge] Saved groupJid to ${configPath}`);
+            console.log(`[whatsapp-bridge] Saved config to ${configPath}`);
         } catch (err) {
-            console.error('[whatsapp-bridge] Failed to persist groupJid:', err);
+            console.error('[whatsapp-bridge] Failed to persist config:', err);
         }
     }
 

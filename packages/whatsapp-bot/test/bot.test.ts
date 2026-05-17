@@ -171,7 +171,7 @@ describe('WhatsAppBot', () => {
         expect(receivedMessages[0].text).toBe('Reply to agent');
     });
 
-    it('should skip own messages', async () => {
+    it('should skip bot-sent messages but allow user-typed fromMe messages', async () => {
         const bot = new WhatsAppBot({
             sessionDir: '/tmp/test-session',
             onMessage: async (msg) => { receivedMessages.push(msg); },
@@ -180,17 +180,34 @@ describe('WhatsAppBot', () => {
         await bot.start();
         await new Promise(r => setTimeout(r, 10));
 
+        // Bot sends a message — this ID gets tracked
+        const sentId = await bot.send('group@g.us', 'Bot message');
+
         const handler = mockSocket.handlers.get('messages.upsert');
+
+        // Echo of bot-sent message should be skipped
         await handler!({
             type: 'notify',
             messages: [{
-                key: { remoteJid: 'group@g.us', id: 'msg-003', fromMe: true },
-                message: { conversation: 'My own message' },
+                key: { remoteJid: 'group@g.us', id: sentId, fromMe: true },
+                message: { conversation: 'Bot message' },
             }],
         });
-
         await new Promise(r => setTimeout(r, 10));
         expect(receivedMessages).toHaveLength(0);
+
+        // User typing on phone (fromMe but not bot-sent) should be delivered
+        await handler!({
+            type: 'notify',
+            messages: [{
+                key: { remoteJid: 'group@g.us', id: 'user-typed-001', fromMe: true },
+                message: { conversation: 'User typed on phone' },
+                pushName: 'Me',
+            }],
+        });
+        await new Promise(r => setTimeout(r, 10));
+        expect(receivedMessages).toHaveLength(1);
+        expect(receivedMessages[0].text).toBe('User typed on phone');
     });
 
     it('should skip status broadcasts', async () => {

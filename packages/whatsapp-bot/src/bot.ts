@@ -11,6 +11,8 @@ export class WhatsAppBot {
     private _status: BotStatus = 'disconnected';
     private _lastQR: string | null = null;
     private _lastError: string | null = null;
+    /** Track message IDs sent by this bot to distinguish from user-typed messages on same account. */
+    private _sentMessageIds = new Set<string>();
 
     constructor(opts: BotOptions) {
         this.opts = {
@@ -81,7 +83,9 @@ export class WhatsAppBot {
             ? { quoted: { key: { remoteJid: jid, id: opts.quotedId, fromMe: true } } }
             : undefined;
         const result = await this.sock.sendMessage(jid, { text }, sendOpts);
-        return result.key.id ?? '';
+        const msgId = result.key.id ?? '';
+        if (msgId) this._sentMessageIds.add(msgId);
+        return msgId;
     }
 
     /** List all WhatsApp groups the account participates in. */
@@ -137,9 +141,14 @@ export class WhatsAppBot {
     private handleMessages(upsert: { messages?: any[]; type?: string }): void {
         if (upsert.type !== 'notify') return;
         for (const msg of upsert.messages ?? []) {
-            // Skip status broadcasts and own messages
-            if (msg.key.fromMe) continue;
             if (msg.key.remoteJid === 'status@broadcast') continue;
+
+            // Skip messages sent programmatically by this bot (not user-typed from phone)
+            const msgId = msg.key.id ?? '';
+            if (msg.key.fromMe && this._sentMessageIds.has(msgId)) {
+                this._sentMessageIds.delete(msgId);
+                continue;
+            }
 
             const text = msg.message?.conversation
                 ?? msg.message?.extendedTextMessage?.text
