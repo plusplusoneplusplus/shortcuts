@@ -22,6 +22,7 @@ export interface SettingsCardProps {
 const badgeColors: Record<string, string> = {
     Global: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300',
     Advanced: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300',
+    Container: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300',
 };
 
 export function SettingsCard({

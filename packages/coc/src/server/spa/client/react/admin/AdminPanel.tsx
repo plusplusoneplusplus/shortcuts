@@ -25,6 +25,7 @@ import { isContainerMode } from '../utils/config';
 
 const StorageSection = lazy(() => import('./StorageSection'));
 const AgentManagementPanel = lazy(() => import('../repos/AgentManagementPanel').then(m => ({ default: m.AgentManagementPanel })));
+const IMSettingsSection = lazy(() => import('./IMSettingsSection').then(m => ({ default: m.IMSettingsSection })));
 
 function formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
@@ -41,7 +42,7 @@ interface Stats {
 }
 
 const VALID_OUTPUT_OPTIONS = ['table', 'json', 'csv', 'markdown'] as const;
-const TAB_LABELS: Record<AdminSubTab, string> = { settings: 'Settings', providers: 'Providers', data: 'Data', server: 'Server', prompts: 'Prompts', database: 'Database', agents: 'Agents' };
+const TAB_LABELS: Record<AdminSubTab, string> = { settings: 'Settings', providers: 'Providers', data: 'Data', server: 'Server', prompts: 'Prompts', database: 'Database', agents: 'Agents', messaging: 'Messaging' };
 const WELCOME_RESET_PROGRESS = { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false, settingsVisited: false, dismissed: false, hasCompletedTour: false };
 
 export function AdminPanel() {
@@ -689,7 +690,7 @@ export function AdminPanel() {
     const sectionHeadClass = 'text-xs font-semibold text-[#616161] dark:text-[#999] uppercase tracking-wide mb-2';
     const dividerClass = 'border-t border-[#e0e0e0] dark:border-[#3c3c3c] my-3';
     const baseTabs: AdminSubTab[] = ['settings', 'providers', 'data', 'server', 'prompts', 'database'];
-    const tabs: AdminSubTab[] = isContainerMode() ? [...baseTabs, 'agents'] : baseTabs;
+    const tabs: AdminSubTab[] = isContainerMode() ? [...baseTabs, 'agents', 'messaging'] : baseTabs;
 
     return (
         <div id="view-admin">
@@ -1598,6 +1599,12 @@ export function AdminPanel() {
                 {activeTab === 'agents' && isContainerMode() && (
                     <Suspense fallback={<div className="flex items-center gap-2 text-sm text-[#848484]"><Spinner size="sm" /> Loading…</div>}>
                         <AgentManagementPanel />
+                    </Suspense>
+                )}
+
+                {activeTab === 'messaging' && isContainerMode() && (
+                    <Suspense fallback={<div className="flex items-center gap-2 text-sm text-[#848484]"><Spinner size="sm" /> Loading…</div>}>
+                        <IMSettingsSection />
                     </Suspense>
                 )}
 

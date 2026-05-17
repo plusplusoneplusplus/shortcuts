@@ -5,5 +5,5 @@
  */
 
 export { WhatsAppBot } from './bot';
-export type { InboundWAMessage, BotOptions, WASocket } from './types';
+export type { InboundWAMessage, BotOptions, BotStatus, WASocket } from './types';
 export { createBaileysConnection } from './connection';

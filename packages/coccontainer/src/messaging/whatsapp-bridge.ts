@@ -4,7 +4,7 @@
  * Only imported via dynamic import when messaging.whatsapp.enabled is true.
  */
 
-import type { InboundWAMessage } from '@plusplusoneplusplus/whatsapp-bot';
+import type { InboundWAMessage, BotStatus } from '@plusplusoneplusplus/whatsapp-bot';
 import { WhatsAppBot } from '@plusplusoneplusplus/whatsapp-bot';
 import type { SSERelay, SSEEvent } from '../proxy/sse-relay';
 import type { AgentStore } from '../store/agent-store';
@@ -18,6 +18,14 @@ export interface WhatsAppBridgeOptions {
     sseRelay: SSERelay;
     agentStore: AgentStore;
     tunnelBridge: TunnelBridge;
+}
+
+export interface WhatsAppStatus {
+    enabled: boolean;
+    status: BotStatus;
+    qr: string | null;
+    groupJid?: string;
+    userName: string;
 }
 
 export class WhatsAppBridge {
@@ -48,6 +56,17 @@ export class WhatsAppBridge {
         this.bot = null;
         this.store?.close();
         this.store = null;
+    }
+
+    /** Get current WhatsApp bridge status for REST API. */
+    getWhatsAppStatus(): WhatsAppStatus {
+        return {
+            enabled: true,
+            status: this.bot?.getStatus() ?? 'disconnected',
+            qr: this.bot?.getLastQR() ?? null,
+            groupJid: this.opts.config.groupJid,
+            userName: this.opts.config.userName,
+        };
     }
 
     // ── Outbound: CoC turn → WhatsApp ────────────────────

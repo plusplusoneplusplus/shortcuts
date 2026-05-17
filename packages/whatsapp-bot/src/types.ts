@@ -19,7 +19,14 @@ export interface BotOptions {
     onMessage: (msg: InboundWAMessage) => Promise<void>;
     /** If true, print QR to terminal (default: true). */
     printQR?: boolean;
+    /** Called when a new QR code is available for pairing. */
+    onQR?: (qr: string) => void;
+    /** Called when connection state changes. */
+    onStatusChange?: (status: BotStatus) => void;
 }
+
+/** Connection status of the bot. */
+export type BotStatus = 'disconnected' | 'connecting' | 'qr-pending' | 'connected';
 
 /** Minimal socket interface consumed by WhatsAppBot (subset of Baileys). */
 export interface WASocket {

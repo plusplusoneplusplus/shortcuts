@@ -2,13 +2,14 @@
  * WhatsAppBot — high-level bot API wrapping Baileys connection.
  */
 
-import type { BotOptions, InboundWAMessage, WASocket } from './types';
+import type { BotOptions, BotStatus, InboundWAMessage, WASocket } from './types';
 import { createBaileysConnection } from './connection';
 
 export class WhatsAppBot {
     private sock: WASocket | null = null;
-    private readonly opts: Required<BotOptions>;
-    private connected = false;
+    private readonly opts: Required<Pick<BotOptions, 'sessionDir' | 'onMessage' | 'printQR'>> & BotOptions;
+    private _status: BotStatus = 'disconnected';
+    private _lastQR: string | null = null;
 
     constructor(opts: BotOptions) {
         this.opts = {
@@ -19,9 +20,12 @@ export class WhatsAppBot {
 
     /** Connect to WhatsApp. Prints QR on first run. */
     async start(): Promise<void> {
+        this.setStatus('connecting');
         this.sock = await createBaileysConnection({
             sessionDir: this.opts.sessionDir,
             onQR: (qr) => {
+                this._lastQR = qr;
+                this.setStatus('qr-pending');
                 if (this.opts.printQR) {
                     try {
                         const qrTerminal = require('qrcode-terminal');
@@ -30,13 +34,15 @@ export class WhatsAppBot {
                         console.log('[whatsapp-bot] QR code (scan with WhatsApp):', qr);
                     }
                 }
+                this.opts.onQR?.(qr);
             },
             onConnected: () => {
-                this.connected = true;
+                this._lastQR = null;
+                this.setStatus('connected');
                 console.log('[whatsapp-bot] Connected to WhatsApp');
             },
             onDisconnected: (loggedOut) => {
-                this.connected = false;
+                this.setStatus('disconnected');
                 if (loggedOut) {
                     console.log('[whatsapp-bot] Logged out from WhatsApp');
                 }
@@ -53,7 +59,7 @@ export class WhatsAppBot {
         if (this.sock) {
             this.sock.end();
             this.sock = null;
-            this.connected = false;
+            this.setStatus('disconnected');
         }
     }
 
@@ -68,7 +74,22 @@ export class WhatsAppBot {
 
     /** Whether the bot is currently connected. */
     isConnected(): boolean {
-        return this.connected;
+        return this._status === 'connected';
+    }
+
+    /** Current connection status. */
+    getStatus(): BotStatus {
+        return this._status;
+    }
+
+    /** Last QR code string (null when connected or never received). */
+    getLastQR(): string | null {
+        return this._lastQR;
+    }
+
+    private setStatus(status: BotStatus): void {
+        this._status = status;
+        this.opts.onStatusChange?.(status);
     }
 
     private handleMessages(upsert: { messages?: any[]; type?: string }): void {

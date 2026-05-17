@@ -77,7 +77,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
     }
 
     // ── WhatsApp bridge (only when enabled) ─────────────
-    let whatsappBridge: { stop(): Promise<void> } | undefined;
+    let whatsappBridge: { stop(): Promise<void>; getWhatsAppStatus(): { enabled: boolean; status: string; qr: string | null; groupJid?: string; userName: string } } | undefined;
     const waConfig = config.messaging?.whatsapp;
     if (waConfig?.enabled) {
         const { WhatsAppBridge } = await import('../messaging/whatsapp-bridge');
@@ -239,6 +239,19 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
             // Notifications stub
             if (url.pathname === '/api/notifications' && req.method === 'GET') {
                 return sendJson(res, { notifications: [] });
+            }
+
+            // ── Messaging API (WhatsApp status/QR) ────────────────
+            if (url.pathname === '/api/container/messaging/status' && req.method === 'GET') {
+                if (whatsappBridge) {
+                    return sendJson(res, whatsappBridge.getWhatsAppStatus());
+                }
+                return sendJson(res, {
+                    enabled: false,
+                    status: 'disconnected',
+                    qr: null,
+                    userName: config.messaging?.whatsapp?.userName ?? 'CoC',
+                });
             }
 
             // ── Agent-scoped proxy ──────────────────────────────

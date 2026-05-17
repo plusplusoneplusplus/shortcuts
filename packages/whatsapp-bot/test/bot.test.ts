@@ -261,4 +261,61 @@ describe('WhatsAppBot', () => {
         );
         consoleSpy.mockRestore();
     });
+
+    it('should track status transitions', async () => {
+        const statuses: string[] = [];
+        const bot = new WhatsAppBot({
+            sessionDir: '/tmp/test-session',
+            onMessage: async () => {},
+            printQR: false,
+            onStatusChange: (s) => { statuses.push(s); },
+        });
+
+        expect(bot.getStatus()).toBe('disconnected');
+
+        await bot.start();
+        await new Promise(r => setTimeout(r, 10));
+
+        // connecting → connected
+        expect(statuses).toContain('connecting');
+        expect(statuses).toContain('connected');
+        expect(bot.getStatus()).toBe('connected');
+
+        await bot.stop();
+        expect(bot.getStatus()).toBe('disconnected');
+        expect(statuses).toContain('disconnected');
+    });
+
+    it('should track QR code and clear on connect', async () => {
+        mockCreateConnection.mockImplementation(async (opts) => {
+            // Simulate QR then connect
+            setTimeout(() => {
+                opts.onQR('test-qr-string');
+                setTimeout(() => opts.onConnected(), 5);
+            }, 0);
+            return mockSocket;
+        });
+
+        let receivedQR: string | null = null;
+        const bot = new WhatsAppBot({
+            sessionDir: '/tmp/test-session',
+            onMessage: async () => {},
+            printQR: false,
+            onQR: (qr) => { receivedQR = qr; },
+        });
+
+        expect(bot.getLastQR()).toBeNull();
+
+        await bot.start();
+        await new Promise(r => setTimeout(r, 5));
+
+        expect(receivedQR).toBe('test-qr-string');
+        expect(bot.getLastQR()).toBe('test-qr-string');
+        expect(bot.getStatus()).toBe('qr-pending');
+
+        // Wait for connect
+        await new Promise(r => setTimeout(r, 15));
+        expect(bot.getLastQR()).toBeNull();
+        expect(bot.getStatus()).toBe('connected');
+    });
 });

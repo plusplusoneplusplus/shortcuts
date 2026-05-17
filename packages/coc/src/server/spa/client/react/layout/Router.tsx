@@ -378,7 +378,7 @@ export const REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = SHOW_WIKI_TAB
     : Object.fromEntries(Object.entries(ALL_REPO_TAB_SHORTCUTS).filter(([, v]) => v !== 'wiki'));
 
 
-export const VALID_ADMIN_SUB_TABS: Set<string> = new Set(['settings', 'providers', 'data', 'server', 'prompts', 'database', 'agents']);
+export const VALID_ADMIN_SUB_TABS: Set<string> = new Set(['settings', 'providers', 'data', 'server', 'prompts', 'database', 'agents', 'messaging']);
 
 export function parseAdminSubTab(hash: string): AdminSubTab | null {
     const parts = hash.replace(/^#/, '').split('/');
