@@ -26,19 +26,18 @@ test.describe('Repo real-time: stats badge', () => {
             workspaceId: 'ws-rt-stats',
         });
 
-        // Navigate to repos tab and select the repo. Stats badges live in the
-        // Settings sub-tab now (the legacy info sub-tab was removed); navigate
-        // there explicitly to reach the .meta-grid.
+        // Navigate to repos tab and select the repo. Stats live in the
+        // Settings sub-tab (info section); navigate there to reach the stat cards.
         await page.goto(serverUrl);
         await page.click('[data-tab="repos"]');
         await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
         await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
         await page.click('.repo-sub-tab[data-subtab="settings"]');
-        await expect(page.locator('.meta-grid').first()).toBeVisible();
+        await expect(page.locator('[data-testid="settings-content-panel"]')).toBeVisible();
 
         // Verify initial stats: 1 completed
-        const completedItem = page.locator('.meta-item', { hasText: 'Completed' });
+        const completedItem = page.locator('[data-testid="info-stat-completed"]');
         await expect(completedItem).toContainText('1');
 
         // ReposView throttles process-event refreshes; give WS connect/subscription time to settle.
@@ -120,10 +119,10 @@ test.describe('Repo real-time: process status change', () => {
         await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
         await page.click('.repo-sub-tab[data-subtab="settings"]');
-        await expect(page.locator('.meta-grid').first()).toBeVisible();
+        await expect(page.locator('[data-testid="settings-content-panel"]')).toBeVisible();
 
         // Verify running=1 in stats
-        const runningItem = page.locator('.meta-item', { hasText: 'Running' });
+        const runningItem = page.locator('[data-testid="info-stat-running"]');
         await expect(runningItem).toContainText('1');
 
         // Allow WS connection to settle
