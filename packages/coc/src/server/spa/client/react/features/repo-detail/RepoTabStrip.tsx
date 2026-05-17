@@ -111,6 +111,14 @@ function RepoQueueStatusIndicator({
     );
 }
 
+/** Display name for a workspace: prefix agent name for container repos to disambiguate same-named repos across agents. */
+export function getRepoDisplayName(ws: any): string {
+    if (ws.agentName) {
+        return `${ws.agentName}:${ws.name}`;
+    }
+    return ws.name;
+}
+
 export interface RepoTabStripProps {
     repos: RepoData[];
     selectedRepoId: string | null;
@@ -632,8 +640,12 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
             setOverflowHighlight(prev => Math.max(prev - 1, 0));
         } else if (e.key === 'Enter' && overflowHighlight >= 0 && overflowHighlight < flatFilteredRepos.length) {
             e.preventDefault();
-            onSelect(flatFilteredRepos[overflowHighlight].workspace.id);
+            const targetWs = flatFilteredRepos[overflowHighlight].workspace;
+            if (targetWs.agentId) dispatch({ type: 'SET_CURRENT_AGENT', agentId: targetWs.agentId });
+            const sw = targetWs.agentId && appState.currentAgentId !== targetWs.agentId;
+            onSelect(targetWs.id);
             setOverflowOpen(false);
+            if (sw && targetWs.id === selectedRepoId) onRefresh();
         }
     };
 
@@ -641,12 +653,12 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
 
     const renderTab = (repo: RepoData) => {
         const ws = repo.workspace;
-        const isSelected = ws.id === selectedRepoId;
+        const isSelected = ws.id === selectedRepoId && (!ws.agentId || !appState.currentAgentId || ws.agentId === appState.currentAgentId);
         const unseenCount = unseenCounts[ws.id] ?? 0;
         const color = ws.color || '#848484';
         const dotShape = (repo.gitInfoLoading || repo.gitInfo?.isGitRepo !== false) ? 'rounded-full' : 'rounded-sm';
         const queueStatus = repoQueueStatusMap[ws.id] ?? 'idle';
-        const accessibleLabel = getRepoQueueAccessibleLabel(ws.name, queueStatus);
+        const accessibleLabel = getRepoQueueAccessibleLabel(getRepoDisplayName(ws), queueStatus);
         const showBefore = repoDropIndicator?.targetId === ws.id && repoDropIndicator.position === 'before';
         const showAfter = repoDropIndicator?.targetId === ws.id && repoDropIndicator.position === 'after';
         const isDragging = draggedRepoId === ws.id;
@@ -683,7 +695,10 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                             event.preventDefault();
                             return;
                         }
+                        const switchingAgent = ws.agentId && appState.currentAgentId !== ws.agentId;
+                        if (ws.agentId) dispatch({ type: 'SET_CURRENT_AGENT', agentId: ws.agentId });
                         onSelect(ws.id);
+                        if (switchingAgent && ws.id === selectedRepoId) onRefresh();
                     }}
                     onContextMenu={e => {
                         e.preventDefault();
@@ -703,7 +718,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                         isSelected={isSelected}
                         testId="repo-tab-dot"
                     />
-                    <span className="max-w-[100px] truncate">{ws.name}</span>
+                    <span className="max-w-[140px] truncate">{getRepoDisplayName(ws)}</span>
                     {unseenCount > 0 && (
                         <span
                             className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-[3px] rounded-full bg-[#d16969] text-white text-[8px] font-semibold flex items-center justify-center leading-none"
@@ -729,7 +744,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                 className="inline-flex items-center gap-1.5 px-2.5 h-7 text-xs whitespace-nowrap shrink-0"
             >
                 <span className="inline-block w-3 h-3" />
-                <span className="max-w-[100px] truncate">{ws.name}</span>
+                <span className="max-w-[140px] truncate">{getRepoDisplayName(ws)}</span>
             </span>
         );
     };
@@ -840,9 +855,14 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                                         onRefresh();
                                                     }
                                                 }}
+                                                onContextMenu={e => {
+                                                    e.preventDefault();
+                                                    dispatch({ type: 'SET_CURRENT_AGENT', agentId });
+                                                    setContextMenu({ repoId: ws.id, x: e.clientX, y: e.clientY });
+                                                }}
                                             >
                                                 <RepoQueueStatusIndicator status={queueStatus} color={color} idleShape="rounded-full" isSelected={isSelected} testId="agent-repo-dot" />
-                                                <span className="truncate">{ws.name}</span>
+                                                <span className="truncate">{getRepoDisplayName(ws)}</span>
                                                 {unseenCount > 0 && (
                                                     <span className="ml-auto min-w-[14px] h-[14px] px-[3px] rounded-full bg-[#d16969] text-white text-[8px] font-semibold flex items-center justify-center leading-none">
                                                         {unseenCount > 99 ? '99+' : unseenCount}
@@ -955,7 +975,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                                         onClick={() => { const sw = appState.currentAgentId !== agentId; dispatch({ type: 'SET_CURRENT_AGENT', agentId }); onSelect(ws.id); setOpenAgentDropdown(null); setAgentOverflowOpen(false); if (sw && ws.id === selectedRepoId) onRefresh(); }}
                                                     >
                                                         <RepoQueueStatusIndicator status={queueStatus} color={color} idleShape="rounded-full" isSelected={isSelected} testId="agent-overflow-repo-dot" />
-                                                        <span className="truncate">{ws.name}</span>
+                                                        <span className="truncate">{getRepoDisplayName(ws)}</span>
                                                     </button>
                                                 );
                                             })}
@@ -1049,12 +1069,12 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                         )}
                                         {groupRepos.map(repo => {
                                             const ws = repo.workspace;
-                                            const isSelected = ws.id === selectedRepoId;
+                                            const isSelected = ws.id === selectedRepoId && (!ws.agentId || !appState.currentAgentId || ws.agentId === appState.currentAgentId);
                                             const unseenCount = unseenCounts[ws.id] ?? 0;
                                             const color = ws.color || '#848484';
                                             const queueStatus = repoQueueStatusMap[ws.id] ?? 'idle';
                                             const dotShape = (repo.gitInfoLoading || repo.gitInfo?.isGitRepo !== false) ? 'rounded-full' : 'rounded-sm';
-                                            const accessibleLabel = getRepoQueueAccessibleLabel(ws.name, queueStatus);
+                                            const accessibleLabel = getRepoQueueAccessibleLabel(getRepoDisplayName(ws), queueStatus);
                                             const flatIdx = flatFilteredRepos.indexOf(repo);
                                             const isHighlighted = flatIdx === overflowHighlight;
                                             const orderIndex = allRepoIds.indexOf(ws.id);
@@ -1079,7 +1099,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                                         idleShape={dotShape}
                                                         testId="overflow-repo-dot"
                                                     />
-                                                    <span className="flex-1 truncate">{ws.name}</span>
+                                                    <span className="flex-1 truncate">{getRepoDisplayName(ws)}</span>
                                                     {isSelected && (
                                                         <span className="text-[#0078d4] dark:text-[#3794ff]" data-testid="overflow-selected-check">✓</span>
                                                     )}
@@ -1127,7 +1147,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                                             <button
                                                                 type="button"
                                                                 data-testid="overflow-move-up"
-                                                                aria-label={`Move ${ws.name} up`}
+                                                                aria-label={`Move ${getRepoDisplayName(ws)} up`}
                                                                 className="text-[10px] text-[#0078d4] dark:text-[#60b4ff] hover:underline disabled:opacity-40"
                                                                 disabled={orderIndex <= 0}
                                                                 onClick={() => moveRepoToIndex(ws.id, orderIndex - 1)}
@@ -1137,7 +1157,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                                             <button
                                                                 type="button"
                                                                 data-testid="overflow-move-down"
-                                                                aria-label={`Move ${ws.name} down`}
+                                                                aria-label={`Move ${getRepoDisplayName(ws)} down`}
                                                                 className="text-[10px] text-[#0078d4] dark:text-[#60b4ff] hover:underline disabled:opacity-40"
                                                                 disabled={orderIndex < 0 || orderIndex >= allRepoIds.length - 1}
                                                                 onClick={() => moveRepoToIndex(ws.id, orderIndex + 1)}
@@ -1158,7 +1178,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                                     role="menuitem"
                                                     aria-label={accessibleLabel}
                                                     title={accessibleLabel}
-                                                    onClick={() => { onSelect(ws.id); setOverflowOpen(false); }}
+                                                    onClick={() => { if (ws.agentId) dispatch({ type: 'SET_CURRENT_AGENT', agentId: ws.agentId }); const sw = ws.agentId && appState.currentAgentId !== ws.agentId; onSelect(ws.id); setOverflowOpen(false); if (sw && ws.id === selectedRepoId) onRefresh(); }}
                                                     onContextMenu={e => {
                                                         e.preventDefault();
                                                         setContextMenu({ repoId: ws.id, x: e.clientX, y: e.clientY });
@@ -1271,7 +1291,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                 <div
                         ref={contextMenuRef}
                         data-testid="repo-tab-context-menu"
-                        className="fixed z-50 min-w-[160px] bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded shadow-lg py-1"
+                        className="fixed z-[10001] min-w-[160px] bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded shadow-lg py-1"
                         role="menu"
                         style={{ left: contextMenu.x, top: contextMenu.y }}
                     >
@@ -1362,7 +1382,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                             className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
                             role="menuitem"
                             onClick={() => {
-                                navigator.clipboard.writeText(`${ws.name}: ${ws.rootPath ?? ''}${ws.description ? '\n' + ws.description : ''}`);
+                                navigator.clipboard.writeText(`${getRepoDisplayName(ws)}: ${ws.rootPath ?? ''}${ws.description ? '\n' + ws.description : ''}`);
                                 setContextMenu(null);
                             }}
                         >

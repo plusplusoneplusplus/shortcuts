@@ -2,14 +2,14 @@
  * Unit tests for the chrome of the redesigned PR review command queue:
  *  - PrQueueFilters (4 filter pills with counts and active state)
  *  - PrQueueGroupSection (labeled section wrapper)
- *  - PrQueueFooter (queue rule explanation)
+
  */
 
 import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { PrQueueFilters } from '../../../../../src/server/spa/client/react/features/pull-requests/PrQueueFilters';
 import { PrQueueGroupSection } from '../../../../../src/server/spa/client/react/features/pull-requests/PrQueueGroupSection';
-import { PrQueueFooter } from '../../../../../src/server/spa/client/react/features/pull-requests/PrQueueFooter';
+
 
 describe('PrQueueFilters', () => {
     it('renders all four pills with their counts', () => {
@@ -98,18 +98,4 @@ describe('PrQueueGroupSection', () => {
     });
 });
 
-describe('PrQueueFooter', () => {
-    it('renders the default queue-rule copy', () => {
-        render(<PrQueueFooter />);
-        const footer = screen.getByTestId('pr-queue-footer');
-        expect(footer.textContent).toContain('Queue rule');
-        expect(footer.textContent).toContain('release branches');
-    });
 
-    it('honors label and body overrides', () => {
-        render(<PrQueueFooter label="Rule:" body="custom body" />);
-        const footer = screen.getByTestId('pr-queue-footer');
-        expect(footer.textContent).toContain('Rule:');
-        expect(footer.textContent).toContain('custom body');
-    });
-});

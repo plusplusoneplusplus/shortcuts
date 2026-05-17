@@ -127,10 +127,10 @@ describe('successful fetch', () => {
         expect(screen.getByTestId('pr-queue-filter-ready')).toBeInTheDocument();
     });
 
-    it('renders the queue footer with the AI prioritization rule', async () => {
+    it('does not render queue footer (removed)', async () => {
         mockFetchOk([]);
         await act(async () => { await renderTab(); });
-        expect(screen.getByTestId('pr-queue-footer').textContent).toMatch(/Queue rule/i);
+        expect(screen.queryByTestId('pr-queue-footer')).not.toBeInTheDocument();
     });
 
     it('shows empty state when no PRs returned', async () => {

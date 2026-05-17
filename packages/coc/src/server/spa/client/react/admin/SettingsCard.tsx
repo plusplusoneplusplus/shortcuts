@@ -26,6 +26,7 @@ export interface SettingsCardProps {
 const badgeVariant: Record<string, string> = {
     Global: 'ar-badge-accent',
     Advanced: 'ar-badge-warning',
+    Container: 'ar-badge-success',
 };
 
 export function SettingsCard({

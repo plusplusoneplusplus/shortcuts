@@ -412,10 +412,10 @@ test.describe('Sub-tab Navigation', () => {
         await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
-        // Navigate to Settings sub-tab and verify meta-grid is visible
+        // Navigate to Settings sub-tab and verify settings content panel is visible
         await page.click('button[data-subtab="settings"]');
         await expect(page.locator('button[data-subtab="settings"]')).toHaveClass(/active/);
-        await expect(page.locator('.meta-grid')).toBeVisible();
+        await expect(page.locator('[data-testid="settings-content-panel"]')).toBeVisible();
     });
 
     test('switch to Workflows tab', async ({ page, serverUrl }) => {
@@ -533,26 +533,24 @@ test.describe('Info Tab Content', () => {
         await page.click('[data-tab="repos"]');
         await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-        // Click repo to show detail, then navigate to Settings sub-tab to see meta-grid
+        // Click repo to show detail, then navigate to Settings sub-tab to see workspace card
         await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
         await page.click('button[data-subtab="settings"]');
-        await expect(page.locator('.meta-grid')).toBeVisible();
+        await expect(page.locator('[data-testid="info-workspace-card"]')).toBeVisible();
 
         // Verify path is displayed
-        const pathCell = page.locator('.meta-path');
-        await expect(pathCell.first()).toContainText(testWorkspacePath('info-repo'));
+        await expect(page.locator('[data-testid="info-workspace-card"]')).toContainText(testWorkspacePath('info-repo'));
 
         // Verify color dot and color value are shown (Green #107c10 — may render as hex or rgb)
-        const colorItem = page.locator('.meta-item', { hasText: 'Color' });
-        await expect(colorItem).toBeVisible();
-        await expect(colorItem.locator('.repo-color-dot')).toHaveAttribute('style', /#107c10|rgb\s*\(\s*16\s*,\s*124\s*,\s*16\s*\)/);
-        await expect(colorItem).toContainText('#107c10');
+        const workspaceCard = page.locator('[data-testid="info-workspace-card"]');
+        await expect(workspaceCard).toBeVisible();
+        await expect(workspaceCard.locator('.repo-color-dot')).toHaveAttribute('style', /#107c10|rgb\s*\(\s*16\s*,\s*124\s*,\s*16\s*\)/);
+        await expect(workspaceCard).toContainText('#107c10');
 
         // Verify pipeline and task count cells exist
-        await expect(page.locator('.meta-item', { hasText: 'Workflows' })).toBeVisible();
-        // 'Plans' label — filter out 'Plans Folder' row which may also appear
-        await expect(page.locator('.meta-item', { hasText: 'Plans' }).filter({ hasNotText: 'Folder' })).toBeVisible();
+        await expect(page.locator('[data-testid="info-stat-workflows"]')).toBeVisible();
+        await expect(page.locator('[data-testid="info-stat-plans"]')).toBeVisible();
     });
 
     test('git info displays branch', async ({ page, serverUrl }) => {
@@ -570,12 +568,12 @@ test.describe('Info Tab Content', () => {
             await page.locator('[data-testid="repo-tab"]').first().click();
             await expect(page.locator('#repo-detail-content')).toBeVisible();
             await page.click('button[data-subtab="settings"]');
-            await expect(page.locator('.meta-grid')).toBeVisible();
+            await expect(page.locator('[data-testid="info-workspace-card"]')).toBeVisible();
 
             // Branch cell should show a real branch name (main or master)
-            const branchItem = page.locator('.meta-item', { hasText: 'Branch' });
-            await expect(branchItem).toBeVisible();
-            await expect(branchItem.locator('span').last()).toContainText(/main|master/);
+            const workspaceCard = page.locator('[data-testid="info-workspace-card"]');
+            await expect(workspaceCard).toBeVisible();
+            await expect(workspaceCard).toContainText(/main|master/);
         } finally {
             safeRmSync(tmpDir);
         }
@@ -595,17 +593,17 @@ test.describe('Info Tab Content', () => {
         await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
 
-        // Click repo then navigate to Settings sub-tab to see meta grid
+        // Click repo then navigate to Settings sub-tab to see stats
         await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
         await page.click('button[data-subtab="settings"]');
-        await expect(page.locator('.meta-grid')).toBeVisible();
+        await expect(page.locator('[data-testid="settings-content-panel"]')).toBeVisible();
 
-        const completedItem = page.locator('.meta-item', { hasText: 'Completed' });
+        const completedItem = page.locator('[data-testid="info-stat-completed"]');
         await expect(completedItem).toContainText('3');
-        const failedItem = page.locator('.meta-item', { hasText: 'Failed' });
+        const failedItem = page.locator('[data-testid="info-stat-failed"]');
         await expect(failedItem).toContainText('1');
-        const runningItem = page.locator('.meta-item', { hasText: 'Running' });
+        const runningItem = page.locator('[data-testid="info-stat-running"]');
         await expect(runningItem).toContainText('0');
     });
 
@@ -628,7 +626,7 @@ test.describe('Info Tab Content', () => {
         await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
         await page.click('button[data-subtab="settings"]');
-        await expect(page.locator('.meta-grid')).toBeVisible();
+        await expect(page.locator('[data-testid="settings-content-panel"]')).toBeVisible();
 
         // Wait for recent processes to load
         const processList = page.locator('#repo-processes-list');

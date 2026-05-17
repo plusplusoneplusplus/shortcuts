@@ -12,6 +12,7 @@
 
 import * as http from 'http';
 import * as https from 'https';
+import * as net from 'net';
 import { URL } from 'url';
 
 export interface BridgeEntry {
@@ -47,6 +48,11 @@ export class TunnelBridge {
         const localPort = this.nextPort++;
         const server = http.createServer((req, res) => {
             this.proxyToRemote(remoteUrl, req, res);
+        });
+
+        // Forward WebSocket upgrades through the tunnel
+        server.on('upgrade', (req, socket, head) => {
+            this.proxyUpgrade(remoteUrl, req, socket as net.Socket, head);
         });
 
         await new Promise<void>((resolve, reject) => {
@@ -138,5 +144,79 @@ export class TunnelBridge {
         });
 
         incomingReq.pipe(proxyReq);
+    }
+
+    /**
+     * Proxy a WebSocket upgrade request through the tunnel.
+     * Opens a raw TCP connection to the remote, sends the HTTP upgrade, then
+     * pipes the two sockets together for bidirectional data flow.
+     */
+    private proxyUpgrade(
+        remoteUrl: string,
+        req: http.IncomingMessage,
+        clientSocket: net.Socket,
+        head: Buffer,
+    ): void {
+        const targetPath = req.url || '/';
+        const url = new URL(targetPath, remoteUrl);
+        const isHttps = url.protocol === 'https:';
+        const transport = isHttps ? https : http;
+        const port = url.port ? parseInt(url.port) : (isHttps ? 443 : 80);
+
+        const headers: Record<string, string | string[] | undefined> = {
+            ...req.headers,
+            host: url.host,
+        };
+
+        const proxyReq = transport.request({
+            hostname: url.hostname,
+            port,
+            path: url.pathname + url.search,
+            method: 'GET',
+            headers,
+        });
+
+        proxyReq.on('upgrade', (_proxyRes, proxySocket, proxyHead) => {
+            // Send back the 101 to the local client
+            clientSocket.write(
+                'HTTP/1.1 101 Switching Protocols\r\n' +
+                'Upgrade: websocket\r\n' +
+                'Connection: Upgrade\r\n' +
+                (_proxyRes.headers['sec-websocket-accept']
+                    ? `Sec-WebSocket-Accept: ${_proxyRes.headers['sec-websocket-accept']}\r\n`
+                    : '') +
+                '\r\n'
+            );
+
+            if (proxyHead && proxyHead.length > 0) {
+                clientSocket.write(proxyHead);
+            }
+            if (head && head.length > 0) {
+                proxySocket.write(head);
+            }
+
+            // Bidirectional pipe
+            proxySocket.pipe(clientSocket);
+            clientSocket.pipe(proxySocket);
+
+            proxySocket.on('error', () => clientSocket.destroy());
+            clientSocket.on('error', () => proxySocket.destroy());
+        });
+
+        proxyReq.on('response', (res) => {
+            // Upgrade wasn't accepted — send back the HTTP response and close
+            const statusLine = `HTTP/1.1 ${res.statusCode} ${res.statusMessage}\r\n`;
+            const headerLines = Object.entries(res.headers)
+                .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+                .join('\r\n');
+            clientSocket.write(statusLine + headerLines + '\r\n\r\n');
+            res.pipe(clientSocket);
+        });
+
+        proxyReq.on('error', () => {
+            clientSocket.destroy();
+        });
+
+        proxyReq.end();
     }
 }

@@ -17,6 +17,12 @@ const skills: SkillItem[] = [
     { name: 'go-deep', description: 'Advanced research and verification' },
 ];
 
+const skillsWithMeta: SkillItem[] = [
+    ...skills,
+    { name: 'loop', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
+    { name: 'model', description: 'Switch AI model' },
+];
+
 /** Trigger the menu by simulating typing "/im" at position 3 */
 function openMenu(result: ReturnType<typeof useSlashCommands>) {
     act(() => {
@@ -152,6 +158,52 @@ describe('useSlashCommands', () => {
 
         // cursor = 0 + 1 + 7 + 1 = 9
         expect(setValue).toHaveBeenCalledWith('/go-deep ', 9);
+    });
+
+    // activeCommandHint tests
+    describe('activeCommandHint', () => {
+        it('is null when input is empty', () => {
+            const { result } = renderHook(() => useSlashCommands(skillsWithMeta));
+            expect(result.current.activeCommandHint).toBeNull();
+        });
+
+        it('returns args when input is exactly /loop', () => {
+            const { result } = renderHook(() => useSlashCommands(skillsWithMeta));
+            act(() => { result.current.handleInputChange('/loop', 5); });
+            expect(result.current.activeCommandHint).toBe('[interval] <prompt>');
+        });
+
+        it('returns args when input is /loop with trailing space (separator)', () => {
+            const { result } = renderHook(() => useSlashCommands(skillsWithMeta));
+            act(() => { result.current.handleInputChange('/loop ', 6); });
+            expect(result.current.activeCommandHint).toBe('[interval] <prompt>');
+        });
+
+        it('is null when user has typed an argument after /loop', () => {
+            const { result } = renderHook(() => useSlashCommands(skillsWithMeta));
+            act(() => { result.current.handleInputChange('/loop 5m', 8); });
+            expect(result.current.activeCommandHint).toBeNull();
+        });
+
+        it('is null for /model (no args defined)', () => {
+            const { result } = renderHook(() => useSlashCommands(skillsWithMeta));
+            act(() => { result.current.handleInputChange('/model', 6); });
+            expect(result.current.activeCommandHint).toBeNull();
+        });
+
+        it('is null when skills list has no loop entry', () => {
+            const { result } = renderHook(() => useSlashCommands(skills));
+            act(() => { result.current.handleInputChange('/loop', 5); });
+            expect(result.current.activeCommandHint).toBeNull();
+        });
+
+        it('clears after typing a real argument', () => {
+            const { result } = renderHook(() => useSlashCommands(skillsWithMeta));
+            act(() => { result.current.handleInputChange('/loop ', 6); });
+            expect(result.current.activeCommandHint).toBe('[interval] <prompt>');
+            act(() => { result.current.handleInputChange('/loop 5m', 8); });
+            expect(result.current.activeCommandHint).toBeNull();
+        });
     });
 
     // T8: cursor accounts for text before the slash

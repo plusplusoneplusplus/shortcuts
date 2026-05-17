@@ -30,6 +30,7 @@ import { isContainerMode } from '../utils/config';
 
 const StorageSection = lazy(() => import('./StorageSection'));
 const AgentManagementPanel = lazy(() => import('../repos/AgentManagementPanel').then(m => ({ default: m.AgentManagementPanel })));
+const IMSettingsSection = lazy(() => import('./IMSettingsSection').then(m => ({ default: m.IMSettingsSection })));
 
 function formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
@@ -46,7 +47,7 @@ interface Stats {
 }
 
 const VALID_OUTPUT_OPTIONS = ['table', 'json', 'csv', 'markdown'] as const;
-const TAB_LABELS: Record<AdminSubTab, string> = { settings: 'Settings', providers: 'Providers', data: 'Data', server: 'Server', prompts: 'Prompts', database: 'Database', agents: 'Agents' };
+const TAB_LABELS: Record<AdminSubTab, string> = { settings: 'Settings', providers: 'Providers', data: 'Data', server: 'Server', prompts: 'Prompts', database: 'Database', agents: 'Agents', messaging: 'Messaging' };
 const TAB_ICONS: Record<AdminSubTab, string> = {
     settings: '⚙',
     providers: '◇',
@@ -55,6 +56,7 @@ const TAB_ICONS: Record<AdminSubTab, string> = {
     prompts: '✎',
     database: '◫',
     agents: '◉',
+    messaging: '✉',
 };
 const TAB_DESCRIPTIONS: Record<AdminSubTab, string> = {
     settings: 'Configure how this CoC server runs — model, chat, appearance, and feature flags.',
@@ -64,6 +66,7 @@ const TAB_DESCRIPTIONS: Record<AdminSubTab, string> = {
     prompts: 'Read-only view of the system prompts the assistant uses.',
     database: 'Browse the underlying SQLite tables that back CoC.',
     agents: 'Manage container-mode agents and their lifecycles.',
+    messaging: 'Configure container messaging integrations (e.g. WhatsApp).',
 };
 // ── Settings sub-tabs (rendered as an underline tab row inside the
 // Settings page, matching the Linear-style design reference). Each entry
@@ -758,7 +761,7 @@ export function AdminPanel() {
     const resolved = config?.resolved ?? {};
 
     const baseTabs: AdminSubTab[] = ['settings', 'providers', 'data', 'server', 'prompts', 'database'];
-    const tabs: AdminSubTab[] = isContainerMode() ? [...baseTabs, 'agents'] : baseTabs;
+    const tabs: AdminSubTab[] = isContainerMode() ? [...baseTabs, 'agents', 'messaging'] : baseTabs;
 
     const activeTabLabel = TAB_LABELS[activeTab];
 
@@ -1536,6 +1539,12 @@ export function AdminPanel() {
                         {activeTab === 'agents' && isContainerMode() && (
                             <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
                                 <AgentManagementPanel />
+                            </Suspense>
+                        )}
+
+                        {activeTab === 'messaging' && isContainerMode() && (
+                            <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
+                                <IMSettingsSection />
                             </Suspense>
                         )}
                     </div>

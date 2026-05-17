@@ -285,7 +285,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         ref={richTextRef}
                         disabled={sending}
                         value={input}
-                        ghostText={autocomplete.completion}
+                        ghostText={slashCommands.activeCommandHint ?? autocomplete.completion}
                         placeholder="Reply to CoC, or type / for commands..."
                         // border-transparent + focus:ring-transparent neutralize the
                         // base RichTextInput's 1px gray border and default blue

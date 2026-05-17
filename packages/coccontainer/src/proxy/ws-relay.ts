@@ -16,6 +16,8 @@ export interface WSRelayMessage {
  */
 export class WebSocketRelay extends EventEmitter {
     private connections = new Map<string, WebSocket.WebSocket>();
+    private reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    private agentMeta = new Map<string, { name: string; address: string; wsPath: string }>();
 
     /**
      * Connect to an agent's WebSocket endpoint.
@@ -25,11 +27,13 @@ export class WebSocketRelay extends EventEmitter {
             this.disconnect(agentId);
         }
 
+        this.agentMeta.set(agentId, { name: agentName, address: agentAddress, wsPath });
         const wsUrl = agentAddress.replace(/^http/, 'ws') + wsPath;
         const ws = new WebSocket.WebSocket(wsUrl);
 
         ws.on('open', () => {
             this.connections.set(agentId, ws);
+            console.log(`[ws-relay] Connected to agent ${agentName} (${agentId}) at ${wsUrl}`);
             this.emit('connected', agentId);
         });
 
@@ -44,13 +48,29 @@ export class WebSocketRelay extends EventEmitter {
 
         ws.on('close', () => {
             this.connections.delete(agentId);
+            console.log(`[ws-relay] Disconnected from agent ${agentName} (${agentId}), reconnecting in 5s`);
             this.emit('disconnected', agentId);
+            this.scheduleReconnect(agentId);
         });
 
-        ws.on('error', () => {
+        ws.on('error', (err) => {
             this.connections.delete(agentId);
-            // Don't re-emit — just log silently. Unhandled 'error' events crash Node.
+            console.error(`[ws-relay] Error for agent ${agentName} (${agentId}):`, err.message);
+            this.scheduleReconnect(agentId);
         });
+    }
+
+    private scheduleReconnect(agentId: string): void {
+        if (this.reconnectTimers.has(agentId)) return;
+        const meta = this.agentMeta.get(agentId);
+        if (!meta) return;
+        this.reconnectTimers.set(agentId, setTimeout(() => {
+            this.reconnectTimers.delete(agentId);
+            if (!this.connections.has(agentId)) {
+                console.log(`[ws-relay] Reconnecting to agent ${meta.name} (${agentId})`);
+                this.connect(agentId, meta.name, meta.address, meta.wsPath);
+            }
+        }, 5000));
     }
 
     /**
@@ -69,6 +89,9 @@ export class WebSocketRelay extends EventEmitter {
      * Disconnect from an agent.
      */
     disconnect(agentId: string): void {
+        const timer = this.reconnectTimers.get(agentId);
+        if (timer) { clearTimeout(timer); this.reconnectTimers.delete(agentId); }
+        this.agentMeta.delete(agentId);
         const ws = this.connections.get(agentId);
         if (ws) {
             ws.close();

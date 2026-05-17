@@ -23,7 +23,7 @@ import { PullRequestDetail } from './PullRequestDetail';
 import { PullRequestRow } from './PullRequestRow';
 import { PrQueueFilters } from './PrQueueFilters';
 import { PrQueueGroupSection } from './PrQueueGroupSection';
-import { PrQueueFooter } from './PrQueueFooter';
+
 import { ProviderConfigPanel } from './ProviderConfigPanel';
 import { BatchCommandPanel } from './BatchCommandPanel';
 import {
@@ -544,7 +544,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                     </div>
                 )}
 
-                {!queueCollapsed && <PrQueueFooter />}
+
             </div>
         </>
     );
