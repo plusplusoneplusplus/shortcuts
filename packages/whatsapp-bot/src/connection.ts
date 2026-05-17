@@ -49,11 +49,17 @@ export async function createBaileysConnection(opts: ConnectionOptions, attempt =
             const statusCode = (update.lastDisconnect?.error as any)?.output?.statusCode;
             const loggedOut = statusCode === DisconnectReason.loggedOut;
             opts.onDisconnected(loggedOut);
-            if (!loggedOut && attempt < MAX_RETRIES) {
+            if (loggedOut) {
+                // Clear stale session so next connect gets a fresh QR
+                const fs = require('fs');
+                try { fs.rmSync(opts.sessionDir, { recursive: true, force: true }); } catch { /* ignore */ }
+                console.log('[whatsapp-bot] Session cleared after logout, reconnecting for fresh QR...');
+                setTimeout(() => createBaileysConnection(opts, 0), BASE_DELAY_MS);
+            } else if (attempt < MAX_RETRIES) {
                 const delay = BASE_DELAY_MS * Math.pow(2, attempt);
                 console.log(`[whatsapp-bot] Reconnecting in ${delay / 1000}s (attempt ${attempt + 1}/${MAX_RETRIES})...`);
                 setTimeout(() => createBaileysConnection(opts, attempt + 1), delay);
-            } else if (attempt >= MAX_RETRIES) {
+            } else {
                 const msg = `Connection failed after ${MAX_RETRIES} attempts`;
                 console.error(`[whatsapp-bot] ${msg}`);
                 opts.onError?.(msg);
