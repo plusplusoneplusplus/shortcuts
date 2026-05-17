@@ -80,6 +80,31 @@ export class WhatsAppBot {
         return result.key.id ?? '';
     }
 
+    /** List all WhatsApp groups the account participates in. */
+    async listGroups(): Promise<Array<{ jid: string; name: string }>> {
+        if (!this.sock) throw new Error('WhatsAppBot is not started');
+        const groups = await this.sock.groupFetchAllParticipating();
+        return Object.entries(groups).map(([jid, meta]) => ({
+            jid,
+            name: meta.subject ?? jid,
+        }));
+    }
+
+    /** Create a new WhatsApp group and return its JID. */
+    async createGroup(name: string): Promise<string> {
+        if (!this.sock) throw new Error('WhatsAppBot is not started');
+        this.setStatus('creating-group');
+        try {
+            const result = await this.sock.groupCreate(name, []);
+            console.log(`[whatsapp-bot] Created group "${name}" → ${result.id}`);
+            this.setStatus('connected');
+            return result.id;
+        } catch (err) {
+            this.setStatus('connected');
+            throw err;
+        }
+    }
+
     /** Whether the bot is currently connected. */
     isConnected(): boolean {
         return this._status === 'connected';

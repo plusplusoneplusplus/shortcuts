@@ -28,7 +28,7 @@ export interface BotOptions {
 }
 
 /** Connection status of the bot. */
-export type BotStatus = 'disconnected' | 'connecting' | 'qr-pending' | 'connected';
+export type BotStatus = 'disconnected' | 'connecting' | 'qr-pending' | 'connected' | 'creating-group';
 
 /** Minimal socket interface consumed by WhatsAppBot (subset of Baileys). */
 export interface WASocket {
@@ -37,5 +37,7 @@ export interface WASocket {
         off?(event: string, handler: (...args: unknown[]) => void): void;
     };
     sendMessage(jid: string, content: { text: string }): Promise<{ key: { id?: string } }>;
+    groupCreate(subject: string, participants: string[]): Promise<{ id: string; [k: string]: unknown }>;
+    groupFetchAllParticipating(): Promise<Record<string, { subject?: string; [k: string]: unknown }>>;
     end(error?: Error): void;
 }

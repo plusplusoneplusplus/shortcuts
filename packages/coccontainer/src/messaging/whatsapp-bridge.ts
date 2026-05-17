@@ -42,6 +42,11 @@ export class WhatsAppBridge {
             sessionDir: this.opts.config.sessionDir,
             deviceName: this.opts.config.userName,
             onMessage: (msg) => this.onInboundMessage(msg),
+            onStatusChange: (status) => {
+                if (status === 'connected') {
+                    void this.ensureGroup();
+                }
+            },
         });
         await this.bot.start();
 
@@ -72,7 +77,13 @@ export class WhatsAppBridge {
         };
     }
 
-    /** Update mutable config fields and reconnect the bot. */
+    /** List WhatsApp groups (for group picker UI). */
+    async listGroups(): Promise<Array<{ jid: string; name: string }>> {
+        if (!this.bot) return [];
+        return this.bot.listGroups();
+    }
+
+    /** Update mutable config fields. */
     async updateConfig(patch: { userName?: string; groupJid?: string }): Promise<void> {
         if (patch.userName !== undefined) this.opts.config.userName = patch.userName;
         if (patch.groupJid !== undefined) this.opts.config.groupJid = patch.groupJid;
@@ -81,15 +92,63 @@ export class WhatsAppBridge {
     /** Stop the current bot, clear session, and reconnect (for re-pairing). */
     async reconnect(): Promise<void> {
         await this.bot?.stop();
+        // Clear groupJid so ensureGroup creates a fresh one after re-pairing
+        this.opts.config.groupJid = undefined;
         const fs = await import('fs');
-        // Clear session dir so the next connect forces a fresh QR pairing
         try { fs.rmSync(this.opts.config.sessionDir, { recursive: true, force: true }); } catch { /* ignore */ }
         this.bot = new WhatsAppBot({
             sessionDir: this.opts.config.sessionDir,
             deviceName: this.opts.config.userName,
             onMessage: (msg) => this.onInboundMessage(msg),
+            onStatusChange: (status) => {
+                if (status === 'connected') {
+                    void this.ensureGroup();
+                }
+            },
         });
         await this.bot.start();
+    }
+
+    /**
+     * Auto-create a WhatsApp group if none is configured.
+     * Called automatically when the bot connects.
+     */
+    private async ensureGroup(): Promise<void> {
+        if (this.opts.config.groupJid) return; // already set
+        if (!this.bot) return;
+        try {
+            const groupName = `${this.opts.config.userName || 'CoC'} Bridge`;
+            console.log(`[whatsapp-bridge] Creating group "${groupName}"...`);
+            const jid = await this.bot.createGroup(groupName);
+            this.opts.config.groupJid = jid;
+            console.log(`[whatsapp-bridge] Group created: ${jid}`);
+            // Persist to config file
+            await this.persistGroupJid(jid);
+        } catch (err) {
+            console.error('[whatsapp-bridge] Failed to create group:', err);
+        }
+    }
+
+    /** Save groupJid to the config file so it persists across restarts. */
+    private async persistGroupJid(jid: string): Promise<void> {
+        try {
+            const fs = await import('fs');
+            const path = await import('path');
+            const jsYaml = await import('js-yaml');
+            const configPath = path.join(this.opts.dataDir, '..', 'config.yaml');
+            let doc: Record<string, any> = {};
+            try {
+                const raw = fs.readFileSync(configPath, 'utf8');
+                doc = (jsYaml.load(raw) as Record<string, any>) ?? {};
+            } catch { /* file doesn't exist yet */ }
+            if (!doc.messaging) doc.messaging = {};
+            if (!doc.messaging.whatsapp) doc.messaging.whatsapp = {};
+            doc.messaging.whatsapp.groupJid = jid;
+            fs.writeFileSync(configPath, jsYaml.dump(doc), 'utf8');
+            console.log(`[whatsapp-bridge] Saved groupJid to ${configPath}`);
+        } catch (err) {
+            console.error('[whatsapp-bridge] Failed to persist groupJid:', err);
+        }
     }
 
     // ── Outbound: CoC turn → WhatsApp ────────────────────

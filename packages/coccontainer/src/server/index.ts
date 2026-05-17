@@ -77,7 +77,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
     }
 
     // ── WhatsApp bridge (only when enabled) ─────────────
-    let whatsappBridge: { stop(): Promise<void>; getWhatsAppStatus(): { enabled: boolean; status: string; qr: string | null; error: string | null; groupJid?: string; userName: string }; updateConfig(patch: { userName?: string; groupJid?: string }): Promise<void>; reconnect(): Promise<void> } | undefined;
+    let whatsappBridge: { stop(): Promise<void>; getWhatsAppStatus(): { enabled: boolean; status: string; qr: string | null; error: string | null; groupJid?: string; userName: string }; updateConfig(patch: { userName?: string; groupJid?: string }): Promise<void>; reconnect(): Promise<void>; listGroups(): Promise<Array<{ jid: string; name: string }>> } | undefined;
     const waConfig = config.messaging?.whatsapp;
     if (waConfig?.enabled) {
         const { WhatsAppBridge } = await import('../messaging/whatsapp-bridge');
@@ -272,6 +272,18 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                     return sendJson(res, { ok: true, message: 'Reconnecting — scan QR when prompted' });
                 }
                 return sendJson(res, { ok: false, error: 'WhatsApp not enabled' });
+            }
+
+            if (url.pathname === '/api/container/messaging/groups' && req.method === 'GET') {
+                if (whatsappBridge) {
+                    try {
+                        const groups = await whatsappBridge.listGroups();
+                        return sendJson(res, { groups });
+                    } catch (err: any) {
+                        return sendJson(res, { groups: [], error: err.message });
+                    }
+                }
+                return sendJson(res, { groups: [], error: 'WhatsApp not enabled' });
             }
 
             // ── Agent-scoped proxy ──────────────────────────────

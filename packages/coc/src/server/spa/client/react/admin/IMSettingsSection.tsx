@@ -12,7 +12,7 @@ import QRCode from 'qrcode';
 
 interface WhatsAppStatus {
     enabled: boolean;
-    status: 'disconnected' | 'connecting' | 'qr-pending' | 'connected';
+    status: 'disconnected' | 'connecting' | 'qr-pending' | 'connected' | 'creating-group';
     qr: string | null;
     error: string | null;
     groupJid?: string;
@@ -75,6 +75,7 @@ function StatusDot({ status }: { status: WhatsAppStatus['status'] }) {
     const colors: Record<string, string> = {
         connected: 'bg-green-500',
         'qr-pending': 'bg-amber-500 animate-pulse',
+        'creating-group': 'bg-blue-500 animate-pulse',
         connecting: 'bg-blue-500 animate-pulse',
         disconnected: 'bg-gray-400',
     };
@@ -85,6 +86,7 @@ function StatusLabel({ status }: { status: WhatsAppStatus['status'] }) {
     const labels: Record<string, string> = {
         connected: 'Connected',
         'qr-pending': 'Waiting for QR scan',
+        'creating-group': 'Creating group…',
         connecting: 'Connecting…',
         disconnected: 'Not connected',
     };
@@ -264,9 +266,11 @@ export function IMSettingsSection() {
                         </div>
 
                         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                            <span className="text-[#616161] dark:text-[#999]">Group JID</span>
+                            <span className="text-[#616161] dark:text-[#999]">Group</span>
                             <span className="text-[#1e1e1e] dark:text-[#cccccc] font-mono text-[10px]">
-                                {status.groupJid || <span className="italic text-[#999]">not set</span>}
+                                {status.groupJid
+                                    ? status.groupJid
+                                    : <span className="italic text-[#999]">auto-created on pairing</span>}
                             </span>
                         </div>
                     </div>
@@ -290,6 +294,12 @@ export function IMSettingsSection() {
                             <p className="text-xs text-[#999] text-center max-w-[300px]">{status.error}</p>
                             <p className="text-xs text-[#999]">Check network connectivity and try restarting the container.</p>
                         </div>
+                    ) : status?.status === 'creating-group' ? (
+                        <div className="flex flex-col items-center gap-2 py-8">
+                            <Spinner size="md" />
+                            <p className="text-sm text-[#616161] dark:text-[#999]">Creating WhatsApp group…</p>
+                            <p className="text-xs text-[#999]">Phone paired! Setting up the bridge group now.</p>
+                        </div>
                     ) : status?.status === 'connecting' ? (
                         <div className="flex flex-col items-center gap-2 py-8">
                             <Spinner size="md" />
@@ -301,6 +311,9 @@ export function IMSettingsSection() {
                                 <span className="text-3xl">✓</span>
                             </div>
                             <p className="text-sm font-medium text-green-700 dark:text-green-400">WhatsApp is connected!</p>
+                            {status.groupJid && (
+                                <p className="text-xs text-[#999]">Group ready — messages will be bridged.</p>
+                            )}
                         </div>
                     ) : (
                         <div className="flex flex-col items-center gap-2 py-8">
