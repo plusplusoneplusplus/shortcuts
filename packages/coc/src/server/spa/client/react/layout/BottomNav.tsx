@@ -3,11 +3,12 @@
  * Renders only on viewports < 768px (mobile). Hidden on tablet/desktop.
  */
 
-import { useCallback, useLayoutEffect, useRef } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import type { DashboardTab } from '../types/dashboard';
 import { SHOW_WIKI_TAB } from './TopBar';
+import { isServersEnabled } from '../utils/config';
 
 // ── Inline SVG icon components (24×24, currentColor) ───────────────────
 
@@ -124,6 +125,38 @@ function TerminalIconFilled() {
     );
 }
 
+function ModelsIconOutline() {
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714a2.25 2.25 0 0 0 .659 1.591L19 14.5M14.25 3.104c.251.023.501.05.75.082M19 14.5l-1.47 4.41a2.25 2.25 0 0 1-2.133 1.59H8.603a2.25 2.25 0 0 1-2.133-1.59L5 14.5m14 0H5" />
+        </svg>
+    );
+}
+
+function ModelsIconFilled() {
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+            <path d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714a2.25 2.25 0 0 0 .659 1.591L19 14.5M14.25 3.104c.251.023.501.05.75.082M19 14.5l-1.47 4.41a2.25 2.25 0 0 1-2.133 1.59H8.603a2.25 2.25 0 0 1-2.133-1.59L5 14.5m14 0H5" />
+        </svg>
+    );
+}
+
+function ServerIconOutline() {
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 17.25v-.228a4.5 4.5 0 0 0-.12-1.03l-2.268-9.64a3.375 3.375 0 0 0-3.285-2.602H7.923a3.375 3.375 0 0 0-3.285 2.602l-2.268 9.64a4.5 4.5 0 0 0-.12 1.03v.228m19.5 0a3 3 0 0 1-3 3H5.25a3 3 0 0 1-3-3m19.5 0a3 3 0 0 0-3-3H5.25a3 3 0 0 0-3 3m16.5 0h.008v.008h-.008v-.008Zm-3 0h.008v.008h-.008v-.008Z" />
+        </svg>
+    );
+}
+
+function ServerIconFilled() {
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+            <path d="M4.08 5.227A3 3 0 0 1 6.979 3h10.042a3 3 0 0 1 2.899 2.227l2.13 8.076A5.249 5.249 0 0 0 18.75 12H5.25a5.249 5.249 0 0 0-3.3 1.303l2.13-8.076ZM3.75 15.75a3.75 3.75 0 0 0 0 7.5h16.5a3.75 3.75 0 0 0 0-7.5H3.75Zm13.5 4.5a1.125 1.125 0 1 0 0-2.25 1.125 1.125 0 0 0 0 2.25Zm3.375-1.125a1.125 1.125 0 1 1-2.25 0 1.125 1.125 0 0 1 2.25 0Z" />
+        </svg>
+    );
+}
+
 // ── Nav items ──────────────────────────────────────────────────────────
 
 interface NavItem {
@@ -137,12 +170,20 @@ const ALL_NAV_ITEMS: NavItem[] = [
     { tab: 'skills', label: 'Skills', icon: (active) => active ? <PuzzleIconFilled /> : <PuzzleIconOutline /> },
     { tab: 'memory', label: 'Memory', icon: (active) => active ? <BrainIconFilled /> : <BrainIconOutline /> },
     { tab: 'stats', label: 'Usage', icon: (active) => active ? <ChartBarIconFilled /> : <ChartBarIconOutline /> },
+    { tab: 'models', label: 'Models', icon: (active) => active ? <ModelsIconFilled /> : <ModelsIconOutline /> },
+    { tab: 'servers', label: 'Servers', icon: (active) => active ? <ServerIconFilled /> : <ServerIconOutline /> },
     { tab: 'logs', label: 'Logs', icon: (active) => active ? <TerminalIconFilled /> : <TerminalIconOutline /> },
 ];
 
-const NAV_ITEMS: NavItem[] = SHOW_WIKI_TAB
-    ? ALL_NAV_ITEMS.filter(item => item.tab !== 'logs')
-    : ALL_NAV_ITEMS.filter(item => item.tab !== 'wiki');
+function getNavItems(serversEnabled: boolean): NavItem[] {
+    let items = SHOW_WIKI_TAB
+        ? ALL_NAV_ITEMS.filter(item => item.tab !== 'logs')
+        : ALL_NAV_ITEMS.filter(item => item.tab !== 'wiki');
+    if (!serversEnabled) {
+        items = items.filter(item => item.tab !== 'servers');
+    }
+    return items;
+}
 
 // ── Contextual repo nav items (removed — handled by MobileTabBar in RepoDetail) ──
 
@@ -153,6 +194,8 @@ export function BottomNav() {
     const { isMobile } = useBreakpoint();
     const { selectedRepoId } = state;
     const navRef = useRef<HTMLElement>(null);
+    const serversEnabled = isServersEnabled();
+    const navItems = useMemo(() => getNavItems(serversEnabled), [serversEnabled]);
 
     // Nav is only visible on mobile when no repo is selected (MobileTabBar handles repo-level nav)
     const isNavVisible = isMobile && !selectedRepoId;
@@ -190,16 +233,16 @@ export function BottomNav() {
     return (
         <nav
             ref={navRef}
-            className="fixed top-10 left-0 right-0 z-[8000] h-12 flex items-center justify-around border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
+            className="fixed top-10 left-0 right-0 z-[8000] h-12 flex items-center overflow-x-auto border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]"
             aria-label="Mobile navigation"
             data-testid="bottom-nav"
         >
-            {NAV_ITEMS.map(({ tab, label, icon }) => {
+            {navItems.map(({ tab, label, icon }) => {
                 const active = state.activeTab === tab;
                 return (
                     <button
                         key={tab}
-                        className={`flex-1 h-full flex flex-col items-center justify-center gap-0.5 ${active ? 'text-[#0078d4] bg-[#0078d4]/10 dark:bg-[#0078d4]/15 rounded-lg' : 'text-[#616161] dark:text-[#999999]'}`}
+                        className={`flex-1 min-w-[3.5rem] h-full flex flex-col items-center justify-center gap-0.5 ${active ? 'text-[#0078d4] bg-[#0078d4]/10 dark:bg-[#0078d4]/15 rounded-lg' : 'text-[#616161] dark:text-[#999999]'}`}
                         data-tab={tab}
                         aria-current={active ? 'page' : undefined}
                         onClick={() => switchTab(tab)}

@@ -115,7 +115,8 @@ test.describe('Pull Requests tab — list', () => {
             await expect(page.locator('[data-testid="pr-queue-filter-mine"]')).toBeVisible({ timeout: 10000 });
             await expect(page.locator('[data-testid="pr-queue-filter-blocked"]')).toBeVisible({ timeout: 10000 });
             await expect(page.locator('[data-testid="pr-queue-filter-ready"]')).toBeVisible({ timeout: 10000 });
-            await expect(page.locator('[data-testid="pr-queue-footer"]')).toBeVisible({ timeout: 10000 });
+            // PrQueueFooter was removed — verify it's absent
+            await expect(page.locator('[data-testid="pr-queue-footer"]')).toHaveCount(0);
 
             // Three rows rendered
             await expect(page.locator('.pr-row')).toHaveCount(3, { timeout: 10000 });
