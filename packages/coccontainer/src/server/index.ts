@@ -293,7 +293,17 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
             wss.handleUpgrade(req, socket, head, (ws: import('ws').WebSocket) => {
                 const onMessage = (msg: { agentId: string; agentName: string; data: string }) => {
                     if (ws.readyState === 1) {
-                        ws.send(JSON.stringify(msg));
+                        // Parse the agent's JSON payload and inject agentId/agentName so the
+                        // browser's ProcessWebSocketConnection can pass isProcessEvent (which
+                        // requires a top-level `type` field). Sending the raw envelope
+                        // { agentId, agentName, data: "<json string>" } would fail that check
+                        // and silently drop every event in container mode.
+                        try {
+                            const parsed = JSON.parse(msg.data);
+                            ws.send(JSON.stringify({ ...parsed, agentId: msg.agentId, agentName: msg.agentName }));
+                        } catch {
+                            ws.send(JSON.stringify(msg));
+                        }
                     }
                 };
                 wsRelay.on('message', onMessage);
