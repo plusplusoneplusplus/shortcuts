@@ -146,15 +146,15 @@ describe('WhatsAppBridge', () => {
                 'http://localhost:4000/api/processes/proc-001?workspaceId=ws-frontend'
             );
             expect(lastBot().send).toHaveBeenCalledTimes(2);
-            // User turn — shows configured userName
+            // User turn — shows configured userName with icon
             expect(lastBot().send).toHaveBeenCalledWith(
                 'group@g.us',
-                '*CoC*\n*Chat:*\n  Agent: Agent-A\n  Repo: frontend\n  Title: Fix bug XYZ\n\n*Message:*\nFix the bug',
+                '💬 *CoC*\n*Chat:*\n  Agent: Agent-A\n  Repo: frontend\n  Title: Fix bug XYZ\n\n*Message:*\nFix the bug',
             );
-            // Assistant turn — shows "CoC Agent"
+            // Assistant turn — shows "CoC Agent" with icon
             expect(lastBot().send).toHaveBeenCalledWith(
                 'group@g.us',
-                '*CoC Agent*\n*Chat:*\n  Agent: Agent-A\n  Repo: frontend\n  Title: Fix bug XYZ\n\n*Message:*\nFixed the bug on line 42',
+                '🤖 *CoC Agent*\n*Chat:*\n  Agent: Agent-A\n  Repo: frontend\n  Title: Fix bug XYZ\n\n*Message:*\nFixed the bug on line 42',
             );
 
             fetchSpy.mockRestore();
@@ -184,7 +184,7 @@ describe('WhatsAppBridge', () => {
 
             expect(lastBot().send).toHaveBeenCalledWith(
                 'group@g.us',
-                '*You*\n*Chat:*\n  Agent: Agent-A\n  Repo: test\n\n*Message:*\nHello',
+                '💬 *You*\n*Chat:*\n  Agent: Agent-A\n  Repo: test\n\n*Message:*\nHello',
             );
 
             vi.restoreAllMocks();
@@ -213,7 +213,7 @@ describe('WhatsAppBridge', () => {
 
             expect(lastBot().send).toHaveBeenCalledWith(
                 'group@g.us',
-                '*CoC Agent*\n*Chat:*\n  Agent: Agent-A\n  Repo: test\n\n*Message:*\nDone',
+                '🤖 *CoC Agent*\n*Chat:*\n  Agent: Agent-A\n  Repo: test\n\n*Message:*\nDone',
             );
 
             vi.restoreAllMocks();

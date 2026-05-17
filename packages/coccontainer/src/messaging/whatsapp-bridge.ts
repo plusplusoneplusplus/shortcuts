@@ -264,20 +264,19 @@ export class WhatsAppBridge {
 
     /** Format a structured WhatsApp message with two sections. */
     formatOutboundMessage(opts: { role: string; agent: string; repo: string; title: string; content: string; userName?: string }): string {
+        const icon = opts.role === 'user' ? '💬' : '🤖';
         const sender = opts.role === 'user'
             ? (opts.userName || 'You')
             : 'CoC Agent';
 
-        const chatSection = [`*${sender}*`, '*Chat:*'];
+        const chatSection = [`${icon} *${sender}*`, '*Chat:*'];
         chatSection.push(`  Agent: ${opts.agent}`);
         chatSection.push(`  Repo: ${opts.repo}`);
         if (opts.title) {
             chatSection.push(`  Title: ${opts.title}`);
         }
 
-        const messageSection = ['*Message:*', opts.content];
-
-        return chatSection.join('\n') + '\n\n' + messageSection.join('\n');
+        return chatSection.join('\n') + '\n\n*Message:*\n' + opts.content;
     }
 
     // ── Inbound: WhatsApp message → CoC session ──────────
