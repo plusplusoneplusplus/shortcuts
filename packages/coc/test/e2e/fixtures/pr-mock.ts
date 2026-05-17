@@ -12,21 +12,11 @@ import {
     MOCK_PR_THREADS,
 } from './pr-fixtures.js';
 
-interface MockPrCommit {
-    sha: string;
-    shortSha: string;
-    title: string;
-    author?: { displayName?: string; email?: string };
-    committedAt?: string;
-    url?: string;
-}
-
 export interface PrMockOptions {
     pullRequests?: PullRequest[];
     prDetail?: PullRequest;
     threads?: CommentThread[];
     reviewers?: Reviewer[];
-    commits?: MockPrCommit[];
     /** Body for GET /pull-requests/:id/diff (text/plain). Defaults to empty. */
     diff?: string;
     /** Body for GET /pull-requests/:id/commits. Defaults to `MOCK_PR_COMMITS`. */
@@ -47,16 +37,6 @@ export async function setupPrRoutes(
         prDetail = MOCK_PR_OPEN,
         threads = MOCK_PR_THREADS,
         reviewers = [],
-        commits = [
-            {
-                sha: 'abcdef1234567890',
-                shortSha: 'abcdef1',
-                title: 'feat: detailed open PR',
-                author: { displayName: 'Alice Developer', email: 'alice@example.com' },
-                committedAt: '2024-01-15T12:00:00.000Z',
-                url: 'https://example.com/repos/org/repo/commit/abcdef1234567890',
-            },
-        ],
         diff = '',
         commits = MOCK_PR_COMMITS,
         unconfigured = false,
@@ -70,7 +50,6 @@ export async function setupPrRoutes(
     const reviewersPattern = `${base}/*/reviewers`;
     const commitsPattern   = `${base}/*/commits`;
     const diffPattern      = `${base}/*/diff`;
-    const commitsPattern   = `${base}/*/commits`;
     const detailPattern    = `${base}/*`;
     const listPattern      = `${base}?*`;
 
@@ -96,7 +75,7 @@ export async function setupPrRoutes(
         return route.fulfill({ status: 200, json: { reviewers } });
     });
 
-    // commits
+    // commits — JSON
     await page.route(commitsPattern, (route) => {
         if (unconfigured) {
             return route.fulfill({ status: 401, json: unconfiguredBody });
@@ -114,14 +93,6 @@ export async function setupPrRoutes(
             headers: { 'content-type': 'text/plain' },
             body: diff,
         });
-    });
-
-    // commits — JSON
-    await page.route(commitsPattern, (route) => {
-        if (unconfigured) {
-            return route.fulfill({ status: 401, json: unconfiguredBody });
-        }
-        return route.fulfill({ status: 200, json: { commits } });
     });
 
     // single PR detail — must come after sub-resources, before list
@@ -155,7 +126,6 @@ export async function setupPrRoutes(
         await page.unroute(reviewersPattern);
         await page.unroute(commitsPattern);
         await page.unroute(diffPattern);
-        await page.unroute(commitsPattern);
         await page.unroute(detailPattern);
         await page.unroute(listPattern);
     };
