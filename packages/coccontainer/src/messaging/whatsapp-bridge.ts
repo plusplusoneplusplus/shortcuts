@@ -120,6 +120,13 @@ export class WhatsAppBridge {
         if (!this.bot) return;
         this._creatingGroup = true;
         try {
+            // Wait for connection to fully stabilize (pre-keys upload, history sync)
+            console.log('[whatsapp-bridge] Waiting for connection to stabilize before creating group...');
+            await new Promise(resolve => setTimeout(resolve, 10_000));
+            if (!this.bot || this.bot.getStatus() !== 'connected') {
+                console.log('[whatsapp-bridge] Connection lost during stabilization, skipping group creation');
+                return;
+            }
             const groupName = `${this.opts.config.userName || 'CoC'} Bridge`;
             console.log(`[whatsapp-bridge] Creating group "${groupName}"...`);
             const jid = await this.bot.createGroup(groupName);
