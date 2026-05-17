@@ -119,6 +119,8 @@ function mapAdoPullRequest(pr: GitPullRequest, repositoryId: string): PullReques
         repositoryId,
         reviewers: (pr.reviewers ?? []).map(mapAdoReviewer),
         labels: (pr.labels ?? []).map((l: { name?: string }) => l.name ?? '').filter(Boolean),
+        headSha: pr.lastMergeSourceCommit?.commitId,
+        baseSha: pr.lastMergeTargetCommit?.commitId,
         raw: pr,
     };
 }

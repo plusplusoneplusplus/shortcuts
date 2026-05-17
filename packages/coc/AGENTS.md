@@ -5,6 +5,22 @@ root `AGENTS.md` for the cross-package overview, build/test commands, and the
 "repo-scoped data" convention. Deeper architecture references live under
 `.github/skills/coc-knowledge/`.
 
+## Admin Config
+
+Editable admin config fields are defined in a single registry:
+`src/server/admin/admin-config-fields.ts` (`ADMIN_CONFIG_FIELDS`).
+
+Each entry provides a flat key (e.g. `'loops.enabled'`), a `validate()` function, and an `apply()` function. The PUT `/api/admin/config` handler derives `editableKeys`, validation, and merge logic entirely from this registry — **no changes to `admin-handler.ts` are needed when adding a new editable field**.
+
+To expose a new config field via the admin API, add ONE entry to `ADMIN_CONFIG_FIELDS`. Also update:
+1. `CLIConfig` / `ResolvedCLIConfig` / `DEFAULT_CONFIG` in `src/config.ts`
+2. `CLIConfigSchema` in `src/config/schema.ts`
+3. Namespace registry in `src/config/namespace-registry.ts` (nested fields)
+4. `AdminResolvedConfig` / `AdminConfigUpdate` in `packages/coc-client/src/contracts/admin.ts`
+5. `AdminPanel.tsx` for the UI control
+
+The `spaHtml` function in `src/server/index.ts` re-reads the config file on every page request, so feature-flag changes (e.g. `terminal.enabled`) take effect on the next browser reload — no server restart required.
+
 ## Ralph
 
 Ralph sessions live under
@@ -24,6 +40,23 @@ synthesis follow-up turn (mode=ask, `context.skills=['grill-me']`,
 `buildRalphSynthesisPrompt` (`src/server/ralph/synthesis-prompt.ts`). The SPA
 shows a "Promote to Ralph" pill in the follow-up area for eligible chats and
 calls this endpoint via `coc-client`'s `processes.promoteToRalph` helper.
+
+## MCP Settings
+
+`GET /api/workspaces/:id/mcp-config` returns both the effective
+`availableServers` list and source-separated `sources.global` /
+`sources.workspace` sections. Global servers come from
+`~/.copilot/mcp-config.json`; workspace servers come from
+`<repo>/.vscode/mcp.json` via Forge MCP loader helpers. Workspace entries
+override global entries with the same name. The endpoint only exposes safe row
+metadata (`name`, `type`, optional `url`/`command`, source/effective flags) and
+must not return secrets such as `env`, headers, or full argument arrays.
+`?forceReload=true` bypasses the path-keyed MCP config cache for manual dashboard
+refreshes; no file watcher is used.
+
+`PUT /api/workspaces/:id/mcp-config` stores only the name-based
+`enabledMcpServers` allow-list. Workflow run filtering must resolve that list
+against the same effective global-plus-workspace MCP merge used at runtime.
 
 ## Loops
 

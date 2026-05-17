@@ -243,10 +243,32 @@ export function mockMcpConfigLoaderModule() {
             fileExists: false,
             mcpServers: {},
         }),
+        loadWorkspaceMcpConfig: vi.fn().mockReturnValue({
+            success: false,
+            fileExists: false,
+            mcpServers: {},
+        }),
+        loadEffectiveMcpConfig: vi.fn().mockReturnValue({
+            success: true,
+            fileExists: false,
+            configPath: '',
+            mcpServers: {},
+        }),
         mergeMcpConfigs: vi.fn().mockImplementation(
             (base: Record<string, any>, override?: Record<string, any>) => ({
                 ...base,
                 ...override,
+            }),
+        ),
+        mergeMcpConfigSources: vi.fn().mockImplementation(
+            (
+                globalConfig: Record<string, any>,
+                workspaceConfig: Record<string, any>,
+                explicitConfig?: Record<string, any>,
+            ) => ({
+                ...globalConfig,
+                ...workspaceConfig,
+                ...explicitConfig,
             }),
         ),
     };

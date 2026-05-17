@@ -52,6 +52,7 @@ import { DevTunnelConnector } from './servers/devtunnel-connector';
 import { RemoteServerStore } from './servers/remote-server-store';
 import { AutoPromoteScheduler } from './memory/auto-promote';
 import { setMemoryCandidateCapturedCallback } from './executors/bounded-memory-addon';
+import { pruneAllStaleClassifications } from './repos/classification-store';
 
 // ============================================================================
 // Close Handler Builder
@@ -371,9 +372,31 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });
 
     const rawHostname = os.hostname();
-    const displayHostname = resolvedConfig.serve?.serverName || shortenHostname(rawHostname);
     const handler = createRequestHandler({
-        routes, spaHtml: () => generateDashboardHtml({ enableWiki: true, hostname: displayHostname, terminalEnabled: resolvedConfig.terminal?.enabled ?? true, notesEnabled: resolvedConfig.notes?.enabled ?? true, myWorkEnabled: resolvedConfig.myWork?.enabled ?? false, myLifeEnabled: resolvedConfig.myLife?.enabled ?? false, scratchpadEnabled: resolvedConfig.scratchpad?.enabled ?? false, scratchpadLayout: resolvedConfig.scratchpad?.layout ?? 'horizontal', workflowsEnabled: resolvedConfig.workflows?.enabled ?? false, pullRequestsEnabled: resolvedConfig.pullRequests?.enabled ?? false, serversEnabled: resolvedConfig.servers?.enabled ?? false, ralphEnabled: resolvedConfig.ralph?.enabled ?? false, vimNavigationEnabled: resolvedConfig.vimNavigation?.enabled ?? false, loopsEnabled, mcpOauthEnabled, bindAddress: host }),
+        routes, spaHtml: () => {
+            // Re-read config on each page load so that feature-flag changes made via the
+            // admin UI take effect on the next browser refresh — no server restart needed.
+            const liveConfig = resolveConfig(options.configPath);
+            return generateDashboardHtml({
+                enableWiki: true,
+                hostname: liveConfig.serve?.serverName || shortenHostname(rawHostname),
+                terminalEnabled: liveConfig.terminal?.enabled ?? true,
+                notesEnabled: liveConfig.notes?.enabled ?? true,
+                myWorkEnabled: liveConfig.myWork?.enabled ?? false,
+                myLifeEnabled: liveConfig.myLife?.enabled ?? false,
+                scratchpadEnabled: liveConfig.scratchpad?.enabled ?? false,
+                scratchpadLayout: liveConfig.scratchpad?.layout ?? 'horizontal',
+                workflowsEnabled: liveConfig.workflows?.enabled ?? false,
+                pullRequestsEnabled: liveConfig.pullRequests?.enabled ?? false,
+                serversEnabled: liveConfig.servers?.enabled ?? false,
+                ralphEnabled: liveConfig.ralph?.enabled ?? false,
+                vimNavigationEnabled: liveConfig.vimNavigation?.enabled ?? false,
+                loopsEnabled: liveConfig.loops?.enabled ?? false,
+                mcpOauthEnabled: liveConfig.mcpOauth?.enabled ?? false,
+                focusedDiffEnabled: liveConfig.features?.focusedDiff ?? false,
+                bindAddress: host,
+            });
+        },
         store, spaETag: getBundleETag,
         staticDir: path.join(__dirname, 'spa', 'client', 'dist'),
         getIconSvg: () => generateIconSvg(rawHostname),
@@ -409,6 +432,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         process.stderr.write(`[servers] Failed to start DevTunnel connectors: ${error instanceof Error ? error.message : String(error)}\n`);
     }
     cleanupAllStalePasteFiles(dataDir).catch(() => { /* best-effort */ });
+    try {
+        pruneAllStaleClassifications(dataDir);
+    } catch {
+        /* best-effort */
+    }
 
     const address = server.address();
     const actualPort = typeof address === 'object' && address ? address.port : port;

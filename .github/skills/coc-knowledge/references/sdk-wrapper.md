@@ -22,7 +22,7 @@ Location: `packages/forge/src/copilot-sdk-wrapper/`
 | `model-registry.ts` | Single source of truth for supported AI models |
 | `model-metadata-store.ts` | Runtime model metadata cache with SDK polling |
 | `model-reasoning.ts` | Metadata-aware model/reasoning resolver; variant IDs with `capabilities.family` sent as base model + reasoning effort |
-| `mcp-config-loader.ts` | Loads/merges MCP config from `~/.copilot/mcp-config.json` |
+| `mcp-config-loader.ts` | Loads/merges MCP config from `~/.copilot/mcp-config.json`, workspace `.vscode/mcp.json`, and explicit request options |
 | `trusted-folder.ts` | Pre-registers working directories in `~/.copilot/config.json` |
 | `image-converter.ts` | Image file → data-URL conversion |
 | `index.ts` | Public API surface |
@@ -80,11 +80,20 @@ Installed once when SDK module loads. Absorbs `ERR_STREAM_DESTROYED` errors via 
 ## MCP Configuration
 
 ```
-~/.copilot/mcp-config.json  →  loadDefaultMcpConfig()
-SendMessageOptions.mcpServers  →  explicit config
-mergeMcpConfigs: explicit wins; {} disables all MCP
-loadDefaultMcpConfig: false  →  skips file entirely
+~/.copilot/mcp-config.json               →  loadDefaultMcpConfig()
+<workingDirectory>/.vscode/mcp.json      →  loadWorkspaceMcpConfig()
+SendMessageOptions.mcpServers            →  explicit config
+loadEffectiveMcpConfig: global < workspace < explicit; {} disables all MCP
+loadDefaultMcpConfig: false              →  skips global/workspace files
+forceReload: true                        →  bypasses the path-keyed config cache
 ```
+
+Workspace MCP loading is resolved from the per-request `workingDirectory`, not
+the process current directory, so concurrent repos do not share MCP state. VS
+Code workspace config uses a top-level `servers` map, which is normalized into
+Forge's existing `mcpServers` shape before passing configuration to the SDK.
+Config load results include source-scoped `success`/`error` metadata so callers
+can continue with valid sources when another source is malformed.
 
 ## Model Resolution
 

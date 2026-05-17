@@ -26,6 +26,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useSlashCom
 // Mock SlashCommandMenu
 vi.mock('../../../../src/server/spa/client/react/features/chat/SlashCommandMenu', () => ({
     SlashCommandMenu: () => null,
+    META_SKILL_ITEMS: [],
 }));
 
 // Mock fetchApi for skills

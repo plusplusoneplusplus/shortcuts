@@ -1,4 +1,7 @@
 import type {
+  ClassificationStatusResponse,
+  ClassifyDiffRequest,
+  ClassifyDiffResponse,
   ProviderConfigRequest,
   PullRequestChatBinding,
   PullRequestChatBindingListResponse,
@@ -113,6 +116,29 @@ export class PullRequestsClient {
     return this.transport.request<void>(
       `/workspaces/${encodePathSegment(workspaceId)}/pull-request-chat-bindings/${encodePathSegment(prId)}`,
       { method: 'DELETE' },
+    );
+  }
+
+  /** Trigger on-demand AI classification of a PR's diff hunks. */
+  classify(repoId: string, prId: string, body: ClassifyDiffRequest, options?: Pick<CocRequestOptions, 'signal'>): Promise<ClassifyDiffResponse> {
+    return this.transport.request<ClassifyDiffResponse>(
+      `/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/classify`,
+      {
+        method: 'POST',
+        body: { ...body },
+        signal: options?.signal,
+      },
+    );
+  }
+
+  /** Get cached classification result for a PR. */
+  getClassification(repoId: string, prId: string, headSha: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<ClassificationStatusResponse> {
+    return this.transport.request<ClassificationStatusResponse>(
+      `/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/classification`,
+      {
+        query: { headSha },
+        signal: options?.signal,
+      },
     );
   }
 }

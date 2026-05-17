@@ -111,9 +111,11 @@ class State:
     title: str | None = None
     body: str | None = None
     draft: bool = False
+    auto_merge: bool = False
+    merge_method: str = "merge"  # merge | squash | rebase
     pushed: bool = False
     pr_url: str | None = None
-    phase: str = "cherry-pick"  # cherry-pick | rebase | push | pr | done
+    phase: str = "cherry-pick"  # cherry-pick | rebase | push | pr | auto-merge | done
     extra_gh_args: list[str] = field(default_factory=list)
 
     def save(self) -> None:
@@ -326,6 +328,21 @@ def do_pr(state: State) -> None:
 
     url = (result.stdout or "").strip().splitlines()[-1] if result.stdout else None
     state.pr_url = url
+    state.phase = "auto-merge" if state.auto_merge else "done"
+    state.save()
+
+
+def do_auto_merge(state: State) -> None:
+    if not shutil.which("gh"):
+        log("warning: gh not found, skipping auto-merge")
+        state.phase = "done"
+        state.save()
+        return
+
+    cmd = ["gh", "pr", "merge", state.pr_url, "--auto", f"--{state.merge_method}"]
+    result = run(cmd, check=False, capture=True)
+    if result.returncode != 0:
+        log(f"warning: auto-merge failed: {result.stderr.strip()}")
     state.phase = "done"
     state.save()
 
@@ -378,6 +395,8 @@ def cmd_start(args: argparse.Namespace) -> None:
         title=args.title,
         body=args.body,
         draft=args.draft,
+        auto_merge=args.auto_merge,
+        merge_method=args.merge_method,
         extra_gh_args=list(args.gh_arg or []),
     )
     state.save()
@@ -428,6 +447,9 @@ def drive(state: State, *, resume: bool) -> None:
         elif phase == "pr":
             do_pr(state)
             phase = state.phase
+        elif phase == "auto-merge":
+            do_auto_merge(state)
+            phase = state.phase
         elif phase == "done":
             finalize(state)
             return
@@ -463,6 +485,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--gh-arg",
         action="append",
         help="Extra args passed verbatim to `gh pr create` (repeatable)",
+    )
+    start.add_argument(
+        "--auto-merge",
+        action="store_true",
+        help="Enable auto-merge on the PR after creation (requires branch protection rules)",
+    )
+    start.add_argument(
+        "--merge-method",
+        default="merge",
+        choices=["merge", "squash", "rebase"],
+        help="Merge method for auto-merge (default: merge)",
     )
     start.set_defaults(func=cmd_start)
 

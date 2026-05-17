@@ -232,7 +232,7 @@ describe('NoteChatPanel', () => {
 
     describe('skill slash-command support', () => {
         it('imports SkillItem type from SlashCommandMenu', () => {
-            expect(source).toContain("import type { SkillItem }");
+            expect(source).toContain("SkillItem");
             expect(source).toContain("from '../../chat/SlashCommandMenu'");
         });
 
@@ -250,8 +250,8 @@ describe('NoteChatPanel', () => {
             expect(source).toContain('setSkills(data.merged)');
         });
 
-        it('merges fetched skills into augmentedSkills before model entry', () => {
-            expect(source).toContain('[...skills, { name: \'model\',');
+        it('merges fetched skills with META_SKILL_ITEMS', () => {
+            expect(source).toContain('[...skills, ...META_SKILL_ITEMS]');
         });
 
         it('augmentedSkills depends on skills', () => {

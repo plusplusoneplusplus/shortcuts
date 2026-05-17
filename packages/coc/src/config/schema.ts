@@ -105,6 +105,7 @@ export const CLIConfigSchema = z.object({
     }).passthrough().optional(),
     features: z.object({
         autoMemoryPromotion: z.boolean().optional(),
+        focusedDiff: z.boolean().optional(),
     }).passthrough().optional(),
     memoryPromotion: z.object({
         batchSize: z.number().int().positive().optional(),

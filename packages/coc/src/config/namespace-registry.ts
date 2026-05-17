@@ -69,7 +69,7 @@ const RALPH_SOURCE_KEYS = ['ralph.enabled'] as const;
 const VIM_NAVIGATION_SOURCE_KEYS = ['vimNavigation.enabled'] as const;
 const LOOPS_SOURCE_KEYS = ['loops.enabled'] as const;
 const MCP_OAUTH_SOURCE_KEYS = ['mcpOauth.enabled'] as const;
-const FEATURES_SOURCE_KEYS = ['features.autoMemoryPromotion'] as const;
+const FEATURES_SOURCE_KEYS = ['features.autoMemoryPromotion', 'features.focusedDiff'] as const;
 
 const MEMORY_PROMOTION_SOURCE_KEYS = [
     'memoryPromotion.batchSize',
@@ -252,6 +252,7 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
             merge: (base, override) => ({
                 features: {
                     autoMemoryPromotion: override?.features?.autoMemoryPromotion ?? base.features?.autoMemoryPromotion ?? false,
+                    focusedDiff: override?.features?.focusedDiff ?? base.features?.focusedDiff ?? false,
                 },
             }),
         },

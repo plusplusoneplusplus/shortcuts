@@ -41,12 +41,9 @@ export function CustomInstructionsPanel({
 
     return (
         <div className="flex flex-col gap-3">
-            <div>
-                <h2 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Custom Instructions</h2>
-                <p className="text-xs text-[#848484] mt-0.5">
-                    Stored in <code className="font-mono bg-[#f3f3f3] dark:bg-[#333] px-1 rounded">.github/coc/</code> — committed to version control, shared across clones.
-                </p>
-            </div>
+            <p className="text-xs text-[#848484]">
+                Stored in <code className="font-mono bg-[#f3f3f3] dark:bg-[#333] px-1 rounded">.github/coc/</code> — committed to version control, shared across clones.
+            </p>
 
             {instrLoading ? (
                 <div className="text-xs text-[#848484]">Loading...</div>

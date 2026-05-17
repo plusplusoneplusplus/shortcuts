@@ -136,4 +136,59 @@ describe('PullRequestsClient', () => {
       },
     ]);
   });
+
+  it('classify sends POST with headSha, model, and encoded IDs', async () => {
+    const adapter = createMockAdapter({ status: 'started', taskId: 'task-1' });
+    const client = new PullRequestsClient(adapter);
+
+    await client.classify('repo/a', 'pr/1', { headSha: 'abc123', model: 'haiku' });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/repos/repo%2Fa/pull-requests/pr%2F1/classify',
+        options: {
+          method: 'POST',
+          body: { headSha: 'abc123', model: 'haiku' },
+          signal: undefined,
+        },
+      },
+    ]);
+  });
+
+  it('classify forwards abort signal', async () => {
+    const adapter = createMockAdapter({ status: 'started' });
+    const client = new PullRequestsClient(adapter);
+    const controller = new AbortController();
+
+    await client.classify('r1', '10', { headSha: 'sha1' }, { signal: controller.signal });
+
+    expect(adapter.calls[0].options?.signal).toBe(controller.signal);
+  });
+
+  it('getClassification sends GET with headSha query param', async () => {
+    const adapter = createMockAdapter({ status: 'none' });
+    const client = new PullRequestsClient(adapter);
+
+    await client.getClassification('repo/a', 'pr/1', 'abc123');
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/repos/repo%2Fa/pull-requests/pr%2F1/classification',
+        options: {
+          query: { headSha: 'abc123' },
+          signal: undefined,
+        },
+      },
+    ]);
+  });
+
+  it('getClassification forwards abort signal', async () => {
+    const adapter = createMockAdapter({ status: 'ready' });
+    const client = new PullRequestsClient(adapter);
+    const controller = new AbortController();
+
+    await client.getClassification('r1', '10', 'sha1', { signal: controller.signal });
+
+    expect(adapter.calls[0].options?.signal).toBe(controller.signal);
+  });
 });

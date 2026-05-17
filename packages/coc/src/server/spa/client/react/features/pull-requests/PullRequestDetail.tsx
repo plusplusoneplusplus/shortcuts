@@ -36,13 +36,14 @@ import { PrCommitTable } from './PrCommitTable';
 import { PrChecksTable, PrMergeReadiness } from './PrChecksAndReadiness';
 import { PrFilesPanel } from './PrFilesPanel';
 import { PrAiAssistantDrawer } from './PrAiAssistantDrawer';
+import { SHOW_FOCUSED_DIFF } from '../../featureFlags';
+import { useClassification } from './useClassification';
 import {
     buildAiThreadGroupsFromThreads,
     buildCheckRowsFromChecks,
     buildCommitRowsFromPrCommits,
     buildMergeReadinessFromData,
     getMockAiSummary,
-    getMockFiles,
     getMockPersonaLenses,
     getMockReviewSummaryText,
     getMockTimeline,
@@ -98,6 +99,15 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     const [aiPassRunning, setAiPassRunning] = useState(false);
     const [aiPassDone, setAiPassDone] = useState(false);
     const [summaryCopied, setSummaryCopied] = useState(false);
+
+    // Classification hook — passes undefined args when feature flag is off
+    const headSha = pr?.headSha ?? pr?.sourceBranch;
+    const classificationHook = useClassification(
+        SHOW_FOCUSED_DIFF ? String(repoId) : undefined,
+        SHOW_FOCUSED_DIFF ? String(prId) : undefined,
+        SHOW_FOCUSED_DIFF ? (headSha ?? undefined) : undefined,
+    );
+    const classification = SHOW_FOCUSED_DIFF ? classificationHook : undefined;
 
     const switchTab = useCallback(
         (tab: PrDetailTab) => {
@@ -517,6 +527,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                                 files={diff.files}
                                 commentsByPath={threadsByPath}
                                 isMobile={isMobile}
+                                classification={classification}
                             />
                         </div>
                     </div>

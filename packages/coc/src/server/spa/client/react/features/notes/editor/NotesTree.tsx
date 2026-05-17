@@ -27,6 +27,13 @@ export interface NotesTreeProps {
     onSelectPage: (path: string) => void;
     onContextMenu: (node: NoteTreeNode, x: number, y: number) => void;
     isNoteUpdated?: (node: NoteTreeNode) => boolean;
+    /**
+     * When non-null, only nodes whose path is in this set are rendered.
+     * Used by the sidebar search filter; `null` means "no filter".
+     */
+    visiblePaths?: Set<string> | null;
+    /** Helper used to compute the recursive page count badge for folder rows. */
+    countDescendantPages?: (node: NoteTreeNode) => number;
     dragDrop?: NotesDragDropHandlers;
 }
 
@@ -46,11 +53,15 @@ export function NotesTree({
     onSelectPage,
     onContextMenu,
     isNoteUpdated,
+    visiblePaths,
+    countDescendantPages,
     dragDrop,
 }: NotesTreeProps) {
     return (
         <div role="tree" data-testid={depth === 0 ? 'notes-tree' : undefined}>
             {nodes.map(node => {
+                if (visiblePaths && !visiblePaths.has(node.path)) return null;
+
                 const isFolder = node.type === 'notebook' || node.type === 'section';
                 const isExpanded = expandedPaths.has(node.path);
                 const isSysFolder = !!(systemFolders && systemFolders.includes(node.name) && node.type === 'notebook' && depth === 0);
@@ -60,6 +71,7 @@ export function NotesTree({
                     : undefined;
 
                 const isDragOver = dragDrop ? dragDrop.dropTargetPath === node.path : false;
+                const folderCount = isFolder && countDescendantPages ? countDescendantPages(node) : undefined;
 
                 return (
                     <div key={node.path}>
@@ -70,6 +82,7 @@ export function NotesTree({
                             depth={depth}
                             isSystemFolder={isSysFolder}
                             hasUpdate={hasNodeUpdate(node, isNoteUpdated)}
+                            pageCount={folderCount}
                             onToggleExpand={onToggleExpand}
                             onSelectPage={onSelectPage}
                             onContextMenu={onContextMenu}
@@ -96,6 +109,8 @@ export function NotesTree({
                                 onSelectPage={onSelectPage}
                                 onContextMenu={onContextMenu}
                                 isNoteUpdated={isNoteUpdated}
+                                visiblePaths={visiblePaths}
+                                countDescendantPages={countDescendantPages}
                                 dragDrop={dragDrop}
                             />
                         )}

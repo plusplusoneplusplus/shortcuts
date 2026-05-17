@@ -58,13 +58,6 @@ export function LlmToolsPanel({ workspaceId }: LlmToolsPanelProps) {
 
     return (
         <div className="flex flex-col gap-3" data-testid="llm-tools-panel">
-            <div>
-                <h2 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">LLM Tools</h2>
-                <p className="text-xs text-[#848484] mt-0.5">
-                    Toggle AI tools available during chat sessions for this repo.
-                </p>
-            </div>
-
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1" data-testid="llm-tools-list">
                 {tools.map(tool => {
                     const enabled = !disabledTools.includes(tool.name);

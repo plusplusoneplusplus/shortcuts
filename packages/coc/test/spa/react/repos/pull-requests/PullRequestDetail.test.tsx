@@ -323,6 +323,8 @@ describe('tabs', () => {
         expect(screen.getByTestId('files-tab')).toBeInTheDocument();
         expect(screen.getByTestId('pr-files-panel')).toBeInTheDocument();
         expect(screen.getAllByTestId('pr-file-row')).toHaveLength(2);
+        expect(screen.queryByText(/AI annotation/i)).not.toBeInTheDocument();
+        expect(screen.queryByText(/AI focus file/i)).not.toBeInTheDocument();
         expect(screen.getByTestId('tab-files').textContent).toContain('2');
     });
 

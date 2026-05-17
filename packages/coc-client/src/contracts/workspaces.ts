@@ -32,16 +32,35 @@ export interface EnDevXDpuActivationResponse {
   doctorOutput: string;
 }
 
+export type WorkspaceMcpServerSource = 'global' | 'workspace';
+
 export interface WorkspaceMcpServerEntry {
   name: string;
   type: string;
   url?: string;
-  [key: string]: unknown;
+  command?: string;
+  source?: WorkspaceMcpServerSource;
+  effective?: boolean;
+  overriddenBy?: WorkspaceMcpServerSource;
+}
+
+export interface WorkspaceMcpSourceSection {
+  configPath: string;
+  fileExists: boolean;
+  success: boolean;
+  error?: string;
+  servers: WorkspaceMcpServerEntry[];
+}
+
+export interface WorkspaceMcpSources {
+  global: WorkspaceMcpSourceSection;
+  workspace: WorkspaceMcpSourceSection;
 }
 
 export interface WorkspaceMcpConfigResponse {
   availableServers: WorkspaceMcpServerEntry[];
   enabledMcpServers: string[] | null;
+  sources: WorkspaceMcpSources;
 }
 
 export interface UpdateWorkspaceMcpConfigRequest {

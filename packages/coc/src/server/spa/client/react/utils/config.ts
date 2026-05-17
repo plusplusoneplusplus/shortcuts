@@ -21,6 +21,7 @@ interface DashboardConfig {
     containerMode?: boolean;
     loopsEnabled?: boolean;
     mcpOauthEnabled?: boolean;
+    focusedDiffEnabled?: boolean;
     bindAddress?: string;
 }
 
@@ -124,6 +125,10 @@ export function isLoopsEnabled(): boolean {
 
 export function isMcpOauthEnabled(): boolean {
     return getConfig().mcpOauthEnabled === true;
+}
+
+export function isFocusedDiffEnabled(): boolean {
+    return getConfig().focusedDiffEnabled === true;
 }
 
 /** Returns the raw bind address the server is listening on (e.g., '0.0.0.0'), if known. */

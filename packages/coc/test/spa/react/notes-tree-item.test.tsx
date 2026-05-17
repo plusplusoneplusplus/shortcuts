@@ -17,28 +17,45 @@ function makeNode(overrides: Partial<NoteTreeNode> = {}): NoteTreeNode {
 }
 
 describe('NotesTreeItem', () => {
-    it('renders notebook icon for type notebook', () => {
+    it('renders folder rows in bold weight', () => {
         const { getByTestId } = render(
             <NotesTreeItem node={makeNode({ type: 'notebook', name: 'NB' })} selectedPath={null} isExpanded={false} depth={0}
                 onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
         );
-        expect(getByTestId('node-icon').textContent).toBe('📓');
+        expect(getByTestId('notes-tree-item-NB').className).toContain('font-semibold');
     });
 
-    it('renders section icon for type section', () => {
+    it('renders a recursive page-count badge on folder rows when pageCount > 0', () => {
         const { getByTestId } = render(
-            <NotesTreeItem node={makeNode({ type: 'section', name: 'Sec' })} selectedPath={null} isExpanded={false} depth={0}
-                onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
+            <NotesTreeItem
+                node={makeNode({ type: 'section', name: 'Sec' })}
+                selectedPath={null}
+                isExpanded={false}
+                depth={0}
+                pageCount={5}
+                onToggleExpand={vi.fn()}
+                onSelectPage={vi.fn()}
+                onContextMenu={vi.fn()}
+            />,
         );
-        expect(getByTestId('node-icon').textContent).toBe('📁');
+        const badge = getByTestId('folder-page-count');
+        expect(badge.textContent).toBe('5');
     });
 
-    it('renders page icon for type page', () => {
-        const { getByTestId } = render(
-            <NotesTreeItem node={makeNode({ type: 'page', name: 'Pg' })} selectedPath={null} isExpanded={false} depth={0}
-                onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
+    it('does not render a page-count badge on page rows', () => {
+        const { queryByTestId } = render(
+            <NotesTreeItem
+                node={makeNode({ type: 'page', name: 'Pg' })}
+                selectedPath={null}
+                isExpanded={false}
+                depth={0}
+                pageCount={3}
+                onToggleExpand={vi.fn()}
+                onSelectPage={vi.fn()}
+                onContextMenu={vi.fn()}
+            />,
         );
-        expect(getByTestId('node-icon').textContent).toBe('📄');
+        expect(queryByTestId('folder-page-count')).toBeNull();
     });
 
     it('shows expand chevron for folder types', () => {
@@ -67,14 +84,16 @@ describe('NotesTreeItem', () => {
         expect(queryByTestId('chevron')).toBeNull();
     });
 
-    it('applies selected class when selectedPath matches', () => {
+    it('applies selected class with accent stripe when selectedPath matches', () => {
         const node = makeNode({ path: 'nb/page1', name: 'page1' });
         const { getByTestId } = render(
             <NotesTreeItem node={node} selectedPath="nb/page1" isExpanded={false} depth={0}
                 onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
         );
         const el = getByTestId('notes-tree-item-page1');
-        expect(el.className).toContain('bg-[#0078d4]/10');
+        expect(el.className).toContain('bg-[#ddf4ff]');
+        expect(el.className).toContain('shadow-[inset_3px_0_0_#0969da]');
+        expect(el.getAttribute('aria-selected')).toBe('true');
     });
 
     it('does not apply selected class when selectedPath does not match', () => {
@@ -84,7 +103,9 @@ describe('NotesTreeItem', () => {
                 onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
         );
         const el = getByTestId('notes-tree-item-page1');
-        expect(el.className).not.toContain('bg-[#0078d4]/10');
+        expect(el.className).not.toContain('bg-[#ddf4ff]');
+        expect(el.className).not.toContain('shadow-[inset_3px_0_0_#0969da]');
+        expect(el.getAttribute('aria-selected')).toBe('false');
     });
 
     it('fires onContextMenu with node and coordinates on right-click', () => {
@@ -142,13 +163,13 @@ describe('NotesTreeItem', () => {
         expect(onToggle).toHaveBeenCalledWith('mynotebook');
     });
 
-    it('applies correct paddingLeft based on depth', () => {
+    it('applies correct paddingLeft based on depth (10px base + 16px per depth)', () => {
         const node = makeNode({ name: 'deep', path: 'a/b/deep' });
         const { getByTestId } = render(
             <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={2}
                 onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
         );
-        expect(getByTestId('notes-tree-item-deep').style.paddingLeft).toBe('32px');
+        expect(getByTestId('notes-tree-item-deep').style.paddingLeft).toBe('42px');
     });
 
     it('renders a subtle update indicator when hasUpdate is true', () => {

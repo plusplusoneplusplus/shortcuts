@@ -132,6 +132,7 @@ export interface CLIConfig {
     /** Development feature flags. */
     features?: {
         autoMemoryPromotion?: boolean;
+        focusedDiff?: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion?: {
@@ -296,6 +297,7 @@ export interface ResolvedCLIConfig {
     /** Development feature flags. */
     features: {
         autoMemoryPromotion: boolean;
+        focusedDiff: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion: {
@@ -418,6 +420,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     features: {
         autoMemoryPromotion: false,
+        focusedDiff: false,
     },
     memoryPromotion: {
         batchSize: 50,

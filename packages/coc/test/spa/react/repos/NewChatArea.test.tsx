@@ -103,6 +103,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useDraftSto
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/SlashCommandMenu', () => ({
     SlashCommandMenu: () => null,
+    META_SKILL_ITEMS: [],
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/ModelCommandMenu', () => ({
