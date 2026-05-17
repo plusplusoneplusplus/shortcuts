@@ -122,8 +122,6 @@ export function NotesSettingsSection({ workspaceId }: NotesSettingsSectionProps)
 
     return (
         <div data-testid="notes-settings-section">
-            <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-3">Notes</h3>
-
             {/* Git Version Tracking */}
             <div className={sectionHeadClass} data-testid="section-git-tracking">
                 Git Version Tracking

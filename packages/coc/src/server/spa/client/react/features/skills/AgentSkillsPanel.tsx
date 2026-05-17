@@ -48,7 +48,7 @@ interface AgentSkillsPanelProps {
     /** All registered repos (from ReposContext) for the picker popover. */
     allRepos?: RepoData[];
 }
-
+
 // ============================================================================
 // Folder Grouping
 // ============================================================================
@@ -325,13 +325,10 @@ export function AgentSkillsPanel({
 
     return (
         <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Agent Skills</h2>
-                    <p className="text-xs text-[#848484] mt-0.5">
-                        AI prompt modules stored in <code className="font-mono bg-[#f3f3f3] dark:bg-[#333] px-1 rounded">.github/skills/</code>
-                    </p>
-                </div>
+            <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-[#848484] flex-1 min-w-0">
+                    AI prompt modules stored in <code className="font-mono bg-[#f3f3f3] dark:bg-[#333] px-1 rounded">.github/skills/</code>
+                </p>
                 <Button variant="primary" size="sm" onClick={() => setShowInstallDialog(true)} data-testid="skills-install-btn">
                     + Install
                 </Button>

@@ -165,7 +165,6 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
     if (!prefs.loaded || modelsLoading) {
         return (
             <div id="repo-preferences-section" data-testid="repo-preferences-section">
-                <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Preferences</h3>
                 <div className="text-xs text-[#848484]" data-testid="repo-preferences-loading">Loading…</div>
             </div>
         );
@@ -173,8 +172,6 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
 
     return (
         <div id="repo-preferences-section" data-testid="repo-preferences-section">
-            <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-3">Preferences</h3>
-
             {/* ── Default Model ── */}
             <div className={sectionHeadClass} data-testid="section-default-model">Default Model</div>
             <div className="flex flex-col gap-2 mb-1">
