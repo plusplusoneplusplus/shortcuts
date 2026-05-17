@@ -1,5 +1,6 @@
 /**
- * Tests for pr-classification-handler — unit tests for prompt and tag helpers.
+ * Tests for pr-classification-handler — unit tests for prompt and tag helpers,
+ * plus enqueue payload shape verification.
  *
  * Route-level behavior (POST/GET) is covered indirectly via the file-based
  * classification-store tests. The legacy `extractClassificationFromResult`
@@ -8,6 +9,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { buildClassificationPrompt } from '../../src/server/repos/pr-classification-handler';
+import { TaskDefs } from '../../src/server/tasks/task-types';
 
 // ── buildClassificationPrompt ────────────────────────────────────────────────
 
@@ -31,5 +33,21 @@ describe('buildClassificationPrompt', () => {
     it('should mention the saveClassification tool', () => {
         const prompt = buildClassificationPrompt('repo', '42');
         expect(prompt).toContain('saveClassification');
+    });
+});
+
+// ── TaskDefs.prClassification ────────────────────────────────────────────────
+
+describe('TaskDefs.prClassification', () => {
+    it('has kind "pr-classification"', () => {
+        expect(TaskDefs.prClassification.kind).toBe('pr-classification');
+    });
+
+    it('is not exclusive (uses shared queue lane)', () => {
+        expect(TaskDefs.prClassification.exclusive).toBe(false);
+    });
+
+    it('is not visible in the enqueue filter UI', () => {
+        expect(TaskDefs.prClassification.visible).toBe(false);
     });
 });

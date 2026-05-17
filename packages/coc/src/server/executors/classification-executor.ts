@@ -1,8 +1,9 @@
 /**
  * Classification Executor
  *
- * Concrete executor for PR diff classification chat tasks. Dispatched when
- * `payload.context.classifyDiff` is present (see `hasClassifyDiffContext`).
+ * Concrete executor for PR diff classification tasks. Dispatched for
+ * `pr-classification` tasks (first-class) or legacy chat tasks carrying
+ * `payload.context.classifyDiff`.
  *
  * Extends ChatBaseExecutor to inject a per-invocation `saveClassification`
  * tool pre-bound with the (workspaceId, repoId, prId, headSha) tuple. The
@@ -20,7 +21,8 @@ import type {
     Tool,
 } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
-import type { ChatPayload } from '../tasks/task-types';
+import type { ChatPayload, PrClassificationPayload } from '../tasks/task-types';
+import { isPrClassificationPayload, isChatPayload } from '../tasks/task-types';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 import {
@@ -54,9 +56,8 @@ export class ClassificationExecutor extends ChatBaseExecutor {
         prompt: string,
         workingDirectory: string | undefined,
     ): Promise<ChatModeAIOptions> {
-        const payload = task.payload as unknown as ChatPayload;
-        const classifyDiff = payload.context?.classifyDiff;
-        const wsId = payload.workspaceId;
+        const ctx = resolveClassificationContext(task.payload as Record<string, unknown>);
+        const wsId = ctx.workspaceId;
         const processId = toQueueProcessId(task.id);
 
         const boundedMemory = await this.buildMemoryAddon(wsId, this.buildCaptureContext(task), prompt);
@@ -68,13 +69,13 @@ export class ClassificationExecutor extends ChatBaseExecutor {
         const tools: Tool<unknown>[] = [];
         let toolSuffix = '';
 
-        if (this.dataDir && wsId && classifyDiff?.repoId && classifyDiff?.prId && classifyDiff?.headSha) {
+        if (this.dataDir && wsId && ctx.repoId && ctx.prId && ctx.headSha) {
             const { tool } = createSaveClassificationTool({
                 dataDir: this.dataDir,
                 workspaceId: wsId,
-                repoId: classifyDiff.repoId,
-                prId: classifyDiff.prId,
-                headSha: classifyDiff.headSha,
+                repoId: ctx.repoId,
+                prId: ctx.prId,
+                headSha: ctx.headSha,
                 processId,
             });
             tools.push(tool);
@@ -110,4 +111,30 @@ export class ClassificationExecutor extends ChatBaseExecutor {
             dispose: boundedMemory.dispose,
         };
     }
+}
+
+/**
+ * Resolve classification context from either the first-class PrClassificationPayload
+ * or the legacy ChatPayload with `context.classifyDiff`.
+ */
+function resolveClassificationContext(payload: Record<string, unknown>): {
+    workspaceId?: string;
+    repoId?: string;
+    prId?: string;
+    headSha?: string;
+} {
+    if (isPrClassificationPayload(payload)) {
+        const p = payload as unknown as PrClassificationPayload;
+        return { workspaceId: p.workspaceId, repoId: p.repoId, prId: p.prId, headSha: p.headSha };
+    }
+    if (isChatPayload(payload)) {
+        const p = payload as unknown as ChatPayload;
+        return {
+            workspaceId: p.workspaceId,
+            repoId: p.context?.classifyDiff?.repoId,
+            prId: p.context?.classifyDiff?.prId,
+            headSha: p.context?.classifyDiff?.headSha,
+        };
+    }
+    return {};
 }

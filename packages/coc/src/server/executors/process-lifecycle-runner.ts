@@ -37,7 +37,7 @@ import {
     modelMetadataStore,
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
-import type { ChatPayload } from '../tasks/task-types';
+import type { ChatPayload, PrClassificationPayload } from '../tasks/task-types';
 import {
     extractPrompt,
     applySkillContent,
@@ -47,6 +47,7 @@ import { cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
 import {
     isChatFollowUp,
     isChatPayload,
+    isPrClassificationPayload,
     isRunWorkflowPayload,
     isRunScriptPayload,
     hasNoteChatContext,
@@ -294,7 +295,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         const payload = task.payload as any;
         const selectedSkills = isChatPayload(task.payload)
             ? (task.payload as ChatPayload).context?.skills
-            : undefined;
+            : isPrClassificationPayload(task.payload)
+                ? (task.payload as unknown as PrClassificationPayload).skills
+                : undefined;
         const displayPrompt = prependSelectedSkillsDirective(prompt, selectedSkills);
         const workingDirectory = opts.getWorkingDirectoryFn(task);
         const seededTokenLimit = task.config.model !== undefined
