@@ -314,6 +314,46 @@ describe('PrFilesPanel', () => {
         // The delta span (+x -y) must be present and shrink-0.
         expect(row!.textContent ?? '').toMatch(/\+\d+\s+-\d+/);
     });
+
+    it('disables horizontal scrolling on the file list and keeps min-w-0 on the wrappers so deeply nested or long collapsed folder names truncate instead of overflowing', () => {
+        // Build a diff with a very deep collapsed folder chain plus very
+        // long basenames — this is the exact shape that produced the
+        // horizontal scrollbar in the screenshot.
+        const deepDiff = parseUnifiedDiff([
+            'diff --git a/packages/coc/src/server/spa/client/react/features/pull-requests/an-extremely-long-component-name-that-would-otherwise-overflow-the-panel.tsx b/packages/coc/src/server/spa/client/react/features/pull-requests/an-extremely-long-component-name-that-would-otherwise-overflow-the-panel.tsx',
+            '--- a/packages/coc/src/server/spa/client/react/features/pull-requests/an-extremely-long-component-name-that-would-otherwise-overflow-the-panel.tsx',
+            '+++ b/packages/coc/src/server/spa/client/react/features/pull-requests/an-extremely-long-component-name-that-would-otherwise-overflow-the-panel.tsx',
+            '@@ -1,1 +1,2 @@',
+            ' keep',
+            '+added',
+            '',
+        ].join('\n')).files;
+
+        render(<PrFilesPanel files={deepDiff} />);
+
+        const scroll = screen.getByTestId('pr-file-list-scroll');
+        // Horizontal scroll is explicitly hidden so the panel never
+        // grows a horizontal scrollbar, regardless of row content.
+        expect(scroll.className).toMatch(/overflow-x-hidden/);
+        // Vertical scrolling stays enabled for long file lists.
+        expect(scroll.className).toMatch(/overflow-y-auto/);
+        // Scroll container itself must be `min-w-0` so its parent flex
+        // chain doesn't propagate intrinsic width upwards.
+        expect(scroll.className).toMatch(/min-w-0/);
+
+        // Folder wrappers in the recursive tree must also carry `min-w-0`
+        // so a collapsed chain like "packages/coc/src/server/spa/..." can
+        // truncate inside the panel width instead of pushing siblings out.
+        const folders = screen.getAllByTestId('pr-file-tree-folder');
+        expect(folders.length).toBeGreaterThan(0);
+        for (const folder of folders) {
+            // The button itself should still be min-w-0…
+            expect(folder.className).toMatch(/min-w-0/);
+            // …and its label span should truncate, not wrap.
+            const label = folder.querySelector('span.truncate');
+            expect(label).toBeTruthy();
+        }
+    });
 });
 
 // suppress unused import warning when running through transformer

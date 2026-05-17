@@ -191,7 +191,7 @@ export function PrFilesPanel({ files, commentsByPath, isMobile = false }: PrFile
                     />
                 </div>
                 <div
-                    className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1.5 font-mono text-[12px] leading-[1.4]"
+                    className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-2 pt-1.5 font-mono text-[12px] leading-[1.4]"
                     data-testid="pr-file-list-scroll"
                 >
                     {visibleFiles.length === 0 ? (
@@ -282,7 +282,7 @@ interface FlatFileListProps {
 
 function FlatFileList({ files, activePath, onSelect }: FlatFileListProps) {
     return (
-        <div className="grid gap-px">
+        <div className="grid min-w-0 gap-px">
             {files.map(file => {
                 const { dirname, basename } = splitPath(file.path);
                 const isActive = file.path === activePath;
@@ -340,12 +340,12 @@ function FileTreeView({
     depth,
 }: FileTreeViewProps) {
     return (
-        <div className="grid gap-px">
+        <div className="grid min-w-0 gap-px">
             {nodes.map(node => {
                 if (node.kind === 'folder') {
                     const isCollapsed = collapsedFolders.has(node.path);
                     return (
-                        <div key={`folder:${node.path}`}>
+                        <div key={`folder:${node.path}`} className="min-w-0">
                             <button
                                 type="button"
                                 onClick={() => onToggleFolder(node.path)}
