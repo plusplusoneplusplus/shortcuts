@@ -113,15 +113,34 @@ export class WhatsAppBridge {
     }
 
     /**
-     * Auto-create a WhatsApp group if none is configured.
+     * Ensure a WhatsApp group exists for messaging.
+     * If a groupJid is configured, verify it still exists. If not, create a new one.
      * Called automatically when the bot connects.
      */
     private async ensureGroup(): Promise<void> {
-        if (this.opts.config.groupJid) return;
         if (this._creatingGroup) return;
         if (!this.bot) return;
+
+        // If a group is configured, verify it still exists
+        if (this.opts.config.groupJid) {
+            try {
+                const groups = await this.bot.listGroups();
+                const found = groups.some(g => g.jid === this.opts.config.groupJid);
+                if (found) {
+                    console.log(`[whatsapp-bridge] Group ${this.opts.config.groupJid} verified`);
+                    return;
+                }
+                console.warn(`[whatsapp-bridge] Configured group ${this.opts.config.groupJid} no longer exists, creating new one`);
+                this.opts.config.groupJid = undefined;
+            } catch (err: any) {
+                // Can't verify — assume it exists to avoid unnecessary creation
+                console.warn(`[whatsapp-bridge] Could not verify group: ${err.message}`);
+                return;
+            }
+        }
+
         this._creatingGroup = true;
-        const groupName = `${this.opts.config.userName || 'CoC'} Bridge`;
+        const groupName = `${this.opts.config.userName || 'CoC'} CoC Chat Group`;
         // Try immediately, then retry with delays if connection isn't stable yet
         const retryDelays = [0, 15_000, 25_000];
         try {
