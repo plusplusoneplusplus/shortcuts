@@ -315,6 +315,23 @@ describe('WhatsAppBridge', () => {
     });
 
     describe('inbound (WA → CoC)', () => {
+        it('should ignore messages from non-configured groups', async () => {
+            const bridge = new WhatsAppBridge(opts);
+            await bridge.start();
+
+            const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+            await lastBot().opts.onMessage({
+                senderJid: 'other-group@g.us',
+                messageId: 'wamid.in-other',
+                text: 'Should be ignored',
+            });
+
+            expect(fetchSpy).not.toHaveBeenCalled();
+            fetchSpy.mockRestore();
+            await bridge.stop();
+        });
+
         it('should create global session for plain messages', async () => {
             const bridge = new WhatsAppBridge(opts);
             await bridge.start();
@@ -323,7 +340,7 @@ describe('WhatsAppBridge', () => {
                 .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'proc-global-001' })));
 
             await lastBot().opts.onMessage({
-                senderJid: 'bob@s.whatsapp.net',
+                senderJid: 'group@g.us',
                 messageId: 'wamid.in-002',
                 text: 'What is the status?',
             });
@@ -368,7 +385,7 @@ describe('WhatsAppBridge', () => {
 
             // Now reply to that WA message
             await lastBot().opts.onMessage({
-                senderJid: 'bob@s.whatsapp.net',
+                senderJid: 'group@g.us',
                 messageId: 'wamid.in-reply',
                 text: 'Can you also fix the tests?',
                 quotedMessageId: 'wamid.out-001',
@@ -394,7 +411,7 @@ describe('WhatsAppBridge', () => {
                 .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'proc-fallback' })));
 
             await lastBot().opts.onMessage({
-                senderJid: 'bob@s.whatsapp.net',
+                senderJid: 'group@g.us',
                 messageId: 'wamid.in-005',
                 text: 'Reply to unknown',
                 quotedMessageId: 'wamid.unknown-999',

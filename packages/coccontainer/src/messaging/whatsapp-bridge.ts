@@ -309,6 +309,10 @@ export class WhatsAppBridge {
     private async onInboundMessage(msg: InboundWAMessage): Promise<void> {
         if (!this.store) return;
 
+        // Only process messages from our configured group
+        const groupJid = this.opts.config.groupJid;
+        if (!groupJid || msg.senderJid !== groupJid) return;
+
         let processId: string | undefined;
         let agentId: string | undefined;
         let workspaceId: string | undefined;
