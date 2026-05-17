@@ -146,17 +146,15 @@ describe('WhatsAppBridge', () => {
                 'http://localhost:4000/api/processes/proc-001?workspaceId=ws-frontend'
             );
             expect(lastBot().send).toHaveBeenCalledTimes(2);
-            // User turn — no previous message to quote
+            // User turn
             expect(lastBot().send).toHaveBeenCalledWith(
                 'group@g.us',
                 '💬 *Task:*\n  Agent: Agent-A\n  Repo: frontend\n  Title: Fix bug XYZ\n*Message:*\nFix the bug',
-                { quotedId: undefined },
             );
-            // Assistant turn — same batch, same quotedId (none yet)
+            // Assistant turn
             expect(lastBot().send).toHaveBeenCalledWith(
                 'group@g.us',
                 '🤖 *Task:*\n  Agent: Agent-A\n  Repo: frontend\n  Title: Fix bug XYZ\n*Message:*\nFixed the bug on line 42',
-                { quotedId: undefined },
             );
 
             fetchSpy.mockRestore();
@@ -186,7 +184,6 @@ describe('WhatsAppBridge', () => {
             expect(lastBot().send).toHaveBeenCalledWith(
                 'group@g.us',
                 '🤖 *Task:*\n  Agent: Agent-A\n  Repo: test\n*Message:*\nDone',
-                { quotedId: undefined },
             );
 
             vi.restoreAllMocks();

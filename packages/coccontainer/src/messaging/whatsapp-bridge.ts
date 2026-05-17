@@ -235,8 +235,6 @@ export class WhatsAppBridge {
 
             const repoName = (proc.workspaceName ?? workspaceId ?? 'unknown') as string;
             const title = (processData.title ?? proc.title ?? '') as string;
-            // Quote the last WA message for this process to create a thread
-            const quotedId = this.store!.getLastMessageId(processId) ?? undefined;
 
             for (const turn of newTurns) {
                 const content = (turn.content ?? turn.text ?? '') as string;
@@ -251,7 +249,7 @@ export class WhatsAppBridge {
                 });
 
                 try {
-                    const waMessageId = await this.bot!.send(target, waText, { quotedId });
+                    const waMessageId = await this.bot!.send(target, waText);
                     this.store!.bindMessage(waMessageId, processId, agentId, `${msg.agentName}:${repoName}`, workspaceId);
                     console.log(`[whatsapp-bridge] Sent to WA: ${waMessageId}`);
                 } catch (err) {
