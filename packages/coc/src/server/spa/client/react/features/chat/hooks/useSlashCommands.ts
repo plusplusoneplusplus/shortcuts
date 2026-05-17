@@ -5,7 +5,7 @@
  * filtering, keyboard navigation, and skill selection/extraction.
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { parseSlashCommands, getSlashCommandContext, getActiveMetaCommands } from '../slash-command-parser';
 import { isLoopsEnabled } from '../../../utils/config';
 import type { SkillItem } from '../SlashCommandMenu';
@@ -31,12 +31,15 @@ export interface UseSlashCommandsResult {
     parseAndExtract: (text: string) => { skills: string[]; prompt: string };
     /** Dismiss the menu */
     dismissMenu: () => void;
+    /** Ghost text hint shown after a meta-command with no argument yet (e.g. "[interval] <prompt>" after /loop) */
+    activeCommandHint: string | null;
 }
 
 export function useSlashCommands(skills: SkillItem[]): UseSlashCommandsResult {
     const [menuVisible, setMenuVisible] = useState(false);
     const [menuFilter, setMenuFilter] = useState('');
     const [highlightIndex, setHighlightIndex] = useState(0);
+    const [currentText, setCurrentText] = useState('');
     const slashStartRef = useRef<number>(-1);
 
     const skillNames = skills.map(s => s.name);
@@ -45,7 +48,13 @@ export function useSlashCommands(skills: SkillItem[]): UseSlashCommandsResult {
         ? skills.filter(s => s.name.toLowerCase().startsWith(menuFilter.toLowerCase()))
         : [];
 
+    const activeCommandHint = useMemo((): string | null => {
+        if (!/\/loop(\s*)$/.test(currentText)) return null;
+        return skills.find(s => s.name === 'loop')?.args ?? null;
+    }, [currentText, skills]);
+
     const handleInputChange = useCallback((text: string, cursorPos: number) => {
+        setCurrentText(text);
         const ctx = getSlashCommandContext(text, cursorPos);
         if (ctx?.active) {
             slashStartRef.current = ctx.startIndex;
@@ -141,5 +150,6 @@ export function useSlashCommands(skills: SkillItem[]): UseSlashCommandsResult {
         selectSkill,
         parseAndExtract,
         dismissMenu,
+        activeCommandHint,
     };
 }

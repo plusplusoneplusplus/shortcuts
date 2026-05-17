@@ -68,6 +68,7 @@ export interface FollowUpInputAreaProps {
         menuFilter: string;
         filteredSkills: SkillItem[];
         highlightIndex: number;
+        activeCommandHint?: string | null;
     };
     /** Model command state for the /model meta-command */
     modelCommand?: {
@@ -454,7 +455,7 @@ export function FollowUpInputArea({
                             ref={richTextRef}
                             disabled={inputDisabled}
                             value={followUpInput}
-                            ghostText={autocomplete.completion}
+                            ghostText={slashCommands.activeCommandHint ?? autocomplete.completion}
                             placeholder={inputDisabled && !isActiveGeneration ? 'Session expired.' : 'Send a message... (type / for commands)'}
                             className={cn(
                                 'w-full min-h-[34px] max-h-28 overflow-y-auto rounded border bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 disabled:opacity-60',
@@ -548,7 +549,7 @@ export function FollowUpInputArea({
                             ref={richTextRef}
                             disabled={inputDisabled}
                             value={followUpInput}
-                            ghostText={autocomplete.completion}
+                            ghostText={slashCommands.activeCommandHint ?? autocomplete.completion}
                             placeholder={inputDisabled && !isActiveGeneration ? 'Session expired.' : 'Reply to CoC, or type / for commands...'}
                             // border-transparent + focus:ring-transparent neutralize the
                             // base RichTextInput's 1px gray border and default blue
