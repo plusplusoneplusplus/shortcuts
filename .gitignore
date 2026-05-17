@@ -143,3 +143,4 @@ esbuild-check.css
 
 # Claude worktrees
 .claude/worktrees/
+.claude/scheduled_tasks.lock
