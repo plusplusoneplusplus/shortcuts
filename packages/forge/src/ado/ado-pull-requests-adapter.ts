@@ -1,12 +1,21 @@
-import type { GitPullRequest, GitPullRequestCommentThread, IdentityRefWithVote } from 'azure-devops-node-api/interfaces/GitInterfaces';
+import type {
+    GitCommitRef,
+    GitPullRequest,
+    GitPullRequestCommentThread,
+    GitPullRequestStatus,
+    GitStatus,
+    IdentityRefWithVote,
+} from 'azure-devops-node-api/interfaces/GitInterfaces';
 import { PullRequestStatus as AdoPrStatus } from 'azure-devops-node-api/interfaces/GitInterfaces';
 import type { IPullRequestsService } from '../providers/interfaces';
 import type {
+    CheckStatus,
     Comment,
     CommentThread,
     CreatePullRequestInput,
     Identity,
     PullRequest,
+    PullRequestCheck,
     PullRequestCommit,
     PullRequestStatus,
     Reviewer,
@@ -15,8 +24,7 @@ import type {
     UpdatePullRequestInput,
 } from '../providers/types';
 import type { AdoPullRequestsService } from './pull-requests-service';
-import type { GitCommitRef } from './pull-requests-service';
-import { VersionControlChangeType } from './pull-requests-service';
+import { GitStatusState, VersionControlChangeType } from './pull-requests-service';
 import { buildUnifiedDiff } from './diff-builder';
 import { getLogger, LogCategory } from '../logger';
 
@@ -115,6 +123,36 @@ function mapAdoPullRequest(pr: GitPullRequest, repositoryId: string): PullReques
     };
 }
 
+function mapAdoCommitIdentity(
+    user: { name?: string; email?: string; imageUrl?: string } | undefined,
+): Identity {
+    return {
+        id: '',
+        displayName: user?.name ?? '',
+        email: user?.email,
+        avatarUrl: user?.imageUrl,
+    };
+}
+
+function mapAdoCommit(commit: GitCommitRef): PullRequestCommit {
+    const sha = commit.commitId ?? '';
+    const message = commit.comment ?? '';
+    const authoredAt = commit.author?.date ? new Date(commit.author.date) : new Date(0);
+    const committedAt = commit.committer?.date ? new Date(commit.committer.date) : authoredAt;
+    return {
+        id: sha,
+        shortId: sha.slice(0, 7),
+        message,
+        subject: firstLine(message),
+        author: mapAdoCommitIdentity(commit.author),
+        committer: mapAdoCommitIdentity(commit.committer),
+        authoredAt,
+        committedAt,
+        url: commit.remoteUrl ?? commit.url,
+        raw: commit,
+    };
+}
+
 function mapAdoComment(c: { id?: number; author?: { id?: string; displayName?: string; uniqueName?: string; imageUrl?: string }; content?: string; publishedDate?: Date; lastUpdatedDate?: Date; _links?: { self?: { href?: string } } }): Comment {
     return {
         id: c.id ?? 0,
@@ -124,6 +162,98 @@ function mapAdoComment(c: { id?: number; author?: { id?: string; displayName?: s
         updatedAt: c.lastUpdatedDate ? new Date(c.lastUpdatedDate) : undefined,
         url: c._links?.self?.href,
     };
+}
+
+interface AdoThreadContextLocation {
+    line?: number;
+    offset?: number;
+}
+
+interface AdoThreadContextShape {
+    filePath?: string;
+    rightFileStart?: AdoThreadContextLocation;
+    rightFileEnd?: AdoThreadContextLocation;
+    leftFileStart?: AdoThreadContextLocation;
+    leftFileEnd?: AdoThreadContextLocation;
+}
+
+function mapAdoThreadContext(t: GitPullRequestCommentThread): CommentThread['threadContext'] | undefined {
+    const context = (t as { threadContext?: AdoThreadContextShape }).threadContext;
+    if (!context) return undefined;
+    const rightLine = context.rightFileEnd?.line ?? context.rightFileStart?.line;
+    const leftLine = context.leftFileEnd?.line ?? context.leftFileStart?.line;
+    const line = rightLine ?? leftLine;
+    if (!context.filePath && line == null) return undefined;
+    return {
+        filePath: context.filePath,
+        line,
+        startLine: context.rightFileStart?.line ?? context.leftFileStart?.line,
+        endLine: context.rightFileEnd?.line ?? context.leftFileEnd?.line ?? line,
+        side: rightLine != null ? 'right' : leftLine != null ? 'left' : 'unknown',
+    };
+}
+
+function mapAdoStatusState(state: number | undefined): CheckStatus {
+    switch (state) {
+        case GitStatusState.Pending:            return 'running';
+        case GitStatusState.Succeeded:          return 'success';
+        case GitStatusState.Failed:             return 'failure';
+        case GitStatusState.Error:              return 'failure';
+        case GitStatusState.NotApplicable:      return 'skipped';
+        case GitStatusState.PartiallySucceeded: return 'warning';
+        case GitStatusState.NotSet:             return 'pending';
+        default:                                return 'unknown';
+    }
+}
+
+function adoStatusName(status: GitStatus): string {
+    const ctx = status.context;
+    if (!ctx) return `status-${status.id ?? 0}`;
+    if (ctx.genre && ctx.name) return `${ctx.genre}/${ctx.name}`;
+    return ctx.name ?? ctx.genre ?? `status-${status.id ?? 0}`;
+}
+
+function mapAdoCheck(
+    status: GitPullRequestStatus | GitStatus,
+    source: 'check' | 'status',
+    idPrefix: string,
+): PullRequestCheck {
+    const createdAt = status.creationDate ? new Date(status.creationDate) : undefined;
+    const updatedAt = status.updatedDate ? new Date(status.updatedDate) : undefined;
+    return {
+        id: `${idPrefix}-${status.id ?? 0}`,
+        name: adoStatusName(status),
+        group: status.context?.genre ?? undefined,
+        status: mapAdoStatusState(status.state),
+        source,
+        description: status.description ?? undefined,
+        detailsUrl: status.targetUrl ?? undefined,
+        startedAt: createdAt,
+        completedAt: updatedAt,
+        durationMs:
+            createdAt && updatedAt
+                ? Math.max(0, updatedAt.getTime() - createdAt.getTime())
+                : undefined,
+        raw: status,
+    };
+}
+
+function dedupeChecks(checks: PullRequestCheck[]): PullRequestCheck[] {
+    // Keep the most recently updated entry per (source, name) — ADO can post
+    // multiple status records per context across retries.
+    const byKey = new Map<string, PullRequestCheck>();
+    for (const check of checks) {
+        const key = `${check.source}::${check.name.toLowerCase()}`;
+        const existing = byKey.get(key);
+        if (!existing) {
+            byKey.set(key, check);
+            continue;
+        }
+        const a = existing.completedAt?.getTime() ?? existing.startedAt?.getTime() ?? 0;
+        const b = check.completedAt?.getTime() ?? check.startedAt?.getTime() ?? 0;
+        if (b >= a) byKey.set(key, check);
+    }
+    return Array.from(byKey.values());
 }
 
 function mapAdoThread(t: GitPullRequestCommentThread): CommentThread {
@@ -137,30 +267,7 @@ function mapAdoThread(t: GitPullRequestCommentThread): CommentThread {
         comments: (t.comments ?? []).map((c: Parameters<typeof mapAdoComment>[0]) => mapAdoComment(c)),
         status: statusMap[t.status ?? 0] ?? 'unknown',
         createdAt: t.publishedDate ? new Date(t.publishedDate) : new Date(0),
-    };
-}
-
-function mapAdoCommit(commit: GitCommitRef): PullRequestCommit {
-    const extra = commit as GitCommitRef & { commitIdString?: string; objectId?: string };
-    const sha = String(commit.commitId ?? extra.commitIdString ?? extra.objectId ?? '');
-    const author = commit.author ?? {};
-    const committer = commit.committer ?? {};
-    const authoredAt = author.date ? new Date(author.date) : undefined;
-    const committedAt = committer.date ? new Date(committer.date) : authoredAt;
-    return {
-        sha,
-        shortSha: sha.slice(0, 7),
-        title: firstLine(commit.comment),
-        message: commit.comment ?? '',
-        author: {
-            id: author.email ?? author.name ?? '',
-            displayName: author.name ?? author.email ?? '',
-            email: author.email,
-        },
-        authoredAt,
-        committedAt,
-        url: commit.remoteUrl ?? commit.url,
-        raw: commit,
+        threadContext: mapAdoThreadContext(t),
     };
 }
 
@@ -322,6 +429,75 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
         return reviewers.map(mapAdoReviewer);
     }
 
+    async getCommits(repositoryId: string, pullRequestId: number | string): Promise<PullRequestCommit[]> {
+        const logger = getLogger();
+        const effectiveRepo = this.repo ?? repositoryId;
+        logger.info(
+            LogCategory.ADO,
+            `getCommits: repo=${effectiveRepo} PR #${pullRequestId} project=${this.project ?? '(default)'}`,
+        );
+        const commits = await this.service.getPullRequestCommits(
+            effectiveRepo,
+            Number(pullRequestId),
+            this.project,
+        );
+        logger.info(
+            LogCategory.ADO,
+            `getCommits: returned ${commits.length} commit(s) for PR #${pullRequestId}`,
+        );
+        return commits.map(mapAdoCommit);
+    }
+
+    async getChecks(repositoryId: string, pullRequestId: number | string): Promise<PullRequestCheck[]> {
+        const logger = getLogger();
+        const effectiveRepo = this.repo ?? repositoryId;
+        logger.info(
+            LogCategory.ADO,
+            `getChecks: repo=${effectiveRepo} PR #${pullRequestId} project=${this.project ?? '(default)'}`,
+        );
+
+        const out: PullRequestCheck[] = [];
+
+        // Per-PR statuses (e.g. build/CI postings against the PR itself).
+        const prStatuses = await this.service.getPullRequestStatuses(
+            effectiveRepo,
+            Number(pullRequestId),
+            this.project,
+        );
+        for (const status of prStatuses) {
+            out.push(mapAdoCheck(status, 'check', 'pr-status'));
+        }
+
+        // Per-commit statuses on the head SHA (latest iteration). Best-effort.
+        try {
+            const iterations = await this.service.getPullRequestIterations(
+                effectiveRepo,
+                Number(pullRequestId),
+                this.project,
+            );
+            const headSha = iterations.length
+                ? iterations[iterations.length - 1].sourceRefCommit?.commitId
+                : undefined;
+            if (headSha) {
+                const commitStatuses = await this.service.getCommitStatuses(
+                    effectiveRepo,
+                    headSha,
+                    this.project,
+                );
+                for (const status of commitStatuses) {
+                    out.push(mapAdoCheck(status, 'status', 'commit-status'));
+                }
+            }
+        } catch (err) {
+            logger.warn(
+                LogCategory.ADO,
+                `getChecks: commit-status fetch failed for PR #${pullRequestId}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+        }
+
+        return dedupeChecks(out);
+    }
+
     async getDiff(repositoryId: string, pullRequestId: number | string): Promise<string> {
         const logger = getLogger();
         const effectiveRepo = this.repo ?? repositoryId;
@@ -380,18 +556,5 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
             );
             return '';
         }
-    }
-
-    async getCommits(repositoryId: string, pullRequestId: number | string): Promise<PullRequestCommit[]> {
-        const logger = getLogger();
-        const effectiveRepo = this.repo ?? repositoryId;
-        logger.info(LogCategory.ADO, `getCommits: repo=${effectiveRepo} PR #${pullRequestId} project=${this.project ?? '(default)'}`);
-        const commits = await this.service.getPullRequestCommits(
-            effectiveRepo,
-            Number(pullRequestId),
-            this.project,
-        );
-        logger.info(LogCategory.ADO, `getCommits: mapped ${commits.length} commit(s) for PR #${pullRequestId}`);
-        return commits.map(mapAdoCommit);
     }
 }

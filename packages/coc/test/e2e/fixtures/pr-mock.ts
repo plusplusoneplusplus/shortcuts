@@ -2,31 +2,25 @@ import type { Page } from '@playwright/test';
 import type {
     CommentThread,
     PullRequest,
+    PullRequestCommit,
     Reviewer,
 } from '../../../src/server/spa/client/react/features/pull-requests/pr-utils';
 import {
+    MOCK_PR_COMMITS,
     MOCK_PR_LIST,
     MOCK_PR_OPEN,
     MOCK_PR_THREADS,
 } from './pr-fixtures.js';
-
-interface MockPrCommit {
-    sha: string;
-    shortSha: string;
-    title: string;
-    author?: { displayName?: string; email?: string };
-    committedAt?: string;
-    url?: string;
-}
 
 export interface PrMockOptions {
     pullRequests?: PullRequest[];
     prDetail?: PullRequest;
     threads?: CommentThread[];
     reviewers?: Reviewer[];
-    commits?: MockPrCommit[];
     /** Body for GET /pull-requests/:id/diff (text/plain). Defaults to empty. */
     diff?: string;
+    /** Body for GET /pull-requests/:id/commits. Defaults to `MOCK_PR_COMMITS`. */
+    commits?: PullRequestCommit[];
     unconfigured?: boolean;
     detectedProvider?: 'github' | 'ado' | null;
     remoteUrl?: string;
@@ -43,17 +37,8 @@ export async function setupPrRoutes(
         prDetail = MOCK_PR_OPEN,
         threads = MOCK_PR_THREADS,
         reviewers = [],
-        commits = [
-            {
-                sha: 'abcdef1234567890',
-                shortSha: 'abcdef1',
-                title: 'feat: detailed open PR',
-                author: { displayName: 'Alice Developer', email: 'alice@example.com' },
-                committedAt: '2024-01-15T12:00:00.000Z',
-                url: 'https://example.com/repos/org/repo/commit/abcdef1234567890',
-            },
-        ],
         diff = '',
+        commits = MOCK_PR_COMMITS,
         unconfigured = false,
         detectedProvider = null,
         remoteUrl = '',
@@ -90,7 +75,7 @@ export async function setupPrRoutes(
         return route.fulfill({ status: 200, json: { reviewers } });
     });
 
-    // commits
+    // commits — JSON
     await page.route(commitsPattern, (route) => {
         if (unconfigured) {
             return route.fulfill({ status: 401, json: unconfiguredBody });

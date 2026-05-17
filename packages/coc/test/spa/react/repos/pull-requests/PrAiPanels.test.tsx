@@ -164,14 +164,28 @@ describe('PrFilesPanel', () => {
         expect(screen.getByTestId('pr-file-diff-card')).toBeInTheDocument();
     });
 
-    it('shows AI annotations only for paths supplied in the annotations map', () => {
+    it('renders real provider comments inline when file and line context are present', () => {
         render(
             <PrFilesPanel
                 files={realDiff}
-                annotations={{ 'src/foo.ts': { title: 'AI noticed', body: 'Watch this', actions: ['Apply'] } }}
+                commentsByPath={{
+                    'src/foo.ts': [{
+                        id: 'thread-1',
+                        status: 'active',
+                        threadContext: { filePath: 'src/foo.ts', line: 2, side: 'right' },
+                        comments: [{
+                            id: 'comment-1',
+                            author: { displayName: 'Reviewer' },
+                            body: 'Use the actual review comment here.',
+                            createdAt: '2024-01-01T00:00:00Z',
+                        }],
+                    }],
+                }}
             />,
         );
-        expect(screen.getByTestId('pr-file-ai-annotation').textContent).toContain('AI noticed');
+        expect(screen.getByTestId('pr-file-inline-comments')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-file-real-comment').textContent).toContain('Use the actual review comment here.');
+        expect(screen.queryByTestId('pr-file-ai-annotation')).not.toBeInTheDocument();
     });
 
     it('filters files by the search input', () => {

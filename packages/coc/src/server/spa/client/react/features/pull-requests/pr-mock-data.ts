@@ -9,12 +9,18 @@
  * presentational components.
  */
 
-import type { PullRequest } from './pr-utils';
+import type { PullRequest, PullRequestCommit, CommentThread } from './pr-utils';
+import type { PullRequestCheck, PullRequestCheckStatus, Reviewer } from './pr-utils';
+import type { PrCommitRow } from './PrCommitTable';
 
 export type FindingTag = 'good' | 'risk' | 'note' | 'ai';
 export type CommitIntent = 'feat' | 'fix' | 'docs' | 'test' | 'refactor' | 'chore';
 export type RiskLevel = 'Low' | 'Medium' | 'High';
-export type CheckStatus = 'ok' | 'warn' | 'fail';
+/**
+ * Display-friendly status for the checks table. Mirrors the provider-agnostic
+ * `PullRequestCheckStatus` so the same vocabulary is used everywhere.
+ */
+export type CheckStatus = PullRequestCheckStatus;
 export type MergeReadinessTag = 'good' | 'risk' | 'note';
 export type AiTimelineKind = 'ai' | 'reviewer' | 'author';
 
@@ -73,6 +79,12 @@ export interface AiCheckRow {
     status: CheckStatus;
     duration: string;
     interpretation: string;
+    /** Optional provider group (e.g. GitHub App name, ADO genre). */
+    group?: string;
+    /** Optional source kind — modern check vs. legacy commit-status. */
+    source?: 'check' | 'status';
+    /** Optional details URL — opens in a new tab when present. */
+    detailsUrl?: string;
 }
 
 export interface MergeReadinessItem {
@@ -152,9 +164,14 @@ export function findingTagClass(tag: FindingTag): string {
 
 export function checkStatusClass(status: CheckStatus): string {
     switch (status) {
-        case 'ok':   return 'text-green-700 dark:text-green-300';
-        case 'warn': return 'text-yellow-700 dark:text-yellow-300';
-        case 'fail': return 'text-red-700 dark:text-red-400';
+        case 'success':   return 'text-green-700 dark:text-green-300';
+        case 'warning':   return 'text-yellow-700 dark:text-yellow-300';
+        case 'failure':   return 'text-red-700 dark:text-red-400';
+        case 'cancelled': return 'text-gray-600 dark:text-gray-300';
+        case 'skipped':   return 'text-gray-500 dark:text-gray-400';
+        case 'pending':   return 'text-blue-600 dark:text-blue-300';
+        case 'running':   return 'text-blue-700 dark:text-blue-200';
+        case 'unknown':   return 'text-gray-500 dark:text-gray-400';
     }
 }
 
@@ -357,35 +374,35 @@ const CHECK_TEMPLATES: AiCheckRow[] = [
     {
         id: 'unit',
         name: 'unit / ingest',
-        status: 'ok',
+        status: 'success',
         duration: '3m 18s',
         interpretation: 'Relevant but missing abort scenario.',
     },
     {
         id: 'integration',
         name: 'integration / worker',
-        status: 'ok',
+        status: 'success',
         duration: '7m 04s',
         interpretation: 'Covers batch mode and streaming flag enabled.',
     },
     {
         id: 'typecheck',
         name: 'typecheck',
-        status: 'ok',
+        status: 'success',
         duration: '1m 46s',
         interpretation: 'No public API type break detected.',
     },
     {
         id: 'coverage',
         name: 'coverage',
-        status: 'warn',
+        status: 'warning',
         duration: '2m 11s',
         interpretation: 'Coverage passed, but the changed branch lacks a slow-consumer path.',
     },
     {
         id: 'docs',
         name: 'docs preview',
-        status: 'ok',
+        status: 'success',
         duration: '0m 44s',
         interpretation: 'Docs build; rollout owner remains a content issue.',
     },
@@ -527,12 +544,211 @@ export function getMockCommitRows(): AiCommitRow[] {
     return COMMIT_TEMPLATES;
 }
 
+const INTENT_KEYWORDS: Array<{ test: RegExp; intent: CommitIntent }> = [
+    { test: /^(feat|feature)\b|\bfeature(?:s|d)?\b|\badd(?:s|ed)?\b|\bintroduce(?:s|d)?\b|\bsupport(?:s|ed)?\b/i, intent: 'feat' },
+    { test: /^fix\b|\bfix(?:es|ed)?\b|\bbugfix\b|\bregression\b|\bpatch\b/i,                                       intent: 'fix' },
+    { test: /^docs?\b|\bdocs?\b|\breadme\b|\bcomment(?:s|ed)?\b|\bdocument(?:s|ed|ation)?\b/i,                       intent: 'docs' },
+    { test: /^test\b|\btest(?:s|ed|ing)?\b|\bspec(?:s)?\b|\bcoverage\b|\bvitest\b|\bmocha\b/i,                       intent: 'test' },
+    { test: /^refactor\b|\brefactor(?:s|ed|ing)?\b|\brename(?:s|d)?\b|\bcleanup\b|\bsimplif(?:y|ied|ies)\b/i,         intent: 'refactor' },
+    { test: /^chore\b|\bchore\b|\bbump\b|\bdep(?:s|endencies)?\b|\bversion\b|\brelease\b|\bci\b|\bbuild\b/i,         intent: 'chore' },
+];
+
+/**
+ * Infer an AI-style commit intent label from a real commit subject.
+ * Heuristic only — the intent label is meant as a starting point that
+ * a reviewer can edit, not a guarantee.
+ */
+export function inferCommitIntent(message: string): CommitIntent {
+    const head = (message ?? '').split('\n', 1)[0];
+    for (const entry of INTENT_KEYWORDS) {
+        if (entry.test.test(head)) return entry.intent;
+    }
+    return 'chore';
+}
+
+const INTENT_NOTE: Record<CommitIntent, string> = {
+    feat: 'New behavior — focus review on the boundary.',
+    fix: 'Bug fix — confirm regression coverage.',
+    docs: 'Docs only — quick skim.',
+    test: 'Adds or updates tests — read for coverage gaps.',
+    refactor: 'Refactor — verify behavior preserved.',
+    chore: 'Chore — low review value.',
+};
+
+/** Map real `PullRequestCommit` records to the row shape consumed by `PrCommitTable`. */
+export function buildCommitRowsFromPrCommits(commits: PullRequestCommit[]): PrCommitRow[] {
+    return commits.map(commit => {
+        const sha = commit.id ?? '';
+        const shortSha = commit.shortId || (sha ? sha.slice(0, 7) : '');
+        const subjectLine =
+            commit.subject ||
+            (commit.message ? commit.message.split('\n', 1)[0] : '');
+        return {
+            sha,
+            shortSha,
+            title: subjectLine || shortSha || sha,
+            message: commit.message,
+            author: commit.author,
+            authoredAt: commit.authoredAt,
+            committedAt: commit.committedAt,
+            url: commit.url,
+        };
+    });
+}
+
 export function getMockCheckRows(): AiCheckRow[] {
     return CHECK_TEMPLATES;
 }
 
 export function getMockMergeReadiness(): MergeReadinessItem[] {
     return MERGE_READINESS;
+}
+
+// ── Real check / merge-readiness derivation ────────────────────────────────
+
+function formatDurationMs(ms: number | undefined): string {
+    if (!ms || ms < 0 || !Number.isFinite(ms)) return '';
+    const totalSeconds = Math.round(ms / 1000);
+    if (totalSeconds < 60) return `${totalSeconds}s`;
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+}
+
+function interpretCheckStatus(status: CheckStatus, description?: string): string {
+    if (description && description.trim()) return description.trim();
+    switch (status) {
+        case 'success':   return 'Completed successfully.';
+        case 'warning':   return 'Completed with warnings.';
+        case 'failure':   return 'Failed — review log before merging.';
+        case 'cancelled': return 'Cancelled before completion.';
+        case 'skipped':   return 'Skipped or not applicable.';
+        case 'pending':   return 'Queued or waiting to start.';
+        case 'running':   return 'Currently running.';
+        case 'unknown':   return 'Status not reported by provider.';
+    }
+}
+
+/**
+ * Convert provider-agnostic `PullRequestCheck[]` (from the /checks REST
+ * endpoint) into display rows for `PrChecksTable`. The interpretation
+ * column falls back to the provider description, then a generic per-status
+ * sentence — no AI involved.
+ */
+export function buildCheckRowsFromChecks(checks: PullRequestCheck[]): AiCheckRow[] {
+    return checks.map(check => {
+        const name = check.group ? `${check.group} / ${check.name}` : check.name;
+        return {
+            id: check.id,
+            name,
+            status: check.status,
+            duration: formatDurationMs(check.durationMs),
+            interpretation: interpretCheckStatus(check.status, check.description),
+            group: check.group,
+            source: check.source,
+            detailsUrl: check.detailsUrl,
+        };
+    });
+}
+
+/**
+ * Derive a deterministic merge-readiness checklist from real PR signals:
+ * checks, comment threads, and reviewer votes. No AI / mock data involved.
+ */
+export function buildMergeReadinessFromData(params: {
+    checks: PullRequestCheck[];
+    threads: CommentThread[];
+    reviewers: Reviewer[];
+}): MergeReadinessItem[] {
+    const { checks, threads, reviewers } = params;
+
+    const items: MergeReadinessItem[] = [];
+
+    // ── Checks signal ──────────────────────────────────────────────────
+    const failed = checks.filter(c => c.status === 'failure');
+    const inProgress = checks.filter(c => c.status === 'running' || c.status === 'pending');
+    const warning = checks.filter(c => c.status === 'warning');
+    const succeeded = checks.filter(c => c.status === 'success');
+
+    if (checks.length === 0) {
+        items.push({
+            tag: 'note',
+            label: 'Checks',
+            body: 'No CI checks reported for this pull request yet.',
+        });
+    } else if (failed.length > 0) {
+        const names = failed.slice(0, 3).map(c => c.name).join(', ');
+        const more = failed.length > 3 ? ` (+${failed.length - 3} more)` : '';
+        items.push({
+            tag: 'risk',
+            label: 'Block',
+            body: `${failed.length} check${failed.length === 1 ? '' : 's'} failing: ${names}${more}.`,
+        });
+    } else if (inProgress.length > 0) {
+        items.push({
+            tag: 'note',
+            label: 'Wait',
+            body: `${inProgress.length} check${inProgress.length === 1 ? ' is' : 's are'} still running.`,
+        });
+    } else if (warning.length > 0) {
+        items.push({
+            tag: 'note',
+            label: 'Review',
+            body: `${warning.length} check${warning.length === 1 ? '' : 's'} completed with warnings.`,
+        });
+    } else {
+        items.push({
+            tag: 'good',
+            label: 'Pass',
+            body: `All ${succeeded.length} reported check${succeeded.length === 1 ? '' : 's'} completed successfully.`,
+        });
+    }
+
+    // ── Threads signal ─────────────────────────────────────────────────
+    const unresolvedThreads = threads.filter(t => (t.status ?? 'active') === 'active');
+    if (unresolvedThreads.length > 0) {
+        items.push({
+            tag: 'risk',
+            label: 'Threads',
+            body: `${unresolvedThreads.length} comment thread${unresolvedThreads.length === 1 ? ' is' : 's are'} still unresolved.`,
+        });
+    } else if (threads.length > 0) {
+        items.push({
+            tag: 'good',
+            label: 'Threads',
+            body: `All ${threads.length} comment thread${threads.length === 1 ? '' : 's'} resolved.`,
+        });
+    }
+
+    // ── Reviewer signal ────────────────────────────────────────────────
+    const approved = reviewers.filter(r => r.vote === 'approved' || r.vote === 'approvedWithSuggestions');
+    const rejected = reviewers.filter(r => r.vote === 'rejected' || r.vote === 'waitingForAuthor');
+    const requiredPending = reviewers.filter(
+        r => r.isRequired && r.vote !== 'approved' && r.vote !== 'approvedWithSuggestions',
+    );
+    if (reviewers.length === 0) {
+        items.push({ tag: 'note', label: 'Reviewers', body: 'No reviewers assigned yet.' });
+    } else if (rejected.length > 0) {
+        items.push({
+            tag: 'risk',
+            label: 'Reviewers',
+            body: `${rejected.length} reviewer${rejected.length === 1 ? '' : 's'} requested changes or is waiting for author.`,
+        });
+    } else if (requiredPending.length > 0) {
+        items.push({
+            tag: 'note',
+            label: 'Reviewers',
+            body: `${requiredPending.length} required reviewer${requiredPending.length === 1 ? '' : 's'} have not approved yet.`,
+        });
+    } else {
+        items.push({
+            tag: 'good',
+            label: 'Reviewers',
+            body: `${approved.length} of ${reviewers.length} reviewer${reviewers.length === 1 ? '' : 's'} approved.`,
+        });
+    }
+
+    return items;
 }
 
 export function getMockFiles(): AiFileEntry[] {

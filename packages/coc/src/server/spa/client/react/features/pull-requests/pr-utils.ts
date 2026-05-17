@@ -26,7 +26,57 @@ export interface CommentThread {
     id: string | number;
     comments: PrComment[];
     status?: string;
-    threadContext?: { filePath?: string };
+    threadContext?: {
+        filePath?: string;
+        line?: number;
+        startLine?: number;
+        endLine?: number;
+        side?: 'right' | 'left' | 'unknown';
+    };
+}
+
+/**
+ * Provider-agnostic check status as returned by
+ * /api/repos/:id/pull-requests/:prId/checks. Mirrors `CheckStatus` in
+ * `@plusplusoneplusplus/forge`'s provider abstraction.
+ */
+export type PullRequestCheckStatus =
+    | 'pending'
+    | 'running'
+    | 'success'
+    | 'failure'
+    | 'cancelled'
+    | 'skipped'
+    | 'warning'
+    | 'unknown';
+
+export type PullRequestCheckSource = 'check' | 'status';
+
+/** Provider-agnostic check / CI status as returned by /checks. */
+export interface PullRequestCheck {
+    id: string;
+    name: string;
+    group?: string;
+    status: PullRequestCheckStatus;
+    source: PullRequestCheckSource;
+    description?: string;
+    detailsUrl?: string;
+    startedAt?: string;
+    completedAt?: string;
+    durationMs?: number;
+}
+
+/** Shape of a single commit as returned by the /api/repos/:id/pull-requests/:prId/commits endpoint. */
+export interface PullRequestCommit {
+    id: string;
+    shortId: string;
+    message: string;
+    subject: string;
+    author?: { displayName?: string; email?: string; avatarUrl?: string };
+    committer?: { displayName?: string; email?: string; avatarUrl?: string };
+    authoredAt?: string;
+    committedAt?: string;
+    url?: string;
 }
 
 /** Shape of a pull request as returned by the /api/repos/:id/pull-requests endpoint. */

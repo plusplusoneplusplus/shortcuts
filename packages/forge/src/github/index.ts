@@ -8,4 +8,7 @@ export type {
     GitHubReview,
     GitHubComment,
     GitHubIssue,
+    GitHubCheckRun,
+    GitHubCombinedStatusItem,
+    GitHubCombinedStatusResponse,
 } from './types';

@@ -4,6 +4,7 @@ import type {
     CreatePullRequestInput,
     CreateWorkItemInput,
     PullRequest,
+    PullRequestCheck,
     PullRequestCommit,
     Reviewer,
     SearchCriteria,
@@ -59,8 +60,14 @@ export interface IPullRequestsService {
     ): Promise<Reviewer[]>;
     /** Returns the unified diff for a pull request. Optional — not all providers support this. */
     getDiff?(repositoryId: string, pullRequestId: number | string): Promise<string>;
-    /** Returns commits included in a pull request. Optional — not all providers support this. */
+    /** Returns the commits included in a pull request, oldest first. Optional — not all providers support this. */
     getCommits?(repositoryId: string, pullRequestId: number | string): Promise<PullRequestCommit[]>;
+    /**
+     * Returns the provider-reported checks / CI statuses associated with a pull
+     * request. Adapters should return the latest run per check/context (deduped
+     * across retries). Optional — not all providers support this.
+     */
+    getChecks?(repositoryId: string, pullRequestId: number | string): Promise<PullRequestCheck[]>;
 }
 
 export interface IWorkItemsService {

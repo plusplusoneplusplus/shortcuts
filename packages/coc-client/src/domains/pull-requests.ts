@@ -1,8 +1,9 @@
 import type {
   ProviderConfigRequest,
+  PullRequestChecksResponse,
+  PullRequestCommitsResponse,
   PullRequestListQuery,
   PullRequestListResponse,
-  PullRequestCommitsResponse,
   PullRequestReviewersResponse,
   PullRequestThreadsResponse,
   SanitizedProviderConfigResponse,
@@ -77,5 +78,11 @@ export class PullRequestsClient {
       return this.transport.requestText(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/diff`, reqOptions);
     }
     return this.transport.request<string>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/diff`, reqOptions);
+  }
+
+  getChecks(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestChecksResponse> {
+    return this.transport.request<PullRequestChecksResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/checks`, {
+      signal: options?.signal,
+    });
   }
 }

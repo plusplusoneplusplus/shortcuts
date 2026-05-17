@@ -1,16 +1,19 @@
 import type { IGitApi } from 'azure-devops-node-api/GitApi';
 import type {
+    GitCommitRef,
     GitPullRequest,
     GitPullRequestSearchCriteria,
     GitPullRequestCommentThread,
+    GitPullRequestStatus,
+    GitStatus,
     IdentityRefWithVote,
     GitPullRequestIteration,
     GitPullRequestIterationChanges,
     GitPullRequestChange,
-    GitCommitRef,
     GitVersionDescriptor,
 } from 'azure-devops-node-api/interfaces/GitInterfaces';
 import {
+    GitStatusState,
     VersionControlChangeType,
     GitVersionType,
 } from 'azure-devops-node-api/interfaces/GitInterfaces';
@@ -20,7 +23,8 @@ import { getLogger, LogCategory } from '../logger';
 export type { GitPullRequest, GitPullRequestSearchCriteria, GitPullRequestCommentThread };
 export type { IdentityRefWithVote };
 export type { GitPullRequestIteration, GitPullRequestIterationChanges, GitPullRequestChange, GitCommitRef };
-export { VersionControlChangeType, GitVersionType };
+export type { GitPullRequestStatus, GitStatus };
+export { GitStatusState, VersionControlChangeType, GitVersionType };
 export { PullRequestStatus } from 'azure-devops-node-api/interfaces/GitInterfaces';
 
 /** Error class for pull-request operations. */
@@ -232,26 +236,6 @@ export class AdoPullRequestsService {
         }
     }
 
-    async getPullRequestCommits(
-        repositoryId: string,
-        pullRequestId: number,
-        project?: string,
-    ): Promise<GitCommitRef[]> {
-        const logger = getLogger();
-        logger.info(LogCategory.ADO, `getPullRequestCommits: repo=${repositoryId} PR #${pullRequestId} project=${project ?? '(default)'}`);
-        const api = await this.getGitApi();
-        try {
-            const result = await api.getPullRequestCommits(repositoryId, pullRequestId, project);
-            const commits = result ?? [];
-            logger.info(LogCategory.ADO, `getPullRequestCommits: returned ${commits.length} commit(s) for PR #${pullRequestId}`);
-            return commits;
-        } catch (err) {
-            const errMsg = err instanceof Error ? err.message : String(err);
-            logger.error(LogCategory.ADO, `getPullRequestCommits failed: repo=${repositoryId} PR #${pullRequestId}: ${errMsg}`);
-            throw new AdoPullRequestError(`Failed to get commits for PR ${pullRequestId}`, err);
-        }
-    }
-
     // ── iterations & file content ───────────────────────────
 
     async getPullRequestIterations(
@@ -302,6 +286,105 @@ export class AdoPullRequestsService {
             throw new AdoPullRequestError(
                 `Failed to get iteration changes for PR ${pullRequestId}, iteration ${iterationId}: ${error}`,
             );
+        }
+    }
+
+    async getPullRequestCommits(
+        repositoryId: string,
+        pullRequestId: number,
+        project?: string,
+    ): Promise<GitCommitRef[]> {
+        const api = await this.getGitApi();
+        const logger = getLogger();
+        try {
+            logger.info(
+                LogCategory.ADO,
+                `getPullRequestCommits: repo=${repositoryId} PR #${pullRequestId} project=${project ?? '(default)'}`,
+            );
+            const result = await api.getPullRequestCommits(repositoryId, pullRequestId, project);
+            // ADO returns a PagedList<GitCommitRef>; it's array-shaped at runtime.
+            const commits = (result as unknown as GitCommitRef[] | undefined) ?? [];
+            logger.info(
+                LogCategory.ADO,
+                `getPullRequestCommits: returned ${commits.length} commit(s) for PR #${pullRequestId}`,
+            );
+            return commits;
+        } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            logger.error(
+                LogCategory.ADO,
+                `getPullRequestCommits failed: repo=${repositoryId} PR #${pullRequestId}: ${errMsg}`,
+            );
+            throw new AdoPullRequestError(
+                `Failed to get commits for PR ${pullRequestId}`,
+                err,
+            );
+        }
+    }
+
+    /**
+     * Fetch all per-PR statuses (e.g. build/CI statuses posted against the
+     * pull request itself). Returns an empty list on failure (best-effort).
+     */
+    async getPullRequestStatuses(
+        repositoryId: string,
+        pullRequestId: number,
+        project?: string,
+    ): Promise<GitPullRequestStatus[]> {
+        const logger = getLogger();
+        const api = await this.getGitApi();
+        try {
+            logger.info(
+                LogCategory.ADO,
+                `getPullRequestStatuses: repo=${repositoryId} PR #${pullRequestId} project=${project ?? '(default)'}`,
+            );
+            const result = await api.getPullRequestStatuses(repositoryId, pullRequestId, project);
+            const statuses = (result as unknown as GitPullRequestStatus[] | undefined) ?? [];
+            logger.info(
+                LogCategory.ADO,
+                `getPullRequestStatuses: returned ${statuses.length} status(es) for PR #${pullRequestId}`,
+            );
+            return statuses;
+        } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            logger.warn(
+                LogCategory.ADO,
+                `getPullRequestStatuses failed: repo=${repositoryId} PR #${pullRequestId}: ${errMsg}`,
+            );
+            return [];
+        }
+    }
+
+    /**
+     * Fetch per-commit statuses for a given commit SHA (latest run per
+     * context). Returns an empty list on failure (best-effort).
+     */
+    async getCommitStatuses(
+        repositoryId: string,
+        commitId: string,
+        project?: string,
+    ): Promise<GitStatus[]> {
+        const logger = getLogger();
+        const api = await this.getGitApi();
+        try {
+            logger.info(
+                LogCategory.ADO,
+                `getCommitStatuses: repo=${repositoryId} commit=${commitId} project=${project ?? '(default)'}`,
+            );
+            const result = await api.getStatuses(commitId, repositoryId, project, undefined, undefined, true);
+            const statuses = (result as unknown as GitStatus[] | undefined) ?? [];
+            logger.info(
+                LogCategory.ADO,
+                `getCommitStatuses: returned ${statuses.length} status(es) for commit ${commitId}`,
+            );
+            return statuses;
+        } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            logger.warn(
+                LogCategory.ADO,
+                `getCommitStatuses failed: repo=${repositoryId} commit=${commitId}: ${errMsg}`,
+            );
+            return [];
         }
     }
 

@@ -37,17 +37,53 @@ const mockGitHubComment = {
     created_at: '2024-01-03T00:00:00Z',
     updated_at: '2024-01-03T00:00:00Z',
     html_url: 'https://github.com/owner/repo/pull/42#issuecomment-300',
+    path: 'src/foo.ts',
+    line: 12,
+    start_line: 10,
+    side: 'RIGHT' as const,
 };
 
-const mockGitHubCommit = {
-    sha: 'abcdef1234567890',
+const mockGitHubPrCommit = {
+    sha: 'abc1234deadbeef0000000000000000000000000',
+    html_url: 'https://github.com/owner/repo/commit/abc1234',
     commit: {
-        message: 'Fix bug\n\nDetailed body',
-        author: { name: 'Alice Smith', email: 'alice@example.com', date: '2024-01-04T00:00:00Z' },
-        committer: { name: 'CI', email: 'ci@example.com', date: '2024-01-04T01:00:00Z' },
+        message: 'feat: stream JSONL parser\n\nMore details about the change.',
+        author: {
+            name: 'Alice Smith',
+            email: 'alice@example.com',
+            date: '2024-01-04T12:34:56Z',
+        },
+        committer: {
+            name: 'Alice Smith',
+            email: 'alice@example.com',
+            date: '2024-01-04T12:34:56Z',
+        },
     },
     author: { id: 100, login: 'alice', name: 'Alice Smith', email: 'alice@example.com', avatar_url: 'https://avatar/alice' },
-    html_url: 'https://github.com/owner/repo/commit/abcdef1234567890',
+    committer: { id: 100, login: 'alice', name: 'Alice Smith', email: 'alice@example.com', avatar_url: 'https://avatar/alice' },
+};
+
+const mockGitHubCheckRun = {
+    id: 9001,
+    name: 'build',
+    status: 'completed' as const,
+    conclusion: 'success' as const,
+    started_at: '2024-01-06T10:00:00Z',
+    completed_at: '2024-01-06T10:03:18Z',
+    html_url: 'https://github.com/owner/repo/runs/9001',
+    details_url: 'https://github.com/owner/repo/runs/9001/details',
+    output: { title: 'Build OK', summary: 'All targets built.' },
+    app: { slug: 'github-actions', name: 'GitHub Actions' },
+};
+
+const mockGitHubCombinedStatusItem = {
+    id: 5005,
+    state: 'failure' as const,
+    context: 'ci/legacy',
+    description: 'Legacy CI failed on macOS',
+    target_url: 'https://example.com/builds/5005',
+    created_at: '2024-01-06T11:00:00Z',
+    updated_at: '2024-01-06T11:02:00Z',
 };
 
 function makeMockOctokit(overrides: Record<string, unknown> = {}): Octokit {
@@ -59,11 +95,24 @@ function makeMockOctokit(overrides: Record<string, unknown> = {}): Octokit {
             update: vi.fn().mockResolvedValue({ data: mockGitHubPr }),
             listReviewComments: vi.fn().mockResolvedValue({ data: [mockGitHubComment] }),
             listReviews: vi.fn().mockResolvedValue({ data: [mockGitHubReview] }),
-            listCommits: vi.fn().mockResolvedValue({ data: [mockGitHubCommit] }),
+            listCommits: vi.fn().mockResolvedValue({ data: [mockGitHubPrCommit] }),
             requestReviewers: vi.fn().mockResolvedValue({ data: {} }),
         },
         issues: {
             createComment: vi.fn().mockResolvedValue({ data: mockGitHubComment }),
+        },
+        checks: {
+            listForRef: vi.fn().mockResolvedValue({ data: { check_runs: [mockGitHubCheckRun] } }),
+        },
+        repos: {
+            getCombinedStatusForRef: vi.fn().mockResolvedValue({
+                data: {
+                    state: 'failure',
+                    sha: 'abc123',
+                    total_count: 1,
+                    statuses: [mockGitHubCombinedStatusItem],
+                },
+            }),
         },
         request: vi.fn().mockResolvedValue({ data: 'diff --git a/file.ts b/file.ts\n' }),
         ...overrides,
@@ -196,6 +245,13 @@ describe('GitHubPullRequestsAdapter', () => {
             expect(threads[0].id).toBe(300);
             expect(threads[0].status).toBe('active');
             expect(threads[0].comments[0].body).toBe('Looks good!');
+            expect(threads[0].threadContext).toEqual({
+                filePath: 'src/foo.ts',
+                line: 12,
+                startLine: 10,
+                endLine: 12,
+                side: 'right',
+            });
         });
     });
 
@@ -272,25 +328,149 @@ describe('GitHubPullRequestsAdapter', () => {
     });
 
     describe('getCommits', () => {
-        it('maps GitHub PR commits to canonical commits', async () => {
+        it('maps GitHub PR commits to canonical PullRequestCommit', async () => {
             const commits = await adapter.getCommits('repo', 42);
+            expect(commits).toHaveLength(1);
+            const commit = commits[0];
+            expect(commit.id).toBe('abc1234deadbeef0000000000000000000000000');
+            expect(commit.shortId).toBe('abc1234');
+            expect(commit.subject).toBe('feat: stream JSONL parser');
+            expect(commit.message).toBe('feat: stream JSONL parser\n\nMore details about the change.');
+            expect(commit.author.displayName).toBe('Alice Smith');
+            expect(commit.author.email).toBe('alice@example.com');
+            expect(commit.committer?.displayName).toBe('Alice Smith');
+            expect(commit.authoredAt).toEqual(new Date('2024-01-04T12:34:56Z'));
+            expect(commit.committedAt).toEqual(new Date('2024-01-04T12:34:56Z'));
+            expect(commit.url).toBe('https://github.com/owner/repo/commit/abc1234');
             expect(octokit.pulls.listCommits).toHaveBeenCalledWith({
                 owner: 'owner',
                 repo: 'repo',
                 pull_number: 42,
                 per_page: 100,
             });
-            expect(commits).toHaveLength(1);
-            expect(commits[0]).toMatchObject({
-                sha: 'abcdef1234567890',
-                shortSha: 'abcdef1',
-                title: 'Fix bug',
-                message: 'Fix bug\n\nDetailed body',
-                author: { displayName: 'Alice Smith', email: 'alice@example.com' },
-                url: 'https://github.com/owner/repo/commit/abcdef1234567890',
+        });
+
+        it('falls back to commit.author name/email when GitHub user is unmatched', async () => {
+            (octokit.pulls.listCommits as ReturnType<typeof vi.fn>).mockResolvedValue({
+                data: [{
+                    ...mockGitHubPrCommit,
+                    author: null,
+                    committer: null,
+                }],
             });
-            expect(commits[0].authoredAt).toEqual(new Date('2024-01-04T00:00:00Z'));
-            expect(commits[0].committedAt).toEqual(new Date('2024-01-04T01:00:00Z'));
+            const [commit] = await adapter.getCommits('repo', 42);
+            expect(commit.author.id).toBe('');
+            expect(commit.author.displayName).toBe('Alice Smith');
+            expect(commit.author.email).toBe('alice@example.com');
+        });
+
+        it('returns an empty array when octokit returns no commits', async () => {
+            (octokit.pulls.listCommits as ReturnType<typeof vi.fn>).mockResolvedValue({ data: [] });
+            const commits = await adapter.getCommits('repo', 42);
+            expect(commits).toEqual([]);
+        });
+    });
+
+    describe('getChecks', () => {
+        it('resolves head SHA from the PR then maps check-runs and combined statuses', async () => {
+            const checks = await adapter.getChecks('repo', 42);
+            expect(octokit.pulls.get).toHaveBeenCalledWith({ owner: 'owner', repo: 'repo', pull_number: 42 });
+            expect((octokit as any).checks.listForRef).toHaveBeenCalledWith({
+                owner: 'owner',
+                repo: 'repo',
+                ref: 'abc123',
+                per_page: 100,
+            });
+            expect((octokit as any).repos.getCombinedStatusForRef).toHaveBeenCalledWith({
+                owner: 'owner',
+                repo: 'repo',
+                ref: 'abc123',
+            });
+            expect(checks).toHaveLength(2);
+
+            const checkRun = checks.find(c => c.source === 'check');
+            expect(checkRun).toBeDefined();
+            expect(checkRun!.id).toBe('check-9001');
+            expect(checkRun!.name).toBe('build');
+            expect(checkRun!.group).toBe('GitHub Actions');
+            expect(checkRun!.status).toBe('success');
+            expect(checkRun!.description).toBe('All targets built.');
+            expect(checkRun!.detailsUrl).toBe('https://github.com/owner/repo/runs/9001');
+            expect(checkRun!.startedAt).toEqual(new Date('2024-01-06T10:00:00Z'));
+            expect(checkRun!.completedAt).toEqual(new Date('2024-01-06T10:03:18Z'));
+            expect(checkRun!.durationMs).toBe(198 * 1000);
+
+            const status = checks.find(c => c.source === 'status');
+            expect(status).toBeDefined();
+            expect(status!.id).toBe('status-5005');
+            expect(status!.name).toBe('ci/legacy');
+            expect(status!.status).toBe('failure');
+            expect(status!.description).toBe('Legacy CI failed on macOS');
+            expect(status!.detailsUrl).toBe('https://example.com/builds/5005');
+        });
+
+        it('returns empty array when the PR has no head SHA', async () => {
+            (octokit.pulls.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+                data: { ...mockGitHubPr, head: { ref: 'feature/fix', sha: undefined } },
+            });
+            const checks = await adapter.getChecks('repo', 42);
+            expect(checks).toEqual([]);
+        });
+
+        it.each([
+            ['queued',      null,              'pending'],
+            ['in_progress', null,              'running'],
+            ['completed',   'success',         'success'],
+            ['completed',   'neutral',         'success'],
+            ['completed',   'failure',         'failure'],
+            ['completed',   'timed_out',       'failure'],
+            ['completed',   'cancelled',       'cancelled'],
+            ['completed',   'skipped',         'skipped'],
+            ['completed',   'stale',           'skipped'],
+            ['completed',   'action_required', 'warning'],
+        ] as const)('maps check-run status=%s conclusion=%s to %s', async (status, conclusion, expected) => {
+            (octokit as any).checks.listForRef = vi.fn().mockResolvedValue({
+                data: {
+                    check_runs: [{ ...mockGitHubCheckRun, status, conclusion }],
+                },
+            });
+            (octokit as any).repos.getCombinedStatusForRef = vi.fn().mockResolvedValue({
+                data: { state: 'success', sha: 'abc123', statuses: [] },
+            });
+            const [check] = await adapter.getChecks('repo', 42);
+            expect(check.status).toBe(expected);
+        });
+
+        it.each([
+            ['success', 'success'],
+            ['failure', 'failure'],
+            ['error',   'failure'],
+            ['pending', 'pending'],
+        ] as const)('maps combined-status state=%s to %s', async (state, expected) => {
+            (octokit as any).checks.listForRef = vi.fn().mockResolvedValue({ data: { check_runs: [] } });
+            (octokit as any).repos.getCombinedStatusForRef = vi.fn().mockResolvedValue({
+                data: {
+                    state: 'success',
+                    sha: 'abc123',
+                    statuses: [{ ...mockGitHubCombinedStatusItem, state }],
+                },
+            });
+            const [check] = await adapter.getChecks('repo', 42);
+            expect(check.status).toBe(expected);
+        });
+
+        it('still returns combined statuses when check-runs lookup throws', async () => {
+            (octokit as any).checks.listForRef = vi.fn().mockRejectedValue(new Error('403 forbidden'));
+            const checks = await adapter.getChecks('repo', 42);
+            expect(checks).toHaveLength(1);
+            expect(checks[0].source).toBe('status');
+        });
+
+        it('still returns check-runs when combined-status lookup throws', async () => {
+            (octokit as any).repos.getCombinedStatusForRef = vi.fn().mockRejectedValue(new Error('500 oops'));
+            const checks = await adapter.getChecks('repo', 42);
+            expect(checks).toHaveLength(1);
+            expect(checks[0].source).toBe('check');
         });
     });
 });
