@@ -143,7 +143,7 @@ export function IMSettingsSection() {
                 {!status?.enabled ? (
                     <div className="space-y-2">
                         <p className="text-xs text-[#616161] dark:text-[#999]">
-                            WhatsApp integration is not enabled. Add the following to your <code className="text-[10px] bg-[#f0f0f0] dark:bg-[#3c3c3c] px-1 py-0.5 rounded">~/.coccontainer/config.yaml</code>:
+                            WhatsApp integration is disabled. Set <code className="text-[10px] bg-[#f0f0f0] dark:bg-[#3c3c3c] px-1 py-0.5 rounded">messaging.whatsapp.enabled: true</code> in your <code className="text-[10px] bg-[#f0f0f0] dark:bg-[#3c3c3c] px-1 py-0.5 rounded">~/.coccontainer/config.yaml</code> if it was explicitly disabled.
                         </p>
                         <pre className="text-[10px] bg-[#1e1e1e] text-[#d4d4d4] p-2 rounded overflow-x-auto">
 {`messaging:

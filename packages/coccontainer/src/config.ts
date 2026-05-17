@@ -71,7 +71,7 @@ const DEFAULTS: ResolvedContainerConfig = {
     tunnelBridgeBasePort: 10400,
     messaging: {
         whatsapp: {
-            enabled: false,
+            enabled: true,
             sessionDir: path.join(DEFAULT_DATA_DIR, 'whatsapp-session'),
             userName: 'CoC',
         },
