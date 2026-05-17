@@ -519,7 +519,7 @@ describe('RepoGitTab', () => {
         });
 
         it('imports CommitList', () => {
-            expect(source).toContain("import { CommitList }");
+            expect(source).toContain("import { CommitList, isTouchOnly }");
         });
 
         it('imports CommitDetail', () => {

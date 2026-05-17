@@ -21,6 +21,7 @@ import { useFilesViewMode } from '../hooks/useFilesViewMode';
 import { buildFixupGroups, FIXUP_GROUP_COLORS_LIGHT, FIXUP_GROUP_COLORS_DARK } from '../fixup-utils';
 import type { FixupGroupMap } from '../fixup-utils';
 import { useLongPress } from '../../../hooks/ui/useLongPress';
+import { useSwipeReveal, SWIPE_LEFT_MAX, SWIPE_DETECT_THRESHOLD } from '../../../hooks/ui/useSwipeReveal';
 
 export interface GitCommitItem {
     hash: string;
@@ -35,7 +36,7 @@ export interface GitCommitItem {
 
 // Returns true on touch-only devices where hover events are unreliable (iOS, Android).
 // Uses CSS `(hover: none)` which matches devices with no fine pointer (mouse/trackpad).
-const isTouchOnly = (): boolean =>
+export const isTouchOnly = (): boolean =>
     typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches;
 
 // Deterministic-color palette used for author avatar badges.
@@ -111,7 +112,85 @@ function computeCommitGroups(commits: GitCommitItem[], unpushedCount: number): C
     return groups;
 }
 
-interface CommitListProps {
+/** Wrapper component that adds swipe-to-reveal gesture to a commit row. */
+function SwipeableCommitRow({ commitHash, shortHash, activeRowId, onReveal, onClose, onSwipeRight, onSwipeDetected, onSwipeAction, disabled, children }: {
+    commitHash: string;
+    shortHash: string;
+    activeRowId: string | null;
+    onReveal: (rowId: string) => void;
+    onClose: () => void;
+    onSwipeRight?: (rowId: string) => void;
+    onSwipeDetected?: () => void;
+    onSwipeAction?: (action: 'review' | 'ask-ai' | 'more', commitHash: string) => void;
+    disabled?: boolean;
+    children: React.ReactNode;
+}) {
+    const { translateX, isSwiping, handlers } = useSwipeReveal({
+        rowId: commitHash,
+        activeRowId,
+        onReveal,
+        onClose,
+        onSwipeRight,
+        onSwipeDetected,
+        disabled,
+    });
+
+    const showActions = translateX < -SWIPE_DETECT_THRESHOLD;
+
+    return (
+        <div className="relative overflow-hidden" data-testid={`commit-swipe-container-${shortHash}`}>
+            {/* Action buttons revealed behind the row */}
+            {showActions && (
+                <div
+                    className="absolute inset-y-0 right-0 flex items-stretch z-0"
+                    style={{ width: `${SWIPE_LEFT_MAX}px` }}
+                    data-testid={`commit-swipe-actions-${shortHash}`}
+                >
+                    <button
+                        type="button"
+                        className="flex-1 flex items-center justify-center text-white text-[11px] font-medium"
+                        style={{ backgroundColor: '#0078d4' }}
+                        onClick={() => onSwipeAction?.('review', commitHash)}
+                        data-testid={`commit-swipe-review-${shortHash}`}
+                    >
+                        Review
+                    </button>
+                    <button
+                        type="button"
+                        className="flex-1 flex items-center justify-center text-white text-[11px] font-medium"
+                        style={{ backgroundColor: '#8250df' }}
+                        onClick={() => onSwipeAction?.('ask-ai', commitHash)}
+                        data-testid={`commit-swipe-ask-ai-${shortHash}`}
+                    >
+                        Ask AI
+                    </button>
+                    <button
+                        type="button"
+                        className="flex-1 flex items-center justify-center text-white text-[11px] font-medium rounded-r"
+                        style={{ backgroundColor: '#616161' }}
+                        onClick={() => onSwipeAction?.('more', commitHash)}
+                        data-testid={`commit-swipe-more-${shortHash}`}
+                    >
+                        ⋮
+                    </button>
+                </div>
+            )}
+            {/* Row content — slides left/right */}
+            <div
+                className="relative z-10 bg-white dark:bg-[#1e1e1e]"
+                style={{
+                    transform: `translateX(${translateX}px)`,
+                    transition: isSwiping ? 'none' : 'transform 0.25s ease-out',
+                }}
+                {...handlers}
+            >
+                {children}
+            </div>
+        </div>
+    );
+}
+
+export interface CommitListProps {
     title: string;
     commits: GitCommitItem[];
     selectedHash?: string | null;
@@ -138,15 +217,23 @@ interface CommitListProps {
     onReorder?: (newOrder: GitCommitItem[]) => void;
     /** Repo root path for "Copy Absolute Path" context menu action on file rows. */
     repoRoot?: string;
+    /** Whether mobile multi-select mode is active (lifted to parent). */
+    isMobileSelecting?: boolean;
+    /** Called when mobile multi-select mode changes. */
+    onMobileSelectingChange?: (selecting: boolean) => void;
+    /** Called when swipe-left action buttons are tapped (Review, Ask AI). */
+    onSwipeAction?: (action: 'review' | 'ask-ai' | 'more', commitHash: string) => void;
 }
 
-export function CommitList({ title, commits, selectedHash, selectedHashes, onMultiSelect, selectedFile, initialExpandedHash, onSelect, onFileSelect, onCommitContextMenu, workspaceId, loading, defaultCollapsed = false, showEmpty = false, emptyMessage, unpushedCount = 0, reorderable = false, onReorder, repoRoot }: CommitListProps) {
+export function CommitList({ title, commits, selectedHash, selectedHashes, onMultiSelect, selectedFile, initialExpandedHash, onSelect, onFileSelect, onCommitContextMenu, workspaceId, loading, defaultCollapsed = false, showEmpty = false, emptyMessage, unpushedCount = 0, reorderable = false, onReorder, repoRoot, isMobileSelecting = false, onMobileSelectingChange, onSwipeAction }: CommitListProps) {
     const [collapsed, setCollapsed] = useState(defaultCollapsed);
     const listRef = useRef<HTMLDivElement>(null);
     const [anchorHash, setAnchorHash] = useState<string | null>(null);
-    const [isMobileSelecting, setIsMobileSelecting] = useState(false);
     const longPressCommitHashRef = useRef<string | null>(null);
     const suppressLongPressClickHashRef = useRef<string | null>(null);
+    // Swipe reveal state: which row is currently swiped open
+    const [swipeActiveRowId, setSwipeActiveRowId] = useState<string | null>(null);
+    const swipeCancelLongPressRef = useRef(false);
     // Expanded file list state: hash -> files (cached)
     const [expandedHash, setExpandedHash] = useState<string | null>(null);
     const [fileCache, setFileCache] = useState<Record<string, FileChange[]>>({});
@@ -194,10 +281,10 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
     }, [commits, selectedHash, selectedHashes]);
 
     const clearMobileSelection = useCallback(() => {
-        setIsMobileSelecting(false);
+        onMobileSelectingChange?.(false);
         setAnchorHash(null);
         onMultiSelect?.([]);
-    }, [onMultiSelect]);
+    }, [onMultiSelect, onMobileSelectingChange]);
 
     const createSyntheticContextMenuEvent = useCallback((element: HTMLElement): React.MouseEvent => {
         const rect = element.getBoundingClientRect();
@@ -213,16 +300,19 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
         onCommitContextMenu?.(createSyntheticContextMenuEvent(element), commitHash);
     }, [createSyntheticContextMenuEvent, onCommitContextMenu]);
 
-    const mobileLongPress = useLongPress(() => {
-        if (!touchOnly || !onMultiSelect) return;
+    const mobileLongPress = useLongPress((x: number, y: number) => {
+        if (!touchOnly) return;
         const hash = longPressCommitHashRef.current;
-        const commit = hash ? commits.find(c => c.hash === hash) : undefined;
-        if (!commit) return;
-        setIsMobileSelecting(true);
-        setAnchorHash(commit.hash);
-        suppressLongPressClickHashRef.current = commit.hash;
-        onMultiSelect([commit]);
-    });
+        if (!hash) return;
+        suppressLongPressClickHashRef.current = hash;
+        // Open context menu at the touch coordinates (same as desktop right-click)
+        onCommitContextMenu?.({
+            clientX: x,
+            clientY: y,
+            preventDefault: () => {},
+            stopPropagation: () => {},
+        } as React.MouseEvent, hash);
+    }, { cancelSignal: swipeCancelLongPressRef.current });
 
     // Pre-compute storageKey → count lookup keyed by filePath for render-time access
     useEffect(() => {
@@ -325,7 +415,7 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                 newSet.add(commit.hash);
             }
             if (newSet.size === 0) {
-                setIsMobileSelecting(false);
+                onMobileSelectingChange?.(false);
                 setAnchorHash(null);
             } else {
                 setAnchorHash(commit.hash);
@@ -383,7 +473,7 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                     .finally(() => setFilesLoading(null));
             }
         }
-    }, [expandedHash, fileCache, workspaceId, onSelect, onMultiSelect, selectedHashes, selectedHash, anchorHash, commits, isMobileSelecting, mobileLongPress]);
+    }, [expandedHash, fileCache, workspaceId, onSelect, onMultiSelect, selectedHashes, selectedHash, anchorHash, commits, isMobileSelecting, mobileLongPress, onMobileSelectingChange]);
 
     const handleMobileSelectionActions = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
         e.preventDefault();
@@ -403,6 +493,47 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
         e.stopPropagation();
         openContextMenuFromElement(e.currentTarget, commitHash);
     }, [openContextMenuFromElement]);
+
+    // Swipe reveal handlers
+    const handleSwipeReveal = useCallback((rowId: string) => {
+        setSwipeActiveRowId(rowId);
+    }, []);
+
+    const handleSwipeClose = useCallback(() => {
+        setSwipeActiveRowId(null);
+    }, []);
+
+    const handleSwipeRight = useCallback((rowId: string) => {
+        if (!onMultiSelect) return;
+        const commit = commits.find(c => c.hash === rowId);
+        if (!commit) return;
+        if (!isMobileSelecting) {
+            // Enter multi-select mode with this commit
+            onMobileSelectingChange?.(true);
+            setAnchorHash(commit.hash);
+            onMultiSelect([commit]);
+        } else {
+            // Toggle this commit in/out of selection
+            const currentSet = selectedHashes ?? (selectedHash ? new Set([selectedHash]) : new Set<string>());
+            const newSet = new Set(currentSet);
+            if (newSet.has(commit.hash)) {
+                newSet.delete(commit.hash);
+            } else {
+                newSet.add(commit.hash);
+            }
+            if (newSet.size === 0) {
+                onMobileSelectingChange?.(false);
+                setAnchorHash(null);
+            }
+            onMultiSelect(commits.filter(c => newSet.has(c.hash)));
+        }
+    }, [commits, isMobileSelecting, onMultiSelect, onMobileSelectingChange, selectedHash, selectedHashes]);
+
+    const handleSwipeDetected = useCallback(() => {
+        swipeCancelLongPressRef.current = true;
+        // Reset after a tick so the useLongPress hook picks up the signal
+        setTimeout(() => { swipeCancelLongPressRef.current = false; }, 0);
+    }, []);
 
     // Hover tooltip handlers with 1000ms delay
     const handleRowMouseEnter = useCallback((commit: GitCommitItem, e: React.MouseEvent) => {
@@ -636,22 +767,25 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                         {group.label} · {group.count} commit{group.count !== 1 ? 's' : ''}
                                     </div>
                                 )}
-                                <button
-                                    role="option"
-                                    aria-selected={isSelected}
-                                    data-hash={commit.hash}
-                                    className={`commit-row w-full grid grid-cols-[14px_minmax(0,1fr)_auto] items-start gap-2 px-3 py-1.5 text-left transition-colors border-b border-[#e0e0e0] dark:border-[#3c3c3c] ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20 shadow-[inset_3px_0_0_#0078d4] dark:shadow-[inset_3px_0_0_#3794ff]' : 'hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e]'}${isFixup ? ' opacity-70' : ''}`}
-                                    onClick={(e) => handleCommitClick(commit, e)}
-                                    onMouseEnter={isTouchOnly() ? undefined : (e) => handleRowMouseEnter(commit, e)}
-                                    onMouseLeave={isTouchOnly() ? undefined : handleRowMouseLeave}
-                                    onTouchStart={touchOnly && onMultiSelect ? (e) => { longPressCommitHashRef.current = commit.hash; mobileLongPress.onTouchStart(e); } : undefined}
-                                    onTouchEnd={touchOnly && onMultiSelect ? mobileLongPress.onTouchEnd : undefined}
-                                    onTouchMove={touchOnly && onMultiSelect ? mobileLongPress.onTouchMove : undefined}
-                                    onContextMenu={(e) => { if (e.shiftKey) return; e.preventDefault(); e.stopPropagation(); onCommitContextMenu?.(e, commit.hash); }}
-                                    data-testid={`commit-row-${commit.shortHash}`}
-                                    data-fixup-type={fixupEntry?.type}
-                                    data-fixup-target={fixupEntry?.targetHash}
-                                >
+                                {(() => {
+                                    const rowContent = (
+                                        <>
+                                        <button
+                                            role="option"
+                                            aria-selected={isSelected}
+                                            data-hash={commit.hash}
+                                            className={`commit-row w-full grid grid-cols-[14px_minmax(0,1fr)_auto] items-start gap-2 px-3 py-1.5 text-left transition-colors border-b border-[#e0e0e0] dark:border-[#3c3c3c] ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20 shadow-[inset_3px_0_0_#0078d4] dark:shadow-[inset_3px_0_0_#3794ff]' : 'hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e]'}${isFixup ? ' opacity-70' : ''}`}
+                                            onClick={(e) => handleCommitClick(commit, e)}
+                                            onMouseEnter={isTouchOnly() ? undefined : (e) => handleRowMouseEnter(commit, e)}
+                                            onMouseLeave={isTouchOnly() ? undefined : handleRowMouseLeave}
+                                            onTouchStart={touchOnly && onCommitContextMenu ? (e) => { longPressCommitHashRef.current = commit.hash; mobileLongPress.onTouchStart(e); } : undefined}
+                                            onTouchEnd={touchOnly && onCommitContextMenu ? mobileLongPress.onTouchEnd : undefined}
+                                            onTouchMove={touchOnly && onCommitContextMenu ? mobileLongPress.onTouchMove : undefined}
+                                            onContextMenu={(e) => { if (e.shiftKey) return; e.preventDefault(); e.stopPropagation(); onCommitContextMenu?.(e, commit.hash); }}
+                                            data-testid={`commit-row-${commit.shortHash}`}
+                                            data-fixup-type={fixupEntry?.type}
+                                            data-fixup-target={fixupEntry?.targetHash}
+                                        >
                                     {/* Graph column: dot + connector line down to the next commit */}
                                     <span className="flex flex-col items-center self-stretch pt-1 leading-none">
                                         <span
@@ -756,7 +890,7 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                 {touchOnly && !isMobileSelecting && onCommitContextMenu && (
                                     <button
                                         type="button"
-                                        className="absolute right-2 top-1.5 w-7 h-7 rounded text-sm text-[#616161] dark:text-[#ccc] bg-transparent hover:bg-[#e8e8e8] dark:hover:bg-[#333] touch-manipulation"
+                                        className="absolute right-2 top-1.5 w-9 h-9 rounded text-sm text-[#616161] dark:text-[#ccc] bg-[#f0f0f0]/60 dark:bg-[#333]/60 hover:bg-[#e8e8e8] dark:hover:bg-[#333] touch-manipulation flex items-center justify-center"
                                         aria-label={`Open actions for commit ${commit.shortHash}`}
                                         onTouchStart={handleCommitOverflowTouchStart}
                                         onTouchEnd={(e) => handleCommitOverflowTouchEnd(e, commit.hash)}
@@ -765,6 +899,28 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                         ⋮
                                     </button>
                                 )}
+                                </>
+                                    );
+
+                                    if (touchOnly && onCommitContextMenu) {
+                                        return (
+                                            <SwipeableCommitRow
+                                                commitHash={commit.hash}
+                                                shortHash={commit.shortHash}
+                                                activeRowId={swipeActiveRowId}
+                                                onReveal={handleSwipeReveal}
+                                                onClose={handleSwipeClose}
+                                                onSwipeRight={handleSwipeRight}
+                                                onSwipeDetected={handleSwipeDetected}
+                                                onSwipeAction={onSwipeAction}
+                                                disabled={isMobileSelecting}
+                                            >
+                                                {rowContent}
+                                            </SwipeableCommitRow>
+                                        );
+                                    }
+                                    return rowContent;
+                                })()}
                                 {/* Expanded file list */}
                                 {isExpanded && (
                                     <div className="pl-8 pr-3 py-1 bg-[#f8f8f8] dark:bg-[#1e1e1e] border-b border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid={`commit-files-${commit.shortHash}`}>

@@ -17,7 +17,8 @@ import { useWebSocket } from '../../hooks/useWebSocket';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { getSpaCocClient } from '../../api/cocClient';
 import { Spinner } from '../../ui';
-import { CommitList } from './commits/CommitList';
+import { CommitList, isTouchOnly } from './commits/CommitList';
+import type { GitCommitItem } from './commits/CommitList';
 import { CommitDetail } from './commits/CommitDetail';
 import { BranchRangeOverview } from './branches/BranchRangeOverview';
 
@@ -40,7 +41,6 @@ import { useQueue } from '../../contexts/QueueContext';
 import { useGitReviewPopOut, gitReviewPopOutKey } from '../../contexts/GitReviewPopOutContext';
 import { buildGitReviewPopOutUrl } from '../../layout/Router';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
-import type { GitCommitItem } from './commits/CommitList';
 import type { BranchRangeInfo } from './branches/BranchChanges';
 import { buildFixupGroups } from './fixup-utils';
 import { rankSkillsByRecency, MRU_SKILL_LIMIT } from './skill-menu-ranking';
@@ -188,6 +188,8 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [branchPickerOpen, setBranchPickerOpen] = useState(false);
     const [amendingCommit, setAmendingCommit] = useState<GitCommitItem | null>(null);
     const [rewordingCommit, setRewordingCommit] = useState<GitCommitItem | null>(null);
+    const [isMobileSelecting, setIsMobileSelecting] = useState(false);
+    const [mobileAnchorHash, setMobileAnchorHash] = useState<string | null>(null);
 
     const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
@@ -682,6 +684,27 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
         setRightPanelView({ type: 'multi-commit', commits: selectedCommits });
     }, [handleSelect]);
+
+    const handleMobileSelectingChange = useCallback((selecting: boolean) => {
+        setIsMobileSelecting(selecting);
+        if (!selecting) setMobileAnchorHash(null);
+    }, []);
+
+    const handleSwipeAction = useCallback((action: 'review' | 'ask-ai' | 'more', commitHash: string) => {
+        const commit = commits.find(c => c.hash === commitHash);
+        if (!commit) return;
+        if (action === 'review') {
+            handleSelect(commit);
+        } else if (action === 'ask-ai') {
+            const initialPrompt = `Commit: ${commit.hash}${commit.subject ? ` — ${commit.subject}` : ''}`;
+            queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'ask', initialPrompt, launchMode: 'floating-chat' });
+        } else if (action === 'more') {
+            // Open full context menu at center of viewport
+            const x = window.innerWidth / 2;
+            const y = window.innerHeight / 2;
+            setContextMenu({ x, y, type: 'commit', commit });
+        }
+    }, [commits, handleSelect, queueDispatch, workspaceId]);
 
     const selectedHashes = useMemo<ReadonlySet<string>>(() => {
         if (rightPanelView?.type === 'multi-commit') {
@@ -1215,6 +1238,39 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'task', initialPrompt, launchMode: 'floating-chat' });
                 },
             });
+
+            // Mobile selection items (touch devices only)
+            if (isTouchOnly()) {
+                items.push({ label: '', separator: true, onClick: () => {} });
+                if (!isMobileSelecting) {
+                    items.push({
+                        label: 'Select',
+                        icon: '☐',
+                        onClick: () => {
+                            closeContextMenu();
+                            setIsMobileSelecting(true);
+                            setMobileAnchorHash(commit.hash);
+                            handleMultiSelect([commit]);
+                        },
+                    });
+                } else {
+                    items.push({
+                        label: 'Select to here',
+                        icon: '☰',
+                        onClick: () => {
+                            closeContextMenu();
+                            if (mobileAnchorHash) {
+                                const anchorIdx = commits.findIndex(c => c.hash === mobileAnchorHash);
+                                const targetIdx = commits.findIndex(c => c.hash === commit.hash);
+                                if (anchorIdx !== -1 && targetIdx !== -1) {
+                                    const [start, end] = anchorIdx <= targetIdx ? [anchorIdx, targetIdx] : [targetIdx, anchorIdx];
+                                    handleMultiSelect(commits.slice(start, end + 1));
+                                }
+                            }
+                        },
+                    });
+                }
+            }
         }
 
         if (contextMenu.type === 'multi-commit' && contextMenu.commits?.length) {
@@ -1304,7 +1360,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
 
         return items;
-    }, [contextMenu, skills, commitSkillUsageMap, handleEnqueueSkill, handleSquashCommits, handleBranchAskAI, handleSelect, handleOpenAsPopup, handleHardReset, handleCherryPick, commits, closeContextMenu, queueDispatch, workspaceId, fixupGroupsForMenu, handleRebaseAutosquash, handlePushToCommit, unpushedCount]);
+    }, [contextMenu, skills, commitSkillUsageMap, handleEnqueueSkill, handleSquashCommits, handleBranchAskAI, handleSelect, handleOpenAsPopup, handleHardReset, handleCherryPick, commits, closeContextMenu, queueDispatch, workspaceId, fixupGroupsForMenu, handleRebaseAutosquash, handlePushToCommit, unpushedCount, isMobileSelecting, mobileAnchorHash, handleMultiSelect]);
 
     // Keyboard shortcuts:
     //   - R: refresh
@@ -1397,6 +1453,9 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             reorderable={!searchQuery && unpushedCount > 1}
             onReorder={handleReorderCommits}
             repoRoot={repoRoot}
+            isMobileSelecting={isMobileSelecting}
+            onMobileSelectingChange={handleMobileSelectingChange}
+            onSwipeAction={handleSwipeAction}
         />
     );
 
