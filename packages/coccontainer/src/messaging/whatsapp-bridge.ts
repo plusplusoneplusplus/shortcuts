@@ -72,6 +72,26 @@ export class WhatsAppBridge {
         };
     }
 
+    /** Update mutable config fields and reconnect the bot. */
+    async updateConfig(patch: { userName?: string; groupJid?: string }): Promise<void> {
+        if (patch.userName !== undefined) this.opts.config.userName = patch.userName;
+        if (patch.groupJid !== undefined) this.opts.config.groupJid = patch.groupJid;
+    }
+
+    /** Stop the current bot, clear session, and reconnect (for re-pairing). */
+    async reconnect(): Promise<void> {
+        await this.bot?.stop();
+        const fs = await import('fs');
+        // Clear session dir so the next connect forces a fresh QR pairing
+        try { fs.rmSync(this.opts.config.sessionDir, { recursive: true, force: true }); } catch { /* ignore */ }
+        this.bot = new WhatsAppBot({
+            sessionDir: this.opts.config.sessionDir,
+            deviceName: this.opts.config.userName,
+            onMessage: (msg) => this.onInboundMessage(msg),
+        });
+        await this.bot.start();
+    }
+
     // ── Outbound: CoC turn → WhatsApp ────────────────────
     private async onSseEvent(event: SSEEvent): Promise<void> {
         if (!this.bot || !this.store) return;

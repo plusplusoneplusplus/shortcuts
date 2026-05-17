@@ -77,7 +77,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
     }
 
     // ── WhatsApp bridge (only when enabled) ─────────────
-    let whatsappBridge: { stop(): Promise<void>; getWhatsAppStatus(): { enabled: boolean; status: string; qr: string | null; error: string | null; groupJid?: string; userName: string } } | undefined;
+    let whatsappBridge: { stop(): Promise<void>; getWhatsAppStatus(): { enabled: boolean; status: string; qr: string | null; error: string | null; groupJid?: string; userName: string }; updateConfig(patch: { userName?: string; groupJid?: string }): Promise<void>; reconnect(): Promise<void> } | undefined;
     const waConfig = config.messaging?.whatsapp;
     if (waConfig?.enabled) {
         const { WhatsAppBridge } = await import('../messaging/whatsapp-bridge');
@@ -253,6 +253,25 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                     error: null,
                     userName: config.messaging?.whatsapp?.userName ?? 'CoC',
                 });
+            }
+
+            if (url.pathname === '/api/container/messaging/config' && req.method === 'POST') {
+                const body = await readBody(req);
+                const { userName, groupJid } = body as { userName?: string; groupJid?: string };
+                if (whatsappBridge) {
+                    await whatsappBridge.updateConfig({ userName, groupJid });
+                    return sendJson(res, { ok: true, message: 'Config updated' });
+                }
+                return sendJson(res, { ok: false, error: 'WhatsApp not enabled' });
+            }
+
+            if (url.pathname === '/api/container/messaging/reconnect' && req.method === 'POST') {
+                if (whatsappBridge) {
+                    // Run reconnect in background, respond immediately
+                    whatsappBridge.reconnect().catch(err => console.error('[container] WhatsApp reconnect error:', err));
+                    return sendJson(res, { ok: true, message: 'Reconnecting — scan QR when prompted' });
+                }
+                return sendJson(res, { ok: false, error: 'WhatsApp not enabled' });
             }
 
             // ── Agent-scoped proxy ──────────────────────────────

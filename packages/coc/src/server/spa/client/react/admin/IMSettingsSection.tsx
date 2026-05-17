@@ -25,6 +25,22 @@ async function fetchMessagingStatus(): Promise<WhatsAppStatus> {
     return res.json();
 }
 
+async function postMessagingConfig(patch: { userName?: string; groupJid?: string }): Promise<void> {
+    const res = await fetch(getRawApiBase() + '/container/messaging/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
+async function postMessagingReconnect(): Promise<void> {
+    const res = await fetch(getRawApiBase() + '/container/messaging/reconnect', {
+        method: 'POST',
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
 // ── QR Code Display ─────────────────────────────────────────
 
 function QRCodeDisplay({ value }: { value: string }) {
@@ -83,18 +99,22 @@ export function IMSettingsSection() {
     const [error, setError] = useState<string | null>(null);
     const [qrDialogOpen, setQrDialogOpen] = useState(false);
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const [editName, setEditName] = useState('');
+    const [nameEditing, setNameEditing] = useState(false);
+    const [nameSaving, setNameSaving] = useState(false);
 
     const loadStatus = useCallback(async () => {
         try {
             const data = await fetchMessagingStatus();
             setStatus(data);
+            if (!nameEditing) setEditName(data.userName);
             setError(null);
         } catch (e: any) {
             setError(e.message ?? 'Failed to fetch status');
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [nameEditing]);
 
     useEffect(() => {
         void loadStatus();
@@ -165,6 +185,23 @@ export function IMSettingsSection() {
                                 <StatusLabel status={status.status} />
                             </div>
                             <div className="flex items-center gap-2">
+                                {status.status === 'connected' && (
+                                    <Button
+                                        size="sm"
+                                        variant="danger"
+                                        onClick={async () => {
+                                            try {
+                                                await postMessagingReconnect();
+                                                setQrDialogOpen(true);
+                                                setTimeout(() => void loadStatus(), 1000);
+                                            } catch (e: any) {
+                                                setError(e.message);
+                                            }
+                                        }}
+                                    >
+                                        Re-pair
+                                    </Button>
+                                )}
                                 <Button
                                     size="sm"
                                     variant={status.status === 'connected' ? 'secondary' : 'primary'}
@@ -181,9 +218,52 @@ export function IMSettingsSection() {
                             </div>
                         </div>
 
+                        {/* Editable device name */}
+                        <div className="space-y-2">
+                            <label className="block text-xs text-[#616161] dark:text-[#999]">
+                                Device name <span className="text-[10px] italic">(shown in WhatsApp Linked Devices)</span>
+                            </label>
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="text"
+                                    value={editName}
+                                    onChange={(e) => { setEditName(e.target.value); setNameEditing(true); }}
+                                    className="flex-1 text-sm px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-blue-500"
+                                    placeholder="CoC"
+                                />
+                                {nameEditing && editName !== status.userName && (
+                                    <Button
+                                        size="sm"
+                                        variant="primary"
+                                        loading={nameSaving}
+                                        onClick={async () => {
+                                            setNameSaving(true);
+                                            try {
+                                                await postMessagingConfig({ userName: editName.trim() || 'CoC' });
+                                                // Reconnect to apply new name
+                                                await postMessagingReconnect();
+                                                setNameEditing(false);
+                                                setQrDialogOpen(true);
+                                                setTimeout(() => void loadStatus(), 1000);
+                                            } catch (e: any) {
+                                                setError(e.message);
+                                            } finally {
+                                                setNameSaving(false);
+                                            }
+                                        }}
+                                    >
+                                        Save & Re-pair
+                                    </Button>
+                                )}
+                            </div>
+                            {nameEditing && editName !== status.userName && (
+                                <p className="text-[10px] text-amber-600 dark:text-amber-400">
+                                    Changing the name requires re-pairing (existing session will be cleared).
+                                </p>
+                            )}
+                        </div>
+
                         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                            <span className="text-[#616161] dark:text-[#999]">Display name</span>
-                            <span className="text-[#1e1e1e] dark:text-[#cccccc]">{status.userName}</span>
                             <span className="text-[#616161] dark:text-[#999]">Group JID</span>
                             <span className="text-[#1e1e1e] dark:text-[#cccccc] font-mono text-[10px]">
                                 {status.groupJid || <span className="italic text-[#999]">not set</span>}
