@@ -155,6 +155,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                                         <RichTextInput
                                             ref={richTextRef}
                                             placeholder="Ask about your notes..."
+                                            ghostText={slashCommands.activeCommandHint ?? undefined}
                                             className="w-full min-h-[34px] max-h-28 overflow-y-auto rounded border bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm"
                                             onChange={(val, cursorPos) => {
                                                 setInput(val);
