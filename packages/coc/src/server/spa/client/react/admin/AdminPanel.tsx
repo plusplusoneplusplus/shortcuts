@@ -47,6 +47,24 @@ interface Stats {
 
 const VALID_OUTPUT_OPTIONS = ['table', 'json', 'csv', 'markdown'] as const;
 const TAB_LABELS: Record<AdminSubTab, string> = { settings: 'Settings', providers: 'Providers', data: 'Data', server: 'Server', prompts: 'Prompts', database: 'Database', agents: 'Agents' };
+const TAB_ICONS: Record<AdminSubTab, string> = {
+    settings: '⚙',
+    providers: '◇',
+    data: '▦',
+    server: '⌗',
+    prompts: '✎',
+    database: '◫',
+    agents: '◉',
+};
+const TAB_DESCRIPTIONS: Record<AdminSubTab, string> = {
+    settings: 'Configure how this CoC server runs — model, chat, appearance, and feature flags.',
+    providers: 'Manage credentials for GitHub, Azure DevOps, and other connected providers.',
+    data: 'Storage backend, JSON import / export, and destructive cleanup actions.',
+    server: 'Inspect the running CoC process, change its display name, or restart it.',
+    prompts: 'Read-only view of the system prompts the assistant uses.',
+    database: 'Browse the underlying SQLite tables that back CoC.',
+    agents: 'Manage container-mode agents and their lifecycles.',
+};
 const WELCOME_RESET_PROGRESS = { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false, settingsVisited: false, dismissed: false, hasCompletedTour: false };
 
 export function AdminPanel() {
@@ -692,76 +710,104 @@ export function AdminPanel() {
     const baseTabs: AdminSubTab[] = ['settings', 'providers', 'data', 'server', 'prompts', 'database'];
     const tabs: AdminSubTab[] = isContainerMode() ? [...baseTabs, 'agents'] : baseTabs;
 
+    const activeTabLabel = TAB_LABELS[activeTab];
+
     return (
         <div id="view-admin" className="admin-redesign">
-            <div id="admin-page-content" className="ar-page">
-                {/* Page header with inline stats pills */}
-                <header className="ar-page-header">
-                    <div className="ar-page-header-row">
-                        <div>
-                            <h1 className="ar-page-title">Admin</h1>
-                            <p className="ar-page-desc">
-                                Configure how this CoC server runs — settings, providers, storage, and lifecycle.
-                            </p>
+            <div id="admin-page-content" className="ar-shell">
+                {/* ── Sidebar ── */}
+                <aside className="ar-sidebar" aria-label="Admin sections">
+                    <div className="ar-brand">
+                        <div className="ar-brand-logo" aria-hidden="true" />
+                        <div className="ar-brand-text">
+                            <span className="ar-brand-name">CoC Admin</span>
+                            <span className="ar-brand-sub">{versionInfo?.version ? `v${versionInfo.version}` : 'Local server'}</span>
                         </div>
-                        <div className="ar-pill-row">
+                    </div>
+
+                    <nav className="ar-nav-group" aria-label="Settings sections">
+                        <div className="ar-nav-group-label">Configure</div>
+                        {tabs.map(tab => (
+                            <button
+                                key={tab}
+                                type="button"
+                                className={`ar-nav-item${activeTab === tab ? ' is-active' : ''}`}
+                                onClick={() => handleTabChange(tab)}
+                                data-testid={`admin-tab-${tab}`}
+                                aria-current={activeTab === tab ? 'page' : undefined}
+                            >
+                                <span className="ar-nav-icon" aria-hidden="true">{TAB_ICONS[tab]}</span>
+                                <span className="ar-nav-label">{TAB_LABELS[tab]}</span>
+                            </button>
+                        ))}
+                    </nav>
+
+                    <div className="ar-sidebar-foot">
+                        <div className="ar-stats-block">
+                            <div className="ar-stats-head">
+                                <span>Usage</span>
+                                <button
+                                    id="admin-refresh-stats"
+                                    type="button"
+                                    onClick={loadStats}
+                                    title="Refresh stats"
+                                    className="ar-stats-refresh"
+                                    aria-label="Refresh stats"
+                                >↻</button>
+                            </div>
                             {statsLoading ? (
                                 <Spinner size="sm" />
                             ) : (
                                 <>
-                                    <span className="ar-pill" data-testid="stat-processes">
-                                        <span className="ar-pill-dot" />
-                                        {stats?.processCount ?? '—'} processes
-                                    </span>
-                                    <span className="ar-pill" data-testid="stat-wikis">
-                                        <span className="ar-pill-dot" />
-                                        {stats?.wikiCount ?? '—'} wikis
-                                    </span>
-                                    <span className="ar-pill" data-testid="stat-disk">
-                                        <span className="ar-pill-dot" />
-                                        {stats?.totalBytes != null ? formatBytes(stats.totalBytes) : '—'}
-                                    </span>
+                                    <div className="ar-stat-row" data-testid="stat-processes">
+                                        <span className="ar-stat-label">Processes</span>
+                                        <span className="ar-stat-value">{stats?.processCount ?? '—'}</span>
+                                    </div>
+                                    <div className="ar-stat-row" data-testid="stat-wikis">
+                                        <span className="ar-stat-label">Wikis</span>
+                                        <span className="ar-stat-value">{stats?.wikiCount ?? '—'}</span>
+                                    </div>
+                                    <div className="ar-stat-row" data-testid="stat-disk">
+                                        <span className="ar-stat-label">Disk</span>
+                                        <span className="ar-stat-value">{stats?.totalBytes != null ? formatBytes(stats.totalBytes) : '—'}</span>
+                                    </div>
                                 </>
                             )}
-                            <button
-                                id="admin-refresh-stats"
-                                onClick={loadStats}
-                                title="Refresh stats"
-                                className="ar-refresh-btn"
-                                aria-label="Refresh stats"
-                            >↻</button>
                         </div>
                     </div>
-                </header>
+                </aside>
 
-                <FeatureTip tipId="admin-intro" />
-
-                {/* Tab bar — desktop: underline tabs; mobile: select */}
-                <div className="ar-tabbar hidden md:flex">
-                    {tabs.map(tab => (
-                        <button
-                            key={tab}
-                            type="button"
-                            className={`ar-tab${activeTab === tab ? ' is-active' : ''}`}
-                            onClick={() => handleTabChange(tab)}
-                            data-testid={`admin-tab-${tab}`}
+                {/* ── Main pane ── */}
+                <main className="ar-main">
+                    <header className="ar-topbar">
+                        <nav className="ar-breadcrumb" aria-label="Breadcrumb">
+                            <span className="ar-crumb-now">{activeTabLabel}</span>
+                        </nav>
+                        <select
+                            className="ar-tab-select ar-mobile-tab-select"
+                            value={activeTab}
+                            onChange={e => handleTabChange(e.target.value as AdminSubTab)}
+                            aria-label="Select admin section"
                         >
-                            {TAB_LABELS[tab]}
-                        </button>
-                    ))}
-                </div>
-                <select
-                    className="ar-tab-select md:hidden"
-                    value={activeTab}
-                    onChange={e => handleTabChange(e.target.value as AdminSubTab)}
-                    aria-label="Select admin section"
-                >
-                    {tabs.map(tab => (
-                        <option key={tab} value={tab}>{TAB_LABELS[tab]}</option>
-                    ))}
-                </select>
+                            {tabs.map(tab => (
+                                <option key={tab} value={tab}>{TAB_LABELS[tab]}</option>
+                            ))}
+                        </select>
+                    </header>
 
-                {/* ── Settings tab ── */}
+                    <div className="ar-page">
+                        <header className="ar-page-header">
+                            <div className="ar-page-header-row">
+                                <div>
+                                    <h1 className="ar-page-title">Admin</h1>
+                                    <p className="ar-page-desc">{TAB_DESCRIPTIONS[activeTab]}</p>
+                                </div>
+                            </div>
+                        </header>
+
+                        <FeatureTip tipId="admin-intro" />
+
+                        {/* ── Settings tab ── */}
                 {activeTab === 'settings' && (
                     <div className="space-y-3" data-testid="settings-cards">
                         {configLoading ? (
@@ -1399,11 +1445,13 @@ export function AdminPanel() {
                     </section>
                 )}
 
-                {activeTab === 'agents' && isContainerMode() && (
-                    <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
-                        <AgentManagementPanel />
-                    </Suspense>
-                )}
+                        {activeTab === 'agents' && isContainerMode() && (
+                            <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
+                                <AgentManagementPanel />
+                            </Suspense>
+                        )}
+                    </div>
+                </main>
 
                 <ToastContainer toasts={toasts} removeToast={removeToast} />
             </div>

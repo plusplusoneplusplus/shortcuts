@@ -25,11 +25,19 @@ The `spaHtml` function in `src/server/index.ts` re-reads the config file on ever
 
 The admin route uses a self-contained, Linear-inspired design system that lives in `src/server/spa/client/react/admin/admin-redesign.css`. The stylesheet is imported once at the top of `AdminPanel.tsx` so esbuild bundles it into the SPA's CSS. All selectors are scoped under the `.admin-redesign` root class that wraps the entire admin page — styles never leak to other dashboard surfaces, and light/dark themes are driven by the existing `<html data-theme="…">` attribute.
 
+**Layout (sidebar + main):** The admin page is structured as a two-column shell:
+
+- `<div className="ar-shell">` is a CSS grid (`var(--ar-sidebar-w)` + `1fr`).
+- `<aside className="ar-sidebar">` (sticky to the dashboard scroll container) hosts the brand, the tab navigation (`.ar-nav-item`s — one per `AdminSubTab`), and a stats footer (`.ar-stats-block` with Processes / Wikis / Disk).
+- `<main className="ar-main">` contains a sticky topbar (`.ar-topbar` with a `.ar-breadcrumb` showing the current tab) and the page body (`.ar-page` with `.ar-page-header` + cards).
+- The tabs live in the sidebar as `.ar-nav-item` buttons (data-testids `admin-tab-{settings|providers|data|server|prompts|database|agents}` are preserved for tests). A `.ar-mobile-tab-select` appears only under the responsive `@media (max-width: 600px)` rule, which hides the sidebar and falls back to a `<select>`.
+
 When adding UI to the admin page, prefer the existing primitives:
 
 - Section cards: `<SettingsCard title=… description=… badge=… dirty saving onSave onCancel data-testid=…>` (renders `.ar-card` with header/body/footer).
 - Settings rows: the local `AdminRow`, `AdminToggle`, `AdminSeg`, `AdminInputSuffix`, and `SourceBadge` helpers defined at the bottom of `AdminPanel.tsx`. They wrap raw inputs in the new visual chrome while preserving `data-testid`s and `id`s used by tests.
 - Free-form sections inside a card use `.ar-section`, `.ar-section-head`, and the inline helpers `.ar-input`, `.ar-select`, `.ar-btn`, `.ar-btn-primary` / `-secondary` / `-ghost` / `-danger`(`-outline`), `.ar-pill`, `.ar-badge`, `.ar-pre`, `.ar-code`, `.ar-mono`.
+- New top-level tabs: add to `AdminSubTab`, `TAB_LABELS`, `TAB_ICONS`, and `TAB_DESCRIPTIONS` near the top of `AdminPanel.tsx` — the sidebar nav and mobile select pick them up automatically.
 
 Avoid introducing Tailwind utilities or inline `bg-*`/`text-*` classes for admin-only UI — extend `admin-redesign.css` instead so the look stays cohesive.
 
