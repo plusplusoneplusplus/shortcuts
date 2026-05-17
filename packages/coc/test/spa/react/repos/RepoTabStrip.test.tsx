@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, act, waitFor } from '@testing-library/react';
-import { RepoTabStrip } from '../../../../src/server/spa/client/react/features/repo-detail/RepoTabStrip';
+import { RepoTabStrip, getRepoDisplayName } from '../../../../src/server/spa/client/react/features/repo-detail/RepoTabStrip';
 
 const mockDispatch = vi.fn();
 const mockQueueDispatch = vi.fn();
@@ -907,5 +907,19 @@ describe('RepoTabStrip', () => {
             expect(screen.getByTestId('repo-tab-context-edit')).toBeDefined();
             expect(screen.getByTestId('repo-tab-context-remove')).toBeDefined();
         });
+    });
+});
+
+describe('getRepoDisplayName', () => {
+    it('returns just the repo name when no agentName', () => {
+        expect(getRepoDisplayName({ name: 'my-repo' })).toBe('my-repo');
+    });
+
+    it('returns agentName:name when agentName is present', () => {
+        expect(getRepoDisplayName({ name: 'my-repo', agentName: 'dev2' })).toBe('dev2:my-repo');
+    });
+
+    it('returns just the repo name when agentName is empty string', () => {
+        expect(getRepoDisplayName({ name: 'my-repo', agentName: '' })).toBe('my-repo');
     });
 });
