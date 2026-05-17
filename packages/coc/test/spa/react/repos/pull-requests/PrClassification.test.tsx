@@ -159,6 +159,85 @@ describe('ClassificationFilterBar', () => {
         fireEvent.click(screen.getByTestId('classification-filter-all'));
         expect(setFilters).toHaveBeenCalled();
     });
+
+    it('renders color-coded labels for each category', () => {
+        const mock = createMockClassification({
+            state: { status: 'ready', activeFilters: new Set(['logic', 'mechanical', 'test', 'generated']), result: mockResult },
+        });
+        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+
+        const logicLabel = screen.getByTestId('classification-filter-label-logic');
+        const mechLabel = screen.getByTestId('classification-filter-label-mechanical');
+        const testLabel = screen.getByTestId('classification-filter-label-test');
+        const genLabel = screen.getByTestId('classification-filter-label-generated');
+
+        // Each label should have the category color class
+        expect(logicLabel.className).toContain('text-orange-');
+        expect(mechLabel.className).toContain('text-gray-');
+        expect(testLabel.className).toContain('text-blue-');
+        expect(genLabel.className).toContain('text-purple-');
+    });
+
+    it('renders info icon button', () => {
+        const mock = createMockClassification();
+        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        expect(screen.getByTestId('classification-info-button')).toBeInTheDocument();
+    });
+
+    it('opens info popover on info button click', () => {
+        const mock = createMockClassification();
+        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        expect(screen.queryByTestId('classification-info-popover')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('classification-info-button'));
+        expect(screen.getByTestId('classification-info-popover')).toBeInTheDocument();
+        expect(screen.getByText('Classification Guide')).toBeInTheDocument();
+    });
+
+    it('closes info popover on close button click', () => {
+        const mock = createMockClassification();
+        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        fireEvent.click(screen.getByTestId('classification-info-button'));
+        expect(screen.getByTestId('classification-info-popover')).toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('classification-info-close'));
+        expect(screen.queryByTestId('classification-info-popover')).not.toBeInTheDocument();
+    });
+
+    it('closes info popover on backdrop click', () => {
+        const mock = createMockClassification();
+        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        fireEvent.click(screen.getByTestId('classification-info-button'));
+        expect(screen.getByTestId('classification-info-popover')).toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('classification-info-backdrop'));
+        expect(screen.queryByTestId('classification-info-popover')).not.toBeInTheDocument();
+    });
+
+    it('closes info popover on Escape key', () => {
+        const mock = createMockClassification();
+        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        fireEvent.click(screen.getByTestId('classification-info-button'));
+        expect(screen.getByTestId('classification-info-popover')).toBeInTheDocument();
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByTestId('classification-info-popover')).not.toBeInTheDocument();
+    });
+
+    it('popover has correct accessibility attributes', () => {
+        const mock = createMockClassification();
+        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        fireEvent.click(screen.getByTestId('classification-info-button'));
+        const popover = screen.getByTestId('classification-info-popover');
+        expect(popover).toHaveAttribute('role', 'dialog');
+        expect(popover).toHaveAttribute('aria-label', 'Classification Guide');
+    });
+
+    it('popover shows all category descriptions', () => {
+        const mock = createMockClassification();
+        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        fireEvent.click(screen.getByTestId('classification-info-button'));
+        expect(screen.getByText(/Behavior changes/)).toBeInTheDocument();
+        expect(screen.getByText(/Refactors, renames/)).toBeInTheDocument();
+        expect(screen.getByText(/Test file additions/)).toBeInTheDocument();
+        expect(screen.getByText(/Lock files, codegen/)).toBeInTheDocument();
+    });
 });
 
 describe('ClassificationBadge (file tree badges)', () => {
