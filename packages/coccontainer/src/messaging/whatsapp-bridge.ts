@@ -34,6 +34,7 @@ export class WhatsAppBridge {
     private bot: WhatsAppBot | null = null;
     private wsHandler: ((msg: WSRelayMessage) => void) | null = null;
     private _creatingGroup = false;
+    private _processingLocks = new Set<string>();
 
     constructor(private opts: WhatsAppBridgeOptions) {}
 
@@ -210,12 +211,19 @@ export class WhatsAppBridge {
 
         if (status !== 'completed' && status !== 'running') return;
 
+        // Per-process concurrency guard to prevent duplicate sends
+        if (this._processingLocks.has(processId)) {
+            console.log(`[whatsapp-bridge] Process ${processId} already being handled, skipping`);
+            return;
+        }
+        this._processingLocks.add(processId);
+
         const target = this.opts.config.groupJid;
-        if (!target) { console.log('[whatsapp-bridge] No groupJid set, skipping'); return; }
+        if (!target) { console.log('[whatsapp-bridge] No groupJid set, skipping'); this._processingLocks.delete(processId); return; }
 
         const agentId = msg.agentId;
         const agentAddr = this.getAgentAddress(agentId);
-        if (!agentAddr) { console.log(`[whatsapp-bridge] No address for agent ${agentId}`); return; }
+        if (!agentAddr) { console.log(`[whatsapp-bridge] No address for agent ${agentId}`); this._processingLocks.delete(processId); return; }
 
         try {
             const workspaceId = (proc.workspaceId ?? proc.workspace) as string || '';
@@ -275,6 +283,8 @@ export class WhatsAppBridge {
             }
         } catch (err) {
             console.error('[whatsapp-bridge] Failed to fetch process turns:', err);
+        } finally {
+            this._processingLocks.delete(processId);
         }
     }
 
