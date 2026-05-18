@@ -167,3 +167,7 @@ export function gitReviewPopOutKey(workspaceId: string, commitHash: string): str
 export function gitReviewBranchPopOutKey(workspaceId: string): string {
     return `${workspaceId}::branch-range`;
 }
+
+export function gitReviewPrPopOutKey(workspaceId: string, prId: string): string {
+    return `${workspaceId}::pr::${prId}`;
+}

@@ -1,5 +1,5 @@
 /**
- * PopOutGitReviewShell — standalone shell for git commit/branch-range review
+ * PopOutGitReviewShell — standalone shell for git commit/branch-range/PR review
  * popped into a separate browser window.
  *
  * Rendered when `window.location.hash` starts with `#popout/git-review`.
@@ -7,6 +7,7 @@
  * URL formats:
  *   Commit:       `/?workspace=<wsId>#popout/git-review/<commitHash>`
  *   Branch-range: `/?workspace=<wsId>#popout/git-review/branch-range`
+ *   PR:           `/?workspace=<wsId>&repo=<repoId>#popout/git-review/pr/<prId>`
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -19,7 +20,7 @@ import { getSpaCocClient } from '../api/cocClient';
 import { CommitDetail } from '../features/git/commits/CommitDetail';
 import { BranchRangeOverview } from '../features/git/branches/BranchRangeOverview';
 import { FileDiffPanel } from '../features/git/diff/FileDiffPanel';
-import { createCommitDiffSource, createBranchRangeDiffSource } from '../features/git/diff/diffSource';
+import { createCommitDiffSource, createBranchRangeDiffSource, createPrDiffSource } from '../features/git/diff/diffSource';
 import { PopOutFilePanel } from '../features/git/diff/PopOutFilePanel';
 import { Spinner } from '../ui';
 import { useCachedDiff } from '../features/git/hooks/useCommitDiffCache';
@@ -31,8 +32,10 @@ import {
     type GitReviewPopOutMessage,
     gitReviewPopOutKey,
     gitReviewBranchPopOutKey,
+    gitReviewPrPopOutKey,
 } from '../contexts/GitReviewPopOutContext';
 import { getHostname } from '../utils/config';
+import { extractFilePathsFromDiff } from '../features/git/diff/diffSource';
 import type { GitCommitItem } from '../features/git/commits/CommitList';
 import type { BranchRangeInfo } from '../features/git/branches/BranchChanges';
 import type { BranchRangeFile } from '../features/git/branches/BranchAllFilesDiff';
@@ -43,8 +46,10 @@ import type { GitBranchRangeResponse } from '@plusplusoneplusplus/coc-client';
 
 export interface PopOutGitReviewParams {
     workspaceId: string;
-    reviewType: 'commit' | 'branch-range';
+    reviewType: 'commit' | 'branch-range' | 'pr';
     commitHash?: string;
+    prId?: string;
+    repoId?: string;
 }
 
 export function parsePopOutGitReviewRoute(hash: string, search: string): PopOutGitReviewParams | null {
@@ -58,6 +63,16 @@ export function parsePopOutGitReviewRoute(hash: string, search: string): PopOutG
 
     if (parts[2] === 'branch-range') {
         return { workspaceId, reviewType: 'branch-range' };
+    }
+
+    if (parts[2] === 'pr' && parts[3]) {
+        const repoId = searchParams.get('repo') ?? workspaceId;
+        return { workspaceId, reviewType: 'pr', prId: decodeURIComponent(parts[3]), repoId };
+    }
+
+    // 'pr' without a prId is invalid
+    if (parts[2] === 'pr') {
+        return null;
     }
 
     if (parts[2]) {
@@ -307,6 +322,104 @@ function isBranchRangeInfo(data: GitBranchRangeResponse): data is BranchRangeInf
     return !('onDefaultBranch' in data) && typeof data.baseRef === 'string' && typeof data.headRef === 'string';
 }
 
+// ── PR review content ──────────────────────────────────────────────────────────
+
+function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; repoId: string; prId: string }) {
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [fileList, setFileList] = useState<FileChange[]>([]);
+    const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+    const [hunkTarget, setHunkTarget] = useState<'first' | 'last' | undefined>(undefined);
+    const [prTitle, setPrTitle] = useState<string | undefined>(undefined);
+    const [headSha, setHeadSha] = useState<string | undefined>(undefined);
+
+    const handleFileSelect = useCallback((filePath: string) => {
+        setHunkTarget(undefined);
+        setSelectedFilePath(prev => prev === filePath ? null : filePath);
+    }, []);
+
+    const handleNavigateToFile = useCallback((filePath: string, target: 'first' | 'last') => {
+        setSelectedFilePath(filePath);
+        setHunkTarget(target);
+    }, []);
+
+    const handleBack = useCallback(() => {
+        setSelectedFilePath(null);
+        setHunkTarget(undefined);
+    }, []);
+
+    useEffect(() => {
+        setLoading(true);
+        setError(null);
+        const client = getSpaCocClient();
+
+        Promise.all([
+            client.pullRequests.get(repoId, prId) as Promise<{ title?: string; headSha?: string }>,
+            client.pullRequests.getDiff(repoId, prId),
+        ])
+            .then(([prData, diffText]) => {
+                setPrTitle(prData.title);
+                setHeadSha(prData.headSha);
+                const paths = extractFilePathsFromDiff(diffText);
+                setFileList(paths.map(p => ({ path: p, status: 'modified' as const, additions: 0, deletions: 0 })));
+            })
+            .catch((err: Error) => setError(err.message))
+            .finally(() => setLoading(false));
+    }, [repoId, prId]);
+
+    const filePaths = fileList.map(f => f.path);
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center flex-1 gap-2 text-xs text-[#848484]">
+                <Spinner size="sm" /> Loading PR diff…
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="flex items-center justify-center flex-1 text-xs text-[#d32f2f] dark:text-[#f48771]">
+                {error}
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex flex-1 min-h-0">
+            <PopOutFilePanel
+                workspaceId={workspaceId}
+                files={fileList}
+                selectedFilePath={selectedFilePath}
+                onFileSelect={handleFileSelect}
+            />
+            <div className="flex-1 min-w-0 overflow-hidden">
+                {selectedFilePath ? (
+                    <FileDiffPanel
+                        key={`pr-${prId}-${selectedFilePath}`}
+                        workspaceId={workspaceId}
+                        filePath={selectedFilePath}
+                        source={createPrDiffSource(workspaceId, repoId, prId, {
+                            headSha,
+                            files: filePaths,
+                            title: prTitle,
+                        })}
+                        onNavigateToFile={handleNavigateToFile}
+                        initialHunkTarget={hunkTarget}
+                        onBack={handleBack}
+                        backLabel="All files"
+                    />
+                ) : (
+                    <div className="flex flex-col items-center justify-center flex-1 gap-2 text-xs text-[#848484]">
+                        <span>Select a file to view its diff</span>
+                        <span className="text-[10px]">{fileList.length} file{fileList.length !== 1 ? 's' : ''} changed</span>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
 // ── Inner content (uses toast + channel) ───────────────────────────────────────
 
 function PopOutGitReviewContent({ params }: { params: PopOutGitReviewParams }) {
@@ -315,7 +428,9 @@ function PopOutGitReviewContent({ params }: { params: PopOutGitReviewParams }) {
 
     const key = params.reviewType === 'commit'
         ? gitReviewPopOutKey(params.workspaceId, params.commitHash!)
-        : gitReviewBranchPopOutKey(params.workspaceId);
+        : params.reviewType === 'pr'
+            ? gitReviewPrPopOutKey(params.workspaceId, params.prId!)
+            : gitReviewBranchPopOutKey(params.workspaceId);
 
     const handleMessage = useCallback((msg: GitReviewPopOutMessage) => {
         if (msg.type === 'git-review-popout-restore' && msg.key === key) {
@@ -342,7 +457,9 @@ function PopOutGitReviewContent({ params }: { params: PopOutGitReviewParams }) {
         const brand = hostname ? `CoC @ ${hostname}` : 'CoC';
         const title = params.reviewType === 'commit'
             ? `Commit ${params.commitHash!.slice(0, 7)}`
-            : 'Branch Range Review';
+            : params.reviewType === 'pr'
+                ? `PR #${params.prId}`
+                : 'Branch Range Review';
         document.title = `${title} — ${brand}`;
     }, [params]);
 
@@ -356,7 +473,9 @@ function PopOutGitReviewContent({ params }: { params: PopOutGitReviewParams }) {
                         <span className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate" data-testid="popout-git-review-title">
                             {params.reviewType === 'commit'
                                 ? `Commit ${params.commitHash!.slice(0, 7)}`
-                                : 'Branch Range Review'}
+                                : params.reviewType === 'pr'
+                                    ? `PR #${params.prId}`
+                                    : 'Branch Range Review'}
                         </span>
                     </div>
                 </div>
@@ -364,6 +483,8 @@ function PopOutGitReviewContent({ params }: { params: PopOutGitReviewParams }) {
                 <div className="flex flex-1 min-h-0 overflow-hidden">
                     {params.reviewType === 'commit' ? (
                         <CommitReviewContent workspaceId={params.workspaceId} commitHash={params.commitHash!} />
+                    ) : params.reviewType === 'pr' ? (
+                        <PrReviewContent workspaceId={params.workspaceId} repoId={params.repoId!} prId={params.prId!} />
                     ) : (
                         <BranchRangeReviewContent workspaceId={params.workspaceId} />
                     )}
