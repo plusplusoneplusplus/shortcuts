@@ -35,6 +35,10 @@ export interface NotesTreeProps {
     /** Helper used to compute the recursive page count badge for folder rows. */
     countDescendantPages?: (node: NoteTreeNode) => number;
     dragDrop?: NotesDragDropHandlers;
+    /** Set of paths in the current multi-selection. */
+    multiSelectedPaths?: Set<string>;
+    /** Multi-selection handler forwarding modifier key state. */
+    onSelectWithModifiers?: (path: string, shiftKey: boolean, ctrlKey: boolean) => void;
 }
 
 function hasNodeUpdate(node: NoteTreeNode, isNoteUpdated?: (node: NoteTreeNode) => boolean): boolean {
@@ -56,6 +60,8 @@ export function NotesTree({
     visiblePaths,
     countDescendantPages,
     dragDrop,
+    multiSelectedPaths,
+    onSelectWithModifiers,
 }: NotesTreeProps) {
     return (
         <div role="tree" data-testid={depth === 0 ? 'notes-tree' : undefined}>
@@ -83,9 +89,11 @@ export function NotesTree({
                             isSystemFolder={isSysFolder}
                             hasUpdate={hasNodeUpdate(node, isNoteUpdated)}
                             pageCount={folderCount}
+                            isMultiSelected={multiSelectedPaths ? multiSelectedPaths.has(node.path) : false}
                             onToggleExpand={onToggleExpand}
                             onSelectPage={onSelectPage}
                             onContextMenu={onContextMenu}
+                            onSelectWithModifiers={onSelectWithModifiers}
                             draggable={!!dragDrop && !isSysFolder}
                             isDragOver={isDragOver}
                             dropPosition={isDragOver ? dragDrop!.dropPosition : null}
@@ -112,6 +120,8 @@ export function NotesTree({
                                 visiblePaths={visiblePaths}
                                 countDescendantPages={countDescendantPages}
                                 dragDrop={dragDrop}
+                                multiSelectedPaths={multiSelectedPaths}
+                                onSelectWithModifiers={onSelectWithModifiers}
                             />
                         )}
                     </div>
