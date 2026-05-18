@@ -46,6 +46,16 @@ async function navigateToAdmin(page: import('@playwright/test').Page, serverUrl:
     await expect(page.locator('#admin-page-content')).not.toBeEmpty({ timeout: 5000 });
 }
 
+/** Switch the Settings tab to one of its sub-tab cards. The Settings tab defaults to `ai`. */
+async function gotoSettingsSubTab(
+    page: import('@playwright/test').Page,
+    sub: 'ai' | 'chat' | 'appearance' | 'features' | 'integrations' | 'advanced',
+): Promise<void> {
+    const tab = page.locator(`[data-testid="settings-subtab-${sub}"]`);
+    await expect(tab).toBeVisible({ timeout: 5000 });
+    await tab.click();
+}
+
 // ================================================================
 // Configuration Section
 // ================================================================
@@ -212,10 +222,13 @@ test.describe('Admin: Display settings', () => {
         });
 
         await navigateToAdmin(page, serverUrl);
-        await expect(page.locator('[data-testid="toggle-show-report-intent"]')).toBeVisible({ timeout: 5000 });
-
-        // Click toggle (sr-only checkbox — use force to click through overlay)
-        await page.locator('[data-testid="toggle-show-report-intent"]').click({ force: true });
+        await gotoSettingsSubTab(page, 'chat');
+        // The AdminToggle input is sr-only (opacity:0, width:0, height:0), so
+        // toBeVisible() reports it as hidden and Playwright also refuses to
+        // click it because it has zero size. Use a direct DOM .click() on the
+        // checkbox instead.
+        await expect(page.locator('[data-testid="toggle-show-report-intent"]')).toBeAttached({ timeout: 5000 });
+        await page.locator('[data-testid="toggle-show-report-intent"]').evaluate((el) => (el as HTMLInputElement).click());
 
         // Intercept PUT and click per-card save
         const putPromise = page.waitForRequest(req =>
@@ -252,6 +265,7 @@ test.describe('Admin: Display settings', () => {
         });
 
         await navigateToAdmin(page, serverUrl);
+        await gotoSettingsSubTab(page, 'chat');
         await expect(page.locator('[data-testid="tool-compactness-minimal"]')).toBeVisible({ timeout: 5000 });
 
         await page.locator('[data-testid="tool-compactness-minimal"]').click();
@@ -293,10 +307,11 @@ test.describe('Admin: Display settings', () => {
         });
 
         await navigateToAdmin(page, serverUrl);
-        await expect(page.locator('[data-testid="toggle-terminal-enabled"]')).toBeVisible({ timeout: 5000 });
-
-        // Click toggle
-        await page.locator('[data-testid="toggle-terminal-enabled"]').click({ force: true });
+        await gotoSettingsSubTab(page, 'features');
+        // sr-only checkbox — toggle via direct DOM click() to bypass viewport
+        // and visibility checks.
+        await expect(page.locator('[data-testid="toggle-terminal-enabled"]')).toBeAttached({ timeout: 5000 });
+        await page.locator('[data-testid="toggle-terminal-enabled"]').evaluate((el) => (el as HTMLInputElement).click());
 
         // Click per-card save to persist the change
         const putPromise = page.waitForRequest(req =>
@@ -340,6 +355,7 @@ test.describe('Admin: Chat settings', () => {
         });
 
         await navigateToAdmin(page, serverUrl);
+        await gotoSettingsSubTab(page, 'chat');
         await expect(page.locator('[data-testid="input-chat-followup-count"]')).toHaveValue('3', { timeout: 5000 });
 
         // Change count to 5
@@ -372,6 +388,7 @@ test.describe('Admin: Chat settings', () => {
         });
 
         await navigateToAdmin(page, serverUrl);
+        await gotoSettingsSubTab(page, 'chat');
         await expect(page.locator('[data-testid="input-chat-followup-count"]')).toHaveValue('3', { timeout: 5000 });
 
         // Set invalid count (0)

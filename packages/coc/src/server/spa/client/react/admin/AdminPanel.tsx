@@ -1355,8 +1355,8 @@ export function AdminPanel() {
                                             onChange={setImportMode}
                                             aria-label="Import mode"
                                             options={[
-                                                { value: 'replace', label: 'Replace' },
-                                                { value: 'merge', label: 'Merge' },
+                                                { value: 'replace', label: 'Replace', testId: 'import-mode-replace' },
+                                                { value: 'merge', label: 'Merge', testId: 'import-mode-merge' },
                                             ]}
                                         />
                                         <input

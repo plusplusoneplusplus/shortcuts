@@ -166,11 +166,13 @@ test.describe('Desktop Regression', () => {
         await expect(page.locator('[data-testid="stat-wikis"]')).toBeVisible();
         await expect(page.locator('[data-testid="stat-disk"]')).toBeVisible();
 
-        // Stat cards should be in a grid (same row — similar y positions)
+        // Sidebar usage block stacks the stats vertically (Linear-inspired admin
+        // redesign). Each subsequent stat must sit below the previous one.
         const procBox = await page.locator('[data-testid="stat-processes"]').boundingBox();
         const wikiBox = await page.locator('[data-testid="stat-wikis"]').boundingBox();
         const diskBox = await page.locator('[data-testid="stat-disk"]').boundingBox();
-        expect(Math.abs(procBox!.y - wikiBox!.y)).toBeLessThan(10);
-        expect(Math.abs(wikiBox!.y - diskBox!.y)).toBeLessThan(10);
+        expect(procBox && wikiBox && diskBox).toBeTruthy();
+        expect(wikiBox!.y).toBeGreaterThanOrEqual(procBox!.y);
+        expect(diskBox!.y).toBeGreaterThanOrEqual(wikiBox!.y);
     });
 });

@@ -404,7 +404,7 @@ test.describe('Admin Panel (008)', () => {
         });
 
         // Ensure replace is selected (default)
-        await page.check('input[name="import-mode"][value="replace"]');
+        await page.click('[data-testid="import-mode-replace"]');
 
         await page.click('#admin-import-btn');
 
@@ -451,7 +451,7 @@ test.describe('Admin Panel (008)', () => {
         });
 
         // Select merge mode
-        await page.check('input[name="import-mode"][value="merge"]');
+        await page.click('[data-testid="import-mode-merge"]');
 
         await page.click('#admin-import-btn');
 
@@ -499,13 +499,14 @@ test.describe('Admin Panel (008)', () => {
         await navigateToAdmin(page, serverUrl);
         await page.click('[data-testid="admin-tab-data"]');
 
-        const replaceRadio = page.locator('input[name="import-mode"][value="replace"]');
-        const mergeRadio = page.locator('input[name="import-mode"][value="merge"]');
+        const replaceBtn = page.locator('[data-testid="import-mode-replace"]');
+        const mergeBtn = page.locator('[data-testid="import-mode-merge"]');
 
-        await expect(replaceRadio).toBeVisible();
-        await expect(mergeRadio).toBeVisible();
-        expect(await replaceRadio.isChecked()).toBe(true);
-        expect(await mergeRadio.isChecked()).toBe(false);
+        await expect(replaceBtn).toBeVisible();
+        await expect(mergeBtn).toBeVisible();
+        // The AdminSeg uses aria-pressed to indicate the active option.
+        expect(await replaceBtn.getAttribute('aria-pressed')).toBe('true');
+        expect(await mergeBtn.getAttribute('aria-pressed')).toBe('false');
     });
 
     // ----------------------------------------------------------------

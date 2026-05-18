@@ -992,26 +992,36 @@ test.describe('No-session State', () => {
 
             // Intercept process API to return data with no session ID
             // This triggers noSessionForFollowUp = true
+            //
+            // The route handler can race with browser cleanup at the end of the test
+            // when polling is still in flight, so we tolerate any errors that
+            // surface from `route.fetch`/`route.fulfill` after the page has closed.
             await page.route(`**/api/processes/**`, async (route) => {
-                const originalResponse = await route.fetch();
-                const body = await originalResponse.json().catch(() => ({}));
+                try {
+                    const originalResponse = await route.fetch();
+                    const body = await originalResponse.json().catch(() => ({}));
 
-                // Strip session IDs from the process data
-                if (body?.process) {
-                    delete body.process.sdkSessionId;
-                    delete body.process.sessionId;
-                    if (body.process.metadata) {
-                        delete body.process.metadata.sessionId;
+                    // Strip session IDs from the process data
+                    if (body?.process) {
+                        delete body.process.sdkSessionId;
+                        delete body.process.sessionId;
+                        if (body.process.metadata) {
+                            delete body.process.metadata.sessionId;
+                        }
+                        // Clear result to prevent parseSessionIdFromResult from finding one
+                        delete body.process.result;
                     }
-                    // Clear result to prevent parseSessionIdFromResult from finding one
-                    delete body.process.result;
-                }
 
-                await route.fulfill({
-                    status: originalResponse.status(),
-                    contentType: 'application/json',
-                    body: JSON.stringify(body),
-                });
+                    await route.fulfill({
+                        status: originalResponse.status(),
+                        contentType: 'application/json',
+                        body: JSON.stringify(body),
+                    });
+                } catch {
+                    // Page/context may be torn down while a poll is mid-flight.
+                    // Swallow these — Playwright will mark the route as completed
+                    // once the page closes.
+                }
             });
 
             await gotoQueueTask(page, serverUrl, wsId, task.id as string);
@@ -1021,6 +1031,9 @@ test.describe('No-session State', () => {
 
             // Input should NOT be present
             await expect(page.locator('[data-testid="activity-chat-input"]')).toHaveCount(0);
+
+            // Drain any in-flight route handlers so they don't error after teardown.
+            await page.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => {});
         } finally {
             cleanup();
         }

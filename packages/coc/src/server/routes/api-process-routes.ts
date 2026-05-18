@@ -40,16 +40,24 @@ const NONTERMINAL_STATUSES: Set<string> = new Set(['queued', 'running', 'cancell
 
 /**
  * Synthesize a minimal AIProcess from a QueuedTask.
- * Used when a process record hasn't been created yet (task is still queued).
+ * Used when a process record hasn't been created yet — either because the
+ * task is still queued, or because the queue executor has marked the task
+ * `running` but hasn't yet persisted the AIProcess to the store. Mapping the
+ * task's actual status (queued/running) avoids a race where SPA polling
+ * receives a synthesized `queued` process for a task that is already running
+ * and gets stuck in the PendingTaskInfoPanel.
  */
 function queuedTaskToProcess(task: QueuedTask): AIProcess {
     const prompt = task.displayName
         ?? (task.payload as any)?.prompt as string | undefined
         ?? '';
+    // QueueStatus is a subset of AIProcessStatus (no 'cancelling'), so a direct
+    // assignment satisfies the synthesised AIProcess shape.
+    const status: AIProcessStatus = task.status;
     return {
         id: toQueueProcessId(task.id),
         type: task.type || 'chat',
-        status: 'queued',
+        status,
         promptPreview: prompt.slice(0, 57) + (prompt.length > 57 ? '...' : ''),
         fullPrompt: prompt,
         startTime: new Date(task.createdAt),

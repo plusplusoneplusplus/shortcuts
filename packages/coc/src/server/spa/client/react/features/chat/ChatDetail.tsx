@@ -193,7 +193,19 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     followUpInputRef.current = followUpInput;
     selectedModeRef.current = selectedMode;
 
-    const effectiveStatus = processDetails?.status ?? task?.status;
+    // `processDetails` is typically authoritative because it can flip to
+    // terminal slightly ahead of `task` during SSE teardown. However, when a
+    // task transitions out of `queued` (running/completed/failed/cancelled),
+    // `processDetails` may still hold the initial synthesised `queued` snapshot
+    // from the queue route fallback if a refresh hasn't completed yet — in
+    // that window we prefer `task.status` so the pending panel can hide.
+    const TASK_PRIORITY_STATUSES = new Set(['running', 'cancelling', 'completed', 'failed', 'cancelled']);
+    const effectiveStatus = (() => {
+        const ps = processDetails?.status;
+        const ts = task?.status;
+        if (ps === 'queued' && ts && TASK_PRIORITY_STATUSES.has(ts)) return ts;
+        return ps ?? ts;
+    })();
     const isActiveGeneration = effectiveStatus === 'running' || effectiveStatus === 'cancelling' || isStreaming;
     const isCancelling = effectiveStatus === 'cancelling';
     const isPending = effectiveStatus === 'queued';
@@ -423,6 +435,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         });
     }, [processId, appState.processes]);
 
+    // Tracks the previous `task.status` so a one-shot conversation refresh
+    // can fire when the task transitions out of `queued`. Declared here; the
+    // effect that uses it is defined below `refreshConversation`.
+    const prevStatusRef = useRef<string | undefined>(undefined);
+
     // Seed tokenLimit from /api/models as soon as sessionModel is known.
     // Only runs when sessionTokenLimit is still undefined to avoid clobbering
     // a value already received via SSE (conversation-snapshot / token-usage).
@@ -484,6 +501,26 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             })));
         } catch { /* keep current turns */ }
     }, [setTurnsAndRef]);
+
+    // When a task transitions out of `queued` (via WebSocket or polling), force
+    // a one-shot conversation refresh. Without this hook, a fast `queued →
+    // completed` (or `queued → running → completed`) jump can leave the UI
+    // stuck on the synthesised queued snapshot — SSE only opens while
+    // `task.status === 'running'` and `useQueuedTaskPoll`'s 2 s interval may
+    // not fire before the status flips, so neither the SSE finish() path nor
+    // the polling refresh ever runs. Refreshing here closes the gap.
+    useEffect(() => {
+        const prev = prevStatusRef.current;
+        const curr = task?.status as string | undefined;
+        prevStatusRef.current = curr;
+        if (!processId || !curr || curr === 'queued') return;
+        if (prev === curr || prev === undefined) return;
+        // Refresh on any out-of-queued transition. Running → terminal is also
+        // covered (in case SSE never opened or was torn down before the
+        // conversation snapshot arrived). refreshConversation is idempotent,
+        // so an extra call alongside SSE finish() is harmless.
+        void refreshConversation(processId);
+    }, [task?.status, processId, refreshConversation]);
 
     const { sendFollowUp, closeFollowUpStream, onSendComplete } = useSendMessage({
         processId,

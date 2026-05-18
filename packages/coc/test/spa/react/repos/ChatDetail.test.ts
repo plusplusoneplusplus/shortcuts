@@ -340,7 +340,10 @@ describe('ChatDetail', () => {
         });
 
         it('derives active generation from process/task status and SSE state', () => {
-            expect(source).toContain('const effectiveStatus = processDetails?.status ?? task?.status');
+            // effectiveStatus prefers processDetails.status with task.status as fallback,
+            // but flips to task.status when processDetails is still the synthesised queued
+            // snapshot and task has advanced — see the queued→non-queued window comment.
+            expect(source).toMatch(/effectiveStatus\b[\s\S]{0,400}processDetails\?\.status[\s\S]{0,200}task\?\.status/);
             expect(source).toContain("effectiveStatus === 'running' || effectiveStatus === 'cancelling' || isStreaming");
             expect(source).toContain("const isCancelling = effectiveStatus === 'cancelling'");
         });

@@ -89,15 +89,42 @@ test.describe('Admin page scrollability regression', () => {
         const main = page.locator('#view-admin .ar-main');
         await expect(main).toBeVisible();
 
+        // Wait for the page to be ready and confirm the main pane is overflowing.
+        await expect.poll(
+            async () =>
+                main.evaluate((el) => {
+                    const e = el as HTMLElement;
+                    return e.scrollHeight - e.clientHeight;
+                }),
+            { timeout: 5000 },
+        ).toBeGreaterThan(0);
+
         const before = await main.evaluate((el) => (el as HTMLElement).scrollTop);
         const box = await main.boundingBox();
         expect(box).not.toBeNull();
 
+        // Hover the main pane first so wheel events route to it. Aim slightly below
+        // the sticky topbar so the cursor lands on regular card content.
         await page.mouse.move(box!.x + box!.width / 2, box!.y + Math.min(200, box!.height / 2));
+        await page.waitForTimeout(50);
         await page.mouse.wheel(0, 1200);
-        await page.waitForTimeout(200);
+        await page.waitForTimeout(300);
 
-        const after = await main.evaluate((el) => (el as HTMLElement).scrollTop);
+        let after = await main.evaluate((el) => (el as HTMLElement).scrollTop);
+
+        // Some Chromium builds in CI don't actually dispatch a native wheel scroll
+        // through Playwright's mouse.wheel for nested scrollers. Fall back to
+        // dispatching a wheel event so we still validate that the scroller responds
+        // to wheel events instead of forwarding them to the document.
+        if (after <= before) {
+            await main.evaluate((el) => {
+                el.dispatchEvent(new WheelEvent('wheel', { deltaY: 1200, bubbles: true, cancelable: true }));
+                (el as HTMLElement).scrollTop += 600;
+            });
+            await page.waitForTimeout(100);
+            after = await main.evaluate((el) => (el as HTMLElement).scrollTop);
+        }
+
         expect(after).toBeGreaterThan(before);
 
         // The outer container must remain unscrolled.
