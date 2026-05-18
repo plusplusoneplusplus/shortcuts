@@ -8,6 +8,7 @@ describe('buildUnifiedDiff', () => {
 
         const result = buildUnifiedDiff('src/foo.ts', undefined, base, head);
 
+        expect(result).toContain('diff --git a/src/foo.ts b/src/foo.ts');
         expect(result).toContain('--- a/src/foo.ts');
         expect(result).toContain('+++ b/src/foo.ts');
         expect(result).toMatch(/^@@.+@@/m);
@@ -30,6 +31,7 @@ describe('buildUnifiedDiff', () => {
 
         expect(result).toContain('--- /dev/null');
         expect(result).toContain('+++ b/src/new.ts');
+        expect(result).toContain('new file mode 100644');
         expect(result).toContain('+export const x = 1;');
     });
 
@@ -38,6 +40,7 @@ describe('buildUnifiedDiff', () => {
 
         expect(result).toContain('--- a/src/old.ts');
         expect(result).toContain('+++ /dev/null');
+        expect(result).toContain('deleted file mode 100644');
         expect(result).toContain('-export const x = 1;');
     });
 
@@ -52,18 +55,18 @@ describe('buildUnifiedDiff', () => {
             head,
         );
 
+        expect(result).toContain('diff --git a/src/oldName.ts b/src/newName.ts');
+        expect(result).toContain('rename from src/oldName.ts');
+        expect(result).toContain('rename to src/newName.ts');
         expect(result).toContain('--- a/src/oldName.ts');
         expect(result).toContain('+++ b/src/newName.ts');
     });
 
-    it('returns a string with no hunks when content is identical', () => {
+    it('returns an empty string when unchanged content is not a rename', () => {
         const content = 'unchanged\n';
 
         const result = buildUnifiedDiff('src/same.ts', undefined, content, content);
 
-        // createTwoFilesPatch returns only the header lines with no @@ hunks
-        expect(result).not.toMatch(/^@@/m);
-        expect(result).not.toContain('+unchanged');
-        expect(result).not.toContain('-unchanged');
+        expect(result).toBe('');
     });
 });
