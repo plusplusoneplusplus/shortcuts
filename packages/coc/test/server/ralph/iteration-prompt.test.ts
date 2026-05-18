@@ -4,7 +4,6 @@
 import { describe, it, expect } from 'vitest';
 import {
     buildRalphIterationPrompt,
-    RALPH_GOAL_PROMPT_MAX_LENGTH,
     RALPH_WORK_INTENT_PROMPT,
 } from '../../../src/server/ralph/iteration-prompt';
 
@@ -70,27 +69,12 @@ describe('buildRalphIterationPrompt', () => {
         }
     });
 
-    it('truncates oversize goals and appends a marker', () => {
-        const goal = 'x'.repeat(RALPH_GOAL_PROMPT_MAX_LENGTH * 2);
+    it('includes very large goals in full without truncation', () => {
+        const goal = 'x'.repeat(50_000);
         const prompt = buildRalphIterationPrompt({ originalGoal: goal });
-        expect(prompt).toContain('[truncated]');
-        // Goal section length should respect the cap (modulo the marker).
-        expect(goalSection(prompt).length).toBeLessThanOrEqual(
-            RALPH_GOAL_PROMPT_MAX_LENGTH + '\n…[truncated]'.length,
-        );
+        expect(prompt).not.toContain('[truncated]');
+        expect(goalSection(prompt)).toBe(goal);
         expect(prompt).toContain(RALPH_WORK_INTENT_PROMPT);
-    });
-
-    it('respects a custom maxGoalLength override', () => {
-        const goal = 'abcdefghij';
-        const prompt = buildRalphIterationPrompt({
-            originalGoal: goal,
-            maxGoalLength: 4,
-        });
-        expect(goalSection(prompt)).toContain('abcd');
-        expect(prompt).toContain('[truncated]');
-        expect(goalSection(prompt)).not.toContain('efghij');
-        expect(prompt).toContain('source-file changes');
     });
 
     it('preserves non-ASCII characters in the goal', () => {

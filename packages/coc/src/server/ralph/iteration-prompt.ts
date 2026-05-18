@@ -15,11 +15,6 @@
  * must not start with any of those tags.
  */
 
-/** Hard cap for the goal section in the user prompt (characters). */
-export const RALPH_GOAL_PROMPT_MAX_LENGTH = 4000;
-
-const TRUNCATION_MARKER = '\n…[truncated]';
-
 const PROMPT_PREFIX =
     'Continue the Ralph execution loop toward the goal below. Read the progress journal first, then pick and implement the next subtask, run tests/build, and commit.';
 
@@ -30,8 +25,6 @@ This is an autonomous implementation iteration. The agent should inspect the rep
 export interface BuildRalphIterationPromptInput {
     /** The user's original goal text from the grilling phase. */
     originalGoal?: string;
-    /** Optional override for the maximum goal length, primarily for tests. */
-    maxGoalLength?: number;
 }
 
 /**
@@ -46,10 +39,5 @@ export function buildRalphIterationPrompt(
     if (!goal) {
         return `${PROMPT_PREFIX}\n\n${RALPH_WORK_INTENT_PROMPT}`;
     }
-    const limit = Math.max(1, input.maxGoalLength ?? RALPH_GOAL_PROMPT_MAX_LENGTH);
-    const truncated =
-        goal.length > limit
-            ? goal.slice(0, limit).trimEnd() + TRUNCATION_MARKER
-            : goal;
-    return `${PROMPT_PREFIX}\n\n${RALPH_WORK_INTENT_PROMPT}\n\n<goal>\n${truncated}\n</goal>`;
+    return `${PROMPT_PREFIX}\n\n${RALPH_WORK_INTENT_PROMPT}\n\n<goal>\n${goal}\n</goal>`;
 }
