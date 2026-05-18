@@ -209,7 +209,11 @@ export function useChatSSE({
             const costTimeMs = Date.now() - sseStartTime;
             closeSSE();
             setBackgroundTasks(null);
-            setTask(prev => prev && prev.status === 'running' ? { ...prev, status: finalStatus } : prev);
+            // Flip non-terminal status (running OR a stale synthesised `queued`
+            // from the queue route fallback) to terminal so the UI doesn't lag
+            // behind the SSE close event.
+            const NON_TERMINAL = new Set(['running', 'queued', 'cancelling']);
+            setTask(prev => prev && NON_TERMINAL.has(prev.status) ? { ...prev, status: finalStatus } : prev);
             // Mirror the terminal status onto the locally-cached processDetails so
             // `effectiveStatus = processDetails?.status ?? task?.status` flips to
             // terminal in the same render. Without this, a follow-up sent in the
@@ -217,7 +221,7 @@ export function useChatSSE({
             // the active-generation enqueue path and the optimistic user bubble
             // is skipped, leaving the new message invisible until the user
             // re-selects the chat.
-            setProcessDetails?.(prev => prev && prev.status === 'running'
+            setProcessDetails?.(prev => prev && NON_TERMINAL.has(prev.status)
                 ? { ...prev, status: finalStatus, endTime: prev.endTime ?? new Date().toISOString() }
                 : prev);
             // Stamp costTimeMs on the last assistant turn before server refresh

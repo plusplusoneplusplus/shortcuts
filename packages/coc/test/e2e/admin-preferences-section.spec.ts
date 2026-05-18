@@ -21,6 +21,16 @@ async function navigateToAdmin(page: import('@playwright/test').Page, serverUrl:
     await expect(page.locator('#admin-page-content')).not.toBeEmpty({ timeout: 5000 });
 }
 
+/** Switch the Settings tab to one of its sub-tab cards. The Settings tab defaults to `ai`. */
+async function gotoSettingsSubTab(
+    page: import('@playwright/test').Page,
+    sub: 'ai' | 'chat' | 'appearance' | 'features' | 'integrations' | 'advanced',
+): Promise<void> {
+    const tab = page.locator(`[data-testid="settings-subtab-${sub}"]`);
+    await expect(tab).toBeVisible({ timeout: 5000 });
+    await tab.click();
+}
+
 // ================================================================
 // Tests
 // ================================================================
@@ -33,12 +43,15 @@ test.describe('Admin: Preferences section', () => {
 
     test('preferences section renders theme and sidebar controls', async ({ page, serverUrl }) => {
         await navigateToAdmin(page, serverUrl);
+        await gotoSettingsSubTab(page, 'appearance');
 
         // Theme dropdown should be visible
         await expect(page.locator('[data-testid="pref-theme"]')).toBeVisible({ timeout: 5000 });
 
-        // Sidebar collapsed toggle should be visible
-        await expect(page.locator('[data-testid="pref-repos-sidebar-collapsed"]')).toBeVisible({ timeout: 5000 });
+        // Sidebar collapsed toggle is rendered as an sr-only checkbox inside an
+        // AdminToggle (opacity:0, width:0, height:0) so toBeVisible() reports it
+        // as hidden. Assert it is attached instead.
+        await expect(page.locator('[data-testid="pref-repos-sidebar-collapsed"]')).toBeAttached({ timeout: 5000 });
 
         // Theme should show one of the valid values (auto/light/dark)
         const themeVal = await page.locator('[data-testid="pref-theme"]').inputValue();
@@ -51,6 +64,7 @@ test.describe('Admin: Preferences section', () => {
 
     test('changing theme sends PATCH and shows success toast', async ({ page, serverUrl }) => {
         await navigateToAdmin(page, serverUrl);
+        await gotoSettingsSubTab(page, 'appearance');
 
         // Wait for preferences to load
         await expect(page.locator('[data-testid="pref-theme"]')).toBeVisible({ timeout: 5000 });
@@ -93,6 +107,8 @@ test.describe('Admin: Preferences section', () => {
 
         // Admin page content should still render even when preferences load fails
         await expect(page.locator('#admin-page-content')).toBeVisible({ timeout: 5000 });
+
+        await gotoSettingsSubTab(page, 'appearance');
 
         // Theme dropdown should still appear with the default 'auto' value (graceful fallback,
         // since AdminPanel's appearance card renders unconditionally with local defaults)
