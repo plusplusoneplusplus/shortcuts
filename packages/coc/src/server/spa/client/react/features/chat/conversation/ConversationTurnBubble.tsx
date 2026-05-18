@@ -105,6 +105,24 @@ function createChatMarked(htmlEmbedEnabled: boolean): Marked {
 }
 
 /**
+ * Pre-pass: for every ![alt](url) and [text](url) whose url is a Windows
+ * absolute path, normalize backslashes to forward slashes and, if the url
+ * contains whitespace, wrap it in <…> so CommonMark parses it correctly.
+ * Must run before normalizeWindowsPathsInText and before `marked`.
+ */
+export function normalizeMarkdownLinkUrls(text: string): string {
+    return text.replace(
+        /(!?)\[([^\]]*)\]\(([^)\n]+)\)/g,
+        (match, bang: string, label: string, url: string) => {
+            if (!/^[A-Za-z]:[\\\/]/.test(url)) return match;
+            const fwd = toForwardSlashes(url);
+            const wrapped = /\s/.test(fwd) ? `<${fwd}>` : fwd;
+            return `${bang}[${label}](${wrapped})`;
+        },
+    );
+}
+
+/**
  * Pre-normalize Windows-style paths (backslash) to forward slashes before markdown
  * parsing, so that `marked` does not treat `\.` as an escape sequence (GFM treats
  * backslash-followed-by-ASCII-punctuation as an escape, silently dropping the `\`).
@@ -135,7 +153,10 @@ function rewriteLocalImagePaths(html: string, wsId: string): string {
  */
 export function chatMarkdownToHtml(content: string, wsId?: string, options?: { htmlEmbedEnabled?: boolean }): string {
     if (!content || !content.trim()) return '';
-    const normalized = normalizeWindowsPathsInText(content);
+    // Order matters: normalizeMarkdownLinkUrls fixes link/image URLs first (handles
+    // spaces + backslashes), then normalizeWindowsPathsInText handles bare prose paths.
+    const linkNormalized = normalizeMarkdownLinkUrls(content);
+    const normalized = normalizeWindowsPathsInText(linkNormalized);
     let html = linkifyFilePaths(createChatMarked(options?.htmlEmbedEnabled === true).parse(normalized) as string);
     if (wsId) {
         html = rewriteLocalImagePaths(html, wsId);
