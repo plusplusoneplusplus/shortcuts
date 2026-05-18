@@ -54,6 +54,7 @@ vi.mock('../../../../../../src/server/spa/client/react/ui/Dialog', () => ({
 vi.mock('../../../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => 'http://localhost:4000',
+    isRalphEnabled: () => false,
 }));
 
 import { BoundedMemoryTab } from '../../../../../../src/server/spa/client/react/features/memory/BoundedMemoryTab';

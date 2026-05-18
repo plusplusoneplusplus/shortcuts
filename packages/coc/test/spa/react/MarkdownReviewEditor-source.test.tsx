@@ -68,6 +68,7 @@ vi.mock('../../../src/server/spa/client/react/shared/SourceEditor', () => ({
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '',
+    isRalphEnabled: () => false,
 }));
 
 /* ── Mock useApp ── */

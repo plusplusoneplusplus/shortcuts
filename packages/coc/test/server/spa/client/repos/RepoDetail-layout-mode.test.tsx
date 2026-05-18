@@ -119,6 +119,7 @@ vi.mock('../../../../../src/server/spa/client/react/layout/MobileTabBar', () => 
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '',
+    isRalphEnabled: () => false,
     isTerminalEnabled: () => false,
     isNotesEnabled: () => false,
     isMyWorkEnabled: () => false,

@@ -20,6 +20,7 @@ vi.stubGlobal('ResizeObserver', vi.fn().mockImplementation(function () { return 
 let mockServersEnabled = false;
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isServersEnabled: () => mockServersEnabled,
+    isRalphEnabled: () => false,
 }));
 
 // ── Mock AppContext ────────────────────────────────────────────────────

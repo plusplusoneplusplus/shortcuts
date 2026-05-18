@@ -10,6 +10,7 @@ import { useFileActions } from '../../../src/server/spa/client/react/tasks/hooks
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '/api',
+    isRalphEnabled: () => false,
 }));
 
 function okResponse(): Partial<Response> {

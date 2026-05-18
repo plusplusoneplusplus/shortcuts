@@ -16,6 +16,7 @@ import { TaskActions } from '../../../src/server/spa/client/react/tasks/TaskActi
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '/api',
+    isRalphEnabled: () => false,
 }));
 
 function Wrap({ children }: { children: ReactNode }) {

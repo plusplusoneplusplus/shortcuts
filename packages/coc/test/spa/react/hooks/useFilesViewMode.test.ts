@@ -16,6 +16,7 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '/api',
+    isRalphEnabled: () => false,
 }));
 
 import { useFilesViewMode } from '../../../../src/server/spa/client/react/features/git/hooks/useFilesViewMode';
