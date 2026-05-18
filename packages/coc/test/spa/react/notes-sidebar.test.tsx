@@ -1001,4 +1001,94 @@ describe('NotesSidebar', () => {
         const nb2 = await findByTestId('notes-tree-item-Notebook2');
         expect(nb2.querySelector('[data-testid="folder-page-count"]')).toBeNull();
     });
+
+    // ── Scroll behaviour ───────────────────────────────────────────────
+
+    it('does not scroll when the selected item is already visible', async () => {
+        const scrollIntoViewMock = vi.fn();
+
+        const { findByTestId, rerender } = render(
+            <NotesSidebar workspaceId="ws1" selectedPath={null} onSelectPage={vi.fn()} />,
+        );
+        // Wait for tree to load
+        await findByTestId('notes-tree-area');
+        await waitFor(() => expect(mockGetTree).toHaveBeenCalled());
+
+        // Expand Notebook1 so Page1 is visible
+        rerender(
+            <NotesSidebar workspaceId="ws1" selectedPath="Notebook1/Section1/Page1" onSelectPage={vi.fn()} />,
+        );
+
+        const treeArea = await findByTestId('notes-tree-area');
+
+        // Wait for the 50ms deferred scroll effect to fire
+        await act(async () => { await new Promise(r => setTimeout(r, 100)); });
+
+        const selectedEl = treeArea.querySelector('[data-node-path="Notebook1/Section1/Page1"]');
+        if (selectedEl) {
+            // Mock for next re-render: element is visible
+            (selectedEl as HTMLElement).scrollIntoView = scrollIntoViewMock;
+            vi.spyOn(selectedEl, 'getBoundingClientRect').mockReturnValue({
+                top: 100, bottom: 120, left: 0, right: 200, width: 200, height: 20, x: 0, y: 100, toJSON: () => ({}),
+            });
+        }
+        vi.spyOn(treeArea, 'getBoundingClientRect').mockReturnValue({
+            top: 0, bottom: 500, left: 0, right: 200, width: 200, height: 500, x: 0, y: 0, toJSON: () => ({}),
+        });
+
+        // Trigger re-selection to fire the useEffect again
+        rerender(
+            <NotesSidebar workspaceId="ws1" selectedPath={null} onSelectPage={vi.fn()} />,
+        );
+        rerender(
+            <NotesSidebar workspaceId="ws1" selectedPath="Notebook1/Section1/Page1" onSelectPage={vi.fn()} />,
+        );
+
+        await act(async () => { await new Promise(r => setTimeout(r, 100)); });
+
+        expect(scrollIntoViewMock).not.toHaveBeenCalled();
+    });
+
+    it('scrolls into view when the selected item is off-screen', async () => {
+        const scrollIntoViewMock = vi.fn();
+
+        const { findByTestId, rerender } = render(
+            <NotesSidebar workspaceId="ws1" selectedPath={null} onSelectPage={vi.fn()} />,
+        );
+        await findByTestId('notes-tree-area');
+        await waitFor(() => expect(mockGetTree).toHaveBeenCalled());
+
+        rerender(
+            <NotesSidebar workspaceId="ws1" selectedPath="Notebook1/Section1/Page1" onSelectPage={vi.fn()} />,
+        );
+
+        const treeArea = await findByTestId('notes-tree-area');
+
+        // Wait for initial effect
+        await act(async () => { await new Promise(r => setTimeout(r, 100)); });
+
+        const selectedEl = treeArea.querySelector('[data-node-path="Notebook1/Section1/Page1"]');
+        if (selectedEl) {
+            (selectedEl as HTMLElement).scrollIntoView = scrollIntoViewMock;
+            // Element is below visible area
+            vi.spyOn(selectedEl, 'getBoundingClientRect').mockReturnValue({
+                top: 600, bottom: 620, left: 0, right: 200, width: 200, height: 20, x: 0, y: 600, toJSON: () => ({}),
+            });
+        }
+        vi.spyOn(treeArea, 'getBoundingClientRect').mockReturnValue({
+            top: 0, bottom: 500, left: 0, right: 200, width: 200, height: 500, x: 0, y: 0, toJSON: () => ({}),
+        });
+
+        // Trigger re-selection
+        rerender(
+            <NotesSidebar workspaceId="ws1" selectedPath={null} onSelectPage={vi.fn()} />,
+        );
+        rerender(
+            <NotesSidebar workspaceId="ws1" selectedPath="Notebook1/Section1/Page1" onSelectPage={vi.fn()} />,
+        );
+
+        await act(async () => { await new Promise(r => setTimeout(r, 100)); });
+
+        expect(scrollIntoViewMock).toHaveBeenCalledWith({ block: 'nearest', behavior: 'smooth' });
+    });
 });

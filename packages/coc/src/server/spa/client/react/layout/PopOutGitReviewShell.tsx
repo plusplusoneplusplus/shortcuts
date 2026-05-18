@@ -1,5 +1,5 @@
 /**
- * PopOutGitReviewShell — standalone shell for git commit/branch-range review
+ * PopOutGitReviewShell — standalone shell for git commit/branch-range/PR review
  * popped into a separate browser window.
  *
  * Rendered when `window.location.hash` starts with `#popout/git-review`.
@@ -7,6 +7,7 @@
  * URL formats:
  *   Commit:       `/?workspace=<wsId>#popout/git-review/<commitHash>`
  *   Branch-range: `/?workspace=<wsId>#popout/git-review/branch-range`
+ *   PR:           `/?workspace=<wsId>&repo=<repoId>#popout/git-review/pr/<prId>`
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -19,7 +20,7 @@ import { getSpaCocClient } from '../api/cocClient';
 import { CommitDetail } from '../features/git/commits/CommitDetail';
 import { BranchRangeOverview } from '../features/git/branches/BranchRangeOverview';
 import { FileDiffPanel } from '../features/git/diff/FileDiffPanel';
-import { createCommitDiffSource, createBranchRangeDiffSource } from '../features/git/diff/diffSource';
+import { createCommitDiffSource, createBranchRangeDiffSource, createPrDiffSource } from '../features/git/diff/diffSource';
 import { PopOutFilePanel } from '../features/git/diff/PopOutFilePanel';
 import { Spinner } from '../ui';
 import { useCachedDiff } from '../features/git/hooks/useCommitDiffCache';
@@ -31,8 +32,15 @@ import {
     type GitReviewPopOutMessage,
     gitReviewPopOutKey,
     gitReviewBranchPopOutKey,
+    gitReviewPrPopOutKey,
 } from '../contexts/GitReviewPopOutContext';
 import { getHostname } from '../utils/config';
+import { extractFileStatsFromDiff } from '../features/git/diff/diffSource';
+import { useClassification } from '../features/git/diff/useClassification';
+import type { ClassificationKey } from '../features/git/diff/diffSource';
+import type { HunkCategory } from '../features/pull-requests/classification-types';
+import { HUNK_CATEGORIES, CATEGORY_LABELS } from '../features/pull-requests/classification-types';
+import { PrChatPanel } from '../features/git/commits/PrChatPanel';
 import type { GitCommitItem } from '../features/git/commits/CommitList';
 import type { BranchRangeInfo } from '../features/git/branches/BranchChanges';
 import type { BranchRangeFile } from '../features/git/branches/BranchAllFilesDiff';
@@ -43,8 +51,10 @@ import type { GitBranchRangeResponse } from '@plusplusoneplusplus/coc-client';
 
 export interface PopOutGitReviewParams {
     workspaceId: string;
-    reviewType: 'commit' | 'branch-range';
+    reviewType: 'commit' | 'branch-range' | 'pr';
     commitHash?: string;
+    prId?: string;
+    repoId?: string;
 }
 
 export function parsePopOutGitReviewRoute(hash: string, search: string): PopOutGitReviewParams | null {
@@ -58,6 +68,16 @@ export function parsePopOutGitReviewRoute(hash: string, search: string): PopOutG
 
     if (parts[2] === 'branch-range') {
         return { workspaceId, reviewType: 'branch-range' };
+    }
+
+    if (parts[2] === 'pr' && parts[3]) {
+        const repoId = searchParams.get('repo') ?? workspaceId;
+        return { workspaceId, reviewType: 'pr', prId: decodeURIComponent(parts[3]), repoId };
+    }
+
+    // 'pr' without a prId is invalid
+    if (parts[2] === 'pr') {
+        return null;
     }
 
     if (parts[2]) {
@@ -307,6 +327,192 @@ function isBranchRangeInfo(data: GitBranchRangeResponse): data is BranchRangeInf
     return !('onDefaultBranch' in data) && typeof data.baseRef === 'string' && typeof data.headRef === 'string';
 }
 
+// ── PR review content ──────────────────────────────────────────────────────────
+
+function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; repoId: string; prId: string }) {
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [fileList, setFileList] = useState<FileChange[]>([]);
+    const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+    const [hunkTarget, setHunkTarget] = useState<'first' | 'last' | undefined>(undefined);
+    const [prTitle, setPrTitle] = useState<string | undefined>(undefined);
+    const [headSha, setHeadSha] = useState<string | undefined>(undefined);
+    const [chatOpen, setChatOpen] = useState(false);
+
+    // Classification hook for PR diff
+    const classificationKey: ClassificationKey | undefined =
+        headSha ? { type: 'pr', repoId, identifier: `${prId}:${headSha}` } : undefined;
+    const classification = useClassification(classificationKey);
+
+    const handleFileSelect = useCallback((filePath: string) => {
+        setHunkTarget(undefined);
+        setSelectedFilePath(prev => prev === filePath ? null : filePath);
+    }, []);
+
+    const handleNavigateToFile = useCallback((filePath: string, target: 'first' | 'last') => {
+        setSelectedFilePath(filePath);
+        setHunkTarget(target);
+    }, []);
+
+    const handleBack = useCallback(() => {
+        setSelectedFilePath(null);
+        setHunkTarget(undefined);
+    }, []);
+
+    useEffect(() => {
+        setLoading(true);
+        setError(null);
+        const client = getSpaCocClient();
+
+        Promise.all([
+            client.pullRequests.get(repoId, prId) as Promise<{ title?: string; headSha?: string }>,
+            client.pullRequests.getDiff(repoId, prId),
+        ])
+            .then(([prData, diffText]) => {
+                setPrTitle(prData.title);
+                setHeadSha(prData.headSha);
+                const stats = extractFileStatsFromDiff(diffText);
+                setFileList(stats.map(s => ({ path: s.path, status: 'modified' as const, additions: s.additions, deletions: s.deletions })));
+            })
+            .catch((err: Error) => setError(err.message))
+            .finally(() => setLoading(false));
+    }, [repoId, prId]);
+
+    const filePaths = fileList.map(f => f.path);
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center flex-1 gap-2 text-xs text-[#848484]">
+                <Spinner size="sm" /> Loading PR diff…
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="flex items-center justify-center flex-1 text-xs text-[#d32f2f] dark:text-[#f48771]">
+                {error}
+            </div>
+        );
+    }
+
+    const classifyStatus = classification.state.status;
+
+    return (
+        <div className="flex flex-col flex-1 min-h-0">
+            {/* Classification toolbar */}
+            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#2a2a2a]" data-testid="pr-popout-classify-bar">
+                <button
+                    type="button"
+                    onClick={classification.classify}
+                    disabled={classifyStatus === 'loading'}
+                    className={
+                        classifyStatus === 'loading'
+                            ? 'inline-flex h-6 items-center gap-1 rounded border border-gray-300 bg-gray-100 px-2 text-[11px] font-medium text-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-500 cursor-wait'
+                            : 'inline-flex h-6 items-center gap-1 rounded border border-indigo-400 bg-indigo-50 px-2 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500 dark:bg-indigo-900/30 dark:text-indigo-200 dark:hover:bg-indigo-900/50'
+                    }
+                    data-testid="pr-popout-classify-button"
+                >
+                    {classifyStatus === 'loading' ? (
+                        <>
+                            <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                            Classifying…
+                        </>
+                    ) : classifyStatus === 'ready' ? 'Re-classify' : 'Classify'}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setChatOpen(prev => !prev)}
+                    className={`inline-flex h-6 items-center gap-1 rounded border px-2 text-[11px] font-medium ${
+                        chatOpen
+                            ? 'border-blue-400 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-900/30 dark:text-blue-200'
+                            : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                    }`}
+                    data-testid="pr-popout-chat-toggle"
+                >
+                    💬 Chat
+                </button>
+                {classification.state.error && (
+                    <span className="text-[10px] text-red-600 dark:text-red-400">
+                        {classification.state.error}
+                    </span>
+                )}
+            </div>
+            {/* Classification filter bar — visible when results are ready */}
+            {classifyStatus === 'ready' && (
+                <div className="flex items-center gap-3 px-3 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#262626]" data-testid="pr-popout-filter-bar">
+                    <span className="text-[10px] text-[#616161] dark:text-[#999] font-medium">Filter:</span>
+                    {HUNK_CATEGORIES.map(cat => {
+                        const active = classification.state.activeFilters.has(cat);
+                        return (
+                            <label
+                                key={cat}
+                                className="flex items-center gap-1 text-[11px] cursor-pointer select-none"
+                                data-testid={`pr-popout-filter-${cat}`}
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={active}
+                                    onChange={() => classification.toggleFilter(cat as HunkCategory)}
+                                    className="h-3 w-3 rounded"
+                                />
+                                <span className={active ? 'text-[#1e1e1e] dark:text-[#ccc]' : 'text-[#848484]'}>
+                                    {CATEGORY_LABELS[cat]}
+                                </span>
+                            </label>
+                        );
+                    })}
+                </div>
+            )}
+            {/* Main content */}
+            <div className="flex flex-1 min-h-0">
+                <PopOutFilePanel
+                    workspaceId={workspaceId}
+                    files={fileList}
+                    selectedFilePath={selectedFilePath}
+                    onFileSelect={handleFileSelect}
+                    isFileDimmed={classifyStatus === 'ready' ? classification.isFileDimmed : undefined}
+                />
+                <div className="flex-1 min-w-0 overflow-hidden">
+                    {selectedFilePath ? (
+                        <FileDiffPanel
+                            key={`pr-${prId}-${selectedFilePath}`}
+                            workspaceId={workspaceId}
+                            filePath={selectedFilePath}
+                            source={createPrDiffSource(workspaceId, repoId, prId, {
+                                headSha,
+                                files: filePaths,
+                                title: prTitle,
+                            })}
+                            onNavigateToFile={handleNavigateToFile}
+                            initialHunkTarget={hunkTarget}
+                            onBack={handleBack}
+                            backLabel="All files"
+                            showSourceLabel={false}
+                        />
+                    ) : (
+                        <div className="flex flex-col items-center justify-center flex-1 gap-2 text-xs text-[#848484]">
+                            <span>Select a file to view its diff</span>
+                            <span className="text-[10px]">{fileList.length} file{fileList.length !== 1 ? 's' : ''} changed</span>
+                        </div>
+                    )}
+                </div>
+                {/* PR Chat panel */}
+                {chatOpen && (
+                    <div className="w-[340px] shrink-0 border-l border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="pr-popout-chat-container">
+                        <PrChatPanel
+                            workspaceId={workspaceId}
+                            prId={prId}
+                            filePath={selectedFilePath ?? undefined}
+                            onClose={() => setChatOpen(false)}
+                        />
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
 // ── Inner content (uses toast + channel) ───────────────────────────────────────
 
 function PopOutGitReviewContent({ params }: { params: PopOutGitReviewParams }) {
@@ -315,7 +521,9 @@ function PopOutGitReviewContent({ params }: { params: PopOutGitReviewParams }) {
 
     const key = params.reviewType === 'commit'
         ? gitReviewPopOutKey(params.workspaceId, params.commitHash!)
-        : gitReviewBranchPopOutKey(params.workspaceId);
+        : params.reviewType === 'pr'
+            ? gitReviewPrPopOutKey(params.workspaceId, params.prId!)
+            : gitReviewBranchPopOutKey(params.workspaceId);
 
     const handleMessage = useCallback((msg: GitReviewPopOutMessage) => {
         if (msg.type === 'git-review-popout-restore' && msg.key === key) {
@@ -342,7 +550,9 @@ function PopOutGitReviewContent({ params }: { params: PopOutGitReviewParams }) {
         const brand = hostname ? `CoC @ ${hostname}` : 'CoC';
         const title = params.reviewType === 'commit'
             ? `Commit ${params.commitHash!.slice(0, 7)}`
-            : 'Branch Range Review';
+            : params.reviewType === 'pr'
+                ? `PR #${params.prId}`
+                : 'Branch Range Review';
         document.title = `${title} — ${brand}`;
     }, [params]);
 
@@ -356,7 +566,9 @@ function PopOutGitReviewContent({ params }: { params: PopOutGitReviewParams }) {
                         <span className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate" data-testid="popout-git-review-title">
                             {params.reviewType === 'commit'
                                 ? `Commit ${params.commitHash!.slice(0, 7)}`
-                                : 'Branch Range Review'}
+                                : params.reviewType === 'pr'
+                                    ? `PR #${params.prId}`
+                                    : 'Branch Range Review'}
                         </span>
                     </div>
                 </div>
@@ -364,6 +576,8 @@ function PopOutGitReviewContent({ params }: { params: PopOutGitReviewParams }) {
                 <div className="flex flex-1 min-h-0 overflow-hidden">
                     {params.reviewType === 'commit' ? (
                         <CommitReviewContent workspaceId={params.workspaceId} commitHash={params.commitHash!} />
+                    ) : params.reviewType === 'pr' ? (
+                        <PrReviewContent workspaceId={params.workspaceId} repoId={params.repoId!} prId={params.prId!} />
                     ) : (
                         <BranchRangeReviewContent workspaceId={params.workspaceId} />
                     )}

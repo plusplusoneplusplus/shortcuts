@@ -62,6 +62,46 @@ describe('parsePopOutGitReviewRoute', () => {
         expect(parsePopOutGitReviewRoute('#popout/git-review', '?workspace=ws1')).toBeNull();
     });
 
+    it('parses PR review route', () => {
+        const result = parsePopOutGitReviewRoute(
+            '#popout/git-review/pr/42',
+            '?workspace=ws1&repo=myrepo'
+        );
+        expect(result).toEqual({
+            workspaceId: 'ws1',
+            reviewType: 'pr',
+            prId: '42',
+            repoId: 'myrepo',
+        });
+    });
+
+    it('parses PR route with URI-encoded prId', () => {
+        const result = parsePopOutGitReviewRoute(
+            '#popout/git-review/pr/some%2Fpr',
+            '?workspace=ws1&repo=r1'
+        );
+        expect(result).not.toBeNull();
+        expect(result!.prId).toBe('some/pr');
+        expect(result!.repoId).toBe('r1');
+    });
+
+    it('PR route defaults repoId to workspaceId when repo param missing', () => {
+        const result = parsePopOutGitReviewRoute(
+            '#popout/git-review/pr/99',
+            '?workspace=ws1'
+        );
+        expect(result).toEqual({
+            workspaceId: 'ws1',
+            reviewType: 'pr',
+            prId: '99',
+            repoId: 'ws1',
+        });
+    });
+
+    it('returns null for PR route without prId', () => {
+        expect(parsePopOutGitReviewRoute('#popout/git-review/pr', '?workspace=ws1')).toBeNull();
+    });
+
     it('returns null for hash with only popout prefix', () => {
         expect(parsePopOutGitReviewRoute('#popout', '?workspace=ws1')).toBeNull();
     });
@@ -108,6 +148,14 @@ describe('PopOutGitReviewShell: content components', () => {
 
     it('renders BranchRangeOverview for branch-range reviews', () => {
         expect(SOURCE).toContain('<BranchRangeOverview');
+    });
+
+    it('renders PrReviewContent for PR reviews', () => {
+        expect(SOURCE).toContain('<PrReviewContent');
+    });
+
+    it('uses createPrDiffSource for PR file diffs', () => {
+        expect(SOURCE).toContain('createPrDiffSource');
     });
 });
 

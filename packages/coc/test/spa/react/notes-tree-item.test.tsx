@@ -194,4 +194,66 @@ describe('NotesTreeItem', () => {
 
         expect(queryByTestId('note-update-indicator')).toBeNull();
     });
+
+    it('applies multi-selected highlight class without left accent bar when isMultiSelected', () => {
+        const node = makeNode({ path: 'nb/page1', name: 'page1' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                isMultiSelected
+                onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
+        );
+        const el = getByTestId('notes-tree-item-page1');
+        expect(el.className).toContain('bg-[#ddf4ff]');
+        expect(el.className).not.toContain('shadow-[inset_3px_0_0_#0969da]');
+        expect(el.getAttribute('aria-selected')).toBe('true');
+    });
+
+    it('does not apply multi-selected highlight when isMultiSelected is false', () => {
+        const node = makeNode({ path: 'nb/page1', name: 'page1' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                isMultiSelected={false}
+                onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
+        );
+        const el = getByTestId('notes-tree-item-page1');
+        expect(el.className).not.toContain('bg-[#ddf4ff]');
+    });
+
+    it('calls onSelectWithModifiers with modifier keys on shift-click', () => {
+        const onSelectWithModifiers = vi.fn();
+        const node = makeNode({ path: 'nb/page1', name: 'page1', type: 'page' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()}
+                onSelectWithModifiers={onSelectWithModifiers} />,
+        );
+        fireEvent.click(getByTestId('notes-tree-item-page1'), { shiftKey: true });
+        expect(onSelectWithModifiers).toHaveBeenCalledWith('nb/page1', true, false);
+    });
+
+    it('calls onSelectWithModifiers with modifier keys on ctrl-click', () => {
+        const onSelectWithModifiers = vi.fn();
+        const node = makeNode({ path: 'nb/page1', name: 'page1', type: 'page' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()}
+                onSelectWithModifiers={onSelectWithModifiers} />,
+        );
+        fireEvent.click(getByTestId('notes-tree-item-page1'), { ctrlKey: true });
+        expect(onSelectWithModifiers).toHaveBeenCalledWith('nb/page1', false, true);
+    });
+
+    it('calls onSelectPage (not onSelectWithModifiers) on plain click', () => {
+        const onSelectWithModifiers = vi.fn();
+        const onSelectPage = vi.fn();
+        const node = makeNode({ path: 'nb/page1', name: 'page1', type: 'page' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                onToggleExpand={vi.fn()} onSelectPage={onSelectPage} onContextMenu={vi.fn()}
+                onSelectWithModifiers={onSelectWithModifiers} />,
+        );
+        fireEvent.click(getByTestId('notes-tree-item-page1'));
+        expect(onSelectPage).toHaveBeenCalledWith('nb/page1');
+        expect(onSelectWithModifiers).not.toHaveBeenCalled();
+    });
 });

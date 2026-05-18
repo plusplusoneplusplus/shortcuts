@@ -227,6 +227,8 @@ export interface FlatFileListProps {
     renderActions?: (file: FileChange) => React.ReactNode;
     /** Repo root path for "Copy Absolute Path" context menu action. */
     repoRoot?: string;
+    /** When provided, files returning true are visually dimmed (e.g. filtered by classification). */
+    isFileDimmed?: (filePath: string) => boolean;
 }
 
 export function FlatFileList({
@@ -239,6 +241,7 @@ export function FlatFileList({
     renderFileExtra,
     renderActions,
     repoRoot,
+    isFileDimmed,
 }: FlatFileListProps) {
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; filePath: string } | null>(null);
 
@@ -247,8 +250,9 @@ export function FlatFileList({
             {files.map((file, i) => {
                 const displayStatus = normalizeStatus(file.status);
                 const count = fileCommentMap.get(file.path) ?? 0;
+                const dimmed = isFileDimmed?.(file.path) ?? false;
                 return (
-                    <div key={i}>
+                    <div key={i} style={dimmed ? { opacity: 0.4 } : undefined}>
                         <button
                             className={`group w-full flex items-center gap-2 text-xs py-1 px-1 rounded hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] transition-colors text-left ${
                                 selectedFilePath === file.path ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10' : ''
@@ -331,6 +335,8 @@ interface FileTreeViewProps {
     renderActions?: (node: FileNode) => React.ReactNode;
     /** Repo root path for "Copy Absolute Path" context menu action. */
     repoRoot?: string;
+    /** When provided, files returning true are visually dimmed (e.g. filtered by classification). */
+    isFileDimmed?: (filePath: string) => boolean;
 }
 
 export function FileTreeView({
@@ -347,6 +353,7 @@ export function FileTreeView({
     renderFileExtra,
     renderActions,
     repoRoot,
+    isFileDimmed,
 }: FileTreeViewProps) {
     return (
         <div className="flex flex-col gap-0.5" data-testid={depth === 0 ? 'commit-file-list' : undefined}>
@@ -367,6 +374,7 @@ export function FileTreeView({
                         renderFileExtra={renderFileExtra}
                         renderActions={renderActions}
                         repoRoot={repoRoot}
+                        isFileDimmed={isFileDimmed}
                     />
                 ) : (
                     <FileEntry
@@ -384,6 +392,7 @@ export function FileTreeView({
                         renderFileExtra={renderFileExtra}
                         renderActions={renderActions}
                         repoRoot={repoRoot}
+                        isFileDimmed={isFileDimmed}
                     />
                 ),
             )}
@@ -405,6 +414,7 @@ function DirEntry({
     renderFileExtra,
     renderActions,
     repoRoot,
+    isFileDimmed,
 }: {
     node: DirNode;
     depth: number;
@@ -419,6 +429,7 @@ function DirEntry({
     renderFileExtra?: (node: FileNode) => React.ReactNode;
     renderActions?: (node: FileNode) => React.ReactNode;
     repoRoot?: string;
+    isFileDimmed?: (filePath: string) => boolean;
 }) {
     const [open, setOpen] = useState(true);
 
@@ -452,6 +463,7 @@ function DirEntry({
                     renderFileExtra={renderFileExtra}
                     renderActions={renderActions}
                     repoRoot={repoRoot}
+                    isFileDimmed={isFileDimmed}
                 />
             )}
         </div>
@@ -472,6 +484,7 @@ function FileEntry({
     renderFileExtra,
     renderActions,
     repoRoot,
+    isFileDimmed,
 }: {
     node: FileNode;
     depth: number;
@@ -486,12 +499,14 @@ function FileEntry({
     renderFileExtra?: (node: FileNode) => React.ReactNode;
     renderActions?: (node: FileNode) => React.ReactNode;
     repoRoot?: string;
+    isFileDimmed?: (filePath: string) => boolean;
 }) {
     const isActiveFile = onFileSelectSimple
         ? selectedFilePath === node.path
         : (selectedFile?.hash === commitHash && selectedFile?.filePath === node.path);
     const count = fileCommentMap.get(node.path) ?? 0;
     const displayStatus = normalizeStatus(node.status);
+    const dimmed = isFileDimmed?.(node.path) ?? false;
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
     return (
@@ -502,7 +517,7 @@ function FileEntry({
                         ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10'
                         : 'hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]'
                 }`}
-                style={{ paddingLeft: `${depth * 12 + 4}px` }}
+                style={{ paddingLeft: `${depth * 12 + 4}px`, opacity: dimmed ? 0.4 : 1 }}
                 onClick={(e) => {
                     e.stopPropagation();
                     if (onFileSelectSimple) {

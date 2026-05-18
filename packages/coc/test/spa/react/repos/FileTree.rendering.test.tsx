@@ -404,6 +404,85 @@ describe('FileTreeView — rendering', () => {
     });
 });
 
+// ── isFileDimmed (classification filtering) ───────────────────────────
+
+describe('FlatFileList — isFileDimmed', () => {
+    const FILES: FileChange[] = [
+        { path: 'src/a.ts', status: 'M', additions: 10, deletions: 3 },
+        { path: 'src/b.ts', status: 'A', additions: 5, deletions: 0 },
+    ];
+
+    it('applies opacity:0.4 to dimmed files', () => {
+        const isFileDimmed = (p: string) => p === 'src/a.ts';
+        render(<FlatFileList files={FILES} onFileSelect={vi.fn()} isFileDimmed={isFileDimmed} />);
+
+        const row = screen.getByTestId('flat-file-row-src/a.ts');
+        // Opacity is on the wrapping div (parent of the button)
+        expect(row.parentElement!.style.opacity).toBe('0.4');
+    });
+
+    it('leaves non-dimmed files at full opacity', () => {
+        const isFileDimmed = (p: string) => p === 'src/a.ts';
+        render(<FlatFileList files={FILES} onFileSelect={vi.fn()} isFileDimmed={isFileDimmed} />);
+
+        const row = screen.getByTestId('flat-file-row-src/b.ts');
+        expect(row.parentElement!.style.opacity).toBe('');
+    });
+});
+
+describe('FileTreeView — isFileDimmed', () => {
+    const FILES: FileChange[] = [
+        { path: 'src/a.ts', status: 'M', additions: 10, deletions: 3 },
+        { path: 'src/b.ts', status: 'A', additions: 5, deletions: 0 },
+    ];
+
+    it('applies opacity:0.4 to dimmed files in tree view', () => {
+        const tree = compactFolders(buildFileTree(FILES));
+        const isFileDimmed = (p: string) => p === 'src/a.ts';
+        render(
+            <FileTreeView
+                nodes={tree}
+                onFileSelectSimple={vi.fn()}
+                fileCommentMap={new Map()}
+                isFileDimmed={isFileDimmed}
+            />
+        );
+
+        const row = screen.getByTestId('commit-file-src/a.ts');
+        expect(row.style.opacity).toBe('0.4');
+    });
+
+    it('leaves non-dimmed files at full opacity in tree view', () => {
+        const tree = compactFolders(buildFileTree(FILES));
+        const isFileDimmed = (p: string) => p === 'src/a.ts';
+        render(
+            <FileTreeView
+                nodes={tree}
+                onFileSelectSimple={vi.fn()}
+                fileCommentMap={new Map()}
+                isFileDimmed={isFileDimmed}
+            />
+        );
+
+        const row = screen.getByTestId('commit-file-src/b.ts');
+        expect(row.style.opacity).not.toBe('0.4');
+    });
+
+    it('works without isFileDimmed prop (no dimming)', () => {
+        const tree = compactFolders(buildFileTree(FILES));
+        render(
+            <FileTreeView
+                nodes={tree}
+                onFileSelectSimple={vi.fn()}
+                fileCommentMap={new Map()}
+            />
+        );
+
+        const row = screen.getByTestId('commit-file-src/a.ts');
+        expect(row.style.opacity).not.toBe('0.4');
+    });
+});
+
 // ── normalizeStatus + STATUS maps (unit) ──────────────────────────────
 
 describe('normalizeStatus — all word-to-char conversions', () => {

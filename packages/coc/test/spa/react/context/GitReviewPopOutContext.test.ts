@@ -8,6 +8,7 @@ import * as path from 'path';
 import {
     gitReviewPopOutKey,
     gitReviewBranchPopOutKey,
+    gitReviewPrPopOutKey,
     GIT_REVIEW_POPOUT_CHANNEL,
     GIT_REVIEW_POPOUT_LS_KEY,
 } from '../../../../src/server/spa/client/react/contexts/GitReviewPopOutContext';
@@ -33,6 +34,16 @@ describe('gitReviewPopOutKey', () => {
 describe('gitReviewBranchPopOutKey', () => {
     it('creates composite key from workspaceId', () => {
         expect(gitReviewBranchPopOutKey('ws1')).toBe('ws1::branch-range');
+    });
+});
+
+describe('gitReviewPrPopOutKey', () => {
+    it('creates composite key from workspaceId and prId', () => {
+        expect(gitReviewPrPopOutKey('ws1', '42')).toBe('ws1::pr::42');
+    });
+
+    it('includes the full prId string', () => {
+        expect(gitReviewPrPopOutKey('ws2', 'some-pr-id')).toBe('ws2::pr::some-pr-id');
     });
 });
 

@@ -11,9 +11,13 @@ export interface NotesTreeItemProps {
     hasUpdate?: boolean;
     /** Recursive page count rendered as a muted badge on folder rows. */
     pageCount?: number;
+    /** Whether this item is part of a multi-selection (highlight without left accent bar). */
+    isMultiSelected?: boolean;
     onToggleExpand: (path: string) => void;
     onSelectPage: (path: string) => void;
     onContextMenu: (node: NoteTreeNode, x: number, y: number) => void;
+    /** Multi-selection handler: forwards modifier key state from clicks. */
+    onSelectWithModifiers?: (path: string, shiftKey: boolean, ctrlKey: boolean) => void;
     // Drag-and-drop (optional — omitting disables DnD for this item)
     draggable?: boolean;
     isDragOver?: boolean;
@@ -36,9 +40,11 @@ export function NotesTreeItem({
     isSystemFolder,
     hasUpdate,
     pageCount,
+    isMultiSelected,
     onToggleExpand,
     onSelectPage,
     onContextMenu,
+    onSelectWithModifiers,
     draggable,
     isDragOver,
     dropPosition,
@@ -55,9 +61,11 @@ export function NotesTreeItem({
         ? node.name.slice(0, -3)
         : node.name;
 
-    const handleClick = () => {
+    const handleClick = (e: React.MouseEvent) => {
         if (folder) {
             onToggleExpand(node.path);
+        } else if (onSelectWithModifiers && (e.shiftKey || e.ctrlKey || e.metaKey)) {
+            onSelectWithModifiers(node.path, e.shiftKey, e.ctrlKey || e.metaKey);
         } else {
             onSelectPage(node.path);
         }
@@ -99,6 +107,7 @@ export function NotesTreeItem({
                     'hover:bg-[#d0d7de]/[0.34] dark:hover:bg-white/[0.06]',
                     selected && 'bg-[#ddf4ff] dark:bg-[#0078d4]/20 text-[#1f2328] dark:text-[#cccccc]',
                     selected && 'shadow-[inset_3px_0_0_#0969da] dark:shadow-[inset_3px_0_0_#3794ff]',
+                    !selected && isMultiSelected && 'bg-[#ddf4ff] dark:bg-[#0078d4]/20 text-[#1f2328] dark:text-[#cccccc]',
                     showInsideFolderHighlight && 'ring-1 ring-inset ring-[#0969da] bg-[#0969da]/10',
                     folder && 'font-semibold',
                     draggable && 'select-none',
@@ -110,7 +119,7 @@ export function NotesTreeItem({
                 onMouseDown={handleMouseDown}
                 onContextMenu={handleContextMenu}
                 role="treeitem"
-                aria-selected={selected}
+                aria-selected={selected || !!isMultiSelected}
                 aria-expanded={folder ? isExpanded : undefined}
                 draggable={draggable}
                 onDragStart={onDragStart}

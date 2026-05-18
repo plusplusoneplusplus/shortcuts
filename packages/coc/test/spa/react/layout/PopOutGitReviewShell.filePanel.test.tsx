@@ -135,3 +135,12 @@ describe('PopOutGitReviewShell: comment count mapping', () => {
         expect(SOURCE).toContain("'branch-head'");
     });
 });
+
+describe('PopOutGitReviewShell: PR source label suppression', () => {
+    it('passes showSourceLabel={false} to FileDiffPanel in PR review', () => {
+        const prSection = SOURCE.slice(
+            SOURCE.indexOf('function PrReviewContent'),
+        );
+        expect(prSection).toContain('showSourceLabel={false}');
+    });
+});

@@ -9,8 +9,8 @@
  * GET  /api/repos/:repoId/pull-requests/:prId/threads    — get comment threads
  * GET  /api/repos/:repoId/pull-requests/:prId/reviewers  — get reviewers
  * GET  /api/repos/:repoId/pull-requests/:prId/commits    — get commits
- * GET  /api/repos/:repoId/pull-requests/:prId/diff       — get unified diff
- * GET  /api/repos/:repoId/pull-requests/:prId/commits    — get commits
+ * GET  /api/repos/:repoId/pull-requests/:prId/diff       — get unified diff (plain text)
+ * GET  /api/repos/:repoId/pull-requests/:prId/diff/files/:path — get per-file diff (JSON)
  * GET  /api/repos/:repoId/pull-requests/:prId/checks     — get CI/check statuses
  *
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -28,6 +28,34 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/**
+ * Extract the diff text for a single file from a combined unified diff.
+ * Returns the raw diff section (from `diff --git` to the next `diff --git` or EOF).
+ */
+function extractFileDiffFromCombined(combinedDiff: string, filePath: string): string | null {
+    const lines = combinedDiff.split('\n');
+    let capturing = false;
+    const result: string[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.startsWith('diff --git ')) {
+            if (capturing) break;
+            const body = line.slice('diff --git '.length);
+            const bIdx = body.lastIndexOf(' b/');
+            const path = bIdx !== -1 ? body.slice(bIdx + 3) : '';
+            if (path === filePath) {
+                capturing = true;
+                result.push(line);
+            }
+        } else if (capturing) {
+            result.push(line);
+        }
+    }
+
+    return result.length > 0 ? result.join('\n') : null;
+}
 
 /** Detect whether an error is an authentication/authorization failure. */
 function isAuthError(err: unknown): boolean {
@@ -329,6 +357,49 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
 
                 const checks = await prSvc.getChecks(repoId, prId);
                 sendJson(res, { checks });
+            } catch (err) {
+                if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
+                    send404(res, err.message);
+                } else if (isAuthError(err)) {
+                    sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 401);
+                } else {
+                    send500(res, err instanceof Error ? err.message : String(err));
+                }
+            }
+        },
+    });
+
+    // -- Get per-file diff (extracted from combined) ----------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/([^/]+)\/diff\/files\/(.+)$/,
+        handler: async (_req, res, match) => {
+            try {
+                const repoId = decodeURIComponent(match![1]);
+                const prId = decodeURIComponent(match![2]);
+                const filePath = decodeURIComponent(match![3]);
+
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+
+                const cfg = await readProvidersConfig(dataDir);
+                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+                if (!prSvc || isNoAdoCredentials(prSvc)) {
+                    if (isNoAdoCredentials(prSvc)) {
+                        return sendJson(res, { error: 'no-ado-credentials' }, 401);
+                    }
+                    const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
+                    return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
+                }
+
+                if (typeof prSvc.getDiff !== 'function') {
+                    return sendJson(res, { diff: '' });
+                }
+
+                const combinedDiff = await prSvc.getDiff(repoId, prId);
+                const fileDiff = extractFileDiffFromCombined(combinedDiff, filePath);
+                sendJson(res, { diff: fileDiff ?? '' });
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
                     send404(res, err.message);

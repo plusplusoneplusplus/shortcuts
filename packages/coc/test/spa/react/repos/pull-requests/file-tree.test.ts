@@ -11,16 +11,14 @@ import {
     type FileTreeFolder,
     type FileTreeNode,
 } from '../../../../../src/server/spa/client/react/features/pull-requests/file-tree';
-import type { ParsedDiffFile } from '../../../../../src/server/spa/client/react/features/pull-requests/unified-diff-parser';
+import type { FileChange } from '../../../../../src/server/spa/client/react/features/git/diff/FileTree';
 
-function file(path: string, additions = 1, deletions = 0): ParsedDiffFile {
+function file(path: string, additions = 1, deletions = 0): FileChange {
     return {
         path,
-        status: 'modified',
+        status: 'M',
         additions,
         deletions,
-        isBinary: false,
-        lines: [],
     };
 }
 

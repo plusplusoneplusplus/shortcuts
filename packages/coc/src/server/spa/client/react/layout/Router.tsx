@@ -155,6 +155,11 @@ export function buildGitBranchRangePopOutUrl(workspaceId: string): string {
     return `/?workspace=${encodeURIComponent(workspaceId)}#popout/git-review/branch-range`;
 }
 
+/** Build a pop-out URL for PR review. */
+export function buildGitPrPopOutUrl(workspaceId: string, repoId: string, prId: string | number): string {
+    return `/?workspace=${encodeURIComponent(workspaceId)}&repo=${encodeURIComponent(repoId)}#popout/git-review/pr/${encodeURIComponent(String(prId))}`;
+}
+
 export function parseWorkflowDeepLink(hash: string): { repoId: string; processId: string } | null {
     const cleaned = hash.replace(/^#/, '');
     const parts = cleaned.split('/');

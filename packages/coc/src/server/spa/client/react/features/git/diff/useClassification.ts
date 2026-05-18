@@ -1,9 +1,12 @@
 /**
- * React hook for managing PR diff classification state.
+ * Generic classification hook for any DiffSource.
  *
- * Calls the classification REST API to trigger on-demand classification
- * and poll for results.  Exposes per-file and per-hunk lookup helpers
- * consumed by PrFilesPanel for filter-bar, badges, and hunk dimming.
+ * Accepts a `ClassificationKey` (type + repoId + identifier) and exposes
+ * the same filter/badge/lookup API as the old PR-specific hook.
+ *
+ * API endpoints used:
+ *   POST /api/repos/:repoId/classify-diff   — trigger classification
+ *   GET  /api/repos/:repoId/classify-diff   — get cached result / poll
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -12,9 +15,9 @@ import type {
     HunkCategory,
     HunkClassification,
     HunkIntensity,
-} from './classification-types';
-import { HUNK_CATEGORIES } from './classification-types';
-import { requestSpaApi } from '../../api/cocClient';
+} from '../../pull-requests/classification-types';
+import { requestSpaApi } from '../../../api/cocClient';
+import type { ClassificationKey } from './diffSource';
 
 // ── Public types ──────────────────────────────────────────────────────
 
@@ -86,10 +89,13 @@ interface ClassificationGetResponse {
 const POLL_INTERVAL = 3_000;
 const MAX_POLLS = 200; // 10 min max
 
+/**
+ * Generic classification hook that works with any DiffSource via ClassificationKey.
+ *
+ * Pass `undefined` to disable (no API calls, idle state).
+ */
 export function useClassification(
-    repoId: string | undefined,
-    prId: string | number | undefined,
-    headSha: string | undefined,
+    classificationKey: ClassificationKey | undefined,
 ): UseClassificationReturn {
     const [state, setState] = useState<ClassificationState>({
         status: 'idle',
@@ -144,10 +150,23 @@ export function useClassification(
         indexRef.current = { byFile, byHunk, badges };
     }, [state.result]);
 
-    const startPolling = useCallback((rId: string, pId: string, sha: string) => {
+    // Stable stringified key for dependency tracking
+    const keyStr = classificationKey
+        ? `${classificationKey.type}:${classificationKey.repoId}:${classificationKey.identifier}`
+        : '';
+
+    const buildUrl = useCallback((suffix: string) => {
+        if (!classificationKey) return '';
+        const base = `/repos/${encodeURIComponent(classificationKey.repoId)}/classify-diff`;
+        return `${base}${suffix}`;
+    }, [keyStr]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const startPolling = useCallback(() => {
+        if (!classificationKey) return;
         if (pollRef.current) clearInterval(pollRef.current);
         pollCount.current = 0;
 
+        const ck = classificationKey;
         pollRef.current = setInterval(async () => {
             pollCount.current++;
             if (pollCount.current > MAX_POLLS) {
@@ -156,8 +175,12 @@ export function useClassification(
                 return;
             }
             try {
+                const params = new URLSearchParams({
+                    type: ck.type,
+                    identifier: ck.identifier,
+                });
                 const resp = await requestSpaApi<ClassificationGetResponse>(
-                    `/repos/${encodeURIComponent(rId)}/pull-requests/${encodeURIComponent(pId)}/classification?headSha=${encodeURIComponent(sha)}`,
+                    buildUrl(`?${params.toString()}`),
                 );
                 if (resp.status === 'ready' && resp.result) {
                     if (pollRef.current) clearInterval(pollRef.current);
@@ -168,21 +191,23 @@ export function useClassification(
                 // Transient error — keep polling
             }
         }, POLL_INTERVAL);
-    }, []);
+    }, [keyStr, buildUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const classify = useCallback(() => {
-        if (!repoId || !prId || !headSha) return;
-        const rId = String(repoId);
-        const pId = String(prId);
+        if (!classificationKey) return;
+        const ck = classificationKey;
 
         setState(prev => ({ ...prev, status: 'loading', error: undefined }));
 
         requestSpaApi<ClassifyResponse>(
-            `/repos/${encodeURIComponent(rId)}/pull-requests/${encodeURIComponent(pId)}/classify`,
+            buildUrl(''),
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ headSha }),
+                body: JSON.stringify({
+                    type: ck.type,
+                    identifier: ck.identifier,
+                }),
             },
         )
             .then(resp => {
@@ -190,7 +215,7 @@ export function useClassification(
                     setState(prev => ({ ...prev, status: 'ready', result: resp.result, error: undefined }));
                 } else {
                     // Started or running — begin polling
-                    startPolling(rId, pId, headSha);
+                    startPolling();
                 }
             })
             .catch(err => {
@@ -200,27 +225,30 @@ export function useClassification(
                     error: err instanceof Error ? err.message : 'Classification failed',
                 }));
             });
-    }, [repoId, prId, headSha, startPolling]);
+    }, [keyStr, buildUrl, startPolling]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // On mount, check for cached result
+    // On mount / key change, check for cached result
     useEffect(() => {
-        if (!repoId || !prId || !headSha) return;
-        const rId = String(repoId);
-        const pId = String(prId);
+        if (!classificationKey) return;
+        const ck = classificationKey;
 
+        const params = new URLSearchParams({
+            type: ck.type,
+            identifier: ck.identifier,
+        });
         requestSpaApi<ClassificationGetResponse>(
-            `/repos/${encodeURIComponent(rId)}/pull-requests/${encodeURIComponent(pId)}/classification?headSha=${encodeURIComponent(headSha)}`,
+            buildUrl(`?${params.toString()}`),
         )
             .then(resp => {
                 if (resp.status === 'ready' && resp.result) {
                     setState(prev => ({ ...prev, status: 'ready', result: resp.result }));
                 } else if (resp.status === 'running') {
                     setState(prev => ({ ...prev, status: 'loading' }));
-                    startPolling(rId, pId, headSha);
+                    startPolling();
                 }
             })
             .catch(() => { /* no cache — ok */ });
-    }, [repoId, prId, headSha, startPolling]);
+    }, [keyStr, buildUrl, startPolling]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const toggleFilter = useCallback((cat: HunkCategory) => {
         setState(prev => {

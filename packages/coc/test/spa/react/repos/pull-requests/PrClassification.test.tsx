@@ -9,8 +9,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { PrFilesPanel } from '../../../../../src/server/spa/client/react/features/pull-requests/PrFilesPanel';
-import { parseUnifiedDiff } from '../../../../../src/server/spa/client/react/features/pull-requests/unified-diff-parser';
-import type { UseClassificationReturn } from '../../../../../src/server/spa/client/react/features/pull-requests/useClassification';
+import { parseDiffFileList } from '../../../../../src/server/spa/client/react/features/git/diff';
+import type { UseClassificationReturn } from '../../../../../src/server/spa/client/react/features/git/diff/useClassification';
 import type { HunkCategory, DiffClassificationResult } from '../../../../../src/server/spa/client/react/features/pull-requests/classification-types';
 
 // ── Fixtures ──────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ const diffText = [
     '+test2',
 ].join('\n');
 
-const parsedFiles = parseUnifiedDiff(diffText).files;
+const parsedFiles = parseDiffFileList(diffText);
 
 const mockResult: DiffClassificationResult = {
     classifications: [
@@ -264,36 +264,6 @@ describe('ClassificationBadge (file tree badges)', () => {
         const mock = createMockClassification();
         render(<PrFilesPanel files={parsedFiles} classification={mock} />);
         expect(screen.queryByTestId('classification-badge')).not.toBeInTheDocument();
-    });
-});
-
-describe('Hunk dimming', () => {
-    it('applies opacity to dimmed hunks', () => {
-        const activeFilters = new Set<HunkCategory>(['logic']);
-        const mock = createMockClassification({
-            state: { status: 'ready', activeFilters, result: mockResult },
-        });
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
-
-        // The first hunk header (logic, high) should NOT be dimmed
-        const hunkHeaders = screen.getAllByTestId('pr-file-hunk-header');
-        expect(hunkHeaders.length).toBeGreaterThan(0);
-
-        // Check that we have at least one category tag
-        const tags = screen.getAllByTestId('hunk-category-tag');
-        expect(tags.length).toBeGreaterThan(0);
-    });
-
-    it('renders category tag on hunk headers when classified', () => {
-        const mock = createMockClassification({
-            state: { status: 'ready', activeFilters: new Set(['logic', 'mechanical', 'test', 'generated']), result: mockResult },
-        });
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
-        const tags = screen.getAllByTestId('hunk-category-tag');
-        // We have 2 hunks in the first file (src/main.ts) which is the active file
-        expect(tags.length).toBe(2);
-        expect(tags[0]).toHaveTextContent('Logic');
-        expect(tags[1]).toHaveTextContent('Mechanical');
     });
 });
 

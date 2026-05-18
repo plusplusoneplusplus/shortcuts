@@ -9,6 +9,7 @@ import { useNotesTree } from './useNotesTree';
 import { useNotesContextMenu } from './useNotesContextMenu';
 import { useNotesDragDrop, getNotesParentPath, type NoteDragItem, type DropPosition } from '../hooks/useNotesDragDrop';
 import { useNoteSeenState } from '../hooks/useNoteSeenState';
+import { useNotesSelection } from '../hooks/useNotesSelection';
 import { getSpaCocClient } from '../../../api/cocClient';
 import { notesApi } from '../notesApi';
 
@@ -47,6 +48,30 @@ function countTotalPages(tree: NoteTreeNode[]): number {
     };
     walk(tree);
     return total;
+}
+
+/**
+ * Flatten the tree into an ordered list of page paths respecting expanded state
+ * and optional visibility filter. Folder nodes are excluded from the result.
+ */
+export function flattenVisiblePagePaths(
+    nodes: NoteTreeNode[],
+    expandedPaths: Set<string>,
+    visiblePaths?: Set<string> | null,
+): string[] {
+    const result: string[] = [];
+    const walk = (children: NoteTreeNode[]) => {
+        for (const node of children) {
+            if (visiblePaths && !visiblePaths.has(node.path)) continue;
+            if (node.type === 'page') {
+                result.push(node.path);
+            } else if (expandedPaths.has(node.path) && node.children) {
+                walk(node.children);
+            }
+        }
+    };
+    walk(nodes);
+    return result;
 }
 
 /** Count of page nodes that the seen-state hook marks as updated. */
@@ -122,6 +147,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     const { tree, notesRoot, systemFolders, loading, error, refresh, createNode, renameNode, deleteNode, reorderNodes } = useNotesTree(workspaceId);
     const { isNoteUpdated, markAsSeen, syncSeenState } = useNoteSeenState(workspaceId);
     const { ctxMenu, dialog, openContextMenu, closeContextMenu, openDialog, closeDialog, setSubmitting } = useNotesContextMenu();
+    const { selectedPaths: multiSelectedPaths, handleSelect: handleMultiSelect, clearSelection } = useNotesSelection();
     const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
     const [searchQuery, setSearchQuery] = useState('');
     const [gitInitialized, setGitInitialized] = useState(false);
@@ -129,6 +155,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     const dragDrop = useNotesDragDrop();
     const [addDropdownOpen, setAddDropdownOpen] = useState(false);
     const addDropdownRef = useRef<HTMLDivElement>(null);
+    const treeAreaRef = useRef<HTMLDivElement>(null);
 
     // Close dropdown on outside click
     useEffect(() => {
@@ -212,13 +239,17 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         };
     }, [workspaceId]);
 
-    // Scroll the selected tree item into view after tree renders
+    // Scroll the selected tree item into view after tree renders (only if off-screen)
     useEffect(() => {
         if (!selectedPath || loading) return;
         // Defer to allow DOM update after expansion
         const timer = setTimeout(() => {
             const el = document.querySelector(`[data-node-path="${CSS.escape(selectedPath)}"]`);
-            el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            if (!el || !treeAreaRef.current) return;
+            const elRect = el.getBoundingClientRect();
+            const cRect = treeAreaRef.current.getBoundingClientRect();
+            if (elRect.top >= cRect.top && elRect.bottom <= cRect.bottom) return;
+            el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }, 50);
         return () => clearTimeout(timer);
     }, [selectedPath, loading]);
@@ -444,6 +475,13 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         if (!ctxMenu) return [];
         const { node } = ctxMenu;
 
+        // Multi-selection context menu: show bulk actions when right-clicking a selected item
+        if (multiSelectedPaths.size > 1 && multiSelectedPaths.has(node.path)) {
+            return [
+                { label: `Delete Selected (${multiSelectedPaths.size})`, onClick: () => void handleBulkDelete() },
+            ];
+        }
+
         // Root-level context menu (right-click on empty space)
         if (node.path === '' && node.name === '') {
             return [
@@ -503,6 +541,34 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         for (const p of filter.expand) combined.add(p);
         return combined;
     }, [filter, expandedPaths]);
+
+    /** Ordered list of visible page paths for range-selection computation. */
+    const flatPageList = useMemo(
+        () => (tree ? flattenVisiblePagePaths(tree, effectiveExpanded, filter?.visible ?? null) : []),
+        [tree, effectiveExpanded, filter],
+    );
+
+    /** Handler for Shift/Ctrl+Click on page items (multi-selection). */
+    const handleSelectWithModifiers = useCallback((path: string, shiftKey: boolean, ctrlKey: boolean) => {
+        handleMultiSelect(path, { shift: shiftKey, ctrl: ctrlKey }, flatPageList);
+    }, [handleMultiSelect, flatPageList]);
+
+    /** Wraps onSelectPage to also clear multi-selection on plain click. */
+    const handleSelectPage = useCallback((path: string) => {
+        clearSelection();
+        onSelectPage(path);
+    }, [clearSelection, onSelectPage]);
+
+    /** Bulk delete all multi-selected pages. */
+    const handleBulkDelete = useCallback(async () => {
+        const paths = [...multiSelectedPaths];
+        closeContextMenu();
+        for (const p of paths) {
+            await deleteNode(p);
+            onNoteDeleted?.(p);
+        }
+        clearSelection();
+    }, [multiSelectedPaths, closeContextMenu, deleteNode, onNoteDeleted, clearSelection]);
 
     return (
         <div className="flex flex-col h-full bg-[#f6f8fa] dark:bg-[#252526]" data-testid="notes-sidebar">
@@ -653,7 +719,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
             </div>
 
             {/* Tree area */}
-            <div className="flex-1 overflow-y-auto py-1" data-testid="notes-tree-area" onContextMenu={handleBackgroundContextMenu}>
+            <div ref={treeAreaRef} className="flex-1 overflow-y-auto py-1" data-testid="notes-tree-area" onContextMenu={handleBackgroundContextMenu}>
                 {loading && (
                     <div className="flex items-center justify-center py-6" data-testid="notes-loading">
                         <Spinner size="md" />
@@ -679,11 +745,13 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                         expandedPaths={effectiveExpanded}
                         systemFolders={systemFolders}
                         onToggleExpand={handleToggleExpand}
-                        onSelectPage={onSelectPage}
+                        onSelectPage={handleSelectPage}
                         onContextMenu={handleContextMenu}
                         isNoteUpdated={isNoteUpdated}
                         visiblePaths={filter?.visible ?? null}
                         countDescendantPages={countDescendantPages}
+                        multiSelectedPaths={multiSelectedPaths}
+                        onSelectWithModifiers={handleSelectWithModifiers}
                         dragDrop={{
                             createDragStartHandler: dragDrop.createDragStartHandler,
                             createDragEndHandler: dragDrop.createDragEndHandler,
@@ -704,6 +772,27 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                     </div>
                 )}
             </div>
+
+            {/* Multi-selection footer badge */}
+            {multiSelectedPaths.size > 1 && (
+                <div
+                    className="flex items-center gap-1.5 px-2 py-1.5 border-t border-[#d0d7de] dark:border-[#3c3c3c] bg-[#f6f8fa] dark:bg-[#252526]"
+                    data-testid="notes-selection-badge"
+                >
+                    <span className="text-[12px] text-[#656d76] dark:text-[#9d9d9d] bg-[#d0d7de]/40 dark:bg-[#3c3c3c]/60 rounded px-1.5 py-0.5">
+                        {multiSelectedPaths.size} selected
+                    </span>
+                    <button
+                        type="button"
+                        className="text-[12px] text-[#656d76] dark:text-[#9d9d9d] hover:text-[#1f2328] dark:hover:text-[#cccccc] leading-none"
+                        onClick={clearSelection}
+                        aria-label="Clear selection"
+                        data-testid="notes-clear-selection-btn"
+                    >
+                        ✕
+                    </button>
+                </div>
+            )}
 
             {/* Context menu */}
             {ctxMenu && (

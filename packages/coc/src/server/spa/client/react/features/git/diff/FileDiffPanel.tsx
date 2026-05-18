@@ -43,6 +43,8 @@ export interface FileDiffPanelProps {
     onBack?: () => void;
     backLabel?: string;
     backTestId?: string;
+    /** Whether to display source.label in the toolbar. Defaults to true. */
+    showSourceLabel?: boolean;
 }
 
 type PopupState = {
@@ -60,6 +62,7 @@ export function FileDiffPanel({
     onBack,
     backLabel = 'All files',
     backTestId = 'file-diff-back-btn',
+    showSourceLabel = true,
 }: FileDiffPanelProps) {
     const { dispatch: queueDispatch } = useQueue();
 
@@ -302,7 +305,7 @@ export function FileDiffPanel({
                 <div className="flex items-center gap-2">
                     <HunkNavButtons onPrev={handlePrev} onNext={handleNext} />
                     <DiffViewToggle mode={viewMode} onChange={setViewMode} />
-                    {source.label && (
+                    {showSourceLabel && source.label && (
                         <span className="text-xs text-[#616161] dark:text-[#999] flex-shrink-0">
                             {source.label}
                         </span>

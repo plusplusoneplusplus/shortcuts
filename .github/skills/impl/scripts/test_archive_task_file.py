@@ -20,6 +20,7 @@ archive_mod = importlib.import_module("archive-task-file")
 is_subpath = archive_mod.is_subpath
 unique_dest = archive_mod.unique_dest
 find_coc_tasks_root = archive_mod.find_coc_tasks_root
+find_coc_notes_root = archive_mod.find_coc_notes_root
 main = archive_mod.main
 
 
@@ -231,5 +232,133 @@ class TestMainCocTasks:
 
         assert rc == 0
         # Should archive under .coc pattern (repos/<id>/tasks/archive/), not .vscode/tasks/archive/
+        archived = tasks_dir / "archive" / "plan.md"
+        assert archived.exists()
+
+
+# ── find_coc_notes_root ────────────────────────────────────────────
+
+class TestFindCocNotesRoot:
+    def test_file_under_coc_repos_notes(self, tmp_path: Path):
+        coc = tmp_path / ".coc"
+        notes_dir = coc / "repos" / "ws-kss6a7" / "notes"
+        plan_dir = notes_dir / "Plans" / "refactoring"
+        plan_dir.mkdir(parents=True)
+        task_file = plan_dir / "plan.md"
+        task_file.touch()
+        result = find_coc_notes_root(task_file, coc)
+        assert result is not None
+        assert result.resolve() == notes_dir.resolve()
+
+    def test_file_directly_in_notes(self, tmp_path: Path):
+        coc = tmp_path / ".coc"
+        notes_dir = coc / "repos" / "abc123" / "notes"
+        notes_dir.mkdir(parents=True)
+        task_file = notes_dir / "plan.md"
+        task_file.touch()
+        result = find_coc_notes_root(task_file, coc)
+        assert result is not None
+        assert result.resolve() == notes_dir.resolve()
+
+    def test_file_not_under_coc(self, tmp_path: Path):
+        coc = tmp_path / ".coc"
+        coc.mkdir()
+        other = tmp_path / "other" / "plan.md"
+        other.parent.mkdir()
+        other.touch()
+        assert find_coc_notes_root(other, coc) is None
+
+    def test_file_under_repos_but_not_notes(self, tmp_path: Path):
+        coc = tmp_path / ".coc"
+        other_dir = coc / "repos" / "abc123" / "config"
+        other_dir.mkdir(parents=True)
+        f = other_dir / "foo.md"
+        f.touch()
+        assert find_coc_notes_root(f, coc) is None
+
+
+class TestMainCocNotes:
+    """Modern ~/.coc/repos/<repoId>/notes/ archiving."""
+
+    def test_archives_notes_plan(self, tmp_path: Path):
+        coc = tmp_path / ".coc"
+        notes_dir = coc / "repos" / "ws-kss6a7" / "notes" / "Plans" / "refactoring"
+        notes_dir.mkdir(parents=True)
+        task = notes_dir / "012-plan.plan.md"
+        task.write_text("plan content")
+
+        with mock.patch("sys.argv", [
+            "prog", "--task", str(task),
+            "--workspace", str(tmp_path),
+            "--coc-data-dir", str(coc),
+        ]):
+            rc = main()
+
+        assert rc == 0
+        assert not task.exists()
+        archived = coc / "repos" / "ws-kss6a7" / "notes" / "archive" / "012-plan.plan.md"
+        assert archived.exists()
+        assert archived.read_text() == "plan content"
+
+    def test_archives_notes_directly_in_notes(self, tmp_path: Path):
+        coc = tmp_path / ".coc"
+        notes_dir = coc / "repos" / "abc123" / "notes"
+        notes_dir.mkdir(parents=True)
+        task = notes_dir / "note.md"
+        task.write_text("note")
+
+        with mock.patch("sys.argv", [
+            "prog", "--task", str(task),
+            "--workspace", str(tmp_path),
+            "--coc-data-dir", str(coc),
+        ]):
+            rc = main()
+
+        assert rc == 0
+        assert not task.exists()
+        archived = notes_dir / "archive" / "note.md"
+        assert archived.exists()
+
+    def test_unique_dest_on_collision_notes(self, tmp_path: Path):
+        coc = tmp_path / ".coc"
+        notes_dir = coc / "repos" / "abc123" / "notes"
+        archive_dir = notes_dir / "archive"
+        archive_dir.mkdir(parents=True)
+        (archive_dir / "plan.md").write_text("old")
+
+        plan_dir = notes_dir / "Plans"
+        plan_dir.mkdir()
+        task = plan_dir / "plan.md"
+        task.write_text("new")
+
+        with mock.patch("sys.argv", [
+            "prog", "--task", str(task),
+            "--workspace", str(tmp_path),
+            "--coc-data-dir", str(coc),
+        ]):
+            rc = main()
+
+        assert rc == 0
+        assert (archive_dir / "plan (1).md").exists()
+        assert (archive_dir / "plan (1).md").read_text() == "new"
+
+    def test_tasks_takes_priority_over_notes(self, tmp_path: Path):
+        """If a file is somehow under both tasks/ and notes/ (impossible in practice),
+        tasks/ wins because it's checked first."""
+        coc = tmp_path / ".coc"
+        # Create a pathological structure where 'tasks' is the second part
+        tasks_dir = coc / "repos" / "abc" / "tasks"
+        tasks_dir.mkdir(parents=True)
+        task = tasks_dir / "plan.md"
+        task.write_text("data")
+
+        with mock.patch("sys.argv", [
+            "prog", "--task", str(task),
+            "--workspace", str(tmp_path),
+            "--coc-data-dir", str(coc),
+        ]):
+            rc = main()
+
+        assert rc == 0
         archived = tasks_dir / "archive" / "plan.md"
         assert archived.exists()

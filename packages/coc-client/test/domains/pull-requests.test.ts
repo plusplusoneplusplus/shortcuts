@@ -191,4 +191,13 @@ describe('PullRequestsClient', () => {
 
     expect(adapter.calls[0].options?.signal).toBe(controller.signal);
   });
+
+  it('prFileDiffPath returns encoded per-file diff path', () => {
+    const adapter = createMockAdapter({});
+    const client = new PullRequestsClient(adapter);
+
+    expect(client.prFileDiffPath('repo/a', 'pr/1', 'src/foo.ts')).toBe(
+      '/api/repos/repo%2Fa/pull-requests/pr%2F1/diff/files/src%2Ffoo.ts',
+    );
+  });
 });

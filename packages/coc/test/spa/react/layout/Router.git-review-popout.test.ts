@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import {
     buildGitReviewPopOutUrl,
     buildGitBranchRangePopOutUrl,
+    buildGitPrPopOutUrl,
 } from '../../../../src/server/spa/client/react/layout/Router';
 
 describe('buildGitReviewPopOutUrl', () => {
@@ -34,5 +35,24 @@ describe('buildGitBranchRangePopOutUrl', () => {
     it('encodes workspace ID', () => {
         const url = buildGitBranchRangePopOutUrl('ws with space');
         expect(url).toContain('workspace=ws%20with%20space');
+    });
+});
+
+describe('buildGitPrPopOutUrl', () => {
+    it('builds URL with workspace, repo, and prId', () => {
+        const url = buildGitPrPopOutUrl('ws-1', 'repo-1', '42');
+        expect(url).toBe('/?workspace=ws-1&repo=repo-1#popout/git-review/pr/42');
+    });
+
+    it('encodes workspace, repo, and prId', () => {
+        const url = buildGitPrPopOutUrl('ws with space', 'repo/special', 'pr with space');
+        expect(url).toContain('workspace=ws%20with%20space');
+        expect(url).toContain('repo=repo%2Fspecial');
+        expect(url).toContain('#popout/git-review/pr/pr%20with%20space');
+    });
+
+    it('accepts numeric prId', () => {
+        const url = buildGitPrPopOutUrl('ws-1', 'my-repo', 123);
+        expect(url).toBe('/?workspace=ws-1&repo=my-repo#popout/git-review/pr/123');
     });
 });

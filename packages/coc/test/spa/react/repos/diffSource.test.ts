@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
     createCommitDiffSource,
     createBranchRangeDiffSource,
+    createPrDiffSource,
     fetchDiffFromSource,
+    extractFilePathsFromDiff,
+    extractFileStatsFromDiff,
+    extractFileDiffFromCombined,
 } from '../../../../src/server/spa/client/react/features/git/diff/diffSource';
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
@@ -209,5 +213,207 @@ describe('fetchDiffFromSource', () => {
     it('propagates fetchApi errors', async () => {
         mockedFetchApi.mockRejectedValue(new Error('API error: 500'));
         await expect(fetchDiffFromSource('/some/url')).rejects.toThrow('API error: 500');
+    });
+});
+
+describe('createPrDiffSource', () => {
+    const ws = 'ws1';
+    const repoId = 'repo1';
+    const prId = '42';
+
+    it('label uses PR title when provided', () => {
+        const source = createPrDiffSource(ws, repoId, prId, { title: 'Fix bug' });
+        expect(source.label).toBe('PR: Fix bug');
+    });
+
+    it('label falls back to PR number', () => {
+        const source = createPrDiffSource(ws, repoId, prId);
+        expect(source.label).toBe('PR #42');
+    });
+
+    it('fullDiffUrl returns the combined PR diff endpoint', () => {
+        const source = createPrDiffSource(ws, repoId, prId);
+        expect(source.fullDiffUrl()).toBe('/api/repos/repo1/pull-requests/42/diff');
+    });
+
+    it('fileDiffUrl returns the per-file PR diff endpoint', () => {
+        const source = createPrDiffSource(ws, repoId, prId);
+        expect(source.fileDiffUrl('src/foo.ts')).toBe('/api/repos/repo1/pull-requests/42/diff/files/src%2Ffoo.ts');
+    });
+
+    it('commentContext returns PR-specific refs', () => {
+        const source = createPrDiffSource(ws, repoId, prId);
+        const ctx = source.commentContext('src/bar.ts');
+        expect(ctx).toEqual({
+            repositoryId: 'ws1',
+            filePath: 'src/bar.ts',
+            oldRef: 'pr-42-base',
+            newRef: 'pr-42-head',
+        });
+    });
+
+    it('chat is null (PR uses separate binding)', () => {
+        const source = createPrDiffSource(ws, repoId, prId);
+        expect(source.chat).toBeNull();
+    });
+
+    it('supportsTruncation is false', () => {
+        const source = createPrDiffSource(ws, repoId, prId);
+        expect(source.supportsTruncation).toBe(false);
+    });
+
+    it('cacheKey includes repoId and prId', () => {
+        const source = createPrDiffSource(ws, repoId, prId);
+        expect(source.cacheKey).toBe('pr:repo1:42');
+    });
+
+    it('files defaults to empty array', () => {
+        const source = createPrDiffSource(ws, repoId, prId);
+        expect(source.files).toEqual([]);
+    });
+
+    it('files uses provided array', () => {
+        const source = createPrDiffSource(ws, repoId, prId, { files: ['a.ts', 'b.ts'] });
+        expect(source.files).toEqual(['a.ts', 'b.ts']);
+    });
+
+    it('classificationKey is set when headSha provided', () => {
+        const source = createPrDiffSource(ws, repoId, prId, { headSha: 'abc123' });
+        expect(source.classificationKey).toEqual({
+            type: 'pr',
+            repoId: 'repo1',
+            identifier: '42:abc123',
+        });
+    });
+
+    it('classificationKey is undefined when headSha not provided', () => {
+        const source = createPrDiffSource(ws, repoId, prId);
+        expect(source.classificationKey).toBeUndefined();
+    });
+
+    it('encodes special characters in URL', () => {
+        const source = createPrDiffSource(ws, 'repo with spaces', '99');
+        expect(source.fullDiffUrl()).toBe('/api/repos/repo%20with%20spaces/pull-requests/99/diff');
+    });
+});
+
+describe('extractFilePathsFromDiff', () => {
+    it('extracts paths from a unified diff', () => {
+        const diff = [
+            'diff --git a/src/foo.ts b/src/foo.ts',
+            '--- a/src/foo.ts',
+            '+++ b/src/foo.ts',
+            '@@ -1,3 +1,4 @@',
+            ' line1',
+            '+added',
+            'diff --git a/src/bar.ts b/src/bar.ts',
+            '--- a/src/bar.ts',
+            '+++ b/src/bar.ts',
+        ].join('\n');
+
+        expect(extractFilePathsFromDiff(diff)).toEqual(['src/foo.ts', 'src/bar.ts']);
+    });
+
+    it('handles renames (extracts new path)', () => {
+        const diff = 'diff --git a/old.ts b/new.ts\nrename from old.ts\nrename to new.ts\n';
+        expect(extractFilePathsFromDiff(diff)).toEqual(['new.ts']);
+    });
+
+    it('returns empty array for empty input', () => {
+        expect(extractFilePathsFromDiff('')).toEqual([]);
+    });
+});
+
+describe('extractFileStatsFromDiff', () => {
+    it('computes additions and deletions per file', () => {
+        const diff = [
+            'diff --git a/src/foo.ts b/src/foo.ts',
+            '--- a/src/foo.ts',
+            '+++ b/src/foo.ts',
+            '@@ -1,3 +1,4 @@',
+            ' line1',
+            '+added1',
+            '+added2',
+            'diff --git a/src/bar.ts b/src/bar.ts',
+            '--- a/src/bar.ts',
+            '+++ b/src/bar.ts',
+            '@@ -1,2 +1,2 @@',
+            '-old',
+            '+new',
+        ].join('\n');
+
+        expect(extractFileStatsFromDiff(diff)).toEqual([
+            { path: 'src/foo.ts', additions: 2, deletions: 0 },
+            { path: 'src/bar.ts', additions: 1, deletions: 1 },
+        ]);
+    });
+
+    it('does not count --- or +++ header lines', () => {
+        const diff = [
+            'diff --git a/f.ts b/f.ts',
+            '--- a/f.ts',
+            '+++ b/f.ts',
+            '@@ -1 +1,2 @@',
+            ' context',
+            '+real addition',
+        ].join('\n');
+
+        const stats = extractFileStatsFromDiff(diff);
+        expect(stats).toEqual([{ path: 'f.ts', additions: 1, deletions: 0 }]);
+    });
+
+    it('returns empty array for empty input', () => {
+        expect(extractFileStatsFromDiff('')).toEqual([]);
+    });
+
+    it('handles files with no content changes (e.g. mode change)', () => {
+        const diff = [
+            'diff --git a/script.sh b/script.sh',
+            'old mode 100644',
+            'new mode 100755',
+        ].join('\n');
+
+        expect(extractFileStatsFromDiff(diff)).toEqual([
+            { path: 'script.sh', additions: 0, deletions: 0 },
+        ]);
+    });
+});
+
+describe('extractFileDiffFromCombined', () => {
+    const combined = [
+        'diff --git a/src/foo.ts b/src/foo.ts',
+        '--- a/src/foo.ts',
+        '+++ b/src/foo.ts',
+        '@@ -1,3 +1,4 @@',
+        ' line1',
+        '+added',
+        'diff --git a/src/bar.ts b/src/bar.ts',
+        '--- a/src/bar.ts',
+        '+++ b/src/bar.ts',
+        '@@ -1,2 +1,2 @@',
+        '-old',
+        '+new',
+    ].join('\n');
+
+    it('extracts the diff section for a specific file', () => {
+        const result = extractFileDiffFromCombined(combined, 'src/foo.ts');
+        expect(result).toContain('diff --git a/src/foo.ts b/src/foo.ts');
+        expect(result).toContain('+added');
+        expect(result).not.toContain('src/bar.ts');
+    });
+
+    it('extracts the last file correctly', () => {
+        const result = extractFileDiffFromCombined(combined, 'src/bar.ts');
+        expect(result).toContain('diff --git a/src/bar.ts b/src/bar.ts');
+        expect(result).toContain('+new');
+        expect(result).not.toContain('src/foo.ts');
+    });
+
+    it('returns null for a non-existent file', () => {
+        expect(extractFileDiffFromCombined(combined, 'src/nope.ts')).toBeNull();
+    });
+
+    it('returns null for empty diff', () => {
+        expect(extractFileDiffFromCombined('', 'src/foo.ts')).toBeNull();
     });
 });

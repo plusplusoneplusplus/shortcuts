@@ -85,6 +85,10 @@ export class PullRequestsClient {
     return this.transport.request<string>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/diff`, reqOptions);
   }
 
+  prFileDiffPath(repoId: string, prId: string, filePath: string): string {
+    return `/api/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/diff/files/${encodePathSegment(filePath)}`;
+  }
+
   getChecks(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PullRequestChecksResponse> {
     return this.transport.request<PullRequestChecksResponse>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}/checks`, {
       signal: options?.signal,
