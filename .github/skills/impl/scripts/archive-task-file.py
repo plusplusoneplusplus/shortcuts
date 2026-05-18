@@ -2,9 +2,10 @@
 
 """Archive a task/plan file.
 
-Supports two task locations:
+Supports three task locations:
   1. Legacy:  <workspace>/.vscode/  → archives to .vscode/tasks/archive/
-  2. Modern:  <cocDataDir>/repos/<repoId>/tasks/  → archives to <same>/archive/
+  2. Modern tasks:  <cocDataDir>/repos/<repoId>/tasks/  → archives to <same>/archive/
+  3. Modern notes:  <cocDataDir>/repos/<repoId>/notes/  → archives to <same parent>/archive/
 
 If the file is in neither location, this is a no-op.
 
@@ -59,6 +60,21 @@ def find_coc_tasks_root(task_abs: Path, coc_data_dir: Path) -> Path | None:
     return None
 
 
+def find_coc_notes_root(task_abs: Path, coc_data_dir: Path) -> Path | None:
+    """If task_abs is under <cocDataDir>/repos/<repoId>/notes/, return that notes dir."""
+    repos_dir = coc_data_dir.resolve() / "repos"
+    if not is_subpath(task_abs, repos_dir):
+        return None
+    try:
+        rel = task_abs.resolve().relative_to(repos_dir)
+    except Exception:
+        return None
+    parts = rel.parts  # e.g. ('ws-kss6a7', 'notes', 'Plans', 'refactoring', 'plan.md')
+    if len(parts) >= 3 and parts[1] == "notes":
+        return repos_dir / parts[0] / "notes"
+    return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument("--task", required=True, help="Path to the task file")
@@ -94,7 +110,17 @@ def main() -> int:
         print(f"Archived: {task_abs} -> {dest}")
         return 0
 
-    # 2) Check legacy location: <workspace>/.vscode/
+    # 2) Check modern location: ~/.coc/repos/<repoId>/notes/
+    coc_notes_root = find_coc_notes_root(task_abs, coc_data_dir)
+    if coc_notes_root is not None:
+        archive_dir = coc_notes_root / "archive"
+        archive_dir.mkdir(parents=True, exist_ok=True)
+        dest = unique_dest(archive_dir / task_abs.name)
+        shutil.move(str(task_abs), str(dest))
+        print(f"Archived: {task_abs} -> {dest}")
+        return 0
+
+    # 3) Check legacy location: <workspace>/.vscode/
     vscode_root = workspace_root / ".vscode"
     if is_subpath(task_abs, vscode_root):
         archive_dir = vscode_root / "tasks" / "archive"
@@ -104,7 +130,7 @@ def main() -> int:
         print(f"Archived: {task_abs} -> {dest}")
         return 0
 
-    print(f"Skip: task is not under .vscode/ or {coc_data_dir}: {task_abs}")
+    print(f"Skip: task is not under .vscode/, {coc_data_dir}/repos/*/tasks/, or {coc_data_dir}/repos/*/notes/: {task_abs}")
     return 0
 
 
