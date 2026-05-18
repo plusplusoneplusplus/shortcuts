@@ -141,10 +141,17 @@ describe('ConversationTurnBubble — semantic hooks', () => {
         expect(content).toBeTruthy();
     });
 
-    it('nests .markdown-body inside .chat-message-content for border styling', () => {
-        const { container } = render(<ConversationTurnBubble turn={makeTurn()} />);
+    it('nests .markdown-body inside .chat-message-content for assistant turns', () => {
+        const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'assistant' })} />);
         const md = container.querySelector('.chat-message-content .markdown-body');
         expect(md).toBeTruthy();
+    });
+
+    it('renders user-plain-text inside .chat-message-content for user turns', () => {
+        const { container } = render(<ConversationTurnBubble turn={makeTurn()} />);
+        const pt = container.querySelector('.chat-message-content [data-testid="user-plain-text"]');
+        expect(pt).toBeTruthy();
+        expect(pt?.textContent).toBe('Hello world');
     });
 
     // --- bubble-copy-btn ---
@@ -201,19 +208,19 @@ describe('ConversationTurnBubble — whitespace-only content suppression', () =>
         vi.restoreAllMocks();
     });
 
-    it('does not render empty markdown-body div for whitespace-only user content', () => {
+    it('does not render plain-text div for whitespace-only user content', () => {
         const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'user', content: '   ' })} />);
-        expect(container.querySelector('.markdown-body')).toBeNull();
+        expect(container.querySelector('[data-testid="user-plain-text"]')).toBeNull();
     });
 
-    it('does not render empty markdown-body div for newline-only user content', () => {
+    it('does not render plain-text div for newline-only user content', () => {
         const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'user', content: '\n' })} />);
-        expect(container.querySelector('.markdown-body')).toBeNull();
+        expect(container.querySelector('[data-testid="user-plain-text"]')).toBeNull();
     });
 
-    it('does not render empty markdown-body div for empty string user content', () => {
+    it('does not render plain-text div for empty string user content', () => {
         const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'user', content: '' })} />);
-        expect(container.querySelector('.markdown-body')).toBeNull();
+        expect(container.querySelector('[data-testid="user-plain-text"]')).toBeNull();
     });
 
     it('does not render markdown-body for whitespace-only timeline content event', () => {
@@ -235,9 +242,10 @@ describe('ConversationTurnBubble — whitespace-only content suppression', () =>
         expect(container.querySelector('.markdown-body')).toBeNull();
     });
 
-    it('still renders markdown-body for non-whitespace content', () => {
+    it('still renders plain text for non-whitespace user content', () => {
         const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'user', content: 'Hello' })} />);
-        expect(container.querySelector('.markdown-body')).toBeTruthy();
+        expect(container.querySelector('[data-testid="user-plain-text"]')).toBeTruthy();
+        expect(container.querySelector('[data-testid="user-plain-text"]')?.textContent).toBe('Hello');
     });
 });
 

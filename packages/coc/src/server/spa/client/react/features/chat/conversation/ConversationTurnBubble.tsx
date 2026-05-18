@@ -2,7 +2,7 @@
  * ConversationTurnBubble — role-aware chat bubble for conversation turns.
  */
 import React, { useState, useMemo, useCallback } from 'react';
-import { cn, ImageGallery, Spinner } from '../../../ui';
+import { cn, Spinner } from '../../../ui';
 import type { ClientConversationTurn, ClientTokenUsage } from '../../../types/dashboard';
 import { ContextMenu } from '../../../tasks/comments/ContextMenu';
 import type { ContextMenuItem } from '../../../tasks/comments/ContextMenu';
@@ -15,7 +15,6 @@ import { LoopIcon } from '../icons/LoopIcon';
 import { Marked } from 'marked';
 import { useDisplaySettings } from '../../../hooks/preferences/useDisplaySettings';
 import { useHtmlEmbedPreference } from '../../../hooks/preferences/useHtmlEmbedPreference';
-import { getSpaCocClient } from '../../../api/cocClient';
 import { copyToClipboard, copyHtmlToClipboard, splitMarkdownSections } from '../../../utils/format';
 import { linkifyFilePaths } from '../../../shared/file-path-utils';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
@@ -106,6 +105,24 @@ function createChatMarked(htmlEmbedEnabled: boolean): Marked {
 }
 
 /**
+ * Pre-pass: for every ![alt](url) and [text](url) whose url is a Windows
+ * absolute path, normalize backslashes to forward slashes and, if the url
+ * contains whitespace, wrap it in <…> so CommonMark parses it correctly.
+ * Must run before normalizeWindowsPathsInText and before `marked`.
+ */
+export function normalizeMarkdownLinkUrls(text: string): string {
+    return text.replace(
+        /(!?)\[([^\]]*)\]\(([^)\n]+)\)/g,
+        (match, bang: string, label: string, url: string) => {
+            if (!/^[A-Za-z]:[\\\/]/.test(url)) return match;
+            const fwd = toForwardSlashes(url);
+            const wrapped = /\s/.test(fwd) ? `<${fwd}>` : fwd;
+            return `${bang}[${label}](${wrapped})`;
+        },
+    );
+}
+
+/**
  * Pre-normalize Windows-style paths (backslash) to forward slashes before markdown
  * parsing, so that `marked` does not treat `\.` as an escape sequence (GFM treats
  * backslash-followed-by-ASCII-punctuation as an escape, silently dropping the `\`).
@@ -136,7 +153,10 @@ function rewriteLocalImagePaths(html: string, wsId: string): string {
  */
 export function chatMarkdownToHtml(content: string, wsId?: string, options?: { htmlEmbedEnabled?: boolean }): string {
     if (!content || !content.trim()) return '';
-    const normalized = normalizeWindowsPathsInText(content);
+    // Order matters: normalizeMarkdownLinkUrls fixes link/image URLs first (handles
+    // spaces + backslashes), then normalizeWindowsPathsInText handles bare prose paths.
+    const linkNormalized = normalizeMarkdownLinkUrls(content);
+    const normalized = normalizeWindowsPathsInText(linkNormalized);
     let html = linkifyFilePaths(createChatMarked(options?.htmlEmbedEnabled === true).parse(normalized) as string);
     if (wsId) {
         html = rewriteLocalImagePaths(html, wsId);
@@ -699,7 +719,20 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
     const { showReportIntent, toolCompactness, groupSingleLineMessages } = useDisplaySettings();
     const htmlEmbedEnabled = useHtmlEmbedPreference(wsId) && !turn.streaming;
     const assistantRender = !isUser ? buildAssistantRender(turn, wsId, { htmlEmbedEnabled }) : null;
-    const userContentHtml = isUser ? toContentHtml(turn.content || '', wsId, { htmlEmbedEnabled }) : '';
+    const userContentText = isUser ? (turn.content || '') : '';
+    const userContentHtml = useMemo(() => {
+        if (!isUser || !userContentText.trim()) return '';
+        // Split on backtick-delimited segments so paths inside inline code are not linkified.
+        // Segments at even indices are normal text; odd indices are code spans.
+        const parts = userContentText.split(/`([^`]*)`/);
+        return parts.map((part, i) => {
+            if (i % 2 === 1) {
+                // Code span — escape only, no linkification
+                return `<code>${escapeHtml(part)}</code>`;
+            }
+            return linkifyFilePaths(escapeHtml(part));
+        }).join('');
+    }, [isUser, userContentText]);
     const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>({});
     const [showRaw, setShowRaw] = useState(false);
     const [copied, setCopied] = useState(false);
@@ -818,25 +851,6 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
         }
         return grouped;
     }, [assistantRender, toolCompactness, groupSingleLineMessages]);
-
-    // Lazy image fetching state
-    const [imageLoadState, setImageLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
-    const [fetchedImages, setFetchedImages] = useState<string[]>([]);
-
-    const hasInlineImages = turn.images && turn.images.length > 0;
-    const needsLazyImages = isUser && !hasInlineImages && !!taskId && (turn.imagesCount ?? 0) > 0;
-
-    const handleLoadImages = async () => {
-        if (!taskId) return;
-        setImageLoadState('loading');
-        try {
-            const data = await getSpaCocClient().queue.images(taskId);
-            setFetchedImages(data.images || []);
-            setImageLoadState('loaded');
-        } catch {
-            setImageLoadState('error');
-        }
-    };
 
     function renderToolTree(toolId: string, depth: number): React.ReactNode {
         if (depth > 20) return null;
@@ -1165,40 +1179,17 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                             <span>{turn.turnSource.source === 'loop' ? 'loop' : 'wakeup'}</span>
                         </span>
                     )}
-                    {isUser && !showRaw && userContentHtml && <MarkdownView html={userContentHtml} />}
+                    {isUser && !showRaw && userContentText.trim() && (
+                        <div className="whitespace-pre-wrap break-words text-[13px]" data-testid="user-plain-text"
+                            dangerouslySetInnerHTML={{ __html: userContentHtml }}
+                        />
+                    )}
                     {isUser && showRaw && (
                         <div className="raw-content-view rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#ffffff] dark:bg-[#1e1e1e] overflow-auto max-h-[600px]">
                             <pre className="p-3 font-mono text-xs whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
                                 <code>{turn.content || ''}</code>
                             </pre>
                         </div>
-                    )}
-                    {isUser && turn.images && turn.images.length > 0 && (
-                        <ImageGallery images={turn.images} />
-                    )}
-                    {isUser && needsLazyImages && imageLoadState === 'idle' && (
-                        <button
-                            className="text-[11px] text-[#848484] hover:text-[#005a9e] dark:hover:text-[#7bbef3] cursor-pointer bg-transparent border-none p-0"
-                            data-testid="load-images-btn"
-                            onClick={handleLoadImages}
-                        >
-                            📷 Load {turn.imagesCount} image{(turn.imagesCount ?? 0) > 1 ? 's' : ''}
-                        </button>
-                    )}
-                    {isUser && needsLazyImages && imageLoadState === 'loading' && (
-                        <ImageGallery images={[]} loading={true} imagesCount={turn.imagesCount} />
-                    )}
-                    {isUser && imageLoadState === 'loaded' && fetchedImages.length > 0 && (
-                        <ImageGallery images={fetchedImages} />
-                    )}
-                    {isUser && needsLazyImages && imageLoadState === 'error' && (
-                        <button
-                            className="text-[11px] text-[#f14c4c] hover:text-[#d32f2f] cursor-pointer bg-transparent border-none p-0"
-                            data-testid="retry-images-btn"
-                            onClick={handleLoadImages}
-                        >
-                            ⚠ Failed to load images · Retry
-                        </button>
                     )}
                     {isUser && turn.pasteExternalized && (
                         <div

@@ -85,11 +85,16 @@ function mountOne(placeholder: HTMLElement, wsId: string): void {
     open.textContent = 'Open in new tab';
     open.addEventListener('click', () => window.open(url, '_blank', 'noopener,noreferrer'));
 
+    const maximize = document.createElement('button');
+    maximize.type = 'button';
+    maximize.textContent = 'Maximize';
+    maximize.title = 'Maximize preview to a floating dialog';
+
     const reload = document.createElement('button');
     reload.type = 'button';
     reload.textContent = 'Reload';
 
-    actions.append(open, reload);
+    actions.append(open, maximize, reload);
     toolbar.append(title, actions);
 
     const frameWrap = document.createElement('div');
@@ -128,6 +133,107 @@ function mountOne(placeholder: HTMLElement, wsId: string): void {
         };
         document.addEventListener('mousemove', onMove);
         document.addEventListener('mouseup', onUp);
+    });
+
+    let overlay: HTMLElement | null = null;
+    let escHandler: ((event: KeyboardEvent) => void) | null = null;
+
+    const restoreFromMaximized = () => {
+        if (!overlay) return;
+        if (iframe.parentElement !== frameWrap) {
+            if (resize.isConnected) {
+                frameWrap.insertBefore(iframe, resize);
+            } else {
+                frameWrap.appendChild(iframe);
+            }
+        }
+        iframe.style.height = '';
+        if (escHandler) {
+            document.removeEventListener('keydown', escHandler);
+            escHandler = null;
+        }
+        overlay.remove();
+        overlay = null;
+        maximize.textContent = 'Maximize';
+        maximize.title = 'Maximize preview to a floating dialog';
+    };
+
+    const openMaximized = () => {
+        if (overlay) return;
+        overlay = document.createElement('div');
+        overlay.className = 'md-html-embed-overlay';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+        overlay.setAttribute('aria-label', `${basename(href)} preview`);
+
+        const backdrop = document.createElement('div');
+        backdrop.className = 'md-html-embed-overlay-backdrop';
+        backdrop.addEventListener('click', restoreFromMaximized);
+
+        const dialogShell = document.createElement('div');
+        dialogShell.className = 'md-html-embed-overlay-shell';
+
+        const dialogToolbar = document.createElement('div');
+        dialogToolbar.className = 'md-html-embed-overlay-toolbar';
+
+        const dialogTitle = document.createElement('span');
+        dialogTitle.className = 'md-html-embed-title';
+        dialogTitle.title = href;
+        dialogTitle.textContent = basename(href);
+
+        const dialogActions = document.createElement('span');
+        dialogActions.className = 'md-html-embed-actions';
+
+        const dialogOpen = document.createElement('button');
+        dialogOpen.type = 'button';
+        dialogOpen.textContent = 'Open in new tab';
+        dialogOpen.addEventListener('click', () => window.open(url, '_blank', 'noopener,noreferrer'));
+
+        const dialogReload = document.createElement('button');
+        dialogReload.type = 'button';
+        dialogReload.textContent = 'Reload';
+        dialogReload.addEventListener('click', () => {
+            iframe.removeAttribute('src');
+            void loadFrame();
+        });
+
+        const restore = document.createElement('button');
+        restore.type = 'button';
+        restore.textContent = 'Close';
+        restore.title = 'Close (Esc)';
+        restore.addEventListener('click', restoreFromMaximized);
+
+        dialogActions.append(dialogOpen, dialogReload, restore);
+        dialogToolbar.append(dialogTitle, dialogActions);
+
+        const dialogBody = document.createElement('div');
+        dialogBody.className = 'md-html-embed-overlay-body';
+        if (iframe.parentElement) iframe.parentElement.removeChild(iframe);
+        iframe.style.height = '100%';
+        dialogBody.appendChild(iframe);
+
+        dialogShell.append(dialogToolbar, dialogBody);
+        overlay.append(backdrop, dialogShell);
+        document.body.appendChild(overlay);
+
+        escHandler = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                restoreFromMaximized();
+            }
+        };
+        document.addEventListener('keydown', escHandler);
+
+        maximize.textContent = 'Restore';
+        maximize.title = 'Restore preview';
+    };
+
+    maximize.addEventListener('click', () => {
+        if (overlay) {
+            restoreFromMaximized();
+        } else {
+            openMaximized();
+        }
     });
 
     const loadFrame = async () => {

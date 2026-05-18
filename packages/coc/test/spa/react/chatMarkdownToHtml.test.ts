@@ -6,7 +6,7 @@ import React from 'react';
 import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { MarkdownView } from '../../../src/server/spa/client/react/shared/MarkdownView';
-import { chatMarkdownToHtml, toContentHtml } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
+import { chatMarkdownToHtml, toContentHtml, normalizeMarkdownLinkUrls } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
 
 afterEach(() => {
     cleanup();
@@ -402,6 +402,86 @@ describe('toContentHtml (user prompt renderer)', () => {
         const html = toContentHtml('The type is Map<string, number>');
         expect(html).toContain('&lt;string');
         expect(html).not.toContain('&amp;');
+    });
+});
+
+describe('normalizeMarkdownLinkUrls', () => {
+    it('normalizes backslashes in image syntax with Windows path containing spaces', () => {
+        const input = '![html](C:\\Users\\Yiheng Tao\\.copilot\\foo\\bar.html)';
+        const result = normalizeMarkdownLinkUrls(input);
+        // Backslashes replaced, space causes angle-bracket wrapping
+        expect(result).toBe('![html](<C:/Users/Yiheng Tao/.copilot/foo/bar.html>)');
+    });
+
+    it('normalizes backslashes in image syntax with Windows path without spaces', () => {
+        const input = '![img](C:\\Users\\Bob\\output.png)';
+        const result = normalizeMarkdownLinkUrls(input);
+        expect(result).toBe('![img](C:/Users/Bob/output.png)');
+    });
+
+    it('normalizes backslashes in link syntax with Windows path containing spaces', () => {
+        const input = '[open](C:\\Users\\Yiheng Tao\\notes\\plan.md)';
+        const result = normalizeMarkdownLinkUrls(input);
+        expect(result).toBe('[open](<C:/Users/Yiheng Tao/notes/plan.md>)');
+    });
+
+    it('does not modify non-Windows URLs', () => {
+        const input = '[x](https://example.com/a b)';
+        const result = normalizeMarkdownLinkUrls(input);
+        expect(result).toBe(input);
+    });
+
+    it('does not modify relative paths', () => {
+        const input = '![img](./outputs/chart.html)';
+        const result = normalizeMarkdownLinkUrls(input);
+        expect(result).toBe(input);
+    });
+});
+
+describe('chatMarkdownToHtml — Windows paths with spaces in links', () => {
+    it('renders image with Windows path containing a space as HTML embed', () => {
+        const html = chatMarkdownToHtml(
+            '![html](C:\\Users\\Yiheng Tao\\.copilot\\foo\\bar.html)',
+            'ws1',
+            { htmlEmbedEnabled: true },
+        );
+        expect(html).toContain('class="md-html-embed"');
+        expect(html).toContain('data-html-path="C:/Users/Yiheng Tao/.copilot/foo/bar.html"');
+    });
+
+    it('renders image with Windows path containing a space as proxied img', () => {
+        const html = chatMarkdownToHtml(
+            '![screenshot](C:\\Users\\Yiheng Tao\\.copilot\\screenshot.png)',
+            'ws1',
+        );
+        expect(html).toContain('<img');
+        expect(html).toContain('src="/api/workspaces/ws1/files/image?path=');
+        expect(html).toContain(encodeURIComponent('C:/Users/Yiheng Tao/.copilot/screenshot.png'));
+    });
+
+    it('renders link with Windows path containing a space', () => {
+        const html = chatMarkdownToHtml('[open](C:\\Users\\Yiheng Tao\\notes\\plan.md)');
+        expect(html).toContain('<a');
+        expect(html).toContain('href="C:/Users/Yiheng Tao/notes/plan.md"');
+        expect(html).toContain('open</a>');
+    });
+
+    it('renders image with Windows path without spaces (unchanged behavior)', () => {
+        const html = chatMarkdownToHtml('![img](C:\\Users\\Bob\\file.png)', 'ws1');
+        expect(html).toContain('<img');
+        expect(html).toContain('src="/api/workspaces/ws1/files/image?path=');
+        expect(html).toContain(encodeURIComponent('C:/Users/Bob/file.png'));
+    });
+
+    it('does not alter external image URLs', () => {
+        const html = chatMarkdownToHtml('![x](https://example.com/x.png)');
+        expect(html).toContain('src="https://example.com/x.png"');
+    });
+
+    it('does not alter non-Windows link URLs with spaces', () => {
+        // Non-Windows URLs with spaces are left to marked's native handling
+        const html = chatMarkdownToHtml('[x](https://example.com/a%20b)');
+        expect(html).toContain('href="https://example.com/a%20b"');
     });
 });
 

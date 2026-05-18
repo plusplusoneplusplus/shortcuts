@@ -281,20 +281,20 @@ describe('ConversationTurnBubble — raw view toggle', () => {
 
     // --- User message raw view ---
 
-    it('user message: clicking raw button shows raw content instead of markdown', () => {
+    it('user message: clicking raw button shows raw content instead of plain text', () => {
         const { container } = render(
             <ConversationTurnBubble turn={makeTurn({ role: 'user', content: 'Hello **bold**' })} />
         );
-        // Initially shows markdown, not raw
-        expect(container.querySelector('[data-testid="markdown-view"]')).toBeTruthy();
+        // Initially shows plain text, not raw
+        expect(container.querySelector('[data-testid="user-plain-text"]')).toBeTruthy();
         expect(container.querySelector('.raw-content-view')).toBeNull();
 
         const btn = container.querySelector('.bubble-raw-btn') as HTMLButtonElement;
         fireEvent.click(btn);
 
-        // Now shows raw content, not markdown
+        // Now shows raw content, not plain text
         expect(container.querySelector('.raw-content-view')).toBeTruthy();
-        expect(container.querySelector('[data-testid="markdown-view"]')).toBeNull();
+        expect(container.querySelector('[data-testid="user-plain-text"]')).toBeNull();
     });
 
     it('user message: raw view shows turn.content verbatim', () => {
@@ -308,7 +308,7 @@ describe('ConversationTurnBubble — raw view toggle', () => {
         expect(rawView?.textContent).toBe(rawText);
     });
 
-    it('user message: toggling back shows markdown view again', () => {
+    it('user message: toggling back shows plain text view again', () => {
         const { container } = render(
             <ConversationTurnBubble turn={makeTurn({ role: 'user', content: 'Hello' })} />
         );
@@ -317,7 +317,7 @@ describe('ConversationTurnBubble — raw view toggle', () => {
         expect(container.querySelector('.raw-content-view')).toBeTruthy();
         fireEvent.click(btn); // OFF
         expect(container.querySelector('.raw-content-view')).toBeNull();
-        expect(container.querySelector('[data-testid="markdown-view"]')).toBeTruthy();
+        expect(container.querySelector('[data-testid="user-plain-text"]')).toBeTruthy();
     });
 
     it('user message: copy button copies raw text when in raw mode', () => {
