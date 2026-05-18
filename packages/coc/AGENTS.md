@@ -1,109 +1,43 @@
 # packages/coc
 
-CoC CLI and integrated server. Consumes `@plusplusoneplusplus/forge`. See the
-root `AGENTS.md` for the cross-package overview, build/test commands, and the
-"repo-scoped data" convention. Deeper architecture references live under
-`.github/skills/coc-knowledge/`.
+CoC CLI and integrated server. Consumes `@plusplusoneplusplus/forge`.
 
-## Admin Config
+See the root `AGENTS.md` for cross-package conventions and **always load
+`.github/skills/coc-knowledge/SKILL.md`** before working on this package —
+detailed architecture lives in its `references/*.md` files.
 
-Editable admin config fields are defined in a single registry:
-`src/server/admin/admin-config-fields.ts` (`ADMIN_CONFIG_FIELDS`).
+## Where to Read Before Editing
 
-Each entry provides a flat key (e.g. `'loops.enabled'`), a `validate()` function, and an `apply()` function. The PUT `/api/admin/config` handler derives `editableKeys`, validation, and merge logic entirely from this registry — **no changes to `admin-handler.ts` are needed when adding a new editable field**.
+| If you are touching… | Read first |
+|----------------------|------------|
+| CLI commands, source layout, executors, server startup, storage layout | [server-architecture.md](../../.github/skills/coc-knowledge/references/server-architecture.md) |
+| Admin REST handler, editable config fields, admin UI | [admin-config.md](../../.github/skills/coc-knowledge/references/admin-config.md) |
+| `~/.copilot/mcp-config.json` + `.vscode/mcp.json` merge, allow-list | [mcp-settings.md](../../.github/skills/coc-knowledge/references/mcp-settings.md) |
+| `src/server/endev/`, `EnDev-xDpu` skill visibility | [endev.md](../../.github/skills/coc-knowledge/references/endev.md) |
+| Ralph sessions, iteration prompt, promote-to-ralph endpoint | [ralph.md](../../.github/skills/coc-knowledge/references/ralph.md) |
+| `src/server/loops/`, loop tools, tick lifecycle | [loops.md](../../.github/skills/coc-knowledge/references/loops.md) |
+| Process store / SQLite schema / FTS5 / pin / archive | [process-store.md](../../.github/skills/coc-knowledge/references/process-store.md) |
+| Dashboard SPA (`src/server/spa/`) | [dashboard-spa.md](../../.github/skills/coc-knowledge/references/dashboard-spa.md) |
+| REST endpoints | [rest-api.md](../../.github/skills/coc-knowledge/references/rest-api.md) |
 
-To expose a new config field via the admin API, add ONE entry to `ADMIN_CONFIG_FIELDS`. Also update:
-1. `CLIConfig` / `ResolvedCLIConfig` / `DEFAULT_CONFIG` in `src/config.ts`
-2. `CLIConfigSchema` in `src/config/schema.ts`
-3. Namespace registry in `src/config/namespace-registry.ts` (nested fields)
-4. `AdminResolvedConfig` / `AdminConfigUpdate` in `packages/coc-client/src/contracts/admin.ts`
-5. `AdminPanel.tsx` for the UI control
+Other domains (memory, workflow engine, prompt autocomplete, wiki serving,
+remote servers, task comments, llm-tools, sdk-wrapper, chat-prompt-history)
+all have their own `references/*.md`.
 
-The `spaHtml` function in `src/server/index.ts` re-reads the config file on every page request, so feature-flag changes (e.g. `terminal.enabled`) take effect on the next browser reload — no server restart required.
+## Local Invariants
 
-### Admin UI styling
-
-The admin route uses a self-contained, Linear-inspired design system that lives in `src/server/spa/client/react/admin/admin-redesign.css`. The stylesheet is imported once at the top of `AdminPanel.tsx` so esbuild bundles it into the SPA's CSS. All selectors are scoped under the `.admin-redesign` root class that wraps the entire admin page — styles never leak to other dashboard surfaces, and light/dark themes are driven by the existing `<html data-theme="…">` attribute.
-
-**Layout (sidebar + main, fit-to-viewport):** The admin page is structured as a two-column shell that fills the available vertical space and never scrolls as a whole. Only the right pane is scrollable.
-
-- The route mounts inside `<div className="h-full overflow-hidden" data-testid="admin-scroll-container">` (Router) or the AdminDialog body (`flex-1 min-h-0 overflow-y-auto`). Both supply a definite height to the panel.
-- The `.admin-redesign` root (on `#view-admin`) is `height: 100%; min-height: 0` so the panel fills that parent exactly.
-- `<div className="ar-shell">` is a CSS grid (`var(--ar-sidebar-w)` + `1fr`) with `height: 100%; min-height: 0; overflow: hidden`.
-- `<aside className="ar-sidebar">` fills the grid row (`height: 100%; min-height: 0`) and only scrolls internally if its own brand/nav/stats stack ever exceeds the viewport. It is **not** sticky and must not use `100vh` — both would break inside the AdminDialog and any nested pane whose container height differs from the viewport.
-- `<main className="ar-main">` is the **single scroll region** of the admin route: `min-height: 0; height: 100%; overflow-y: auto`. The sticky topbar (`.ar-topbar` with the `.ar-breadcrumb`) pins to the top of this scroller, and the page body (`.ar-page` with `.ar-page-header` + cards) flows underneath.
-- The tabs live in the sidebar as `.ar-nav-item` buttons (data-testids `admin-tab-{settings|providers|data|server|prompts|database|agents}` are preserved for tests). A `.ar-mobile-tab-select` appears only under the responsive `@media (max-width: 600px)` rule, which hides the sidebar and falls back to a `<select>` — the main pane still scrolls internally on mobile.
-
-**Settings sub-tabs (within the Settings top-level tab):** Settings is split into one `SettingsCard` per sub-tab — `ai`, `chat`, `appearance`, `features`, `integrations`, `advanced` — defined in `SETTINGS_SUBTABS` near the top of `AdminPanel.tsx`. A `.ar-subtab-row` with `.ar-subtab` buttons (data-testids `settings-subtab-{ai|chat|appearance|features|integrations|advanced}`) renders above the cards. Selection is kept in local `settingsSubTab` state, defaults to `ai`, and is synced both directions with `#admin/settings/<sub>` (default `ai` collapses to `#admin/settings`). Tests that interact with controls outside of the default `ai` card must first navigate via the `gotoSettingsSubTab(...)` helper.
-
-When adding UI to the admin page, prefer the existing primitives:
-
-- Section cards: `<SettingsCard title=… description=… badge=… dirty saving onSave onCancel data-testid=…>` (renders `.ar-card` with header/body/footer).
-- Settings rows: the local `AdminRow`, `AdminToggle`, `AdminSeg`, `AdminInputSuffix`, and `SourceBadge` helpers defined at the bottom of `AdminPanel.tsx`. They wrap raw inputs in the new visual chrome while preserving `data-testid`s and `id`s used by tests.
-- Free-form sections inside a card use `.ar-section`, `.ar-section-head`, and the inline helpers `.ar-input`, `.ar-select`, `.ar-btn`, `.ar-btn-primary` / `-secondary` / `-ghost` / `-danger`(`-outline`), `.ar-pill`, `.ar-badge`, `.ar-pre`, `.ar-code`, `.ar-mono`.
-- New top-level tabs: add to `AdminSubTab`, `TAB_LABELS`, `TAB_ICONS`, and `TAB_DESCRIPTIONS` near the top of `AdminPanel.tsx` — the sidebar nav and mobile select pick them up automatically.
-
-Avoid introducing Tailwind utilities or inline `bg-*`/`text-*` classes for admin-only UI — extend `admin-redesign.css` instead so the look stays cohesive.
-
-## Ralph
-
-Ralph sessions live under
-`~/.coc/repos/<workspaceId>/ralph-sessions/<sessionId>/`. Keep the durable
-architecture details in `.github/skills/coc-knowledge/references/ralph.md`;
-this local file should only carry package-specific pointers and invariants.
-Execution iteration prompts include a generic `<work_intent>` block before
-`<goal>` and must not hard-code implementation skill names or set
-`context.skills`.
-
-A completed ask-mode chat can be promoted to a Ralph session in place via
-`POST /api/processes/:id/promote-to-ralph`
-(`src/server/routes/ralph-promote-routes.ts`). The endpoint attaches a
-`grilling`-phase ralph context to the existing process and enqueues a
-synthesis follow-up turn (mode=ask, `context.skills=['grill-me']`,
-`context.ralph.phase='grilling'`) carrying the prompt produced by
-`buildRalphSynthesisPrompt` (`src/server/ralph/synthesis-prompt.ts`). The SPA
-shows a "Promote to Ralph" pill in the follow-up area for eligible chats and
-calls this endpoint via `coc-client`'s `processes.promoteToRalph` helper.
-
-## MCP Settings
-
-`GET /api/workspaces/:id/mcp-config` returns both the effective
-`availableServers` list and source-separated `sources.global` /
-`sources.workspace` sections. Global servers come from
-`~/.copilot/mcp-config.json`; workspace servers come from
-`<repo>/.vscode/mcp.json` via Forge MCP loader helpers. Workspace entries
-override global entries with the same name. The endpoint only exposes safe row
-metadata (`name`, `type`, optional `url`/`command`, source/effective flags) and
-must not return secrets such as `env`, headers, or full argument arrays.
-`?forceReload=true` bypasses the path-keyed MCP config cache for manual dashboard
-refreshes; no file watcher is used.
-
-`PUT /api/workspaces/:id/mcp-config` stores only the name-based
-`enabledMcpServers` allow-list. Workflow run filtering must resolve that list
-against the same effective global-plus-workspace MCP merge used at runtime.
-
-## EnDev xDPU
-
-Workspace-scoped EnDev support lives in `src/server/endev/`. Eligibility is
-cached under `~/.coc/repos/<workspaceId>/endev/eligibility.json` and requires a
-native WSL host, xDPU workspace markers, EnDev setup files, and a successful
-short-timeout `endev doctor`. `GET /api/workspaces/:id/endev/status` reads the
-cache by default; `?refresh=true` or `POST /api/workspaces/:id/endev/revalidate`
-forces revalidation and clears the workspace skill cache. The `EnDev-xDpu`
-wrapper skill and auto-discovered EnDev plugin skill folders are surfaced only
-when the workspace is eligible — hidden otherwise from skill lists, pickers,
-and recents. There is no separate per-repo toggle; users disable the wrapper
-via the standard `disabledSkills` mechanism if needed. EnDev MCP servers and
-EnDev plugin skills follow their own settings independently.
-
-## Loops
-
-Recurring follow-up subsystem in `src/server/loops/`. Separate from schedules.
-
-- **Types/Store/Executor:** `loop-types.ts`, `loop-store.ts`, `loop-executor.ts`
-- **REST routes:** `loop-handler.ts` → `/api/workspaces/:id/loops` + `/api/loops`
-- **Infrastructure:** `infrastructure/loop-infrastructure.ts` wires store + executor + timer registry
-- **LLM tools:** `llm-tools/loop-tools.ts` — `createLoop`/`cancelLoop`/`listLoops` (skill-gated), `scheduleWakeup` (always available)
-- **Dashboard:** `LoopBadge`, `LoopManagementPanel`, turn source badges in `ConversationTurnBubble`
-- **Restart behavior:** active loops stay persisted as `active` on shutdown and are re-armed from `nextTickAt` on startup; manually paused/cancelled/expired loops stay inactive.
-- **Tick completion wiring:** `ProcessLifecycleRunner` invokes the `onLoopTickComplete(loopId, success)` lifecycle option after a loop-originated follow-up (`context.source === 'loop'` with string `context.loopId`) finishes. The queue-executor-bridge routes this to `LoopExecutor.onTickComplete()`, which advances `tickCount`/`lastTickAt`, clears the in-flight guard, and re-arms the next timer. Bookkeeping errors are logged but never mask the follow-up's actual success/failure result.
+- **627+ Vitest test files** live under `packages/coc/test/server/`. Any
+  server change should add or update tests there.
+- **Adding an editable config field** is a single registry entry — do not
+  modify `admin-handler.ts` (see [admin-config.md](../../.github/skills/coc-knowledge/references/admin-config.md)).
+- **Adding a namespaced config field** must update
+  `src/config/namespace-registry.ts`; do not expand branch lists in `config.ts`.
+- **MCP REST surface** must never expose secrets (`env`, headers, full `args`).
+- **Ralph iteration prompts** must not hard-code implementation skill names
+  or set `context.skills`; the `<work_intent>` block must stay generic.
+- **Loop ticks** must route completion through
+  `ProcessLifecycleRunner → onLoopTickComplete → LoopExecutor.onTickComplete`;
+  bookkeeping errors must never mask the follow-up's actual result.
+- **Follow-up enqueue sites** must call `resolveFollowUpMode(...)` and set
+  `payload.mode`. `FollowUpExecutor.executeFollowUp` fail-loud warns + defaults
+  to `'ask'` if missing.

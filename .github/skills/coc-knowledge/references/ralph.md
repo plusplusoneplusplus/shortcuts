@@ -75,3 +75,21 @@ repository-specific implementation skills, set `context.skills`, or begin with
 `<available_skills>`, `<additional_tool_instructions>`, or `<skill-context`,
 since the retriever skips messages with those prefixes when locating the user
 query.
+
+## Promote Ask-Mode Chat to Ralph
+
+A completed ask-mode chat can be promoted to a Ralph session in place via
+`POST /api/processes/:id/promote-to-ralph`
+(`packages/coc/src/server/routes/ralph-promote-routes.ts`).
+
+The endpoint:
+
+1. Attaches a `grilling`-phase Ralph context to the existing process.
+2. Enqueues a synthesis follow-up turn with `mode=ask`,
+   `context.skills=['grill-me']`, `context.ralph.phase='grilling'`, carrying
+   the prompt produced by `buildRalphSynthesisPrompt`
+   (`packages/coc/src/server/ralph/synthesis-prompt.ts`).
+
+The SPA shows a **"Promote to Ralph"** pill in the follow-up area for eligible
+chats and calls this endpoint via `coc-client`'s `processes.promoteToRalph`
+helper.
