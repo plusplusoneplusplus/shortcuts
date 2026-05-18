@@ -48,10 +48,10 @@ const makePr = (overrides: Partial<any> = {}) => ({
     ...overrides,
 });
 
-function mockFetchOk(pullRequests: any[]) {
+function mockFetchOk(pullRequests: any[], extra: Record<string, unknown> = {}) {
     global.fetch = vi.fn().mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({ pullRequests }),
+        json: () => Promise.resolve({ pullRequests, ...extra }),
     } as any);
 }
 
@@ -596,6 +596,45 @@ describe('active PR row highlight', () => {
         const row = screen.getByTestId('pr-row');
         expect(row.className).not.toContain('bg-gray-100');
         expect(row.className).toContain('border-l-transparent');
+    });
+});
+
+// ── Last sync time in header ──────────────────────────────────────────────────
+
+describe('last sync time in header', () => {
+    it('shows "Updated just now" inside the header when fetchedAt is recent', async () => {
+        mockFetchOk([makePr()], { fetchedAt: Date.now() });
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('pr-row')).toBeInTheDocument());
+
+        const header = screen.getByTestId('pr-queue-header');
+        const badge = screen.getByTestId('fetched-at');
+        expect(header.contains(badge)).toBe(true);
+        expect(badge.textContent).toContain('Updated just now');
+    });
+
+    it('shows "Updated X min ago" when fetchedAt is older', async () => {
+        mockFetchOk([makePr()], { fetchedAt: Date.now() - 5 * 60_000 });
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('pr-row')).toBeInTheDocument());
+
+        expect(screen.getByTestId('fetched-at').textContent).toContain('5 min ago');
+    });
+
+    it('hides the sync time when queue is collapsed', async () => {
+        mockFetchOk([makePr()], { fetchedAt: Date.now() });
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('pr-row')).toBeInTheDocument());
+        expect(screen.getByTestId('fetched-at')).toBeInTheDocument();
+
+        await act(async () => { fireEvent.click(screen.getByTestId('pr-queue-toggle')); });
+        expect(screen.queryByTestId('fetched-at')).not.toBeInTheDocument();
+    });
+
+    it('hides the sync time when fetchedAt is null (before first fetch)', async () => {
+        mockFetchOk([], {});
+        await act(async () => { await renderTab(); });
+        expect(screen.queryByTestId('fetched-at')).not.toBeInTheDocument();
     });
 });
 
