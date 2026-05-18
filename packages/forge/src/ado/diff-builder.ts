@@ -20,11 +20,14 @@ export function buildUnifiedDiff(
 ): string {
     const strippedFilePath = filePath.replace(/^\//, '');
     const strippedOriginalPath = (originalPath ?? filePath).replace(/^\//, '');
+    const isRename = strippedOriginalPath !== strippedFilePath;
+    if (!isRename && baseContent === headContent) {
+        return '';
+    }
 
     const oldFileName = baseContent === '' ? '/dev/null' : `a/${strippedOriginalPath}`;
     const newFileName = headContent === '' ? '/dev/null' : `b/${strippedFilePath}`;
-
-    return createTwoFilesPatch(
+    const patch = createTwoFilesPatch(
         oldFileName,
         newFileName,
         baseContent,
@@ -32,5 +35,16 @@ export function buildUnifiedDiff(
         undefined,
         undefined,
         { context: 3 },
-    );
+    ).replace(/^(?:Index: .*\n)?={3,}\n/, '');
+
+    const gitHeader = [`diff --git a/${strippedOriginalPath} b/${strippedFilePath}`];
+    if (baseContent === '') {
+        gitHeader.push('new file mode 100644');
+    } else if (headContent === '') {
+        gitHeader.push('deleted file mode 100644');
+    } else if (isRename) {
+        gitHeader.push(`rename from ${strippedOriginalPath}`, `rename to ${strippedFilePath}`);
+    }
+
+    return `${gitHeader.join('\n')}\n${patch}`;
 }

@@ -58,8 +58,8 @@ function getPrSelectionId(pr: PullRequest): string {
     return String(pr.number ?? pr.id);
 }
 
-function formatFetchedAt(ts: number): string {
-    const diffMs = Date.now() - ts;
+function formatFetchedAt(ts: number, now: number = Date.now()): string {
+    const diffMs = now - ts;
     const diffMin = Math.floor(diffMs / 60000);
     if (diffMin < 1) return 'Updated just now';
     if (diffMin < 60) return `Updated ${diffMin} min ago`;
@@ -122,8 +122,15 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     const [anchorPrId, setAnchorPrId] = useState<string | null>(null);
     const [batchMode, setBatchMode] = useState(false);
     const [queueCollapsed, setQueueCollapsed] = useState<boolean>(() => loadQueueCollapsed());
+    const [now, setNow] = useState(() => Date.now());
 
-    const toggleQueueCollapsed = useCallback(() => {
+    // Live ticker: refresh the "Updated X min ago" label every 30 s.
+    useEffect(() => {
+        const id = setInterval(() => setNow(Date.now()), 30_000);
+        return () => clearInterval(id);
+    }, []);
+
+    const toggleQueueCollapsed= useCallback(() => {
         setQueueCollapsed(prev => {
             const next = !prev;
             persistQueueCollapsed(next);
@@ -351,7 +358,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                 'flex shrink-0 items-center border-b border-gray-200 dark:border-gray-700',
                 queueCollapsed
                     ? 'justify-center gap-0 px-1 py-1'
-                    : 'justify-between gap-1.5 px-2.5 py-1',
+                    : 'gap-1.5 px-2.5 py-1',
             )}
             data-testid="pr-queue-header"
             data-collapsed={queueCollapsed}
@@ -361,6 +368,12 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                     PR queue
                 </span>
             )}
+            {!queueCollapsed && fetchedAt != null && !loading && (
+                <span className="min-w-0 truncate text-[10px] text-gray-400 dark:text-gray-500" data-testid="fetched-at">
+                    · {formatFetchedAt(fetchedAt, now)}
+                </span>
+            )}
+            {!queueCollapsed && <span className="flex-1" />}
             <button
                 type="button"
                 onClick={toggleQueueCollapsed}
@@ -453,15 +466,6 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                         >
                             Clear
                         </button>
-                    </div>
-                )}
-
-                {!queueCollapsed && fetchedAt != null && !loading && !error && !unconfigured && (
-                    <div
-                        className="border-b border-gray-200 px-2.5 py-0.5 text-[11px] text-gray-500 dark:border-gray-700 dark:text-gray-400"
-                        data-testid="fetched-at"
-                    >
-                        {formatFetchedAt(fetchedAt)}
                     </div>
                 )}
 
