@@ -85,6 +85,12 @@ lines. Statuses you'll see:
 Non-zero exit = hard failure or auto-abort. There is no "paused on
 conflict" exit code.
 
+## Monitor Mode
+
+**Only activate this mode when the user explicitly asks to monitor the PR.**
+
+After the PR is created, invoke the `loop` skill with a self-contained prompt that describes the PR and asks it to watch for problems, fix any that are fixable, and stop once the PR is merged or closed.
+
 ## Prereqs & notes
 
 - Needs `git`, `gh` (authed), and `python` ≥ 3.9 on PATH.
