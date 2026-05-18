@@ -328,6 +328,7 @@ export function ConversationArea({
                         })()}
                         {pendingAskUserBatch && (
                             <AskUserInline
+                                key={pendingAskUserBatch.batchId}
                                 batch={pendingAskUserBatch}
                                 processId={processId ?? taskId}
                                 onAnswered={onAskUserAnswered ?? (() => {})}
