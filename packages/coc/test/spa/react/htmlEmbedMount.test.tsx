@@ -91,4 +91,92 @@ describe('mountHtmlEmbeds', () => {
         });
         expect(document.querySelector('.md-html-embed-error a')?.getAttribute('href')).toContain('/api/workspaces/ws1/files/html');
     });
+
+    it('maximizes the iframe into a floating dialog and restores it on close', async () => {
+        document.body.innerHTML = `
+            <div data-ws-id="ws1">
+                <div class="md-html-embed" data-html-path="outputs/chart.html" data-embed-height="600"></div>
+            </div>
+        `;
+
+        mountHtmlEmbeds(document.body);
+        await waitFor(() => {
+            expect(document.querySelector('iframe')).toBeTruthy();
+        });
+
+        const maximizeBtn = Array.from(
+            document.querySelectorAll<HTMLButtonElement>('.md-html-embed-actions button'),
+        ).find((b) => b.textContent === 'Maximize');
+        expect(maximizeBtn).toBeTruthy();
+
+        const iframe = document.querySelector('iframe')!;
+        const originalParent = iframe.parentElement;
+
+        maximizeBtn!.click();
+
+        const overlay = document.querySelector('.md-html-embed-overlay');
+        expect(overlay).toBeTruthy();
+        expect(overlay?.getAttribute('role')).toBe('dialog');
+        expect(overlay?.getAttribute('aria-modal')).toBe('true');
+        const body = overlay!.querySelector('.md-html-embed-overlay-body');
+        expect(body?.contains(iframe)).toBe(true);
+        expect(maximizeBtn!.textContent).toBe('Restore');
+
+        const closeBtn = Array.from(
+            overlay!.querySelectorAll<HTMLButtonElement>('.md-html-embed-actions button'),
+        ).find((b) => b.textContent === 'Close');
+        expect(closeBtn).toBeTruthy();
+
+        closeBtn!.click();
+
+        expect(document.querySelector('.md-html-embed-overlay')).toBeNull();
+        expect(iframe.parentElement).toBe(originalParent);
+        expect(maximizeBtn!.textContent).toBe('Maximize');
+    });
+
+    it('closes the maximized dialog when Escape is pressed', async () => {
+        document.body.innerHTML = `
+            <div data-ws-id="ws1">
+                <div class="md-html-embed" data-html-path="outputs/chart.html" data-embed-height="600"></div>
+            </div>
+        `;
+
+        mountHtmlEmbeds(document.body);
+        await waitFor(() => {
+            expect(document.querySelector('iframe')).toBeTruthy();
+        });
+
+        const maximizeBtn = Array.from(
+            document.querySelectorAll<HTMLButtonElement>('.md-html-embed-actions button'),
+        ).find((b) => b.textContent === 'Maximize')!;
+        maximizeBtn.click();
+        expect(document.querySelector('.md-html-embed-overlay')).toBeTruthy();
+
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+        expect(document.querySelector('.md-html-embed-overlay')).toBeNull();
+    });
+
+    it('closes the maximized dialog when the backdrop is clicked', async () => {
+        document.body.innerHTML = `
+            <div data-ws-id="ws1">
+                <div class="md-html-embed" data-html-path="outputs/chart.html" data-embed-height="600"></div>
+            </div>
+        `;
+
+        mountHtmlEmbeds(document.body);
+        await waitFor(() => {
+            expect(document.querySelector('iframe')).toBeTruthy();
+        });
+
+        const maximizeBtn = Array.from(
+            document.querySelectorAll<HTMLButtonElement>('.md-html-embed-actions button'),
+        ).find((b) => b.textContent === 'Maximize')!;
+        maximizeBtn.click();
+
+        const backdrop = document.querySelector<HTMLElement>('.md-html-embed-overlay-backdrop')!;
+        backdrop.click();
+
+        expect(document.querySelector('.md-html-embed-overlay')).toBeNull();
+    });
 });
