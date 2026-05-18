@@ -169,6 +169,30 @@ Creates a recurring loop. First tick fires after one full interval.
 8. Enqueue follow-up via `TaskQueueManager` with `turnSource: { source: 'loop', loopId }`.
 9. On completion callback (`onTickComplete`): increment `tickCount`, reset failures, schedule next tick. On failure: increment `consecutiveFailures`, auto-pause at threshold.
 
+## Tick Completion Wiring
+
+`ProcessLifecycleRunner` invokes the `onLoopTickComplete(loopId, success)`
+lifecycle option after a loop-originated follow-up (`context.source === 'loop'`
+with string `context.loopId`) finishes. The queue-executor-bridge routes this
+call to `LoopExecutor.onTickComplete()`, which advances `tickCount` /
+`lastTickAt`, clears the in-flight guard, and re-arms the next timer.
+
+Bookkeeping errors are logged but never mask the follow-up's actual
+success/failure result.
+
+## Follow-Up Mode Resolution
+
+`resolveFollowUpMode(store, processId, explicit?)` in
+`executors/follow-up-mode.ts` is the single source of truth for "what mode
+does this follow-up run in?".
+
+- Every programmatic follow-up enqueue site (loop ticks, wakeup timer,
+  requeue) must call it and set `payload.mode`.
+- `validateAndParseTask` only defaults `payload.mode` to `autopilot` for new
+  chats (no `processId`); REST follow-ups must supply mode.
+- `FollowUpExecutor.executeFollowUp` requires `mode` and logs a fail-loud
+  warning + defaults to `'ask'` if missing.
+
 ## REST API
 
 ### Workspace-scoped

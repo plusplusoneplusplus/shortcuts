@@ -21,8 +21,14 @@ It consists of three packages (`coc`, `forge`, `deep-wiki`) plus a shared client
 
 | Domain | Reference | Summary |
 |--------|-----------|---------|
+| Monorepo | [monorepo.md](references/monorepo.md) | Cross-package layout, build/test commands, changesets release flow, shared conventions |
 | Server Architecture | [server-architecture.md](references/server-architecture.md) | Module layout, feature domains, route registration, config schema |
-| Ralph | [ralph.md](references/ralph.md) | Iterative execution session journal, writer protocol, size cap |
+| Admin Config | [admin-config.md](references/admin-config.md) | `ADMIN_CONFIG_FIELDS` registry, admin REST surface, admin UI styling (`admin-redesign.css`) |
+| MCP Settings | [mcp-settings.md](references/mcp-settings.md) | Workspace MCP merge (global + workspace), allow-list, secrets boundary |
+| EnDev xDPU | [endev.md](references/endev.md) | Workspace eligibility cache, REST status/revalidate, skill surfacing |
+| CoC Service (Windows) | [coc-service.md](references/coc-service.md) | `Manage-CoCService.ps1` Task Scheduler service, devtunnel integration, logs |
+| Ralph | [ralph.md](references/ralph.md) | Iterative execution session journal, writer protocol, size cap, promote-to-ralph endpoint |
+| Loops | [loops.md](references/loops.md) | Recurring follow-ups, executor, circuit breakers, REST API, dashboard integration |
 | Memory System | [memory-system.md](references/memory-system.md) | Bounded memory, capture mode, candidate ranking, promotion, recall index |
 | LLM Tools | [llm-tools.md](references/llm-tools.md) | Tool registry, per-invocation factories, permissions, web search |
 | SDK Wrapper | [sdk-wrapper.md](references/sdk-wrapper.md) | Session lifecycle, streaming state machine, MCP config, model registry |

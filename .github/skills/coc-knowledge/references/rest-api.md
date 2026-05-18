@@ -36,6 +36,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | DELETE | `/api/processes/:id` | Delete process |
 | POST | `/api/processes/:id/message` | Follow-up message |
 | POST | `/api/processes/:id/cancel` | Cancel running process |
+| POST | `/api/processes/:id/promote-to-ralph` | Promote completed ask-mode chat to Ralph session (see [ralph.md](ralph.md)) |
 | PATCH | `/api/processes/:id/pin` | Pin/unpin process |
 | PATCH | `/api/processes/:id/archive` | Archive/unarchive |
 | GET | `/api/processes/:id/turns/pinned` | Get pinned turns |
@@ -119,6 +120,37 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | PUT | `/api/memory/bounded/:level` | Write bounded memory |
 | DELETE | `/api/repos/:repoId/memory` | Wipe repo memory |
 | GET | `/api/repos/:repoId/memory/entries` | List memory entries |
+
+## Loops
+
+See [loops.md](loops.md) for the full subsystem. Gated by `loops.enabled` (default `false`).
+
+### Workspace-scoped
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/workspaces/:id/loops` | List loops for workspace |
+| GET | `/api/workspaces/:id/loops/:loopId` | Get single loop |
+| PATCH | `/api/workspaces/:id/loops/:loopId` | Update loop fields (description, prompt, intervalMs, model) |
+| DELETE | `/api/workspaces/:id/loops/:loopId` | Cancel & soft-delete loop |
+| POST | `/api/workspaces/:id/loops/:loopId/pause` | Pause loop (body: `{ reason? }`) |
+| POST | `/api/workspaces/:id/loops/:loopId/resume` | Resume paused loop |
+
+### Server-wide
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/loops` | List all loops server-wide |
+| GET | `/api/loops/:loopId` | Get a loop by ID |
+
+## MCP Settings
+
+See [mcp-settings.md](mcp-settings.md).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/workspaces/:id/mcp-config` | Effective + source-separated MCP servers. `?forceReload=true` bypasses cache |
+| PUT | `/api/workspaces/:id/mcp-config` | Store name-based `enabledMcpServers` allow-list |
 
 ## Work Items
 
