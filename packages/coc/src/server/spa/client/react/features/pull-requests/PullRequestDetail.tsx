@@ -51,8 +51,8 @@ import {
     riskPillClass,
 } from './pr-mock-data';
 import type { PullRequest, PullRequestCommit, CommentThread, PullRequestCheck } from './pr-utils';
+import { parseDiffFileList, type FileChange } from '../git/diff';
 import type { PrDetailTab } from '../../types/dashboard';
-import { parseUnifiedDiff, type ParsedDiff } from './unified-diff-parser';
 
 const descRenderer = {
     link(href: string, _title: string | null | undefined, text: string) {
@@ -80,7 +80,7 @@ const TAB_DEFINITIONS: Array<{ id: PrDetailTab; label: string }> = [
     { id: 'checks',   label: 'Checks' },
 ];
 
-const EMPTY_DIFF: ParsedDiff = { files: [], totalAdditions: 0, totalDeletions: 0, fileCount: 0 };
+const EMPTY_FILES: FileChange[] = [];
 
 export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: PullRequestDetailProps) {
     const { state, dispatch } = useApp();
@@ -88,7 +88,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     const [threads, setThreads] = useState<CommentThread[]>([]);
     const [commits, setCommits] = useState<PullRequestCommit[]>([]);
     const [commitsError, setCommitsError] = useState<string | null>(null);
-    const [diff, setDiff] = useState<ParsedDiff>(EMPTY_DIFF);
+    const [diff, setDiff] = useState<FileChange[]>(EMPTY_FILES);
     const [diffError, setDiffError] = useState<string | null>(null);
     const [checks, setChecks] = useState<PullRequestCheck[]>([]);
     const [checksError, setChecksError] = useState<string | null>(null);
@@ -123,7 +123,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     useEffect(() => {
         setLoading(true);
         setError(null);
-        setDiff(EMPTY_DIFF);
+        setDiff(EMPTY_FILES);
         setDiffError(null);
         setCommits([]);
         setCommitsError(null);
@@ -143,7 +143,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                 .catch(() => [] as CommentThread[]),
             client.pullRequests
                 .getDiff(repoIdStr, prIdStr)
-                .then(text => ({ kind: 'ok' as const, parsed: parseUnifiedDiff(text) }))
+                .then(text => ({ kind: 'ok' as const, parsed: parseDiffFileList(text) }))
                 .catch((err: unknown) => ({
                     kind: 'err' as const,
                     message: getSpaCocClientErrorMessage(err, 'Failed to load diff'),
@@ -204,15 +204,6 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
         [checks, threads, pr],
     );
 
-    const threadsByPath = useMemo(() => {
-        const byPath: Record<string, CommentThread[]> = {};
-        for (const thread of threads) {
-            const path = normalizeThreadPath(thread.threadContext?.filePath);
-            if (!path) continue;
-            (byPath[path] ??= []).push(thread);
-        }
-        return byPath;
-    }, [threads]);
 
     const handleBack = () => {
         dispatch({ type: 'CLEAR_SELECTED_PR' });
@@ -274,12 +265,14 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     const labels = pr.labels ?? [];
     const descHtml = pr.description ? String(descMarked.parse(pr.description)) : '';
     const unresolvedCount = aiSummary?.unresolvedCount ?? 0;
-    const hasRealDiff = diff.fileCount > 0;
+    const hasRealDiff = diff.length > 0;
+    const totalAdditions = diff.reduce((sum, f) => sum + (f.additions ?? 0), 0);
+    const totalDeletions = diff.reduce((sum, f) => sum + (f.deletions ?? 0), 0);
     const deltaText = hasRealDiff
-        ? `+${diff.totalAdditions} / -${diff.totalDeletions}`
+        ? `+${totalAdditions} / -${totalDeletions}`
         : '';
     const fileCountText = hasRealDiff
-        ? `${diff.fileCount} file${diff.fileCount === 1 ? '' : 's'}`
+        ? `${diff.length} file${diff.length === 1 ? '' : 's'}`
         : '';
 
     return (
@@ -427,7 +420,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                         const passingChecks = checkRows.filter(r => r.status === 'success').length;
                         const count = tabCount(tab.id, {
                             commits: commits.length,
-                            files: diff.fileCount,
+                            files: diff.length,
                             checks: checkRows.length,
                             checksPassing: passingChecks,
                             overview: threads.length,
@@ -525,8 +518,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                         )}
                         <div className="min-h-0 flex-1">
                             <PrFilesPanel
-                                files={diff.files}
-                                commentsByPath={threadsByPath}
+                                files={diff}
                                 isMobile={isMobile}
                                 classification={classification}
                             />
@@ -585,10 +577,6 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
             />
         </div>
     );
-}
-
-function normalizeThreadPath(filePath: string | null | undefined): string {
-    return (filePath ?? '').replace(/\\/g, '/').replace(/^\/+/, '');
 }
 
 function tabCount(

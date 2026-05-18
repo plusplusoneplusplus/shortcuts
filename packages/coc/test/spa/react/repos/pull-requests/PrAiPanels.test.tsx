@@ -23,7 +23,7 @@ import {
     getMockPersonaLenses,
     getMockTimeline,
 } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-mock-data';
-import { parseUnifiedDiff } from '../../../../../src/server/spa/client/react/features/pull-requests/unified-diff-parser';
+import { parseDiffFileList } from '../../../../../src/server/spa/client/react/features/git/diff';
 import type { PullRequest } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-utils';
 
 const samplePr: PullRequest = {
@@ -135,7 +135,7 @@ describe('PrChecksTable + PrMergeReadiness', () => {
 });
 
 describe('PrFilesPanel', () => {
-    const realDiff = parseUnifiedDiff([
+    const realDiff = parseDiffFileList([
         'diff --git a/src/foo.ts b/src/foo.ts',
         '--- a/src/foo.ts',
         '+++ b/src/foo.ts',
@@ -155,37 +155,12 @@ describe('PrFilesPanel', () => {
         '@@ -0,0 +1,1 @@',
         '+ok',
         '',
-    ].join('\n')).files;
+    ].join('\n'));
 
     it('renders a row per parsed file', () => {
         render(<PrFilesPanel files={realDiff} />);
         const rows = screen.getAllByTestId('pr-file-row');
         expect(rows).toHaveLength(3);
-        expect(screen.getByTestId('pr-file-diff-card')).toBeInTheDocument();
-    });
-
-    it('renders real provider comments inline when file and line context are present', () => {
-        render(
-            <PrFilesPanel
-                files={realDiff}
-                commentsByPath={{
-                    'src/foo.ts': [{
-                        id: 'thread-1',
-                        status: 'active',
-                        threadContext: { filePath: 'src/foo.ts', line: 2, side: 'right' },
-                        comments: [{
-                            id: 'comment-1',
-                            author: { displayName: 'Reviewer' },
-                            body: 'Use the actual review comment here.',
-                            createdAt: '2024-01-01T00:00:00Z',
-                        }],
-                    }],
-                }}
-            />,
-        );
-        expect(screen.getByTestId('pr-file-inline-comments')).toBeInTheDocument();
-        expect(screen.getByTestId('pr-file-real-comment').textContent).toContain('Use the actual review comment here.');
-        expect(screen.queryByTestId('pr-file-ai-annotation')).not.toBeInTheDocument();
     });
 
     it('filters files by the search input', () => {
@@ -212,15 +187,12 @@ describe('PrFilesPanel', () => {
         expect(screen.getByText(/No file changes/i)).toBeTruthy();
     });
 
-    it('renders a binary-file placeholder instead of diff body for binary files', () => {
-        const binaryDiff = parseUnifiedDiff([
-            'diff --git a/logo.png b/logo.png',
-            'index 1..2 100644',
-            'Binary files a/logo.png and b/logo.png differ',
-            '',
-        ].join('\n')).files;
-        render(<PrFilesPanel files={binaryDiff} />);
-        expect(screen.getByText(/Binary file/i)).toBeTruthy();
+    it('calls onFileClick when a file row is clicked', () => {
+        const onFileClick = vi.fn();
+        render(<PrFilesPanel files={realDiff} onFileClick={onFileClick} />);
+        const rows = screen.getAllByTestId('pr-file-row');
+        fireEvent.click(rows[0]);
+        expect(onFileClick).toHaveBeenCalledWith(rows[0].getAttribute('data-file-path'));
     });
 
     it('shows file rows by basename (not full path) inside their parent folder', () => {
@@ -244,17 +216,14 @@ describe('PrFilesPanel', () => {
             .find(f => f.getAttribute('data-folder-path') === 'docs');
         expect(docsFolder).toBeTruthy();
         expect(docsFolder!.getAttribute('data-collapsed')).toBe('false');
-        // Initially readme.md is visible (folder expanded).
         expect(
             screen.getAllByTestId('pr-file-row').some(r => r.getAttribute('data-file-path') === 'docs/readme.md'),
         ).toBe(true);
         fireEvent.click(docsFolder!);
-        // After collapse, docs/readme.md row should be gone.
         const visible = screen
             .getAllByTestId('pr-file-row')
             .map(r => r.getAttribute('data-file-path'));
         expect(visible).not.toContain('docs/readme.md');
-        // src/foo.ts and test/worker.ts stay visible.
         expect(visible).toContain('src/foo.ts');
         expect(visible).toContain('test/worker.ts');
     });
@@ -262,41 +231,14 @@ describe('PrFilesPanel', () => {
     it('switches to flat mode when the Flat toggle is clicked and shows dirname above basename', () => {
         render(<PrFilesPanel files={realDiff} />);
         fireEvent.click(screen.getByTestId('pr-file-view-flat'));
-        // Folders disappear in flat mode.
         expect(screen.queryByTestId('pr-file-tree-folder')).toBeNull();
-        // Each row shows the basename (no slash) inside `pr-file-basename`.
         const basenames = screen
             .getAllByTestId('pr-file-row')
             .map(row => row.querySelector('[data-testid="pr-file-basename"]')?.textContent);
         expect(basenames.sort()).toEqual(['foo.ts', 'readme.md', 'worker.ts']);
-        // And the dirname is rendered as a separate muted line — every row
-        // includes the trailing slash that the flat renderer adds.
         screen.getAllByTestId('pr-file-row').forEach(row => {
             expect(row.textContent ?? '').toMatch(/\//);
         });
-    });
-
-    it('renders a resize handle for the file list panel on desktop', () => {
-        render(<PrFilesPanel files={realDiff} />);
-        const handle = screen.getByTestId('pr-files-panel-resize-handle');
-        expect(handle).toBeInTheDocument();
-        expect(handle.getAttribute('role')).toBe('separator');
-        expect(handle.getAttribute('aria-orientation')).toBe('vertical');
-    });
-
-    it('omits the resize handle when isMobile is set so the file list stacks above the diff', () => {
-        render(<PrFilesPanel files={realDiff} isMobile />);
-        expect(screen.queryByTestId('pr-files-panel-resize-handle')).toBeNull();
-        // Aside should not carry an inline width on mobile (panel takes
-        // the full container width).
-        const aside = screen.getByTestId('pr-file-list-panel');
-        expect(aside.getAttribute('style') ?? '').not.toMatch(/width/);
-    });
-
-    it('gives the file list panel an explicit pixel width on desktop so it can be resized', () => {
-        render(<PrFilesPanel files={realDiff} />);
-        const aside = screen.getByTestId('pr-file-list-panel');
-        expect(aside.getAttribute('style') ?? '').toMatch(/width:\s*\d+px/);
     });
 
     it('keeps the basename and +/- delta visible side-by-side in tree rows so the delta is never overflow-hidden', () => {
@@ -306,20 +248,14 @@ describe('PrFilesPanel', () => {
             .find(r => r.getAttribute('data-file-path') === 'src/foo.ts');
         expect(row).toBeTruthy();
         const basename = row!.querySelector('[data-testid="pr-file-basename"]') as HTMLElement;
-        // basename should be allowed to shrink (flex-1 + min-w-0) so the
-        // shrink-0 delta on the right always wins horizontal space.
         expect(basename.className).toMatch(/flex-1/);
         expect(basename.className).toMatch(/min-w-0/);
         expect(basename.className).toMatch(/truncate/);
-        // The delta span (+x -y) must be present and shrink-0.
         expect(row!.textContent ?? '').toMatch(/\+\d+\s+-\d+/);
     });
 
     it('disables horizontal scrolling on the file list and keeps min-w-0 on the wrappers so deeply nested or long collapsed folder names truncate instead of overflowing', () => {
-        // Build a diff with a very deep collapsed folder chain plus very
-        // long basenames — this is the exact shape that produced the
-        // horizontal scrollbar in the screenshot.
-        const deepDiff = parseUnifiedDiff([
+        const deepDiff = parseDiffFileList([
             'diff --git a/packages/coc/src/server/spa/client/react/features/pull-requests/an-extremely-long-component-name-that-would-otherwise-overflow-the-panel.tsx b/packages/coc/src/server/spa/client/react/features/pull-requests/an-extremely-long-component-name-that-would-otherwise-overflow-the-panel.tsx',
             '--- a/packages/coc/src/server/spa/client/react/features/pull-requests/an-extremely-long-component-name-that-would-otherwise-overflow-the-panel.tsx',
             '+++ b/packages/coc/src/server/spa/client/react/features/pull-requests/an-extremely-long-component-name-that-would-otherwise-overflow-the-panel.tsx',
@@ -327,29 +263,19 @@ describe('PrFilesPanel', () => {
             ' keep',
             '+added',
             '',
-        ].join('\n')).files;
+        ].join('\n'));
 
         render(<PrFilesPanel files={deepDiff} />);
 
         const scroll = screen.getByTestId('pr-file-list-scroll');
-        // Horizontal scroll is explicitly hidden so the panel never
-        // grows a horizontal scrollbar, regardless of row content.
         expect(scroll.className).toMatch(/overflow-x-hidden/);
-        // Vertical scrolling stays enabled for long file lists.
         expect(scroll.className).toMatch(/overflow-y-auto/);
-        // Scroll container itself must be `min-w-0` so its parent flex
-        // chain doesn't propagate intrinsic width upwards.
         expect(scroll.className).toMatch(/min-w-0/);
 
-        // Folder wrappers in the recursive tree must also carry `min-w-0`
-        // so a collapsed chain like "packages/coc/src/server/spa/..." can
-        // truncate inside the panel width instead of pushing siblings out.
         const folders = screen.getAllByTestId('pr-file-tree-folder');
         expect(folders.length).toBeGreaterThan(0);
         for (const folder of folders) {
-            // The button itself should still be min-w-0…
             expect(folder.className).toMatch(/min-w-0/);
-            // …and its label span should truncate, not wrap.
             const label = folder.querySelector('span.truncate');
             expect(label).toBeTruthy();
         }

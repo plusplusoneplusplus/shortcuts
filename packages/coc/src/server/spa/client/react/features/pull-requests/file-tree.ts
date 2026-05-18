@@ -1,7 +1,7 @@
 /**
  * File-tree helper for the PR "Files changed" panel.
  *
- * Builds a folder tree from a flat list of `ParsedDiffFile`s, then
+ * Builds a folder tree from a flat list of `FileChange`s, then
  * collapses single-child folder chains the way VS Code / GitHub do
  * (e.g. `packages/coc/src/server` shown as one row) so reviewers can
  * see meaningful structure without scrolling past redundant prefixes.
@@ -10,7 +10,7 @@
  * to unit test independently of the React rendering layer.
  */
 
-import type { ParsedDiffFile } from './unified-diff-parser';
+import type { FileChange } from '../git/diff/FileTree';
 
 export type FileTreeNode = FileTreeFolder | FileTreeFile;
 
@@ -35,11 +35,11 @@ export interface FileTreeFile {
     name: string;
     /** Full path from the diff (used as the React key and selection id). */
     path: string;
-    file: ParsedDiffFile;
+    file: FileChange;
 }
 
 /** Build a collapsed folder tree from a flat file list. */
-export function buildFileTree(files: ParsedDiffFile[]): FileTreeNode[] {
+export function buildFileTree(files: FileChange[]): FileTreeNode[] {
     const root = makeFolder('', '');
     for (const file of files) {
         insertFile(root, file);
@@ -97,7 +97,7 @@ function makeFolder(name: string, path: string): MutableFolder {
     };
 }
 
-function insertFile(root: MutableFolder, file: ParsedDiffFile): void {
+function insertFile(root: MutableFolder, file: FileChange): void {
     const segments = file.path.split('/').filter(Boolean);
     if (segments.length === 0) return;
     const basename = segments[segments.length - 1];

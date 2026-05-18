@@ -1,8 +1,9 @@
 /**
- * Files Changed tab — left rail with file list (tree or flat), right
- * rail with the focused file diff. The two rails scroll
- * independently inside the Files tab so reviewers can browse the
- * file list while the diff stays anchored, and vice versa.
+ * Files Changed tab — minimal read-only file list with AI action triggers.
+ *
+ * No inline diff rendering. Clicking a file opens the pop-out window
+ * (#popout/git-review/pr/<prId>) with all PR files loaded into the
+ * file-list rail for full diff review.
  *
  * Display rules for the file list:
  *  - Tree mode (default): folders are collapsible and single-child
@@ -11,53 +12,50 @@
  *    visible at a stable depth.
  *  - Flat mode: each row shows the basename prominently with the
  *    dirname rendered above it in muted small text.
- *
- * The file list, +/- counts, line numbers and the diff body all come
- * from the real `/api/repos/:repoId/pull-requests/:prId/diff` payload
- * (parsed by `unified-diff-parser`). File-scoped comment threads come
- * from the real `/threads` payload and render inline when the provider
- * exposes file/line context.
  */
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { cn } from '../../ui';
-import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
-import type { ParsedDiffFile } from './unified-diff-parser';
+import type { FileChange } from '../git/diff/FileTree';
 import {
     buildFileTree,
     collectFolderPaths,
     splitPath,
     type FileTreeNode,
 } from './file-tree';
-import { formatTimestamp, type CommentThread, type PrComment } from './pr-utils';
 import { SHOW_FOCUSED_DIFF } from '../../featureFlags';
 import type { HunkCategory } from './classification-types';
 import { HUNK_CATEGORIES, CATEGORY_LABELS } from './classification-types';
 import type { UseClassificationReturn } from '../git/diff/useClassification';
 
-interface PrFilesPanelProps {
-    files: ParsedDiffFile[];
-    /** Real provider comment threads keyed by repository-relative file path. */
-    commentsByPath?: Record<string, CommentThread[] | undefined>;
-    /** When true (small viewports), the file list stacks above the diff
-     *  with full width and no resize handle. */
+export interface PrFilesPanelProps {
+    files: FileChange[];
+    /** When true (small viewports), the file list stacks vertically. */
     isMobile?: boolean;
     /** Classification hook return — enables focused-diff filter bar. */
     classification?: UseClassificationReturn;
+    /** Called when user clicks a file — opens pop-out for diff review. */
+    onFileClick?: (filePath: string) => void;
 }
-
-const FILES_PANEL_WIDTH_STORAGE_KEY = 'coc:pr-files-panel-width';
 
 type ViewMode = 'tree' | 'flat';
 
-const STATUS_LABEL: Record<ParsedDiffFile['status'], string> = {
+const STATUS_LABEL: Record<string, string> = {
+    A: 'Added',
+    M: 'Modified',
+    D: 'Deleted',
+    R: 'Renamed',
     added:    'Added',
     modified: 'Modified',
     deleted:  'Deleted',
     renamed:  'Renamed',
 };
 
-const STATUS_CLASS: Record<ParsedDiffFile['status'], string> = {
+const STATUS_CLASS: Record<string, string> = {
+    A: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200',
+    M: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200',
+    D: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200',
+    R: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200',
     added:    'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200',
     modified: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200',
     deleted:  'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200',
@@ -252,19 +250,11 @@ function ClassificationFilterBar({ classification }: { classification: UseClassi
 
 // ── Main component ──────────────────────────────────────────────────
 
-export function PrFilesPanel({ files, commentsByPath, isMobile = false, classification }: PrFilesPanelProps) {
+export function PrFilesPanel({ files, isMobile = false, classification, onFileClick }: PrFilesPanelProps) {
     const [search, setSearch] = useState('');
     const [viewMode, setViewMode] = useState<ViewMode>('tree');
     const [activePath, setActivePath] = useState<string>(files[0]?.path ?? '');
-    const filesResize = useResizablePanel({
-        initialWidth: 280,
-        minWidth: 200,
-        maxWidth: 480,
-        storageKey: FILES_PANEL_WIDTH_STORAGE_KEY,
-    });
 
-    // If the file list changes (e.g. PR detail reloaded), make sure the
-    // active selection still exists.
     useEffect(() => {
         if (files.length === 0) {
             setActivePath('');
@@ -279,24 +269,11 @@ export function PrFilesPanel({ files, commentsByPath, isMobile = false, classifi
         return files.filter(file => file.path.toLowerCase().includes(query));
     }, [files, search]);
 
-    const focusedFile = useMemo(
-        () => files.find(file => file.path === activePath) ?? null,
-        [files, activePath],
-    );
-
-    // Tree is computed from the visible (post-filter) files so filter
-    // and tree mode compose naturally — typing a query shrinks the
-    // tree to the matching subset.
+    const showTree = viewMode === 'tree' && !search.trim();
     const tree = useMemo(() => buildFileTree(visibleFiles), [visibleFiles]);
 
-    // Default-expand every folder so the user immediately sees all
-    // matching files; this set is recomputed whenever the tree shape
-    // changes (new files, filter narrowed/cleared, …).
     const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
     useEffect(() => {
-        // When the tree shape changes, drop any stale folder paths the
-        // user previously collapsed so newly added folders are visible
-        // by default.
         setCollapsedFolders(prev => {
             const allPaths = new Set(collectFolderPaths(tree));
             const next = new Set<string>();
@@ -314,22 +291,21 @@ export function PrFilesPanel({ files, commentsByPath, isMobile = false, classifi
         });
     }
 
-    const showTree = viewMode === 'tree' && !search.trim();
+    function handleFileSelect(path: string) {
+        setActivePath(path);
+        onFileClick?.(path);
+    }
 
     return (
         <div
             className={cn(
-                'flex h-full min-h-0 gap-2',
-                isMobile ? 'flex-col' : 'flex-col md:flex-row md:gap-0',
+                'flex h-full min-h-0',
+                isMobile ? 'flex-col' : 'flex-col',
             )}
             data-testid="pr-files-panel"
         >
-            <aside
-                className={cn(
-                    'flex min-h-0 w-full flex-col overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900',
-                    !isMobile && 'md:shrink-0',
-                )}
-                style={isMobile ? undefined : { width: filesResize.width }}
+            <div
+                className="flex min-h-0 w-full flex-col overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
                 data-testid="pr-file-list-panel"
             >
                 <header className="flex min-h-[30px] shrink-0 flex-wrap items-center justify-between gap-x-1.5 gap-y-1 border-b border-gray-200 bg-gray-50 px-2 py-1 dark:border-gray-700 dark:bg-gray-800/60">
@@ -401,7 +377,7 @@ export function PrFilesPanel({ files, commentsByPath, isMobile = false, classifi
                         <FileTreeView
                             nodes={tree}
                             activePath={activePath}
-                            onSelect={setActivePath}
+                            onSelect={handleFileSelect}
                             collapsedFolders={collapsedFolders}
                             onToggleFolder={toggleFolder}
                             depth={0}
@@ -411,71 +387,20 @@ export function PrFilesPanel({ files, commentsByPath, isMobile = false, classifi
                         <FlatFileList
                             files={visibleFiles}
                             activePath={activePath}
-                            onSelect={setActivePath}
+                            onSelect={handleFileSelect}
                             classification={classification}
                         />
                     )}
                 </div>
-            </aside>
-            {!isMobile && (
-                <div
-                    className={cn(
-                        'hidden md:flex items-center justify-center w-1 cursor-col-resize shrink-0 transition-colors',
-                        filesResize.isDragging
-                            ? 'bg-blue-500/60'
-                            : 'bg-gray-200 hover:bg-blue-500/40 dark:bg-gray-700',
-                    )}
-                    onMouseDown={filesResize.handleMouseDown}
-                    onTouchStart={filesResize.handleTouchStart}
-                    role="separator"
-                    aria-orientation="vertical"
-                    aria-label="Resize file list panel"
-                    data-testid="pr-files-panel-resize-handle"
-                />
-            )}
-            <div
-                className={cn(
-                    'min-h-0 flex-1 overflow-y-auto md:h-full',
-                    !isMobile && 'md:min-w-0',
-                )}
-                data-testid="pr-file-diff-panel"
-            >
-                {focusedFile && (
-                    <FileDiffCard
-                        file={focusedFile}
-                        threads={getThreadsForFile(commentsByPath, focusedFile)}
-                        classification={classification}
-                    />
-                )}
-                {!focusedFile && (
-                    <div
-                        className="rounded-[5px] border border-dashed border-gray-200 bg-white px-2 py-4 text-center text-[12px] text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400"
-                        data-testid="pr-file-diff-empty"
-                    >
-                        Select a file from the list to see its diff.
-                    </div>
-                )}
             </div>
         </div>
     );
 }
 
-function getThreadsForFile(
-    commentsByPath: PrFilesPanelProps['commentsByPath'],
-    file: ParsedDiffFile,
-): CommentThread[] {
-    const byId = new Map<string | number, CommentThread>();
-    for (const path of [file.path, file.oldPath]) {
-        if (!path) continue;
-        for (const thread of commentsByPath?.[path] ?? []) {
-            byId.set(thread.id, thread);
-        }
-    }
-    return [...byId.values()];
-}
+// ── File list views ─────────────────────────────────────────────────
 
 interface FlatFileListProps {
-    files: ParsedDiffFile[];
+    files: FileChange[];
     activePath: string;
     onSelect: (path: string) => void;
     classification?: UseClassificationReturn;
@@ -519,8 +444,19 @@ function FlatFileList({ files, activePath, onSelect, classification }: FlatFileL
                                     const badge = classification?.getFileBadge(file.path);
                                     return badge ? <ClassificationBadge category={badge.category} intensity={badge.intensity} /> : null;
                                 })()}
-                                <span className="text-green-700 dark:text-green-400">+{file.additions}</span>{' '}
-                                <span className="text-red-700 dark:text-red-400">-{file.deletions}</span>
+                                {file.status && (
+                                    <span
+                                        className={cn(
+                                            'inline-flex shrink-0 items-center rounded-full px-1 py-px text-[9px] font-semibold uppercase tracking-normal leading-[1.4]',
+                                            STATUS_CLASS[file.status] ?? '',
+                                        )}
+                                        data-testid="pr-file-status"
+                                    >
+                                        {STATUS_LABEL[file.status] ?? file.status}
+                                    </span>
+                                )}
+                                <span className="text-green-700 dark:text-green-400">+{file.additions ?? 0}</span>{' '}
+                                <span className="text-red-700 dark:text-red-400">-{file.deletions ?? 0}</span>
                             </span>
                         </span>
                     </button>
@@ -623,248 +559,12 @@ function FileTreeView({
                                 const badge = classification?.getFileBadge(node.path);
                                 return badge ? <ClassificationBadge category={badge.category} intensity={badge.intensity} /> : null;
                             })()}
-                            <span className="text-green-700 dark:text-green-400">+{node.file.additions}</span>{' '}
-                            <span className="text-red-700 dark:text-red-400">-{node.file.deletions}</span>
+                            <span className="text-green-700 dark:text-green-400">+{node.file.additions ?? 0}</span>{' '}
+                            <span className="text-red-700 dark:text-red-400">-{node.file.deletions ?? 0}</span>
                         </span>
                     </button>
                 );
             })}
-        </div>
-    );
-}
-
-interface FileDiffCardProps {
-    file: ParsedDiffFile;
-    threads: CommentThread[];
-    classification?: UseClassificationReturn;
-}
-
-function FileDiffCard({ file, threads, classification }: FileDiffCardProps) {
-    const lineThreads = useMemo(() => groupThreadsByDiffLine(threads), [threads]);
-    const fileLevelThreads = useMemo(
-        () => threads.filter(thread => !resolveThreadLine(thread)),
-        [threads],
-    );
-
-    // Track hunk indices — each time we see a 'hunk' line, we increment.
-    let hunkIndex = -1;
-    return (
-        <article
-            className="mb-2 overflow-hidden rounded-[5px] border border-gray-200 bg-white last:mb-0 dark:border-gray-700 dark:bg-gray-900"
-            data-testid="pr-file-diff-card"
-        >
-            <header className="flex min-h-[28px] items-center justify-between gap-1.5 border-b border-gray-200 bg-gray-50 px-2 py-[5px] font-mono text-[12px] leading-[1.4] dark:border-gray-700 dark:bg-gray-800/60">
-                <div className="flex min-w-0 items-center gap-1.5">
-                    <span
-                        className={cn(
-                            'inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[10px] font-semibold uppercase tracking-normal leading-[1.4]',
-                            STATUS_CLASS[file.status],
-                        )}
-                        data-testid="pr-file-status"
-                    >
-                        {STATUS_LABEL[file.status]}
-                    </span>
-                    <strong className="truncate text-gray-900 dark:text-gray-100" title={file.path}>
-                        {file.oldPath && file.oldPath !== file.path ? `${file.oldPath} → ${file.path}` : file.path}
-                    </strong>
-                </div>
-                <div className="flex items-center gap-1.5 text-[11px] tabular-nums">
-                    {threads.length > 0 && (
-                        <span className="text-blue-700 dark:text-blue-300" data-testid="pr-file-comment-count">
-                            {threads.length} comment{threads.length === 1 ? '' : 's'}
-                        </span>
-                    )}
-                    <span className="text-green-700 dark:text-green-400">+{file.additions}</span>
-                    <span className="text-red-700 dark:text-red-400">-{file.deletions}</span>
-                </div>
-            </header>
-            {fileLevelThreads.length > 0 && (
-                <div className="border-b border-gray-100 bg-blue-50/60 px-2 py-1.5 dark:border-gray-700 dark:bg-blue-900/20">
-                    {fileLevelThreads.map(thread => (
-                        <InlineCommentThread key={thread.id} thread={thread} />
-                    ))}
-                </div>
-            )}
-            {file.isBinary ? (
-                <div className="px-2 py-3 text-[11px] italic text-gray-500 dark:text-gray-400">
-                    Binary file — diff omitted.
-                </div>
-            ) : file.lines.length === 0 ? (
-                <div className="px-2 py-3 text-[11px] italic text-gray-500 dark:text-gray-400">
-                    No textual diff content.
-                </div>
-            ) : (
-                <div className="font-mono text-[12px] leading-[1.45]">
-                    {file.lines.map((line, idx) => {
-                        if (line.kind === 'hunk') {
-                            hunkIndex++;
-                            const dimmed = classification?.isHunkDimmed(file.path, hunkIndex) ?? false;
-                            const hunkClassification = classification?.getHunkClassification(file.path, hunkIndex);
-                            return (
-                                <div
-                                    key={`hunk-${idx}`}
-                                    className={cn(
-                                        'border-y border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] text-gray-500 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-400',
-                                        dimmed && 'opacity-40',
-                                    )}
-                                    data-testid="pr-file-hunk-header"
-                                    data-hunk-index={hunkIndex}
-                                    data-hunk-category={hunkClassification?.category}
-                                >
-                                    <span>{line.text}</span>
-                                    {hunkClassification && (
-                                        <span
-                                            className={cn(
-                                                'ml-2 rounded px-1 py-px text-[9px] font-semibold uppercase',
-                                                hunkClassification.category === 'logic' && 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
-                                                hunkClassification.category === 'mechanical' && 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
-                                                hunkClassification.category === 'test' && 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
-                                                hunkClassification.category === 'generated' && 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
-                                            )}
-                                            title={hunkClassification.reason}
-                                            data-testid="hunk-category-tag"
-                                        >
-                                            {CATEGORY_LABELS[hunkClassification.category]}
-                                        </span>
-                                    )}
-                                </div>
-                            );
-                        }
-                        const dimmed = hunkIndex >= 0 && (classification?.isHunkDimmed(file.path, hunkIndex) ?? false);
-                        const lineNo = line.kind === 'del' ? line.oldLineNo : line.newLineNo;
-                        const comments = getThreadsForDiffLine(lineThreads, line);
-                        return (
-                            <Fragment key={idx}>
-                                <div
-                                    className={cn(
-                                        'grid min-h-[19px] items-start',
-                                        line.kind === 'add' && 'bg-green-50 dark:bg-green-900/30',
-                                        line.kind === 'del' && 'bg-red-50 dark:bg-red-900/30',
-                                        dimmed && 'opacity-40',
-                                    )}
-                                    style={{ gridTemplateColumns: '38px 1fr' }}
-                                    data-testid={`pr-file-diff-line-${line.kind}`}
-                                >
-                                    <span className="border-r border-gray-200 px-1.5 py-px text-right text-gray-400 dark:border-gray-700 dark:text-gray-500">
-                                        {lineNo ?? ''}
-                                    </span>
-                                    <span className="overflow-x-auto whitespace-pre px-[7px] py-px text-gray-800 dark:text-gray-200">
-                                        {line.kind === 'add' ? '+' : line.kind === 'del' ? '-' : ' '}
-                                        {line.text}
-                                    </span>
-                                </div>
-                                {comments.length > 0 && (
-                                    <div
-                                        className="border-y border-blue-200 bg-blue-50/80 py-1 pl-[46px] pr-2 dark:border-blue-800 dark:bg-blue-900/20"
-                                        data-testid="pr-file-inline-comments"
-                                    >
-                                        {comments.map(thread => (
-                                            <InlineCommentThread key={thread.id} thread={thread} />
-                                        ))}
-                                    </div>
-                                )}
-                            </Fragment>
-                        );
-                    })}
-                </div>
-            )}
-        </article>
-    );
-}
-
-type DiffSide = 'left' | 'right';
-
-function resolveThreadLine(thread: CommentThread): number | undefined {
-    const line = thread.threadContext?.line ?? thread.threadContext?.endLine ?? thread.threadContext?.startLine;
-    return typeof line === 'number' && Number.isFinite(line) && line > 0 ? line : undefined;
-}
-
-function resolveThreadSide(thread: CommentThread): DiffSide | undefined {
-    const side = thread.threadContext?.side;
-    if (side === 'left' || side === 'right') return side;
-    return undefined;
-}
-
-function threadKey(side: DiffSide, line: number): string {
-    return `${side}:${line}`;
-}
-
-function groupThreadsByDiffLine(threads: CommentThread[]): Map<string, CommentThread[]> {
-    const buckets = new Map<string, CommentThread[]>();
-    for (const thread of threads) {
-        const line = resolveThreadLine(thread);
-        if (!line) continue;
-        const side = resolveThreadSide(thread);
-        const sides: DiffSide[] = side ? [side] : ['right', 'left'];
-        for (const s of sides) {
-            const key = threadKey(s, line);
-            const bucket = buckets.get(key) ?? [];
-            bucket.push(thread);
-            buckets.set(key, bucket);
-        }
-    }
-    return buckets;
-}
-
-function getThreadsForDiffLine(
-    buckets: Map<string, CommentThread[]>,
-    line: ParsedDiffFile['lines'][number],
-): CommentThread[] {
-    if (line.kind === 'hunk') return [];
-    const matches = new Map<string | number, CommentThread>();
-    if (line.newLineNo != null) {
-        for (const thread of buckets.get(threadKey('right', line.newLineNo)) ?? []) {
-            matches.set(thread.id, thread);
-        }
-    }
-    if (line.oldLineNo != null) {
-        for (const thread of buckets.get(threadKey('left', line.oldLineNo)) ?? []) {
-            matches.set(thread.id, thread);
-        }
-    }
-    return [...matches.values()];
-}
-
-function InlineCommentThread({ thread }: { thread: CommentThread }) {
-    return (
-        <div
-            className="mb-1.5 overflow-hidden rounded-[5px] border border-blue-200 bg-white text-[12px] last:mb-0 dark:border-blue-800 dark:bg-gray-900"
-            data-testid="pr-file-real-comment"
-        >
-            <div className="flex items-center justify-between gap-2 border-b border-blue-100 bg-blue-50 px-2 py-1 dark:border-blue-900 dark:bg-blue-950/40">
-                <span className="font-semibold text-blue-800 dark:text-blue-200">
-                    Review comment
-                </span>
-                {thread.status && (
-                    <span className="text-[10px] uppercase text-blue-600 dark:text-blue-300">
-                        {thread.status}
-                    </span>
-                )}
-            </div>
-            <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                {thread.comments.map(comment => (
-                    <InlineComment key={comment.id} comment={comment} />
-                ))}
-            </div>
-        </div>
-    );
-}
-
-function InlineComment({ comment }: { comment: PrComment }) {
-    const author = comment.author?.displayName ?? comment.author?.email ?? 'Unknown';
-    return (
-        <div className="px-2 py-1.5">
-            <div className="mb-0.5 flex items-center justify-between gap-2 text-[11px]">
-                <span className="font-semibold text-gray-700 dark:text-gray-200">
-                    @{author}
-                </span>
-                <span className="shrink-0 text-gray-400 dark:text-gray-500">
-                    {formatTimestamp(comment.createdAt)}
-                </span>
-            </div>
-            <p className="m-0 whitespace-pre-wrap text-[12px] leading-[1.35] text-gray-700 dark:text-gray-300">
-                {comment.body}
-            </p>
         </div>
     );
 }

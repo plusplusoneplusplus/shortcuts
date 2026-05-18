@@ -329,7 +329,7 @@ describe('tabs', () => {
         expect(screen.getByTestId('tab-files').textContent).toContain('2');
     });
 
-    it('renders real provider review comments inside the matching file diff', async () => {
+    it('renders the minimal file list without inline diff in the Files tab', async () => {
         mockFetchDetail(makePr(), makeThreads([{
             id: 'thread-actual',
             threadContext: { filePath: '/src/foo.ts', line: 2, side: 'right' },
@@ -345,9 +345,10 @@ describe('tabs', () => {
         await waitFor(() => expect(screen.getByTestId('tab-files')).toBeInTheDocument());
         fireEvent.click(screen.getByTestId('tab-files'));
 
-        expect(screen.getByTestId('pr-file-inline-comments')).toBeInTheDocument();
-        expect(screen.getByTestId('pr-file-real-comment').textContent).toContain('This should come from the provider thread.');
-        expect(screen.queryByTestId('pr-file-ai-annotation')).not.toBeInTheDocument();
+        // Minimal file list renders file rows but no inline diff
+        expect(screen.getAllByTestId('pr-file-row').length).toBeGreaterThan(0);
+        expect(screen.queryByTestId('pr-file-inline-comments')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('pr-file-diff-card')).not.toBeInTheDocument();
     });
 
     it('switches to the Commits tab and renders real commits from the /commits endpoint', async () => {
