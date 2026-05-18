@@ -3,10 +3,12 @@ name: grill-me
 description: Interview the user about a plan or design and produce an autonomy-ready spec artifact. Use when the user wants to stress-test a plan, get grilled on a design, mentions "grill me", or when promoting an ask-mode chat into a Ralph loop.
 metadata:
   author: Yiheng Tao
-  version: "0.1.0"
+  version: "0.1.1"
 ---
 
 # Grill Me
+
+Adapted from [mattpocock/skills · grill-me](https://github.com/mattpocock/skills/blob/main/skills/productivity/grill-me/SKILL.md), extended with a two-phase flow, decision tags, slice template, and Definition of Done so the output is consumable by an autonomous Ralph loop.
 
 Interview the user about a plan until both sides share enough understanding for an AI to **loop autonomously to completion** without further human input for the common case. The output is a structured artifact, not a conversation transcript.
 
