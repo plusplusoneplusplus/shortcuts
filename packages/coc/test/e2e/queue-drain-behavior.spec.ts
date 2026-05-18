@@ -360,13 +360,13 @@ test.describe('Queue Drain Behavior', () => {
             // Resolve task 1 → task 2 transitions from queued → running → completed
             resolve1({ success: true, response: 'Task 1 done', sessionId: 'sess-ui-1' });
 
-            // PendingTaskInfoPanel should disappear
-            await expect(page.locator('.pending-task-info')).not.toBeVisible({ timeout: 30_000 });
-
-            // The assistant response bubble should be visible
+            // Wait for task 2's response to appear — this implies queued→running→completed
             await expect(
                 page.locator('.chat-message').filter({ hasText: 'Task 2 completed successfully' }),
-            ).toBeVisible({ timeout: 15_000 });
+            ).toBeVisible({ timeout: 45_000 });
+
+            // PendingTaskInfoPanel should be gone once the response is rendered
+            await expect(page.locator('.pending-task-info')).not.toBeVisible({ timeout: 5_000 });
         } finally {
             cleanup();
         }
