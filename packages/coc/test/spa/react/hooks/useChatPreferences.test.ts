@@ -15,6 +15,7 @@ global.fetch = fetchMock as any;
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '',
+    isRalphEnabled: () => false,
 }));
 
 function makePrefsResponse(

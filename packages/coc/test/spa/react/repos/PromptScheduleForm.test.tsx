@@ -22,6 +22,7 @@ const { mockSchedulesClient, mockModelsClient } = vi.hoisted(() => ({
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '',
+    isRalphEnabled: () => false,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({

@@ -10,6 +10,7 @@ import { useProcessSearch } from '../../../src/server/spa/client/react/processes
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '',
+    isRalphEnabled: () => false,
 }));
 
 function makeResponse(results: any[] = [], total = 0) {

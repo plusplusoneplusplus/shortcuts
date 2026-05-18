@@ -24,6 +24,7 @@ import { PendingTaskPayload, MetaRow, FilePathValue } from '../../../../src/serv
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '/api',
+    isRalphEnabled: () => false,
     getWsPath: () => '/ws',
     getWsUrl: () => 'ws://localhost/ws',
 }));

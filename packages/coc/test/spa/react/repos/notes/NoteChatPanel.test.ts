@@ -251,7 +251,7 @@ describe('NoteChatPanel', () => {
         });
 
         it('merges fetched skills with META_SKILL_ITEMS', () => {
-            expect(source).toContain('[...skills, ...META_SKILL_ITEMS]');
+            expect(source).toContain('mergeSkillsWithMeta(skills, getMetaSkillItems(isLoopsEnabled()))');
         });
 
         it('augmentedSkills depends on skills', () => {

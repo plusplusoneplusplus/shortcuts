@@ -8,6 +8,7 @@ const mockSelectedPrId = vi.hoisted(() => ({ value: null as number | string | nu
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '',
+    isRalphEnabled: () => false,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({

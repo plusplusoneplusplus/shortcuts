@@ -87,6 +87,76 @@ function ClassificationBadge({ category, intensity }: { category: HunkCategory; 
     );
 }
 
+// ── Classification info popover ──────────────────────────────────────
+
+const CATEGORY_DESCRIPTIONS: Record<HunkCategory, string> = {
+    logic: 'Behavior changes — new features, bug fixes, conditional changes',
+    mechanical: 'Refactors, renames, moves, signature cascades with no behavior change',
+    test: 'Test file additions/updates, fixtures, mocks',
+    generated: 'Lock files, codegen output, auto-formatted files',
+};
+
+function ClassificationInfoPopover({ onClose }: { onClose: () => void }) {
+    useEffect(() => {
+        function handleKeyDown(e: KeyboardEvent) {
+            if (e.key === 'Escape') onClose();
+        }
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [onClose]);
+
+    return (
+        <>
+            {/* Backdrop */}
+            <div
+                className="fixed inset-0 z-40"
+                onClick={onClose}
+                data-testid="classification-info-backdrop"
+            />
+            {/* Popover */}
+            <div
+                role="dialog"
+                aria-label="Classification Guide"
+                className="absolute right-0 top-full z-50 mt-1 w-72 rounded-md border border-gray-200 bg-white p-3 shadow-lg dark:border-gray-600 dark:bg-gray-800"
+                data-testid="classification-info-popover"
+            >
+                <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-gray-800 dark:text-gray-100">Classification Guide</span>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                        aria-label="Close"
+                        data-testid="classification-info-close"
+                    >
+                        ✕
+                    </button>
+                </div>
+                <p className="mb-2 text-[10px] text-gray-500 dark:text-gray-400">
+                    AI classifies each @@ hunk by change type:
+                </p>
+                <ul className="space-y-1.5">
+                    {HUNK_CATEGORIES.map(cat => (
+                        <li key={cat} className="text-[11px]">
+                            <span className={cn('font-medium', BADGE_COLORS[cat])}>
+                                ● {CATEGORY_LABELS[cat]}
+                            </span>
+                            <br />
+                            <span className="ml-3 text-[10px] text-gray-500 dark:text-gray-400">
+                                {CATEGORY_DESCRIPTIONS[cat]}
+                            </span>
+                        </li>
+                    ))}
+                </ul>
+                <div className="mt-2 border-t border-gray-200 pt-2 text-[10px] text-gray-500 dark:border-gray-600 dark:text-gray-400">
+                    <p><span className="font-medium">Intensity:</span> ●● high &nbsp; ●○ low</p>
+                    <p className="mt-0.5">Dimmed hunks are in unchecked categories.</p>
+                </div>
+            </div>
+        </>
+    );
+}
+
 // ── Classification filter bar ───────────────────────────────────────
 
 function ClassificationFilterBar({ classification }: { classification: UseClassificationReturn }) {
@@ -94,10 +164,11 @@ function ClassificationFilterBar({ classification }: { classification: UseClassi
     const { status, activeFilters, error } = state;
     const isLoading = status === 'loading';
     const isReady = status === 'ready';
+    const [showInfo, setShowInfo] = useState(false);
 
     return (
         <div
-            className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-gray-200 bg-gray-50/70 px-2 py-1 dark:border-gray-700 dark:bg-gray-800/40"
+            className="relative flex shrink-0 flex-wrap items-center gap-1.5 border-b border-gray-200 bg-gray-50/70 px-2 py-1 dark:border-gray-700 dark:bg-gray-800/40"
             data-testid="classification-filter-bar"
         >
             {/* Classify button */}
@@ -132,7 +203,8 @@ function ClassificationFilterBar({ classification }: { classification: UseClassi
                     {HUNK_CATEGORIES.map(cat => (
                         <label
                             key={cat}
-                            className="inline-flex cursor-pointer items-center gap-0.5 text-[11px] text-gray-700 dark:text-gray-300"
+                            className={cn('inline-flex cursor-pointer items-center gap-0.5 text-[11px] font-medium', BADGE_COLORS[cat])}
+                            data-testid={`classification-filter-label-${cat}`}
                         >
                             <input
                                 type="checkbox"
@@ -161,6 +233,19 @@ function ClassificationFilterBar({ classification }: { classification: UseClassi
                     {error}
                 </span>
             )}
+
+            {/* Info icon */}
+            <button
+                type="button"
+                onClick={() => setShowInfo(!showInfo)}
+                className="ml-auto inline-flex h-[18px] w-[18px] items-center justify-center rounded-full text-[11px] text-gray-400 hover:bg-gray-200 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                aria-label="Classification info"
+                data-testid="classification-info-button"
+            >
+                ⓘ
+            </button>
+
+            {showInfo && <ClassificationInfoPopover onClose={() => setShowInfo(false)} />}
         </div>
     );
 }
@@ -402,6 +487,7 @@ function FlatFileList({ files, activePath, onSelect, classification }: FlatFileL
             {files.map(file => {
                 const { dirname, basename } = splitPath(file.path);
                 const isActive = file.path === activePath;
+                const isDimmed = classification?.isFileDimmed(file.path) ?? false;
                 return (
                     <button
                         key={file.path}
@@ -412,9 +498,11 @@ function FlatFileList({ files, activePath, onSelect, classification }: FlatFileL
                             isActive
                                 ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100'
                                 : 'text-gray-800 hover:bg-blue-50 dark:text-gray-200 dark:hover:bg-blue-900/30',
+                            isDimmed && 'opacity-40',
                         )}
                         data-testid="pr-file-row"
                         data-file-path={file.path}
+                        data-file-dimmed={isDimmed || undefined}
                         title={file.path}
                     >
                         {dirname && (
@@ -508,6 +596,7 @@ function FileTreeView({
                     );
                 }
                 const isActive = node.path === activePath;
+                const isDimmed = classification?.isFileDimmed(node.path) ?? false;
                 return (
                     <button
                         key={`file:${node.path}`}
@@ -518,10 +607,12 @@ function FileTreeView({
                             isActive
                                 ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100'
                                 : 'text-gray-800 hover:bg-blue-50 dark:text-gray-200 dark:hover:bg-blue-900/30',
+                            isDimmed && 'opacity-40',
                         )}
                         style={{ paddingLeft: `${6 + depth * 10}px` }}
                         data-testid="pr-file-row"
                         data-file-path={node.path}
+                        data-file-dimmed={isDimmed || undefined}
                         title={node.path}
                     >
                         <span className="min-w-0 flex-1 truncate" data-testid="pr-file-basename">

@@ -78,6 +78,7 @@ vi.mock('../../../../src/server/spa/client/react/ui/BottomSheet', () => ({
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '',
+    isRalphEnabled: () => false,
 }));
 
 // ── Import after mocks ─────────────────────────────────────────────────

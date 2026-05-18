@@ -24,6 +24,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
 let mockCurrentAgentId: string | null = null;
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '/api',
+    isRalphEnabled: () => false,
     isContainerMode: () => true,
     getRawApiBase: () => '/api',
     getHostname: () => 'localhost',

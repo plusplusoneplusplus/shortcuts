@@ -9,6 +9,7 @@ import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '',
+    isRalphEnabled: () => false,
 }));
 
 // Mock AppContext to avoid full context setup.

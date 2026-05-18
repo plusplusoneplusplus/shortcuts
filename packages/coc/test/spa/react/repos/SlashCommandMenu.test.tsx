@@ -6,7 +6,7 @@
 /* @vitest-environment jsdom */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { SlashCommandMenu, META_SKILL_ITEMS } from '../../../../src/server/spa/client/react/features/chat/SlashCommandMenu';
+import { SlashCommandMenu, META_SKILL_ITEMS, getMetaSkillItems, mergeSkillsWithMeta } from '../../../../src/server/spa/client/react/features/chat/SlashCommandMenu';
 
 const SKILLS = [
     { name: 'spec', description: 'Ask the agent to draft a Markdown spec instead of code' },
@@ -224,5 +224,94 @@ describe('SlashCommandMenu (redesigned card)', () => {
         expect(loop).toBeDefined();
         expect(loop?.description).toBeTruthy();
         expect(loop?.args).toBe('[interval] <prompt>');
+    });
+});
+
+describe('getMetaSkillItems', () => {
+    it('includes loop when loops are enabled', () => {
+        const items = getMetaSkillItems(true);
+        expect(items.find(s => s.name === 'loop')).toBeDefined();
+        expect(items.find(s => s.name === 'model')).toBeDefined();
+    });
+
+    it('excludes loop when loops are disabled', () => {
+        const items = getMetaSkillItems(false);
+        expect(items.find(s => s.name === 'loop')).toBeUndefined();
+        expect(items.find(s => s.name === 'model')).toBeDefined();
+    });
+});
+
+describe('mergeSkillsWithMeta', () => {
+    it('appends meta items when no overlap with server skills', () => {
+        const serverSkills = [{ name: 'impl', description: 'Implement code' }];
+        const meta = [{ name: 'model', description: 'Switch AI model' }];
+        const merged = mergeSkillsWithMeta(serverSkills, meta);
+        expect(merged).toHaveLength(2);
+        expect(merged[0].name).toBe('impl');
+        expect(merged[1].name).toBe('model');
+    });
+
+    it('deduplicates when server skill has same name as meta item', () => {
+        const serverSkills = [
+            { name: 'loop', description: 'Rich loop description from SKILL.md' },
+            { name: 'impl', description: 'Implement code' },
+        ];
+        const meta = [
+            { name: 'loop', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
+            { name: 'model', description: 'Switch AI model' },
+        ];
+        const merged = mergeSkillsWithMeta(serverSkills, meta);
+        expect(merged).toHaveLength(3);
+        const loopEntries = merged.filter(s => s.name === 'loop');
+        expect(loopEntries).toHaveLength(1);
+    });
+
+    it('preserves server description but overlays meta args when server lacks args', () => {
+        const serverSkills = [
+            { name: 'loop', description: 'Rich loop description from SKILL.md' },
+        ];
+        const meta = [
+            { name: 'loop', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
+        ];
+        const merged = mergeSkillsWithMeta(serverSkills, meta);
+        const loop = merged.find(s => s.name === 'loop')!;
+        expect(loop.description).toBe('Rich loop description from SKILL.md');
+        expect(loop.args).toBe('[interval] <prompt>');
+    });
+
+    it('keeps server args when server skill already has args', () => {
+        const serverSkills = [
+            { name: 'loop', description: 'Rich description', args: '<server-args>' },
+        ];
+        const meta = [
+            { name: 'loop', description: 'Meta description', args: '[interval] <prompt>' },
+        ];
+        const merged = mergeSkillsWithMeta(serverSkills, meta);
+        const loop = merged.find(s => s.name === 'loop')!;
+        expect(loop.args).toBe('<server-args>');
+    });
+
+    it('uses meta item as fallback when loop is NOT in server skills', () => {
+        const serverSkills = [{ name: 'impl', description: 'Implement code' }];
+        const meta = [
+            { name: 'loop', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
+        ];
+        const merged = mergeSkillsWithMeta(serverSkills, meta);
+        expect(merged).toHaveLength(2);
+        const loop = merged.find(s => s.name === 'loop')!;
+        expect(loop.description).toBe('Run a prompt on a recurring interval');
+        expect(loop.args).toBe('[interval] <prompt>');
+    });
+
+    it('handles empty server skills list', () => {
+        const meta = META_SKILL_ITEMS;
+        const merged = mergeSkillsWithMeta([], meta);
+        expect(merged).toHaveLength(meta.length);
+    });
+
+    it('handles empty meta list', () => {
+        const serverSkills = [{ name: 'impl', description: 'Implement code' }];
+        const merged = mergeSkillsWithMeta(serverSkills, []);
+        expect(merged).toEqual(serverSkills);
     });
 });

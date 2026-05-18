@@ -34,13 +34,14 @@ import { createAskUserTool } from '../llm-tools/ask-user-tool';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import { createWorkItemTool, type BroadcastWorkItemFn } from '../llm-tools/create-work-item-tool';
 import { createBugTool } from '../llm-tools/create-bug-tool';
-import type { ChatMode, ChatPayload, RunScriptPayload } from '../tasks/task-types';
+import type { ChatMode, ChatPayload, PrClassificationPayload, RunScriptPayload } from '../tasks/task-types';
 import {
     hasCommitChatContext,
     hasPullRequestChatContext,
     hasResolveCommentsContext,
     hasTaskGenerationContext,
     isChatPayload,
+    isPrClassificationPayload,
     isRunScriptPayload,
     isRunWorkflowPayload,
     resolveInstructionMode,
@@ -198,6 +199,10 @@ export function extractPrompt(task: QueuedTask): string {
     if (isRunScriptPayload(task.payload)) {
         const payload = task.payload as unknown as RunScriptPayload;
         return `Run script: \`${payload.script}\``;
+    }
+
+    if (isPrClassificationPayload(task.payload)) {
+        return (task.payload as unknown as PrClassificationPayload).prompt;
     }
 
     if (isChatPayload(task.payload)) {

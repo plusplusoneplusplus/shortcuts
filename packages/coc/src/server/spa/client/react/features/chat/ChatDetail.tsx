@@ -19,7 +19,7 @@ import { useAttachedContext } from './hooks/useAttachedContext';
 import { useSlashCommands } from './hooks/useSlashCommands';
 import { useModelCommand } from './hooks/useModelCommand';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
-import { META_SKILL_ITEMS, type SkillItem } from './SlashCommandMenu';
+import { getMetaSkillItems, mergeSkillsWithMeta, type SkillItem } from './SlashCommandMenu';
 import { scanTurnsForCreatedFiles } from '../../utils/conversationScan';
 import { toQueueProcessId, isQueueProcessId, toTaskId } from '../../utils/queue-process-id';
 import type { ClientConversationTurn } from '../../types/dashboard';
@@ -170,7 +170,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const { models: availableModels } = useModels();
     const enabledModels = availableModels.filter(m => m.enabled);
     const modelCommand = useModelCommand(enabledModels);
-    const augmentedSkills = useMemo(() => [...skills, ...META_SKILL_ITEMS], [skills]);
+    const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isLoopsEnabled())), [skills]);
     const slashCommands = useSlashCommands(augmentedSkills);
 
     // Loop management
@@ -252,6 +252,18 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     );
     const effectivePlanPath = planPath || detectedPlanFile;
 
+    // Detect goal.md or *.goal.md created mid-conversation for direct Ralph launch
+    const detectedGoalFile = useMemo(
+        () => createdFiles.find(f => {
+            const lower = f.filePath.toLowerCase();
+            if (lower.endsWith('.goal.md')) return true;
+            const sep = lower.lastIndexOf('/') >= 0 ? '/' : '\\';
+            const base = lower.slice(lower.lastIndexOf(sep) + 1);
+            return base === 'goal.md';
+        })?.filePath ?? '',
+        [createdFiles],
+    );
+
     const handleCopySelected = useCallback(async () => {
         if (!turnsContainerRef.current || selection.selectedTurns.size === 0) return;
         try {
@@ -293,6 +305,20 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             .catch(() => { /* best-effort persist */ });
     }, [detectedPlanFile, planPath, task?.metadata?.planFilePath, processId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    // Persist detected goal file path to process metadata (fire at most once per load)
+    const goalPatchedRef = useRef(false);
+    useEffect(() => {
+        if (goalPatchedRef.current) return;
+        if (!detectedGoalFile || task?.metadata?.goalFilePath || !processId) return;
+        goalPatchedRef.current = true;
+        const merged = { ...(task?.metadata ?? {}), goalFilePath: detectedGoalFile };
+        getSpaCocClient().processes.update(processId, { metadata: merged })
+            .then((data: any) => {
+                if (data?.process) setTask((prev: any) => prev ? { ...prev, metadata: data.process.metadata } : prev);
+            })
+            .catch(() => { /* best-effort persist */ });
+    }, [detectedGoalFile, task?.metadata?.goalFilePath, processId]); // eslint-disable-line react-hooks/exhaustive-deps
+
     // Fetch note edit snapshots for note-chat processes (needed for NoteEditCard)
     useEffect(() => {
         if (!processId || !isTerminal) return;
@@ -308,6 +334,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // Reset patch guard when switching tasks
     useEffect(() => {
         planPatchedRef.current = false;
+        goalPatchedRef.current = false;
         setInvalidScratchpadPaths(new Set());
     }, [taskId]);
 
@@ -1108,19 +1135,40 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     {/* Ralph grilling complete — show Start Ralph panel */}
                     {(() => {
                         const ralphCtx = getRalphContext(task);
-                        if (!ralphCtx) return null;
-                        if (ralphCtx.phase !== 'grilling') return null;
-                        if (task?.status !== 'completed') return null;
-                        return (
-                            <RalphStartPanel
-                                processId={processId ?? taskId}
-                                workspaceId={workspaceId}
-                                turns={turns}
-                                onStarted={(newProcessId) => {
-                                    queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newProcessId, repoId: workspaceId });
-                                }}
-                            />
-                        );
+                        // Path 1: traditional grilling-phase → start
+                        if (ralphCtx && ralphCtx.phase === 'grilling' && task?.status === 'completed') {
+                            return (
+                                <RalphStartPanel
+                                    processId={processId ?? taskId}
+                                    workspaceId={workspaceId}
+                                    turns={turns}
+                                    onStarted={(newProcessId) => {
+                                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newProcessId, repoId: workspaceId });
+                                    }}
+                                />
+                            );
+                        }
+                        // Path 2: goal.md detected → direct launch (skip grilling)
+                        const goalPath = detectedGoalFile || (task?.metadata?.goalFilePath as string | undefined) || '';
+                        if (
+                            goalPath
+                            && isRalphEnabled()
+                            && !ralphCtx
+                            && task?.status === 'completed'
+                        ) {
+                            return (
+                                <RalphStartPanel
+                                    processId={processId ?? taskId}
+                                    workspaceId={workspaceId}
+                                    turns={turns}
+                                    goalFilePath={goalPath}
+                                    onStarted={(newProcessId) => {
+                                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newProcessId, repoId: workspaceId });
+                                    }}
+                                />
+                            );
+                        }
+                        return null;
                     })()}
                     {/* Plan-mode complete — offer one-click handoff to autopilot */}
                     {isTerminal && !planChatBusy && resolveLoadedTaskMode(task) === 'plan' && effectivePlanPath && (

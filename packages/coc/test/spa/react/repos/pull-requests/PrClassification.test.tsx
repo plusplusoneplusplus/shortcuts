@@ -50,10 +50,14 @@ function createMockClassification(overrides: Partial<UseClassificationReturn> = 
 
     // Build index
     const byHunk = new Map<string, any>();
+    const byFile = new Map<string, any[]>();
     const badges = new Map<string, any>();
     if (result) {
         for (const c of result.classifications) {
             byHunk.set(`${c.file}:${c.hunkIndex}`, c);
+            const arr = byFile.get(c.file) ?? [];
+            arr.push(c);
+            byFile.set(c.file, arr);
             const existing = badges.get(c.file);
             if (!existing || c.category === 'logic') {
                 badges.set(c.file, { category: c.category, intensity: c.intensity });
@@ -76,6 +80,11 @@ function createMockClassification(overrides: Partial<UseClassificationReturn> = 
             const c = byHunk.get(`${path}:${idx}`);
             if (!c) return false;
             return !activeFilters.has(c.category);
+        },
+        isFileDimmed: (path: string) => {
+            const hunks = byFile.get(path);
+            if (!hunks || hunks.length === 0) return false;
+            return hunks.every((h: any) => !activeFilters.has(h.category));
         },
         ...overrides,
     };
@@ -159,6 +168,85 @@ describe('ClassificationFilterBar', () => {
         fireEvent.click(screen.getByTestId('classification-filter-all'));
         expect(setFilters).toHaveBeenCalled();
     });
+
+    it('renders color-coded labels for each category', () => {
+        const mock = createMockClassification({
+            state: { status: 'ready', activeFilters: new Set(['logic', 'mechanical', 'test', 'generated']), result: mockResult },
+        });
+        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+
+        const logicLabel = screen.getByTestId('classification-filter-label-logic');
+        const mechLabel = screen.getByTestId('classification-filter-label-mechanical');
+        const testLabel = screen.getByTestId('classification-filter-label-test');
+        const genLabel = screen.getByTestId('classification-filter-label-generated');
+
+        // Each label should have the category color class
+        expect(logicLabel.className).toContain('text-orange-');
+        expect(mechLabel.className).toContain('text-gray-');
+        expect(testLabel.className).toContain('text-blue-');
+        expect(genLabel.className).toContain('text-purple-');
+    });
+
+    it('renders info icon button', () => {
+        const mock = createMockClassification();
+        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        expect(screen.getByTestId('classification-info-button')).toBeInTheDocument();
+    });
+
+    it('opens info popover on info button click', () => {
+        const mock = createMockClassification();
+        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        expect(screen.queryByTestId('classification-info-popover')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('classification-info-button'));
+        expect(screen.getByTestId('classification-info-popover')).toBeInTheDocument();
+        expect(screen.getByText('Classification Guide')).toBeInTheDocument();
+    });
+
+    it('closes info popover on close button click', () => {
+        const mock = createMockClassification();
+        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        fireEvent.click(screen.getByTestId('classification-info-button'));
+        expect(screen.getByTestId('classification-info-popover')).toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('classification-info-close'));
+        expect(screen.queryByTestId('classification-info-popover')).not.toBeInTheDocument();
+    });
+
+    it('closes info popover on backdrop click', () => {
+        const mock = createMockClassification();
+        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        fireEvent.click(screen.getByTestId('classification-info-button'));
+        expect(screen.getByTestId('classification-info-popover')).toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('classification-info-backdrop'));
+        expect(screen.queryByTestId('classification-info-popover')).not.toBeInTheDocument();
+    });
+
+    it('closes info popover on Escape key', () => {
+        const mock = createMockClassification();
+        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        fireEvent.click(screen.getByTestId('classification-info-button'));
+        expect(screen.getByTestId('classification-info-popover')).toBeInTheDocument();
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByTestId('classification-info-popover')).not.toBeInTheDocument();
+    });
+
+    it('popover has correct accessibility attributes', () => {
+        const mock = createMockClassification();
+        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        fireEvent.click(screen.getByTestId('classification-info-button'));
+        const popover = screen.getByTestId('classification-info-popover');
+        expect(popover).toHaveAttribute('role', 'dialog');
+        expect(popover).toHaveAttribute('aria-label', 'Classification Guide');
+    });
+
+    it('popover shows all category descriptions', () => {
+        const mock = createMockClassification();
+        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        fireEvent.click(screen.getByTestId('classification-info-button'));
+        expect(screen.getByText(/Behavior changes/)).toBeInTheDocument();
+        expect(screen.getByText(/Refactors, renames/)).toBeInTheDocument();
+        expect(screen.getByText(/Test file additions/)).toBeInTheDocument();
+        expect(screen.getByText(/Lock files, codegen/)).toBeInTheDocument();
+    });
 });
 
 describe('ClassificationBadge (file tree badges)', () => {
@@ -206,5 +294,58 @@ describe('Hunk dimming', () => {
         expect(tags.length).toBe(2);
         expect(tags[0]).toHaveTextContent('Logic');
         expect(tags[1]).toHaveTextContent('Mechanical');
+    });
+});
+
+describe('File dimming', () => {
+    it('dims file rows whose hunks are all in unchecked categories', () => {
+        // Only 'logic' is active — test/main.test.ts has only 'test' hunks, so it should be dimmed
+        const mock = createMockClassification({
+            state: { status: 'ready', activeFilters: new Set<HunkCategory>(['logic']), result: mockResult },
+        });
+        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        const rows = screen.getAllByTestId('pr-file-row');
+        const testFileRow = rows.find(r => r.getAttribute('data-file-path') === 'test/main.test.ts');
+        expect(testFileRow).toBeDefined();
+        expect(testFileRow!.getAttribute('data-file-dimmed')).toBe('true');
+        expect(testFileRow!.className).toContain('opacity-40');
+    });
+
+    it('does not dim file rows that have hunks in active categories', () => {
+        // 'logic' is active — src/main.ts has a logic hunk, so it should NOT be dimmed
+        const mock = createMockClassification({
+            state: { status: 'ready', activeFilters: new Set<HunkCategory>(['logic']), result: mockResult },
+        });
+        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        const rows = screen.getAllByTestId('pr-file-row');
+        const mainFileRow = rows.find(r => r.getAttribute('data-file-path') === 'src/main.ts');
+        expect(mainFileRow).toBeDefined();
+        expect(mainFileRow!.getAttribute('data-file-dimmed')).toBeNull();
+    });
+
+    it('does not dim files when all categories are active', () => {
+        const mock = createMockClassification({
+            state: {
+                status: 'ready',
+                activeFilters: new Set<HunkCategory>(['logic', 'mechanical', 'test', 'generated']),
+                result: mockResult,
+            },
+        });
+        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        const rows = screen.getAllByTestId('pr-file-row');
+        for (const row of rows) {
+            expect(row.getAttribute('data-file-dimmed')).toBeNull();
+        }
+    });
+
+    it('does not dim files when classification is not ready', () => {
+        const mock = createMockClassification({
+            state: { status: 'idle', activeFilters: new Set<HunkCategory>(['logic']) },
+        });
+        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        const rows = screen.getAllByTestId('pr-file-row');
+        for (const row of rows) {
+            expect(row.getAttribute('data-file-dimmed')).toBeNull();
+        }
     });
 });

@@ -1,8 +1,8 @@
 /**
  * Executor Registry — Classification Routing Tests
  *
- * Verifies that tasks carrying `context.classifyDiff` are routed to the
- * ClassificationExecutor instead of the default mode-based executors.
+ * Verifies that pr-classification tasks and legacy chat tasks carrying
+ * `context.classifyDiff` are routed to the ClassificationExecutor.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -12,6 +12,7 @@ import { ClassificationExecutor } from '../../../src/server/executors/classifica
 import { AutopilotExecutor } from '../../../src/server/executors/autopilot-executor';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
+import { TaskDefs } from '../../../src/server/tasks/task-types';
 
 vi.mock('fs', async (importOriginal) => {
     const actual = await importOriginal<typeof import('fs')>();
@@ -63,6 +64,28 @@ function createRegistry() {
 function makeClassifyTask(): QueuedTask {
     return {
         id: 'task-classify-1',
+        type: TaskDefs.prClassification.kind,
+        priority: 'normal',
+        status: 'running',
+        createdAt: Date.now(),
+        payload: {
+            kind: TaskDefs.prClassification.kind,
+            prompt: 'Classify PR #42',
+            workspaceId: 'ws-1',
+            repoId: 'repo-1',
+            prId: '42',
+            headSha: 'deadbeef',
+            workingDirectory: '/repo',
+            skills: ['classify-diff'],
+        },
+        config: {},
+        displayName: 'Classify PR #42',
+    } as unknown as QueuedTask;
+}
+
+function makeLegacyClassifyTask(): QueuedTask {
+    return {
+        id: 'task-classify-legacy',
         type: 'chat',
         priority: 'normal',
         status: 'running',
@@ -86,9 +109,27 @@ function makeClassifyTask(): QueuedTask {
 }
 
 describe('ExecutorRegistry — classification routing', () => {
-    it('dispatches classifyDiff tasks to ClassificationExecutor', async () => {
+    it('dispatches first-class pr-classification tasks to ClassificationExecutor', async () => {
         const { registry } = createRegistry();
         const task = makeClassifyTask();
+
+        const classifySpy = vi.spyOn(ClassificationExecutor.prototype, 'execute').mockResolvedValue({
+            response: 'classified',
+            timeline: [],
+        });
+        const autopilotSpy = vi.spyOn(AutopilotExecutor.prototype, 'execute');
+
+        await registry.dispatch(task, 'Classify PR #42');
+
+        expect(classifySpy).toHaveBeenCalledOnce();
+        expect(autopilotSpy).not.toHaveBeenCalled();
+        classifySpy.mockRestore();
+        autopilotSpy.mockRestore();
+    });
+
+    it('dispatches legacy classifyDiff chat tasks to ClassificationExecutor', async () => {
+        const { registry } = createRegistry();
+        const task = makeLegacyClassifyTask();
 
         const classifySpy = vi.spyOn(ClassificationExecutor.prototype, 'execute').mockResolvedValue({
             response: 'classified',
@@ -107,7 +148,6 @@ describe('ExecutorRegistry — classification routing', () => {
     it('routing wins over autopilot mode', async () => {
         const { registry } = createRegistry();
         const task = makeClassifyTask();
-        (task.payload as any).mode = 'autopilot';
 
         const classifySpy = vi.spyOn(ClassificationExecutor.prototype, 'execute').mockResolvedValue({
             response: 'classified',
@@ -147,5 +187,19 @@ describe('ExecutorRegistry — classification routing', () => {
 
         expect(classifySpy).not.toHaveBeenCalled();
         classifySpy.mockRestore();
+    });
+
+    it('resolves working directory from pr-classification payload', () => {
+        const { registry } = createRegistry();
+        const task = makeClassifyTask();
+        expect(registry.getWorkingDirectory(task)).toBe('/repo');
+    });
+
+    it('falls back to defaultWorkingDirectory for pr-classification without workingDirectory', () => {
+        const { registry } = createRegistry();
+        const task = makeClassifyTask();
+        delete (task.payload as any).workingDirectory;
+        // registry was created without defaultWorkingDirectory so returns undefined
+        expect(registry.getWorkingDirectory(task)).toBeUndefined();
     });
 });

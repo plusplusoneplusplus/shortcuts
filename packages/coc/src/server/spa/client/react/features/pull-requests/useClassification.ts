@@ -53,6 +53,8 @@ export interface UseClassificationReturn {
     getHunkClassification: (filePath: string, hunkIndex: number) => HunkClassification | undefined;
     /** Whether a hunk should be dimmed (classified but not in active filters). */
     isHunkDimmed: (filePath: string, hunkIndex: number) => boolean;
+    /** Whether a file should be dimmed (all its hunks are in unchecked categories). */
+    isFileDimmed: (filePath: string) => boolean;
 }
 
 // ── Category priority for badge display ───────────────────────────────
@@ -248,6 +250,13 @@ export function useClassification(
         return !state.activeFilters.has(c.category);
     }, [state.status, state.activeFilters]);
 
+    const isFileDimmed = useCallback((filePath: string): boolean => {
+        if (state.status !== 'ready') return false;
+        const hunks = indexRef.current.byFile.get(filePath);
+        if (!hunks || hunks.length === 0) return false;
+        return hunks.every(h => !state.activeFilters.has(h.category));
+    }, [state.status, state.activeFilters]);
+
     return {
         state,
         classify,
@@ -256,5 +265,6 @@ export function useClassification(
         getFileBadge,
         getHunkClassification,
         isHunkDimmed,
+        isFileDimmed,
     };
 }

@@ -33,3 +33,6 @@ export { NotificationBell } from './NotificationBell';
 export { DASHBOARD_AI_COMMANDS } from './ai-commands';
 export type { DashboardAICommand } from './ai-commands';
 export { shortenFilePath, linkifyFilePaths, FILE_PATH_RE } from './file-path-utils';
+export { RalphLaunchDialog } from './RalphLaunchDialog';
+export type { RalphLaunchDialogProps } from './RalphLaunchDialog';
+export { isGoalFile } from './goal-file-utils';

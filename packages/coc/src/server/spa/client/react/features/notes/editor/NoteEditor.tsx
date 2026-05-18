@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type React from 'react';
 import type { Editor } from '@tiptap/core';
 import type { CommentThread } from '../notesApi';
@@ -29,6 +29,9 @@ import type { NoteFrontMatterParseResult } from './noteFrontMatter';
 import { composeMarkdownWithFrontMatter, parseNoteFrontMatter } from './noteFrontMatter';
 import { notesApi } from '../notesApi';
 import { useQueue } from '../../../contexts/QueueContext';
+import { isGoalFile } from '../../../shared/goal-file-utils';
+import { RalphLaunchDialog } from '../../../shared/RalphLaunchDialog';
+import { isRalphEnabled } from '../../../utils/config';
 
 export type NoteViewMode = 'rich' | 'source';
 
@@ -183,6 +186,9 @@ export function NoteEditor({
     const canRunSkill = Boolean(notePath);
     const { dispatch: queueDispatch } = useQueue();
     const normalizedNotePath = notePath?.replace(/\\/g, '/') ?? '';
+    const isGoal = useMemo(() => isGoalFile(normalizedNotePath), [normalizedNotePath]);
+    const ralphEnabled = isRalphEnabled();
+    const [ralphDialogOpen, setRalphDialogOpen] = useState(false);
     const contextFilePath = !normalizedNotePath ? '' : notesRoot
         ? notesRoot.replace(/\\/g, '/') + '/' + normalizedNotePath
         : normalizedNotePath;
@@ -243,6 +249,17 @@ export function NoteEditor({
         setViewModeRaw(mode);
         onViewModeChange?.(mode);
     }, [onViewModeChange]);
+
+    // ── Get current editor content as markdown (for Ralph launch) ───────────
+    const getCurrentGoalSpec = useCallback(() => {
+        if (viewMode === 'source') return rawMarkdown;
+        const html = editorRef.current?.getHTML() ?? '';
+        let md = htmlToMarkdown(html);
+        md = rewriteImageSrcToRelative(md);
+        const fm = frontMatterResultRef.current;
+        if (fm.kind === 'valid') md = composeMarkdownWithFrontMatter(fm.frontMatter, md);
+        return md;
+    }, [viewMode, rawMarkdown]);
 
     // ── Load git initialized state ──────────────────────────────────────────
 
@@ -1143,6 +1160,19 @@ export function NoteEditor({
                                     <span>⚡</span> Run Skill
                                 </button>
                             )}
+                            {isGoal && canRunSkill && ralphEnabled && (
+                                <button
+                                    type="button"
+                                    className="h-7 px-2 rounded flex items-center gap-1 text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
+                                    title="Run Ralph"
+                                    aria-label="Run Ralph"
+                                    data-testid="note-run-ralph-btn"
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => setRalphDialogOpen(true)}
+                                >
+                                    <span>🔄</span> Run Ralph
+                                </button>
+                            )}
                             <button
                                 type="button"
                                 className={
@@ -1426,6 +1456,22 @@ export function NoteEditor({
                     editCount={aiEditCount}
                     onNext={handleAiEditNext}
                     onDismiss={handleAiEditDismiss}
+                />
+            )}
+
+            {/* Ralph launch dialog */}
+            {ralphDialogOpen && isGoal && (
+                <RalphLaunchDialog
+                    open={ralphDialogOpen}
+                    workspaceId={workspaceId}
+                    sourceLabel={normalizedNotePath.split('/').pop() ?? ''}
+                    goalSpec={getCurrentGoalSpec()}
+                    folderPath={notesRoot}
+                    onClose={() => setRalphDialogOpen(false)}
+                    onLaunched={(processId) => {
+                        setRalphDialogOpen(false);
+                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: workspaceId });
+                    }}
                 />
             )}
         </div>

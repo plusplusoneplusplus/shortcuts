@@ -1,9 +1,10 @@
 /**
  * Domain-Specific Task Types
  *
- * Unified task type model: three task types with mode-based AI dispatch.
+ * Unified task type model with mode-based AI dispatch for chat tasks.
  *
- *   TaskType = 'chat' | 'run-workflow' | 'run-script'
+ *   CocTaskKind = 'chat' | 'run-workflow' | 'run-script' | 'memory-promote'
+ *                 | 'background-review' | 'pr-classification'
  *   ChatMode = 'ask' | 'plan' | 'autopilot'
  *
  * All former AI task types (follow-prompt, ai-clarification, code-review,
@@ -80,6 +81,12 @@ export const TaskDefs = {
     backgroundReview: {
         kind: 'background-review',
         label: 'Background Review',
+        exclusive: false,
+        visible: false,
+    },
+    prClassification: {
+        kind: 'pr-classification',
+        label: 'PR Classification',
         exclusive: false,
         visible: false,
     },
@@ -311,11 +318,22 @@ export interface BackgroundReviewPayload {
     timeoutMs?: number;
 }
 
+export interface PrClassificationPayload {
+    readonly kind: 'pr-classification';
+    workspaceId: string;
+    repoId: string;
+    prId: string;
+    headSha: string;
+    prompt: string;
+    workingDirectory?: string;
+    skills?: string[];
+}
+
 // ============================================================================
 // Payload Union
 // ============================================================================
 
-export type TaskPayload = ChatPayload | RunWorkflowPayload | RunScriptPayload | MemoryPromotePayload | BackgroundReviewPayload;
+export type TaskPayload = ChatPayload | RunWorkflowPayload | RunScriptPayload | MemoryPromotePayload | BackgroundReviewPayload | PrClassificationPayload;
 
 // ============================================================================
 // Type Guards
@@ -343,6 +361,10 @@ export function isMemoryPromotePayload(payload: Record<string, unknown>): payloa
 
 export function isBackgroundReviewPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & BackgroundReviewPayload {
     return payload.kind === 'background-review';
+}
+
+export function isPrClassificationPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & PrClassificationPayload {
+    return payload.kind === 'pr-classification';
 }
 
 /** Check whether a chat payload carries task-generation context. */

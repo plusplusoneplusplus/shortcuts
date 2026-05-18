@@ -16,6 +16,7 @@ configure({ asyncUtilTimeout: 5000 });
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => 'http://localhost:4000/api',
+    isRalphEnabled: () => false,
     getDashboardConfig: () => ({ apiBase: 'http://localhost:4000/api' }),
 }));
 

@@ -1,7 +1,7 @@
 import type { ConversationTurn, CopilotSDKService, FileToolCallCacheStore, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import { approveAllPermissions, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../tasks/task-types';
-import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext, hasCommitChatContext, hasNoteChatContext, hasNoteCreateContext, hasClassifyDiffContext, isBackgroundReviewPayload, isMemoryPromotePayload } from '../tasks/task-types';
+import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext, hasCommitChatContext, hasNoteChatContext, hasNoteCreateContext, hasClassifyDiffContext, isBackgroundReviewPayload, isMemoryPromotePayload, isPrClassificationPayload } from '../tasks/task-types';
 import type { ChatMode } from '../tasks/task-types';
 import type { ExecutionContext } from '../task-strategies';
 import { TaskStrategyRegistry } from '../task-strategies';
@@ -133,6 +133,7 @@ export class ExecutorRegistry {
         }
         if (isRunWorkflowPayload(task.payload)) return this.workflowExecutor.execute(task);
         if (isRunScriptPayload(task.payload)) return new ShellExecutor(this.store, this.dataDir, this.defaultWorkingDirectory).execute(task);
+        if (isPrClassificationPayload(task.payload)) return this.classificationExecutor.execute(task, task.payload.prompt);
         if (isChatPayload(task.payload) && !isChatFollowUp(task.payload)) {
             const payload = task.payload as unknown as ChatPayload;
             const executor = this.resolveChatExecutor(task, payload);
@@ -156,6 +157,7 @@ export class ExecutorRegistry {
     getWorkingDirectory(task: QueuedTask): string | undefined {
         if (isRunWorkflowPayload(task.payload)) return task.payload.workingDirectory || this.defaultWorkingDirectory;
         if (isRunScriptPayload(task.payload)) return task.payload.workingDirectory || this.defaultWorkingDirectory;
+        if (isPrClassificationPayload(task.payload)) return task.payload.workingDirectory || this.defaultWorkingDirectory;
         if (isChatPayload(task.payload)) return task.payload.workingDirectory || (task.payload as unknown as ChatPayload).folderPath || this.defaultWorkingDirectory;
         return this.defaultWorkingDirectory;
     }
