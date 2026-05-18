@@ -354,6 +354,7 @@ export const DEFAULT_BUNDLED_SKILLS: readonly string[] = [
     'terse-replies',
     'for-each',
     'map-reduce',
+    'grill-me',
 ];
 
 /** Default configuration values */
