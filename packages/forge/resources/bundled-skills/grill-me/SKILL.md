@@ -3,7 +3,7 @@ name: grill-me
 description: Interview the user about a plan or design and produce an autonomy-ready spec artifact. Use when the user wants to stress-test a plan, get grilled on a design, mentions "grill me", or when promoting an ask-mode chat into a Ralph loop.
 metadata:
   author: Yiheng Tao
-  version: "0.1.1"
+  version: "0.1.2"
 ---
 
 # Grill Me
