@@ -93,5 +93,10 @@ export const BUNDLED_SKILLS_REGISTRY: readonly BundledSkill[] = [
         name: 'grill-me',
         description: 'Interview the user about a plan or design and produce an autonomy-ready spec artifact with decision tags and definition-of-done for Ralph loops. Triggers on "grill me", design stress-tests, or Ralph promotion synthesis.',
         relativePath: 'grill-me',
+    },
+    {
+        name: 'excalidraw-diagram',
+        description: 'Generate, read, and iteratively modify Excalidraw diagrams during conversations with interactive inline previews via excalidraw:// links',
+        relativePath: 'excalidraw-diagram',
     }
 ];
