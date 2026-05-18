@@ -36,6 +36,8 @@ import {
 } from '../contexts/GitReviewPopOutContext';
 import { getHostname } from '../utils/config';
 import { extractFilePathsFromDiff } from '../features/git/diff/diffSource';
+import { useClassification } from '../features/git/diff/useClassification';
+import type { ClassificationKey } from '../features/git/diff/diffSource';
 import type { GitCommitItem } from '../features/git/commits/CommitList';
 import type { BranchRangeInfo } from '../features/git/branches/BranchChanges';
 import type { BranchRangeFile } from '../features/git/branches/BranchAllFilesDiff';
@@ -333,6 +335,11 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
     const [prTitle, setPrTitle] = useState<string | undefined>(undefined);
     const [headSha, setHeadSha] = useState<string | undefined>(undefined);
 
+    // Classification hook for PR diff
+    const classificationKey: ClassificationKey | undefined =
+        headSha ? { type: 'pr', repoId, identifier: `${prId}:${headSha}` } : undefined;
+    const classification = useClassification(classificationKey);
+
     const handleFileSelect = useCallback((filePath: string) => {
         setHunkTarget(undefined);
         setSelectedFilePath(prev => prev === filePath ? null : filePath);
@@ -385,36 +392,72 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
         );
     }
 
+    const classifyStatus = classification.state.status;
+
     return (
-        <div className="flex flex-1 min-h-0">
-            <PopOutFilePanel
-                workspaceId={workspaceId}
-                files={fileList}
-                selectedFilePath={selectedFilePath}
-                onFileSelect={handleFileSelect}
-            />
-            <div className="flex-1 min-w-0 overflow-hidden">
-                {selectedFilePath ? (
-                    <FileDiffPanel
-                        key={`pr-${prId}-${selectedFilePath}`}
-                        workspaceId={workspaceId}
-                        filePath={selectedFilePath}
-                        source={createPrDiffSource(workspaceId, repoId, prId, {
-                            headSha,
-                            files: filePaths,
-                            title: prTitle,
-                        })}
-                        onNavigateToFile={handleNavigateToFile}
-                        initialHunkTarget={hunkTarget}
-                        onBack={handleBack}
-                        backLabel="All files"
-                    />
-                ) : (
-                    <div className="flex flex-col items-center justify-center flex-1 gap-2 text-xs text-[#848484]">
-                        <span>Select a file to view its diff</span>
-                        <span className="text-[10px]">{fileList.length} file{fileList.length !== 1 ? 's' : ''} changed</span>
-                    </div>
+        <div className="flex flex-col flex-1 min-h-0">
+            {/* Classification toolbar */}
+            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#2a2a2a]" data-testid="pr-popout-classify-bar">
+                <button
+                    type="button"
+                    onClick={classification.classify}
+                    disabled={classifyStatus === 'loading'}
+                    className={
+                        classifyStatus === 'loading'
+                            ? 'inline-flex h-6 items-center gap-1 rounded border border-gray-300 bg-gray-100 px-2 text-[11px] font-medium text-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-500 cursor-wait'
+                            : 'inline-flex h-6 items-center gap-1 rounded border border-indigo-400 bg-indigo-50 px-2 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500 dark:bg-indigo-900/30 dark:text-indigo-200 dark:hover:bg-indigo-900/50'
+                    }
+                    data-testid="pr-popout-classify-button"
+                >
+                    {classifyStatus === 'loading' ? (
+                        <>
+                            <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                            Classifying…
+                        </>
+                    ) : classifyStatus === 'ready' ? 'Re-classify' : 'Classify'}
+                </button>
+                {classifyStatus === 'ready' && (
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                        Classification complete — results shown in file list
+                    </span>
                 )}
+                {classification.state.error && (
+                    <span className="text-[10px] text-red-600 dark:text-red-400">
+                        {classification.state.error}
+                    </span>
+                )}
+            </div>
+            {/* Main content */}
+            <div className="flex flex-1 min-h-0">
+                <PopOutFilePanel
+                    workspaceId={workspaceId}
+                    files={fileList}
+                    selectedFilePath={selectedFilePath}
+                    onFileSelect={handleFileSelect}
+                />
+                <div className="flex-1 min-w-0 overflow-hidden">
+                    {selectedFilePath ? (
+                        <FileDiffPanel
+                            key={`pr-${prId}-${selectedFilePath}`}
+                            workspaceId={workspaceId}
+                            filePath={selectedFilePath}
+                            source={createPrDiffSource(workspaceId, repoId, prId, {
+                                headSha,
+                                files: filePaths,
+                                title: prTitle,
+                            })}
+                            onNavigateToFile={handleNavigateToFile}
+                            initialHunkTarget={hunkTarget}
+                            onBack={handleBack}
+                            backLabel="All files"
+                        />
+                    ) : (
+                        <div className="flex flex-col items-center justify-center flex-1 gap-2 text-xs text-[#848484]">
+                            <span>Select a file to view its diff</span>
+                            <span className="text-[10px]">{fileList.length} file{fileList.length !== 1 ? 's' : ''} changed</span>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

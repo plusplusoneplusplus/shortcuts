@@ -39,6 +39,8 @@ import { PrAiAssistantDrawer } from './PrAiAssistantDrawer';
 import { SHOW_FOCUSED_DIFF } from '../../featureFlags';
 import { useClassification } from '../git/diff/useClassification';
 import type { ClassificationKey } from '../git/diff/diffSource';
+import { buildGitPrPopOutUrl } from '../../layout/Router';
+import { useGitReviewPopOut, gitReviewPrPopOutKey } from '../../contexts/GitReviewPopOutContext';
 import {
     buildAiThreadGroupsFromThreads,
     buildCheckRowsFromChecks,
@@ -109,6 +111,18 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
             : undefined;
     const classificationHook = useClassification(classificationKey);
     const classification = SHOW_FOCUSED_DIFF ? classificationHook : undefined;
+
+    // Pop-out context for opening PR review in a separate window
+    const { markPoppedOut } = useGitReviewPopOut();
+    const workspaceId = state.workspace ?? String(repoId);
+
+    const handleFileClick = useCallback((filePath: string) => {
+        const url = buildGitPrPopOutUrl(workspaceId, String(repoId), String(prId));
+        const win = window.open(url, `coc-git-review-pr-${prId}`, 'width=1200,height=800');
+        if (win) {
+            markPoppedOut(gitReviewPrPopOutKey(workspaceId, String(prId)));
+        }
+    }, [workspaceId, repoId, prId, markPoppedOut]);
 
     const switchTab = useCallback(
         (tab: PrDetailTab) => {
@@ -521,6 +535,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                                 files={diff}
                                 isMobile={isMobile}
                                 classification={classification}
+                                onFileClick={handleFileClick}
                             />
                         </div>
                     </div>
