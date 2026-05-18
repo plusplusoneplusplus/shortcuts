@@ -720,6 +720,19 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
     const htmlEmbedEnabled = useHtmlEmbedPreference(wsId) && !turn.streaming;
     const assistantRender = !isUser ? buildAssistantRender(turn, wsId, { htmlEmbedEnabled }) : null;
     const userContentText = isUser ? (turn.content || '') : '';
+    const userContentHtml = useMemo(() => {
+        if (!isUser || !userContentText.trim()) return '';
+        // Split on backtick-delimited segments so paths inside inline code are not linkified.
+        // Segments at even indices are normal text; odd indices are code spans.
+        const parts = userContentText.split(/`([^`]*)`/);
+        return parts.map((part, i) => {
+            if (i % 2 === 1) {
+                // Code span — escape only, no linkification
+                return `<code>${escapeHtml(part)}</code>`;
+            }
+            return linkifyFilePaths(escapeHtml(part));
+        }).join('');
+    }, [isUser, userContentText]);
     const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>({});
     const [showRaw, setShowRaw] = useState(false);
     const [copied, setCopied] = useState(false);
@@ -1167,9 +1180,9 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                         </span>
                     )}
                     {isUser && !showRaw && userContentText.trim() && (
-                        <div className="whitespace-pre-wrap break-words text-[13px]" data-testid="user-plain-text">
-                            {userContentText}
-                        </div>
+                        <div className="whitespace-pre-wrap break-words text-[13px]" data-testid="user-plain-text"
+                            dangerouslySetInnerHTML={{ __html: userContentHtml }}
+                        />
                     )}
                     {isUser && showRaw && (
                         <div className="raw-content-view rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#ffffff] dark:bg-[#1e1e1e] overflow-auto max-h-[600px]">
