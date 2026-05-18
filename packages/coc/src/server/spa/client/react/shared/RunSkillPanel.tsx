@@ -58,6 +58,8 @@ export interface RunSkillPanelProps {
     afterModelContent?: React.ReactNode;
 }
 
+const ENDEV_XDPU_SKILL_NAME = 'EnDev-xDpu';
+
 export function RunSkillPanel({
     skills,
     recentItems,
@@ -80,6 +82,11 @@ export function RunSkillPanel({
     afterModelContent,
 }: RunSkillPanelProps) {
     const isDisabled = submitting || disabled;
+    const availableSkillNames = new Set(skills.map(s => s.name));
+    const visibleRecentItems = recentItems.filter(item =>
+        item.name !== ENDEV_XDPU_SKILL_NAME || availableSkillNames.has(item.name));
+    const visibleSelectedSkills = selectedSkills.filter(name =>
+        name !== ENDEV_XDPU_SKILL_NAME || availableSkillNames.has(name));
 
     return (
         <>
@@ -118,10 +125,10 @@ export function RunSkillPanel({
             </div>
 
             {/* Last Used section */}
-            {recentItems.length > 0 && !loading && (
+            {visibleRecentItems.length > 0 && !loading && (
                 <div>
                     <div className="text-[10px] uppercase tracking-wider text-[#848484] mb-1">Last Used</div>
-                    {recentItems.map(item => (
+                    {visibleRecentItems.map(item => (
                         <button
                             key={`skill-${item.name}`}
                             className="fp-item fp-recent-item w-full text-left flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-50"
@@ -152,7 +159,7 @@ export function RunSkillPanel({
                         <div className="text-[10px] uppercase tracking-wider text-[#848484] mb-1">Skills</div>
                         <div className="flex flex-wrap gap-1.5 mb-2" data-testid="fp-skill-chips">
                             {skills.map(s => {
-                                const isActive = selectedSkills.includes(s.name);
+                                const isActive = visibleSelectedSkills.includes(s.name);
                                 return (
                                     <button
                                         key={s.name}
@@ -174,17 +181,17 @@ export function RunSkillPanel({
                                 );
                             })}
                         </div>
-                        {selectedSkills.length > 0 && (
+                        {visibleSelectedSkills.length > 0 && (
                             <button
                                 type="button"
                                 className="w-full px-3 py-1.5 text-xs font-medium text-white bg-[#0078d4] rounded hover:bg-[#006cc1] disabled:opacity-50"
                                 disabled={isDisabled}
-                                onClick={() => onSubmitSkills(selectedSkills)}
+                                onClick={() => onSubmitSkills(visibleSelectedSkills)}
                                 data-testid="fp-submit-skills"
                             >
                                 {submitting
                                     ? 'Submitting…'
-                                    : submitLabel ?? `Submit with ${selectedSkills.length} skill${selectedSkills.length > 1 ? 's' : ''}`}
+                                    : submitLabel ?? `Submit with ${visibleSelectedSkills.length} skill${visibleSelectedSkills.length > 1 ? 's' : ''}`}
                             </button>
                         )}
                     </div>

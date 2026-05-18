@@ -336,6 +336,26 @@ describe('RepoPreferencesSection', () => {
         });
     });
 
+    describe('EnDev xDPU (no UI)', () => {
+        it('does not render any EnDev preference UI even when the wrapper skill is in the workspace skill list', async () => {
+            mockDefaultFetches({
+                skills: { merged: [{ name: 'EnDev-xDpu', description: 'EnDev wrapper', source: 'global' }] },
+            });
+            await act(async () => { renderSection(); });
+
+            await waitFor(() => {
+                expect(screen.getByTestId('section-skills')).toBeDefined();
+            });
+            expect(screen.queryByTestId('section-endev-xdpu')).toBeNull();
+            expect(screen.queryByTestId('pref-endev-xdpu-enabled')).toBeNull();
+            expect(screen.queryByTestId('pref-endev-xdpu-revalidate')).toBeNull();
+
+            const endevCalls = mockFetch.mock.calls.filter(([url]: [string]) =>
+                url.includes('/endev/status') || url.includes('/endev/revalidate'));
+            expect(endevCalls).toHaveLength(0);
+        });
+    });
+
     describe('linked repos', () => {
         it('renders linked repo tags', async () => {
             mockDefaultFetches({

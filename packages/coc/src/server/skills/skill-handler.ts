@@ -26,6 +26,11 @@ import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import { createSkillRouteHandlers } from './skill-route-handlers';
 import { getRepoDataPath } from '../paths';
 import type { Route } from '../types';
+import {
+    ENDEV_XDPU_SKILL_NAME,
+    getEffectiveEnDevExtraSkillFolders,
+    isEnDevWrapperSkillVisible,
+} from '../endev/endev-detector';
 
 // ============================================================================
 // Helpers
@@ -288,7 +293,21 @@ export function extractDescriptionFromMarkdown(content: string): string | undefi
 // Skill loading helper (used by GET handler and background refresh)
 // ============================================================================
 
-async function loadSkillsForWorkspace(
+export async function filterVisibleSkillsForWorkspace(
+    skills: SkillInfo[],
+    ws: WorkspaceInfo,
+    dataDir: string | undefined,
+): Promise<SkillInfo[]> {
+    if (!skills.some(skill => skill.name === ENDEV_XDPU_SKILL_NAME)) {
+        return skills;
+    }
+    const showEnDevWrapper = await isEnDevWrapperSkillVisible(dataDir, ws);
+    return showEnDevWrapper
+        ? skills
+        : skills.filter(skill => skill.name !== ENDEV_XDPU_SKILL_NAME);
+}
+
+export async function loadSkillsForWorkspace(
     ws: WorkspaceInfo,
     dataDir: string | undefined,
     store: ProcessStore,
@@ -317,7 +336,7 @@ async function loadSkillsForWorkspace(
     const globalNames = new Set(globalSkills.map(s => s.name));
 
     let allWorkspaces: WorkspaceInfo[] | null = null;
-    const extraSkillFolders: string[] = ws.extraSkillFolders ?? [];
+    const extraSkillFolders = await getEffectiveEnDevExtraSkillFolders(dataDir, ws);
     const extraSkills: SkillInfo[] = [];
     for (const folder of extraSkillFolders) {
         const folderSourcePath = resolveExtraSkillFolderSourcePath(ws.rootPath, folder);
@@ -390,7 +409,8 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
             const cached = skillCache.get(wsId);
             if (cached) {
                 // Cache hit: serve immediately, trigger async background refresh if stale
-                sendJSON(res, 200, { skills: cached.skills });
+                const skills = await filterVisibleSkillsForWorkspace(cached.skills, ws, dataDir);
+                sendJSON(res, 200, { skills });
                 const stale = Date.now() - cached.lastUpdated > SKILL_CACHE_TTL_MS;
                 if (stale && !cached.refreshing) {
                     cached.refreshing = true;
@@ -402,8 +422,9 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
             }
 
             // Cache miss: load synchronously, populate cache, then respond
-            const skills = await loadSkillsForWorkspace(ws, dataDir, store);
-            skillCache.set(wsId, { skills, refreshing: false, lastUpdated: Date.now() });
+            const rawSkills = await loadSkillsForWorkspace(ws, dataDir, store);
+            skillCache.set(wsId, { skills: rawSkills, refreshing: false, lastUpdated: Date.now() });
+            const skills = await filterVisibleSkillsForWorkspace(rawSkills, ws, dataDir);
             sendJSON(res, 200, { skills });
         },
     });

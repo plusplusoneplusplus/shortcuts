@@ -49,14 +49,22 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
     const [linkedRepoLoading, setLinkedRepoLoading] = useState(true);
     const [showAddRepo, setShowAddRepo] = useState(false);
 
+    const fetchAvailableSkills = useCallback(async () => {
+        setSkillsLoading(true);
+        try {
+            const data = await getSpaCocClient().skills.listAllWorkspace(workspaceId);
+            setAvailableSkills(data.merged ?? []);
+        } catch {
+            setAvailableSkills([]);
+        } finally {
+            setSkillsLoading(false);
+        }
+    }, [workspaceId]);
+
     // Fetch available skills
     useEffect(() => {
-        setSkillsLoading(true);
-        getSpaCocClient().skills.listAllWorkspace(workspaceId)
-            .then(data => setAvailableSkills(data.merged ?? []))
-            .catch(() => setAvailableSkills([]))
-            .finally(() => setSkillsLoading(false));
-    }, [workspaceId]);
+        fetchAvailableSkills();
+    }, [fetchAvailableSkills]);
 
     // Default model preferences
     const [defaultModel, setDefaultModelState] = useState('');

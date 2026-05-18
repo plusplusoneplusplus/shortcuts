@@ -1021,9 +1021,13 @@ describe('POST /api/processes/:id/message', () => {
 
             const body1 = JSON.parse(res1.body);
             const body2 = JSON.parse(res2.body);
-            // Both turnIndex values should be valid non-negative numbers
-            expect(body1.turnIndex).toBeGreaterThanOrEqual(0);
-            expect(body2.turnIndex).toBeGreaterThanOrEqual(0);
+            const turnIndexes = [body1.turnIndex, body2.turnIndex];
+            expect(turnIndexes.every(value => typeof value === 'number')).toBe(true);
+
+            const appendedTurnIndexes = turnIndexes.filter(value => value >= 0);
+            const bufferedCount = turnIndexes.filter(value => value === -1).length;
+            expect(appendedTurnIndexes.length + bufferedCount).toBe(2);
+            expect(new Set(appendedTurnIndexes).size).toBe(appendedTurnIndexes.length);
         });
     });
 

@@ -115,11 +115,9 @@ export class LoopExecutor {
      */
     shutdownAll(): void {
         const logger = getLogger();
-        const activeLoops = this.deps.store.getActive();
-        for (const loop of activeLoops) {
-            this.disarmTimer(loop.id);
-        }
-        logger.info(LogCategory.AI, `[LoopExecutor] Disarmed ${activeLoops.length} active loop timer(s) for shutdown`);
+        this.deps.timerRegistry.clear();
+        this.inflight.clear();
+        logger.info(LogCategory.AI, '[LoopExecutor] Disarmed active loop timer(s) for shutdown');
     }
 
     /**

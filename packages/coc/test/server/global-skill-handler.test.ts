@@ -10,7 +10,8 @@ import * as os from 'os';
 import { registerGlobalSkillRoutes } from '../../src/server/skills/global-skill-handler';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { Route } from '../../src/server/types';
-import type { WorkspaceInfo } from '@plusplusoneplusplus/forge';
+import { getRepoDataPath, type WorkspaceInfo } from '@plusplusoneplusplus/forge';
+import { ENDEV_STATUS_CACHE_FILE, ENDEV_XDPU_SKILL_NAME } from '../../src/server/endev/endev-detector';
 
 // ============================================================================
 // Test Helpers
@@ -385,6 +386,68 @@ describe('registerGlobalSkillRoutes', () => {
                 routes, 'GET', '/api/workspaces/nonexistent/skills/all'
             );
             expect(statusCode).toBe(404);
+        });
+
+        it('hides EnDev-xDpu from /skills/all when the workspace is ineligible', async () => {
+            const globalSkill = path.join(globalSkillsDir, ENDEV_XDPU_SKILL_NAME);
+            fs.mkdirSync(globalSkill);
+            fs.writeFileSync(path.join(globalSkill, 'SKILL.md'), '# EnDev xDPU');
+            const statusPath = getRepoDataPath(dataDir, workspaceId, ENDEV_STATUS_CACHE_FILE);
+            fs.mkdirSync(path.dirname(statusPath), { recursive: true });
+            fs.writeFileSync(statusPath, JSON.stringify({
+                workspaceId,
+                workspaceRoot: workspaceDir,
+                eligible: false,
+                reason: 'not-native-wsl',
+                nativeWsl: false,
+                xDpuWorkspace: true,
+                hasSetupFiles: true,
+                setupFiles: ['.endev'],
+                checkedAt: new Date().toISOString(),
+                cached: false,
+            }));
+
+            const { statusCode, body } = await dispatchRoute(
+                routes, 'GET', `/api/workspaces/${workspaceId}/skills/all`
+            );
+            const names = body.merged.map((s: any) => s.name);
+
+            expect(statusCode).toBe(200);
+            expect(names).not.toContain(ENDEV_XDPU_SKILL_NAME);
+        });
+
+        it('shows EnDev-xDpu and EnDev plugin skills from /skills/all when the workspace is eligible', async () => {
+            const globalSkill = path.join(globalSkillsDir, ENDEV_XDPU_SKILL_NAME);
+            fs.mkdirSync(globalSkill);
+            fs.writeFileSync(path.join(globalSkill, 'SKILL.md'), '# EnDev xDPU');
+            const pluginSkillFolder = path.join(workspaceDir, '.endev', 'copilot', 'skills');
+            const pluginSkill = path.join(pluginSkillFolder, 'endev-plugin-skill');
+            fs.mkdirSync(pluginSkill, { recursive: true });
+            fs.writeFileSync(path.join(pluginSkill, 'SKILL.md'), '# EnDev Plugin Skill');
+            const statusPath = getRepoDataPath(dataDir, workspaceId, ENDEV_STATUS_CACHE_FILE);
+            fs.mkdirSync(path.dirname(statusPath), { recursive: true });
+            fs.writeFileSync(statusPath, JSON.stringify({
+                workspaceId,
+                workspaceRoot: workspaceDir,
+                eligible: true,
+                reason: 'eligible',
+                nativeWsl: true,
+                xDpuWorkspace: true,
+                hasSetupFiles: true,
+                setupFiles: ['.endev'],
+                pluginSkillFolder,
+                checkedAt: new Date().toISOString(),
+                cached: false,
+            }));
+
+            const { statusCode, body } = await dispatchRoute(
+                routes, 'GET', `/api/workspaces/${workspaceId}/skills/all`
+            );
+            const names = body.merged.map((s: any) => s.name);
+
+            expect(statusCode).toBe(200);
+            expect(names).toContain(ENDEV_XDPU_SKILL_NAME);
+            expect(names).toContain('endev-plugin-skill');
         });
     });
 });

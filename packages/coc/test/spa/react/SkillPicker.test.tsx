@@ -68,6 +68,12 @@ describe('SkillPicker', () => {
             expect(screen.getByTestId('skill-chip-docx')).toBeDefined();
         });
 
+        it('does not render a selected EnDev chip when the wrapper is unavailable', () => {
+            renderPicker({ skills: repoSkills, selectedSkills: ['impl', 'EnDev-xDpu'] });
+            expect(screen.getByTestId('skill-chip-impl')).toBeDefined();
+            expect(screen.queryByTestId('skill-chip-EnDev-xDpu')).toBeNull();
+        });
+
         it('selected chips have ✕ for removal', () => {
             renderPicker({ selectedSkills: ['impl'] });
             const chip = screen.getByTestId('skill-chip-impl');

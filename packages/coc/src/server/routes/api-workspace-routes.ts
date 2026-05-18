@@ -25,6 +25,8 @@ import {
     validatePerRepoPreferences,
 } from '../preferences-handler';
 import { getEffectiveDefaultDisabledTools, getEffectiveLlmToolRegistry } from '../llm-tools/llm-tool-registry';
+import { detectEnDevEligibility } from '../endev/endev-detector';
+import { skillCache } from '../skills/skill-handler';
 
 // Lazy singleton service
 let _branchService: BranchService | undefined;
@@ -382,6 +384,42 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             const parsed = url.parse(req.url || '/', true);
             const forceReload = parsed.query.forceReload === 'true' || parsed.query.refresh === 'true';
             sendJSON(res, 200, buildMcpConfigResponse(ws, forceReload));
+        },
+    });
+
+    // GET /api/workspaces/:id/endev/status — Detect or read cached EnDev xDPU eligibility
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/endev\/status$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            if (!ctx.dataDir) {
+                return handleAPIError(res, badRequest('dataDir is required for EnDev detection'));
+            }
+            const parsed = url.parse(req.url || '/', true);
+            const forceRefresh = parsed.query.forceRefresh === 'true' || parsed.query.refresh === 'true';
+            const status = await detectEnDevEligibility(ctx.dataDir, ws, { forceRefresh });
+            if (forceRefresh) {
+                skillCache.delete(ws.id);
+            }
+            sendJSON(res, 200, status);
+        },
+    });
+
+    // POST /api/workspaces/:id/endev/revalidate — Force EnDev xDPU eligibility revalidation
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/endev\/revalidate$/,
+        handler: async (_req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            if (!ctx.dataDir) {
+                return handleAPIError(res, badRequest('dataDir is required for EnDev detection'));
+            }
+            const status = await detectEnDevEligibility(ctx.dataDir, ws, { forceRefresh: true });
+            skillCache.delete(ws.id);
+            sendJSON(res, 200, status);
         },
     });
 

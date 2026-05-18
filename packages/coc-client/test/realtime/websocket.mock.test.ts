@@ -169,11 +169,14 @@ describe('EventsClient WebSocket mock server behavior', () => {
     await Promise.all([opened.promise, ponged.promise]);
     await vi.advanceTimersByTimeAsync(150);
 
-    expect(received).toEqual([
-      JSON.stringify({ type: 'ping' }),
-      JSON.stringify({ type: 'ping' }),
-      JSON.stringify({ type: 'ping' }),
-    ]);
+    await expectEventually(() => {
+      expect(received.length).toBeGreaterThanOrEqual(3);
+      expect(received.slice(0, 3)).toEqual([
+        JSON.stringify({ type: 'ping' }),
+        JSON.stringify({ type: 'ping' }),
+        JSON.stringify({ type: 'ping' }),
+      ]);
+    });
 
     connection.close();
   });

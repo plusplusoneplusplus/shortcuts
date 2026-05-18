@@ -246,14 +246,34 @@ describe('LoopExecutor', () => {
             executor.shutdownAll();
 
             // Timers should be cancelled
-            expect(timerRegistry.cancel).toHaveBeenCalledWith('loop_1');
-            expect(timerRegistry.cancel).toHaveBeenCalledWith('loop_2');
+            expect(timerRegistry.clear).toHaveBeenCalledTimes(1);
+            expect(timerRegistry._timers.has('loop_1')).toBe(false);
+            expect(timerRegistry._timers.has('loop_2')).toBe(false);
 
             // Active loops should remain active so startup can re-arm them.
             expect(store.getActive()).toHaveLength(2);
             const loop1 = store.getById('loop_1')!;
             expect(loop1.status).toBe('active');
             expect(loop1.pausedReason).toBeNull();
+        });
+
+        it('does not query the store during shutdown after storage migration changes', () => {
+            const { deps, timerRegistry } = createDeps({
+                store: {
+                    getActive: vi.fn(() => {
+                        throw new Error('no such table: loops');
+                    }),
+                } as any,
+            });
+            const executor = new LoopExecutor(deps);
+
+            executor.armTimer(makeLoop({ id: 'loop_shutdown' }));
+            expect(timerRegistry._timers.has('loop_shutdown')).toBe(true);
+
+            expect(() => executor.shutdownAll()).not.toThrow();
+            expect(timerRegistry.clear).toHaveBeenCalledTimes(1);
+            expect(timerRegistry._timers.has('loop_shutdown')).toBe(false);
+            expect(deps.store.getActive).not.toHaveBeenCalled();
         });
     });
 

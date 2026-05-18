@@ -13,13 +13,12 @@ import * as fs from 'fs';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import {
     getBundledSkills,
-    DEFAULT_SKILLS_SETTINGS,
     isWithinDirectory,
 } from '@plusplusoneplusplus/forge';
 import { sendJSON } from '../core/api-handler';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { handleAPIError, notFound, badRequest } from '../errors';
-import { sortSkillsByUsage, listInstalledSkills, getSkillDetail, skillCache } from './skill-handler';
+import { sortSkillsByUsage, listInstalledSkills, getSkillDetail, skillCache, loadSkillsForWorkspace, filterVisibleSkillsForWorkspace } from './skill-handler';
 import { createSkillRouteHandlers } from './skill-route-handlers';
 import type { Route } from '../types';
 
@@ -214,19 +213,11 @@ export function registerGlobalSkillRoutes(routes: Route[], store: ProcessStore, 
                 return handleAPIError(res, notFound('Workspace'));
             }
 
-            // Global skills
-            const globalSkills = listInstalledSkills(globalDir).map(s => ({ ...s, source: 'global' as const }));
-
-            // Repo skills
-            const repoInstallPath = path.join(ws.rootPath, DEFAULT_SKILLS_SETTINGS.installPath);
-            const repoSkills = listInstalledSkills(repoInstallPath).map(s => ({ ...s, source: 'repo' as const }));
-
-            // Merge: repo overrides global for same-named skills
-            const repoNames = new Set(repoSkills.map(s => s.name));
-            const merged = [
-                ...repoSkills,
-                ...globalSkills.filter(s => !repoNames.has(s.name)),
-            ];
+            const allSkills = await loadSkillsForWorkspace(ws, dataDir, store);
+            const visibleSkills = await filterVisibleSkillsForWorkspace(allSkills, ws, dataDir);
+            const globalSkills = visibleSkills.filter(s => s.source === 'global');
+            const repoSkills = visibleSkills.filter(s => s.source === 'repo');
+            const merged = visibleSkills;
 
             sendJSON(res, 200, { global: globalSkills, repo: repoSkills, merged });
         },

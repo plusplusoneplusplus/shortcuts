@@ -17,6 +17,8 @@ interface SkillPickerProps {
     label?: string;
 }
 
+const ENDEV_XDPU_SKILL_NAME = 'EnDev-xDpu';
+
 export function SkillPicker({ skills, selectedSkills, onSkillChange, label }: SkillPickerProps) {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState('');
@@ -25,6 +27,11 @@ export function SkillPicker({ skills, selectedSkills, onSkillChange, label }: Sk
     const triggerRef = useRef<HTMLButtonElement>(null);
     const searchRef = useRef<HTMLInputElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
+    const skillByName = useMemo(() => new Map(skills.map(skill => [skill.name, skill])), [skills]);
+    const visibleSelectedSkills = useMemo(
+        () => selectedSkills.filter(name => name !== ENDEV_XDPU_SKILL_NAME || skillByName.has(name)),
+        [selectedSkills, skillByName],
+    );
 
     // Group skills by source (repo vs global)
     const { repoSkills, globalSkills } = useMemo(() => {
@@ -174,8 +181,8 @@ export function SkillPicker({ skills, selectedSkills, onSkillChange, label }: Sk
             {resolvedLabel && <label className="block text-xs font-medium text-[#848484] mb-1">{resolvedLabel}</label>}
             <div className="flex flex-wrap items-center gap-1.5" data-testid="skill-chips">
                 {/* Selected skill chips */}
-                {selectedSkills.map(name => {
-                    const skill = skills.find(s => s.name === name);
+                {visibleSelectedSkills.map(name => {
+                    const skill = skillByName.get(name);
                     return (
                         <button
                             key={name}

@@ -112,3 +112,28 @@ export interface SkillUsageQuery {
 export interface SkillUsageListResponse {
   usage: SkillUsageEntry[];
 }
+
+export interface EnDevDoctorResult {
+  ok: boolean;
+  timedOut?: boolean;
+  exitCode?: number | string;
+  signal?: string;
+  error?: string;
+  stdout?: string;
+  stderr?: string;
+}
+
+export interface EnDevEligibilityStatus {
+  workspaceId: string;
+  workspaceRoot: string;
+  eligible: boolean;
+  reason: 'eligible' | 'not-native-wsl' | 'not-xdpu-workspace' | 'missing-setup-files' | 'doctor-failed';
+  nativeWsl: boolean;
+  xDpuWorkspace: boolean;
+  hasSetupFiles: boolean;
+  setupFiles: string[];
+  doctor?: EnDevDoctorResult;
+  pluginSkillFolder?: string;
+  checkedAt: string;
+  cached: boolean;
+}
