@@ -229,12 +229,31 @@ describe('GET /api/workspaces/:id/files/html', () => {
         expect(res.body).toContain('workspace file url');
     });
 
+    it('serves HTML from the Copilot CLI session folder (~/.copilot)', async () => {
+        const srv = await startServer();
+        const copilotRoot = path.join(os.homedir(), '.copilot');
+        fs.mkdirSync(copilotRoot, { recursive: true });
+        const sessionDir = fs.mkdtempSync(path.join(copilotRoot, 'files-html-copilot-'));
+        try {
+            const filePath = path.join(sessionDir, 'session-output.html');
+            fs.writeFileSync(filePath, '<html><body>copilot session</body></html>', 'utf-8');
+
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/files/html?path=${encodeURIComponent(filePath)}`);
+
+            expect(res.status).toBe(200);
+            expect(res.body).toContain('copilot session');
+        } finally {
+            fs.rmSync(sessionDir, { recursive: true, force: true });
+        }
+    });
+
     it('returns 403 for existing absolute HTML files outside allowed roots', async () => {
         const srv = await startServer();
         const outsideDir = mkdtempOutsideAllowedRoots('.files-html-outside-', [
             os.tmpdir(),
             workspaceDir,
             getRepoDataPath(dataDir, wsId, 'outputs'),
+            path.join(os.homedir(), '.copilot'),
         ]);
         if (!outsideDir) {
             return;
@@ -268,6 +287,7 @@ describe('GET /api/workspaces/:id/files/html', () => {
             os.tmpdir(),
             workspaceDir,
             getRepoDataPath(dataDir, wsId, 'outputs'),
+            path.join(os.homedir(), '.copilot'),
         ]);
         if (!outsideDir) {
             return;

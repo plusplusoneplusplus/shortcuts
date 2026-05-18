@@ -100,6 +100,12 @@ async function resolveAllowedHtmlPath(filePath: string, ws: { id: string; rootPa
         return { path: realCandidate };
     }
 
+    const copilotCliRoot = path.join(os.homedir(), '.copilot');
+    const realCopilotCliRoot = await realpathIfExists(copilotCliRoot);
+    if (realCopilotCliRoot && isWithinDirectory(realCandidate, realCopilotCliRoot)) {
+        return { path: realCandidate };
+    }
+
     return { status: 403, message: 'Access denied: path is outside allowed HTML roots' };
 }
 
