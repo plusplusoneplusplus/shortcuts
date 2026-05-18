@@ -488,6 +488,7 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
                             initialHunkTarget={hunkTarget}
                             onBack={handleBack}
                             backLabel="All files"
+                            showSourceLabel={false}
                         />
                     ) : (
                         <div className="flex flex-col items-center justify-center flex-1 gap-2 text-xs text-[#848484]">

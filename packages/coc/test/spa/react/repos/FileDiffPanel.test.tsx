@@ -326,6 +326,12 @@ describe('FileDiffPanel', () => {
         expect(labels.length).toBe(0);
     });
 
+    it('does not render label when showSourceLabel is false', () => {
+        render(<FileDiffPanel workspaceId="ws1" filePath="src/foo.ts" source={makeBranchSource({ label: 'Branch diff' })} showSourceLabel={false} />);
+
+        expect(screen.queryByText('Branch diff')).toBeNull();
+    });
+
     // ── Comment sidebar toggle ──
 
     it('toggles comment sidebar on button click', () => {
