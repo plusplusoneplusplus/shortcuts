@@ -83,6 +83,7 @@ import type { LoopStore } from '../loops/loop-store';
 import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
 import { registerMcpOauthRoutes } from '../mcp-oauth';
 import type { McpOauthManager } from '../mcp-oauth';
+import { registerDiagramRoutes } from '../diagrams/diagrams-handler';
 
 /** Collect git commits made between headBefore and current HEAD. Non-fatal — returns [] on error. */
 function collectWorkItemCommits(
@@ -185,6 +186,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerNotesFilePreviewRoutes(routes, store, dataDir);
     registerNotesAICreateRoutes(routes, store, dataDir, bridge);
     registerNotesEditsRoutes(routes, store, dataDir);
+
+    // Diagram routes (feature-flagged via excalidraw.enabled)
+    if (opts.resolvedConfig?.excalidraw?.enabled) {
+        registerDiagramRoutes(routes, store, dataDir);
+    }
     registerWorkflowRoutes(routes, store);
     registerWorkspaceSummaryRoutes(routes, store, dataDir);
     registerWorkflowWriteRoutes(routes, store, (workspaceId) => {
