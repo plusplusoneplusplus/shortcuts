@@ -315,6 +315,23 @@ describe('WhatsAppBridge', () => {
     });
 
     describe('inbound (WA → CoC)', () => {
+        it('should ignore messages from non-configured groups', async () => {
+            const bridge = new WhatsAppBridge(opts);
+            await bridge.start();
+
+            const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+            await lastBot().opts.onMessage({
+                senderJid: 'other-group@g.us',
+                messageId: 'wamid.in-other',
+                text: 'Should be ignored',
+            });
+
+            expect(fetchSpy).not.toHaveBeenCalled();
+            fetchSpy.mockRestore();
+            await bridge.stop();
+        });
+
         it('should create global session for plain messages', async () => {
             const bridge = new WhatsAppBridge(opts);
             await bridge.start();
@@ -323,7 +340,7 @@ describe('WhatsAppBridge', () => {
                 .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'proc-global-001' })));
 
             await lastBot().opts.onMessage({
-                senderJid: 'bob@s.whatsapp.net',
+                senderJid: 'group@g.us',
                 messageId: 'wamid.in-002',
                 text: 'What is the status?',
             });
@@ -368,7 +385,7 @@ describe('WhatsAppBridge', () => {
 
             // Now reply to that WA message
             await lastBot().opts.onMessage({
-                senderJid: 'bob@s.whatsapp.net',
+                senderJid: 'group@g.us',
                 messageId: 'wamid.in-reply',
                 text: 'Can you also fix the tests?',
                 quotedMessageId: 'wamid.out-001',
@@ -394,7 +411,7 @@ describe('WhatsAppBridge', () => {
                 .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'proc-fallback' })));
 
             await lastBot().opts.onMessage({
-                senderJid: 'bob@s.whatsapp.net',
+                senderJid: 'group@g.us',
                 messageId: 'wamid.in-005',
                 text: 'Reply to unknown',
                 quotedMessageId: 'wamid.unknown-999',
@@ -404,6 +421,76 @@ describe('WhatsAppBridge', () => {
             expect(fetchSpy).toHaveBeenCalledWith(
                 'http://localhost:4000/api/queue',
                 expect.objectContaining({ method: 'POST' }),
+            );
+
+            fetchSpy.mockRestore();
+            await bridge.stop();
+        });
+
+        it('should continue last active session for plain messages when outbound exists', async () => {
+            const bridge = new WhatsAppBridge(opts);
+            await bridge.start();
+
+            // Create an outbound message binding first
+            vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+                new Response(JSON.stringify({
+                    process: {
+                        conversationTurns: [
+                            { role: 'assistant', content: 'Done' },
+                        ],
+                    },
+                }))
+            );
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-last-001', workspaceId: 'ws-repo', workspaceName: 'repo', status: 'completed' },
+            });
+            await new Promise(r => setTimeout(r, 50));
+
+            const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response('{}'));
+
+            // Plain message (no reply, no [global]) → should follow-up to last session
+            await lastBot().opts.onMessage({
+                senderJid: 'group@g.us',
+                messageId: 'wamid.in-plain',
+                text: 'Any updates?',
+            });
+
+            expect(fetchSpy).toHaveBeenCalledWith(
+                expect.stringContaining('/api/processes/proc-last-001/message'),
+                expect.objectContaining({
+                    method: 'POST',
+                    body: JSON.stringify({ content: 'Any updates?' }),
+                }),
+            );
+
+            fetchSpy.mockRestore();
+            await bridge.stop();
+        });
+
+        it('should use global session when message starts with [global]', async () => {
+            const bridge = new WhatsAppBridge(opts);
+            await bridge.start();
+
+            const fetchSpy = vi.spyOn(globalThis, 'fetch')
+                .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'proc-global-new' })));
+
+            await lastBot().opts.onMessage({
+                senderJid: 'group@g.us',
+                messageId: 'wamid.in-global',
+                text: '[global] Start a new task',
+            });
+
+            // Should create a new chat via queue with the stripped text
+            expect(fetchSpy).toHaveBeenCalledWith(
+                'http://localhost:4000/api/queue',
+                expect.objectContaining({
+                    method: 'POST',
+                    body: JSON.stringify({
+                        type: 'chat',
+                        payload: { workspaceId: 'ws-global', prompt: 'Start a new task', mode: 'ask' },
+                    }),
+                }),
             );
 
             fetchSpy.mockRestore();
