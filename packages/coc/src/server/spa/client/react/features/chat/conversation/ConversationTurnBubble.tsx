@@ -2,7 +2,7 @@
  * ConversationTurnBubble — role-aware chat bubble for conversation turns.
  */
 import React, { useState, useMemo, useCallback } from 'react';
-import { cn, ImageGallery, Spinner } from '../../../ui';
+import { cn, Spinner } from '../../../ui';
 import type { ClientConversationTurn, ClientTokenUsage } from '../../../types/dashboard';
 import { ContextMenu } from '../../../tasks/comments/ContextMenu';
 import type { ContextMenuItem } from '../../../tasks/comments/ContextMenu';
@@ -15,7 +15,6 @@ import { LoopIcon } from '../icons/LoopIcon';
 import { Marked } from 'marked';
 import { useDisplaySettings } from '../../../hooks/preferences/useDisplaySettings';
 import { useHtmlEmbedPreference } from '../../../hooks/preferences/useHtmlEmbedPreference';
-import { getSpaCocClient } from '../../../api/cocClient';
 import { copyToClipboard, copyHtmlToClipboard, splitMarkdownSections } from '../../../utils/format';
 import { linkifyFilePaths } from '../../../shared/file-path-utils';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
@@ -699,7 +698,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
     const { showReportIntent, toolCompactness, groupSingleLineMessages } = useDisplaySettings();
     const htmlEmbedEnabled = useHtmlEmbedPreference(wsId) && !turn.streaming;
     const assistantRender = !isUser ? buildAssistantRender(turn, wsId, { htmlEmbedEnabled }) : null;
-    const userContentHtml = isUser ? toContentHtml(turn.content || '', wsId, { htmlEmbedEnabled }) : '';
+    const userContentText = isUser ? (turn.content || '') : '';
     const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>({});
     const [showRaw, setShowRaw] = useState(false);
     const [copied, setCopied] = useState(false);
@@ -818,25 +817,6 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
         }
         return grouped;
     }, [assistantRender, toolCompactness, groupSingleLineMessages]);
-
-    // Lazy image fetching state
-    const [imageLoadState, setImageLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
-    const [fetchedImages, setFetchedImages] = useState<string[]>([]);
-
-    const hasInlineImages = turn.images && turn.images.length > 0;
-    const needsLazyImages = isUser && !hasInlineImages && !!taskId && (turn.imagesCount ?? 0) > 0;
-
-    const handleLoadImages = async () => {
-        if (!taskId) return;
-        setImageLoadState('loading');
-        try {
-            const data = await getSpaCocClient().queue.images(taskId);
-            setFetchedImages(data.images || []);
-            setImageLoadState('loaded');
-        } catch {
-            setImageLoadState('error');
-        }
-    };
 
     function renderToolTree(toolId: string, depth: number): React.ReactNode {
         if (depth > 20) return null;
@@ -1165,40 +1145,17 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                             <span>{turn.turnSource.source === 'loop' ? 'loop' : 'wakeup'}</span>
                         </span>
                     )}
-                    {isUser && !showRaw && userContentHtml && <MarkdownView html={userContentHtml} />}
+                    {isUser && !showRaw && userContentText.trim() && (
+                        <div className="whitespace-pre-wrap break-words text-[13px]" data-testid="user-plain-text">
+                            {userContentText}
+                        </div>
+                    )}
                     {isUser && showRaw && (
                         <div className="raw-content-view rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#ffffff] dark:bg-[#1e1e1e] overflow-auto max-h-[600px]">
                             <pre className="p-3 font-mono text-xs whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
                                 <code>{turn.content || ''}</code>
                             </pre>
                         </div>
-                    )}
-                    {isUser && turn.images && turn.images.length > 0 && (
-                        <ImageGallery images={turn.images} />
-                    )}
-                    {isUser && needsLazyImages && imageLoadState === 'idle' && (
-                        <button
-                            className="text-[11px] text-[#848484] hover:text-[#005a9e] dark:hover:text-[#7bbef3] cursor-pointer bg-transparent border-none p-0"
-                            data-testid="load-images-btn"
-                            onClick={handleLoadImages}
-                        >
-                            📷 Load {turn.imagesCount} image{(turn.imagesCount ?? 0) > 1 ? 's' : ''}
-                        </button>
-                    )}
-                    {isUser && needsLazyImages && imageLoadState === 'loading' && (
-                        <ImageGallery images={[]} loading={true} imagesCount={turn.imagesCount} />
-                    )}
-                    {isUser && imageLoadState === 'loaded' && fetchedImages.length > 0 && (
-                        <ImageGallery images={fetchedImages} />
-                    )}
-                    {isUser && needsLazyImages && imageLoadState === 'error' && (
-                        <button
-                            className="text-[11px] text-[#f14c4c] hover:text-[#d32f2f] cursor-pointer bg-transparent border-none p-0"
-                            data-testid="retry-images-btn"
-                            onClick={handleLoadImages}
-                        >
-                            ⚠ Failed to load images · Retry
-                        </button>
                     )}
                     {isUser && turn.pasteExternalized && (
                         <div

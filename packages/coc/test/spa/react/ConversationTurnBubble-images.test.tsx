@@ -1,5 +1,5 @@
 /**
- * Tests for ConversationTurnBubble — image rendering in user bubbles.
+ * Tests for ConversationTurnBubble — user turns render as plain text, no images.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -15,12 +15,9 @@ vi.mock('../../../src/server/spa/client/react/shared/MarkdownView', () => ({
     MarkdownView: ({ html }: { html: string }) => <div data-testid="markdown-view" dangerouslySetInnerHTML={{ __html: html }} />,
 }));
 
-vi.mock('../../../src/server/spa/client/diff/markdown-renderer', () => ({
+vi.mock('../../../src/server/spa/client/react/diff/markdown-renderer', () => ({
     renderMarkdownToHtml: (s: string) => `<p>${s}</p>`,
 }));
-
-const IMG_A = 'data:image/png;base64,aaaa';
-const IMG_B = 'data:image/jpeg;base64,bbbb';
 
 function makeTurn(overrides: Partial<ClientConversationTurn> = {}): ClientConversationTurn {
     return {
@@ -33,60 +30,37 @@ function makeTurn(overrides: Partial<ClientConversationTurn> = {}): ClientConver
     };
 }
 
-describe('ConversationTurnBubble — image rendering', () => {
+describe('ConversationTurnBubble — user turns render plain text, no images', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
     });
 
-    it('renders ImageGallery when user turn has images', () => {
-        render(<ConversationTurnBubble turn={makeTurn({ images: [IMG_A, IMG_B] })} />);
-        expect(screen.getByTestId('image-gallery')).toBeTruthy();
-        const imgs = screen.getAllByRole('img');
-        expect(imgs).toHaveLength(2);
-    });
-
-    it('does not render ImageGallery when user turn has no images', () => {
-        render(<ConversationTurnBubble turn={makeTurn()} />);
+    it('does not render ImageGallery for user turns even when images are present', () => {
+        render(<ConversationTurnBubble turn={makeTurn({ images: ['data:image/png;base64,aaaa', 'data:image/jpeg;base64,bbbb'] })} />);
         expect(screen.queryByTestId('image-gallery')).toBeNull();
     });
 
-    it('does not render ImageGallery when user turn has empty images array', () => {
-        render(<ConversationTurnBubble turn={makeTurn({ images: [] })} />);
-        expect(screen.queryByTestId('image-gallery')).toBeNull();
-    });
-
-    it('does not render ImageGallery for assistant turns even with images', () => {
-        render(<ConversationTurnBubble turn={makeTurn({ role: 'assistant', images: [IMG_A] })} />);
-        expect(screen.queryByTestId('image-gallery')).toBeNull();
-    });
-});
-
-describe('ConversationTurnBubble — lazy image loading', () => {
-    beforeEach(() => {
-        vi.restoreAllMocks();
-    });
-
-    it('renders "Load N images" button when turn has imagesCount but no images', () => {
+    it('does not render "Load N images" button for user turns', () => {
         render(<ConversationTurnBubble turn={makeTurn({ imagesCount: 3, images: undefined })} taskId="task-1" />);
-        const btn = screen.getByTestId('load-images-btn');
-        expect(btn.textContent).toContain('Load 3 images');
-    });
-
-    it('renders inline images directly when images array is present (backward compat)', () => {
-        render(<ConversationTurnBubble turn={makeTurn({ images: [IMG_A], imagesCount: 1 })} taskId="task-1" />);
-        expect(screen.getByTestId('image-gallery')).toBeTruthy();
         expect(screen.queryByTestId('load-images-btn')).toBeNull();
     });
 
-    it('does not render fetch button when taskId is not provided', () => {
-        render(<ConversationTurnBubble turn={makeTurn({ imagesCount: 3, images: undefined })} />);
-        expect(screen.queryByTestId('load-images-btn')).toBeNull();
+    it('renders user content as plain text, not markdown', () => {
+        render(<ConversationTurnBubble turn={makeTurn({ content: 'Hello **world**' })} />);
+        const plainText = screen.getByTestId('user-plain-text');
+        expect(plainText.textContent).toBe('Hello **world**');
+        expect(screen.queryByTestId('markdown-view')).toBeNull();
     });
 
-    it('renders singular "image" for imagesCount of 1', () => {
-        render(<ConversationTurnBubble turn={makeTurn({ imagesCount: 1, images: undefined })} taskId="task-1" />);
-        const btn = screen.getByTestId('load-images-btn');
-        expect(btn.textContent).toContain('Load 1 image');
-        expect(btn.textContent).not.toContain('images');
+    it('preserves newlines in user content via plain text rendering', () => {
+        render(<ConversationTurnBubble turn={makeTurn({ content: 'line1\nline2\nline3' })} />);
+        const plainText = screen.getByTestId('user-plain-text');
+        expect(plainText.textContent).toBe('line1\nline2\nline3');
+    });
+
+    it('does not render markdown-view for user turns with markdown syntax', () => {
+        render(<ConversationTurnBubble turn={makeTurn({ content: '# Heading\n- bullet' })} />);
+        expect(screen.queryByTestId('markdown-view')).toBeNull();
+        expect(screen.getByTestId('user-plain-text').textContent).toBe('# Heading\n- bullet');
     });
 });
