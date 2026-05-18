@@ -232,10 +232,7 @@ export function createPrDiffSource(
         label: options?.title ? `PR: ${options.title}` : `PR #${prId}`,
 
         fileDiffUrl(filePath: string, _full?: boolean): string {
-            // PR diffs use the combined endpoint — per-file extraction is client-side.
-            // Return the combined diff URL; FileDiffPanel uses extractFileDiff() for isolation.
-            const base = `/api/repos/${encodeURIComponent(repoId)}/pull-requests/${encodeURIComponent(prId)}/diff`;
-            return base;
+            return `/api/repos/${encodeURIComponent(repoId)}/pull-requests/${encodeURIComponent(prId)}/diff/files/${encodeURIComponent(filePath)}`;
         },
 
         fullDiffUrl(): string {

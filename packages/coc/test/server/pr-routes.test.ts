@@ -556,6 +556,91 @@ describe('GET /api/repos/:id/pull-requests/:prId/commits', () => {
     });
 });
 
+// ── GET /api/repos/:id/pull-requests/:prId/diff/files/:filePath ─────────────
+
+describe('GET /api/repos/:id/pull-requests/:prId/diff/files/:filePath', () => {
+    const combinedDiff = [
+        'diff --git a/src/foo.ts b/src/foo.ts',
+        '--- a/src/foo.ts',
+        '+++ b/src/foo.ts',
+        '@@ -1,3 +1,4 @@',
+        ' line1',
+        '+added',
+        'diff --git a/src/bar.ts b/src/bar.ts',
+        '--- a/src/bar.ts',
+        '+++ b/src/bar.ts',
+        '@@ -1,2 +1,2 @@',
+        '-old',
+        '+new',
+    ].join('\n');
+
+    it('returns extracted file diff as JSON on success', async () => {
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(combinedDiff);
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { diff: string };
+        expect(body.diff).toContain('diff --git a/src/foo.ts b/src/foo.ts');
+        expect(body.diff).toContain('+added');
+        expect(body.diff).not.toContain('src/bar.ts');
+    });
+
+    it('returns empty diff when file not found in combined diff', async () => {
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(combinedDiff);
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/missing.ts')}`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { diff: string };
+        expect(body.diff).toBe('');
+    });
+
+    it('returns empty diff when getDiff is not implemented', async () => {
+        const svcWithoutDiff = { ...mockSvc };
+        delete (svcWithoutDiff as any).getDiff;
+        (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(svcWithoutDiff);
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { diff: string };
+        expect(body.diff).toBe('');
+    });
+
+    it('returns 404 when repo not found', async () => {
+        mockResolveRepo.mockResolvedValueOnce(null);
+        const res = await fetch(`${baseUrl}/api/repos/unknown/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}`);
+        expect(res.status).toBe(404);
+    });
+
+    it('returns 401 when unconfigured', async () => {
+        (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}`);
+        expect(res.status).toBe(401);
+        const body = await res.json() as { error: string };
+        expect(body.error).toBe('unconfigured');
+    });
+
+    it('returns 401 with no-ado-credentials when ADO az CLI fails', async () => {
+        (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue({ error: 'no-ado-credentials' });
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}`);
+        expect(res.status).toBe(401);
+        const body = await res.json() as { error: string };
+        expect(body.error).toBe('no-ado-credentials');
+    });
+
+    it('returns 500 on unexpected error', async () => {
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network'));
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}`);
+        expect(res.status).toBe(500);
+    });
+
+    it('decodes URL-encoded file paths', async () => {
+        const diffWithSpaces = 'diff --git a/path with spaces/file.ts b/path with spaces/file.ts\n--- a/path with spaces/file.ts\n+++ b/path with spaces/file.ts\n@@ -1 +1 @@\n-old\n+new\n';
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(diffWithSpaces);
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('path with spaces/file.ts')}`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { diff: string };
+        expect(body.diff).toContain('path with spaces/file.ts');
+    });
+});
+
 // ── GET /api/repos/:id/pull-requests/:prId/checks ─────────────────────────────
 
 describe('GET /api/repos/:id/pull-requests/:prId/checks', () => {

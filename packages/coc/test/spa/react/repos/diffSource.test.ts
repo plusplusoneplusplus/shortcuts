@@ -235,9 +235,9 @@ describe('createPrDiffSource', () => {
         expect(source.fullDiffUrl()).toBe('/api/repos/repo1/pull-requests/42/diff');
     });
 
-    it('fileDiffUrl returns the combined endpoint (client-side extraction)', () => {
+    it('fileDiffUrl returns the per-file PR diff endpoint', () => {
         const source = createPrDiffSource(ws, repoId, prId);
-        expect(source.fileDiffUrl('src/foo.ts')).toBe('/api/repos/repo1/pull-requests/42/diff');
+        expect(source.fileDiffUrl('src/foo.ts')).toBe('/api/repos/repo1/pull-requests/42/diff/files/src%2Ffoo.ts');
     });
 
     it('commentContext returns PR-specific refs', () => {
