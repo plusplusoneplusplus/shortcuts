@@ -288,6 +288,40 @@ export function extractFilePathsFromDiff(diffText: string): string[] {
 }
 
 /**
+ * Extract file paths with per-file line stats (additions/deletions)
+ * from a combined unified diff text.
+ */
+export interface DiffFileStat {
+    path: string;
+    additions: number;
+    deletions: number;
+}
+
+export function extractFileStatsFromDiff(diffText: string): DiffFileStat[] {
+    const results: DiffFileStat[] = [];
+    let current: DiffFileStat | null = null;
+
+    for (const line of diffText.split('\n')) {
+        if (line.startsWith('diff --git ')) {
+            if (current) results.push(current);
+            const body = line.slice('diff --git '.length);
+            const bIdx = body.lastIndexOf(' b/');
+            const path = bIdx !== -1 ? body.slice(bIdx + 3) : '';
+            current = { path, additions: 0, deletions: 0 };
+        } else if (current) {
+            if (line.startsWith('+') && !line.startsWith('+++')) {
+                current.additions++;
+            } else if (line.startsWith('-') && !line.startsWith('---')) {
+                current.deletions++;
+            }
+        }
+    }
+    if (current) results.push(current);
+
+    return results;
+}
+
+/**
  * Extract the diff text for a single file from a combined unified diff.
  * Returns the raw diff section (from `diff --git` to the next `diff --git` or EOF).
  */

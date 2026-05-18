@@ -5,6 +5,7 @@ import {
     createPrDiffSource,
     fetchDiffFromSource,
     extractFilePathsFromDiff,
+    extractFileStatsFromDiff,
     extractFileDiffFromCombined,
 } from '../../../../src/server/spa/client/react/features/git/diff/diffSource';
 
@@ -320,6 +321,61 @@ describe('extractFilePathsFromDiff', () => {
 
     it('returns empty array for empty input', () => {
         expect(extractFilePathsFromDiff('')).toEqual([]);
+    });
+});
+
+describe('extractFileStatsFromDiff', () => {
+    it('computes additions and deletions per file', () => {
+        const diff = [
+            'diff --git a/src/foo.ts b/src/foo.ts',
+            '--- a/src/foo.ts',
+            '+++ b/src/foo.ts',
+            '@@ -1,3 +1,4 @@',
+            ' line1',
+            '+added1',
+            '+added2',
+            'diff --git a/src/bar.ts b/src/bar.ts',
+            '--- a/src/bar.ts',
+            '+++ b/src/bar.ts',
+            '@@ -1,2 +1,2 @@',
+            '-old',
+            '+new',
+        ].join('\n');
+
+        expect(extractFileStatsFromDiff(diff)).toEqual([
+            { path: 'src/foo.ts', additions: 2, deletions: 0 },
+            { path: 'src/bar.ts', additions: 1, deletions: 1 },
+        ]);
+    });
+
+    it('does not count --- or +++ header lines', () => {
+        const diff = [
+            'diff --git a/f.ts b/f.ts',
+            '--- a/f.ts',
+            '+++ b/f.ts',
+            '@@ -1 +1,2 @@',
+            ' context',
+            '+real addition',
+        ].join('\n');
+
+        const stats = extractFileStatsFromDiff(diff);
+        expect(stats).toEqual([{ path: 'f.ts', additions: 1, deletions: 0 }]);
+    });
+
+    it('returns empty array for empty input', () => {
+        expect(extractFileStatsFromDiff('')).toEqual([]);
+    });
+
+    it('handles files with no content changes (e.g. mode change)', () => {
+        const diff = [
+            'diff --git a/script.sh b/script.sh',
+            'old mode 100644',
+            'new mode 100755',
+        ].join('\n');
+
+        expect(extractFileStatsFromDiff(diff)).toEqual([
+            { path: 'script.sh', additions: 0, deletions: 0 },
+        ]);
     });
 });
 

@@ -35,7 +35,7 @@ import {
     gitReviewPrPopOutKey,
 } from '../contexts/GitReviewPopOutContext';
 import { getHostname } from '../utils/config';
-import { extractFilePathsFromDiff } from '../features/git/diff/diffSource';
+import { extractFileStatsFromDiff } from '../features/git/diff/diffSource';
 import { useClassification } from '../features/git/diff/useClassification';
 import type { ClassificationKey } from '../features/git/diff/diffSource';
 import type { HunkCategory } from '../features/pull-requests/classification-types';
@@ -371,8 +371,8 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
             .then(([prData, diffText]) => {
                 setPrTitle(prData.title);
                 setHeadSha(prData.headSha);
-                const paths = extractFilePathsFromDiff(diffText);
-                setFileList(paths.map(p => ({ path: p, status: 'modified' as const, additions: 0, deletions: 0 })));
+                const stats = extractFileStatsFromDiff(diffText);
+                setFileList(stats.map(s => ({ path: s.path, status: 'modified' as const, additions: s.additions, deletions: s.deletions })));
             })
             .catch((err: Error) => setError(err.message))
             .finally(() => setLoading(false));
