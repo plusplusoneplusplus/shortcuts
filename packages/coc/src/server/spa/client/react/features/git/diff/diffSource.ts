@@ -22,6 +22,21 @@ export interface ChatAvailability {
     commitMessage?: string;
 }
 
+/**
+ * Generic classification key that any DiffSource can opt into.
+ * Allows the classification system to work across PRs, commits, and branch ranges.
+ */
+export interface ClassificationKey {
+    type: 'pr' | 'commit' | 'branch-range';
+    repoId: string;
+    /**
+     * For PR: `prId:headSha` (new push auto-invalidates).
+     * For commit: hash.
+     * For branch-range: `baseRef..headRef`.
+     */
+    identifier: string;
+}
+
 export interface DiffSource {
     /** Human-readable label, e.g. "Commit abc1234" or "Branch diff". */
     readonly label: string;
@@ -76,6 +91,13 @@ export interface DiffSource {
      * where the file list isn't known at construction time).
      */
     fetchFileList?(): Promise<string[]>;
+
+    /**
+     * Optional classification key. When present, the diff viewer can
+     * offer AI classification (logic/mechanical/test/generated) for
+     * the hunks in this source.
+     */
+    readonly classificationKey?: ClassificationKey;
 }
 
 export function createCommitDiffSource(
@@ -177,4 +199,111 @@ export async function fetchDiffFromSource(url: string): Promise<DiffFetchResult>
         truncated: !!data.truncated,
         totalLines: data.totalLines ?? 0,
     };
+}
+
+/**
+ * Create a DiffSource backed by a pull request's diff endpoint.
+ *
+ * Uses the existing `/api/repos/:repoId/pull-requests/:prId/diff` endpoint
+ * and client-side extraction for per-file diffs from the combined payload.
+ */
+export function createPrDiffSource(
+    workspaceId: string,
+    repoId: string,
+    prId: string,
+    options?: {
+        headSha?: string;
+        files?: string[];
+        title?: string;
+    },
+): DiffSource {
+    return {
+        label: options?.title ? `PR: ${options.title}` : `PR #${prId}`,
+
+        fileDiffUrl(filePath: string, _full?: boolean): string {
+            // PR diffs use the combined endpoint — per-file extraction is client-side.
+            // Return the combined diff URL; FileDiffPanel uses extractFileDiff() for isolation.
+            const base = `/api/repos/${encodeURIComponent(repoId)}/pull-requests/${encodeURIComponent(prId)}/diff`;
+            return base;
+        },
+
+        fullDiffUrl(): string {
+            return `/api/repos/${encodeURIComponent(repoId)}/pull-requests/${encodeURIComponent(prId)}/diff`;
+        },
+
+        commentContext(filePath: string): DiffCommentContext {
+            return {
+                repositoryId: workspaceId,
+                filePath,
+                oldRef: `pr-${prId}-base`,
+                newRef: `pr-${prId}-head`,
+            };
+        },
+
+        files: options?.files ?? [],
+
+        chat: null, // PR chat uses a different binding (workspaceId, prId, filePath)
+
+        supportsTruncation: false,
+
+        cacheKey: `pr:${repoId}:${prId}`,
+
+        async fetchFileList(): Promise<string[]> {
+            const client = getSpaCocClient();
+            const diff = await client.pullRequests.getDiff(repoId, prId);
+            return extractFilePathsFromDiff(diff);
+        },
+
+        classificationKey: options?.headSha
+            ? { type: 'pr', repoId, identifier: `${prId}:${options.headSha}` }
+            : undefined,
+    };
+}
+
+/**
+ * Extract file paths from a combined unified diff text.
+ * Used by createPrDiffSource to lazily populate the file list.
+ */
+export function extractFilePathsFromDiff(diffText: string): string[] {
+    const paths: string[] = [];
+    for (const line of diffText.split('\n')) {
+        if (line.startsWith('diff --git ')) {
+            const body = line.slice('diff --git '.length);
+            // Extract b/path from "a/old b/new"
+            const bIdx = body.lastIndexOf(' b/');
+            if (bIdx !== -1) {
+                paths.push(body.slice(bIdx + 3));
+            }
+        }
+    }
+    return paths;
+}
+
+/**
+ * Extract the diff text for a single file from a combined unified diff.
+ * Returns the raw diff section (from `diff --git` to the next `diff --git` or EOF).
+ */
+export function extractFileDiffFromCombined(combinedDiff: string, filePath: string): string | null {
+    const lines = combinedDiff.split('\n');
+    let capturing = false;
+    let result: string[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.startsWith('diff --git ')) {
+            if (capturing) break; // hit next file
+            // Check if this is the file we want
+            const body = line.slice('diff --git '.length);
+            const bIdx = body.lastIndexOf(' b/');
+            const path = bIdx !== -1 ? body.slice(bIdx + 3) : '';
+            if (path === filePath) {
+                capturing = true;
+                result.push(line);
+            }
+        } else if (capturing) {
+            result.push(line);
+        }
+    }
+
+    return result.length > 0 ? result.join('\n') : null;
 }
