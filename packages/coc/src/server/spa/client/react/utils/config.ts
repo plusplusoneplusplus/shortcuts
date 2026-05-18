@@ -20,6 +20,7 @@ interface DashboardConfig {
     vimNavigationEnabled?: boolean;
     containerMode?: boolean;
     loopsEnabled?: boolean;
+    excalidrawEnabled?: boolean;
     mcpOauthEnabled?: boolean;
     focusedDiffEnabled?: boolean;
     bindAddress?: string;
@@ -121,6 +122,10 @@ export function isContainerMode(): boolean {
 
 export function isLoopsEnabled(): boolean {
     return getConfig().loopsEnabled === true;
+}
+
+export function isExcalidrawEnabled(): boolean {
+    return getConfig().excalidrawEnabled === true;
 }
 
 export function isMcpOauthEnabled(): boolean {

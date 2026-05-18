@@ -26,6 +26,8 @@ export interface ApiRouteContext {
     db?: Database.Database;
     /** Whether the loops/recurring follow-up subsystem is enabled. */
     loopsEnabled?: boolean;
+    /** Whether Excalidraw diagram tools are enabled. */
+    excalidrawEnabled?: boolean;
 }
 
 /** Maximum git output buffer size (50 MB) — matches forge DEFAULT_MAX_BUFFER. */

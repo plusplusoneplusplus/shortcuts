@@ -507,7 +507,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
         handler: async (_req, res, match) => {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
-            const effectiveRegistry = getEffectiveLlmToolRegistry({ loopsEnabled: ctx.loopsEnabled });
+            const effectiveRegistry = getEffectiveLlmToolRegistry({ loopsEnabled: ctx.loopsEnabled, excalidrawEnabled: ctx.excalidrawEnabled });
             if (!ctx.dataDir) {
                 sendJSON(res, 200, { tools: effectiveRegistry, disabledLlmTools: getEffectiveDefaultDisabledTools() });
                 return;
@@ -548,7 +548,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             writeRepoPreferences(ctx.dataDir, ws.id, merged);
             const globalPrefs = readGlobalPreferences(ctx.dataDir);
             sendJSON(res, 200, {
-                tools: getEffectiveLlmToolRegistry({ loopsEnabled: ctx.loopsEnabled }),
+                tools: getEffectiveLlmToolRegistry({ loopsEnabled: ctx.loopsEnabled, excalidrawEnabled: ctx.excalidrawEnabled }),
                 disabledLlmTools: merged.disabledLlmTools ?? getEffectiveDefaultDisabledTools(globalPrefs.uiLayoutMode),
             });
         },
