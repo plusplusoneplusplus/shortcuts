@@ -196,6 +196,24 @@ describe('MCP Config Loader', () => {
                 expect(Object.keys(result.mcpServers)).toHaveLength(2);
             });
 
+            it('defaults tools to ["*"] for global servers missing the field', () => {
+                const config = {
+                    mcpServers: {
+                        'no-tools': { type: 'local', command: 'server-a' },
+                        'with-tools': { type: 'sse', url: 'http://localhost:8000/sse', tools: ['specific-tool'] },
+                    },
+                };
+
+                fs.mkdirSync(mockCopilotDir, { recursive: true });
+                fs.writeFileSync(mockConfigPath, JSON.stringify(config));
+
+                const result = loadDefaultMcpConfig();
+
+                expect(result.success).toBe(true);
+                expect(result.mcpServers['no-tools']).toHaveProperty('tools', ['*']);
+                expect(result.mcpServers['with-tools']).toHaveProperty('tools', ['specific-tool']);
+            });
+
             it('handles config with empty mcpServers', () => {
                 const config: MCPConfigFile = {
                     mcpServers: {}
@@ -375,7 +393,27 @@ describe('MCP Config Loader', () => {
                 command: 'server',
                 args: ['--stdio'],
                 env: { KEY: 'value' },
+                tools: ['*'],
             });
+        });
+
+        it('defaults tools to ["*"] for workspace servers missing the field', () => {
+            const config = {
+                servers: {
+                    'stdio-no-tools': { command: 'mcp-server', args: ['--port', '8080'] },
+                    'http-no-tools': { type: 'http', url: 'https://example.com/mcp' },
+                    'with-tools': { command: 'mcp-server', tools: ['tool-a', 'tool-b'] },
+                },
+            };
+
+            fs.mkdirSync(path.dirname(workspaceConfigPath), { recursive: true });
+            fs.writeFileSync(workspaceConfigPath, JSON.stringify(config));
+
+            const result = loadWorkspaceMcpConfig(workspaceDir);
+
+            expect(result.mcpServers['stdio-no-tools']).toHaveProperty('tools', ['*']);
+            expect(result.mcpServers['http-no-tools']).toHaveProperty('tools', ['*']);
+            expect(result.mcpServers['with-tools']).toHaveProperty('tools', ['tool-a', 'tool-b']);
         });
 
         it('returns an error for invalid JSON', () => {
@@ -595,8 +633,8 @@ describe('MCP Config Loader', () => {
             });
 
             expect(result.success).toBe(true);
-            expect(result.mcpServers['globalOnly']).toEqual({ type: 'local', command: 'global-only' });
-            expect(result.mcpServers['workspaceOnly']).toEqual({ type: 'local', command: 'workspace-only' });
+            expect(result.mcpServers['globalOnly']).toEqual({ type: 'local', command: 'global-only', tools: ['*'] });
+            expect(result.mcpServers['workspaceOnly']).toEqual({ type: 'local', command: 'workspace-only', tools: ['*'] });
             expect(result.mcpServers['shared']).toEqual({ type: 'local', command: 'explicit-shared' });
         });
 

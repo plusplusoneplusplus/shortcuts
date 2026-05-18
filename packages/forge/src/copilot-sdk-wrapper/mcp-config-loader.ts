@@ -149,8 +149,9 @@ function normalizeVSCodeServer(server: Record<string, unknown>): MCPServerConfig
         const env = stringRecord(server.env);
         if (env) config.env = env;
         if (typeof server.cwd === 'string') config.cwd = server.cwd;
-        const tools = stringArray(server.tools);
-        if (tools) config.tools = tools;
+        // The SDK requires `tools: string[]`; missing/empty means "no tools".
+        // Default to ["*"] (all tools) when not specified, matching VS Code behavior.
+        config.tools = stringArray(server.tools) ?? ['*'];
         const timeout = optionalNumber(server.timeout);
         if (timeout !== undefined) config.timeout = timeout;
         const enabled = optionalBoolean(server.enabled);
@@ -162,8 +163,7 @@ function normalizeVSCodeServer(server: Record<string, unknown>): MCPServerConfig
         const config: MCPRemoteServerConfig = { type: server.type, url: server.url };
         const headers = stringRecord(server.headers);
         if (headers) config.headers = headers;
-        const tools = stringArray(server.tools);
-        if (tools) config.tools = tools;
+        config.tools = stringArray(server.tools) ?? ['*'];
         const timeout = optionalNumber(server.timeout);
         if (timeout !== undefined) config.timeout = timeout;
         const enabled = optionalBoolean(server.enabled);
@@ -199,7 +199,18 @@ function selectGlobalMcpServers(config: unknown): Record<string, MCPServerConfig
         return {};
     }
 
-    return config.mcpServers as Record<string, MCPServerConfig>;
+    // Default `tools` to ["*"] for global servers that don't specify it,
+    // matching the SDK expectation (missing tools = no tools exposed).
+    const servers = config.mcpServers as Record<string, MCPServerConfig>;
+    const result: Record<string, MCPServerConfig> = {};
+    for (const [name, server] of Object.entries(servers)) {
+        if (!server.tools || server.tools.length === 0) {
+            result[name] = { ...server, tools: ['*'] };
+        } else {
+            result[name] = server;
+        }
+    }
+    return result;
 }
 
 function loadMcpConfigFromPath(
