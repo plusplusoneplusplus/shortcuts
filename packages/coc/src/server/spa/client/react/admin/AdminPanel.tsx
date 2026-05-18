@@ -172,6 +172,7 @@ export function AdminPanel() {
     const [ralphEnabled, setRalphEnabled] = useState(false);
     const [vimNavigationEnabled, setVimNavigationEnabled] = useState(false);
     const [loopsEnabled, setLoopsEnabled] = useState(false);
+    const [excalidrawEnabled, setExcalidrawEnabled] = useState(false);
     const [focusedDiffEnabled, setFocusedDiffEnabled] = useState(false);
 
     // Preferences(theme, reposSidebarCollapsed, uiLayoutMode) — for Appearance card
@@ -204,7 +205,7 @@ export function AdminPanel() {
         taskCardDensity: 'compact' as 'compact' | 'dense',
         historyGrouping: true,
     });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, servers: false, ralph: false, vimNavigation: false, loops: false, focusedDiff: false });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, servers: false, ralph: false, vimNavigation: false, loops: false, excalidraw: false, focusedDiff: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -303,9 +304,11 @@ export function AdminPanel() {
             setVimNavigationEnabled(vne);
             const loe = resolved.loops?.enabled ?? false;
             setLoopsEnabled(loe);
+            const exe = resolved.excalidraw?.enabled ?? false;
+            setExcalidrawEnabled(exe);
             const fde = resolved.features?.focusedDiff ?? false;
             setFocusedDiffEnabled(fde);
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, servers: svre, ralph: re, vimNavigation: vne, loops: loe, focusedDiff: fde });
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, servers: svre, ralph: re, vimNavigation: vne, loops: loe, excalidraw: exe, focusedDiff: fde });
         } catch (err: unknown) {
             const detail = getSpaCocClientErrorMessage(err, '');
             setConfigError(detail ? `Failed to load configuration: ${detail}` : 'Failed to load configuration');
@@ -383,6 +386,7 @@ export function AdminPanel() {
         ralphEnabled !== featuresSnapshot.ralph ||
         vimNavigationEnabled !== featuresSnapshot.vimNavigation ||
         loopsEnabled !== featuresSnapshot.loops ||
+        excalidrawEnabled !== featuresSnapshot.excalidraw ||
         focusedDiffEnabled !== featuresSnapshot.focusedDiff;
 
     // ── AI & Execution card ──
@@ -535,17 +539,18 @@ export function AdminPanel() {
                 'ralph.enabled': ralphEnabled,
                 'vimNavigation.enabled': vimNavigationEnabled,
                 'loops.enabled': loopsEnabled,
+                'excalidraw.enabled': excalidrawEnabled,
                 'features.focusedDiff': focusedDiffEnabled,
             });
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, servers: serversEnabled, ralph: ralphEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, focusedDiff: focusedDiffEnabled });
+            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, servers: serversEnabled, ralph: ralphEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, focusedDiff: focusedDiffEnabled });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, serversEnabled, ralphEnabled, vimNavigationEnabled, loopsEnabled, focusedDiffEnabled, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, serversEnabled, ralphEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, focusedDiffEnabled, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setTerminalEnabled(featuresSnapshot.terminal);
@@ -560,6 +565,7 @@ export function AdminPanel() {
         setRalphEnabled(featuresSnapshot.ralph);
         setVimNavigationEnabled(featuresSnapshot.vimNavigation);
         setLoopsEnabled(featuresSnapshot.loops);
+        setExcalidrawEnabled(featuresSnapshot.excalidraw);
         setFocusedDiffEnabled(featuresSnapshot.focusedDiff);
     }, [featuresSnapshot]);
 
@@ -1230,6 +1236,13 @@ export function AdminPanel() {
                                     >
                                         <SourceBadge source={sources['loops.enabled']} />
                                         <AdminToggle checked={loopsEnabled} onChange={setLoopsEnabled} data-testid="toggle-loops-enabled" />
+                                    </AdminRow>
+                                    <AdminRow
+                                        name="Excalidraw diagrams"
+                                        hint="AI can generate and read Excalidraw diagrams during conversations. Disabled by default."
+                                    >
+                                        <SourceBadge source={sources['excalidraw.enabled']} />
+                                        <AdminToggle checked={excalidrawEnabled} onChange={setExcalidrawEnabled} data-testid="toggle-excalidraw-enabled" />
                                     </AdminRow>
                                     <AdminRow
                                         name="Focused Diff"

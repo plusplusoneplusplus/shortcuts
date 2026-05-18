@@ -518,6 +518,16 @@ timeout: 300
             expect(result.loops.enabled).toBe(true);
         });
 
+        it('should default excalidraw.enabled to false', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, {});
+            expect(result.excalidraw.enabled).toBe(false);
+        });
+
+        it('should override excalidraw.enabled from file', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { excalidraw: { enabled: true } });
+            expect(result.excalidraw.enabled).toBe(true);
+        });
+
         it('should default memory promotion AI normalization to disabled', () => {
             const result = mergeConfig(DEFAULT_CONFIG, {});
             expect(result.memoryPromotion.aiNormalization.enabled).toBe(false);
@@ -794,6 +804,8 @@ timeout: 300
                 '  enabled: true',
                 'mcpOauth:',
                 '  enabled: true',
+                'excalidraw:',
+                '  enabled: true',
                 'features:',
                 '  autoMemoryPromotion: true',
                 '  focusedDiff: true',
@@ -922,6 +934,9 @@ timeout: 300
                       "enabled": false,
                     },
                   },
+                  "excalidraw": {
+                    "enabled": false,
+                  },
                   "features": {
                     "autoMemoryPromotion": true,
                     "focusedDiff": true,
@@ -1036,6 +1051,7 @@ timeout: 300
                   "chat.askUser.enabled": "file",
                   "chat.followUpSuggestions.count": "file",
                   "chat.followUpSuggestions.enabled": "file",
+                  "excalidraw.enabled": "default",
                   "features.autoMemoryPromotion": "file",
                   "features.focusedDiff": "file",
                   "groupSingleLineMessages": "file",
