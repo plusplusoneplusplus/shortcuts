@@ -37,7 +37,8 @@ import { PrChecksTable, PrMergeReadiness } from './PrChecksAndReadiness';
 import { PrFilesPanel } from './PrFilesPanel';
 import { PrAiAssistantDrawer } from './PrAiAssistantDrawer';
 import { SHOW_FOCUSED_DIFF } from '../../featureFlags';
-import { useClassification } from './useClassification';
+import { useClassification } from '../git/diff/useClassification';
+import type { ClassificationKey } from '../git/diff/diffSource';
 import {
     buildAiThreadGroupsFromThreads,
     buildCheckRowsFromChecks,
@@ -100,13 +101,13 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     const [aiPassDone, setAiPassDone] = useState(false);
     const [summaryCopied, setSummaryCopied] = useState(false);
 
-    // Classification hook — passes undefined args when feature flag is off
+    // Classification hook — passes undefined key when feature flag is off
     const headSha = pr?.headSha ?? pr?.sourceBranch;
-    const classificationHook = useClassification(
-        SHOW_FOCUSED_DIFF ? String(repoId) : undefined,
-        SHOW_FOCUSED_DIFF ? String(prId) : undefined,
-        SHOW_FOCUSED_DIFF ? (headSha ?? undefined) : undefined,
-    );
+    const classificationKey: ClassificationKey | undefined =
+        SHOW_FOCUSED_DIFF && repoId && prId && headSha
+            ? { type: 'pr', repoId: String(repoId), identifier: `${prId}:${headSha}` }
+            : undefined;
+    const classificationHook = useClassification(classificationKey);
     const classification = SHOW_FOCUSED_DIFF ? classificationHook : undefined;
 
     const switchTab = useCallback(

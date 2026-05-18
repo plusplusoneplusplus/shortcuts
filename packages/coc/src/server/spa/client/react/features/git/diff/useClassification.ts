@@ -1,0 +1,298 @@
+/**
+ * Generic classification hook for any DiffSource.
+ *
+ * Accepts a `ClassificationKey` (type + repoId + identifier) and exposes
+ * the same filter/badge/lookup API as the old PR-specific hook.
+ *
+ * API endpoints used:
+ *   POST /api/repos/:repoId/classify-diff   — trigger classification
+ *   GET  /api/repos/:repoId/classify-diff   — get cached result / poll
+ */
+
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type {
+    DiffClassificationResult,
+    HunkCategory,
+    HunkClassification,
+    HunkIntensity,
+} from '../../pull-requests/classification-types';
+import { requestSpaApi } from '../../../api/cocClient';
+import type { ClassificationKey } from './diffSource';
+
+// ── Public types ──────────────────────────────────────────────────────
+
+export type ClassificationStatus = 'idle' | 'loading' | 'ready' | 'error';
+
+export interface ClassificationState {
+    /** Current status of the classification process. */
+    status: ClassificationStatus;
+    /** Human-readable error message (set when status === 'error'). */
+    error?: string;
+    /** Full classification result (set when status === 'ready'). */
+    result?: DiffClassificationResult;
+    /** Which categories are checked in the filter bar. */
+    activeFilters: Set<HunkCategory>;
+}
+
+/** Per-file badge info (max intensity across all hunks in the file). */
+export interface FileBadge {
+    /** Dominant category (highest-priority among hunks). */
+    category: HunkCategory;
+    /** Max intensity across all hunks in this file. */
+    intensity: HunkIntensity;
+}
+
+export interface UseClassificationReturn {
+    state: ClassificationState;
+    /** Trigger classification via REST API. */
+    classify: () => void;
+    /** Toggle a filter category on/off. */
+    toggleFilter: (cat: HunkCategory) => void;
+    /** Set all filter categories at once. */
+    setFilters: (cats: Set<HunkCategory>) => void;
+    /** Look up the badge for a file path (undefined if not classified). */
+    getFileBadge: (filePath: string) => FileBadge | undefined;
+    /** Look up a specific hunk's classification. */
+    getHunkClassification: (filePath: string, hunkIndex: number) => HunkClassification | undefined;
+    /** Whether a hunk should be dimmed (classified but not in active filters). */
+    isHunkDimmed: (filePath: string, hunkIndex: number) => boolean;
+    /** Whether a file should be dimmed (all its hunks are in unchecked categories). */
+    isFileDimmed: (filePath: string) => boolean;
+}
+
+// ── Category priority for badge display ───────────────────────────────
+
+const CATEGORY_PRIORITY: Record<HunkCategory, number> = {
+    logic: 3,
+    test: 2,
+    mechanical: 1,
+    generated: 0,
+};
+
+// ── API response shapes ───────────────────────────────────────────────
+
+interface ClassifyResponse {
+    status: 'started' | 'ready' | 'running';
+    taskId?: string;
+    processId?: string;
+    result?: DiffClassificationResult;
+}
+
+interface ClassificationGetResponse {
+    status: 'none' | 'ready' | 'running';
+    processId?: string;
+    result?: DiffClassificationResult;
+}
+
+// ── Hook ──────────────────────────────────────────────────────────────
+
+const POLL_INTERVAL = 3_000;
+const MAX_POLLS = 200; // 10 min max
+
+/**
+ * Generic classification hook that works with any DiffSource via ClassificationKey.
+ *
+ * Pass `undefined` to disable (no API calls, idle state).
+ */
+export function useClassification(
+    classificationKey: ClassificationKey | undefined,
+): UseClassificationReturn {
+    const [state, setState] = useState<ClassificationState>({
+        status: 'idle',
+        activeFilters: new Set<HunkCategory>(['logic']),
+    });
+
+    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const pollCount = useRef(0);
+
+    // Stop polling on unmount
+    useEffect(() => {
+        return () => {
+            if (pollRef.current) clearInterval(pollRef.current);
+        };
+    }, []);
+
+    // Build indices for fast lookup
+    const indexRef = useRef<{
+        byFile: Map<string, HunkClassification[]>;
+        byHunk: Map<string, HunkClassification>;
+        badges: Map<string, FileBadge>;
+    }>({ byFile: new Map(), byHunk: new Map(), badges: new Map() });
+
+    useEffect(() => {
+        const result = state.result;
+        const byFile = new Map<string, HunkClassification[]>();
+        const byHunk = new Map<string, HunkClassification>();
+        const badges = new Map<string, FileBadge>();
+
+        if (result) {
+            for (const c of result.classifications) {
+                const key = `${c.file}:${c.hunkIndex}`;
+                byHunk.set(key, c);
+                const arr = byFile.get(c.file) ?? [];
+                arr.push(c);
+                byFile.set(c.file, arr);
+            }
+            // Compute badges
+            for (const [file, hunks] of byFile) {
+                let maxPri = -1;
+                let badge: FileBadge = { category: 'mechanical', intensity: 'low' };
+                for (const h of hunks) {
+                    const pri = CATEGORY_PRIORITY[h.category] * 2 + (h.intensity === 'high' ? 1 : 0);
+                    if (pri > maxPri) {
+                        maxPri = pri;
+                        badge = { category: h.category, intensity: h.intensity };
+                    }
+                }
+                badges.set(file, badge);
+            }
+        }
+        indexRef.current = { byFile, byHunk, badges };
+    }, [state.result]);
+
+    // Stable stringified key for dependency tracking
+    const keyStr = classificationKey
+        ? `${classificationKey.type}:${classificationKey.repoId}:${classificationKey.identifier}`
+        : '';
+
+    const buildUrl = useCallback((suffix: string) => {
+        if (!classificationKey) return '';
+        const base = `/repos/${encodeURIComponent(classificationKey.repoId)}/classify-diff`;
+        return `${base}${suffix}`;
+    }, [keyStr]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const startPolling = useCallback(() => {
+        if (!classificationKey) return;
+        if (pollRef.current) clearInterval(pollRef.current);
+        pollCount.current = 0;
+
+        const ck = classificationKey;
+        pollRef.current = setInterval(async () => {
+            pollCount.current++;
+            if (pollCount.current > MAX_POLLS) {
+                if (pollRef.current) clearInterval(pollRef.current);
+                setState(prev => ({ ...prev, status: 'error', error: 'Classification timed out' }));
+                return;
+            }
+            try {
+                const params = new URLSearchParams({
+                    type: ck.type,
+                    identifier: ck.identifier,
+                });
+                const resp = await requestSpaApi<ClassificationGetResponse>(
+                    buildUrl(`?${params.toString()}`),
+                );
+                if (resp.status === 'ready' && resp.result) {
+                    if (pollRef.current) clearInterval(pollRef.current);
+                    setState(prev => ({ ...prev, status: 'ready', result: resp.result, error: undefined }));
+                }
+                // 'running' or 'none' — keep polling
+            } catch {
+                // Transient error — keep polling
+            }
+        }, POLL_INTERVAL);
+    }, [keyStr, buildUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const classify = useCallback(() => {
+        if (!classificationKey) return;
+        const ck = classificationKey;
+
+        setState(prev => ({ ...prev, status: 'loading', error: undefined }));
+
+        requestSpaApi<ClassifyResponse>(
+            buildUrl(''),
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: ck.type,
+                    identifier: ck.identifier,
+                }),
+            },
+        )
+            .then(resp => {
+                if (resp.status === 'ready' && resp.result) {
+                    setState(prev => ({ ...prev, status: 'ready', result: resp.result, error: undefined }));
+                } else {
+                    // Started or running — begin polling
+                    startPolling();
+                }
+            })
+            .catch(err => {
+                setState(prev => ({
+                    ...prev,
+                    status: 'error',
+                    error: err instanceof Error ? err.message : 'Classification failed',
+                }));
+            });
+    }, [keyStr, buildUrl, startPolling]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // On mount / key change, check for cached result
+    useEffect(() => {
+        if (!classificationKey) return;
+        const ck = classificationKey;
+
+        const params = new URLSearchParams({
+            type: ck.type,
+            identifier: ck.identifier,
+        });
+        requestSpaApi<ClassificationGetResponse>(
+            buildUrl(`?${params.toString()}`),
+        )
+            .then(resp => {
+                if (resp.status === 'ready' && resp.result) {
+                    setState(prev => ({ ...prev, status: 'ready', result: resp.result }));
+                } else if (resp.status === 'running') {
+                    setState(prev => ({ ...prev, status: 'loading' }));
+                    startPolling();
+                }
+            })
+            .catch(() => { /* no cache — ok */ });
+    }, [keyStr, buildUrl, startPolling]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const toggleFilter = useCallback((cat: HunkCategory) => {
+        setState(prev => {
+            const next = new Set(prev.activeFilters);
+            if (next.has(cat)) next.delete(cat);
+            else next.add(cat);
+            return { ...prev, activeFilters: next };
+        });
+    }, []);
+
+    const setFilters = useCallback((cats: Set<HunkCategory>) => {
+        setState(prev => ({ ...prev, activeFilters: cats }));
+    }, []);
+
+    const getFileBadge = useCallback((filePath: string): FileBadge | undefined => {
+        return indexRef.current.badges.get(filePath);
+    }, []);
+
+    const getHunkClassification = useCallback((filePath: string, hunkIndex: number): HunkClassification | undefined => {
+        return indexRef.current.byHunk.get(`${filePath}:${hunkIndex}`);
+    }, []);
+
+    const isHunkDimmed = useCallback((filePath: string, hunkIndex: number): boolean => {
+        if (state.status !== 'ready') return false;
+        const c = indexRef.current.byHunk.get(`${filePath}:${hunkIndex}`);
+        if (!c) return false;
+        return !state.activeFilters.has(c.category);
+    }, [state.status, state.activeFilters]);
+
+    const isFileDimmed = useCallback((filePath: string): boolean => {
+        if (state.status !== 'ready') return false;
+        const hunks = indexRef.current.byFile.get(filePath);
+        if (!hunks || hunks.length === 0) return false;
+        return hunks.every(h => !state.activeFilters.has(h.category));
+    }, [state.status, state.activeFilters]);
+
+    return {
+        state,
+        classify,
+        toggleFilter,
+        setFilters,
+        getFileBadge,
+        getHunkClassification,
+        isHunkDimmed,
+        isFileDimmed,
+    };
+}

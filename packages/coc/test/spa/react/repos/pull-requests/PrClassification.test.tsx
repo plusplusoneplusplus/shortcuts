@@ -10,7 +10,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { PrFilesPanel } from '../../../../../src/server/spa/client/react/features/pull-requests/PrFilesPanel';
 import { parseUnifiedDiff } from '../../../../../src/server/spa/client/react/features/pull-requests/unified-diff-parser';
-import type { UseClassificationReturn } from '../../../../../src/server/spa/client/react/features/pull-requests/useClassification';
+import type { UseClassificationReturn } from '../../../../../src/server/spa/client/react/features/git/diff/useClassification';
 import type { HunkCategory, DiffClassificationResult } from '../../../../../src/server/spa/client/react/features/pull-requests/classification-types';
 
 // ── Fixtures ──────────────────────────────────────────────────────────

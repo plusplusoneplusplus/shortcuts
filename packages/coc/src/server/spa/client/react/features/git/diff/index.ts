@@ -12,3 +12,5 @@ export { createCommitDiffSource, createBranchRangeDiffSource, createPrDiffSource
 export type { DiffSource, DiffCommentContext as DiffSourceCommentContext, DiffFetchResult, ClassificationKey, ChatAvailability } from './diffSource';
 export { generateUnifiedDiff } from './unifiedDiffUtils';
 export { resolveAutoColor } from './colorUtils';
+export { useClassification } from './useClassification';
+export type { UseClassificationReturn, ClassificationState, ClassificationStatus, FileBadge } from './useClassification';

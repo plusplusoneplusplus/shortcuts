@@ -33,7 +33,7 @@ import { formatTimestamp, type CommentThread, type PrComment } from './pr-utils'
 import { SHOW_FOCUSED_DIFF } from '../../featureFlags';
 import type { HunkCategory } from './classification-types';
 import { HUNK_CATEGORIES, CATEGORY_LABELS } from './classification-types';
-import type { UseClassificationReturn } from './useClassification';
+import type { UseClassificationReturn } from '../git/diff/useClassification';
 
 interface PrFilesPanelProps {
     files: ParsedDiffFile[];

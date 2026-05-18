@@ -31,6 +31,7 @@ import { registerInstructionRoutes } from '../skills/instruction-handler';
 import { registerProviderRoutes } from '../providers/provider-routes';
 import { registerPrRoutes } from '../repos/pr-routes';
 import { registerPrClassificationRoutes } from '../repos/pr-classification-handler';
+import { registerGenericClassificationRoutes } from '../repos/generic-classification-handler';
 import { registerLogsRoutes } from '../logging/logs-routes';
 import { registerModelRoutes } from '../models/model-routes';
 import { RepoTreeService } from '../repos/tree-service';
@@ -144,6 +145,12 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // Focused-diff classification routes (feature-flagged)
     if (opts.resolvedConfig?.features?.focusedDiff) {
         registerPrClassificationRoutes(routes, {
+            dataDir,
+            store,
+            bridge,
+            repoTreeService,
+        });
+        registerGenericClassificationRoutes(routes, {
             dataDir,
             store,
             bridge,
