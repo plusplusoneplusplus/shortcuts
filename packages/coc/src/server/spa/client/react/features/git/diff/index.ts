@@ -9,7 +9,7 @@ export { FileTree, buildFileTree, compactFolders, FileTreeView, FlatFileList, Fi
 export type { FileChange, FileNode, FilesViewMode } from './FileTree';
 export { PopOutFilePanel } from './PopOutFilePanel';
 export { createCommitDiffSource, createBranchRangeDiffSource, createPrDiffSource, fetchDiffFromSource, extractFilePathsFromDiff, extractFileDiffFromCombined } from './diffSource';
-export type { DiffSource, DiffCommentContext as DiffSourceCommentContext, DiffFetchResult, ClassificationKey, ChatAvailability } from './diffSource';
+export type { DiffSource, DiffCommentContext as DiffSourceCommentContext, DiffFetchResult, ClassificationKey, ChatAvailability, PrChatContext } from './diffSource';
 export { generateUnifiedDiff } from './unifiedDiffUtils';
 export { resolveAutoColor } from './colorUtils';
 export { useClassification } from './useClassification';

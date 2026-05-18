@@ -24,6 +24,8 @@ export interface PopOutFilePanelProps {
     selectedFilePath: string | null;
     onFileSelect: (filePath: string) => void;
     fileCommentMap?: Map<string, number>;
+    /** When provided, files returning true are visually dimmed (e.g. filtered out by classification). */
+    isFileDimmed?: (filePath: string) => boolean;
 }
 
 const PANEL_STORAGE_KEY = 'coc.popoutFilePanel.width';
@@ -41,6 +43,7 @@ export function PopOutFilePanel({
     selectedFilePath,
     onFileSelect,
     fileCommentMap = new Map(),
+    isFileDimmed,
 }: PopOutFilePanelProps) {
     const [collapsed, setCollapsed] = useState(loadCollapsed);
     const { mode, setMode } = useFilesViewMode(workspaceId);
@@ -122,6 +125,7 @@ export function PopOutFilePanel({
                             fileCommentMap={fileCommentMap}
                             commentBadgeTestIdPrefix="popout-flat-file-comment-badge"
                             fileTestIdPrefix="popout-flat-file-row"
+                            isFileDimmed={isFileDimmed}
                         />
                     )}
                 </div>

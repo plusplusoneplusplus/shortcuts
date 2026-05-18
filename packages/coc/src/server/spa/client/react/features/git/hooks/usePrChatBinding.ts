@@ -1,0 +1,82 @@
+import { useState, useEffect, useCallback } from 'react';
+import { getSpaCocClient } from '../../../api/cocClient';
+import type { AttachmentPayload } from '../../../types/attachments';
+
+export interface UsePrChatBindingOptions {
+    workspaceId: string;
+    prId: string;
+    /** Currently selected file — included in chat context for the AI. */
+    filePath?: string;
+}
+
+export interface UsePrChatBindingReturn {
+    taskId: string | null;
+    loading: boolean;
+    error: string | null;
+    createChat: (prompt: string, attachments?: AttachmentPayload[]) => Promise<string | null>;
+}
+
+const BINDING_STORAGE_PREFIX = 'coc.prChat.binding.';
+
+function getStoredBinding(prId: string): string | null {
+    try {
+        return localStorage.getItem(`${BINDING_STORAGE_PREFIX}${prId}`) ?? null;
+    } catch { return null; }
+}
+
+function storeBinding(prId: string, taskId: string): void {
+    try {
+        localStorage.setItem(`${BINDING_STORAGE_PREFIX}${prId}`, taskId);
+    } catch { /* ignore */ }
+}
+
+/**
+ * Hook for PR-level AI chat. Creates chat tasks with (workspaceId, prId, filePath)
+ * context identifiers — the AI determines what to read.
+ */
+export function usePrChatBinding(opts: UsePrChatBindingOptions): UsePrChatBindingReturn {
+    const { workspaceId, prId, filePath } = opts;
+    const [taskId, setTaskId] = useState<string | null>(() => getStoredBinding(prId));
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    // Restore binding from localStorage on prId change
+    useEffect(() => {
+        const stored = getStoredBinding(prId);
+        setTaskId(stored);
+    }, [prId]);
+
+    const createChat = useCallback(async (prompt: string, attachments?: AttachmentPayload[]): Promise<string | null> => {
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await getSpaCocClient().queue.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: {
+                    kind: 'chat',
+                    mode: 'ask',
+                    prompt,
+                    workspaceId,
+                    ...(attachments && attachments.length > 0 ? { attachments } : {}),
+                    context: {
+                        prChat: { prId, filePath },
+                    },
+                },
+            });
+            const newTaskId = res.task?.id ?? (res as { id?: string }).id;
+            if (!newTaskId) throw new Error('Failed to create PR chat task');
+
+            storeBinding(prId, newTaskId);
+            setTaskId(newTaskId);
+            return newTaskId;
+        } catch (err: any) {
+            setError(err?.message ?? 'Failed to create PR chat');
+            return null;
+        } finally {
+            setLoading(false);
+        }
+    }, [workspaceId, prId, filePath]);
+
+    return { taskId, loading, error, createChat };
+}

@@ -227,6 +227,8 @@ export interface FlatFileListProps {
     renderActions?: (file: FileChange) => React.ReactNode;
     /** Repo root path for "Copy Absolute Path" context menu action. */
     repoRoot?: string;
+    /** When provided, files returning true are visually dimmed (e.g. filtered by classification). */
+    isFileDimmed?: (filePath: string) => boolean;
 }
 
 export function FlatFileList({
@@ -239,6 +241,7 @@ export function FlatFileList({
     renderFileExtra,
     renderActions,
     repoRoot,
+    isFileDimmed,
 }: FlatFileListProps) {
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; filePath: string } | null>(null);
 
@@ -247,8 +250,9 @@ export function FlatFileList({
             {files.map((file, i) => {
                 const displayStatus = normalizeStatus(file.status);
                 const count = fileCommentMap.get(file.path) ?? 0;
+                const dimmed = isFileDimmed?.(file.path) ?? false;
                 return (
-                    <div key={i}>
+                    <div key={i} style={dimmed ? { opacity: 0.4 } : undefined}>
                         <button
                             className={`group w-full flex items-center gap-2 text-xs py-1 px-1 rounded hover:bg-[#f0f0f0] dark:hover:bg-[#2a2d2e] transition-colors text-left ${
                                 selectedFilePath === file.path ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/10' : ''
@@ -331,6 +335,8 @@ interface FileTreeViewProps {
     renderActions?: (node: FileNode) => React.ReactNode;
     /** Repo root path for "Copy Absolute Path" context menu action. */
     repoRoot?: string;
+    /** When provided, files returning true are visually dimmed (e.g. filtered by classification). */
+    isFileDimmed?: (filePath: string) => boolean;
 }
 
 export function FileTreeView({

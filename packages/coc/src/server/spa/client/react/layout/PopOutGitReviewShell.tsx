@@ -38,6 +38,9 @@ import { getHostname } from '../utils/config';
 import { extractFilePathsFromDiff } from '../features/git/diff/diffSource';
 import { useClassification } from '../features/git/diff/useClassification';
 import type { ClassificationKey } from '../features/git/diff/diffSource';
+import type { HunkCategory } from '../features/pull-requests/classification-types';
+import { HUNK_CATEGORIES, CATEGORY_LABELS } from '../features/pull-requests/classification-types';
+import { PrChatPanel } from '../features/git/commits/PrChatPanel';
 import type { GitCommitItem } from '../features/git/commits/CommitList';
 import type { BranchRangeInfo } from '../features/git/branches/BranchChanges';
 import type { BranchRangeFile } from '../features/git/branches/BranchAllFilesDiff';
@@ -334,6 +337,7 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
     const [hunkTarget, setHunkTarget] = useState<'first' | 'last' | undefined>(undefined);
     const [prTitle, setPrTitle] = useState<string | undefined>(undefined);
     const [headSha, setHeadSha] = useState<string | undefined>(undefined);
+    const [chatOpen, setChatOpen] = useState(false);
 
     // Classification hook for PR diff
     const classificationKey: ClassificationKey | undefined =
@@ -416,17 +420,50 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
                         </>
                     ) : classifyStatus === 'ready' ? 'Re-classify' : 'Classify'}
                 </button>
-                {classifyStatus === 'ready' && (
-                    <span className="text-[10px] text-gray-500 dark:text-gray-400">
-                        Classification complete — results shown in file list
-                    </span>
-                )}
+                <button
+                    type="button"
+                    onClick={() => setChatOpen(prev => !prev)}
+                    className={`inline-flex h-6 items-center gap-1 rounded border px-2 text-[11px] font-medium ${
+                        chatOpen
+                            ? 'border-blue-400 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-900/30 dark:text-blue-200'
+                            : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                    }`}
+                    data-testid="pr-popout-chat-toggle"
+                >
+                    💬 Chat
+                </button>
                 {classification.state.error && (
                     <span className="text-[10px] text-red-600 dark:text-red-400">
                         {classification.state.error}
                     </span>
                 )}
             </div>
+            {/* Classification filter bar — visible when results are ready */}
+            {classifyStatus === 'ready' && (
+                <div className="flex items-center gap-3 px-3 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#262626]" data-testid="pr-popout-filter-bar">
+                    <span className="text-[10px] text-[#616161] dark:text-[#999] font-medium">Filter:</span>
+                    {HUNK_CATEGORIES.map(cat => {
+                        const active = classification.state.activeFilters.has(cat);
+                        return (
+                            <label
+                                key={cat}
+                                className="flex items-center gap-1 text-[11px] cursor-pointer select-none"
+                                data-testid={`pr-popout-filter-${cat}`}
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={active}
+                                    onChange={() => classification.toggleFilter(cat as HunkCategory)}
+                                    className="h-3 w-3 rounded"
+                                />
+                                <span className={active ? 'text-[#1e1e1e] dark:text-[#ccc]' : 'text-[#848484]'}>
+                                    {CATEGORY_LABELS[cat]}
+                                </span>
+                            </label>
+                        );
+                    })}
+                </div>
+            )}
             {/* Main content */}
             <div className="flex flex-1 min-h-0">
                 <PopOutFilePanel
@@ -434,6 +471,7 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
                     files={fileList}
                     selectedFilePath={selectedFilePath}
                     onFileSelect={handleFileSelect}
+                    isFileDimmed={classifyStatus === 'ready' ? classification.isFileDimmed : undefined}
                 />
                 <div className="flex-1 min-w-0 overflow-hidden">
                     {selectedFilePath ? (
@@ -458,6 +496,17 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
                         </div>
                     )}
                 </div>
+                {/* PR Chat panel */}
+                {chatOpen && (
+                    <div className="w-[340px] shrink-0 border-l border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="pr-popout-chat-container">
+                        <PrChatPanel
+                            workspaceId={workspaceId}
+                            prId={prId}
+                            filePath={selectedFilePath ?? undefined}
+                            onClose={() => setChatOpen(false)}
+                        />
+                    </div>
+                )}
             </div>
         </div>
     );

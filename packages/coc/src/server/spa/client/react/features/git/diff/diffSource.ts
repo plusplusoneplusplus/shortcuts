@@ -23,6 +23,17 @@ export interface ChatAvailability {
 }
 
 /**
+ * Context identifiers for PR-level AI chat in the pop-out window.
+ * The AI uses these to determine what to read — no diff content in the prompt.
+ */
+export interface PrChatContext {
+    workspaceId: string;
+    prId: string;
+    /** Currently selected file in the pop-out (may be null if no file selected). */
+    filePath?: string;
+}
+
+/**
  * Generic classification key that any DiffSource can opt into.
  * Allows the classification system to work across PRs, commits, and branch ranges.
  */
@@ -242,7 +253,7 @@ export function createPrDiffSource(
 
         files: options?.files ?? [],
 
-        chat: null, // PR chat uses a different binding (workspaceId, prId, filePath)
+        chat: null, // PR chat lives at the pop-out level, not per-file (uses workspaceId + prId + currentFilePath)
 
         supportsTruncation: false,
 
