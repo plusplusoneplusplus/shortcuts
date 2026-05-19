@@ -4,11 +4,13 @@
  * Covers: set/get logger injection, silent fallback, child logger factories.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import pino from 'pino';
 import { Writable } from 'stream';
 import { setServerLogger, getServerLogger, createRequestLogger, createWSLogger, createQueueLogger } from '../../src/server/logging/server-logger';
 import { clearLogBuffer, getLogHistory } from '../../src/server/logging/server-log-capture';
+import { setLogger, getLogger, LogCategory, resetLogger } from '@plusplusoneplusplus/forge';
+import { pinoAdapterForPipelineCore } from '../../src/pino-setup';
 
 // ============================================================================
 // Helper: in-memory log capture stream
@@ -185,5 +187,52 @@ describe('silent fallback produces no output', () => {
         getServerLogger().error('also-silent');
 
         expect(lines()).toHaveLength(0);
+    });
+});
+
+// ── Regression: forge getLogger() must flow through the capture ring buffer ──
+// When serve.ts wires setLogger(pinoAdapterForPipelineCore(getServerLogger().child(...))),
+// calls to getLogger().debug/info/warn/error must appear in the ring buffer so
+// that MCP OAuth logs (LogCategory.MCP) are visible in the dashboard.
+
+describe('forge getLogger() → ring buffer (MCP OAuth dashboard regression)', () => {
+    beforeEach(() => {
+        clearLogBuffer();
+    });
+
+    afterEach(() => {
+        resetLogger();
+    });
+
+    it('routes getLogger() calls through the ring buffer when wired via getServerLogger()', () => {
+        const { stream } = createCaptureStream();
+        setServerLogger(pino({ level: 'debug' }, stream));
+
+        // Replicate the serve.ts wiring: derive forge getLogger() from the captured server logger.
+        setLogger(pinoAdapterForPipelineCore(getServerLogger().child({ store: 'ai-service' })));
+
+        getLogger().debug(LogCategory.MCP, '[McpOauthManager] addPending id=req-1 server=github');
+        getLogger().info(LogCategory.MCP, '[McpOauthManager] resolved id=req-1 status=completed');
+        getLogger().warn(LogCategory.MCP, '[McpOauthManager] some warning');
+
+        const history = getLogHistory({});
+        expect(history.length).toBeGreaterThanOrEqual(3);
+        const msgs = history.map(e => e.msg);
+        expect(msgs.some(m => m.includes('[McpOauthManager] addPending id=req-1'))).toBe(true);
+        expect(msgs.some(m => m.includes('[McpOauthManager] resolved id=req-1'))).toBe(true);
+        expect(msgs.some(m => m.includes('[McpOauthManager] some warning'))).toBe(true);
+    });
+
+    it('does NOT capture getLogger() calls when wired with raw ai logger (old broken behaviour)', () => {
+        const { stream } = createCaptureStream();
+        // Use a fresh raw pino logger (not through setServerLogger)
+        const rawAi = pino({ level: 'debug' }, stream);
+        setLogger(pinoAdapterForPipelineCore(rawAi));
+
+        getLogger().info(LogCategory.MCP, 'raw-ai-msg should-not-appear-in-buffer');
+
+        const history = getLogHistory({});
+        const msgs = history.map(e => e.msg);
+        expect(msgs.some(m => m.includes('raw-ai-msg'))).toBe(false);
     });
 });

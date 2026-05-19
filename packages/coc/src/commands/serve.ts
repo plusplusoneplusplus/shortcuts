@@ -54,9 +54,14 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
         { logLevel: options.logLevel, logDir },
         fileConfig?.logging
     ));
-    setLogger(pinoAdapterForPipelineCore(ai));
+    // Wire the server capture proxy first so that subsequent child loggers
+    // derived from getServerLogger() are also routed through the ring buffer.
     setServerLogger(coc);
     initAIServiceLogger(getServerLogger().child({ component: 'ai-service' }));
+    // Route forge getLogger() through the same capture chain so MCP/AI debug
+    // logs (LogCategory.MCP, LogCategory.AI) appear in the /api/logs/stream
+    // dashboard view.
+    setLogger(pinoAdapterForPipelineCore(getServerLogger().child({ store: 'ai-service' })));
 
     // Ensure data directory exists
     fs.mkdirSync(dataDir, { recursive: true });
