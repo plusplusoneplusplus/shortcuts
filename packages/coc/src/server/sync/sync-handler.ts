@@ -16,7 +16,7 @@ export function registerSyncRoutes(
 ): void {
     routes.push({
         method: 'GET',
-        path: '/api/sync/status',
+        pattern: '/api/sync/status',
         handler: (_req, res) => {
             const engine = getSyncEngine();
             if (!engine) {
@@ -36,7 +36,7 @@ export function registerSyncRoutes(
 
     routes.push({
         method: 'POST',
-        path: '/api/sync/trigger',
+        pattern: '/api/sync/trigger',
         handler: async (_req, res) => {
             const engine = getSyncEngine();
             const config = getConfig();
