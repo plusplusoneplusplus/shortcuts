@@ -43,6 +43,13 @@ export default defineConfig({
         // 3221225477) mid-suite. Forks isolate each test file in its own
         // OS process so native-addon teardown happens on process exit.
         pool: 'forks',
+        poolOptions: {
+            forks: {
+                // Limit concurrent forks to 2 to avoid OOM on macOS runners
+                // (excalidraw + jsdom forks accumulate ~14 GB peak usage at 3 concurrent).
+                maxForks: 2,
+            },
+        },
         // The Windows fork pool (vitest 1.6 + tinypool) sometimes raises
         // a post-completion "Worker exited unexpectedly" unhandled error
         // when a worker process exits before tinypool has a chance to
