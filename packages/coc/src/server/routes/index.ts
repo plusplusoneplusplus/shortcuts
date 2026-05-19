@@ -144,25 +144,31 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         aiInvoker,
     } = opts;
 
-    registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.loops?.enabled ?? false, opts.resolvedConfig?.excalidraw?.enabled ?? false);
+    // excalidrawEnabled uses a live getter via runtimeConfigService so admin
+    // changes take effect without restart. loopsEnabled stays startup-captured
+    // (restartRequired — loop executor infrastructure wires at startup).
+    const getLiveFeatureFlags = opts.runtimeConfigService
+        ? () => ({ excalidrawEnabled: opts.runtimeConfigService!.config.excalidraw?.enabled ?? false })
+        : () => ({ excalidrawEnabled: opts.resolvedConfig?.excalidraw?.enabled ?? false });
+    registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.loops?.enabled ?? false, getLiveFeatureFlags);
     const repoTreeService = new RepoTreeService(dataDir, undefined, store);
     registerRepoRoutes(routes, dataDir, repoTreeService);
     registerPrRoutes(routes, dataDir, repoTreeService);
-    // Focused-diff classification routes (feature-flagged)
-    if (opts.resolvedConfig?.features?.focusedDiff) {
-        registerPrClassificationRoutes(routes, {
-            dataDir,
-            store,
-            bridge,
-            repoTreeService,
-        });
-        registerGenericClassificationRoutes(routes, {
-            dataDir,
-            store,
-            bridge,
-            repoTreeService,
-        });
-    }
+    // Focused-diff classification routes — always registered so the feature
+    // can be toggled live via admin config. The SPA gates the UI based on
+    // runtime config; having the routes present when disabled is harmless.
+    registerPrClassificationRoutes(routes, {
+        dataDir,
+        store,
+        bridge,
+        repoTreeService,
+    });
+    registerGenericClassificationRoutes(routes, {
+        dataDir,
+        store,
+        bridge,
+        repoTreeService,
+    });
     registerRemoteServerRoutes(routes, {
         store: opts.remoteServerStore ?? new RemoteServerStore(dataDir),
         connector: opts.remoteServerConnector ?? new DevTunnelConnector(),
@@ -170,7 +176,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerProviderRoutes(routes, dataDir);
     registerProcessResumeRoutes(routes, store);
     registerFreshChatTerminalRoutes(routes);
-    registerTerminalRoutes(routes, store, opts.getTerminalSessionManager ?? (() => undefined), opts.resolvedConfig);
+    registerTerminalRoutes(routes, store, opts.getTerminalSessionManager ?? (() => undefined), opts.resolvedConfig, opts.runtimeConfigService);
 
     // Queue routes receive the bridge directly for per-repo routing
     registerQueueRoutes(routes, bridge, store, globalWorkspaceRootPath);
@@ -192,10 +198,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerNotesAICreateRoutes(routes, store, dataDir, bridge);
     registerNotesEditsRoutes(routes, store, dataDir);
 
-    // Diagram routes (feature-flagged via excalidraw.enabled)
-    if (opts.resolvedConfig?.excalidraw?.enabled) {
-        registerDiagramRoutes(routes, store, dataDir);
-    }
+    // Diagram routes — always registered so excalidraw.enabled (classified
+    // as live) can be toggled via admin config without restart. The SPA
+    // gates the UI via runtime config.
+    registerDiagramRoutes(routes, store, dataDir);
     registerWorkflowRoutes(routes, store);
     registerWorkspaceSummaryRoutes(routes, store, dataDir);
     registerWorkflowWriteRoutes(routes, store, (workspaceId) => {

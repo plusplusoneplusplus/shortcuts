@@ -24,10 +24,19 @@ export interface ApiRouteContext {
     getWsServer?: () => ProcessWebSocketServer | undefined;
     gitOpsStore: GitOpsStore;
     db?: Database.Database;
-    /** Whether the loops/recurring follow-up subsystem is enabled. */
+    /**
+     * Whether the loops/recurring follow-up subsystem is enabled.
+     * Remains startup-captured because loop infrastructure (executor, timers)
+     * is wired once at startup — classified as `restartRequired`.
+     */
     loopsEnabled?: boolean;
-    /** Whether Excalidraw diagram tools are enabled. */
-    excalidrawEnabled?: boolean;
+    /**
+     * Live getter for runtime config feature flags.
+     * Reads from RuntimeConfigService so per-request handlers see admin
+     * config changes without a server restart. Falls back to startup
+     * values when runtimeConfigService is not available.
+     */
+    getLiveFeatureFlags?: () => { excalidrawEnabled: boolean };
 }
 
 /** Maximum git output buffer size (50 MB) — matches forge DEFAULT_MAX_BUFFER. */

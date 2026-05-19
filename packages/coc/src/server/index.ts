@@ -154,6 +154,27 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     fs.mkdirSync(dataDir, { recursive: true });
 
     const runtimeConfigService = new RuntimeConfigService({ configPath: options.configPath, fileConfig: options.fileConfig });
+
+    // Startup-captured config snapshot. Consumers below that use this directly
+    // are infrastructure that wires once at startup. Admin-editable fields among
+    // them are classified as follows:
+    //
+    //   restartRequired (infrastructure wired at startup):
+    //     - terminal.enabled   → terminal pty/session manager
+    //     - loops.enabled      → loop executor, timer registry
+    //
+    //   Live but still startup-captured in queue infrastructure (future migration):
+    //     - timeout            → defaultTimeoutMs passed to queue infra
+    //     - chat.followUpSuggestions, chat.askUser → queue executor behavior
+    //
+    //   Non-admin-editable (no migration needed):
+    //     - mcpOauth.enabled   → MCP OAuth infra
+    //     - monitoring.heapCheck → heap monitor
+    //     - skills.autoUpdate, skills.defaultSkills → startup skill install
+    //     - features.autoMemoryPromotion → auto-promote scheduler
+    //
+    // Route handlers and SPA feature flags use runtimeConfigService for live
+    // reads (see registerAllRoutes and spaHtml closure below).
     const resolvedConfig = runtimeConfigService.config;
     const defaultTimeoutMs = resolvedConfig.timeout ? resolvedConfig.timeout * 1000 : DEFAULT_AI_TIMEOUT_MS;
 

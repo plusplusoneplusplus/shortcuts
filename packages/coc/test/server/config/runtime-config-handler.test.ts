@@ -202,3 +202,62 @@ describe('getBundleETag with config revision', () => {
         expect(etag1Again).toBe(etag1);
     });
 });
+
+describe('AC-08: live-classified route registration', () => {
+    it('diagram routes are always registered (not gated by excalidraw.enabled at startup)', async () => {
+        const routesSrc = await import('fs').then(fs =>
+            fs.readFileSync(
+                require('path').resolve(__dirname, '../../../src/server/routes/index.ts'),
+                'utf-8',
+            ),
+        );
+        // registerDiagramRoutes must be called unconditionally
+        expect(routesSrc).toContain('registerDiagramRoutes(routes');
+        expect(routesSrc).not.toMatch(/if\s*\(.*excalidraw.*\)\s*\{?\s*registerDiagramRoutes/);
+    });
+
+    it('focused-diff classification routes are always registered (not gated by features.focusedDiff at startup)', async () => {
+        const routesSrc = await import('fs').then(fs =>
+            fs.readFileSync(
+                require('path').resolve(__dirname, '../../../src/server/routes/index.ts'),
+                'utf-8',
+            ),
+        );
+        expect(routesSrc).toContain('registerPrClassificationRoutes(routes');
+        expect(routesSrc).not.toMatch(/if\s*\(.*focusedDiff.*\)\s*\{?\s*registerPrClassificationRoutes/);
+        expect(routesSrc).toContain('registerGenericClassificationRoutes(routes');
+        expect(routesSrc).not.toMatch(/if\s*\(.*focusedDiff.*\)\s*\{?\s*registerGenericClassificationRoutes/);
+    });
+
+    it('excalidraw LLM tool visibility uses live getter (not startup boolean)', async () => {
+        const routesSrc = await import('fs').then(fs =>
+            fs.readFileSync(
+                require('path').resolve(__dirname, '../../../src/server/routes/api-workspace-routes.ts'),
+                'utf-8',
+            ),
+        );
+        // Workspace routes should call getLiveFeatureFlags, not read a static excalidrawEnabled
+        expect(routesSrc).toContain('getLiveFeatureFlags');
+        expect(routesSrc).not.toMatch(/ctx\.excalidrawEnabled/);
+    });
+
+    it('excalidraw.enabled and features.focusedDiff are classified as live in admin config fields', async () => {
+        const { ADMIN_CONFIG_FIELDS } = await import('../../../src/server/admin/admin-config-fields');
+        const excalidrawField = ADMIN_CONFIG_FIELDS.find(f => f.key === 'excalidraw.enabled');
+        const focusedDiffField = ADMIN_CONFIG_FIELDS.find(f => f.key === 'features.focusedDiff');
+        expect(excalidrawField).toBeDefined();
+        expect(excalidrawField!.runtime).toBe('live');
+        expect(focusedDiffField).toBeDefined();
+        expect(focusedDiffField!.runtime).toBe('live');
+    });
+
+    it('terminal.enabled and loops.enabled are classified as restartRequired', async () => {
+        const { ADMIN_CONFIG_FIELDS } = await import('../../../src/server/admin/admin-config-fields');
+        const terminalField = ADMIN_CONFIG_FIELDS.find(f => f.key === 'terminal.enabled');
+        const loopsField = ADMIN_CONFIG_FIELDS.find(f => f.key === 'loops.enabled');
+        expect(terminalField).toBeDefined();
+        expect(terminalField!.runtime).toBe('restartRequired');
+        expect(loopsField).toBeDefined();
+        expect(loopsField!.runtime).toBe('restartRequired');
+    });
+});
