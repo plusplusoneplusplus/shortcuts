@@ -13,6 +13,7 @@ import { App } from './react/App';
 import { PopOutChatShell } from './react/layout/PopOutChatShell';
 import { PopOutMarkdownShell } from './react/layout/PopOutMarkdownShell';
 import { PopOutGitReviewShell } from './react/layout/PopOutGitReviewShell';
+import { DiagramViewerShell } from './react/features/diagrams';
 import './react/shared/file-path/file-path-preview';
 import './react/features/repo-detail/explorer/monaco-setup';
 
@@ -20,7 +21,9 @@ const container = document.getElementById('app-root');
 if (!container) throw new Error('No #app-root element found');
 const root = createRoot(container);
 
-if (window.location.hash.startsWith('#popout/activity/')) {
+if (window.location.pathname.startsWith('/diagram/')) {
+    root.render(<DiagramViewerShell />);
+} else if (window.location.hash.startsWith('#popout/activity/')) {
     root.render(<PopOutChatShell />);
 } else if (window.location.hash.startsWith('#popout/markdown')) {
     root.render(<PopOutMarkdownShell />);

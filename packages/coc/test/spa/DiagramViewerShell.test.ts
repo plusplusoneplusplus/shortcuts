@@ -1,0 +1,195 @@
+/**
+ * Tests for DiagramViewerShell — URL parsing and component structure.
+ */
+
+import { describe, it, expect } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
+import { parseDiagramViewerRoute } from '../../src/server/spa/client/react/features/diagrams/DiagramViewerShell';
+
+// ── parseDiagramViewerRoute ────────────────────────────────────────────────────
+
+describe('parseDiagramViewerRoute', () => {
+    it('parses a valid diagram path', () => {
+        const result = parseDiagramViewerRoute('/diagram/ws-abc123/architecture.excalidraw');
+        expect(result).toEqual({
+            workspaceId: 'ws-abc123',
+            diagramPath: 'architecture.excalidraw',
+        });
+    });
+
+    it('decodes URL-encoded components', () => {
+        const result = parseDiagramViewerRoute('/diagram/ws%2Dabc/my%20diagram.excalidraw');
+        expect(result).toEqual({
+            workspaceId: 'ws-abc',
+            diagramPath: 'my diagram.excalidraw',
+        });
+    });
+
+    it('returns null for root path', () => {
+        expect(parseDiagramViewerRoute('/')).toBeNull();
+    });
+
+    it('returns null for missing diagram path segment', () => {
+        expect(parseDiagramViewerRoute('/diagram/ws-abc')).toBeNull();
+    });
+
+    it('returns null for bare /diagram/ with no segments', () => {
+        expect(parseDiagramViewerRoute('/diagram/')).toBeNull();
+    });
+
+    it('returns null for unrelated path', () => {
+        expect(parseDiagramViewerRoute('/api/workspaces')).toBeNull();
+    });
+
+    it('handles path with subdirectory', () => {
+        const result = parseDiagramViewerRoute('/diagram/ws-123/subdir/file.excalidraw');
+        expect(result).toEqual({
+            workspaceId: 'ws-123',
+            diagramPath: 'subdir/file.excalidraw',
+        });
+    });
+
+    it('handles diagram name without .excalidraw extension', () => {
+        const result = parseDiagramViewerRoute('/diagram/ws-x/my-diagram');
+        expect(result).toEqual({
+            workspaceId: 'ws-x',
+            diagramPath: 'my-diagram',
+        });
+    });
+});
+
+// ── Source-level checks (entry.tsx wiring) ──────────────────────────────────────
+
+describe('client entry point: diagram viewer route', () => {
+    let source: string;
+
+    it('imports DiagramViewerShell', () => {
+        source = fs.readFileSync(
+            path.join(__dirname, '..', '..', 'src', 'server', 'spa', 'client', 'entry.tsx'),
+            'utf-8',
+        );
+        expect(source).toContain("import { DiagramViewerShell }");
+    });
+
+    it('detects /diagram/ pathname', () => {
+        source = fs.readFileSync(
+            path.join(__dirname, '..', '..', 'src', 'server', 'spa', 'client', 'entry.tsx'),
+            'utf-8',
+        );
+        expect(source).toContain("'/diagram/'");
+    });
+
+    it('renders DiagramViewerShell for diagram routes', () => {
+        source = fs.readFileSync(
+            path.join(__dirname, '..', '..', 'src', 'server', 'spa', 'client', 'entry.tsx'),
+            'utf-8',
+        );
+        expect(source).toContain('<DiagramViewerShell />');
+    });
+
+    it('checks diagram pathname before hash-based routes', () => {
+        source = fs.readFileSync(
+            path.join(__dirname, '..', '..', 'src', 'server', 'spa', 'client', 'entry.tsx'),
+            'utf-8',
+        );
+        const diagramIdx = source.indexOf("startsWith('/diagram/')");
+        const popoutIdx = source.indexOf("startsWith('#popout/activity/')");
+        expect(diagramIdx).toBeGreaterThan(-1);
+        expect(popoutIdx).toBeGreaterThan(-1);
+        expect(diagramIdx).toBeLessThan(popoutIdx);
+    });
+});
+
+// ── DiagramViewerShell source structure ─────────────────────────────────────────
+
+describe('DiagramViewerShell component source', () => {
+    let source: string;
+
+    it('uses view-only Excalidraw with expected props', () => {
+        source = fs.readFileSync(
+            path.join(
+                __dirname, '..', '..', 'src', 'server', 'spa', 'client', 'react',
+                'features', 'diagrams', 'DiagramViewerShell.tsx',
+            ),
+            'utf-8',
+        );
+        expect(source).toContain('viewModeEnabled={true}');
+        expect(source).toContain('zenModeEnabled={true}');
+    });
+
+    it('has data-testid attributes for key elements', () => {
+        source = fs.readFileSync(
+            path.join(
+                __dirname, '..', '..', 'src', 'server', 'spa', 'client', 'react',
+                'features', 'diagrams', 'DiagramViewerShell.tsx',
+            ),
+            'utf-8',
+        );
+        expect(source).toContain('data-testid="diagram-viewer-shell"');
+        expect(source).toContain('data-testid="diagram-viewer-back"');
+        expect(source).toContain('data-testid="diagram-viewer-title"');
+        expect(source).toContain('data-testid="diagram-viewer-canvas"');
+    });
+
+    it('checks both compile-time and runtime feature flags', () => {
+        source = fs.readFileSync(
+            path.join(
+                __dirname, '..', '..', 'src', 'server', 'spa', 'client', 'react',
+                'features', 'diagrams', 'DiagramViewerShell.tsx',
+            ),
+            'utf-8',
+        );
+        expect(source).toContain('SHOW_EXCALIDRAW_DIAGRAMS');
+        expect(source).toContain('isExcalidrawEnabled');
+    });
+
+    it('shows "Page not found" when feature flag is off', () => {
+        source = fs.readFileSync(
+            path.join(
+                __dirname, '..', '..', 'src', 'server', 'spa', 'client', 'react',
+                'features', 'diagrams', 'DiagramViewerShell.tsx',
+            ),
+            'utf-8',
+        );
+        expect(source).toContain('Page not found.');
+    });
+
+    it('shows "Diagram not found" error for 404 response', () => {
+        source = fs.readFileSync(
+            path.join(
+                __dirname, '..', '..', 'src', 'server', 'spa', 'client', 'react',
+                'features', 'diagrams', 'DiagramViewerShell.tsx',
+            ),
+            'utf-8',
+        );
+        expect(source).toContain('Diagram not found');
+    });
+
+    it('has back button with history navigation', () => {
+        source = fs.readFileSync(
+            path.join(
+                __dirname, '..', '..', 'src', 'server', 'spa', 'client', 'react',
+                'features', 'diagrams', 'DiagramViewerShell.tsx',
+            ),
+            'utf-8',
+        );
+        expect(source).toContain('window.history.back()');
+        expect(source).toContain("window.location.href = '/'");
+    });
+
+    it('disables all canvas editing actions', () => {
+        source = fs.readFileSync(
+            path.join(
+                __dirname, '..', '..', 'src', 'server', 'spa', 'client', 'react',
+                'features', 'diagrams', 'DiagramViewerShell.tsx',
+            ),
+            'utf-8',
+        );
+        expect(source).toContain('clearCanvas: false');
+        expect(source).toContain('export: false');
+        expect(source).toContain('loadScene: false');
+        expect(source).toContain('saveToActiveFile: false');
+        expect(source).toContain('saveAsImage: false');
+    });
+});
