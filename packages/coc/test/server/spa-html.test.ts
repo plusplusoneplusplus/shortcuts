@@ -135,7 +135,12 @@ describe('generateDashboardHtml', () => {
 
     it('does not include hostname in __DASHBOARD_CONFIG__ when hostname is not provided', () => {
         const html = generateDashboardHtml();
-        expect(html).not.toContain("hostname:");
+        // Scope the check to the config block: inlined CSS/JS bundles may contain
+        // "hostname:" from third-party packages (e.g. Excalidraw CSS) added in AC-05/AC-06.
+        const configStart = html.indexOf('window.__DASHBOARD_CONFIG__');
+        const configEnd = html.indexOf('};', configStart);
+        const configBlock = configStart >= 0 ? html.slice(configStart, configEnd + 2) : '';
+        expect(configBlock).not.toContain("hostname:");
     });
 
     it('escapes hostname in __DASHBOARD_CONFIG__', () => {
