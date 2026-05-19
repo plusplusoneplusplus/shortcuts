@@ -1172,13 +1172,18 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     {/* Ralph grilling complete — show Start Ralph panel */}
                     {(() => {
                         const ralphCtx = getRalphContext(task);
+                        const goalPath = detectedGoalFile || (task?.metadata?.goalFilePath as string | undefined) || '';
                         // Path 1: traditional grilling-phase → start
+                        // Prefer the goal file (authoritative spec) over
+                        // extracting from the last assistant turn, which is
+                        // often a short synthesis that drops detail.
                         if (ralphCtx && ralphCtx.phase === 'grilling' && task?.status === 'completed') {
                             return (
                                 <RalphStartPanel
                                     processId={processId ?? taskId}
                                     workspaceId={workspaceId}
                                     turns={turns}
+                                    goalFilePath={goalPath || undefined}
                                     onStarted={(newProcessId) => {
                                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newProcessId, repoId: workspaceId });
                                     }}
@@ -1186,7 +1191,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             );
                         }
                         // Path 2: goal.md detected → direct launch (skip grilling)
-                        const goalPath = detectedGoalFile || (task?.metadata?.goalFilePath as string | undefined) || '';
                         if (
                             goalPath
                             && isRalphEnabled()
@@ -1199,6 +1203,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                                     workspaceId={workspaceId}
                                     turns={turns}
                                     goalFilePath={goalPath}
+                                    useLaunchEndpoint
                                     onStarted={(newProcessId) => {
                                         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newProcessId, repoId: workspaceId });
                                     }}
