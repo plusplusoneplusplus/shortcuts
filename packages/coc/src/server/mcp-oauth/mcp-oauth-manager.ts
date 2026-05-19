@@ -10,6 +10,7 @@
  */
 
 import { randomUUID } from 'crypto';
+import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import type {
     PendingMcpOAuth,
     PendingMcpOAuthStatus,
@@ -55,6 +56,10 @@ export class McpOauthManager {
             error: undefined,
         };
         this.entries.set(id, entry);
+        getLogger().debug(
+            LogCategory.MCP,
+            `[McpOauthManager] addPending id=${id} server=${input.serverName} url=${input.serverUrl} workspaceId=${input.workspaceId ?? '(none)'} processId=${input.processId ?? '(none)'} hasAuthUrl=${!!input.authorizationUrl} isRefresh=${!!existing}`,
+        );
         return entry;
     }
 
@@ -80,16 +85,25 @@ export class McpOauthManager {
     /** Mark a request as resolved. */
     resolve(id: string, status: 'completed' | 'failed', error?: string): PendingMcpOAuth | undefined {
         const entry = this.entries.get(id);
-        if (!entry) return undefined;
+        if (!entry) {
+            getLogger().debug(LogCategory.MCP, `[McpOauthManager] resolve called for unknown id=${id}`);
+            return undefined;
+        }
         entry.status = status;
         entry.updatedAt = this.now();
         if (status === 'failed') entry.error = error;
+        getLogger().info(
+            LogCategory.MCP,
+            `[McpOauthManager] resolved id=${id} server=${entry.serverName} status=${status}${error ? ` error=${error}` : ''}`,
+        );
         return entry;
     }
 
     /** Remove a request by id. Returns true if it existed. */
     remove(id: string): boolean {
-        return this.entries.delete(id);
+        const removed = this.entries.delete(id);
+        getLogger().debug(LogCategory.MCP, `[McpOauthManager] remove id=${id} found=${removed}`);
+        return removed;
     }
 
     /** Drop everything (used at shutdown). */
@@ -100,10 +114,15 @@ export class McpOauthManager {
     /** Drop entries older than the TTL. */
     sweepExpired(): void {
         const cutoff = this.now() - this.ttlMs;
+        let swept = 0;
         for (const [id, entry] of this.entries) {
             if (entry.updatedAt < cutoff) {
                 this.entries.delete(id);
+                swept++;
             }
+        }
+        if (swept > 0) {
+            getLogger().debug(LogCategory.MCP, `[McpOauthManager] sweepExpired removed ${swept} expired OAuth entry(ies)`);
         }
     }
 }

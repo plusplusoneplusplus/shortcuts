@@ -539,10 +539,17 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 onBackgroundTasksChanged: this.buildBackgroundTaskHandler(processId),
                 onMcpOAuthRequired: (() => {
                     const manager = this.getMcpOauthManager?.();
-                    if (!manager) return undefined;
+                    if (!manager) {
+                        getLogger().debug(LogCategory.AI, `[ChatModeExecutor] No McpOauthManager wired — MCP OAuth events will not be tracked for process ${processId}`);
+                        return undefined;
+                    }
                     return (event: { serverName: string; serverUrl: string; authorizationUrl?: string; requestId: string }) => {
+                        getLogger().info(
+                            LogCategory.MCP,
+                            `[ChatModeExecutor] MCP OAuth event received: server=${event.serverName} url=${event.serverUrl} requestId=${event.requestId} hasAuthUrl=${!!event.authorizationUrl} processId=${processId} workspaceId=${payload.workspaceId ?? '(none)'}`,
+                        );
                         try {
-                            manager.addPending({
+                            const entry = manager.addPending({
                                 requestId: event.requestId,
                                 serverName: event.serverName,
                                 serverUrl: event.serverUrl,
@@ -550,8 +557,16 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                                 processId,
                                 workspaceId: payload.workspaceId,
                             });
-                        } catch {
+                            getLogger().debug(
+                                LogCategory.MCP,
+                                `[ChatModeExecutor] MCP OAuth entry registered: id=${entry.id} server=${event.serverName} status=${entry.status}`,
+                            );
+                        } catch (oauthErr) {
                             // Non-fatal: OAuth dispatch must not interrupt the session.
+                            getLogger().warn(
+                                LogCategory.MCP,
+                                `[ChatModeExecutor] Failed to register MCP OAuth entry for server=${event.serverName} requestId=${event.requestId}: ${oauthErr instanceof Error ? oauthErr.message : String(oauthErr)}`,
+                            );
                         }
                     };
                 })(),
