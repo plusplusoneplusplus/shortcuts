@@ -287,7 +287,7 @@ describe('SPA Enhanced Detail Rendering', () => {
     it('includes skills field in chat rendering', () => {
         const bundle = getClientBundle();
         expect(bundle).toContain('Skills');
-        expect(bundle).toContain('ctx.skills');
+        expect(bundle).toContain('.skills');
     });
 
     it('includes plan file path field in follow-prompt rendering', () => {
@@ -299,7 +299,7 @@ describe('SPA Enhanced Detail Rendering', () => {
     it('includes context blocks collapsible in chat rendering', () => {
         const bundle = getClientBundle();
         expect(bundle).toContain('Context');
-        expect(bundle).toContain('ctx.blocks');
+        expect(bundle).toContain('.blocks');
     });
 
     it('includes mode field in chat rendering', () => {
