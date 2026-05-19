@@ -32,6 +32,14 @@ export interface AskUserBatch {
     questions: AskUserQuestion[];
 }
 
+/** Data for an MCP OAuth prompt from the server. */
+export interface McpOAuthPromptData {
+    requestId: string;
+    serverName: string;
+    serverUrl: string;
+    authorizationUrl?: string;
+}
+
 export interface UseChatSSEOptions {
     taskId: string;
     task: any;
@@ -58,6 +66,10 @@ export interface UseChatSSEOptions {
     onSendComplete: () => void;
     /** Called when the server emits all `ask-user` SSE events for a batch. */
     onAskUserBatch?: (batch: AskUserBatch) => void;
+    /** Called when an MCP server requires OAuth authentication. */
+    onMcpOAuthRequired?: (data: McpOAuthPromptData) => void;
+    /** Called when MCP OAuth completes (for auto-dismiss of prompt). */
+    onMcpOAuthCompleted?: (data: McpOAuthPromptData) => void;
 }
 
 /** Manages the SSE EventSource for a running process and drives all streaming state updates. */
@@ -77,6 +89,8 @@ export function useChatSSE({
     refreshConversation,
     onSendComplete,
     onAskUserBatch,
+    onMcpOAuthRequired,
+    onMcpOAuthCompleted,
 }: UseChatSSEOptions): { stopStreaming: () => void } {
     const eventSourceRef = useRef<EventSource | null>(null);
     const askUserBatchesRef = useRef<Map<string, Map<number, AskUserQuestion>>>(new Map());
@@ -324,6 +338,20 @@ export function useChatSSE({
                         });
                     }
                 }
+            } catch { /* ignore */ }
+        });
+
+        es.addEventListener('mcp-oauth-required', (event: Event) => {
+            try {
+                const data = JSON.parse((event as MessageEvent).data) as McpOAuthPromptData;
+                onMcpOAuthRequired?.(data);
+            } catch { /* ignore */ }
+        });
+
+        es.addEventListener('mcp-oauth-completed', (event: Event) => {
+            try {
+                const data = JSON.parse((event as MessageEvent).data) as McpOAuthPromptData;
+                onMcpOAuthCompleted?.(data);
             } catch { /* ignore */ }
         });
 

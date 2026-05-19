@@ -94,4 +94,35 @@ describe('McpOauthManager', () => {
     it('exports DEFAULT_MCP_OAUTH_TTL_MS at 10 minutes', () => {
         expect(DEFAULT_MCP_OAUTH_TTL_MS).toBe(10 * 60 * 1000);
     });
+
+    it('stores originalMessage and originalTurnIndex', () => {
+        const mgr = new McpOauthManager();
+        const entry = mgr.addPending({
+            requestId: 'r1',
+            serverName: 'srv',
+            serverUrl: 'u',
+            originalMessage: 'What is the weather?',
+            originalTurnIndex: 3,
+        });
+        expect(entry.originalMessage).toBe('What is the weather?');
+        expect(entry.originalTurnIndex).toBe(3);
+    });
+
+    it('preserves originalMessage on re-registration', () => {
+        const mgr = new McpOauthManager();
+        mgr.addPending({
+            requestId: 'r1',
+            serverName: 'srv',
+            serverUrl: 'u',
+            originalMessage: 'hello',
+            originalTurnIndex: 1,
+        });
+        const refreshed = mgr.addPending({
+            requestId: 'r1',
+            serverName: 'srv',
+            serverUrl: 'u',
+        });
+        expect(refreshed.originalMessage).toBe('hello');
+        expect(refreshed.originalTurnIndex).toBe(1);
+    });
 });

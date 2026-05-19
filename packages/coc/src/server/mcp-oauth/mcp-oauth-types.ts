@@ -34,6 +34,10 @@ export interface PendingMcpOAuth {
     updatedAt: number;
     /** Optional failure reason when status === 'failed'. */
     error?: string;
+    /** The original user message that triggered the OAuth requirement (for auto-retry). */
+    originalMessage?: string;
+    /** The turn index of the original message (for auto-retry). */
+    originalTurnIndex?: number;
 }
 
 /** Input shape for registering a new pending OAuth request. */
@@ -44,4 +48,8 @@ export interface RegisterMcpOAuthInput {
     authorizationUrl?: string;
     processId?: string;
     workspaceId?: string;
+    /** The original user message that triggered the OAuth requirement (for auto-retry). */
+    originalMessage?: string;
+    /** The turn index of the original message (for auto-retry). */
+    originalTurnIndex?: number;
 }

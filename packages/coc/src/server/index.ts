@@ -165,8 +165,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Forward declaration — loop infra is created after queue infra
     let loopInfra: LoopInfrastructure | undefined;
 
-    // MCP OAuth infra — gated by mcpOauth.enabled feature flag (default false).
-    const mcpOauthEnabled = resolvedConfig.mcpOauth?.enabled ?? false;
+    // MCP OAuth infra — enabled by default when any MCP server may be configured.
+    const mcpOauthEnabled = resolvedConfig.mcpOauth?.enabled ?? true;
     const mcpOauthInfra = mcpOauthEnabled ? createMcpOauthInfrastructure() : undefined;
 
     const { registry, bridge, queuePersistence, queueFacade } = createQueueInfrastructure(

@@ -54,6 +54,8 @@ export class McpOauthManager {
             createdAt: existing?.createdAt ?? now,
             updatedAt: now,
             error: undefined,
+            originalMessage: input.originalMessage ?? existing?.originalMessage,
+            originalTurnIndex: input.originalTurnIndex ?? existing?.originalTurnIndex,
         };
         this.entries.set(id, entry);
         getLogger().debug(

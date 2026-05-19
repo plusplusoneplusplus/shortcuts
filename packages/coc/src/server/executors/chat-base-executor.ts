@@ -556,11 +556,26 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                                 authorizationUrl: event.authorizationUrl,
                                 processId,
                                 workspaceId: payload.workspaceId,
+                                originalMessage: prompt,
                             });
                             getLogger().debug(
                                 LogCategory.MCP,
                                 `[ChatModeExecutor] MCP OAuth entry registered: id=${entry.id} server=${event.serverName} status=${entry.status}`,
                             );
+                            // Emit SSE event so the dashboard can prompt the user
+                            try {
+                                this.store.emitProcessEvent(processId, {
+                                    type: 'mcp-oauth-required',
+                                    mcpOAuth: {
+                                        requestId: entry.id,
+                                        serverName: event.serverName,
+                                        serverUrl: event.serverUrl,
+                                        authorizationUrl: event.authorizationUrl,
+                                    },
+                                });
+                            } catch {
+                                // Non-fatal: SSE emission must not interrupt the session
+                            }
                         } catch (oauthErr) {
                             // Non-fatal: OAuth dispatch must not interrupt the session.
                             getLogger().warn(

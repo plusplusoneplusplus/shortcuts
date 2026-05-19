@@ -7,9 +7,10 @@ import { cn } from '../../ui/cn';
 import { QueuedFollowUps } from './QueuedBubble';
 import { BackgroundTasksIndicator } from './BackgroundTasksIndicator';
 import { AskUserInline } from './AskUserInline';
+import { McpOAuthPrompt } from './McpOAuthPrompt';
 import type { ClientConversationTurn } from '../../types/dashboard';
 import type { QueuedMessage } from '../../utils/chatUtils';
-import type { BackgroundTasksState, AskUserBatch } from './hooks/useChatSSE';
+import type { BackgroundTasksState, AskUserBatch, McpOAuthPromptData } from './hooks/useChatSSE';
 import { MODE_ICONS, MODE_TEXT_COLORS } from '../../repos/modeConfig';
 import type { ChatMode } from '../../repos/modeConfig';
 
@@ -83,6 +84,12 @@ export interface ConversationAreaProps {
      * vim-style `i` re-focuses the input from nav mode.
      */
     inputRef?: React.RefObject<{ focus: () => void } | null> | null;
+    /** Active MCP OAuth prompts awaiting user authorization. */
+    mcpOAuthPrompts?: McpOAuthPromptData[];
+    /** Called when an MCP OAuth flow completes. */
+    onMcpOAuthCompleted?: (requestId: string) => void;
+    /** Called when an MCP OAuth flow fails. */
+    onMcpOAuthFailed?: (requestId: string) => void;
 }
 
 export function ConversationArea({
@@ -121,6 +128,9 @@ export function ConversationArea({
     processType,
     onCancelPendingMessage,
     inputRef,
+    mcpOAuthPrompts,
+    onMcpOAuthCompleted,
+    onMcpOAuthFailed,
 }: ConversationAreaProps) {
     const [showArchived, setShowArchived] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -334,6 +344,14 @@ export function ConversationArea({
                                 onAnswered={onAskUserAnswered ?? (() => {})}
                             />
                         )}
+                        {mcpOAuthPrompts && mcpOAuthPrompts.length > 0 && mcpOAuthPrompts.map(prompt => (
+                            <McpOAuthPrompt
+                                key={prompt.requestId}
+                                data={prompt}
+                                onCompleted={onMcpOAuthCompleted}
+                                onFailed={onMcpOAuthFailed}
+                            />
+                        ))}
                         {pendingQueue.length > 0 && (
                             <QueuedFollowUps queue={pendingQueue} onCancel={onCancelPendingMessage} />
                         )}

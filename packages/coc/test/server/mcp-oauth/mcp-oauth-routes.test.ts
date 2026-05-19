@@ -144,4 +144,71 @@ describe('MCP OAuth REST routes', () => {
         const res = await dispatch(routes, 'DELETE', '/api/mcp-oauth/pending/nope');
         expect(res.statusCode).toBe(404);
     });
+
+    describe('POST /pending/:id/complete-and-retry', () => {
+        it('marks entry as completed and returns retryEnqueued=false without executeFollowUp', async () => {
+            manager.addPending({ requestId: 'oauth1', serverName: 'TestServer', serverUrl: 'http://test', processId: 'p1', originalMessage: 'hello' });
+            const res = await dispatch(routes, 'POST', '/api/mcp-oauth/pending/oauth1/complete-and-retry');
+            expect(res.statusCode).toBe(200);
+            expect(res.body.status).toBe('completed');
+            expect(res.body.retryEnqueued).toBe(false);
+            expect(manager.getPending('oauth1')?.status).toBe('completed');
+        });
+
+        it('returns 404 when entry does not exist', async () => {
+            const res = await dispatch(routes, 'POST', '/api/mcp-oauth/pending/missing/complete-and-retry');
+            expect(res.statusCode).toBe(404);
+        });
+
+        it('calls executeFollowUp and returns retryEnqueued=true', async () => {
+            let followUpCalled = false;
+            let followUpArgs: [string, string] | undefined;
+            const routesWithRetry: Route[] = [];
+            registerMcpOauthRoutes(routesWithRetry, {
+                manager,
+                executeFollowUp: async (processId, message) => {
+                    followUpCalled = true;
+                    followUpArgs = [processId, message];
+                },
+            });
+            manager.addPending({ requestId: 'oauth2', serverName: 'S', serverUrl: 'u', processId: 'proc-abc', originalMessage: 'do the thing' });
+            const res = await dispatch(routesWithRetry, 'POST', '/api/mcp-oauth/pending/oauth2/complete-and-retry');
+            expect(res.statusCode).toBe(200);
+            expect(res.body.retryEnqueued).toBe(true);
+            expect(followUpCalled).toBe(true);
+            expect(followUpArgs).toEqual(['proc-abc', 'do the thing']);
+        });
+
+        it('emits mcp-oauth-completed SSE event when store is provided', async () => {
+            const events: any[] = [];
+            const fakeStore = {
+                emitProcessEvent: (processId: string, event: any) => { events.push({ processId, event }); },
+            };
+            const routesWithStore: Route[] = [];
+            registerMcpOauthRoutes(routesWithStore, {
+                manager,
+                store: fakeStore as any,
+            });
+            manager.addPending({ requestId: 'oauth3', serverName: 'Srv', serverUrl: 'http://srv', processId: 'p-1' });
+            await dispatch(routesWithStore, 'POST', '/api/mcp-oauth/pending/oauth3/complete-and-retry');
+            expect(events).toHaveLength(1);
+            expect(events[0].processId).toBe('p-1');
+            expect(events[0].event.type).toBe('mcp-oauth-completed');
+            expect(events[0].event.mcpOAuth.requestId).toBe('oauth3');
+            expect(events[0].event.mcpOAuth.serverName).toBe('Srv');
+        });
+
+        it('retryEnqueued is false when no originalMessage is stored', async () => {
+            let followUpCalled = false;
+            const routesWithRetry: Route[] = [];
+            registerMcpOauthRoutes(routesWithRetry, {
+                manager,
+                executeFollowUp: async () => { followUpCalled = true; },
+            });
+            manager.addPending({ requestId: 'oauth4', serverName: 'S', serverUrl: 'u', processId: 'proc-x' });
+            const res = await dispatch(routesWithRetry, 'POST', '/api/mcp-oauth/pending/oauth4/complete-and-retry');
+            expect(res.body.retryEnqueued).toBe(false);
+            expect(followUpCalled).toBe(false);
+        });
+    });
 });

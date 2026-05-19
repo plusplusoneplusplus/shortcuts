@@ -142,6 +142,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [invalidScratchpadPaths, setInvalidScratchpadPaths] = useState<Set<string>>(() => new Set());
     const [backgroundTasks, setBackgroundTasks] = useState<import('./hooks/useChatSSE').BackgroundTasksState | null>(null);
     const [pendingAskUserBatch, setPendingAskUserBatch] = useState<import('./hooks/useChatSSE').AskUserBatch | null>(null);
+    const [mcpOAuthPrompts, setMcpOAuthPrompts] = useState<import('./hooks/useChatSSE').McpOAuthPromptData[]>([]);
     const [noteEdits, setNoteEdits] = useState<Array<{
         editId: string; notePath: string; preEditContent: string;
         postEditContent?: string; timestamp: string; turnIndex: number; tooLarge?: boolean;
@@ -585,6 +586,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         refreshConversation,
         onSendComplete,
         onAskUserBatch: setPendingAskUserBatch,
+        onMcpOAuthRequired: (data) => {
+            setMcpOAuthPrompts(prev => {
+                if (prev.some(p => p.requestId === data.requestId)) return prev;
+                return [...prev, data];
+            });
+        },
+        onMcpOAuthCompleted: (data) => {
+            setMcpOAuthPrompts(prev => prev.filter(p => p.requestId !== data.requestId));
+        },
     });
 
     useQueuedTaskPoll({ taskId, task, setTask, setProcessDetails, setTurnsAndRef });
@@ -1159,6 +1169,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         processType={fullTask?.type ?? task?.type}
                         onCancelPendingMessage={handleCancelPendingMessage}
                         inputRef={richTextRef}
+                        mcpOAuthPrompts={mcpOAuthPrompts}
+                        onMcpOAuthCompleted={(requestId) => setMcpOAuthPrompts(prev => prev.filter(p => p.requestId !== requestId))}
+                        onMcpOAuthFailed={(requestId) => setMcpOAuthPrompts(prev => prev.filter(p => p.requestId !== requestId))}
                     />
                     {variant !== 'floating' && !isMobile && (
                         <ConversationMiniMap
