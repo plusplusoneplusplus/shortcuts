@@ -86,6 +86,8 @@ import { registerMcpOauthRoutes } from '../mcp-oauth';
 import type { McpOauthManager } from '../mcp-oauth';
 import { registerDiagramRoutes } from '../diagrams/diagrams-handler';
 import { registerRuntimeConfigRoutes } from '../config/runtime-config-handler';
+import { registerSyncRoutes } from '../sync/sync-handler';
+import type { SyncEngine } from '../sync/sync-engine';
 
 /** Collect git commits made between headBefore and current HEAD. Non-fatal — returns [] on error. */
 function collectWorkItemCommits(
@@ -133,6 +135,7 @@ export interface RegisterRoutesOptions {
     loopEmit?: LoopEventEmit;
     hostname?: string;
     bindAddress?: string;
+    syncEngine?: SyncEngine;
 }
 
 export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined } {
@@ -427,6 +430,13 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             });
         },
     });
+
+    // Sync routes (notes git sync)
+    registerSyncRoutes(
+        routes,
+        () => opts.syncEngine,
+        () => opts.resolvedConfig,
+    );
 
     return { wikiManager };
 }
