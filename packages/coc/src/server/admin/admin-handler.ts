@@ -14,6 +14,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
+import type { RuntimeConfigService } from '../../config/runtime-config-service';
 import { parseBody, sendJSON } from '../core/api-handler';
 import { badRequest, forbidden, handleAPIError, invalidJSON } from '../errors';
 import { exportAllData } from '../storage/data-exporter';
@@ -130,8 +131,10 @@ export interface AdminRouteOptions {
     getQueueManager?: () => TaskQueueManager | undefined;
     /** Lazy getter for queue persistence (for import restore). */
     getQueuePersistence?: () => QueuePersistence | undefined;
-    /** Config file functions (injected from CLI layer). */
+    /** Config file functions (injected from CLI layer). Falls back when runtimeConfigService is absent. */
     configFunctions?: AdminConfigFunctions;
+    /** Central runtime config service. When provided, GET/PUT admin config use this instead of configFunctions. */
+    runtimeConfigService?: RuntimeConfigService;
     /** Exit code to use for restart (injected to avoid circular import). Defaults to 75. */
     restartExitCode?: number;
     /** Override token TTL in ms (for testing). Defaults to TOKEN_EXPIRY_MS (5 min). */
@@ -143,7 +146,7 @@ export interface AdminRouteOptions {
  * Mutates the `routes` array in-place.
  */
 export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions): void {
-    const { store, dataDir, getWsServer, configPath, configFunctions } = options;
+    const { store, dataDir, getWsServer, configPath, configFunctions, runtimeConfigService } = options;
     const wiper = new DataWiper(dataDir, store);
     const resolvedConfigPath = configPath ?? configFunctions?.getConfigFilePath?.() ?? '';
 
@@ -190,8 +193,18 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
         method: 'GET',
         pattern: '/api/admin/config',
         handler: async (_req, res) => {
-            const result = configFunctions?.getResolvedConfigWithSource?.(configPath) ?? { config: {}, sources: {} };
-            sendJSON(res, 200, result);
+            if (runtimeConfigService) {
+                const snapshot = runtimeConfigService.getSnapshot();
+                sendJSON(res, 200, {
+                    resolved: snapshot.config,
+                    sources: snapshot.sources,
+                    configFilePath: runtimeConfigService.configPath,
+                    revision: snapshot.revision,
+                });
+            } else {
+                const result = configFunctions?.getResolvedConfigWithSource?.(configPath) ?? { config: {}, sources: {} };
+                sendJSON(res, 200, result);
+            }
         },
     });
 
@@ -219,31 +232,45 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                 return handleAPIError(res, badRequest('Request body must contain at least one editable field'));
             }
 
-            // Validate all present editable fields via registry
-            const errors: string[] = [];
-            for (const field of ADMIN_CONFIG_FIELDS) {
-                if (field.key in body) {
-                    const err = field.validate(body[field.key]);
-                    if (err) { errors.push(err); }
+            if (runtimeConfigService) {
+                // Delegate validation, disk write, refresh, and revision bump to the service
+                try {
+                    const updateResult = await runtimeConfigService.updateConfig(body);
+                    sendJSON(res, 200, {
+                        resolved: updateResult.config,
+                        sources: updateResult.sources,
+                        configFilePath: runtimeConfigService.configPath,
+                        revision: updateResult.revision,
+                        effects: updateResult.effects,
+                    });
+                } catch (err) {
+                    return handleAPIError(res, badRequest((err as Error).message));
                 }
-            }
-            if (errors.length > 0) {
-                return handleAPIError(res, badRequest(errors.join('; ')));
-            }
-
-            // Merge with existing config via registry
-            const existing: CLIConfig = configFunctions?.loadConfigFile?.(configPath) ?? {};
-            for (const field of ADMIN_CONFIG_FIELDS) {
-                if (field.key in body) {
-                    field.apply(existing, body[field.key]);
+            } else {
+                // Legacy path: validate and write through configFunctions
+                const errors: string[] = [];
+                for (const field of ADMIN_CONFIG_FIELDS) {
+                    if (field.key in body) {
+                        const err = field.validate(body[field.key]);
+                        if (err) { errors.push(err); }
+                    }
                 }
+                if (errors.length > 0) {
+                    return handleAPIError(res, badRequest(errors.join('; ')));
+                }
+
+                const existing: CLIConfig = configFunctions?.loadConfigFile?.(configPath) ?? {};
+                for (const field of ADMIN_CONFIG_FIELDS) {
+                    if (field.key in body) {
+                        field.apply(existing, body[field.key]);
+                    }
+                }
+
+                configFunctions?.writeConfigFile?.(resolvedConfigPath, existing);
+
+                const result = configFunctions?.getResolvedConfigWithSource?.(configPath) ?? { config: {}, sources: {} };
+                sendJSON(res, 200, result);
             }
-
-            configFunctions?.writeConfigFile?.(resolvedConfigPath, existing);
-
-            // Return updated resolved config (same shape as GET)
-            const result = configFunctions?.getResolvedConfigWithSource?.(configPath) ?? { config: {}, sources: {} };
-            sendJSON(res, 200, result);
         },
     });
 

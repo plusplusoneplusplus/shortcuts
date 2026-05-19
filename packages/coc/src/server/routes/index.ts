@@ -232,6 +232,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         getQueuePersistence: () => queuePersistence,
         restartExitCode: 75,
         configFunctions: { getConfigFilePath, getResolvedConfigWithSource, loadConfigFile, writeConfigFile },
+        runtimeConfigService: opts.runtimeConfigService,
         tokenTtlMs,
     });
     registerScheduleRoutes(routes, scheduleManager, async (repoId) => {
