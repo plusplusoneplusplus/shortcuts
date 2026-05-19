@@ -63,8 +63,18 @@ await esbuild.build({
     sourcemap: false,
     logLevel: 'info',
     alias: spaAliases,
+    // Excalidraw publishes its JS and CSS under custom export conditions
+    // (`production` / `development`) in its package.json. Without telling
+    // esbuild which one to pick, the explicit `import '@excalidraw/excalidraw/index.css'`
+    // we do for the diagram renderer styles fails to resolve. We prefer the
+    // production bundle for our SPA distribution; the JS resolves fine even
+    // without this hint (it has a `default` fallback) but the CSS export
+    // does not.
+    conditions: ['production'],
     loader: {
         '.ttf': 'dataurl',
+        '.woff': 'dataurl',
+        '.woff2': 'dataurl',
         '.css': 'css',
     },
 });

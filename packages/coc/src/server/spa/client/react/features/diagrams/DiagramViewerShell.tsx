@@ -9,12 +9,19 @@
  * name and a back button.
  */
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Excalidraw } from '@excalidraw/excalidraw';
 import { ThemeProvider } from '../../layout/ThemeProvider';
 import { getApiBase, isExcalidrawEnabled } from '../../utils/config';
 import { SHOW_EXCALIDRAW_DIAGRAMS } from '../../featureFlags';
 import { unwrapDiagramResponse, buildViewerInitialData, type ExcalidrawScene } from './diagram-scene';
+
+// Minimal subset of Excalidraw's imperative API that we actually consume.
+// Avoids pulling the real (extremely heavy) type into the module signature,
+// which is also what the test-time stub of `@excalidraw/excalidraw` exposes.
+interface ExcalidrawApiLike {
+    scrollToContent?: (target?: readonly any[], opts?: { fitToContent?: boolean }) => void;
+}
 
 // ── URL parsing ────────────────────────────────────────────────────────────────
 
@@ -54,8 +61,44 @@ function DiagramViewerContent({ params }: { params: DiagramViewerParams }) {
     const [state, setState] = useState<LoadState>('loading');
     const [sceneData, setSceneData] = useState<ExcalidrawScene | null>(null);
     const [errorMsg, setErrorMsg] = useState('');
+    const apiRef = useRef<ExcalidrawApiLike | null>(null);
 
     const name = useMemo(() => displayName(params.diagramPath), [params.diagramPath]);
+
+    const initialData = useMemo(
+        () => (sceneData ? buildViewerInitialData(sceneData) : null),
+        [sceneData],
+    );
+
+    // After the scene mounts, ask Excalidraw to fit the content into the
+    // viewport. Without this, view-mode canvases stay parked at scroll (0,0)
+    // and elements positioned well off the origin (which the LLM happily
+    // does) appear as a blank canvas. We retry a couple of animation frames
+    // because the API ref is set before the canvas is fully sized.
+    useEffect(() => {
+        if (state !== 'loaded' || !initialData) return;
+        const elements = initialData.elements as readonly any[];
+        if (!Array.isArray(elements) || elements.length === 0) return;
+        let cancelled = false;
+        let attempts = 0;
+        const tick = () => {
+            if (cancelled) return;
+            const api = apiRef.current;
+            if (api?.scrollToContent) {
+                try {
+                    api.scrollToContent(elements, { fitToContent: true });
+                    return;
+                } catch {
+                    // fall through to retry
+                }
+            }
+            if (attempts++ < 20) {
+                requestAnimationFrame(tick);
+            }
+        };
+        requestAnimationFrame(tick);
+        return () => { cancelled = true; };
+    }, [state, initialData]);
 
     useEffect(() => {
         let cancelled = false;
@@ -134,9 +177,10 @@ function DiagramViewerContent({ params }: { params: DiagramViewerParams }) {
                         </button>
                     </div>
                 )}
-                {state === 'loaded' && sceneData && (
+                {state === 'loaded' && initialData && (
                     <Excalidraw
-                        initialData={buildViewerInitialData(sceneData)}
+                        initialData={initialData}
+                        excalidrawAPI={(api: any) => { apiRef.current = api as ExcalidrawApiLike; }}
                         viewModeEnabled={true}
                         zenModeEnabled={true}
                         gridModeEnabled={false}

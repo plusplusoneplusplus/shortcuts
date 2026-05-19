@@ -99,6 +99,20 @@ describe('client entry point: diagram viewer route', () => {
         expect(popoutIdx).toBeGreaterThan(-1);
         expect(diagramIdx).toBeLessThan(popoutIdx);
     });
+
+    // Regression: Excalidraw ships its renderer CSS as a separate package entry.
+    // Without importing it the canvas renders blank (the React component still
+    // mounts its UI chrome — back button, menu, zoom indicator — but the
+    // <canvas> elements lack their positioning/sizing styles). Keep this
+    // import wired at the SPA entry so any route that surfaces a diagram
+    // viewer or preview gets the styles.
+    it('imports @excalidraw/excalidraw/index.css so the canvas can render', () => {
+        source = fs.readFileSync(
+            path.join(__dirname, '..', '..', 'src', 'server', 'spa', 'client', 'entry.tsx'),
+            'utf-8',
+        );
+        expect(source).toContain("import '@excalidraw/excalidraw/index.css'");
+    });
 });
 
 // ── DiagramViewerShell source structure ─────────────────────────────────────────

@@ -6,11 +6,13 @@
  * were undefined and the canvas crashed with a render-time error.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
     unwrapDiagramResponse,
     buildViewerInitialData,
+    normaliseSceneElements,
 } from '../../src/server/spa/client/react/features/diagrams/diagram-scene';
+import * as ExcalidrawMod from '@excalidraw/excalidraw';
 
 const SAMPLE_SCENE = {
     type: 'excalidraw',
@@ -67,7 +69,9 @@ describe('buildViewerInitialData', () => {
     it('forces view-mode flags and provides a collaborators Map', () => {
         const scene = unwrapDiagramResponse({ content: SAMPLE_SCENE });
         const initial = buildViewerInitialData(scene);
-        expect(initial.elements).toBe(scene.elements);
+        // Elements pass through `restoreElements` (stubbed to identity in test setup)
+        // so they should remain equal by value even though they may be a new array.
+        expect(initial.elements).toEqual(scene.elements);
         expect(initial.appState.viewModeEnabled).toBe(true);
         expect(initial.appState.zenModeEnabled).toBe(true);
         expect(initial.appState.gridModeEnabled).toBe(false);
@@ -92,5 +96,87 @@ describe('buildViewerInitialData', () => {
         expect(initial.appState.collaborators).toBeInstanceOf(Map);
         expect(initial.appState.viewModeEnabled).toBe(true);
         expect(initial.files).toBeUndefined();
+    });
+
+    it('runs scene elements through Excalidraw normalisers so LLM-skeleton diagrams render', () => {
+        // Regression: LLM-generated diagrams omit Excalidraw's bookkeeping fields
+        // (`version`, `versionNonce`, `groupIds`, `isDeleted`, fractional `index`, ...).
+        // The viewer must pipe them through `convertToExcalidrawElements` +
+        // `restoreElements` or the canvas renders blank.
+        const convertSpy = vi.spyOn(ExcalidrawMod, 'convertToExcalidrawElements');
+        const restoreSpy = vi.spyOn(ExcalidrawMod, 'restoreElements');
+        try {
+            const scene = unwrapDiagramResponse({
+                content: {
+                    elements: [{ id: 'box1', type: 'rectangle', x: 0, y: 0, width: 10, height: 10 }],
+                    appState: {},
+                },
+            });
+            buildViewerInitialData(scene);
+            expect(convertSpy).toHaveBeenCalledTimes(1);
+            expect(convertSpy).toHaveBeenCalledWith(
+                scene.elements,
+                expect.objectContaining({ regenerateIds: false }),
+            );
+            expect(restoreSpy).toHaveBeenCalledTimes(1);
+            expect(restoreSpy).toHaveBeenCalledWith(
+                scene.elements,
+                null,
+                expect.objectContaining({ repairBindings: true }),
+            );
+        } finally {
+            convertSpy.mockRestore();
+            restoreSpy.mockRestore();
+        }
+    });
+});
+
+describe('normaliseSceneElements', () => {
+    it('delegates to convertToExcalidrawElements (regenerateIds=false) then restoreElements (repairBindings=true)', () => {
+        const convertSpy = vi.spyOn(ExcalidrawMod, 'convertToExcalidrawElements');
+        const restoreSpy = vi.spyOn(ExcalidrawMod, 'restoreElements');
+        try {
+            const input = [{ id: 'a', type: 'rectangle' }];
+            const out = normaliseSceneElements(input);
+            expect(convertSpy).toHaveBeenCalledWith(input, expect.objectContaining({ regenerateIds: false }));
+            expect(restoreSpy).toHaveBeenCalledWith(input, null, expect.objectContaining({ repairBindings: true }));
+            // With the identity mocks from test/setup.ts, output mirrors input by value.
+            expect(out).toEqual(input);
+        } finally {
+            convertSpy.mockRestore();
+            restoreSpy.mockRestore();
+        }
+    });
+
+    it('returns an empty array for empty/invalid input without calling Excalidraw helpers', () => {
+        const convertSpy = vi.spyOn(ExcalidrawMod, 'convertToExcalidrawElements');
+        const restoreSpy = vi.spyOn(ExcalidrawMod, 'restoreElements');
+        try {
+            expect(normaliseSceneElements([])).toEqual([]);
+            expect(normaliseSceneElements(null as any)).toEqual([]);
+            expect(convertSpy).not.toHaveBeenCalled();
+            expect(restoreSpy).not.toHaveBeenCalled();
+        } finally {
+            convertSpy.mockRestore();
+            restoreSpy.mockRestore();
+        }
+    });
+
+    it('falls back gracefully when both normalisers throw', () => {
+        const convertSpy = vi.spyOn(ExcalidrawMod, 'convertToExcalidrawElements').mockImplementation(() => {
+            throw new Error('boom-convert');
+        });
+        const restoreSpy = vi.spyOn(ExcalidrawMod, 'restoreElements').mockImplementation(() => {
+            throw new Error('boom-restore');
+        });
+        try {
+            const input = [{ id: 'a', type: 'rectangle' }];
+            const out = normaliseSceneElements(input);
+            // When both throw, we fall back to the raw elements rather than crashing.
+            expect(out).toBe(input);
+        } finally {
+            convertSpy.mockRestore();
+            restoreSpy.mockRestore();
+        }
     });
 });

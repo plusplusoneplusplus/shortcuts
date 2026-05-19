@@ -6,7 +6,7 @@
  * clicking navigates to the full viewer page.
  */
 
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Excalidraw } from '@excalidraw/excalidraw';
 import { getApiBase } from '../utils/config';
 import { SHOW_EXCALIDRAW_DIAGRAMS } from '../featureFlags';
@@ -15,6 +15,10 @@ import {
     buildViewerInitialData,
     type ExcalidrawScene,
 } from '../features/diagrams/diagram-scene';
+
+interface ExcalidrawApiLike {
+    scrollToContent?: (target?: readonly any[], opts?: { fitToContent?: boolean }) => void;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -62,6 +66,40 @@ export function ExcalidrawPreview({ workspaceId, diagramPath, height = DEFAULT_H
     const [sceneData, setSceneData] = useState<ExcalidrawScene | null>(null);
     const [errorMsg, setErrorMsg] = useState('');
     const containerRef = useRef<HTMLDivElement>(null);
+    const apiRef = useRef<ExcalidrawApiLike | null>(null);
+
+    const initialData = useMemo(
+        () => (sceneData ? buildViewerInitialData(sceneData) : null),
+        [sceneData],
+    );
+
+    // Same fit-to-content scroll as the full-page viewer — without it the
+    // inline preview parks at scroll (0,0) and elements drawn at non-zero
+    // coordinates are off-screen, so the preview renders blank.
+    useEffect(() => {
+        if (state !== 'loaded' || !initialData) return;
+        const elements = initialData.elements as readonly any[];
+        if (!Array.isArray(elements) || elements.length === 0) return;
+        let cancelled = false;
+        let attempts = 0;
+        const tick = () => {
+            if (cancelled) return;
+            const api = apiRef.current;
+            if (api?.scrollToContent) {
+                try {
+                    api.scrollToContent(elements, { fitToContent: true });
+                    return;
+                } catch {
+                    // fall through to retry
+                }
+            }
+            if (attempts++ < 20) {
+                requestAnimationFrame(tick);
+            }
+        };
+        requestAnimationFrame(tick);
+        return () => { cancelled = true; };
+    }, [state, initialData]);
 
     // Fetch diagram content
     useEffect(() => {
@@ -126,9 +164,10 @@ export function ExcalidrawPreview({ workspaceId, diagramPath, height = DEFAULT_H
                         ⚠️ {errorMsg || 'Failed to load diagram'}
                     </div>
                 )}
-                {state === 'loaded' && sceneData && (
+                {state === 'loaded' && initialData && (
                     <Excalidraw
-                        initialData={buildViewerInitialData(sceneData)}
+                        initialData={initialData}
+                        excalidrawAPI={(api: any) => { apiRef.current = api as ExcalidrawApiLike; }}
                         viewModeEnabled={true}
                         zenModeEnabled={true}
                         gridModeEnabled={false}
