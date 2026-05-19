@@ -24,3 +24,5 @@ export { WorkspacesClient } from './workspaces';
 export { WorkflowClient } from './workflows';
 export { WikiClient } from './wiki';
 export { LoopsClient } from './loops';
+export { SyncClient } from './sync';
+export type { SyncStatus } from './sync';
