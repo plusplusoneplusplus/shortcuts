@@ -208,11 +208,11 @@ export class RuntimeConfigService {
         // 6. Bump revision
         this._revision++;
 
-        // 7. Build effects
+        // 7. Build effects using actual field runtime classification
         const effects: ConfigChangeEffect[] = matchedFields.map(field => ({
             field: field.key,
-            runtime: 'live' as ConfigFieldRuntime,
-            requiresRestart: false,
+            runtime: field.runtime,
+            requiresRestart: field.runtime === 'restartRequired',
         }));
 
         const snapshot = this.getSnapshot();

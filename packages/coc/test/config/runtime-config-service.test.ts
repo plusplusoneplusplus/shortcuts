@@ -309,4 +309,51 @@ describe('RuntimeConfigService', () => {
             expect(raw.timeout).toBe(300);
         });
     });
+
+    // ── Field runtime classification ─────────────────────────────────────
+
+    describe('field runtime classification', () => {
+        it('should return correct runtime classification in effects for live fields', async () => {
+            const svc = new RuntimeConfigService({ configPath });
+            const result = await svc.updateConfig({ 'ralph.enabled': true });
+
+            const ralphEffect = result.effects.find(e => e.field === 'ralph.enabled');
+            expect(ralphEffect).toBeDefined();
+            expect(ralphEffect!.runtime).toBe('live');
+            expect(ralphEffect!.requiresRestart).toBe(false);
+        });
+
+        it('should return restartRequired classification for infrastructure fields', async () => {
+            const svc = new RuntimeConfigService({ configPath });
+            const result = await svc.updateConfig({ 'loops.enabled': true });
+
+            const loopsEffect = result.effects.find(e => e.field === 'loops.enabled');
+            expect(loopsEffect).toBeDefined();
+            expect(loopsEffect!.runtime).toBe('restartRequired');
+            expect(loopsEffect!.requiresRestart).toBe(true);
+        });
+
+        it('should return mixed classifications for mixed updates', async () => {
+            const svc = new RuntimeConfigService({ configPath });
+            const result = await svc.updateConfig({
+                'ralph.enabled': true,
+                'loops.enabled': true,
+                'terminal.enabled': false,
+            });
+
+            expect(result.effects).toHaveLength(3);
+
+            const ralph = result.effects.find(e => e.field === 'ralph.enabled')!;
+            expect(ralph.runtime).toBe('live');
+            expect(ralph.requiresRestart).toBe(false);
+
+            const loops = result.effects.find(e => e.field === 'loops.enabled')!;
+            expect(loops.runtime).toBe('restartRequired');
+            expect(loops.requiresRestart).toBe(true);
+
+            const terminal = result.effects.find(e => e.field === 'terminal.enabled')!;
+            expect(terminal.runtime).toBe('restartRequired');
+            expect(terminal.requiresRestart).toBe(true);
+        });
+    });
 });

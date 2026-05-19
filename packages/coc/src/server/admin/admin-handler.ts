@@ -29,7 +29,7 @@ import { StorageMigrationEngine } from '../storage/storage-migration';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { Route } from '../types';
 import { sendSSE } from '../wiki/ask-handler';
-import { ADMIN_CONFIG_FIELDS, ADMIN_EDITABLE_KEYS } from './admin-config-fields';
+import { ADMIN_CONFIG_FIELDS, ADMIN_EDITABLE_KEYS, getAdminFieldMetadata } from './admin-config-fields';
 
 // ============================================================================
 // Token Management
@@ -200,6 +200,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                     sources: snapshot.sources,
                     configFilePath: runtimeConfigService.configPath,
                     revision: snapshot.revision,
+                    fieldMetadata: getAdminFieldMetadata(),
                 });
             } else {
                 const result = configFunctions?.getResolvedConfigWithSource?.(configPath) ?? { config: {}, sources: {} };
@@ -242,6 +243,7 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
                         configFilePath: runtimeConfigService.configPath,
                         revision: updateResult.revision,
                         effects: updateResult.effects,
+                        fieldMetadata: getAdminFieldMetadata(),
                     });
                 } catch (err) {
                     return handleAPIError(res, badRequest((err as Error).message));
