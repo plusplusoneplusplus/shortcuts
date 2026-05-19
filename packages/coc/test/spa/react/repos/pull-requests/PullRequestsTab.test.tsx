@@ -316,6 +316,13 @@ describe('unconfigured state', () => {
         await waitFor(() => expect(screen.getByTestId('provider-config-panel')).toBeInTheDocument());
         expect(screen.getAllByText(/github/i).length).toBeGreaterThan(0);
     });
+
+    it('renders ProviderConfigPanel on 401 with ado-auth-expired error', async () => {
+        mockFetchError(401, { error: 'ado-auth-expired', message: 'ADO token expired. Run `az login` to re-authenticate.' });
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('provider-config-panel')).toBeInTheDocument());
+        expect(screen.getByTestId('provider-config-panel').textContent).toMatch(/az login/i);
+    });
 });
 
 // ── Error state ────────────────────────────────────────────────────────────────
@@ -637,4 +644,3 @@ describe('last sync time in header', () => {
         expect(screen.queryByTestId('fetched-at')).not.toBeInTheDocument();
     });
 });
-

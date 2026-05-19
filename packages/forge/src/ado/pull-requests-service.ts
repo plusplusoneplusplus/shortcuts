@@ -35,6 +35,14 @@ export class AdoPullRequestError extends Error {
     }
 }
 
+/** Error class for ADO authentication/authorization failures. */
+export class AdoAuthError extends AdoPullRequestError {
+    constructor(message: string, cause?: unknown) {
+        super(message, cause);
+        this.name = 'AdoAuthError';
+    }
+}
+
 /** Thrown when a pull request lookup returns null/undefined. */
 export class AdoPullRequestNotFoundError extends Error {
     constructor(pullRequestId: number) {
@@ -449,7 +457,29 @@ export class AdoPullRequestsService {
         } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
             logger.error(LogCategory.ADO, `getGitApi: failed to initialize Git API client: ${errMsg}`);
+            if (isAdoAuthFailure(err)) {
+                throw new AdoAuthError('Failed to get Git API client', err);
+            }
             throw new AdoPullRequestError('Failed to get Git API client', err);
         }
     }
+}
+
+function isAdoAuthFailure(err: unknown): boolean {
+    if (err instanceof AdoAuthError) {
+        return true;
+    }
+    if (!(err instanceof Error)) {
+        return false;
+    }
+    const message = err.message.toLowerCase();
+    if (
+        message.includes('401') ||
+        message.includes('403') ||
+        message.includes('unauthorized') ||
+        message.includes('forbidden')
+    ) {
+        return true;
+    }
+    return isAdoAuthFailure((err as { cause?: unknown }).cause);
 }

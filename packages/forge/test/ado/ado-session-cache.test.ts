@@ -6,6 +6,7 @@ import * as os from 'os';
 import {
     readAdoSessionCache,
     writeAdoSessionCache,
+    clearAdoSessionCache,
     isTokenValid,
     AdoSessionCache,
 } from '../../src/ado/ado-session-cache';
@@ -80,6 +81,30 @@ describe('writeAdoSessionCache', () => {
             'utf-8',
         );
         expect(mockedFs.rename).toHaveBeenCalledWith(CACHE_FILE + '.tmp', CACHE_FILE);
+    });
+});
+
+describe('clearAdoSessionCache', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it('deletes the ADO session cache file', async () => {
+        mockedFs.unlink.mockResolvedValueOnce(undefined as never);
+
+        await clearAdoSessionCache(FAKE_DIR);
+
+        expect(mockedFs.unlink).toHaveBeenCalledWith(CACHE_FILE);
+    });
+
+    it('ignores ENOENT when the ADO session cache file is already missing', async () => {
+        mockedFs.unlink.mockRejectedValueOnce(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }) as never);
+
+        await expect(clearAdoSessionCache(FAKE_DIR)).resolves.toBeUndefined();
+    });
+
+    it('rethrows non-ENOENT unlink errors', async () => {
+        mockedFs.unlink.mockRejectedValueOnce(Object.assign(new Error('EACCES'), { code: 'EACCES' }) as never);
+
+        await expect(clearAdoSessionCache(FAKE_DIR)).rejects.toThrow('EACCES');
     });
 });
 

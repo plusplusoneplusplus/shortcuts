@@ -23,7 +23,9 @@ import { RepoTreeService } from './tree-service';
 import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
-import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { AdoAuthError } from '@plusplusoneplusplus/forge';
+import type { IPullRequestsService, ProcessStore } from '@plusplusoneplusplus/forge';
+import type { ProvidersFileConfig } from '../providers/providers-config';
 
 // ============================================================================
 // Helpers
@@ -59,14 +61,94 @@ function extractFileDiffFromCombined(combinedDiff: string, filePath: string): st
 
 /** Detect whether an error is an authentication/authorization failure. */
 function isAuthError(err: unknown): boolean {
+    if (err instanceof AdoAuthError) return true;
     if (!(err instanceof Error)) return false;
     const msg = err.message.toLowerCase();
-    return msg.includes('401') || msg.includes('403') || msg.includes('unauthorized') || msg.includes('forbidden');
+    if (msg.includes('401') || msg.includes('403') || msg.includes('unauthorized') || msg.includes('forbidden')) {
+        return true;
+    }
+    return isAuthError((err as { cause?: unknown }).cause);
 }
 
 /** Detect the no-ado-credentials sentinel from the provider factory. */
 function isNoAdoCredentials(svc: unknown): svc is AdoNoCredentialsSentinel {
     return typeof svc === 'object' && svc !== null && (svc as AdoNoCredentialsSentinel).error === 'no-ado-credentials';
+}
+
+const ADO_AUTH_EXPIRED_MESSAGE = 'ADO token expired. Run `az login` to re-authenticate.';
+
+type PrOperationResult<T> =
+    | { kind: 'ok'; value: T }
+    | { kind: 'unconfigured'; detected: ReturnType<typeof ProviderFactory.detectProviderType>; remoteUrl: string | undefined }
+    | { kind: 'no-ado-credentials' }
+    | { kind: 'ado-auth-expired' };
+
+async function runPrOperation<T>(
+    remoteUrl: string | undefined,
+    cfg: ProvidersFileConfig,
+    dataDir: string,
+    operation: (prSvc: IPullRequestsService) => Promise<T>,
+    cacheKeys: string[] = [],
+): Promise<PrOperationResult<T>> {
+    const initialSvc = await ProviderFactory.createPullRequestsService(remoteUrl ?? '', cfg);
+    if (!initialSvc || isNoAdoCredentials(initialSvc)) {
+        return serviceUnavailableResult(initialSvc, remoteUrl);
+    }
+
+    try {
+        return { kind: 'ok', value: await operation(initialSvc) };
+    } catch (err) {
+        if (!isAuthError(err)) {
+            throw err;
+        }
+    }
+
+    for (const cacheKey of cacheKeys) {
+        prListCache.delete(cacheKey);
+    }
+
+    const refreshedSvc = await ProviderFactory.createPullRequestsService(remoteUrl ?? '', cfg, {
+        forceRefresh: true,
+        dataDir,
+    });
+    if (!refreshedSvc || isNoAdoCredentials(refreshedSvc)) {
+        return serviceUnavailableResult(refreshedSvc, remoteUrl);
+    }
+
+    try {
+        return { kind: 'ok', value: await operation(refreshedSvc) };
+    } catch (err) {
+        if (isAuthError(err)) {
+            return { kind: 'ado-auth-expired' };
+        }
+        throw err;
+    }
+}
+
+function serviceUnavailableResult<T>(
+    svc: IPullRequestsService | AdoNoCredentialsSentinel | null,
+    remoteUrl: string | undefined,
+): PrOperationResult<T> {
+    if (isNoAdoCredentials(svc)) {
+        return { kind: 'no-ado-credentials' };
+    }
+    return {
+        kind: 'unconfigured',
+        detected: ProviderFactory.detectProviderType(remoteUrl ?? ''),
+        remoteUrl,
+    };
+}
+
+function sendPrOperationFailure(res: Parameters<typeof sendJson>[0], result: Exclude<PrOperationResult<unknown>, { kind: 'ok' }>): void {
+    if (result.kind === 'no-ado-credentials') {
+        sendJson(res, { error: 'no-ado-credentials' }, 401);
+        return;
+    }
+    if (result.kind === 'ado-auth-expired') {
+        sendJson(res, { error: 'ado-auth-expired', message: ADO_AUTH_EXPIRED_MESSAGE }, 401);
+        return;
+    }
+    sendJson(res, { error: 'unconfigured', detected: result.detected, remoteUrl: result.remoteUrl }, 401);
 }
 
 // ============================================================================
@@ -136,16 +218,17 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                     if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                     const cfg = await readProvidersConfig(dataDir);
-                    const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
-                    if (!prSvc || isNoAdoCredentials(prSvc)) {
-                        if (isNoAdoCredentials(prSvc)) {
-                            return sendJson(res, { error: 'no-ado-credentials' }, 401);
-                        }
-                        const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
-                        return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
+                    const result = await runPrOperation(
+                        repo.remoteUrl,
+                        cfg,
+                        dataDir,
+                        prSvc => prSvc.listPullRequests(repoId, { status, top: PR_LIST_FETCH_TOP, scope }),
+                        [cacheKey],
+                    );
+                    if (result.kind !== 'ok') {
+                        return sendPrOperationFailure(res, result);
                     }
-
-                    prs = await prSvc.listPullRequests(repoId, { status, top: PR_LIST_FETCH_TOP, scope });
+                    prs = result.value;
                     prListCache.set(cacheKey, { data: prs, expiresAt: Date.now() + PR_LIST_TTL_MS });
                 }
 
@@ -168,7 +251,7 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 sendJson(res, { pullRequests: page, total: page.length });
             } catch (err) {
                 if (isAuthError(err)) {
-                    sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 401);
+                    sendPrOperationFailure(res, { kind: 'ado-auth-expired' });
                 } else {
                     send500(res, err instanceof Error ? err.message : String(err));
                 }
@@ -190,22 +273,17 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const cfg = await readProvidersConfig(dataDir);
-                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
-                if (!prSvc || isNoAdoCredentials(prSvc)) {
-                    if (isNoAdoCredentials(prSvc)) {
-                        return sendJson(res, { error: 'no-ado-credentials' }, 401);
-                    }
-                    const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
-                    return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
+                const result = await runPrOperation(repo.remoteUrl, cfg, dataDir, prSvc => prSvc.getPullRequest(repoId, prId));
+                if (result.kind !== 'ok') {
+                    return sendPrOperationFailure(res, result);
                 }
-
-                const pr = await prSvc.getPullRequest(repoId, prId);
+                const pr = result.value;
                 sendJson(res, pr);
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
                     send404(res, err.message);
                 } else if (isAuthError(err)) {
-                    sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 401);
+                    sendPrOperationFailure(res, { kind: 'ado-auth-expired' });
                 } else {
                     send500(res, err instanceof Error ? err.message : String(err));
                 }
@@ -227,22 +305,17 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const cfg = await readProvidersConfig(dataDir);
-                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
-                if (!prSvc || isNoAdoCredentials(prSvc)) {
-                    if (isNoAdoCredentials(prSvc)) {
-                        return sendJson(res, { error: 'no-ado-credentials' }, 401);
-                    }
-                    const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
-                    return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
+                const result = await runPrOperation(repo.remoteUrl, cfg, dataDir, prSvc => prSvc.getThreads(repoId, prId));
+                if (result.kind !== 'ok') {
+                    return sendPrOperationFailure(res, result);
                 }
-
-                const threads = await prSvc.getThreads(repoId, prId);
+                const threads = result.value;
                 sendJson(res, { threads });
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
                     send404(res, err.message);
                 } else if (isAuthError(err)) {
-                    sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 401);
+                    sendPrOperationFailure(res, { kind: 'ado-auth-expired' });
                 } else {
                     send500(res, err instanceof Error ? err.message : String(err));
                 }
@@ -264,22 +337,17 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const cfg = await readProvidersConfig(dataDir);
-                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
-                if (!prSvc || isNoAdoCredentials(prSvc)) {
-                    if (isNoAdoCredentials(prSvc)) {
-                        return sendJson(res, { error: 'no-ado-credentials' }, 401);
-                    }
-                    const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
-                    return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
+                const result = await runPrOperation(repo.remoteUrl, cfg, dataDir, prSvc => prSvc.getReviewers(repoId, prId));
+                if (result.kind !== 'ok') {
+                    return sendPrOperationFailure(res, result);
                 }
-
-                const reviewers = await prSvc.getReviewers(repoId, prId);
+                const reviewers = result.value;
                 sendJson(res, { reviewers });
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
                     send404(res, err.message);
                 } else if (isAuthError(err)) {
-                    sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 401);
+                    sendPrOperationFailure(res, { kind: 'ado-auth-expired' });
                 } else {
                     send500(res, err instanceof Error ? err.message : String(err));
                 }
@@ -301,26 +369,22 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const cfg = await readProvidersConfig(dataDir);
-                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
-                if (!prSvc || isNoAdoCredentials(prSvc)) {
-                    if (isNoAdoCredentials(prSvc)) {
-                        return sendJson(res, { error: 'no-ado-credentials' }, 401);
+                const result = await runPrOperation(repo.remoteUrl, cfg, dataDir, async prSvc => {
+                    if (typeof prSvc.getCommits !== 'function') {
+                        return [];
                     }
-                    const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
-                    return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
+                    return prSvc.getCommits(repoId, prId);
+                });
+                if (result.kind !== 'ok') {
+                    return sendPrOperationFailure(res, result);
                 }
-
-                if (typeof prSvc.getCommits !== 'function') {
-                    return sendJson(res, { commits: [] });
-                }
-
-                const commits = await prSvc.getCommits(repoId, prId);
+                const commits = result.value;
                 sendJson(res, { commits });
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
                     send404(res, err.message);
                 } else if (isAuthError(err)) {
-                    sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 401);
+                    sendPrOperationFailure(res, { kind: 'ado-auth-expired' });
                 } else {
                     send500(res, err instanceof Error ? err.message : String(err));
                 }
@@ -342,26 +406,22 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const cfg = await readProvidersConfig(dataDir);
-                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
-                if (!prSvc || isNoAdoCredentials(prSvc)) {
-                    if (isNoAdoCredentials(prSvc)) {
-                        return sendJson(res, { error: 'no-ado-credentials' }, 401);
+                const result = await runPrOperation(repo.remoteUrl, cfg, dataDir, async prSvc => {
+                    if (typeof prSvc.getChecks !== 'function') {
+                        return [];
                     }
-                    const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
-                    return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
+                    return prSvc.getChecks(repoId, prId);
+                });
+                if (result.kind !== 'ok') {
+                    return sendPrOperationFailure(res, result);
                 }
-
-                if (typeof prSvc.getChecks !== 'function') {
-                    return sendJson(res, { checks: [] });
-                }
-
-                const checks = await prSvc.getChecks(repoId, prId);
+                const checks = result.value;
                 sendJson(res, { checks });
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
                     send404(res, err.message);
                 } else if (isAuthError(err)) {
-                    sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 401);
+                    sendPrOperationFailure(res, { kind: 'ado-auth-expired' });
                 } else {
                     send500(res, err instanceof Error ? err.message : String(err));
                 }
@@ -384,27 +444,23 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const cfg = await readProvidersConfig(dataDir);
-                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
-                if (!prSvc || isNoAdoCredentials(prSvc)) {
-                    if (isNoAdoCredentials(prSvc)) {
-                        return sendJson(res, { error: 'no-ado-credentials' }, 401);
+                const result = await runPrOperation(repo.remoteUrl, cfg, dataDir, async prSvc => {
+                    if (typeof prSvc.getDiff !== 'function') {
+                        return '';
                     }
-                    const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
-                    return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
+                    return prSvc.getDiff(repoId, prId);
+                });
+                if (result.kind !== 'ok') {
+                    return sendPrOperationFailure(res, result);
                 }
-
-                if (typeof prSvc.getDiff !== 'function') {
-                    return sendJson(res, { diff: '' });
-                }
-
-                const combinedDiff = await prSvc.getDiff(repoId, prId);
+                const combinedDiff = result.value;
                 const fileDiff = extractFileDiffFromCombined(combinedDiff, filePath);
                 sendJson(res, { diff: fileDiff ?? '' });
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
                     send404(res, err.message);
                 } else if (isAuthError(err)) {
-                    sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 401);
+                    sendPrOperationFailure(res, { kind: 'ado-auth-expired' });
                 } else {
                     send500(res, err instanceof Error ? err.message : String(err));
                 }
@@ -426,29 +482,23 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
                 const cfg = await readProvidersConfig(dataDir);
-                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
-                if (!prSvc || isNoAdoCredentials(prSvc)) {
-                    if (isNoAdoCredentials(prSvc)) {
-                        return sendJson(res, { error: 'no-ado-credentials' }, 401);
+                const result = await runPrOperation(repo.remoteUrl, cfg, dataDir, async prSvc => {
+                    if (typeof prSvc.getDiff !== 'function') {
+                        return '';
                     }
-                    const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
-                    return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
+                    return prSvc.getDiff(repoId, prId);
+                });
+                if (result.kind !== 'ok') {
+                    return sendPrOperationFailure(res, result);
                 }
-
-                if (typeof prSvc.getDiff !== 'function') {
-                    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-                    res.end('');
-                    return;
-                }
-
-                const diff = await prSvc.getDiff(repoId, prId);
+                const diff = result.value;
                 res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
                 res.end(diff);
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {
                     send404(res, err.message);
                 } else if (isAuthError(err)) {
-                    sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 401);
+                    sendPrOperationFailure(res, { kind: 'ado-auth-expired' });
                 } else {
                     send500(res, err instanceof Error ? err.message : String(err));
                 }

@@ -10,6 +10,7 @@ import * as path from 'path';
 import { createRouter } from '../../src/server/shared/router';
 import { registerPrRoutes, clearPrListCache } from '../../src/server/repos/pr-routes';
 import type { Route } from '../../src/server/types';
+import { AdoAuthError } from '@plusplusoneplusplus/forge';
 import type { IPullRequestsService } from '@plusplusoneplusplus/forge';
 import type { PullRequest, CommentThread, Reviewer } from '@plusplusoneplusplus/forge';
 import type { ProviderPullRequestCheck, ProviderPullRequestCommit } from '@plusplusoneplusplus/forge';
@@ -248,6 +249,50 @@ describe('GET /api/repos/:id/pull-requests', () => {
         (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network failure'));
         const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
         expect(res.status).toBe(500);
+    });
+
+    it('force-refreshes credentials once and returns PRs when an ADO auth error recovers', async () => {
+        const refreshedPr = { ...mockPr, id: 43, number: 43, title: 'Recovered PR' };
+        const refreshedSvc = {
+            ...mockSvc,
+            listPullRequests: vi.fn().mockResolvedValue([refreshedPr]),
+        };
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockRejectedValue(
+            new AdoAuthError('Failed to get Git API client', new Error('HTTP 401 Unauthorized')),
+        );
+        (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>)
+            .mockResolvedValueOnce(mockSvc)
+            .mockResolvedValueOnce(refreshedSvc);
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+
+        expect(res.status).toBe(200);
+        const body = await res.json() as { pullRequests: Array<{ title: string }> };
+        expect(body.pullRequests[0].title).toBe('Recovered PR');
+        expect(ProviderFactory.createPullRequestsService).toHaveBeenNthCalledWith(2, REMOTE_URL, { providers: {} }, {
+            forceRefresh: true,
+            dataDir,
+        });
+    });
+
+    it('returns ado-auth-expired when retrying after an ADO auth error also fails auth', async () => {
+        const refreshedSvc = {
+            ...mockSvc,
+            listPullRequests: vi.fn().mockRejectedValue(new Error('403 Forbidden')),
+        };
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockRejectedValue(
+            new Error('outer failure', { cause: new AdoAuthError('HTTP 401 Unauthorized') }),
+        );
+        (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>)
+            .mockResolvedValueOnce(mockSvc)
+            .mockResolvedValueOnce(refreshedSvc);
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests`);
+
+        expect(res.status).toBe(401);
+        const body = await res.json() as { error: string; message: string };
+        expect(body.error).toBe('ado-auth-expired');
+        expect(body.message).toContain('az login');
     });
 
     it('serves from cache on second call without hitting upstream', async () => {

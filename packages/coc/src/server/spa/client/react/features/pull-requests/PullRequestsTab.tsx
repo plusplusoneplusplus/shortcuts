@@ -222,7 +222,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                     const body = err.body as Record<string, unknown> | undefined;
                     if (body?.error === 'unconfigured') {
                         setUnconfigured({ detected: (body.detected as string) ?? null, remoteUrl: body.remoteUrl as string | undefined });
-                    } else if (body?.error === 'no-ado-credentials') {
+                    } else if (body?.error === 'no-ado-credentials' || body?.error === 'ado-auth-expired') {
                         setUnconfigured({ detected: 'ADO', noCredentials: true });
                     } else {
                         setError(err.message ?? 'Failed to load pull requests');

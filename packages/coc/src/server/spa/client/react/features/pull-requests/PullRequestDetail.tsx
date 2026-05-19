@@ -22,6 +22,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Marked } from 'marked';
+import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import { cn } from '../../ui';
 import { useApp } from '../../contexts/AppContext';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
@@ -55,6 +56,7 @@ import {
 import type { PullRequest, PullRequestCommit, CommentThread, PullRequestCheck } from './pr-utils';
 import { parseDiffFileList, type FileChange } from '../git/diff';
 import type { PrDetailTab } from '../../types/dashboard';
+import { ProviderConfigPanel } from './ProviderConfigPanel';
 
 const descRenderer = {
     link(href: string, _title: string | null | undefined, text: string) {
@@ -84,6 +86,14 @@ const TAB_DEFINITIONS: Array<{ id: PrDetailTab; label: string }> = [
 
 const EMPTY_FILES: FileChange[] = [];
 
+function isAdoAuthUiError(err: unknown): boolean {
+    if (!(err instanceof CocApiError) || err.status !== 401) {
+        return false;
+    }
+    const body = err.body as Record<string, unknown> | undefined;
+    return body?.error === 'no-ado-credentials' || body?.error === 'ado-auth-expired';
+}
+
 export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: PullRequestDetailProps) {
     const { state, dispatch } = useApp();
     const [pr, setPr] = useState<PullRequest | null>(null);
@@ -96,6 +106,8 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     const [checksError, setChecksError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [authError, setAuthError] = useState(false);
+    const [reloadSeq, setReloadSeq] = useState(0);
     const initialTab = (state.selectedPrDetailTab as PrDetailTab) ?? 'overview';
     const [detailTab, setDetailTab] = useState<PrDetailTab>(initialTab);
     const [assistantOpen, setAssistantOpen] = useState(false);
@@ -137,6 +149,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     useEffect(() => {
         setLoading(true);
         setError(null);
+        setAuthError(false);
         setDiff(EMPTY_FILES);
         setDiffError(null);
         setCommits([]);
@@ -196,9 +209,15 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                     setChecksError(checksResult.message);
                 }
             })
-            .catch(err => setError(getSpaCocClientErrorMessage(err, 'Failed to load pull request')))
+            .catch(err => {
+                if (isAdoAuthUiError(err)) {
+                    setAuthError(true);
+                    return;
+                }
+                setError(getSpaCocClientErrorMessage(err, 'Failed to load pull request'));
+            })
             .finally(() => setLoading(false));
-    }, [repoId, prId]);
+    }, [repoId, prId, reloadSeq]);
 
     // Sync local tab state when context changes (e.g. hash navigation)
     useEffect(() => {
@@ -251,6 +270,31 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
         return (
             <div className="flex items-center justify-center py-8" data-testid="loading-spinner">
                 <span className="text-sm text-gray-500">Loading pull request…</span>
+            </div>
+        );
+    }
+
+    if (authError) {
+        return (
+            <div className="px-4 py-4" data-testid="auth-error-container">
+                {isMobile && (
+                    <button
+                        onClick={handleBack}
+                        className="mb-3 text-sm text-blue-600 hover:underline dark:text-blue-400"
+                        data-testid="back-button"
+                    >
+                        ← Back to list
+                    </button>
+                )}
+                <ProviderConfigPanel
+                    detected="ADO"
+                    noCredentials
+                    onConfigured={() => {
+                        setAuthError(false);
+                        setLoading(true);
+                        setReloadSeq(seq => seq + 1);
+                    }}
+                />
             </div>
         );
     }

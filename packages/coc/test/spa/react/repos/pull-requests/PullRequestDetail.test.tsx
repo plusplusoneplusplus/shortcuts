@@ -115,6 +115,15 @@ function mockFetchPrError(status = 500, message = 'Server error') {
         .mockResolvedValueOnce(jsonResponse({ checks: [] }));
 }
 
+function mockFetchPrAuthError(error: 'no-ado-credentials' | 'ado-auth-expired') {
+    global.fetch = vi.fn()
+        .mockResolvedValueOnce(jsonResponse({ error, message: 'ADO token expired. Run `az login` to re-authenticate.' }, false, 401))
+        .mockResolvedValueOnce(jsonResponse({ threads: [] }))
+        .mockResolvedValueOnce(textResponse(''))
+        .mockResolvedValueOnce(jsonResponse({ commits: [] }))
+        .mockResolvedValueOnce(jsonResponse({ checks: [] }));
+}
+
 const SAMPLE_DIFF = [
     'diff --git a/src/foo.ts b/src/foo.ts',
     '--- a/src/foo.ts',
@@ -509,5 +518,20 @@ describe('error state', () => {
         await act(async () => { await renderDetail(); });
         await waitFor(() => expect(screen.getByTestId('error-message')).toBeInTheDocument());
         expect(screen.getByTestId('error-message').textContent).toContain('Internal server error');
+    });
+
+    it('renders ProviderConfigPanel on ado-auth-expired', async () => {
+        mockFetchPrAuthError('ado-auth-expired');
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('provider-config-panel')).toBeInTheDocument());
+        expect(screen.getByTestId('provider-config-panel').textContent).toMatch(/az login/i);
+        expect(screen.queryByTestId('error-message')).not.toBeInTheDocument();
+    });
+
+    it('renders ProviderConfigPanel on no-ado-credentials', async () => {
+        mockFetchPrAuthError('no-ado-credentials');
+        await act(async () => { await renderDetail(); });
+        await waitFor(() => expect(screen.getByTestId('provider-config-panel')).toBeInTheDocument());
+        expect(screen.queryByTestId('error-message')).not.toBeInTheDocument();
     });
 });

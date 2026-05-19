@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Readable } from 'node:stream';
-import { AdoPullRequestsService, AdoPullRequestError, AdoPullRequestNotFoundError, GitVersionType } from '../../src/ado/pull-requests-service';
+import { AdoPullRequestsService, AdoAuthError, AdoPullRequestError, AdoPullRequestNotFoundError, GitVersionType } from '../../src/ado/pull-requests-service';
 import type { WebApi } from 'azure-devops-node-api';
 import { setLogger, nullLogger } from '../../src/logger';
 import type { Logger } from '../../src/logger';
@@ -226,6 +226,22 @@ describe('AdoPullRequestsService', () => {
 
         await expect(failService.listPullRequests('repo-id', {})).rejects.toThrow(AdoPullRequestError);
         await expect(failService.listPullRequests('repo-id', {})).rejects.toThrow('Failed to get Git API client');
+    });
+
+    it('wraps getGitApi 401 rejection with AdoAuthError', async () => {
+        const failConn = { getGitApi: vi.fn().mockRejectedValue(new Error('HTTP 401 Unauthorized')) } as unknown as WebApi;
+        const failService = new AdoPullRequestsService(failConn);
+
+        await expect(failService.listPullRequests('repo-id', {})).rejects.toThrow(AdoAuthError);
+    });
+
+    it('wraps nested getGitApi forbidden cause with AdoAuthError', async () => {
+        const inner = new Error('Forbidden');
+        const outer = new Error('Failed request', { cause: inner });
+        const failConn = { getGitApi: vi.fn().mockRejectedValue(outer) } as unknown as WebApi;
+        const failService = new AdoPullRequestsService(failConn);
+
+        await expect(failService.listPullRequests('repo-id', {})).rejects.toThrow(AdoAuthError);
     });
 
     // ── logging ──────────────────────────────────────────────

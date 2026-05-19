@@ -15,10 +15,11 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         execAsync: vi.fn(),
         createAdoPullRequestsAdapter: vi.fn(actual.createAdoPullRequestsAdapter),
         getOrResolveAdoUserId: vi.fn(),
+        clearAdoSessionCache: vi.fn(),
     };
 });
 
-import { execAsync, createAdoPullRequestsAdapter, getOrResolveAdoUserId } from '@plusplusoneplusplus/forge';
+import { execAsync, createAdoPullRequestsAdapter, getOrResolveAdoUserId, clearAdoSessionCache } from '@plusplusoneplusplus/forge';
 
 // ── detectProviderType ────────────────────────────────────────────────────────
 
@@ -170,6 +171,35 @@ describe('ProviderFactory.createPullRequestsService', () => {
         );
         expect(result).not.toBeNull();
         expect(result).not.toEqual({ error: 'no-ado-credentials' });
+    });
+
+    it('force-refreshes the Azure CLI token and clears the ADO session cache when requested', async () => {
+        (execAsync as ReturnType<typeof vi.fn>).mockResolvedValue({ stdout: 'fresh-token\n', stderr: '' });
+        const config: ProvidersFileConfig = { providers: {} };
+        await ProviderFactory.createPullRequestsService(
+            'https://dev.azure.com/org/proj/_git/repo',
+            config,
+            { forceRefresh: true, dataDir: 'coc-data' },
+        );
+
+        expect(clearAdoSessionCache).toHaveBeenCalledWith('coc-data');
+        expect(execAsync).toHaveBeenCalledWith(
+            'az account get-access-token --resource 499b84ac-1321-427f-aa17-267ca6975798 --query accessToken -o tsv --force-refresh',
+        );
+        expect(createAdoPullRequestsAdapter).toHaveBeenCalledWith(
+            expect.objectContaining({ token: 'fresh-token' }),
+        );
+    });
+
+    it('does not clear the ADO session cache without force refresh', async () => {
+        (execAsync as ReturnType<typeof vi.fn>).mockResolvedValue({ stdout: 'bearer-token\n', stderr: '' });
+        const config: ProvidersFileConfig = { providers: {} };
+        await ProviderFactory.createPullRequestsService(
+            'https://dev.azure.com/org/proj/_git/repo',
+            config,
+        );
+
+        expect(clearAdoSessionCache).not.toHaveBeenCalled();
     });
 
     it('returns null for unknown provider URL', async () => {

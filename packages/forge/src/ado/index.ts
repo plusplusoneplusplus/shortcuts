@@ -5,6 +5,7 @@ export {
     AdoAccountInfo,
     readAdoSessionCache,
     writeAdoSessionCache,
+    clearAdoSessionCache,
     isTokenValid,
 } from './ado-session-cache';
 export { resolveAdoIdentity, resolveAndCacheAdoIdentity, getOrResolveAdoUserId, resolveAdoUserIdFromConnectionData } from './ado-identity-resolver';
@@ -12,6 +13,7 @@ export { AdoWorkItemsService, AdoWorkItemError, type PatchOp, type FieldPatch } 
 export {
     AdoPullRequestsService,
     AdoPullRequestError,
+    AdoAuthError,
     AdoPullRequestNotFoundError,
     PullRequestStatus,
     VersionControlChangeType,

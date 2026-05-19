@@ -14,6 +14,7 @@ import {
     createAdoPullRequestsAdapter,
     execAsync,
     getOrResolveAdoUserId,
+    clearAdoSessionCache,
 } from '@plusplusoneplusplus/forge';
 import type { ProvidersFileConfig } from './providers-config';
 
@@ -25,6 +26,11 @@ const ADO_RESOURCE_ID = '499b84ac-1321-427f-aa17-267ca6975798';
 /** Sentinel returned when an ADO remote is detected but no credentials are available. */
 export interface AdoNoCredentialsSentinel {
     error: 'no-ado-credentials';
+}
+
+export interface CreatePullRequestsServiceOptions {
+    forceRefresh?: boolean;
+    dataDir?: string;
 }
 
 export class ProviderFactory {
@@ -119,6 +125,7 @@ export class ProviderFactory {
     static async createPullRequestsService(
         remoteUrl: string,
         config: ProvidersFileConfig,
+        options: CreatePullRequestsServiceOptions = {},
     ): Promise<IPullRequestsService | AdoNoCredentialsSentinel | null> {
         const providerType = ProviderFactory.detectProviderType(remoteUrl);
 
@@ -142,10 +149,15 @@ export class ProviderFactory {
                 return { error: 'no-ado-credentials' };
             }
 
+            if (options.forceRefresh) {
+                await clearAdoSessionCache(options.dataDir);
+            }
+
             // Azure CLI bearer token
             try {
+                const forceRefreshFlag = options.forceRefresh ? ' --force-refresh' : '';
                 const { stdout } = await execAsync(
-                    `az account get-access-token --resource ${ADO_RESOURCE_ID} --query accessToken -o tsv`,
+                    `az account get-access-token --resource ${ADO_RESOURCE_ID} --query accessToken -o tsv${forceRefreshFlag}`,
                 );
                 const bearerToken = stdout.trim();
                 if (bearerToken) {

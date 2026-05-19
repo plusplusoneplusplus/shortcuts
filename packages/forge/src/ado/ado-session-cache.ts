@@ -66,6 +66,20 @@ export async function writeAdoSessionCache(
 }
 
 /**
+ * Clear the ADO session cache when a token is rejected by the server.
+ */
+export async function clearAdoSessionCache(dataDir?: string): Promise<void> {
+    const filePath = resolveCachePath(dataDir);
+    try {
+        await fs.unlink(filePath);
+    } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+            throw err;
+        }
+    }
+}
+
+/**
  * Returns `true` when the cached token is still valid (expiry > 5 minutes away).
  */
 export function isTokenValid(cache: AdoSessionCache): boolean {
