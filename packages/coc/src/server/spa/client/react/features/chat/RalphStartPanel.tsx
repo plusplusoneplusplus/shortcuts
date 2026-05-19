@@ -2,9 +2,20 @@
  * RalphStartPanel — shown below a completed grilling-phase process,
  * or when a goal.md / *.goal.md file was created during the conversation.
  *
- * Two flows:
- * - **Turn-based (existing):** extracts the goal spec from the last assistant turn.
- * - **File-based (new):** reads goal spec from a goal.md file via /api/fs/blob.
+ * Source of the goal spec (independent of endpoint):
+ * - **File-based:** when `goalFilePath` is set, reads the goal spec from that
+ *   file via `/api/fs/blob`. This is preferred whenever a goal file exists,
+ *   because the file is the authoritative spec — the last assistant turn is
+ *   often a short synthesis/confirmation that drops detail.
+ * - **Turn-based fallback:** when no `goalFilePath` is provided, extracts the
+ *   goal spec from the last assistant turn (looking for a `## Goal` block).
+ *
+ * Endpoint (independent of source):
+ * - When `useLaunchEndpoint` is true, posts to `/api/ralph-launch` (mints a
+ *   fresh Ralph session — used when a goal file was authored outside any
+ *   grilling-phase process).
+ * - Otherwise, posts to `/api/processes/:id/ralph-start` (continues a
+ *   completed grilling-phase process).
  */
 import { useState, useEffect } from 'react';
 import { getApiBase } from '../../utils/config';
@@ -16,8 +27,18 @@ export interface RalphStartPanelProps {
     workspaceId?: string;
     turns: ClientConversationTurn[];
     onStarted: (newProcessId: string) => void;
-    /** When set, reads goal from this file instead of extracting from turns */
+    /**
+     * Optional path to a goal spec file. When set, the panel loads the goal
+     * text from this file instead of extracting it from the conversation
+     * turns. Independent of which endpoint is called.
+     */
     goalFilePath?: string;
+    /**
+     * When true, confirm posts to `/api/ralph-launch` (mints a fresh session).
+     * When false/unset, confirm posts to `/api/processes/:id/ralph-start`
+     * (continues the referenced grilling-phase process). Default: false.
+     */
+    useLaunchEndpoint?: boolean;
 }
 
 /** Extract goal spec from last assistant turn: find block starting with ## Goal, or use full content. */
@@ -30,7 +51,7 @@ function extractGoalSpec(turns: ClientConversationTurn[]): string {
     return content.trim();
 }
 
-export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goalFilePath }: RalphStartPanelProps) {
+export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goalFilePath, useLaunchEndpoint }: RalphStartPanelProps) {
     const [open, setOpen] = useState(false);
     const [goalSpec, setGoalSpec] = useState('');
     const [starting, setStarting] = useState(false);
@@ -68,13 +89,14 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
         setStarting(true);
         setError(null);
         try {
-            // Choose endpoint: file-based uses ralph-launch, turn-based uses ralph-start
-            const url = goalFilePath
+            // Endpoint is controlled by `useLaunchEndpoint`, independent of
+            // whether the goal came from a file. Grilling-phase callers pass a
+            // `goalFilePath` to load the file's content but keep the
+            // ralph-start endpoint so the existing process/session is reused.
+            const url = useLaunchEndpoint
                 ? `${getApiBase()}/ralph-launch`
                 : `${getApiBase()}/processes/${encodeURIComponent(processId)}/ralph-start`;
-            const body = goalFilePath
-                ? { goalSpec: trimmed, workspaceId }
-                : { goalSpec: trimmed, workspaceId };
+            const body = { goalSpec: trimmed, workspaceId };
             const resp = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

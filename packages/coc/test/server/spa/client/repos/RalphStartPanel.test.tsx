@@ -265,7 +265,7 @@ describe('RalphStartPanel', () => {
         });
     });
 
-    it('calls /api/ralph-launch instead of ralph-start when goalFilePath is set', async () => {
+    it('calls /api/ralph-launch when useLaunchEndpoint is set', async () => {
         const mockFetch = vi.fn()
             // First call: fs/blob (goal file content)
             .mockResolvedValueOnce({
@@ -285,6 +285,7 @@ describe('RalphStartPanel', () => {
                 workspaceId="ws-1"
                 turns={[]}
                 goalFilePath="/repos/myrepo/goal.md"
+                useLaunchEndpoint
                 onStarted={mockOnStarted}
             />,
         );
@@ -309,5 +310,68 @@ describe('RalphStartPanel', () => {
         // Verify the second fetch call went to ralph-launch, not ralph-start
         const launchCall = mockFetch.mock.calls[1];
         expect(launchCall[0]).toContain('/api/ralph-launch');
+    });
+
+    // -----------------------------------------------------------------------
+    // Grilling-phase with a goal file: source = file, endpoint = ralph-start
+    // -----------------------------------------------------------------------
+
+    it('loads goal text from the file but still posts to ralph-start when useLaunchEndpoint is unset', async () => {
+        const longSpec = '## Goal\nLong, detailed goal spec\n\n## Acceptance Criteria\n- AC1\n- AC2\n- AC3';
+        const mockFetch = vi.fn()
+            // First call: fs/blob (goal file content)
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ content: longSpec, encoding: 'utf-8' }),
+            })
+            // Second call: ralph-start
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ processId: 'queue_started' }),
+            });
+        vi.stubGlobal('fetch', mockFetch);
+
+        // Turns contain only a short synthesis — file should take precedence.
+        const shortSynthesisTurns: ClientConversationTurn[] = [
+            makeTurn('user', 'looks good'),
+            makeTurn('assistant', '## Goal\nShort summary only'),
+        ];
+
+        render(
+            <RalphStartPanel
+                processId="queue_grill-123"
+                workspaceId="ws-1"
+                turns={shortSynthesisTurns}
+                goalFilePath="/repos/myrepo/goal.md"
+                onStarted={mockOnStarted}
+            />,
+        );
+
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+        await waitFor(() => expect(screen.getByTestId('ralph-start-panel')).toBeTruthy());
+
+        // Textarea should contain the long spec from the file, not the short
+        // synthesis from the last assistant turn.
+        await waitFor(() => {
+            const textarea = screen.getByTestId('ralph-goal-spec-input') as HTMLTextAreaElement;
+            expect(textarea.value).toContain('Long, detailed goal spec');
+            expect(textarea.value).not.toContain('Short summary only');
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('ralph-confirm-start-btn'));
+        });
+
+        await waitFor(() => {
+            expect(mockOnStarted).toHaveBeenCalledWith('queue_started');
+        });
+
+        // Endpoint must be ralph-start (the existing grilling process), not ralph-launch.
+        const startCall = mockFetch.mock.calls[1];
+        expect(startCall[0]).toContain('/processes/queue_grill-123/ralph-start');
+        expect(startCall[0]).not.toContain('/ralph-launch');
+        // And the body should carry the file's long spec, not the short synthesis.
+        const body = JSON.parse(startCall[1].body);
+        expect(body.goalSpec).toContain('Long, detailed goal spec');
     });
 });
