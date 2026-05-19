@@ -318,7 +318,7 @@ describe('Diagrams Handler — CRUD API', { timeout: 30_000 }, () => {
             host: '127.0.0.1',
             store,
             dataDir,
-            // No resolvedConfig or excalidraw disabled
+            fileConfig: { excalidraw: { enabled: false } },
         });
         const srv = server;
 

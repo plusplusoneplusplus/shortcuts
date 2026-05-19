@@ -75,10 +75,17 @@ export class RuntimeConfigService {
         this._configPath = options?.configPath ?? getConfigFilePath();
         this._revision = 0;
 
-        // Initial resolution reuses getResolvedConfigWithSource for consistency
-        const initial = getResolvedConfigWithSource(options?.configPath);
-        this._config = initial.resolved;
-        this._sources = initial.sources;
+        if (options?.fileConfig) {
+            // When a pre-loaded config is supplied, merge it with defaults
+            // instead of reading from disk. This is used by tests and by
+            // callers that have already parsed the config file.
+            this._config = resolveConfig(undefined, options.fileConfig);
+            this._sources = {} as Record<ConfigSourceKey, ConfigFieldSource>;
+        } else {
+            const initial = getResolvedConfigWithSource(options?.configPath);
+            this._config = initial.resolved;
+            this._sources = initial.sources;
+        }
     }
 
     // ── Snapshot ─────────────────────────────────────────────────────────

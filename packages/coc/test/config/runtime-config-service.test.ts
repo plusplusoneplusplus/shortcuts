@@ -63,6 +63,28 @@ describe('RuntimeConfigService', () => {
             const svc = new RuntimeConfigService({ configPath });
             expect(svc.configPath).toBe(configPath);
         });
+
+        it('should use fileConfig when provided instead of reading from disk', () => {
+            // Write a config file with ralph enabled
+            writeConfig({ ralph: { enabled: true }, parallel: 99 });
+            // But pass fileConfig that disables ralph and sets different parallel
+            const svc = new RuntimeConfigService({
+                configPath,
+                fileConfig: { ralph: { enabled: false }, parallel: 5 },
+            });
+            // fileConfig should win over file on disk
+            expect(svc.config.ralph.enabled).toBe(false);
+            expect(svc.config.parallel).toBe(5);
+        });
+
+        it('should merge fileConfig with defaults', () => {
+            const svc = new RuntimeConfigService({
+                fileConfig: { excalidraw: { enabled: true } },
+            });
+            expect(svc.config.excalidraw.enabled).toBe(true);
+            // Other defaults should still be applied
+            expect(svc.config.parallel).toBe(DEFAULT_CONFIG.parallel);
+        });
     });
 
     // ── getSnapshot ──────────────────────────────────────────────────────

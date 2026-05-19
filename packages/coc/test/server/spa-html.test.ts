@@ -156,7 +156,10 @@ describe('generateDashboardHtml', () => {
 
     it('omits bindAddress key when not provided', () => {
         const html = generateDashboardHtml();
-        expect(html).not.toContain('bindAddress:');
+        // Extract the __DASHBOARD_CONFIG__ block to avoid matching the inlined bundle.js
+        const configMatch = html.match(/window\.__DASHBOARD_CONFIG__\s*=\s*\{([^}]+)\}/s);
+        expect(configMatch).not.toBeNull();
+        expect(configMatch![1]).not.toContain('bindAddress:');
     });
 
     it('defaults serversEnabled to false in __DASHBOARD_CONFIG__', () => {
