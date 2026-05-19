@@ -279,48 +279,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
 
         const boundedMemory = await this.buildMemoryAddon(payload.workspaceId, this.buildCaptureContext(task), prompt);
         const notePath = payload.context?.noteChat?.notePath;
-        const systemMessage = await systemMessageBuilder()
-            .append(buildModeSystemMessage(mode)?.content)
-            .withRepoInstructions(workingDirectory, mode)
-            .appendMemory(boundedMemory)
-            .appendAutoFolder(autoFolderContext)
-            .appendNoteFile(notePath)
-            .build();
-
-        // When this is a Ralph grilling session, append the goal-spec instruction.
-        if (payload.context?.ralph?.phase === 'grilling' && systemMessage) {
-            const ralphGrillSuffix = [
-                '## Ralph Grilling Phase — Clarification Protocol',
-                '',
-                'You are in the Ralph grilling phase. Your job right now is to interactively interview the user to nail down a precise goal spec before any coding begins.',
-                '',
-                'Rules for this phase (these OVERRIDE any earlier guidance about ask_user):',
-                '- Use the `ask_user` tool for EVERY clarification, confirmation, or choice question. Do NOT write clarification questions as plain assistant text.',
-                '- Batch related questions into a SINGLE `ask_user` call by passing multiple entries in `questions[]`. Do not call the tool repeatedly for one round of clarification.',
-                '- Yes/no clarifications ARE in scope here — ignore the earlier "Do NOT use ask_user for simple yes/no" guidance during grilling. In this phase, simple yes/no clarifications MUST also go through `ask_user`.',
-                '- Keep questions concrete and answerable. Prefer choice questions with explicit options when there are a few obvious paths.',
-                '- Only after the user explicitly signals they are done (e.g. "enough", "go", "that\'s it") OR you have gathered enough answers to write a precise spec, emit the final goal-spec block as plain assistant text using the template below. Do not emit the goal spec while still asking questions.',
-                '',
-                'Final goal-spec template (emit ONLY at the end, as plain assistant text — not via ask_user):',
-                '',
-                '## Goal',
-                '<one-sentence goal>',
-                '',
-                '## Acceptance Criteria',
-                '<bullet list>',
-                '',
-                '## Constraints / Tech Context',
-                '<bullet list>',
-                '',
-                '## Out of Scope',
-                '<bullet list>',
-                '',
-                'This spec will be used to drive an automated coding loop. Be precise and concrete.',
-            ].join('\n');
-            systemMessage.content = systemMessage.content
-                ? systemMessage.content + '\n\n' + ralphGrillSuffix
-                : ralphGrillSuffix;
-        }
 
         const processId = toQueueProcessId(task.id);
         const loopDeps = this.buildLoopToolDeps(processId);
@@ -360,11 +318,55 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             hasPending: toolBundle.askUser!.hasPending,
         };
 
+        const systemMessage = await systemMessageBuilder()
+            .append(buildModeSystemMessage(mode)?.content)
+            .withRepoInstructions(workingDirectory, mode)
+            .appendMemory(boundedMemory)
+            .appendToolGuidance(toolBundle.toolGuidance)
+            .appendAutoFolder(autoFolderContext)
+            .appendNoteFile(notePath)
+            .build();
+
+        // When this is a Ralph grilling session, append the goal-spec instruction.
+        if (payload.context?.ralph?.phase === 'grilling' && systemMessage) {
+            const ralphGrillSuffix = [
+                '## Ralph Grilling Phase — Clarification Protocol',
+                '',
+                'You are in the Ralph grilling phase. Your job right now is to interactively interview the user to nail down a precise goal spec before any coding begins.',
+                '',
+                'Rules for this phase (these OVERRIDE any earlier guidance about ask_user):',
+                '- Use the `ask_user` tool for EVERY clarification, confirmation, or choice question. Do NOT write clarification questions as plain assistant text.',
+                '- Batch related questions into a SINGLE `ask_user` call by passing multiple entries in `questions[]`. Do not call the tool repeatedly for one round of clarification.',
+                '- Yes/no clarifications ARE in scope here — ignore the earlier "Do NOT use ask_user for simple yes/no" guidance during grilling. In this phase, simple yes/no clarifications MUST also go through `ask_user`.',
+                '- Keep questions concrete and answerable. Prefer choice questions with explicit options when there are a few obvious paths.',
+                '- Only after the user explicitly signals they are done (e.g. "enough", "go", "that\'s it") OR you have gathered enough answers to write a precise spec, emit the final goal-spec block as plain assistant text using the template below. Do not emit the goal spec while still asking questions.',
+                '',
+                'Final goal-spec template (emit ONLY at the end, as plain assistant text — not via ask_user):',
+                '',
+                '## Goal',
+                '<one-sentence goal>',
+                '',
+                '## Acceptance Criteria',
+                '<bullet list>',
+                '',
+                '## Constraints / Tech Context',
+                '<bullet list>',
+                '',
+                '## Out of Scope',
+                '<bullet list>',
+                '',
+                'This spec will be used to drive an automated coding loop. Be precise and concrete.',
+            ].join('\n');
+            systemMessage.content = systemMessage.content
+                ? systemMessage.content + '\n\n' + ralphGrillSuffix
+                : ralphGrillSuffix;
+        }
+
         return {
             agentMode: mode === 'plan' ? 'plan' as AgentMode : 'interactive' as AgentMode,
             systemMessage,
             tools: toolBundle.tools,
-            effectivePrompt: prompt + toolBundle.suffix,
+            effectivePrompt: prompt,
             dispose: boundedMemory.dispose,
         };
     }

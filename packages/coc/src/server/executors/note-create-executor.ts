@@ -294,9 +294,6 @@ export class NoteCreateExecutor extends ChatBaseExecutor {
         const wsId = payload.workspaceId;
 
         const boundedMemory = await this.buildMemoryAddon(wsId, this.buildCaptureContext(task), prompt);
-        const systemMessage = await systemMessageBuilder()
-            .appendMemory(boundedMemory)
-            .build();
 
         const followUp = buildFollowUpSuggestionsAddon(false, 0);
         const searchConversations = buildSearchConversationsAddon(this.store, wsId, toQueueProcessId(task.id));
@@ -307,16 +304,21 @@ export class NoteCreateExecutor extends ChatBaseExecutor {
             ? readEffectiveDisabledLlmTools(this.dataDir, wsId)
             : undefined;
 
-        const { tools, suffix: toolSuffix } = applyLlmToolPreferences(
+        const { tools, toolGuidance } = applyLlmToolPreferences(
             [followUp, searchConversations, tavilySearch, memoryReadTools, boundedMemory],
             disabledLlmTools,
         );
+
+        const systemMessage = await systemMessageBuilder()
+            .appendMemory(boundedMemory)
+            .appendToolGuidance(toolGuidance)
+            .build();
 
         return {
             agentMode: 'interactive' as AgentMode,
             systemMessage,
             tools,
-            effectivePrompt: prompt + toolSuffix,
+            effectivePrompt: prompt,
             dispose: boundedMemory.dispose,
         };
     }

@@ -61,13 +61,9 @@ export class ClassificationExecutor extends ChatBaseExecutor {
         const processId = toQueueProcessId(task.id);
 
         const boundedMemory = await this.buildMemoryAddon(wsId, this.buildCaptureContext(task), prompt);
-        const systemMessage = await systemMessageBuilder()
-            .withRepoInstructions(workingDirectory, 'autopilot')
-            .appendMemory(boundedMemory)
-            .build();
 
         const tools: Tool<unknown>[] = [];
-        let toolSuffix = '';
+        let toolGuidance = '';
 
         if (this.dataDir && wsId && ctx.repoId && ctx.prId && ctx.headSha) {
             const { tool } = createSaveClassificationTool({
@@ -79,7 +75,7 @@ export class ClassificationExecutor extends ChatBaseExecutor {
                 processId,
             });
             tools.push(tool);
-            toolSuffix += SAVE_CLASSIFICATION_SUFFIX;
+            toolGuidance += SAVE_CLASSIFICATION_SUFFIX;
         }
 
         // Standard chat tools (search, memory, etc.) — same pattern as other executors.
@@ -95,19 +91,25 @@ export class ClassificationExecutor extends ChatBaseExecutor {
             ? readEffectiveDisabledLlmTools(this.dataDir, wsId)
             : undefined;
 
-        const { tools: filteredTools, suffix: filteredSuffix } = applyLlmToolPreferences(
+        const { tools: filteredTools, toolGuidance: filteredGuidance } = applyLlmToolPreferences(
             [followUp, searchConversations, tavilySearch, memoryReadTools, boundedMemory],
             disabledLlmTools,
         );
 
         tools.push(...filteredTools);
-        toolSuffix += filteredSuffix;
+        toolGuidance += filteredGuidance;
+
+        const systemMessage = await systemMessageBuilder()
+            .withRepoInstructions(workingDirectory, 'autopilot')
+            .appendMemory(boundedMemory)
+            .appendToolGuidance(toolGuidance)
+            .build();
 
         return {
             agentMode: 'autopilot' as AgentMode,
             systemMessage,
             tools,
-            effectivePrompt: prompt + toolSuffix,
+            effectivePrompt: prompt,
             dispose: boundedMemory.dispose,
         };
     }

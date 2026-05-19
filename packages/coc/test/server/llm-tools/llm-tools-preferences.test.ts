@@ -178,7 +178,7 @@ describe('applyLlmToolPreferences', () => {
         ];
         const result = applyLlmToolPreferences(addons, ['tavily_web_search']);
         expect(result.tools.map(t => t.name)).toEqual(['suggest_follow_ups', 'memory']);
-        expect(result.suffix).toBe(' A C');
+        expect(result.toolGuidance).toBe(' A C');
     });
 
     it('uses default disabled list when undefined', () => {
@@ -188,7 +188,7 @@ describe('applyLlmToolPreferences', () => {
         ];
         const result = applyLlmToolPreferences(addons, undefined);
         expect(result.tools.map(t => t.name)).toEqual(['suggest_follow_ups']);
-        expect(result.suffix).toBe(' A');
+        expect(result.toolGuidance).toBe(' A');
     });
 
     it('keeps all tools when disabled list is empty', () => {
@@ -198,7 +198,7 @@ describe('applyLlmToolPreferences', () => {
         ];
         const result = applyLlmToolPreferences(addons, []);
         expect(result.tools.map(t => t.name)).toEqual(['suggest_follow_ups', 'tavily_web_search']);
-        expect(result.suffix).toBe(' A B');
+        expect(result.toolGuidance).toBe(' A B');
     });
 
     it('removes suffix when all tools from an addon are disabled', () => {
@@ -207,7 +207,7 @@ describe('applyLlmToolPreferences', () => {
             { tools: [makeTool('tavily_web_search')], suffix: ' B' },
         ];
         const result = applyLlmToolPreferences(addons, ['tavily_web_search']);
-        expect(result.suffix).toBe(' A');
+        expect(result.toolGuidance).toBe(' A');
     });
 
     it('handles addon with multiple tools — partial filtering', () => {
@@ -216,7 +216,7 @@ describe('applyLlmToolPreferences', () => {
         ];
         const result = applyLlmToolPreferences(addons, ['get_conversation']);
         expect(result.tools.map(t => t.name)).toEqual(['search_conversations']);
-        expect(result.suffix).toBe(' X');
+        expect(result.toolGuidance).toBe(' X');
     });
 
     it('handles addon with multiple tools — all filtered', () => {
@@ -225,13 +225,13 @@ describe('applyLlmToolPreferences', () => {
         ];
         const result = applyLlmToolPreferences(addons, ['search_conversations', 'get_conversation']);
         expect(result.tools).toHaveLength(0);
-        expect(result.suffix).toBe('');
+        expect(result.toolGuidance).toBe('');
     });
 
     it('handles empty addons array', () => {
         const result = applyLlmToolPreferences([], ['tavily_web_search']);
         expect(result.tools).toHaveLength(0);
-        expect(result.suffix).toBe('');
+        expect(result.toolGuidance).toBe('');
     });
 
     it('handles addon with empty tools array', () => {
@@ -241,6 +241,6 @@ describe('applyLlmToolPreferences', () => {
         ];
         const result = applyLlmToolPreferences(addons, []);
         expect(result.tools.map(t => t.name)).toEqual(['memory']);
-        expect(result.suffix).toBe(' M');
+        expect(result.toolGuidance).toBe(' M');
     });
 });

@@ -112,7 +112,7 @@ export class NoteChatExecutor extends ChatBaseExecutor {
         const payload = task.payload as unknown as ChatPayload;
         const wsId = payload.workspaceId;
 
-        // Build system message (same pattern as ChatExecutor)
+        // Build auto-folder context (same pattern as ChatExecutor)
         let autoFolderContext = undefined;
         if (workingDirectory) {
             autoFolderContext = await this.buildAutoFolderContext(
@@ -122,10 +122,6 @@ export class NoteChatExecutor extends ChatBaseExecutor {
         }
 
         const boundedMemory = await this.buildMemoryAddon(wsId, this.buildCaptureContext(task), prompt);
-        const systemMessage = await systemMessageBuilder()
-            .appendMemory(boundedMemory)
-            .appendAutoFolder(autoFolderContext)
-            .build();
 
         // Standard chat tools
         const followUp = buildFollowUpSuggestionsAddon(
@@ -140,10 +136,16 @@ export class NoteChatExecutor extends ChatBaseExecutor {
             ? readEffectiveDisabledLlmTools(this.dataDir, wsId)
             : undefined;
 
-        const { tools, suffix: toolSuffix } = applyLlmToolPreferences(
+        const { tools, toolGuidance } = applyLlmToolPreferences(
             [followUp, searchConversations, tavilySearch, memoryReadTools, boundedMemory],
             disabledLlmTools,
         );
+
+        const systemMessage = await systemMessageBuilder()
+            .appendMemory(boundedMemory)
+            .appendToolGuidance(toolGuidance)
+            .appendAutoFolder(autoFolderContext)
+            .build();
 
         const payloadMode = payload.mode;
         const agentMode: AgentMode =
@@ -155,7 +157,7 @@ export class NoteChatExecutor extends ChatBaseExecutor {
             agentMode,
             systemMessage,
             tools,
-            effectivePrompt: prompt + toolSuffix,
+            effectivePrompt: prompt,
             dispose: boundedMemory.dispose,
         };
     }

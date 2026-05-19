@@ -192,15 +192,6 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             turnIndex: process.conversationTurns?.length ?? 0,
         }, message);
         const notePath = process.metadata?.notePath as string | undefined;
-        let systemMessage = await systemMessageBuilder()
-            .append(buildModeSystemMessage(currentMode)?.content)
-            .withRepoInstructions(workingDirectory, currentMode)
-            .appendMemory(boundedMemory)
-            .appendAutoFolder(autoFolderContextForFollowUp)
-            .appendNoteFile(notePath)
-            .build();
-
-        this.persistSystemPromptAsync(processId, 'chat', systemMessage?.content);
 
         // Capture pre-edit note content for snapshot (note-chat follow-ups only)
         let preEditContent: string | undefined;
@@ -297,7 +288,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     },
                 },
             });
-            const { tools: filteredTools, suffix: combinedSuffix } = toolBundle;
+            const filteredTools = toolBundle.tools;
             const session = this.getOrCreateSession(processId);
             session.pendingAskUser = {
                 answerQuestion: toolBundle.askUser!.answerQuestion,
@@ -306,10 +297,23 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 cancelAll: toolBundle.askUser!.cancelAll,
                 hasPending: toolBundle.askUser!.hasPending,
             };
-            const followUpMessage = prependSelectedSkillsDirective(
-                combinedSuffix ? `${message}${combinedSuffix}` : message,
-                selectedSkillNames,
-            );
+
+            // Build the system message AFTER the tool bundle so the
+            // tool-guidance prose lives in `systemMessage` (sent once at
+            // session creation) rather than being stapled to every user
+            // turn.
+            const systemMessage = await systemMessageBuilder()
+                .append(buildModeSystemMessage(currentMode)?.content)
+                .withRepoInstructions(workingDirectory, currentMode)
+                .appendMemory(boundedMemory)
+                .appendToolGuidance(toolBundle.toolGuidance)
+                .appendAutoFolder(autoFolderContextForFollowUp)
+                .appendNoteFile(notePath)
+                .build();
+
+            this.persistSystemPromptAsync(processId, 'chat', systemMessage?.content);
+
+            const followUpMessage = prependSelectedSkillsDirective(message, selectedSkillNames);
             const agentMode = toAgentMode(currentMode);
 
             const historySystemMessage: SystemMessageConfig | undefined = historyContext

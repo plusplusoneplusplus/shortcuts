@@ -182,7 +182,7 @@ describe('CommitChatExecutor', () => {
             expect(toolNames).toContain('add_diff_comment');
         });
 
-        it('appends tool usage suffix to prompt', async () => {
+        it('routes tool usage prose into systemMessage (not user prompt)', async () => {
             const store = createMockProcessStore();
             const executor = new CommitChatExecutor(store, makeOptions(store), undefined, '/data');
             const task = makeCommitChatTask();
@@ -190,8 +190,12 @@ describe('CommitChatExecutor', () => {
             await executor.execute(task, 'Review this commit');
 
             const callArgs = sdkMocks.service.sendMessage.mock.calls[0][0];
-            expect(callArgs.prompt).toContain('add_diff_comment');
-            expect(callArgs.prompt).toContain('diff review panel');
+            // After the refactor: tool guidance lives in systemMessage,
+            // not stapled to every user prompt.
+            expect(callArgs.prompt).not.toContain('add_diff_comment');
+            const systemContent = callArgs.systemMessage?.content ?? '';
+            expect(systemContent).toContain('add_diff_comment');
+            expect(systemContent).toContain('diff review panel');
         });
 
         it('returns response from AI SDK', async () => {

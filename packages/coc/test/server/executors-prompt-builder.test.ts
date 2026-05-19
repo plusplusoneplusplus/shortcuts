@@ -712,6 +712,63 @@ describe('systemMessageBuilder', () => {
     });
 
     // -------------------------------------------------------------------------
+    // .appendToolGuidance()
+    // -------------------------------------------------------------------------
+
+    it('appends a tool-guidance block as eager content', async () => {
+        const result = await systemMessageBuilder()
+            .appendToolGuidance('Use the foo_tool for X.')
+            .build();
+        expect(result!.content).toBe('Use the foo_tool for X.');
+    });
+
+    it('joins tool guidance after prior content', async () => {
+        const result = await systemMessageBuilder()
+            .append('base instructions')
+            .appendToolGuidance('Use the foo_tool for X.')
+            .build();
+        expect(result!.content).toBe('base instructions\n\nUse the foo_tool for X.');
+    });
+
+    it('is a no-op when tool-guidance block is undefined', async () => {
+        const result = await systemMessageBuilder()
+            .append('base')
+            .appendToolGuidance(undefined)
+            .build();
+        expect(result!.content).toBe('base');
+    });
+
+    it('is a no-op when tool-guidance block is empty string', async () => {
+        const result = await systemMessageBuilder()
+            .append('base')
+            .appendToolGuidance('')
+            .build();
+        expect(result!.content).toBe('base');
+    });
+
+    it('is a no-op when tool-guidance block is whitespace-only', async () => {
+        const result = await systemMessageBuilder()
+            .append('base')
+            .appendToolGuidance('   \n\n  ')
+            .build();
+        expect(result!.content).toBe('base');
+    });
+
+    it('places tool guidance after memory and before auto-folder in the canonical chain', async () => {
+        const addon = { systemMessageSuffix: 'memory block', tools: [], suffix: '', dispose: () => {} };
+        const ctx = { tasksRoot: '/tasks', existingFolders: ['feat1'] };
+        const result = await systemMessageBuilder()
+            .append('base')
+            .appendMemory(addon)
+            .appendToolGuidance('Use foo_tool.')
+            .appendAutoFolder(ctx)
+            .build();
+        const content = result!.content;
+        expect(content.indexOf('memory block')).toBeLessThan(content.indexOf('Use foo_tool.'));
+        expect(content.indexOf('Use foo_tool.')).toBeLessThan(content.indexOf('auto-folder-block'));
+    });
+
+    // -------------------------------------------------------------------------
     // .appendAutoFolder()
     // -------------------------------------------------------------------------
 

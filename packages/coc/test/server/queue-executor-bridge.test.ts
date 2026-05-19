@@ -6796,7 +6796,7 @@ describe('suggest_follow_ups tool wiring', () => {
         expect(callOpts.tools).toHaveLength(1);
     });
 
-    it('should append follow-up suggestion instruction to follow-up messages', async () => {
+    it('should append follow-up suggestion instruction to follow-up systemMessage', async () => {
         const process = createCompletedProcessWithSession('queue_suggest-fu-noinstr', 'sess-fu-noinstr');
         store.processes.set(process.id, process);
 
@@ -6804,8 +6804,12 @@ describe('suggest_follow_ups tool wiring', () => {
         await executor.executeFollowUp('queue_suggest-fu-noinstr', 'follow-up question');
 
         expect(mockSendMessage).toHaveBeenCalledTimes(1);
-        const sentMessage = mockSendMessage.mock.calls[0][0].prompt;
-        expect(sentMessage).toContain('When suggesting follow-ups');
+        const callOpts = mockSendMessage.mock.calls[0][0];
+        // After the refactor: tool-guidance prose lives in systemMessage,
+        // not stapled to every follow-up user prompt.
+        const systemContent = callOpts.systemMessage?.content ?? '';
+        expect(systemContent).toContain('When suggesting follow-ups');
+        expect(callOpts.prompt).not.toContain('When suggesting follow-ups');
     });
 
     it('should include suggest_follow_ups tool on first turn with no prior assistant turns', async () => {
@@ -7075,7 +7079,7 @@ describe('suggest_follow_ups tool wiring', () => {
         expect(callOpts.prompt).not.toContain('When suggesting follow-ups');
     });
 
-    it('should append count instruction to prompt when suggestions are enabled', async () => {
+    it('should append count instruction to system message when suggestions are enabled', async () => {
         const executor = new CLITaskExecutor(store, { followUpSuggestions: { enabled: true, count: 2 } });
 
         const task: QueuedTask = {
@@ -7092,7 +7096,11 @@ describe('suggest_follow_ups tool wiring', () => {
         await executor.execute(task);
 
         const callOpts = mockSendMessage.mock.calls[0][0];
-        expect(callOpts.prompt).toContain('provide exactly 2 suggestions');
+        const systemContent = callOpts.systemMessage?.content ?? '';
+        expect(systemContent).toContain('provide exactly 2 suggestions');
+        // After the refactor: tool guidance lives in systemMessage, not stapled
+        // to the user prompt.
+        expect(callOpts.prompt).not.toContain('provide exactly 2 suggestions');
     });
 
     it('should exclude suggestion tool from sendMessage on follow-up when disabled', async () => {
