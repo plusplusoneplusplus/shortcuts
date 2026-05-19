@@ -10,6 +10,11 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Excalidraw } from '@excalidraw/excalidraw';
 import { getApiBase } from '../utils/config';
 import { SHOW_EXCALIDRAW_DIAGRAMS } from '../featureFlags';
+import {
+    unwrapDiagramResponse,
+    buildViewerInitialData,
+    type ExcalidrawScene,
+} from '../features/diagrams/diagram-scene';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -54,7 +59,7 @@ function displayName(path: string): string {
 
 export function ExcalidrawPreview({ workspaceId, diagramPath, height = DEFAULT_HEIGHT }: ExcalidrawPreviewProps) {
     const [state, setState] = useState<LoadState>('loading');
-    const [sceneData, setSceneData] = useState<any>(null);
+    const [sceneData, setSceneData] = useState<ExcalidrawScene | null>(null);
     const [errorMsg, setErrorMsg] = useState('');
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -73,7 +78,7 @@ export function ExcalidrawPreview({ workspaceId, diagramPath, height = DEFAULT_H
                 }
                 const data = await res.json();
                 if (cancelled) return;
-                setSceneData(data);
+                setSceneData(unwrapDiagramResponse(data));
                 setState('loaded');
             })
             .catch((err) => {
@@ -123,16 +128,7 @@ export function ExcalidrawPreview({ workspaceId, diagramPath, height = DEFAULT_H
                 )}
                 {state === 'loaded' && sceneData && (
                     <Excalidraw
-                        initialData={{
-                            elements: sceneData.elements || [],
-                            appState: {
-                                ...(sceneData.appState || {}),
-                                viewModeEnabled: true,
-                                zenModeEnabled: true,
-                                gridModeEnabled: false,
-                            },
-                            files: sceneData.files || undefined,
-                        }}
+                        initialData={buildViewerInitialData(sceneData)}
                         viewModeEnabled={true}
                         zenModeEnabled={true}
                         gridModeEnabled={false}
