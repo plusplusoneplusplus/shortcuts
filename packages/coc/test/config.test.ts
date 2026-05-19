@@ -59,7 +59,7 @@ describe('Config', () => {
                 askUser: { enabled: false },
             });
             expect(DEFAULT_CONFIG.terminal).toEqual({ enabled: true });
-            expect(DEFAULT_CONFIG.scratchpad).toEqual({ enabled: false, layout: 'vertical' });
+            expect(DEFAULT_CONFIG.scratchpad).toEqual({ enabled: true, layout: 'vertical' });
             expect(DEFAULT_CONFIG.workflows).toEqual({ enabled: false });
         });
 
@@ -444,7 +444,7 @@ timeout: 300
 
         it('should preserve scratchpad.enabled default when not overridden', () => {
             const result = mergeConfig(DEFAULT_CONFIG, { model: 'x' });
-            expect(result.scratchpad.enabled).toBe(false);
+            expect(result.scratchpad.enabled).toBe(true);
         });
 
         it('should override scratchpad.enabled from file', () => {
@@ -503,14 +503,14 @@ timeout: 300
             expect(result.store.backend).toBe('sqlite');
         });
 
-        it('should default loops.enabled to false', () => {
+        it('should default loops.enabled to true', () => {
             const result = mergeConfig(DEFAULT_CONFIG, {});
-            expect(result.loops.enabled).toBe(false);
+            expect(result.loops.enabled).toBe(true);
         });
 
         it('should preserve loops.enabled default when not overridden', () => {
             const result = mergeConfig(DEFAULT_CONFIG, { model: 'x' });
-            expect(result.loops.enabled).toBe(false);
+            expect(result.loops.enabled).toBe(true);
         });
 
         it('should override loops.enabled from file', () => {

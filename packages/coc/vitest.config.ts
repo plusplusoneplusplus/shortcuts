@@ -47,6 +47,9 @@ export default defineConfig({
             forks: {
                 // Limit concurrent forks to 2 to avoid OOM on macOS runners
                 // (excalidraw + jsdom forks accumulate ~14 GB peak usage at 3 concurrent).
+                // minForks must be ≤ maxForks; without it tinypool defaults minThreads
+                // to nCPUs-1 which can exceed maxForks and trigger a startup conflict.
+                minForks: 1,
                 maxForks: 2,
             },
         },

@@ -403,7 +403,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
     },
     scratchpad: {
-        enabled: false,
+        enabled: true,
         layout: 'vertical',
     },
     workflows: {
@@ -419,7 +419,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
     },
     loops: {
-        enabled: false,
+        enabled: true,
     },
     mcpOauth: {
         enabled: false,
