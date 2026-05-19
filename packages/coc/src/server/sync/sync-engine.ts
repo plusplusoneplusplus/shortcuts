@@ -12,6 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
+import type { AIInvoker } from '@plusplusoneplusplus/forge';
 import type { ResolvedCLIConfig } from '../../config';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -31,6 +32,8 @@ export interface SyncEngineOptions {
     dataDir: string;
     resolvedConfig: ResolvedCLIConfig;
     logger?: SyncLogger;
+    /** Optional AI invoker for intelligent merge conflict resolution. Falls back to simple resolution when absent. */
+    aiInvoker?: AIInvoker;
 }
 
 export interface SyncLogger {
@@ -162,6 +165,7 @@ export class SyncEngine {
     private readonly lockPath: string;
     private readonly logger: SyncLogger;
     private readonly mappings: FolderMapping[];
+    private readonly aiInvoker?: AIInvoker;
 
     private status: SyncStatus = {
         inProgress: false,
@@ -178,6 +182,7 @@ export class SyncEngine {
         this.lockPath = path.join(this.syncRepoDir, '.lock');
         this.logger = opts.logger ?? DEFAULT_LOGGER;
         this.mappings = buildFolderMappings(opts.dataDir);
+        this.aiInvoker = opts.aiInvoker;
         this.status.enabled = isSyncEnabled(opts.resolvedConfig);
     }
 
@@ -409,8 +414,7 @@ export class SyncEngine {
             const filePath = path.join(this.syncRepoDir, file);
             try {
                 const content = fs.readFileSync(filePath, 'utf8');
-                // Simple conflict resolution: keep both sides with clear markers
-                const resolved = resolveConflictSimple(content);
+                const resolved = await this.resolveFileConflict(file, content);
                 fs.writeFileSync(filePath, resolved, 'utf8');
                 git(['add', file], this.syncRepoDir);
             } catch (err) {
@@ -428,6 +432,25 @@ export class SyncEngine {
             this.logger.info('Committed conflict resolution');
         } catch {
             // May already be committed
+        }
+    }
+
+    /**
+     * Resolve a single file's merge conflicts. Uses AI when available,
+     * falls back to simple concatenation-based resolution.
+     */
+    private async resolveFileConflict(fileName: string, content: string): Promise<string> {
+        if (!this.aiInvoker) {
+            return resolveConflictSimple(content);
+        }
+
+        try {
+            const resolved = await resolveConflictWithAI(this.aiInvoker, fileName, content);
+            this.logger.info(`AI resolved conflict in ${fileName}`);
+            return resolved;
+        } catch (err) {
+            this.logger.warn(`AI conflict resolution failed for ${fileName}, falling back to simple merge: ${err}`);
+            return resolveConflictSimple(content);
         }
     }
 
@@ -506,4 +529,65 @@ export function resolveConflictSimple(content: string): string {
     }
 
     return result.join('\n');
+}
+
+// ── AI conflict resolution prompt ────────────────────────────────────────────
+
+const CONFLICT_RESOLUTION_PROMPT = `You are resolving a Git merge conflict in a personal notes file used in a "My Work / My Life" productivity system.
+
+The file below contains Git conflict markers (<<<<<<< / ======= / >>>>>>>). Each conflict region has two versions:
+- "Ours" (between <<<<<<< and =======): changes from this machine
+- "Theirs" (between ======= and >>>>>>>): changes from another machine
+
+Your job:
+1. Understand the semantic content — these are action items, journal entries, goals, reflections, or follow-ups.
+2. Merge intelligently: keep ALL meaningful content from both sides. Do not drop any action items, tasks, or journal entries.
+3. If both sides edited the same item (e.g. updated a status or added notes), combine them logically — prefer the more complete or recent version, but preserve any unique details from either side.
+4. Remove the conflict markers entirely. Output ONLY the final resolved file content with no markers, no explanations, and no surrounding code fences.
+
+File: {{fileName}}
+
+Content with conflicts:
+{{content}}`;
+
+/**
+ * Resolve merge conflicts using AI. Sends the conflicted file to the AI invoker
+ * and expects back a clean resolved version.
+ *
+ * @throws if the AI call fails or returns an empty response
+ */
+export async function resolveConflictWithAI(
+    aiInvoker: AIInvoker,
+    fileName: string,
+    content: string,
+): Promise<string> {
+    const prompt = CONFLICT_RESOLUTION_PROMPT
+        .replace('{{fileName}}', fileName)
+        .replace('{{content}}', content);
+
+    const result = await aiInvoker(prompt);
+
+    if (!result.success || !result.response?.trim()) {
+        throw new Error(result.error || 'AI returned empty response for conflict resolution');
+    }
+
+    let resolved = result.response.trim();
+
+    // Strip code fences if the AI wrapped the output
+    if (resolved.startsWith('```')) {
+        const lines = resolved.split('\n');
+        // Remove first line (```markdown or ```) and last line (```)
+        if (lines[lines.length - 1].trim() === '```') {
+            lines.shift();
+            lines.pop();
+            resolved = lines.join('\n');
+        }
+    }
+
+    // Sanity check: resolved content should not contain conflict markers
+    if (resolved.includes('<<<<<<<') || resolved.includes('>>>>>>>')) {
+        throw new Error('AI response still contains conflict markers');
+    }
+
+    return resolved;
 }

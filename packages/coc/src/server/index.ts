@@ -379,6 +379,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const syncEngine = new SyncEngine({
         dataDir,
         resolvedConfig,
+        aiInvoker,
     });
 
     const routes: Route[] = [];

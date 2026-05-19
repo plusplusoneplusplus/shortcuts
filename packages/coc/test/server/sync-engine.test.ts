@@ -9,8 +9,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { resolveConflictSimple, isSyncEnabled, SyncEngine } from '../../src/server/sync/sync-engine';
+import { resolveConflictSimple, resolveConflictWithAI, isSyncEnabled, SyncEngine } from '../../src/server/sync/sync-engine';
 import type { SyncStatus } from '../../src/server/sync/sync-engine';
+import type { AIInvoker } from '@plusplusoneplusplus/forge';
 import type { ResolvedCLIConfig } from '../../src/config';
 import { DEFAULT_CONFIG } from '../../src/config';
 
@@ -127,6 +128,85 @@ describe('resolveConflictSimple', () => {
         expect(resolved).toContain('Line 1 theirs');
         expect(resolved).toContain('Line 2 theirs');
         expect(resolved).toContain('Line 3 theirs');
+    });
+});
+
+// ── resolveConflictWithAI ────────────────────────────────────────────────────
+
+describe('resolveConflictWithAI', () => {
+    const conflictedContent = [
+        '# Notes',
+        '<<<<<<< HEAD',
+        '- [ ] Task from machine A',
+        '=======',
+        '- [ ] Task from machine B',
+        '>>>>>>> remote',
+        'End of file',
+    ].join('\n');
+
+    it('uses AI response when invocation succeeds', async () => {
+        const mockInvoker: AIInvoker = vi.fn().mockResolvedValue({
+            success: true,
+            response: '# Notes\n- [ ] Task from machine A\n- [ ] Task from machine B\nEnd of file',
+        });
+
+        const resolved = await resolveConflictWithAI(mockInvoker, 'my-work/notes.md', conflictedContent);
+        expect(resolved).toBe('# Notes\n- [ ] Task from machine A\n- [ ] Task from machine B\nEnd of file');
+        expect(mockInvoker).toHaveBeenCalledOnce();
+
+        // Verify prompt includes file name and content
+        const prompt = (mockInvoker as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+        expect(prompt).toContain('my-work/notes.md');
+        expect(prompt).toContain('Task from machine A');
+        expect(prompt).toContain('Task from machine B');
+    });
+
+    it('strips code fences from AI response', async () => {
+        const mockInvoker: AIInvoker = vi.fn().mockResolvedValue({
+            success: true,
+            response: '```markdown\n# Notes\n- Resolved content\n```',
+        });
+
+        const resolved = await resolveConflictWithAI(mockInvoker, 'test.md', conflictedContent);
+        expect(resolved).toBe('# Notes\n- Resolved content');
+    });
+
+    it('throws when AI returns failure', async () => {
+        const mockInvoker: AIInvoker = vi.fn().mockResolvedValue({
+            success: false,
+            response: '',
+            error: 'Model unavailable',
+        });
+
+        await expect(resolveConflictWithAI(mockInvoker, 'test.md', conflictedContent))
+            .rejects.toThrow('Model unavailable');
+    });
+
+    it('throws when AI returns empty response', async () => {
+        const mockInvoker: AIInvoker = vi.fn().mockResolvedValue({
+            success: true,
+            response: '   ',
+        });
+
+        await expect(resolveConflictWithAI(mockInvoker, 'test.md', conflictedContent))
+            .rejects.toThrow('AI returned empty response');
+    });
+
+    it('throws when AI response still contains conflict markers', async () => {
+        const mockInvoker: AIInvoker = vi.fn().mockResolvedValue({
+            success: true,
+            response: '# Notes\n<<<<<<< HEAD\nstill broken\n=======\nstill broken\n>>>>>>> remote',
+        });
+
+        await expect(resolveConflictWithAI(mockInvoker, 'test.md', conflictedContent))
+            .rejects.toThrow('still contains conflict markers');
+    });
+
+    it('throws when AI invoker rejects', async () => {
+        const mockInvoker: AIInvoker = vi.fn().mockRejectedValue(new Error('Network error'));
+
+        await expect(resolveConflictWithAI(mockInvoker, 'test.md', conflictedContent))
+            .rejects.toThrow('Network error');
     });
 });
 
