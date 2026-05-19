@@ -642,29 +642,35 @@ export function buildExcalidrawToolsAddon(
 // ============================================================================
 
 /**
- * Filters the assembled tools + suffixes by the per-repo disabled LLM tools list.
- * Call this as the final step before returning from `buildModeOptions`.
+ * Filters the assembled tools + per-addon prose by the per-repo disabled
+ * LLM tools list, and returns the surviving tools alongside the
+ * aggregated `toolGuidance` block.
  *
- * Each entry in `toolsWithSuffix` is a named tool paired with the prompt suffix
- * that describes it. When a tool is disabled, both the tool and its suffix are
- * removed from the output.
+ * Each entry in `toolsWithSuffix` is a named tool paired with the prose
+ * that describes it. When a tool is disabled, both the tool and its prose
+ * are removed from the output.
+ *
+ * The aggregated prose is exposed as `toolGuidance` (not `suffix`) because
+ * callers route it into the system message via
+ * `systemMessageBuilder().appendToolGuidance(...)` rather than appending
+ * it to the user prompt.
  */
 export function applyLlmToolPreferences(
     toolsWithSuffix: Array<{ tools: Tool<any>[]; suffix: string }>,
     disabledLlmTools: string[] | undefined,
-): { tools: Tool<any>[]; suffix: string } {
+): { tools: Tool<any>[]; toolGuidance: string } {
     const allTools: Tool<any>[] = [];
-    let combinedSuffix = '';
+    let toolGuidance = '';
 
     for (const entry of toolsWithSuffix) {
         const filtered = filterDisabledLlmTools(entry.tools, disabledLlmTools);
         if (filtered.length > 0) {
             allTools.push(...filtered);
-            combinedSuffix += entry.suffix;
+            toolGuidance += entry.suffix;
         }
     }
 
-    return { tools: allTools, suffix: combinedSuffix };
+    return { tools: allTools, toolGuidance };
 }
 
 // Re-export for convenience

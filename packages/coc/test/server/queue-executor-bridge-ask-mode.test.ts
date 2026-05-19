@@ -142,10 +142,8 @@ describe('ask mode system message — initial chat', () => {
 
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(callArgs.systemMessage).toEqual({
-            mode: 'append',
-            content: READ_ONLY_SYSTEM_MESSAGE,
-        });
+        expect(callArgs.systemMessage?.mode).toBe('append');
+        expect(callArgs.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
     });
 
     it('should NOT include read-only systemMessage when chat starts in autopilot mode', async () => {
@@ -156,7 +154,12 @@ describe('ask mode system message — initial chat', () => {
 
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(callArgs.systemMessage).toBeUndefined();
+        // systemMessage may still carry tool-guidance prose (now routed into
+        // systemMessage rather than the user prompt), but it must not contain
+        // the read-only directive in autopilot mode.
+        if (callArgs.systemMessage) {
+            expect(callArgs.systemMessage.content).not.toContain(READ_ONLY_SYSTEM_MESSAGE);
+        }
     });
 
     it('should include read-only systemMessage when chat starts in plan mode', async () => {
@@ -167,10 +170,8 @@ describe('ask mode system message — initial chat', () => {
 
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(callArgs.systemMessage).toEqual({
-            mode: 'append',
-            content: READ_ONLY_SYSTEM_MESSAGE,
-        });
+        expect(callArgs.systemMessage?.mode).toBe('append');
+        expect(callArgs.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
     });
 });
 
@@ -363,7 +364,7 @@ describe('ask mode system message — auto-folder location block', () => {
         await executor.execute(task);
 
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(callArgs.systemMessage?.content).toBe(READ_ONLY_SYSTEM_MESSAGE);
+        expect(callArgs.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
         expect(callArgs.systemMessage?.content).not.toContain('<chosen-folder>');
     });
 
@@ -424,6 +425,11 @@ describe('ask mode system message — auto-folder location block', () => {
         await executor.execute(task);
 
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(callArgs.systemMessage).toBeUndefined();
+        // systemMessage may still carry tool-guidance prose, but autopilot mode
+        // must not include the read-only directive nor the auto-folder block.
+        if (callArgs.systemMessage) {
+            expect(callArgs.systemMessage.content).not.toContain(READ_ONLY_SYSTEM_MESSAGE);
+            expect(callArgs.systemMessage.content).not.toContain('<chosen-folder>');
+        }
     });
 });

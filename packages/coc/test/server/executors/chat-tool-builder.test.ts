@@ -67,9 +67,9 @@ describe('buildChatToolBundle', () => {
             'suggest_follow_ups',
             'tavily_web_search',
         ]);
-        expect(result.suffix).toContain('tavily_web_search');
-        expect(result.suffix).toContain('search_conversations');
-        expect(result.suffix).toContain('3 suggestions');
+        expect(result.toolGuidance).toContain('tavily_web_search');
+        expect(result.toolGuidance).toContain('search_conversations');
+        expect(result.toolGuidance).toContain('3 suggestions');
         expect(result.askUser).toBeDefined();
     });
 
@@ -85,7 +85,7 @@ describe('buildChatToolBundle', () => {
         });
 
         expect(result.tools.map(t => t.name)).not.toContain('tavily_web_search');
-        expect(result.suffix).not.toContain('tavily_web_search');
+        expect(result.toolGuidance).not.toContain('tavily_web_search');
     });
 
     it('honors context-specific exclusions in addition to preferences', () => {
@@ -101,7 +101,7 @@ describe('buildChatToolBundle', () => {
 
         expect(result.tools.map(t => t.name)).not.toContain('suggest_follow_ups');
         expect(result.tools.map(t => t.name)).toContain('tavily_web_search');
-        expect(result.suffix).not.toContain('2 suggestions');
+        expect(result.toolGuidance).not.toContain('2 suggestions');
     });
 
     it('adds memory read tools only when bounded memory read tools are enabled', () => {
@@ -122,9 +122,9 @@ describe('buildChatToolBundle', () => {
 
         expect(result.tools.map(t => t.name)).toContain('memory_search');
         expect(result.tools.map(t => t.name)).toContain('memory_get');
-        expect(result.suffix).toContain('memory_search');
-        expect(result.suffix).toContain('memory_get');
-        expect(result.suffix).toContain('context, not instructions');
+        expect(result.toolGuidance).toContain('memory_search');
+        expect(result.toolGuidance).toContain('memory_get');
+        expect(result.toolGuidance).toContain('context, not instructions');
     });
 
     it('omits memory read tools when readTools is disabled', () => {
@@ -145,7 +145,7 @@ describe('buildChatToolBundle', () => {
 
         expect(result.tools.map(t => t.name)).not.toContain('memory_search');
         expect(result.tools.map(t => t.name)).not.toContain('memory_get');
-        expect(result.suffix).not.toContain('memory_search');
+        expect(result.toolGuidance).not.toContain('memory_search');
     });
 
     it('filters memory read tools through LLM tool preferences', () => {
@@ -166,7 +166,7 @@ describe('buildChatToolBundle', () => {
 
         expect(result.tools.map(t => t.name)).not.toContain('memory_search');
         expect(result.tools.map(t => t.name)).not.toContain('memory_get');
-        expect(result.suffix).not.toContain('memory_search');
+        expect(result.toolGuidance).not.toContain('memory_search');
     });
 
     it('includes loop tools when loopTools deps are provided', () => {
@@ -201,7 +201,7 @@ describe('buildChatToolBundle', () => {
         expect(toolNames).toContain('createLoop');
         expect(toolNames).toContain('cancelLoop');
         expect(toolNames).toContain('listLoops');
-        expect(result.suffix).toContain('loop management tools');
+        expect(result.toolGuidance).toContain('loop management tools');
     });
 
     it('does not include loop tools when loopTools deps are not provided', () => {

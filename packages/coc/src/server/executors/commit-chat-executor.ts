@@ -68,7 +68,7 @@ export class CommitChatExecutor extends ChatBaseExecutor {
         // Resolve parent hash
         const parentHash = resolveParentHash(commitHash, workingDirectory);
 
-        // Build system message (same pattern as ChatExecutor)
+        // Build auto-folder context (same pattern as ChatExecutor)
         let autoFolderContext = undefined;
         if (workingDirectory) {
             autoFolderContext = await this.buildAutoFolderContext(
@@ -78,16 +78,11 @@ export class CommitChatExecutor extends ChatBaseExecutor {
         }
 
         const boundedMemory = await this.buildMemoryAddon(wsId, this.buildCaptureContext(task), prompt);
-        const systemMessage = await systemMessageBuilder()
-            .append(buildModeSystemMessage('ask')?.content)
-            .withRepoInstructions(workingDirectory, 'ask')
-            .appendMemory(boundedMemory)
-            .appendAutoFolder(autoFolderContext)
-            .build();
 
-        // Build tools
+        // Build tools first so we can route the aggregated tool-guidance prose
+        // into the system message via `.appendToolGuidance()`.
         const tools: Tool<unknown>[] = [];
-        let toolSuffix = '';
+        let toolGuidance = '';
 
         // Inject add_diff_comment tool when we have enough context
         if (this.dataDir && wsId && commitHash && workingDirectory) {
@@ -101,11 +96,10 @@ export class CommitChatExecutor extends ChatBaseExecutor {
                 getWsServer: this.getWsServer,
             });
             tools.push(tool);
-            toolSuffix += ADD_DIFF_COMMENT_SUFFIX;
+            toolGuidance += ADD_DIFF_COMMENT_SUFFIX;
         }
 
         // Standard chat tools
-        const hasPlanFile = (payload.context?.files?.length ?? 0) > 1;
         const followUp = buildFollowUpSuggestionsAddon(
             this.followUpSuggestions.enabled,
             this.followUpSuggestions.count,
@@ -118,19 +112,27 @@ export class CommitChatExecutor extends ChatBaseExecutor {
             ? readEffectiveDisabledLlmTools(this.dataDir, wsId)
             : undefined;
 
-        const { tools: filteredTools, suffix: filteredSuffix } = applyLlmToolPreferences(
+        const { tools: filteredTools, toolGuidance: filteredGuidance } = applyLlmToolPreferences(
             [followUp, searchConversations, tavilySearch, memoryReadTools, boundedMemory],
             disabledLlmTools,
         );
 
         tools.push(...filteredTools);
-        toolSuffix += filteredSuffix;
+        toolGuidance += filteredGuidance;
+
+        const systemMessage = await systemMessageBuilder()
+            .append(buildModeSystemMessage('ask')?.content)
+            .withRepoInstructions(workingDirectory, 'ask')
+            .appendMemory(boundedMemory)
+            .appendToolGuidance(toolGuidance)
+            .appendAutoFolder(autoFolderContext)
+            .build();
 
         return {
             agentMode: 'interactive' as AgentMode,
             systemMessage,
             tools,
-            effectivePrompt: prompt + toolSuffix,
+            effectivePrompt: prompt,
             dispose: boundedMemory.dispose,
         };
     }

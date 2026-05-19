@@ -51,7 +51,7 @@ export class AutopilotExecutor extends ChatBaseExecutor {
         const boundedMemory = await this.buildMemoryAddon(payload.workspaceId, this.buildCaptureContext(task), prompt);
         const processId = toQueueProcessId(task.id);
         const loopDeps = this.buildLoopToolDeps(processId);
-        const { tools, suffix } = buildChatToolBundle({
+        const { tools, toolGuidance } = buildChatToolBundle({
             dataDir: this.dataDir,
             store: this.store,
             workspaceId: payload.workspaceId,
@@ -65,11 +65,16 @@ export class AutopilotExecutor extends ChatBaseExecutor {
             loopTools: loopDeps.loopTools,
         });
 
+        const systemMessage = await systemMessageBuilder()
+            .appendMemory(boundedMemory)
+            .appendToolGuidance(toolGuidance)
+            .build();
+
         return {
             agentMode: 'autopilot' as AgentMode,
-            systemMessage: await systemMessageBuilder().appendMemory(boundedMemory).build(),
+            systemMessage,
             tools,
-            effectivePrompt: prompt + suffix,
+            effectivePrompt: prompt,
             dispose: boundedMemory.dispose,
         };
     }

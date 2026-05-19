@@ -47,7 +47,12 @@ export interface ChatToolBundleOptions {
 
 export interface ChatToolBundle {
     tools: Tool<any>[];
-    suffix: string;
+    /**
+     * Aggregated LLM-tool-guidance prose. Callers route this into the
+     * system message via `systemMessageBuilder().appendToolGuidance(...)`
+     * rather than appending it to the user prompt.
+     */
+    toolGuidance: string;
     askUser?: AskUserAddon;
 }
 
@@ -112,9 +117,9 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
         ? readEffectiveDisabledLlmTools(options.dataDir, options.workspaceId)
         : undefined;
     const disabledWithContextExclusions = mergeDisabledTools(disabledLlmTools, options.excludeTools);
-    const { tools, suffix } = applyLlmToolPreferences(addons, disabledWithContextExclusions);
+    const { tools, toolGuidance } = applyLlmToolPreferences(addons, disabledWithContextExclusions);
 
-    return { tools, suffix, askUser };
+    return { tools, toolGuidance, askUser };
 }
 
 function mergeDisabledTools(

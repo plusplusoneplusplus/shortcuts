@@ -409,7 +409,7 @@ describe('ChatExecutor ask_user enabled', () => {
         expect(toolNames).toContain('ask_user');
     });
 
-    it('does not include ask_user prompt suffix', async () => {
+    it('routes ask_user tool guidance into systemMessage (not user prompt)', async () => {
         const executor = new ChatExecutor(store, makeOptions(store, {
             askUser: { enabled: true },
         } as any));
@@ -418,8 +418,11 @@ describe('ChatExecutor ask_user enabled', () => {
         await executor.execute(task, 'Hello');
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        // Tool-guidance prose lives in systemMessage (once per session)
+        // — not stapled to every user turn.
+        expect(call.prompt).not.toContain('ask_user');
         const systemContent = call.systemMessage?.content ?? '';
-        expect(systemContent).not.toContain('ask_user');
+        expect(systemContent).toContain('ask_user');
     });
 });
 
@@ -817,9 +820,10 @@ describe('create_work_item / create_bug tool wiring', () => {
             await executor.execute(task, 'Hello');
 
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-            expect(call.prompt).toContain('create-work-item');
-            expect(call.prompt).toContain('create-bug');
-            expect(call.prompt).toContain('update-work-item');
+            const systemContent = call.systemMessage?.content ?? '';
+            expect(systemContent).toContain('create-work-item');
+            expect(systemContent).toContain('create-bug');
+            expect(systemContent).toContain('update-work-item');
         }
     });
 
@@ -843,7 +847,8 @@ describe('create_work_item / create_bug tool wiring', () => {
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
             const toolNames = (call.tools ?? []).map((t: any) => t.name);
             expect(toolNames).toContain('tavily_web_search');
-            expect(call.prompt).toContain('tavily_web_search');
+            const systemContent = call.systemMessage?.content ?? '';
+            expect(systemContent).toContain('tavily_web_search');
         }
     });
 

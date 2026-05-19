@@ -70,6 +70,24 @@ class SystemMessageBuilder {
     }
 
     /**
+     * Append the aggregated LLM-tool-guidance block (concatenated `suffix`
+     * strings from each enabled addon, as produced by
+     * `applyLlmToolPreferences` / `buildChatToolBundle`).
+     *
+     * Lives in the system message rather than appended to the user prompt
+     * so the prose is sent exactly once at session creation instead of
+     * being repeated on every turn.
+     *
+     * No-op when `block` is empty, undefined, or only whitespace.
+     */
+    appendToolGuidance(block: string | undefined): this {
+        if (block && block.trim().length > 0) {
+            this.steps.push({ kind: 'eager', block });
+        }
+        return this;
+    }
+
+    /**
      * Defer loading per-repo `.github/coc/` instructions.
      * No-op when `workingDir` or `mode` is `undefined`.
      */

@@ -39,22 +39,22 @@ const mockBuildConversationHistoryContext = vi.fn().mockReturnValue(undefined);
 const mockBuildFollowUpSuggestionsAddon = vi.fn().mockReturnValue({ tools: [], suffix: '' });
 const mockApplyLlmToolPreferences = vi.fn().mockImplementation((addons: Array<{ tools: any[]; suffix: string }>, disabled?: string[]) => {
     const tools: any[] = [];
-    let suffix = '';
+    let toolGuidance = '';
     for (const addon of addons) {
         const filtered = disabled
             ? addon.tools.filter(tool => !disabled.includes(tool.name))
             : addon.tools;
         if (filtered.length > 0) {
             tools.push(...filtered);
-            suffix += addon.suffix;
+            toolGuidance += addon.suffix;
         }
     }
-    return { tools, suffix };
+    return { tools, toolGuidance };
 });
 function makeMockToolBundle(overrides?: Partial<ReturnType<typeof makeMockToolBundle>>) {
     return {
         tools: [],
-        suffix: '',
+        toolGuidance: '',
         askUser: {
             answerQuestion: vi.fn(() => false),
             skipQuestion: vi.fn(() => false),
@@ -573,10 +573,10 @@ describe('FollowUpExecutor', () => {
         }));
     });
 
-    it('passes shared chat tools and suffix to sendMessage on follow-up turns', async () => {
+    it('passes shared chat tools and routes tool guidance into the system message on follow-up turns', async () => {
         mockBuildChatToolBundle.mockReturnValue(makeMockToolBundle({
             tools: [{ name: 'tavily_web_search' }],
-            suffix: '\n\nTavily suffix',
+            toolGuidance: '\n\nTavily tool guidance prose',
         }));
         const proc = makeProcess({
             id: 'proc-shared-tools',
@@ -589,8 +589,12 @@ describe('FollowUpExecutor', () => {
 
         const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
         expect(callArg.tools.map((tool: any) => tool.name)).toContain('tavily_web_search');
+        // After the refactor: the tool-guidance prose lives in systemMessage
+        // (sent once at SDK session creation), not stapled onto every user
+        // turn. The user prompt should remain the raw message.
         expect(callArg.prompt).toContain('another question');
-        expect(callArg.prompt).toContain('Tavily suffix');
+        expect(callArg.prompt).not.toContain('Tavily tool guidance prose');
+        expect(callArg.systemMessage.content).toContain('Tavily tool guidance prose');
     });
 
     it('passes enabled ask_user configuration on ask follow-up turns', async () => {
