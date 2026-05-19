@@ -59,7 +59,7 @@ await esbuild.build({
     jsx: 'automatic',
     platform: 'browser',
     target: ['es2020'],
-    minify: false,
+    minify: true,
     sourcemap: false,
     logLevel: 'info',
     alias: spaAliases,
