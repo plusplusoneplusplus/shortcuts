@@ -29,6 +29,7 @@ Quick-start pointers (full detail lives in the skill):
 - **Recurring loops + wakeups + circuit breakers** → [loops.md](.github/skills/coc-knowledge/references/loops.md)
 - **Deep Wiki six-phase pipeline** → [deep-wiki.md](.github/skills/coc-knowledge/references/deep-wiki.md)
 - **REST API catalog** → [rest-api.md](.github/skills/coc-knowledge/references/rest-api.md)
+- **Notes Git sync engine** → [sync.md](.github/skills/coc-knowledge/references/sync.md)
 
 ## Hard Invariants (apply even before reading the skill)
 

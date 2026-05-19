@@ -216,3 +216,10 @@ See [mcp-settings.md](mcp-settings.md).
 | POST | `/api/servers/:id/test` | Test connection |
 | POST | `/api/servers/:id/connect` | Connect (DevTunnel) |
 | POST | `/api/servers/:id/disconnect` | Disconnect |
+
+## Sync
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/sync/status` | Sync status (enabled, inProgress, lastSyncTime, lastError) |
+| POST | `/api/sync/trigger` | Force immediate notes sync |
