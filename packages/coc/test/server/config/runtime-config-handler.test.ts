@@ -105,6 +105,68 @@ describe('buildRuntimeDashboardConfig', () => {
     });
 });
 
+describe('AC-05: ralph.enabled live enablement end-to-end', () => {
+    it('ralph.enabled update through service is reflected in runtime dashboard config', async () => {
+        const fs = await import('fs');
+        const path = await import('path');
+        const os = await import('os');
+        const { RuntimeConfigService } = await import('../../../src/config/runtime-config-service');
+
+        // Create a real service with a temp config file
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-ac05-'));
+        try {
+            const configPath = path.join(tmpDir, 'config.yaml');
+            const svc = new RuntimeConfigService({ configPath });
+
+            // Initial state: ralph disabled
+            const before = buildRuntimeDashboardConfig(svc, 'test-host', '127.0.0.1');
+            expect(before.features.ralphEnabled).toBe(false);
+            expect(before.revision).toBe(0);
+
+            // Admin update enables ralph
+            const updateResult = await svc.updateConfig({ 'ralph.enabled': true });
+            expect(updateResult.config.ralph.enabled).toBe(true);
+            expect(updateResult.revision).toBe(1);
+
+            // Runtime dashboard config now reflects ralph enabled
+            const after = buildRuntimeDashboardConfig(svc, 'test-host', '127.0.0.1');
+            expect(after.features.ralphEnabled).toBe(true);
+            expect(after.revision).toBe(1);
+
+            // Verify the effect classifies ralph as live (not restartRequired)
+            const ralphEffect = updateResult.effects.find(e => e.field === 'ralph.enabled');
+            expect(ralphEffect).toBeDefined();
+            expect(ralphEffect!.runtime).toBe('live');
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+
+    it('stale ETag is invalidated when ralph.enabled changes', async () => {
+        vi.resetModules();
+        const { getBundleETag } = await import('../../../src/server/spa/html-template');
+
+        // ETag before config change (revision 0) differs from after (revision 1)
+        const etagBefore = getBundleETag(0);
+        const etagAfter = getBundleETag(1);
+        expect(etagBefore).not.toBe(etagAfter);
+        // Browser 304 with old ETag will not match new ETag → fresh HTML served
+    });
+
+    it('ralph backend routes are always registered (not gated by startup config)', async () => {
+        // Verify route registration files import ralph routes unconditionally
+        const routesSrc = await import('fs').then(fs =>
+            fs.readFileSync(
+                require('path').resolve(__dirname, '../../../src/server/routes/index.ts'),
+                'utf-8',
+            ),
+        );
+        // Ralph route registration should not be inside an if block checking config
+        expect(routesSrc).toContain('registerRalphRoutes(routes');
+        expect(routesSrc).not.toMatch(/if\s*\(.*ralph.*\)\s*\{?\s*registerRalphRoutes/);
+    });
+});
+
 describe('getBundleETag with config revision', () => {
     let getBundleETag: (configRevision?: number) => string;
 
