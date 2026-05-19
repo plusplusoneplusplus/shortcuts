@@ -39,7 +39,7 @@ async function gotoSettingsSubTab(sub: 'ai' | 'chat' | 'appearance' | 'features'
 }
 
 describe('AdminPanel', () => {
-    it('renders the Admin heading', async () => {
+    it('does not render the Admin heading', async () => {
         mockFetch.mockResolvedValue({
             ok: true,
             json: () => Promise.resolve({}),
@@ -48,7 +48,7 @@ describe('AdminPanel', () => {
         await act(async () => {
             renderWithProviders();
         });
-        expect(screen.getByText('Admin')).toBeDefined();
+        expect(screen.queryByRole('heading', { name: 'Admin' })).toBeNull();
     });
 
     it('renders storage stats section', async () => {

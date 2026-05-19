@@ -866,7 +866,6 @@ export function AdminPanel() {
                         <header className="ar-page-header">
                             <div className="ar-page-header-row">
                                 <div>
-                                    <h1 className="ar-page-title">Admin</h1>
                                     <p className="ar-page-desc">{TAB_DESCRIPTIONS[activeTab]}</p>
                                 </div>
                             </div>
