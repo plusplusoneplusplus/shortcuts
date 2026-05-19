@@ -585,3 +585,151 @@ describe('RequestRunner.send() — external client (keepalive)', () => {
         expect(externalClient.stop).not.toHaveBeenCalled();
     });
 });
+
+// ============================================================================
+// Proactive MCP OAuth probe
+// ============================================================================
+
+describe('RequestRunner.send() — proactive MCP OAuth probe', () => {
+    it('calls onMcpOAuthRequired when proactive login returns authorizationUrl', async () => {
+        const loginFn = vi.fn().mockResolvedValue({ authorizationUrl: 'https://auth.example.com/authorize' });
+        const mockSession = {
+            ...createMockSession({ sessionId: 'probe-session' }),
+            on: vi.fn().mockReturnValue(() => {}),
+            rpc: { mcp: { oauth: { login: loginFn } } },
+        };
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        const oauthEvents: any[] = [];
+        vi.mocked(loadEffectiveMcpConfig).mockReturnValue({
+            success: true,
+            fileExists: true,
+            mcpServers: { 'remote-server': { type: 'http', url: 'https://mcp.example.com' } },
+            configPath: '/fake/mcp.json',
+        });
+
+        await runner.send({
+            prompt: 'test',
+            timeoutMs: 5000,
+            loadDefaultMcpConfig: true,
+            onMcpOAuthRequired: (event) => oauthEvents.push(event),
+        });
+
+        // Give the fire-and-forget promise time to resolve
+        await new Promise(r => setTimeout(r, 50));
+
+        expect(loginFn).toHaveBeenCalledWith({ serverName: 'remote-server' });
+        expect(oauthEvents).toHaveLength(1);
+        expect(oauthEvents[0]).toMatchObject({
+            serverName: 'remote-server',
+            serverUrl: 'https://mcp.example.com',
+            authorizationUrl: 'https://auth.example.com/authorize',
+            sessionId: 'probe-session',
+        });
+        expect(oauthEvents[0].requestId).toMatch(/^proactive-remote-server-/);
+    });
+
+    it('does not call onMcpOAuthRequired when login returns no authorizationUrl', async () => {
+        const loginFn = vi.fn().mockResolvedValue({});
+        const mockSession = {
+            ...createMockSession({ sessionId: 'no-auth-session' }),
+            on: vi.fn().mockReturnValue(() => {}),
+            rpc: { mcp: { oauth: { login: loginFn } } },
+        };
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        const oauthEvents: any[] = [];
+        vi.mocked(loadEffectiveMcpConfig).mockReturnValue({
+            success: true,
+            fileExists: true,
+            mcpServers: { 'remote-server': { type: 'sse', url: 'https://mcp.example.com/sse' } },
+            configPath: '/fake/mcp.json',
+        });
+
+        await runner.send({
+            prompt: 'test',
+            timeoutMs: 5000,
+            loadDefaultMcpConfig: true,
+            onMcpOAuthRequired: (event) => oauthEvents.push(event),
+        });
+
+        await new Promise(r => setTimeout(r, 50));
+
+        expect(loginFn).toHaveBeenCalledWith({ serverName: 'remote-server' });
+        expect(oauthEvents).toHaveLength(0);
+    });
+
+    it('does not probe local (stdio) servers', async () => {
+        const loginFn = vi.fn().mockResolvedValue({ authorizationUrl: 'https://auth.example.com' });
+        const mockSession = {
+            ...createMockSession({ sessionId: 'local-session' }),
+            on: vi.fn().mockReturnValue(() => {}),
+            rpc: { mcp: { oauth: { login: loginFn } } },
+        };
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        vi.mocked(loadEffectiveMcpConfig).mockReturnValue({
+            success: true,
+            fileExists: true,
+            mcpServers: { 'local-tool': { command: 'node', args: ['server.js'] } },
+            configPath: '/fake/mcp.json',
+        });
+
+        await runner.send({
+            prompt: 'test',
+            timeoutMs: 5000,
+            loadDefaultMcpConfig: true,
+            onMcpOAuthRequired: () => {},
+        });
+
+        await new Promise(r => setTimeout(r, 50));
+
+        expect(loginFn).not.toHaveBeenCalled();
+    });
+
+    it('handles login probe errors gracefully without blocking', async () => {
+        const loginFn = vi.fn().mockRejectedValue(new Error('probe network error'));
+        const mockSession = {
+            ...createMockSession({ sessionId: 'error-session' }),
+            on: vi.fn().mockReturnValue(() => {}),
+            rpc: { mcp: { oauth: { login: loginFn } } },
+        };
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        vi.mocked(loadEffectiveMcpConfig).mockReturnValue({
+            success: true,
+            fileExists: true,
+            mcpServers: { 'failing-server': { type: 'http', url: 'https://down.example.com' } },
+            configPath: '/fake/mcp.json',
+        });
+
+        // Should not throw despite probe failure
+        const result = await runner.send({
+            prompt: 'test',
+            timeoutMs: 5000,
+            loadDefaultMcpConfig: true,
+            onMcpOAuthRequired: () => {},
+        });
+
+        await new Promise(r => setTimeout(r, 50));
+
+        expect(result.success).toBe(true);
+        expect(loginFn).toHaveBeenCalledWith({ serverName: 'failing-server' });
+    });
+});

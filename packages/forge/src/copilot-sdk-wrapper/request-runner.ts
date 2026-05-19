@@ -262,6 +262,58 @@ export class RequestRunner {
                 sessionLog.debug('[MCP OAuth] onMcpOAuthRequired provided but session.on is not available; OAuth events will not be captured');
             }
 
+            // Proactive MCP OAuth probe: after session creation, attempt to call
+            // mcp.oauth.login for each remote MCP server. The SDK may silently skip
+            // servers that require OAuth during session initialization (never
+            // connecting them), so the reactive `mcp.oauth_required` event never
+            // fires. By probing login upfront we detect auth requirements early and
+            // surface the authorization URL to the user via the existing handler.
+            if (options.onMcpOAuthRequired && sessionOptions.mcpServers) {
+                const rpc = (session as unknown as { rpc?: { mcp?: { oauth?: { login?: (p: { serverName: string }) => Promise<{ authorizationUrl?: string }> } } } }).rpc;
+                const loginFn = rpc?.mcp?.oauth?.login;
+                if (typeof loginFn === 'function') {
+                    const remoteServers = Object.entries(sessionOptions.mcpServers as Record<string, { type?: string; url?: string }>)
+                        .filter(([, cfg]) => cfg.type === 'http' || cfg.type === 'sse');
+                    if (remoteServers.length > 0) {
+                        sessionLog.debug({ remoteServerCount: remoteServers.length }, '[MCP OAuth] Proactively probing OAuth for remote MCP servers');
+                        // Fire-and-forget: don't block the message send
+                        for (const [serverName, cfg] of remoteServers) {
+                            Promise.resolve()
+                                .then(() => loginFn.call(rpc!.mcp!.oauth, { serverName }))
+                                .then(loginResult => {
+                                    if (loginResult?.authorizationUrl) {
+                                        sessionLog.info(
+                                            { serverName, hasAuthorizationUrl: true },
+                                            '[MCP OAuth] Proactive probe: server requires OAuth',
+                                        );
+                                        try {
+                                            options.onMcpOAuthRequired!({
+                                                serverName,
+                                                serverUrl: (cfg as { url?: string }).url ?? serverName,
+                                                authorizationUrl: loginResult.authorizationUrl,
+                                                requestId: `proactive-${serverName}-${Date.now()}`,
+                                                sessionId: session!.sessionId,
+                                            });
+                                        } catch (cbErr) {
+                                            sessionLog.warn({ err: cbErr instanceof Error ? cbErr.message : String(cbErr) }, '[MCP OAuth] Proactive probe handler threw');
+                                        }
+                                    } else {
+                                        sessionLog.debug({ serverName }, '[MCP OAuth] Proactive probe: no auth required or already authenticated');
+                                    }
+                                })
+                                .catch(probeErr => {
+                                    sessionLog.debug(
+                                        { serverName, err: probeErr instanceof Error ? probeErr.message : String(probeErr) },
+                                        '[MCP OAuth] Proactive probe failed (non-fatal)',
+                                    );
+                                });
+                        }
+                    }
+                } else {
+                    sessionLog.debug('[MCP OAuth] Proactive probe skipped: mcp.oauth.login RPC not available');
+                }
+            }
+
             if (switchModelAfterSessionCreate) {
                 await session.setModel(options.model!, { reasoningEffort: options.reasoningEffort });
                 sessionLog.debug({ model: options.model, reasoningEffort: options.reasoningEffort }, 'Model set after session creation');
