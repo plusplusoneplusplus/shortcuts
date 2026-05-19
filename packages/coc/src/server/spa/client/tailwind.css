@@ -369,6 +369,97 @@
     background: linear-gradient(to bottom, transparent, rgba(0, 0, 0, 0.08));
 }
 
+/* ── Excalidraw inline preview ── */
+
+.md-excalidraw-embed {
+    margin-top: 0.5rem;
+}
+
+.md-excalidraw-preview {
+    border: 1px solid var(--border, #e0e0e0);
+    border-radius: 6px;
+    overflow: hidden;
+    background: #ffffff;
+}
+
+.dark .md-excalidraw-preview {
+    border-color: #3c3c3c;
+    background: #1e1e1e;
+}
+
+.md-excalidraw-preview-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid #e0e0e0;
+    background: #f3f3f3;
+    font-size: 11px;
+}
+
+.dark .md-excalidraw-preview-toolbar {
+    border-bottom-color: #3c3c3c;
+    background: #252526;
+}
+
+.md-excalidraw-preview-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #616161;
+}
+
+.dark .md-excalidraw-preview-title {
+    color: #cccccc;
+}
+
+.md-excalidraw-preview-actions {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: 0.4rem;
+}
+
+.md-excalidraw-preview-actions button {
+    color: #0078d4;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0;
+}
+
+.md-excalidraw-preview-actions button:hover {
+    text-decoration: underline;
+}
+
+.md-excalidraw-preview-canvas {
+    position: relative;
+    min-height: 200px;
+    max-height: 800px;
+    background: #ffffff;
+}
+
+.dark .md-excalidraw-preview-canvas {
+    background: #1e1e1e;
+}
+
+.md-excalidraw-preview-loading,
+.md-excalidraw-preview-error {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 200px;
+    font-size: 12px;
+    color: #616161;
+}
+
+.md-excalidraw-preview-error {
+    color: #f14c4c;
+}
+
 /* Hover tooltip for file preview */
 .file-preview-tooltip {
     position: fixed;

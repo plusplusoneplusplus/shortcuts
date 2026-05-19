@@ -9,6 +9,8 @@ export { MarkdownView } from './MarkdownView';
 export type { MarkdownViewProps } from './MarkdownView';
 export { InteractiveTable } from './InteractiveTable';
 export type { InteractiveTableProps } from './InteractiveTable';
+export { ExcalidrawPreview } from './ExcalidrawPreview';
+export type { ExcalidrawPreviewProps } from './ExcalidrawPreview';
 export { extractTablesFromHtml, MIN_ROWS, MIN_COLS } from './extractTablesFromHtml';
 export type { ExtractedTable, ExtractedTableData, ColumnAlignment } from './extractTablesFromHtml';
 export { mountHtmlEmbeds } from './htmlEmbedMount';

@@ -15,6 +15,8 @@ import { LoopIcon } from '../icons/LoopIcon';
 import { Marked } from 'marked';
 import { useDisplaySettings } from '../../../hooks/preferences/useDisplaySettings';
 import { useHtmlEmbedPreference } from '../../../hooks/preferences/useHtmlEmbedPreference';
+import { isExcalidrawEnabled } from '../../../utils/config';
+import { SHOW_EXCALIDRAW_DIAGRAMS } from '../../../featureFlags';
 import { getSpaCocClient } from '../../../api/cocClient';
 import { copyToClipboard, copyHtmlToClipboard, splitMarkdownSections } from '../../../utils/format';
 import { linkifyFilePaths } from '../../../shared/file-path-utils';
@@ -48,7 +50,38 @@ function escapeHtml(value: string): string {
         .replace(/>/g, '&gt;');
 }
 
-function createChatMarked(htmlEmbedEnabled: boolean): Marked {
+/**
+ * Parse an `excalidraw://workspaceId/filename` URL.
+ * Returns null if the URL doesn't match the expected format.
+ */
+export function parseExcalidrawLink(url: string): { workspaceId: string; diagramPath: string } | null {
+    const match = url.match(/^excalidraw:\/\/([^/]+)\/(.+)$/i);
+    if (!match) return null;
+    const workspaceId = decodeURIComponent(match[1]);
+    const diagramPath = decodeURIComponent(match[2]);
+    if (!workspaceId || !diagramPath) return null;
+    return { workspaceId, diagramPath };
+}
+
+/**
+ * Post-processing: convert bare `excalidraw://...` text in HTML (not already
+ * inside a tag attribute or an existing placeholder) into embed divs.
+ */
+function rewriteBareExcalidrawLinks(html: string): string {
+    // Match bare excalidraw:// URLs that are NOT inside an HTML tag attribute
+    // (i.e., not preceded by `="` or `='`). Also skip if already inside an
+    // md-excalidraw-embed div.
+    return html.replace(
+        /(?<!="|=')excalidraw:\/\/([^\s<>"']+)/gi,
+        (match) => {
+            const parsed = parseExcalidrawLink(match);
+            if (!parsed) return match;
+            return `<div class="md-excalidraw-embed" data-ws-id="${escapeAttr(parsed.workspaceId)}" data-diagram-path="${escapeAttr(parsed.diagramPath)}"></div>`;
+        },
+    );
+}
+
+function createChatMarked(htmlEmbedEnabled: boolean, excalidrawEmbedEnabled: boolean = false): Marked {
     let mermaidBlockIndex = 0;
 
     return new Marked({
@@ -79,6 +112,13 @@ function createChatMarked(htmlEmbedEnabled: boolean): Marked {
             },
             link(href: string, title: string | null | undefined, text: string): string {
                 const safeHref = escapeAttr(href ?? '');
+                // Excalidraw links → inline placeholder div
+                if (excalidrawEmbedEnabled && href && /^excalidraw:\/\//i.test(href)) {
+                    const parsed = parseExcalidrawLink(href);
+                    if (parsed) {
+                        return `<div class="md-excalidraw-embed" data-ws-id="${escapeAttr(parsed.workspaceId)}" data-diagram-path="${escapeAttr(parsed.diagramPath)}"></div>`;
+                    }
+                }
                 const isExternal = /^https?:\/\/|^mailto:/i.test(href ?? '');
                 const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
                 return isExternal
@@ -152,15 +192,20 @@ function rewriteLocalImagePaths(html: string, wsId: string): string {
  * Produces proper `<h3>`, `<strong>`, `<ul>`, `<pre><code>`, etc.
  * File paths are linkified for hover previews.
  */
-export function chatMarkdownToHtml(content: string, wsId?: string, options?: { htmlEmbedEnabled?: boolean }): string {
+export function chatMarkdownToHtml(content: string, wsId?: string, options?: { htmlEmbedEnabled?: boolean; excalidrawEmbedEnabled?: boolean }): string {
     if (!content || !content.trim()) return '';
     // Order matters: normalizeMarkdownLinkUrls fixes link/image URLs first (handles
     // spaces + backslashes), then normalizeWindowsPathsInText handles bare prose paths.
     const linkNormalized = normalizeMarkdownLinkUrls(content);
     const normalized = normalizeWindowsPathsInText(linkNormalized);
-    let html = linkifyFilePaths(createChatMarked(options?.htmlEmbedEnabled === true).parse(normalized) as string);
+    const excalidrawEnabled = options?.excalidrawEmbedEnabled === true;
+    let html = linkifyFilePaths(createChatMarked(options?.htmlEmbedEnabled === true, excalidrawEnabled).parse(normalized) as string);
     if (wsId) {
         html = rewriteLocalImagePaths(html, wsId);
+    }
+    // Post-process: convert bare excalidraw:// URLs to embed divs
+    if (excalidrawEnabled) {
+        html = rewriteBareExcalidrawLinks(html);
     }
     return html;
 }
@@ -234,7 +279,7 @@ type RenderChunk =
         parentToolId?: string;
       };
 
-export function toContentHtml(content: string, wsId?: string, options?: { htmlEmbedEnabled?: boolean }): string {
+export function toContentHtml(content: string, wsId?: string, options?: { htmlEmbedEnabled?: boolean; excalidrawEmbedEnabled?: boolean }): string {
     return chatMarkdownToHtml(content, wsId, options);
 }
 
@@ -449,7 +494,7 @@ function buildToolDepthMap(calls: RenderToolCall[]): Map<string, number> {
     return depthMap;
 }
 
-function buildAssistantRender(turn: ClientConversationTurn, wsId?: string, options?: { htmlEmbedEnabled?: boolean }): {
+function buildAssistantRender(turn: ClientConversationTurn, wsId?: string, options?: { htmlEmbedEnabled?: boolean; excalidrawEmbedEnabled?: boolean }): {
     chunks: RenderChunk[];
     chunksByParent: Map<string, RenderChunk[]>;
     toolById: Map<string, RenderToolCall>;
@@ -719,7 +764,8 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
     const isScript = !isUser && processType === TaskDefs.runScript.kind;
     const { showReportIntent, toolCompactness, groupSingleLineMessages } = useDisplaySettings();
     const htmlEmbedEnabled = useHtmlEmbedPreference(wsId) && !turn.streaming;
-    const assistantRender = !isUser ? buildAssistantRender(turn, wsId, { htmlEmbedEnabled }) : null;
+    const excalidrawEmbedEnabled = SHOW_EXCALIDRAW_DIAGRAMS && isExcalidrawEnabled() && !turn.streaming;
+    const assistantRender = !isUser ? buildAssistantRender(turn, wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled }) : null;
     const userContentText = isUser ? (turn.content || '') : '';
     const userContentHtml = useMemo(() => {
         if (!isUser || !userContentText.trim()) return '';
@@ -795,7 +841,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
             icon: '📄',
             onClick: async () => {
                 try {
-                    const html = chatMarkdownToHtml(turn.content || '', wsId, { htmlEmbedEnabled });
+                    const html = chatMarkdownToHtml(turn.content || '', wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled });
                     await copyHtmlToClipboard(html);
                 } catch {}
             },
@@ -1089,7 +1135,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                             title="Copy as HTML"
                             onClick={async () => {
                                 try {
-                                    const html = chatMarkdownToHtml(turn.content || '', wsId, { htmlEmbedEnabled });
+                                    const html = chatMarkdownToHtml(turn.content || '', wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled });
                                     await copyHtmlToClipboard(html);
                                     setCopiedHtml(true);
                                     setTimeout(() => setCopiedHtml(false), 1500);
@@ -1143,7 +1189,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                                         className="err-detail text-[12.5px] leading-snug text-[#2c2f33] dark:text-[#cccccc] [&_code]:font-mono [&_code]:text-[12px] [&_code]:px-1 [&_code]:py-[1px] [&_code]:rounded [&_code]:bg-[#fff] dark:[&_code]:bg-[#1e1e1e] [&_code]:border [&_code]:border-[#f5c2c2] dark:[&_code]:border-[#7a3030]"
                                         data-testid="error-strip-detail"
                                     >
-                                        <MarkdownView html={chatMarkdownToHtml(turn.content, wsId, { htmlEmbedEnabled })} />
+                                        <MarkdownView html={chatMarkdownToHtml(turn.content, wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled })} />
                                     </div>
                                 )}
                                 {onRetry && (

@@ -6,7 +6,7 @@ import React from 'react';
 import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { MarkdownView } from '../../../src/server/spa/client/react/shared/MarkdownView';
-import { chatMarkdownToHtml, toContentHtml, normalizeMarkdownLinkUrls } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
+import { chatMarkdownToHtml, toContentHtml, normalizeMarkdownLinkUrls, parseExcalidrawLink } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
 
 afterEach(() => {
     cleanup();
@@ -554,5 +554,106 @@ describe('chatMarkdownToHtml — image rendering', () => {
         const html = chatMarkdownToHtml('![pic](https://example.com/img.png)', 'ws1');
         expect(html).toContain('src="https://example.com/img.png"');
         expect(html).not.toContain('/files/image');
+    });
+});
+
+// =====================================================================
+// parseExcalidrawLink
+// =====================================================================
+
+describe('parseExcalidrawLink', () => {
+    it('parses a valid excalidraw link', () => {
+        const result = parseExcalidrawLink('excalidraw://ws-abc123/architecture.excalidraw');
+        expect(result).toEqual({
+            workspaceId: 'ws-abc123',
+            diagramPath: 'architecture.excalidraw',
+        });
+    });
+
+    it('parses with encoded characters', () => {
+        const result = parseExcalidrawLink('excalidraw://ws-1/my%20diagram.excalidraw');
+        expect(result).toEqual({
+            workspaceId: 'ws-1',
+            diagramPath: 'my diagram.excalidraw',
+        });
+    });
+
+    it('returns null for non-excalidraw URLs', () => {
+        expect(parseExcalidrawLink('https://example.com/foo')).toBeNull();
+        expect(parseExcalidrawLink('file:///tmp/foo')).toBeNull();
+    });
+
+    it('returns null for malformed excalidraw links', () => {
+        expect(parseExcalidrawLink('excalidraw://')).toBeNull();
+        expect(parseExcalidrawLink('excalidraw:///missing-ws')).toBeNull();
+        expect(parseExcalidrawLink('excalidraw://ws-only')).toBeNull();
+    });
+
+    it('is case-insensitive for the protocol', () => {
+        const result = parseExcalidrawLink('EXCALIDRAW://ws-1/test.excalidraw');
+        expect(result).toEqual({
+            workspaceId: 'ws-1',
+            diagramPath: 'test.excalidraw',
+        });
+    });
+});
+
+// =====================================================================
+// Excalidraw embed in chatMarkdownToHtml
+// =====================================================================
+
+describe('chatMarkdownToHtml — excalidraw embeds', () => {
+    it('converts markdown link with excalidraw:// to placeholder div when enabled', () => {
+        const html = chatMarkdownToHtml(
+            'Here is a diagram: [Architecture](excalidraw://ws-1/arch.excalidraw)',
+            undefined,
+            { excalidrawEmbedEnabled: true },
+        );
+        expect(html).toContain('class="md-excalidraw-embed"');
+        expect(html).toContain('data-ws-id="ws-1"');
+        expect(html).toContain('data-diagram-path="arch.excalidraw"');
+    });
+
+    it('does not create placeholder when excalidraw embed is disabled', () => {
+        const html = chatMarkdownToHtml(
+            'Here is [diagram](excalidraw://ws-1/arch.excalidraw)',
+            undefined,
+            { excalidrawEmbedEnabled: false },
+        );
+        expect(html).not.toContain('md-excalidraw-embed');
+        // Should render as a regular link
+        expect(html).toContain('excalidraw://ws-1/arch.excalidraw');
+    });
+
+    it('converts bare excalidraw:// URL in text to placeholder when enabled', () => {
+        const html = chatMarkdownToHtml(
+            'I created the diagram: excalidraw://ws-2/flow.excalidraw',
+            undefined,
+            { excalidrawEmbedEnabled: true },
+        );
+        expect(html).toContain('class="md-excalidraw-embed"');
+        expect(html).toContain('data-ws-id="ws-2"');
+        expect(html).toContain('data-diagram-path="flow.excalidraw"');
+    });
+
+    it('does not convert bare excalidraw URL when disabled', () => {
+        const html = chatMarkdownToHtml(
+            'Link: excalidraw://ws-2/flow.excalidraw',
+            undefined,
+            { excalidrawEmbedEnabled: false },
+        );
+        expect(html).not.toContain('md-excalidraw-embed');
+    });
+
+    it('handles multiple excalidraw links in the same message', () => {
+        const html = chatMarkdownToHtml(
+            'First: [A](excalidraw://ws-1/a.excalidraw) and second: [B](excalidraw://ws-1/b.excalidraw)',
+            undefined,
+            { excalidrawEmbedEnabled: true },
+        );
+        const matches = html.match(/md-excalidraw-embed/g);
+        expect(matches).toHaveLength(2);
+        expect(html).toContain('data-diagram-path="a.excalidraw"');
+        expect(html).toContain('data-diagram-path="b.excalidraw"');
     });
 });

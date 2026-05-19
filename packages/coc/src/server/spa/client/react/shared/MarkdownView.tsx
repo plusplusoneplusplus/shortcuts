@@ -9,6 +9,9 @@
  * interactive TanStack Table instances with sort, filter, pagination, and
  * numeric aggregation (sum/avg). The original static table is hidden but
  * kept in the DOM for snapshot copy and accessibility fallback.
+ *
+ * Excalidraw diagram placeholders (`.md-excalidraw-embed`) are mounted as
+ * interactive preview canvases via React portals.
  */
 
 import React, { useEffect, useRef } from 'react';
@@ -17,8 +20,10 @@ import { CopySectionBtn } from '../ui/CopySectionBtn';
 import { useMermaid } from '../hooks/ui/useMermaid';
 import { extractTablesFromHtml, type ExtractedTable } from './extractTablesFromHtml';
 import { InteractiveTable } from './InteractiveTable';
+import { ExcalidrawPreview } from './ExcalidrawPreview';
 import { mountHtmlEmbeds } from './htmlEmbedMount';
 import { mountMapEmbeds } from './mapEmbedMount';
+import { SHOW_EXCALIDRAW_DIAGRAMS } from '../featureFlags';
 
 export interface MarkdownSectionData {
     heading: string;
@@ -36,6 +41,13 @@ export interface MarkdownViewProps {
     hideSectionCopy?: boolean;
 }
 
+interface ExcalidrawPortal {
+    mountEl: HTMLElement;
+    workspaceId: string;
+    diagramPath: string;
+    key: string;
+}
+
 export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionCopy }: MarkdownViewProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const [headingPortals, setHeadingPortals] = React.useState<
@@ -44,6 +56,7 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
     const [tablePortals, setTablePortals] = React.useState<
         { mountEl: HTMLElement; table: ExtractedTable; key: string }[]
     >([]);
+    const [excalidrawPortals, setExcalidrawPortals] = React.useState<ExcalidrawPortal[]>([]);
 
     useMermaid(containerRef, html);
 
@@ -133,6 +146,58 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
         };
     }, [html, hideSectionCopy]);
 
+    // Mount Excalidraw diagram preview canvases on placeholder divs.
+    useEffect(() => {
+        if (!SHOW_EXCALIDRAW_DIAGRAMS || !containerRef.current || hideSectionCopy) {
+            setExcalidrawPortals([]);
+            return;
+        }
+
+        const placeholders = Array.from(
+            containerRef.current.querySelectorAll<HTMLElement>('.md-excalidraw-embed'),
+        );
+        if (placeholders.length === 0) {
+            setExcalidrawPortals([]);
+            return;
+        }
+
+        const portals: ExcalidrawPortal[] = [];
+        for (let i = 0; i < placeholders.length; i++) {
+            const el = placeholders[i];
+            const wsId = el.dataset.wsId;
+            const diagramPath = el.dataset.diagramPath;
+            if (!wsId || !diagramPath) continue;
+
+            const embedKey = `excalidraw-${wsId}-${diagramPath}-${i}`;
+
+            // Re-render guard
+            const existingMount = el.querySelector('.excalidraw-preview-mount');
+            if (existingMount) {
+                portals.push({
+                    mountEl: existingMount as HTMLElement,
+                    workspaceId: wsId,
+                    diagramPath,
+                    key: embedKey,
+                });
+                continue;
+            }
+
+            const mountEl = document.createElement('div');
+            mountEl.className = 'excalidraw-preview-mount';
+            el.appendChild(mountEl);
+
+            portals.push({ mountEl, workspaceId: wsId, diagramPath, key: embedKey });
+        }
+
+        setExcalidrawPortals(portals);
+
+        return () => {
+            for (const { mountEl } of portals) {
+                mountEl.remove();
+            }
+        };
+    }, [html, hideSectionCopy]);
+
     return (
         <>
             <div
@@ -152,6 +217,16 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
                         key={key}
                         tableKey={key}
                         {...table.data}
+                    />,
+                    mountEl
+                )
+            )}
+            {excalidrawPortals.map(({ mountEl, workspaceId, diagramPath, key }) =>
+                createPortal(
+                    <ExcalidrawPreview
+                        key={key}
+                        workspaceId={workspaceId}
+                        diagramPath={diagramPath}
                     />,
                     mountEl
                 )
