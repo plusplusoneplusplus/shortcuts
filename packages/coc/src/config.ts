@@ -129,6 +129,10 @@ export interface CLIConfig {
     vimNavigation?: {
         enabled?: boolean;
     };
+    /** Excalidraw diagram support. Disabled by default. */
+    excalidraw?: {
+        enabled?: boolean;
+    };
     /** Development feature flags. */
     features?: {
         autoMemoryPromotion?: boolean;
@@ -294,6 +298,10 @@ export interface ResolvedCLIConfig {
     vimNavigation: {
         enabled: boolean;
     };
+    /** Excalidraw diagram support. */
+    excalidraw: {
+        enabled: boolean;
+    };
     /** Development feature flags. */
     features: {
         autoMemoryPromotion: boolean;
@@ -354,6 +362,7 @@ export const DEFAULT_BUNDLED_SKILLS: readonly string[] = [
     'terse-replies',
     'for-each',
     'map-reduce',
+    'grill-me',
 ];
 
 /** Default configuration values */
@@ -416,6 +425,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
     },
     vimNavigation: {
+        enabled: false,
+    },
+    excalidraw: {
         enabled: false,
     },
     features: {

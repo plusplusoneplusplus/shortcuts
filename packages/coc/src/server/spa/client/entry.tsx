@@ -13,14 +13,24 @@ import { App } from './react/App';
 import { PopOutChatShell } from './react/layout/PopOutChatShell';
 import { PopOutMarkdownShell } from './react/layout/PopOutMarkdownShell';
 import { PopOutGitReviewShell } from './react/layout/PopOutGitReviewShell';
+import { DiagramViewerShell } from './react/features/diagrams';
 import './react/shared/file-path/file-path-preview';
 import './react/features/repo-detail/explorer/monaco-setup';
+// Excalidraw ships its renderer styles in a separate CSS entry point. Without
+// importing it the React component mounts (we see the UI chrome) but the
+// canvas itself lacks the positioning / sizing styles needed to paint the
+// scene, so diagrams render as a blank canvas. Pulling this in here ensures
+// the styles ride along in the bundled CSS for any route that may surface a
+// diagram (full-page viewer, inline previews in chat, etc.).
+import '@excalidraw/excalidraw/index.css';
 
 const container = document.getElementById('app-root');
 if (!container) throw new Error('No #app-root element found');
 const root = createRoot(container);
 
-if (window.location.hash.startsWith('#popout/activity/')) {
+if (window.location.pathname.startsWith('/diagram/')) {
+    root.render(<DiagramViewerShell />);
+} else if (window.location.hash.startsWith('#popout/activity/')) {
     root.render(<PopOutChatShell />);
 } else if (window.location.hash.startsWith('#popout/markdown')) {
     root.render(<PopOutMarkdownShell />);

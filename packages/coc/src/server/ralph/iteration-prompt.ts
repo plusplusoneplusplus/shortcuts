@@ -22,6 +22,24 @@ export const RALPH_WORK_INTENT_PROMPT = `<work_intent>
 This is an autonomous implementation iteration. The agent should inspect the repository, modify source files as needed, add or update tests, run the project's validation commands such as build, test, type-check, or lint, and commit the completed change. Match this request with any project skill that handles coding, implementation, bug fixes, refactors, test updates, or source-file changes.
 </work_intent>`;
 
+/**
+ * Spec-aware execution contract appended to every iteration. Tells the agent
+ * how to read a structured spec produced by the grill-me skill (goal.md plus
+ * optional `ac-NN-*.spec.md` slices), how to honor decision-tagged items, and
+ * what counts as "done" for a slice. This is repository-agnostic — it never
+ * names a specific feature or path — so it is safe to embed unconditionally.
+ */
+export const RALPH_SPEC_CONTRACT_PROMPT = `<spec_contract>
+If the goal references a spec directory (a goal.md and optional ac-NN-*.spec.md slice files), read goal.md first, then pick the next undone slice whose Depends On entries are all done and read its slice file in full before editing code.
+
+Honor the decision-tagging convention used by the grill-me skill:
+- [decision] items are immutable. Do not change them. If a [decision] item appears wrong, stop the iteration and surface the conflict instead of working around it.
+- [assumption] items may be revised. If you revise one, record the change and rationale in progress.md for this iteration.
+- [open] items are unresolved. Either ask the user, or pick a value and justify the choice in progress.md.
+
+A slice is done only when its Definition of Done is satisfied. Record evidence (test command output, demo transcript, code-search results) in progress.md before marking the iteration complete. Do not declare the overall Ralph session complete until every functional AC's Definition of Done is satisfied.
+</spec_contract>`;
+
 export interface BuildRalphIterationPromptInput {
     /** The user's original goal text from the grilling phase. */
     originalGoal?: string;
@@ -36,8 +54,9 @@ export function buildRalphIterationPrompt(
     input: BuildRalphIterationPromptInput,
 ): string {
     const goal = (input.originalGoal ?? '').trim();
+    const head = `${PROMPT_PREFIX}\n\n${RALPH_WORK_INTENT_PROMPT}\n\n${RALPH_SPEC_CONTRACT_PROMPT}`;
     if (!goal) {
-        return `${PROMPT_PREFIX}\n\n${RALPH_WORK_INTENT_PROMPT}`;
+        return head;
     }
-    return `${PROMPT_PREFIX}\n\n${RALPH_WORK_INTENT_PROMPT}\n\n<goal>\n${goal}\n</goal>`;
+    return `${head}\n\n<goal>\n${goal}\n</goal>`;
 }

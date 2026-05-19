@@ -62,3 +62,12 @@ export {
     type ListLoopsArgs,
     type ScheduleWakeupArgs,
 } from './loop-tools';
+export {
+    createExcalidrawTools,
+    normaliseFilename as normaliseExcalidrawFilename,
+    type ExcalidrawToolsDeps,
+    type CreateOrUpdateExcalidrawArgs,
+    type CreateOrUpdateExcalidrawResult,
+    type ReadExcalidrawArgs,
+    type ReadExcalidrawResult,
+} from './excalidraw-tools';

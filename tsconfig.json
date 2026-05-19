@@ -11,6 +11,7 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "types": ["vscode", "node", "mocha"],
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "declaration": false,

@@ -101,7 +101,7 @@ describe('autoUpdateBundledSkills', () => {
         expect(entry!.reason).toBe('installed-newer');
     });
 
-    it('skips installed skill when installed SKILL.md has no version', async () => {
+    it('updates installed skill when installed SKILL.md has no version (treats as 0.0.0)', async () => {
         const bundledPath = getBundledSkillsPath();
         const bundledDirs = fs.readdirSync(bundledPath).filter(d =>
             fs.statSync(path.join(bundledPath, d)).isDirectory()
@@ -112,9 +112,15 @@ describe('autoUpdateBundledSkills', () => {
         createInstalledSkill(tmpDir, skillName); // no version
 
         const result = await autoUpdateBundledSkills(tmpDir);
-        const entry = result.skipped.find(s => s.name === skillName);
-        expect(entry, `${skillName} should be skipped`).toBeDefined();
-        expect(entry!.reason).toBe('no-installed-version');
+        const updated = result.updated.find(u => u.name === skillName);
+        expect(updated, `${skillName} should be updated despite missing installed version`).toBeDefined();
+        expect(updated!.previousVersion).toBe('0.0.0');
+        expect(updated!.newVersion).toMatch(/^\d+\.\d+\.\d+$/);
+
+        // Verify the file was actually replaced with bundled content (which has frontmatter).
+        const installedContent = fs.readFileSync(path.join(tmpDir, skillName, 'SKILL.md'), 'utf-8');
+        expect(installedContent).toMatch(/^---/);
+        expect(installedContent).toMatch(/version:/);
     });
 
     it('dry-run reports updates without changing files', async () => {

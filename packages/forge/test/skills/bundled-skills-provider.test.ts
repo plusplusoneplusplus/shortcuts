@@ -126,7 +126,7 @@ describe('SKILL.md metadata', () => {
             expect(parsed.name, `${dir}/SKILL.md name`).toBe(dir);
             expect(typeof parsed.description, `${dir}/SKILL.md description`).toBe('string');
             expect(parsed.metadata, `${dir}/SKILL.md should have metadata block`).toBeDefined();
-            expect(parsed.metadata.version, `${dir}/SKILL.md should have metadata.version`).toBe('0.0.1');
+            expect(parsed.metadata.version, `${dir}/SKILL.md should have metadata.version`).toMatch(/^\d+\.\d+\.\d+$/);
         }
     });
 

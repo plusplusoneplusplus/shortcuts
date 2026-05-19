@@ -65,6 +65,7 @@ export interface AdminResolvedConfig {
   workflows?: { enabled?: boolean };
   pullRequests?: { enabled?: boolean };
   servers?: { enabled?: boolean };
+  excalidraw?: { enabled?: boolean };
   [key: string]: unknown;
 }
 
@@ -98,6 +99,7 @@ export interface AdminConfigUpdate {
   'workflows.enabled'?: boolean;
   'pullRequests.enabled'?: boolean;
   'servers.enabled'?: boolean;
+  'excalidraw.enabled'?: boolean;
   [key: string]: unknown;
 }
 

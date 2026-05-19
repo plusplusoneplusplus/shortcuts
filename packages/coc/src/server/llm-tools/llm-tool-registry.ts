@@ -87,6 +87,18 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         enabledByDefault: true,
     },
     {
+        name: 'create_or_update_excalidraw',
+        label: 'Create/Update Excalidraw',
+        description: 'Creates or updates an Excalidraw diagram file.',
+        enabledByDefault: true,
+    },
+    {
+        name: 'read_excalidraw',
+        label: 'Read Excalidraw',
+        description: 'Reads an existing Excalidraw diagram file.',
+        enabledByDefault: true,
+    },
+    {
         name: 'tavily_web_search',
         label: 'Tavily Web Search',
         description: 'Searches the live web via Tavily API for current information.',
@@ -101,11 +113,15 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
  * the dashboard tool list and per-workspace settings do not advertise a tool
  * the executor will not register.
  */
-export function getEffectiveLlmToolRegistry(opts: { loopsEnabled?: boolean } = {}): readonly LlmToolMeta[] {
-    if (opts.loopsEnabled) {
-        return LLM_TOOL_REGISTRY;
+export function getEffectiveLlmToolRegistry(opts: { loopsEnabled?: boolean; excalidrawEnabled?: boolean } = {}): readonly LlmToolMeta[] {
+    let registry = [...LLM_TOOL_REGISTRY];
+    if (!opts.loopsEnabled) {
+        registry = registry.filter(t => t.name !== 'scheduleWakeup');
     }
-    return LLM_TOOL_REGISTRY.filter(t => t.name !== 'scheduleWakeup');
+    if (!opts.excalidrawEnabled) {
+        registry = registry.filter(t => t.name !== 'create_or_update_excalidraw' && t.name !== 'read_excalidraw');
+    }
+    return registry;
 }
 
 /** Tool names disabled by the registry-level default, independent of UI layout mode. */

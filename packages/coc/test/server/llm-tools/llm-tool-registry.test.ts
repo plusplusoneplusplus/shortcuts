@@ -170,14 +170,29 @@ describe('getEffectiveLlmToolRegistry', () => {
 
     it('includes scheduleWakeup when loopsEnabled is true', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
-        const names = getEffectiveLlmToolRegistry({ loopsEnabled: true }).map(t => t.name);
+        const names = getEffectiveLlmToolRegistry({ loopsEnabled: true, excalidrawEnabled: true }).map(t => t.name);
         expect(names).toContain('scheduleWakeup');
-        // Should equal the full registry length when on
-        expect(getEffectiveLlmToolRegistry({ loopsEnabled: true })).toHaveLength(LLM_TOOL_REGISTRY.length);
+        // Should equal the full registry length when all flags on
+        expect(getEffectiveLlmToolRegistry({ loopsEnabled: true, excalidrawEnabled: true })).toHaveLength(LLM_TOOL_REGISTRY.length);
     });
 
-    it('returns registry minus exactly one entry when off', async () => {
+    it('filters out excalidraw tools when excalidrawEnabled is false', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
-        expect(getEffectiveLlmToolRegistry({ loopsEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 1);
+        const names = getEffectiveLlmToolRegistry({ excalidrawEnabled: false }).map(t => t.name);
+        expect(names).not.toContain('create_or_update_excalidraw');
+        expect(names).not.toContain('read_excalidraw');
+    });
+
+    it('includes excalidraw tools when excalidrawEnabled is true', async () => {
+        const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
+        const names = getEffectiveLlmToolRegistry({ excalidrawEnabled: true }).map(t => t.name);
+        expect(names).toContain('create_or_update_excalidraw');
+        expect(names).toContain('read_excalidraw');
+    });
+
+    it('returns registry minus feature-gated entries when both off', async () => {
+        const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
+        // scheduleWakeup + 2 excalidraw tools = 3 filtered
+        expect(getEffectiveLlmToolRegistry({ loopsEnabled: false, excalidrawEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 3);
     });
 });

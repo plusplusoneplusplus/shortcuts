@@ -11,6 +11,19 @@ import * as matchers from '@testing-library/jest-dom/matchers';
 
 expect.extend(matchers);
 
+// Mock @excalidraw/excalidraw — the package imports open-color.json without
+// `type: "json"` import assertions, which fails on Node.js ≥ 24. Since tests
+// never render a real Excalidraw canvas, a stub component is sufficient.
+// We also stub `restoreElements` so `buildViewerInitialData` (which now pipes
+// raw elements through it to fill in Excalidraw bookkeeping fields) keeps
+// working under the same mock — the identity passthrough mirrors the real
+// API's "input shape preserved" contract closely enough for unit tests.
+vi.mock('@excalidraw/excalidraw', () => ({
+    Excalidraw: () => null,
+    restoreElements: (elements: unknown) => (Array.isArray(elements) ? elements : []),
+    convertToExcalidrawElements: (elements: unknown) => (Array.isArray(elements) ? elements : []),
+}));
+
 // Ensure `git commit` works in tests even when the host machine has no
 // git user.email / user.name configured (e.g. fresh CI runners). These
 // env vars are read by git directly and bypass the need for `git config`,

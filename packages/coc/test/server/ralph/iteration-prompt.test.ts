@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import {
     buildRalphIterationPrompt,
     RALPH_WORK_INTENT_PROMPT,
+    RALPH_SPEC_CONTRACT_PROMPT,
 } from '../../../src/server/ralph/iteration-prompt';
 
 // The Copilot host CLI's embedding retriever explicitly skips messages
@@ -94,5 +95,29 @@ describe('buildRalphIterationPrompt', () => {
         expect(prompt).not.toBe('Begin Ralph execution loop.');
         expect(prompt).toContain('Implement');
         expect(prompt).toContain('tests');
+    });
+
+    it('embeds the spec contract that honors decision tags and Definition of Done', () => {
+        const prompt = buildRalphIterationPrompt({ originalGoal: 'a goal' });
+        expect(prompt).toContain(RALPH_SPEC_CONTRACT_PROMPT);
+        expect(prompt).toContain('[decision]');
+        expect(prompt).toContain('[assumption]');
+        expect(prompt).toContain('[open]');
+        expect(prompt).toContain('Definition of Done');
+        expect(prompt).toContain('progress.md');
+        // Spec contract must sit before the goal block so the goal text
+        // remains the dominant retrieval signal at the end of the prompt.
+        expect(prompt.indexOf('<spec_contract>')).toBeGreaterThan(
+            prompt.indexOf('<work_intent>'),
+        );
+        expect(prompt.indexOf('</spec_contract>')).toBeLessThan(
+            prompt.indexOf('<goal>'),
+        );
+    });
+
+    it('includes the spec contract even when the goal is empty', () => {
+        const prompt = buildRalphIterationPrompt({ originalGoal: '' });
+        expect(prompt).toContain(RALPH_SPEC_CONTRACT_PROMPT);
+        expect(prompt).not.toContain('<goal>');
     });
 });

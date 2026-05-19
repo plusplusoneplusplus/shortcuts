@@ -41,6 +41,7 @@ describe('ADMIN_EDITABLE_KEYS', () => {
             'scratchpad.enabled', 'scratchpad.layout',
             'workflows.enabled', 'pullRequests.enabled', 'servers.enabled',
             'ralph.enabled', 'vimNavigation.enabled', 'loops.enabled',
+            'excalidraw.enabled',
         ];
         for (const k of expected) {
             expect(ADMIN_EDITABLE_KEYS).toContain(k);
@@ -183,6 +184,7 @@ describe('validate()', () => {
         'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled',
         'scratchpad.enabled', 'workflows.enabled', 'pullRequests.enabled',
         'servers.enabled', 'ralph.enabled', 'vimNavigation.enabled', 'loops.enabled',
+        'excalidraw.enabled',
     ];
 
     for (const key of booleanFields) {
@@ -317,6 +319,7 @@ describe('apply()', () => {
         ['ralph.enabled', (c) => c.ralph?.enabled],
         ['vimNavigation.enabled', (c) => c.vimNavigation?.enabled],
         ['loops.enabled', (c) => c.loops?.enabled],
+        ['excalidraw.enabled', (c) => c.excalidraw?.enabled],
     ];
 
     for (const [key, getter] of nestedBoolFields) {

@@ -94,6 +94,7 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
         vimNavigationEnabled,
         containerMode,
         loopsEnabled,
+        excalidrawEnabled,
         mcpOauthEnabled,
         focusedDiffEnabled,
         reviewFilePath,
@@ -144,6 +145,7 @@ ${getBundleCss()}
             vimNavigationEnabled: ${!!vimNavigationEnabled},
             containerMode: ${!!containerMode},
             loopsEnabled: ${!!loopsEnabled},
+            excalidrawEnabled: ${!!excalidrawEnabled},
             mcpOauthEnabled: ${!!mcpOauthEnabled},
             focusedDiffEnabled: ${!!focusedDiffEnabled}${bindAddress ? `,
             bindAddress: '${escapeHtml(bindAddress)}'` : ''}

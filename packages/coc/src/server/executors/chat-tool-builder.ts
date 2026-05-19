@@ -9,6 +9,7 @@ import {
     applyLlmToolPreferences,
     buildAskUserAddon,
     buildCreateWorkItemAddon,
+    buildExcalidrawToolsAddon,
     buildFollowUpSuggestionsAddon,
     buildLoopToolsAddon,
     buildMemoryReadToolsAddon,
@@ -40,6 +41,7 @@ export interface ChatToolBundleOptions {
     includeTavilyWebSearch?: boolean;
     includeMemoryReadTools?: boolean;
     includeScheduleWakeup?: boolean;
+    includeExcalidrawTools?: boolean;
     excludeTools?: string[];
 }
 
@@ -96,6 +98,10 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
 
     if (options.loopTools) {
         addons.push(buildLoopToolsAddon(options.loopTools));
+    }
+
+    if (options.includeExcalidrawTools !== false) {
+        addons.push(buildExcalidrawToolsAddon(options.dataDir, options.workspaceId));
     }
 
     if (options.boundedMemory) {

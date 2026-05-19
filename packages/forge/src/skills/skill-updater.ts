@@ -29,7 +29,7 @@ export interface SkillUpdateInfo {
 /** Information about a skill that was skipped */
 export interface SkillSkipInfo {
     name: string;
-    reason: 'not-installed' | 'no-bundled-version' | 'no-installed-version' | 'up-to-date' | 'installed-newer';
+    reason: 'not-installed' | 'no-bundled-version' | 'up-to-date' | 'installed-newer';
     bundledVersion?: string;
     installedVersion?: string;
 }
@@ -57,7 +57,10 @@ export interface AutoUpdateOptions {
  *
  * For each skill in the bundled registry:
  * - If not installed in globalSkillsDir → skip (don't force-install)
- * - If either side has no parseable version → skip
+ * - If the bundled side has no parseable version → skip
+ * - If the installed SKILL.md has no parseable version, treat it as "0.0.0"
+ *   so installs that pre-date the frontmatter-version convention can still
+ *   be brought current.
  * - If bundled version > installed version → copy bundled → installed
  * - Otherwise → skip (up-to-date or installed is newer)
  */
@@ -88,19 +91,14 @@ export async function autoUpdateBundledSkills(
             continue;
         }
 
-        // Parse installed version from SKILL.md
+        // Parse installed version from SKILL.md. An unversioned installed
+        // SKILL.md is treated as an implicit "0.0.0" so installs that pre-date
+        // the frontmatter-version convention can still receive updates.
         const installedVersion = parseSkillVersionFromFile(installedSkillMd);
-        if (!installedVersion) {
-            result.skipped.push({
-                name: skill.name,
-                reason: 'no-installed-version',
-                bundledVersion,
-            });
-            continue;
-        }
+        const effectiveInstalledVersion = installedVersion ?? '0.0.0';
 
         // Compare versions
-        const cmp = compareVersions(bundledVersion, installedVersion);
+        const cmp = compareVersions(bundledVersion, effectiveInstalledVersion);
         if (cmp === undefined) {
             result.skipped.push({
                 name: skill.name,
@@ -126,7 +124,7 @@ export async function autoUpdateBundledSkills(
         if (options.dryRun) {
             result.updated.push({
                 name: skill.name,
-                previousVersion: installedVersion,
+                previousVersion: effectiveInstalledVersion,
                 newVersion: bundledVersion,
             });
             continue;
@@ -140,12 +138,12 @@ export async function autoUpdateBundledSkills(
 
             result.updated.push({
                 name: skill.name,
-                previousVersion: installedVersion,
+                previousVersion: effectiveInstalledVersion,
                 newVersion: bundledVersion,
             });
             logger.info(
                 LogCategory.GENERAL,
-                `Auto-updated skill "${skill.name}" from ${installedVersion} → ${bundledVersion}`,
+                `Auto-updated skill "${skill.name}" from ${effectiveInstalledVersion} → ${bundledVersion}`,
             );
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);

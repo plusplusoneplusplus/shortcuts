@@ -58,9 +58,11 @@ describe('buildChatToolBundle', () => {
         expect(result.tools.map(t => t.name).sort()).toEqual([
             'ask_user',
             'create_bug',
+            'create_or_update_excalidraw',
             'create_work_item',
             'get_conversation',
             'memory',
+            'read_excalidraw',
             'search_conversations',
             'suggest_follow_ups',
             'tavily_web_search',
