@@ -203,13 +203,25 @@ export class RequestRunner {
                 try {
                     session.on('mcp.oauth_required', (event: { id?: string; data: { requestId: string; serverName: string; serverUrl: string } }) => {
                         const evtData = event.data;
+                        sessionLog.info(
+                            { serverName: evtData.serverName, serverUrl: evtData.serverUrl, requestId: evtData.requestId },
+                            '[MCP OAuth] oauth_required event received',
+                        );
                         // Defensive: try the experimental RPC if the SDK exposes it.
                         // The method may not exist on the installed SDK build, so we
                         // probe it dynamically and never let a failure here disrupt
                         // the session.
                         const rpc = (session as unknown as { rpc?: { mcp?: { oauth?: { login?: (p: { serverName: string }) => Promise<{ authorizationUrl?: string }> } } } }).rpc;
                         const loginFn = rpc?.mcp?.oauth?.login;
+                        sessionLog.debug(
+                            { serverName: evtData.serverName, hasLoginRpc: typeof loginFn === 'function' },
+                            '[MCP OAuth] RPC login function probe',
+                        );
                         const dispatch = (authorizationUrl?: string) => {
+                            sessionLog.debug(
+                                { serverName: evtData.serverName, hasAuthorizationUrl: !!authorizationUrl },
+                                '[MCP OAuth] Dispatching OAuth event to handler',
+                            );
                             try {
                                 options.onMcpOAuthRequired!({
                                     serverName: evtData.serverName,
@@ -223,19 +235,82 @@ export class RequestRunner {
                             }
                         };
                         if (typeof loginFn === 'function') {
+                            sessionLog.debug({ serverName: evtData.serverName }, '[MCP OAuth] Calling mcp.oauth.login RPC');
                             Promise.resolve()
                                 .then(() => loginFn.call(rpc!.mcp!.oauth, { serverName: evtData.serverName }))
-                                .then(loginResult => dispatch(loginResult?.authorizationUrl))
+                                .then(loginResult => {
+                                    sessionLog.debug(
+                                        { serverName: evtData.serverName, hasAuthorizationUrl: !!loginResult?.authorizationUrl },
+                                        '[MCP OAuth] mcp.oauth.login RPC succeeded',
+                                    );
+                                    dispatch(loginResult?.authorizationUrl);
+                                })
                                 .catch(loginErr => {
                                     sessionLog.warn({ serverName: evtData.serverName, err: loginErr instanceof Error ? loginErr.message : String(loginErr) }, 'mcp.oauth.login RPC failed; dispatching without URL');
                                     dispatch(undefined);
                                 });
                         } else {
+                            sessionLog.debug({ serverName: evtData.serverName }, '[MCP OAuth] No login RPC; dispatching without authorization URL');
                             dispatch(undefined);
                         }
                     });
+                    sessionLog.debug('[MCP OAuth] Subscribed to mcp.oauth_required events');
                 } catch (subErr) {
                     sessionLog.warn({ err: subErr instanceof Error ? subErr.message : String(subErr) }, 'Failed to subscribe to mcp.oauth_required');
+                }
+            } else if (options.onMcpOAuthRequired) {
+                sessionLog.debug('[MCP OAuth] onMcpOAuthRequired provided but session.on is not available; OAuth events will not be captured');
+            }
+
+            // Proactive MCP OAuth probe: after session creation, attempt to call
+            // mcp.oauth.login for each remote MCP server. The SDK may silently skip
+            // servers that require OAuth during session initialization (never
+            // connecting them), so the reactive `mcp.oauth_required` event never
+            // fires. By probing login upfront we detect auth requirements early and
+            // surface the authorization URL to the user via the existing handler.
+            if (options.onMcpOAuthRequired && sessionOptions.mcpServers) {
+                const rpc = (session as unknown as { rpc?: { mcp?: { oauth?: { login?: (p: { serverName: string }) => Promise<{ authorizationUrl?: string }> } } } }).rpc;
+                const loginFn = rpc?.mcp?.oauth?.login;
+                if (typeof loginFn === 'function') {
+                    const remoteServers = Object.entries(sessionOptions.mcpServers as Record<string, { type?: string; url?: string }>)
+                        .filter(([, cfg]) => cfg.type === 'http' || cfg.type === 'sse');
+                    if (remoteServers.length > 0) {
+                        sessionLog.debug({ remoteServerCount: remoteServers.length }, '[MCP OAuth] Proactively probing OAuth for remote MCP servers');
+                        // Fire-and-forget: don't block the message send
+                        for (const [serverName, cfg] of remoteServers) {
+                            Promise.resolve()
+                                .then(() => loginFn.call(rpc!.mcp!.oauth, { serverName }))
+                                .then(loginResult => {
+                                    if (loginResult?.authorizationUrl) {
+                                        sessionLog.info(
+                                            { serverName, hasAuthorizationUrl: true },
+                                            '[MCP OAuth] Proactive probe: server requires OAuth',
+                                        );
+                                        try {
+                                            options.onMcpOAuthRequired!({
+                                                serverName,
+                                                serverUrl: (cfg as { url?: string }).url ?? serverName,
+                                                authorizationUrl: loginResult.authorizationUrl,
+                                                requestId: `proactive-${serverName}-${Date.now()}`,
+                                                sessionId: session!.sessionId,
+                                            });
+                                        } catch (cbErr) {
+                                            sessionLog.warn({ err: cbErr instanceof Error ? cbErr.message : String(cbErr) }, '[MCP OAuth] Proactive probe handler threw');
+                                        }
+                                    } else {
+                                        sessionLog.debug({ serverName }, '[MCP OAuth] Proactive probe: no auth required or already authenticated');
+                                    }
+                                })
+                                .catch(probeErr => {
+                                    sessionLog.debug(
+                                        { serverName, err: probeErr instanceof Error ? probeErr.message : String(probeErr) },
+                                        '[MCP OAuth] Proactive probe failed (non-fatal)',
+                                    );
+                                });
+                        }
+                    }
+                } else {
+                    sessionLog.debug('[MCP OAuth] Proactive probe skipped: mcp.oauth.login RPC not available');
                 }
             }
 

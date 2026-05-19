@@ -36,7 +36,9 @@ export enum LogCategory {
     /** Memory system operations */
     Memory = 'Memory',
     /** Azure DevOps operations */
-    ADO = 'ADO'
+    ADO = 'ADO',
+    /** MCP (Model Context Protocol) operations */
+    MCP = 'MCP'
 }
 
 /**

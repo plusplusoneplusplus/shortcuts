@@ -248,7 +248,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     // MCP OAuth routes (feature-flagged via mcpOauth.enabled)
     if (opts.mcpOauthManager) {
-        registerMcpOauthRoutes(routes, { manager: opts.mcpOauthManager });
+        registerMcpOauthRoutes(routes, {
+            manager: opts.mcpOauthManager,
+            store,
+            executeFollowUp: (processId, message) => bridge.executeFollowUp(processId, message),
+        });
     }
 
     registerMemoryRoutes(routes, dataDir);

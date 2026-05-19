@@ -188,6 +188,10 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         if (!cfg.excalidraw) { cfg.excalidraw = {}; }
         cfg.excalidraw.enabled = v;
     }),
+    bool('mcpOauth.enabled', (cfg, v) => {
+        if (!cfg.mcpOauth) { cfg.mcpOauth = {}; }
+        cfg.mcpOauth.enabled = v;
+    }),
     bool('features.focusedDiff', (cfg, v) => {
         if (!cfg.features) { cfg.features = {}; }
         cfg.features.focusedDiff = v;

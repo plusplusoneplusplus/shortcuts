@@ -179,15 +179,24 @@ function normalizeVSCodeServers(config: VSCodeMCPConfigFile): Record<string, MCP
         return {};
     }
 
+    const aiLog = getAIServiceLogger();
     const normalized: Record<string, MCPServerConfig> = {};
     for (const [name, server] of Object.entries(config.servers)) {
         if (!isRecord(server)) {
+            aiLog.warn({ serverName: name }, '[MCP] Workspace server entry is not an object — skipped');
             continue;
         }
 
         const normalizedServer = normalizeVSCodeServer(server);
         if (normalizedServer) {
+            const serverType = normalizedServer.type ?? ('command' in normalizedServer ? 'stdio' : 'unknown');
+            aiLog.debug({ serverName: name, type: serverType, enabled: normalizedServer.enabled }, '[MCP] Workspace server normalized');
             normalized[name] = normalizedServer;
+        } else {
+            aiLog.warn(
+                { serverName: name, hasCommand: typeof (server as Record<string, unknown>).command === 'string', hasUrl: typeof (server as Record<string, unknown>).url === 'string', type: (server as Record<string, unknown>).type },
+                '[MCP] Workspace server failed normalization (missing command/url or unsupported type) — skipped',
+            );
         }
     }
 
@@ -195,6 +204,7 @@ function normalizeVSCodeServers(config: VSCodeMCPConfigFile): Record<string, MCP
 }
 
 function selectGlobalMcpServers(config: unknown): Record<string, MCPServerConfig> {
+    const aiLog = getAIServiceLogger();
     if (!isRecord(config) || !isRecord(config.mcpServers)) {
         return {};
     }
@@ -209,6 +219,8 @@ function selectGlobalMcpServers(config: unknown): Record<string, MCPServerConfig
         } else {
             result[name] = server;
         }
+        const serverType = server.type ?? ('command' in server ? 'stdio' : 'unknown');
+        aiLog.debug({ serverName: name, type: serverType, enabled: server.enabled }, '[MCP] Global server registered');
     }
     return result;
 }
@@ -394,12 +406,35 @@ export function loadEffectiveMcpConfig(options: {
             fileExists: false,
         };
 
+    const aiLog = getAIServiceLogger();
+    aiLog.debug(
+        {
+            globalConfigPath: globalConfig.configPath,
+            globalFileExists: globalConfig.fileExists,
+            globalSuccess: globalConfig.success,
+            globalServerCount: Object.keys(globalConfig.mcpServers).length,
+            workspaceConfigPath: workspaceConfig.configPath || '(none)',
+            workspaceFileExists: workspaceConfig.fileExists,
+            workspaceSuccess: workspaceConfig.success,
+            workspaceServerCount: Object.keys(workspaceConfig.mcpServers).length,
+            explicitServerCount: options.explicitMcpServers ? Object.keys(options.explicitMcpServers).length : 0,
+        },
+        '[MCP] Merging config sources',
+    );
+    if (globalConfig.error) aiLog.warn({ error: globalConfig.error }, '[MCP] Global config error');
+    if (workspaceConfig.error) aiLog.warn({ error: workspaceConfig.error }, '[MCP] Workspace config error');
+
     const success = globalConfig.success && workspaceConfig.success;
     const error = [globalConfig.error, workspaceConfig.error].filter(Boolean).join('; ') || undefined;
 
+    const merged = mergeMcpConfigSources(globalConfig.mcpServers, workspaceConfig.mcpServers, options.explicitMcpServers);
+    aiLog.debug(
+        { totalServerCount: Object.keys(merged).length, serverNames: Object.keys(merged) },
+        '[MCP] Effective config resolved',
+    );
     return {
         success,
-        mcpServers: mergeMcpConfigSources(globalConfig.mcpServers, workspaceConfig.mcpServers, options.explicitMcpServers),
+        mcpServers: merged,
         configPath: workspaceConfig.configPath || globalConfig.configPath,
         fileExists: globalConfig.fileExists || workspaceConfig.fileExists,
         ...(error ? { error } : {}),

@@ -81,7 +81,7 @@ export interface HookStepEvent {
 }
 
 export interface ProcessOutputEvent {
-    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress' | 'item-process' | 'suggestions' | 'token-usage' | 'message-queued' | 'message-steering' | 'hook-step' | 'background-tasks' | 'pending-message-added' | 'note-file-edit' | 'ask-user';
+    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress' | 'item-process' | 'suggestions' | 'token-usage' | 'message-queued' | 'message-steering' | 'hook-step' | 'background-tasks' | 'pending-message-added' | 'note-file-edit' | 'ask-user' | 'mcp-oauth-required' | 'mcp-oauth-completed';
     /** Partial output text (for 'chunk' events). */
     content?: string;
     /** Final process status (for 'complete' events). */
@@ -147,6 +147,13 @@ export interface ProcessOutputEvent {
         filePath: string;
         oldStr: string;
         newStr: string;
+    };
+    /** MCP OAuth data (for 'mcp-oauth-required' / 'mcp-oauth-completed' events). */
+    mcpOAuth?: {
+        requestId: string;
+        serverName: string;
+        serverUrl: string;
+        authorizationUrl?: string;
     };
     /** Ask-user question data (for 'ask-user' events). */
     askUser?: {

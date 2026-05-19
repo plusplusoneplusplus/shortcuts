@@ -259,6 +259,10 @@ export async function handleProcessStream(
                 backgroundTotalActive: event.backgroundTotalActive,
                 backgroundWaitingForDrain: event.backgroundWaitingForDrain,
             });
+        } else if (event.type === 'mcp-oauth-required' && event.mcpOAuth) {
+            sendEvent(res, 'mcp-oauth-required', event.mcpOAuth);
+        } else if (event.type === 'mcp-oauth-completed' && event.mcpOAuth) {
+            sendEvent(res, 'mcp-oauth-completed', event.mcpOAuth);
         } else if (event.type === 'complete') {
             sendEvent(res, 'status', {
                 status: event.status,

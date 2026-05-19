@@ -173,6 +173,7 @@ export function AdminPanel() {
     const [vimNavigationEnabled, setVimNavigationEnabled] = useState(false);
     const [loopsEnabled, setLoopsEnabled] = useState(false);
     const [excalidrawEnabled, setExcalidrawEnabled] = useState(false);
+    const [mcpOauthEnabled, setMcpOauthEnabled] = useState(false);
     const [focusedDiffEnabled, setFocusedDiffEnabled] = useState(false);
 
     // Preferences(theme, reposSidebarCollapsed, uiLayoutMode) — for Appearance card
@@ -205,7 +206,7 @@ export function AdminPanel() {
         taskCardDensity: 'compact' as 'compact' | 'dense',
         historyGrouping: true,
     });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, servers: false, ralph: false, vimNavigation: false, loops: false, excalidraw: false, focusedDiff: false });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, servers: false, ralph: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -306,9 +307,11 @@ export function AdminPanel() {
             setLoopsEnabled(loe);
             const exe = resolved.excalidraw?.enabled ?? false;
             setExcalidrawEnabled(exe);
+            const moae = resolved.mcpOauth?.enabled ?? false;
+            setMcpOauthEnabled(moae);
             const fde = resolved.features?.focusedDiff ?? false;
             setFocusedDiffEnabled(fde);
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, servers: svre, ralph: re, vimNavigation: vne, loops: loe, excalidraw: exe, focusedDiff: fde });
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, servers: svre, ralph: re, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde });
         } catch (err: unknown) {
             const detail = getSpaCocClientErrorMessage(err, '');
             setConfigError(detail ? `Failed to load configuration: ${detail}` : 'Failed to load configuration');
@@ -387,6 +390,7 @@ export function AdminPanel() {
         vimNavigationEnabled !== featuresSnapshot.vimNavigation ||
         loopsEnabled !== featuresSnapshot.loops ||
         excalidrawEnabled !== featuresSnapshot.excalidraw ||
+        mcpOauthEnabled !== featuresSnapshot.mcpOauth ||
         focusedDiffEnabled !== featuresSnapshot.focusedDiff;
 
     // ── AI & Execution card ──
@@ -540,17 +544,18 @@ export function AdminPanel() {
                 'vimNavigation.enabled': vimNavigationEnabled,
                 'loops.enabled': loopsEnabled,
                 'excalidraw.enabled': excalidrawEnabled,
+                'mcpOauth.enabled': mcpOauthEnabled,
                 'features.focusedDiff': focusedDiffEnabled,
             });
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, servers: serversEnabled, ralph: ralphEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, focusedDiff: focusedDiffEnabled });
+            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, servers: serversEnabled, ralph: ralphEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, serversEnabled, ralphEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, focusedDiffEnabled, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, serversEnabled, ralphEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setTerminalEnabled(featuresSnapshot.terminal);
@@ -566,6 +571,7 @@ export function AdminPanel() {
         setVimNavigationEnabled(featuresSnapshot.vimNavigation);
         setLoopsEnabled(featuresSnapshot.loops);
         setExcalidrawEnabled(featuresSnapshot.excalidraw);
+        setMcpOauthEnabled(featuresSnapshot.mcpOauth);
         setFocusedDiffEnabled(featuresSnapshot.focusedDiff);
     }, [featuresSnapshot]);
 
@@ -1242,6 +1248,13 @@ export function AdminPanel() {
                                     >
                                         <SourceBadge source={sources['excalidraw.enabled']} />
                                         <AdminToggle checked={excalidrawEnabled} onChange={setExcalidrawEnabled} data-testid="toggle-excalidraw-enabled" />
+                                    </AdminRow>
+                                    <AdminRow
+                                        name={<>MCP OAuth <span className="ar-badge ar-badge-warning">Restart</span></>}
+                                        hint="Handle OAuth flows for MCP servers that require authentication. Disabled by default — toggling requires a server restart."
+                                    >
+                                        <SourceBadge source={sources['mcpOauth.enabled']} />
+                                        <AdminToggle checked={mcpOauthEnabled} onChange={setMcpOauthEnabled} data-testid="toggle-mcp-oauth-enabled" />
                                     </AdminRow>
                                     <AdminRow
                                         name="Focused Diff"

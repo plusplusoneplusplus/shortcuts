@@ -17,9 +17,14 @@ import { parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
 import type { McpOauthManager } from './mcp-oauth-manager';
 import type { PendingMcpOAuth, PendingMcpOAuthStatus } from './mcp-oauth-types';
+import type { ProcessStore, ProcessOutputEvent } from '@plusplusoneplusplus/forge';
 
 export interface McpOauthRouteContext {
     manager: McpOauthManager;
+    /** Process store — needed for emitting SSE events on completion. */
+    store?: ProcessStore;
+    /** Follow-up executor — needed for auto-retry after OAuth completes. */
+    executeFollowUp?: (processId: string, message: string) => Promise<void>;
 }
 
 function serialize(entry: PendingMcpOAuth): Record<string, unknown> {
@@ -49,6 +54,7 @@ function getQueryParam(req: http.IncomingMessage, key: string): string | undefin
 const PENDING_LIST = /^\/api\/mcp-oauth\/pending\/?$/;
 const PENDING_ITEM = /^\/api\/mcp-oauth\/pending\/([^/]+)$/;
 const PENDING_RESOLVE = /^\/api\/mcp-oauth\/pending\/([^/]+)\/resolve$/;
+const PENDING_COMPLETE_AND_RETRY = /^\/api\/mcp-oauth\/pending\/([^/]+)\/complete-and-retry$/;
 
 export function registerMcpOauthRoutes(routes: Route[], ctx: McpOauthRouteContext): void {
     const { manager } = ctx;
@@ -117,6 +123,50 @@ export function registerMcpOauthRoutes(routes: Route[], ctx: McpOauthRouteContex
                 return;
             }
             sendJson(res, { removed: true, id });
+        },
+    });
+
+    // Complete and Retry — marks OAuth as completed, emits SSE, and retries the original message
+    routes.push({
+        method: 'POST',
+        pattern: PENDING_COMPLETE_AND_RETRY,
+        handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match) => {
+            const id = decodeURIComponent(match![1]);
+            const entry = manager.resolve(id, 'completed');
+            if (!entry) {
+                sendError(res, 404, 'Pending OAuth request not found');
+                return;
+            }
+
+            // Emit mcp-oauth-completed SSE event to the process
+            if (ctx.store && entry.processId) {
+                try {
+                    ctx.store.emitProcessEvent(entry.processId, {
+                        type: 'mcp-oauth-completed',
+                        mcpOAuth: {
+                            requestId: entry.id,
+                            serverName: entry.serverName,
+                            serverUrl: entry.serverUrl,
+                            authorizationUrl: entry.authorizationUrl,
+                        },
+                    } as ProcessOutputEvent);
+                } catch {
+                    // Non-fatal
+                }
+            }
+
+            // Auto-retry: re-send the original message as a follow-up
+            let retryEnqueued = false;
+            if (ctx.executeFollowUp && entry.processId && entry.originalMessage) {
+                try {
+                    await ctx.executeFollowUp(entry.processId, entry.originalMessage);
+                    retryEnqueued = true;
+                } catch {
+                    // Non-fatal: retry failed, user can manually re-send
+                }
+            }
+
+            sendJson(res, { ...serialize(entry), retryEnqueued });
         },
     });
 }

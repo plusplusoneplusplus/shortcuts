@@ -66,6 +66,7 @@ export interface AdminResolvedConfig {
   pullRequests?: { enabled?: boolean };
   servers?: { enabled?: boolean };
   excalidraw?: { enabled?: boolean };
+  mcpOauth?: { enabled?: boolean };
   [key: string]: unknown;
 }
 
@@ -100,6 +101,7 @@ export interface AdminConfigUpdate {
   'pullRequests.enabled'?: boolean;
   'servers.enabled'?: boolean;
   'excalidraw.enabled'?: boolean;
+  'mcpOauth.enabled'?: boolean;
   [key: string]: unknown;
 }
 
