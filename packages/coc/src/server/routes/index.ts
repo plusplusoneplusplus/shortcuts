@@ -85,6 +85,7 @@ import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
 import { registerMcpOauthRoutes } from '../mcp-oauth';
 import type { McpOauthManager } from '../mcp-oauth';
 import { registerDiagramRoutes } from '../diagrams/diagrams-handler';
+import { registerRuntimeConfigRoutes } from '../config/runtime-config-handler';
 
 /** Collect git commits made between headBefore and current HEAD. Non-fatal — returns [] on error. */
 function collectWorkItemCommits(
@@ -130,6 +131,8 @@ export interface RegisterRoutesOptions {
     loopExecutor?: LoopExecutor;
     mcpOauthManager?: McpOauthManager;
     loopEmit?: LoopEventEmit;
+    hostname?: string;
+    bindAddress?: string;
 }
 
 export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined } {
@@ -235,6 +238,16 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         runtimeConfigService: opts.runtimeConfigService,
         tokenTtlMs,
     });
+
+    // Runtime config endpoint for SPA feature flag freshness
+    if (opts.runtimeConfigService) {
+        registerRuntimeConfigRoutes(routes, {
+            runtimeConfigService: opts.runtimeConfigService,
+            hostname: opts.hostname ?? '',
+            bindAddress: opts.bindAddress ?? '127.0.0.1',
+        });
+    }
+
     registerScheduleRoutes(routes, scheduleManager, async (repoId) => {
         const workspaces = await store.getWorkspaces();
         return workspaces.find(w => w.id === repoId)?.rootPath;

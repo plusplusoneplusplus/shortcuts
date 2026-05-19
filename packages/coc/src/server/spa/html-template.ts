@@ -45,7 +45,7 @@ function getBundleJs(): string {
     return cachedJs.content;
 }
 
-let cachedETag: { hash: string; cssMtime: number; jsMtime: number } | null = null;
+let cachedETag: { hash: string; cssMtime: number; jsMtime: number; configRevision: number } | null = null;
 
 /**
  * Nonce unique to this server process.  Included in the ETag so that every
@@ -57,19 +57,22 @@ const processNonce = crypto.randomBytes(4).toString('hex');
 
 /**
  * Compute a short SHA-256 ETag from the bundle CSS + JS content plus a
- * per-process nonce.  The nonce ensures that a server restart always
- * invalidates the browser cache, even when the bundle files haven't changed.
- * Cached alongside mtime — only rehashed when files change on disk.
+ * per-process nonce and optional config revision.  The nonce ensures that
+ * a server restart always invalidates the browser cache; the config
+ * revision ensures that admin config changes invalidate cached SPA HTML
+ * containing stale feature flags.
+ * Cached alongside mtime + revision — only rehashed when files or revision change.
  */
-export function getBundleETag(): string {
+export function getBundleETag(configRevision?: number): string {
     const css = (cachedCss = readBundleFile(bundleCssPath, cachedCss));
     const js = (cachedJs = readBundleFile(bundleJsPath, cachedJs));
-    if (cachedETag && cachedETag.cssMtime === css.mtime && cachedETag.jsMtime === js.mtime) {
+    const rev = configRevision ?? 0;
+    if (cachedETag && cachedETag.cssMtime === css.mtime && cachedETag.jsMtime === js.mtime && cachedETag.configRevision === rev) {
         return cachedETag.hash;
     }
-    const hash = crypto.createHash('sha256').update(css.content).update(js.content).update(processNonce).digest('hex').slice(0, 16);
+    const hash = crypto.createHash('sha256').update(css.content).update(js.content).update(processNonce).update(String(rev)).digest('hex').slice(0, 16);
     const etag = `"${hash}"`;
-    cachedETag = { hash: etag, cssMtime: css.mtime, jsMtime: js.mtime };
+    cachedETag = { hash: etag, cssMtime: css.mtime, jsMtime: js.mtime, configRevision: rev };
     return etag;
 }
 

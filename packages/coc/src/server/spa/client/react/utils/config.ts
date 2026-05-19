@@ -1,6 +1,10 @@
 /**
- * Dashboard config — reads server-provided configuration
- * from the global window.__DASHBOARD_CONFIG__ set by the HTML template.
+ * Dashboard config — reads server-provided configuration.
+ *
+ * Bootstrap config comes from window.__DASHBOARD_CONFIG__ (set by the HTML
+ * template).  Feature flags are refreshed at page load from the
+ * GET /api/config/runtime endpoint so that admin config changes take effect
+ * on refresh without a server restart.
  */
 
 interface DashboardConfig {
@@ -26,12 +30,75 @@ interface DashboardConfig {
     bindAddress?: string;
 }
 
-function getConfig(): DashboardConfig {
+/** Cached runtime config loaded from the API. */
+let _runtimeConfig: DashboardConfig | null = null;
+let _runtimeConfigPromise: Promise<void> | null = null;
+
+function getBootstrapConfig(): DashboardConfig {
     const config = (window as any).__DASHBOARD_CONFIG__;
     if (!config) {
         return { apiBasePath: '/api', wsPath: '/ws' };
     }
     return config;
+}
+
+function getConfig(): DashboardConfig {
+    if (_runtimeConfig) return _runtimeConfig;
+    return getBootstrapConfig();
+}
+
+/**
+ * Fetch fresh feature flags from GET /api/config/runtime and merge them
+ * into the active config.  Called once on page load from App initialization.
+ * Non-fatal: if the endpoint fails, the SPA falls back to bootstrap config.
+ */
+export async function loadRuntimeConfig(): Promise<void> {
+    if (_runtimeConfigPromise) return _runtimeConfigPromise;
+    _runtimeConfigPromise = _doLoadRuntimeConfig();
+    return _runtimeConfigPromise;
+}
+
+async function _doLoadRuntimeConfig(): Promise<void> {
+    try {
+        const bootstrap = getBootstrapConfig();
+        const resp = await fetch(`${bootstrap.apiBasePath}/config/runtime`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (!data || typeof data !== 'object' || !data.features) return;
+
+        // Merge runtime features into the active config, preserving bootstrap-only fields
+        _runtimeConfig = {
+            ...bootstrap,
+            terminalEnabled: data.features.terminalEnabled,
+            notesEnabled: data.features.notesEnabled,
+            myWorkEnabled: data.features.myWorkEnabled,
+            myLifeEnabled: data.features.myLifeEnabled,
+            scratchpadEnabled: data.features.scratchpadEnabled,
+            scratchpadLayout: data.features.scratchpadLayout,
+            workflowsEnabled: data.features.workflowsEnabled,
+            pullRequestsEnabled: data.features.pullRequestsEnabled,
+            serversEnabled: data.features.serversEnabled,
+            ralphEnabled: data.features.ralphEnabled,
+            vimNavigationEnabled: data.features.vimNavigationEnabled,
+            loopsEnabled: data.features.loopsEnabled,
+            excalidrawEnabled: data.features.excalidrawEnabled,
+            mcpOauthEnabled: data.features.mcpOauthEnabled,
+            focusedDiffEnabled: data.features.focusedDiffEnabled,
+            hostname: data.hostname ?? bootstrap.hostname,
+            bindAddress: data.bindAddress ?? bootstrap.bindAddress,
+        };
+    } catch {
+        // Non-fatal — fall back to bootstrap config
+    }
+}
+
+/**
+ * Reset the runtime config cache.  Exposed for testing only.
+ * @internal
+ */
+export function _resetRuntimeConfig(): void {
+    _runtimeConfig = null;
+    _runtimeConfigPromise = null;
 }
 
 /**

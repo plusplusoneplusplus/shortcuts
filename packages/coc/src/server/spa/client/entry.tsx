@@ -14,6 +14,7 @@ import { PopOutChatShell } from './react/layout/PopOutChatShell';
 import { PopOutMarkdownShell } from './react/layout/PopOutMarkdownShell';
 import { PopOutGitReviewShell } from './react/layout/PopOutGitReviewShell';
 import { DiagramViewerShell } from './react/features/diagrams';
+import { loadRuntimeConfig } from './react/utils/config';
 import './react/shared/file-path/file-path-preview';
 import './react/features/repo-detail/explorer/monaco-setup';
 // Excalidraw ships its renderer styles in a separate CSS entry point. Without
@@ -37,5 +38,9 @@ if (window.location.pathname.startsWith('/diagram/')) {
 } else if (window.location.hash.startsWith('#popout/git-review')) {
     root.render(<PopOutGitReviewShell />);
 } else {
-    root.render(<App />);
+    // Load fresh feature flags from API before rendering the main app.
+    // Non-fatal: falls back to bootstrap config embedded in HTML if API fails.
+    loadRuntimeConfig().finally(() => {
+        root.render(<App />);
+    });
 }

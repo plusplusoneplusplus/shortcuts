@@ -70,10 +70,25 @@ export interface AdminResolvedConfig {
   [key: string]: unknown;
 }
 
+export type AdminConfigFieldRuntime = 'live' | 'reloadable' | 'restartRequired';
+
+export interface AdminConfigFieldMeta {
+  runtime: AdminConfigFieldRuntime;
+}
+
+export interface AdminConfigChangeEffect {
+  field: string;
+  runtime: AdminConfigFieldRuntime;
+  requiresRestart: boolean;
+}
+
 export interface AdminConfigResponse {
   config?: Record<string, unknown>;
   resolved?: AdminResolvedConfig;
   sources?: Record<string, string>;
+  revision?: number;
+  fieldMetadata?: Record<string, AdminConfigFieldMeta>;
+  effects?: AdminConfigChangeEffect[];
   [key: string]: unknown;
 }
 
@@ -103,6 +118,34 @@ export interface AdminConfigUpdate {
   'excalidraw.enabled'?: boolean;
   'mcpOauth.enabled'?: boolean;
   [key: string]: unknown;
+}
+
+/**
+ * Response from GET /api/config/runtime.
+ * Contains current feature flags and revision for the SPA to consume
+ * without relying on stale HTML-embedded config.
+ */
+export interface RuntimeDashboardConfig {
+  revision: number;
+  features: {
+    terminalEnabled: boolean;
+    notesEnabled: boolean;
+    myWorkEnabled: boolean;
+    myLifeEnabled: boolean;
+    scratchpadEnabled: boolean;
+    scratchpadLayout: 'horizontal' | 'vertical';
+    workflowsEnabled: boolean;
+    pullRequestsEnabled: boolean;
+    serversEnabled: boolean;
+    ralphEnabled: boolean;
+    vimNavigationEnabled: boolean;
+    loopsEnabled: boolean;
+    excalidrawEnabled: boolean;
+    mcpOauthEnabled: boolean;
+    focusedDiffEnabled: boolean;
+  };
+  hostname?: string;
+  bindAddress?: string;
 }
 
 export interface AdminVersionResponse {

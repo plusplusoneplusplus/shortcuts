@@ -38,7 +38,6 @@ import { createWebSocketInfrastructure } from './infrastructure/websocket-infras
 import { createWatcherInfrastructure } from './infrastructure/watcher-infrastructure';
 import { createTerminalInfrastructure } from './infrastructure/terminal-infrastructure';
 import { HeapMonitor } from './admin/heap-monitor';
-import { resolveConfig } from '../config';
 import { RuntimeConfigService } from '../config/runtime-config-service';
 import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
 import { autoUpdateBundledSkills, autoInstallDefaultSkills, autoInstallMyWorkSkills, DEFAULT_SKILLS_SETTINGS } from '@plusplusoneplusplus/forge';
@@ -370,6 +369,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         loopExecutor: loopInfra?.loopExecutor,
         mcpOauthManager: mcpOauthInfra?.manager,
         loopEmit: loopInfra?.emit,
+        hostname: os.hostname(),
+        bindAddress: host,
     });
     // Restore auto-commit timers for all workspaces that had it enabled
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });
@@ -377,9 +378,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const rawHostname = os.hostname();
     const handler = createRequestHandler({
         routes, spaHtml: () => {
-            // Re-read config on each page load so that feature-flag changes made via the
-            // admin UI take effect on the next browser refresh — no server restart needed.
-            const liveConfig = resolveConfig(options.configPath);
+            // Use RuntimeConfigService snapshot for feature flags so admin
+            // config updates are reflected without re-reading disk on every
+            // page load. The SPA also fetches /api/config/runtime for fresh
+            // feature flags, making the embedded values bootstrap-only.
+            const liveConfig = runtimeConfigService.config;
             return generateDashboardHtml({
                 enableWiki: true,
                 hostname: liveConfig.serve?.serverName || shortenHostname(rawHostname),
@@ -401,7 +404,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 bindAddress: host,
             });
         },
-        store, spaETag: getBundleETag,
+        store, spaETag: () => getBundleETag(runtimeConfigService.revision),
         staticDir: path.join(__dirname, 'spa', 'client', 'dist'),
         getIconSvg: () => generateIconSvg(rawHostname),
     });
