@@ -10,4 +10,4 @@ export const SHOW_WELCOME_TUTORIAL = true;
 export const SHOW_FOCUSED_DIFF = true;
 
 /** Enable Excalidraw diagram rendering and tools in the chat UI. */
-export const SHOW_EXCALIDRAW_DIAGRAMS = false;
+export const SHOW_EXCALIDRAW_DIAGRAMS = true;
