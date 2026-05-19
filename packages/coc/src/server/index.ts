@@ -39,6 +39,7 @@ import { createWatcherInfrastructure } from './infrastructure/watcher-infrastruc
 import { createTerminalInfrastructure } from './infrastructure/terminal-infrastructure';
 import { HeapMonitor } from './admin/heap-monitor';
 import { resolveConfig } from '../config';
+import { RuntimeConfigService } from '../config/runtime-config-service';
 import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
 import { autoUpdateBundledSkills, autoInstallDefaultSkills, autoInstallMyWorkSkills, DEFAULT_SKILLS_SETTINGS } from '@plusplusoneplusplus/forge';
 import { createStubStore } from './processes/in-memory-process-store';
@@ -153,7 +154,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const store = options.store ?? createStubStore();
     fs.mkdirSync(dataDir, { recursive: true });
 
-    const resolvedConfig = resolveConfig(options.configPath, options.fileConfig);
+    const runtimeConfigService = new RuntimeConfigService({ configPath: options.configPath, fileConfig: options.fileConfig });
+    const resolvedConfig = runtimeConfigService.config;
     const defaultTimeoutMs = resolvedConfig.timeout ? resolvedConfig.timeout * 1000 : DEFAULT_AI_TIMEOUT_MS;
 
     // Forward declaration — bridge captures this via closure before wsServer is assigned
@@ -361,6 +363,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         aiInvoker,
         getTerminalSessionManager: () => terminalInfra?.terminalSessionManager,
         resolvedConfig,
+        runtimeConfigService,
         remoteServerStore,
         remoteServerConnector,
         loopStore: loopInfra?.loopStore,
@@ -470,6 +473,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
 export type { ExecutionServerOptions, ExecutionServer, Route, WikiServerOptions, ServerCloseOptions, ServeCommandOptions } from './types';
 export type { ProcessStore } from '@plusplusoneplusplus/forge';
+
+// Runtime Config Service
+export { RuntimeConfigService } from '../config/runtime-config-service';
+export type { RuntimeConfigSnapshot, RuntimeConfigUpdateResult, ConfigChangeEffect, ConfigFieldRuntime, ConfigChangeListener } from '../config/runtime-config-service';
 
 // HTTP helpers (canonical source: shared/router.ts)
 export { sendJson, send404, send400, send500, sendError, readJsonBody } from './shared/router';

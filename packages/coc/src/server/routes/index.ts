@@ -69,6 +69,7 @@ import { execGit } from '@plusplusoneplusplus/forge';
 import type { WorkItemChangeCommit } from '../work-items/types';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
 import type { ResolvedCLIConfig } from '../../config';
+import type { RuntimeConfigService } from '../../config/runtime-config-service';
 import type { TerminalSessionManager } from '../terminal/index';
 import { registerRemoteServerRoutes } from '../servers/remote-server-routes';
 import { RemoteServerStore } from '../servers/remote-server-store';
@@ -122,6 +123,7 @@ export interface RegisterRoutesOptions {
     aiInvoker: AIInvoker;
     getTerminalSessionManager?: () => TerminalSessionManager | undefined;
     resolvedConfig?: ResolvedCLIConfig;
+    runtimeConfigService?: RuntimeConfigService;
     remoteServerStore?: RemoteServerStore;
     remoteServerConnector?: DevTunnelConnector;
     loopStore?: LoopStore;
