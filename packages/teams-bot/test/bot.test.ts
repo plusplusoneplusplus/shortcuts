@@ -320,7 +320,7 @@ describe('TeamsBot', () => {
         });
 
         describe('send', () => {
-            it('should call mcp_graph_teams_postChannelMessage tool', async () => {
+            it('should call Microsoft-Teams-SendMessageToChannel tool', async () => {
                 mockMcpResponse({ protocolVersion: '2025-03-26', capabilities: {} });
 
                 const bot = createMcpBot();
@@ -340,15 +340,15 @@ describe('TeamsBot', () => {
                 const lastCall = mockFetch.mock.calls[mockFetch.mock.calls.length - 1];
                 const body = JSON.parse(lastCall[1].body);
                 expect(body.method).toBe('tools/call');
-                expect(body.params.name).toBe('mcp_graph_teams_postChannelMessage');
-                expect(body.params.arguments['team-id']).toBe('team-123');
-                expect(body.params.arguments['channel-id']).toBe('19:channel@thread.tacv2');
-                expect(body.params.arguments['body']).toEqual({ content: 'Hello Teams!' });
+                expect(body.params.name).toBe('Microsoft-Teams-SendMessageToChannel');
+                expect(body.params.arguments.teamId).toBe('team-123');
+                expect(body.params.arguments.channelId).toBe('19:channel@thread.tacv2');
+                expect(body.params.arguments.message).toBe('Hello Teams!');
 
                 await bot.stop();
             });
 
-            it('should call mcp_graph_teams_replyToChannelMessage for replies', async () => {
+            it('should call Microsoft-Teams-SendMessageToChannel with replyToId for replies', async () => {
                 mockMcpResponse({ protocolVersion: '2025-03-26', capabilities: {} });
 
                 const bot = createMcpBot();
@@ -366,15 +366,15 @@ describe('TeamsBot', () => {
 
                 const lastCall = mockFetch.mock.calls[mockFetch.mock.calls.length - 1];
                 const body = JSON.parse(lastCall[1].body);
-                expect(body.params.name).toBe('mcp_graph_teams_replyToChannelMessage');
-                expect(body.params.arguments['message-id']).toBe('msg-parent');
+                expect(body.params.name).toBe('Microsoft-Teams-SendMessageToChannel');
+                expect(body.params.arguments.replyToId).toBe('msg-parent');
 
                 await bot.stop();
             });
         });
 
         describe('polling', () => {
-            it('should poll via mcp_graph_teams_listChannelMessages', async () => {
+            it('should poll via Microsoft-Teams-ListChannelMessages', async () => {
                 mockMcpResponse({ protocolVersion: '2025-03-26', capabilities: {} });
 
                 const bot = createMcpBot();
@@ -410,9 +410,9 @@ describe('TeamsBot', () => {
                 // Verify the tool name used
                 const pollCall = mockFetch.mock.calls[mockFetch.mock.calls.length - 1];
                 const body = JSON.parse(pollCall[1].body);
-                expect(body.params.name).toBe('mcp_graph_teams_listChannelMessages');
-                expect(body.params.arguments['team-id']).toBe('team-123');
-                expect(body.params.arguments['channel-id']).toBe('19:channel@thread.tacv2');
+                expect(body.params.name).toBe('Microsoft-Teams-ListChannelMessages');
+                expect(body.params.arguments.teamId).toBe('team-123');
+                expect(body.params.arguments.channelId).toBe('19:channel@thread.tacv2');
 
                 await bot.stop();
             });
