@@ -8,6 +8,8 @@ export type CommentFilter = 'all' | 'open' | 'resolved';
 export interface UseCommentsOptions {
     workspaceId: string;
     notePath: string | null;
+    /** Root identifier for multi-root notes. Scopes comment API calls. */
+    root?: string;
     /** When set, resolve-with-AI sends a follow-up to this chat instead of a new task. */
     parentProcessId?: string;
     /** Mode to use when sending a follow-up via resolve-with-AI (defaults to the process's stored mode). */
@@ -61,7 +63,7 @@ function filterThreads(threads: CommentThread[], filter: CommentFilter): Comment
 }
 
 export function useComments(options: UseCommentsOptions): UseCommentsReturn {
-    const { workspaceId, notePath, parentProcessId, selectedMode, onThreadSelect } = options;
+    const { workspaceId, notePath, root, parentProcessId, selectedMode, onThreadSelect } = options;
 
     const [allThreads, setAllThreads] = useState<CommentThread[]>([]);
     const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
@@ -73,6 +75,7 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
     // Refs for stale-closure prevention
     const workspaceIdRef = useRef(workspaceId);
     const notePathRef = useRef(notePath);
+    const rootRef = useRef(root);
     const parentProcessIdRef = useRef(parentProcessId);
     const selectedModeRef = useRef(selectedMode);
     const onThreadSelectRef = useRef(onThreadSelect);
@@ -81,6 +84,7 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
 
     workspaceIdRef.current = workspaceId;
     notePathRef.current = notePath;
+    rootRef.current = root;
     parentProcessIdRef.current = parentProcessId;
     selectedModeRef.current = selectedMode;
     onThreadSelectRef.current = onThreadSelect;
@@ -90,7 +94,7 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
         setLoading(true);
         setError(null);
         try {
-            const sidecar = await notesApi.getComments(workspaceIdRef.current, targetPath);
+            const sidecar = await notesApi.getComments(workspaceIdRef.current, targetPath, rootRef.current);
             const threads = Object.values(sidecar.threads);
             setAllThreads(sortThreads(threads));
         } catch (err: any) {
@@ -142,7 +146,7 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
             createdAt: now,
         };
 
-        const result = await notesApi.createThread(wsId, path, newThread);
+        const result = await notesApi.createThread(wsId, path, newThread, rootRef.current);
         const created = result.thread;
         setAllThreads(prev => sortThreads([...prev, created]));
         setSelectedThreadId(created.id);
@@ -154,7 +158,7 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
         const prev = threadsRef.current;
         setAllThreads(sortThreads(prev.map(t => t.id === threadId ? { ...t, status: 'resolved' as const } : t)));
         try {
-            await notesApi.updateThread(workspaceIdRef.current, notePathRef.current!, threadId, 'resolved');
+            await notesApi.updateThread(workspaceIdRef.current, notePathRef.current!, threadId, 'resolved', rootRef.current);
         } catch (e: any) {
             setAllThreads(prev);
             setError(e.message ?? 'Failed to resolve thread');
@@ -165,7 +169,7 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
         const prev = threadsRef.current;
         setAllThreads(sortThreads(prev.map(t => t.id === threadId ? { ...t, status: 'open' as const } : t)));
         try {
-            await notesApi.updateThread(workspaceIdRef.current, notePathRef.current!, threadId, 'open');
+            await notesApi.updateThread(workspaceIdRef.current, notePathRef.current!, threadId, 'open', rootRef.current);
         } catch (e: any) {
             setAllThreads(prev);
             setError(e.message ?? 'Failed to reopen thread');
@@ -177,7 +181,7 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
         setAllThreads(prev.filter(t => t.id !== threadId));
         setSelectedThreadId(current => current === threadId ? null : current);
         try {
-            await notesApi.deleteThread(workspaceIdRef.current, notePathRef.current!, threadId);
+            await notesApi.deleteThread(workspaceIdRef.current, notePathRef.current!, threadId, rootRef.current);
         } catch (e: any) {
             setAllThreads(prev);
             setError(e.message ?? 'Failed to delete thread');
@@ -195,7 +199,7 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
             t.id === threadId ? { ...t, comments: [...t.comments, tempComment] } : t,
         ));
         try {
-            const result = await notesApi.addComment(workspaceIdRef.current, notePathRef.current!, threadId, content);
+            const result = await notesApi.addComment(workspaceIdRef.current, notePathRef.current!, threadId, content, rootRef.current);
             // Replace temp comment with server response
             setAllThreads(current =>
                 current.map(t =>
@@ -218,7 +222,7 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
                 : t,
         ));
         try {
-            await notesApi.editComment(workspaceIdRef.current, notePathRef.current!, threadId, commentId, content);
+            await notesApi.editComment(workspaceIdRef.current, notePathRef.current!, threadId, commentId, content, rootRef.current);
         } catch (e: any) {
             setAllThreads(prev);
             setError(e.message ?? 'Failed to edit comment');
@@ -233,7 +237,7 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
                 : t,
         ));
         try {
-            await notesApi.deleteComment(workspaceIdRef.current, notePathRef.current!, threadId, commentId);
+            await notesApi.deleteComment(workspaceIdRef.current, notePathRef.current!, threadId, commentId, rootRef.current);
         } catch (e: any) {
             setAllThreads(prev);
             setError(e.message ?? 'Failed to delete comment');
@@ -284,7 +288,7 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
             }
 
             // New task path: enqueue via server endpoint
-            const result = await notesApi.batchResolve(wsId, path, documentContent, userContext);
+            const result = await notesApi.batchResolve(wsId, path, documentContent, userContext, rootRef.current);
             return { taskId: result.taskId };
         } catch (e: any) {
             setError(e.message ?? 'Failed to resolve with AI');

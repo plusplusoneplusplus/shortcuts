@@ -12,13 +12,13 @@ import { notesApi } from '../notesApi';
 
 export interface NoteEditorIO {
     /** Fetch the markdown content for a given path. */
-    loadContent(workspaceId: string, path: string): Promise<{ content: string; path: string; mtime: number }>;
+    loadContent(workspaceId: string, path: string, root?: string): Promise<{ content: string; path: string; mtime: number }>;
     /** Persist markdown content at the given path. */
-    saveContent(workspaceId: string, path: string, markdown: string, expectedMtime?: number): Promise<{ path: string; updated: boolean; mtime: number }>;
+    saveContent(workspaceId: string, path: string, markdown: string, expectedMtime?: number, root?: string): Promise<{ path: string; updated: boolean; mtime: number }>;
     /** Upload an image (base64 data-URL) and return the relative path to reference it. */
-    uploadImage(workspaceId: string, fileName: string, dataUrl: string): Promise<{ path: string }>;
+    uploadImage(workspaceId: string, fileName: string, dataUrl: string, root?: string): Promise<{ path: string }>;
     /** Build a fully-qualified URL the browser can use to fetch an image by its relative path. */
-    imageApiUrl(workspaceId: string, relativePath: string): string;
+    imageApiUrl(workspaceId: string, relativePath: string, root?: string): string;
     /** Build a URL to serve a local image file (absolute path) via the server proxy. */
     localImageApiUrl(workspaceId: string, absolutePath: string): string;
 }
@@ -26,14 +26,16 @@ export interface NoteEditorIO {
 // ── Default (notes-backed) implementation ───────────────────────────────────
 
 export const defaultNoteEditorIO: NoteEditorIO = {
-    loadContent: (workspaceId, path) =>
-        notesApi.getContent(workspaceId, path),
-    saveContent: (workspaceId, path, markdown, expectedMtime?) =>
-        notesApi.saveContent(workspaceId, path, markdown, expectedMtime),
-    uploadImage: (workspaceId, fileName, dataUrl) =>
-        notesApi.uploadImage(workspaceId, fileName, dataUrl),
-    imageApiUrl: (workspaceId, relativePath) =>
-        `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/image?path=${encodeURIComponent(relativePath)}`,
+    loadContent: (workspaceId, path, root?) =>
+        notesApi.getContent(workspaceId, path, root),
+    saveContent: (workspaceId, path, markdown, expectedMtime?, root?) =>
+        notesApi.saveContent(workspaceId, path, markdown, expectedMtime, root),
+    uploadImage: (workspaceId, fileName, dataUrl, root?) =>
+        notesApi.uploadImage(workspaceId, fileName, dataUrl, root),
+    imageApiUrl: (workspaceId, relativePath, root?) => {
+        const base = `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/image?path=${encodeURIComponent(relativePath)}`;
+        return root ? `${base}&root=${encodeURIComponent(root)}` : base;
+    },
     localImageApiUrl: (workspaceId, absolutePath) =>
         `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/local-image?path=${encodeURIComponent(absolutePath)}`,
 };
@@ -47,14 +49,14 @@ export const defaultNoteEditorIO: NoteEditorIO = {
  * Called after markdown→HTML conversion when loading content into the
  * rich-text editor.
  */
-export function rewriteHtmlImageSrc(html: string, io: NoteEditorIO, workspaceId: string): string {
+export function rewriteHtmlImageSrc(html: string, io: NoteEditorIO, workspaceId: string, root?: string): string {
     if (!html) return html;
 
     return html.replace(
         /(<img\s[^>]*?)src="([^"]+)"/gi,
         (_match, prefix: string, src: string) => {
-            if (/^\.attachments\//i.test(src)) {
-                return `${prefix}src="${io.imageApiUrl(workspaceId, src)}"`;
+            if (/^\.attachments\//i.test(src) || /^\.images\//i.test(src)) {
+                return `${prefix}src="${io.imageApiUrl(workspaceId, src, root)}"`;
             }
             if (/^[A-Za-z]:/.test(src) || /^\/(?!api\/)/.test(src)) {
                 const decoded = decodeURIComponent(src);

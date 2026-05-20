@@ -52,24 +52,24 @@ export function useNotesTree(workspaceId: string, root?: string): UseNotesTreeRe
 
     const createNode = useCallback(async (parentPath: string, name: string, type: 'notebook' | 'section' | 'page') => {
         const nodePath = parentPath ? `${parentPath}/${name}` : name;
-        await notesApi.createNode(workspaceId, nodePath, type);
+        await notesApi.createNode(workspaceId, nodePath, type, root);
         await fetchTree();
-    }, [workspaceId, fetchTree]);
+    }, [workspaceId, root, fetchTree]);
 
     const renameNode = useCallback(async (oldPath: string, newPath: string) => {
-        await notesApi.renameNode(workspaceId, oldPath, newPath);
+        await notesApi.renameNode(workspaceId, oldPath, newPath, root);
         await fetchTree();
-    }, [workspaceId, fetchTree]);
+    }, [workspaceId, root, fetchTree]);
 
     const deleteNode = useCallback(async (path: string) => {
-        await notesApi.deleteNode(workspaceId, path);
+        await notesApi.deleteNode(workspaceId, path, root);
         await fetchTree();
-    }, [workspaceId, fetchTree]);
+    }, [workspaceId, root, fetchTree]);
 
     const reorderNodes = useCallback(async (parentPath: string, order: string[]) => {
-        await notesApi.reorder(workspaceId, parentPath, order);
+        await notesApi.reorder(workspaceId, parentPath, order, root);
         await fetchTree();
-    }, [workspaceId, fetchTree]);
+    }, [workspaceId, root, fetchTree]);
 
     return { tree, notesRoot, systemFolders, loading, error, refresh: fetchTree, createNode, renameNode, deleteNode, reorderNodes };
 }

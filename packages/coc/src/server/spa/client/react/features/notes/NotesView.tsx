@@ -73,6 +73,9 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
 
     const { roots, selectedRootId, isDefaultRoot, selectedRootLabel, selectRoot } = useNotesRoots(workspaceId);
 
+    // Root param for API calls (undefined = default managed root)
+    const rootParam = selectedRootId !== 'default' ? selectedRootId : undefined;
+
     // Clear selected path when root changes
     const prevRootRef = useRef(selectedRootId);
     useEffect(() => {
@@ -143,6 +146,7 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
     const comments = useComments({
         workspaceId,
         notePath: selectedPath,
+        root: rootParam,
     });
 
     // Reset active comment when switching notes
@@ -467,6 +471,8 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
                     hasExistingChat={hasNoteChat}
                     onNavigateToNote={handleNavigateToNote}
                     onAddNoteReference={chatPanelOpen ? noteRefs.addReference : undefined}
+                    isDefaultRoot={isDefaultRoot}
+                    root={rootParam}
                 />
             </div>
 

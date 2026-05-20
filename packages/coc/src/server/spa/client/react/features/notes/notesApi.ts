@@ -90,76 +90,76 @@ export const notesApi = {
         return withSpaErrors(notesClient().removeRoot(wsId, rootPath));
     },
 
-    getContent(wsId: string, notePath: string): Promise<NoteContentResponse> {
-        return withSpaErrors(notesClient().getContent(wsId, notePath));
+    getContent(wsId: string, notePath: string, root?: string): Promise<NoteContentResponse> {
+        return withSpaErrors(notesClient().getContent(wsId, notePath, root));
     },
 
-    saveContent(wsId: string, notePath: string, content: string, expectedMtime?: number): Promise<SaveNoteContentResponse> {
-        return withConflictError(notesClient().saveContent(wsId, notePath, content, expectedMtime));
+    saveContent(wsId: string, notePath: string, content: string, expectedMtime?: number, root?: string): Promise<SaveNoteContentResponse> {
+        return withConflictError(notesClient().saveContent(wsId, notePath, content, expectedMtime, root));
     },
 
-    createNode(wsId: string, nodePath: string, type: NoteNodeType): Promise<CreateNoteNodeResponse> {
-        return withSpaErrors(notesClient().createNode(wsId, nodePath, type));
+    createNode(wsId: string, nodePath: string, type: NoteNodeType, root?: string): Promise<CreateNoteNodeResponse> {
+        return withSpaErrors(notesClient().createNode(wsId, nodePath, type, root));
     },
 
-    renameNode(wsId: string, oldPath: string, newPath: string): Promise<RenameNoteNodeResponse> {
-        return withSpaErrors(notesClient().renameNode(wsId, oldPath, newPath));
+    renameNode(wsId: string, oldPath: string, newPath: string, root?: string): Promise<RenameNoteNodeResponse> {
+        return withSpaErrors(notesClient().renameNode(wsId, oldPath, newPath, root));
     },
 
-    deleteNode(wsId: string, nodePath: string): Promise<void> {
-        return withSpaErrors(notesClient().deleteNode(wsId, nodePath));
+    deleteNode(wsId: string, nodePath: string, root?: string): Promise<void> {
+        return withSpaErrors(notesClient().deleteNode(wsId, nodePath, root));
     },
 
-    reorder(wsId: string, parentPath: string, order: string[]): Promise<ReorderNotesResponse> {
-        return withSpaErrors(notesClient().reorder(wsId, parentPath, order));
+    reorder(wsId: string, parentPath: string, order: string[], root?: string): Promise<ReorderNotesResponse> {
+        return withSpaErrors(notesClient().reorder(wsId, parentPath, order, root));
     },
 
-    search(wsId: string, query: string): Promise<NoteSearchResponse> {
-        return withSpaErrors(notesClient().search(wsId, query));
+    search(wsId: string, query: string, root?: string): Promise<NoteSearchResponse> {
+        return withSpaErrors(notesClient().search(wsId, query, root));
     },
 
-    uploadImage(wsId: string, fileName: string, data: string): Promise<UploadNoteImageResponse> {
-        return withSpaErrors(notesClient().uploadImage(wsId, fileName, data));
+    uploadImage(wsId: string, fileName: string, data: string, root?: string): Promise<UploadNoteImageResponse> {
+        return withSpaErrors(notesClient().uploadImage(wsId, fileName, data, root));
     },
 
     getFilePreview(wsId: string, filePath: string): Promise<NoteFilePreviewResponse> {
         return withSpaErrors(notesClient().previewFile(wsId, filePath));
     },
 
-    getComments(wsId: string, notePath: string): Promise<NoteSidecar> {
-        return withSpaErrors(notesClient().getComments(wsId, notePath));
+    getComments(wsId: string, notePath: string, root?: string): Promise<NoteSidecar> {
+        return withSpaErrors(notesClient().getComments(wsId, notePath, root));
     },
 
-    saveComments(wsId: string, notePath: string, threads: Record<string, CommentThread>): Promise<void> {
-        return withSpaErrors(notesClient().saveComments(wsId, notePath, threads));
+    saveComments(wsId: string, notePath: string, threads: Record<string, CommentThread>, root?: string): Promise<void> {
+        return withSpaErrors(notesClient().saveComments(wsId, notePath, threads, root));
     },
 
-    createThread(wsId: string, notePath: string, thread: CommentThread): Promise<{ thread: CommentThread }> {
-        return withSpaErrors(notesClient().createThread(wsId, notePath, thread));
+    createThread(wsId: string, notePath: string, thread: CommentThread, root?: string): Promise<{ thread: CommentThread }> {
+        return withSpaErrors(notesClient().createThread(wsId, notePath, thread, root));
     },
 
-    updateThread(wsId: string, notePath: string, threadId: string, status: CommentThreadStatus): Promise<{ thread: CommentThread }> {
-        return withSpaErrors(notesClient().updateThread(wsId, notePath, threadId, status));
+    updateThread(wsId: string, notePath: string, threadId: string, status: CommentThreadStatus, root?: string): Promise<{ thread: CommentThread }> {
+        return withSpaErrors(notesClient().updateThread(wsId, notePath, threadId, status, root));
     },
 
-    deleteThread(wsId: string, notePath: string, threadId: string): Promise<void> {
-        return withSpaErrors(notesClient().deleteThread(wsId, notePath, threadId));
+    deleteThread(wsId: string, notePath: string, threadId: string, root?: string): Promise<void> {
+        return withSpaErrors(notesClient().deleteThread(wsId, notePath, threadId, root));
     },
 
-    addComment(wsId: string, notePath: string, threadId: string, content: string): Promise<{ comment: Comment }> {
-        return withSpaErrors(notesClient().addComment(wsId, notePath, threadId, content));
+    addComment(wsId: string, notePath: string, threadId: string, content: string, root?: string): Promise<{ comment: Comment }> {
+        return withSpaErrors(notesClient().addComment(wsId, notePath, threadId, content, root));
     },
 
-    editComment(wsId: string, notePath: string, threadId: string, commentId: string, content: string): Promise<{ comment: Comment }> {
-        return withSpaErrors(notesClient().editComment(wsId, notePath, threadId, commentId, content));
+    editComment(wsId: string, notePath: string, threadId: string, commentId: string, content: string, root?: string): Promise<{ comment: Comment }> {
+        return withSpaErrors(notesClient().editComment(wsId, notePath, threadId, commentId, content, root));
     },
 
-    deleteComment(wsId: string, notePath: string, threadId: string, commentId: string): Promise<void> {
-        return withSpaErrors(notesClient().deleteComment(wsId, notePath, threadId, commentId));
+    deleteComment(wsId: string, notePath: string, threadId: string, commentId: string, root?: string): Promise<void> {
+        return withSpaErrors(notesClient().deleteComment(wsId, notePath, threadId, commentId, root));
     },
 
-    batchResolve(wsId: string, notePath: string, documentContent: string, userContext?: string): Promise<{ taskId: string }> {
-        return withSpaErrors(notesClient().batchResolve(wsId, notePath, documentContent, userContext));
+    batchResolve(wsId: string, notePath: string, documentContent: string, userContext?: string, root?: string): Promise<{ taskId: string }> {
+        return withSpaErrors(notesClient().batchResolve(wsId, notePath, documentContent, userContext, root));
     },
 
     createWithAI(wsId: string, prompt: string, chatTaskId?: string): Promise<CreateNoteWithAIResponse> {
