@@ -7,8 +7,8 @@
 
 import type { TeamsAuthConfig, DeviceCodeInfo } from './types';
 
-/** Default client ID — Microsoft Teams public client (registered in MSFT tenant). */
-const DEFAULT_CLIENT_ID = '1fec8e78-bce4-4aaf-ab1b-5451cc387264';
+/** Default client ID — Azure CLI public client (works for Graph API). */
+const DEFAULT_CLIENT_ID = '04b07795-8ddb-461a-bbee-02f9e1bf7b46';
 
 /**
  * Build the default scope for the Agent365 Teams MCP server.
