@@ -15,6 +15,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { TerminalSessionManager } from './terminal-session-manager';
 import type { ResolvedCLIConfig } from '../../config';
 import { toSessionInfo } from './terminal-session-manager';
+import type { RuntimeConfigService } from '../../config/runtime-config-service';
 import { sendJSON } from '../core/api-handler';
 import { handleAPIError, notFound } from '../errors';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
@@ -24,15 +25,22 @@ export function registerTerminalRoutes(
     store: ProcessStore,
     getTerminalSessionManager: () => TerminalSessionManager | undefined,
     resolvedConfig?: ResolvedCLIConfig,
+    runtimeConfigService?: RuntimeConfigService,
 ): void {
-    // GET /api/terminal/status — always registered regardless of manager
+    // GET /api/terminal/status — always registered regardless of manager.
+    // Uses runtimeConfigService (when available) so the status endpoint
+    // reports the saved config value, not just the startup-captured one.
+    // Terminal infrastructure itself is restart-required.
     routes.push({
         method: 'GET',
         pattern: '/api/terminal/status',
         handler: async (_req, res) => {
             const mgr = getTerminalSessionManager();
+            const liveEnabled = runtimeConfigService
+                ? (runtimeConfigService.config.terminal?.enabled ?? true)
+                : (resolvedConfig?.terminal?.enabled ?? true);
             sendJSON(res, 200, {
-                enabled: resolvedConfig?.terminal?.enabled ?? true,
+                enabled: liveEnabled,
                 nodePtyAvailable: mgr != null,
                 activeSessions: mgr?.size ?? 0,
             });

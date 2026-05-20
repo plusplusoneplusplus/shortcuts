@@ -984,6 +984,101 @@ describe('Admin Handler', () => {
             expect(body.resolved.toolCompactness).toBe(1);
             expect(body.resolved.model).toBe('gpt-4');
         });
+
+        it('should return revision=0 from GET before any updates', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.revision).toBe(0);
+        });
+
+        it('should increment revision on successful PUT', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            // First update
+            const res1 = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ model: 'model-v1' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res1.status).toBe(200);
+            const body1 = JSON.parse(res1.body);
+            expect(body1.revision).toBe(1);
+
+            // Second update
+            const res2 = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ model: 'model-v2' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res2.status).toBe(200);
+            const body2 = JSON.parse(res2.body);
+            expect(body2.revision).toBe(2);
+
+            // GET should also return current revision
+            const res3 = await request(`${srv.url}/api/admin/config`);
+            const body3 = JSON.parse(res3.body);
+            expect(body3.revision).toBe(2);
+        });
+
+        it('should not increment revision on failed PUT', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            // Successful update
+            await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ model: 'good-model' }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            // Failed update (invalid parallel)
+            const failRes = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ parallel: -1 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(failRes.status).toBe(400);
+
+            // Revision should still be 1
+            const getRes = await request(`${srv.url}/api/admin/config`);
+            const body = JSON.parse(getRes.body);
+            expect(body.revision).toBe(1);
+        });
+
+        it('should return effects array on successful PUT', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`, {
+                method: 'PUT',
+                body: JSON.stringify({ model: 'test-model', parallel: 3 }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.effects).toBeDefined();
+            expect(Array.isArray(body.effects)).toBe(true);
+            expect(body.effects.length).toBe(2);
+            expect(body.effects.map((e: any) => e.field).sort()).toEqual(['model', 'parallel']);
+        });
+
+        it('should preserve source metadata through runtime config service', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            fs.writeFileSync(configPath, 'model: gpt-4\n', 'utf-8');
+            const srv = await startServerWithConfig(configPath);
+
+            const res = await request(`${srv.url}/api/admin/config`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.sources.model).toBe('file');
+            expect(body.sources.output).toBe('default');
+            expect(body.configFilePath).toBeDefined();
+        });
     });
 
     // ========================================================================

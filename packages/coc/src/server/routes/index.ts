@@ -69,6 +69,7 @@ import { execGit } from '@plusplusoneplusplus/forge';
 import type { WorkItemChangeCommit } from '../work-items/types';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
 import type { ResolvedCLIConfig } from '../../config';
+import type { RuntimeConfigService } from '../../config/runtime-config-service';
 import type { TerminalSessionManager } from '../terminal/index';
 import { registerRemoteServerRoutes } from '../servers/remote-server-routes';
 import { RemoteServerStore } from '../servers/remote-server-store';
@@ -84,6 +85,7 @@ import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
 import { registerMcpOauthRoutes } from '../mcp-oauth';
 import type { McpOauthManager } from '../mcp-oauth';
 import { registerDiagramRoutes } from '../diagrams/diagrams-handler';
+import { registerRuntimeConfigRoutes } from '../config/runtime-config-handler';
 
 /** Collect git commits made between headBefore and current HEAD. Non-fatal — returns [] on error. */
 function collectWorkItemCommits(
@@ -122,12 +124,15 @@ export interface RegisterRoutesOptions {
     aiInvoker: AIInvoker;
     getTerminalSessionManager?: () => TerminalSessionManager | undefined;
     resolvedConfig?: ResolvedCLIConfig;
+    runtimeConfigService?: RuntimeConfigService;
     remoteServerStore?: RemoteServerStore;
     remoteServerConnector?: DevTunnelConnector;
     loopStore?: LoopStore;
     loopExecutor?: LoopExecutor;
     mcpOauthManager?: McpOauthManager;
     loopEmit?: LoopEventEmit;
+    hostname?: string;
+    bindAddress?: string;
 }
 
 export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined } {
@@ -139,25 +144,31 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         aiInvoker,
     } = opts;
 
-    registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.loops?.enabled ?? false, opts.resolvedConfig?.excalidraw?.enabled ?? false);
+    // excalidrawEnabled uses a live getter via runtimeConfigService so admin
+    // changes take effect without restart. loopsEnabled stays startup-captured
+    // (restartRequired — loop executor infrastructure wires at startup).
+    const getLiveFeatureFlags = opts.runtimeConfigService
+        ? () => ({ excalidrawEnabled: opts.runtimeConfigService!.config.excalidraw?.enabled ?? false })
+        : () => ({ excalidrawEnabled: opts.resolvedConfig?.excalidraw?.enabled ?? false });
+    registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.loops?.enabled ?? false, getLiveFeatureFlags);
     const repoTreeService = new RepoTreeService(dataDir, undefined, store);
     registerRepoRoutes(routes, dataDir, repoTreeService);
     registerPrRoutes(routes, dataDir, repoTreeService);
-    // Focused-diff classification routes (feature-flagged)
-    if (opts.resolvedConfig?.features?.focusedDiff) {
-        registerPrClassificationRoutes(routes, {
-            dataDir,
-            store,
-            bridge,
-            repoTreeService,
-        });
-        registerGenericClassificationRoutes(routes, {
-            dataDir,
-            store,
-            bridge,
-            repoTreeService,
-        });
-    }
+    // Focused-diff classification routes — always registered so the feature
+    // can be toggled live via admin config. The SPA gates the UI based on
+    // runtime config; having the routes present when disabled is harmless.
+    registerPrClassificationRoutes(routes, {
+        dataDir,
+        store,
+        bridge,
+        repoTreeService,
+    });
+    registerGenericClassificationRoutes(routes, {
+        dataDir,
+        store,
+        bridge,
+        repoTreeService,
+    });
     registerRemoteServerRoutes(routes, {
         store: opts.remoteServerStore ?? new RemoteServerStore(dataDir),
         connector: opts.remoteServerConnector ?? new DevTunnelConnector(),
@@ -165,7 +176,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerProviderRoutes(routes, dataDir);
     registerProcessResumeRoutes(routes, store);
     registerFreshChatTerminalRoutes(routes);
-    registerTerminalRoutes(routes, store, opts.getTerminalSessionManager ?? (() => undefined), opts.resolvedConfig);
+    registerTerminalRoutes(routes, store, opts.getTerminalSessionManager ?? (() => undefined), opts.resolvedConfig, opts.runtimeConfigService);
 
     // Queue routes receive the bridge directly for per-repo routing
     registerQueueRoutes(routes, bridge, store, globalWorkspaceRootPath);
@@ -187,10 +198,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerNotesAICreateRoutes(routes, store, dataDir, bridge);
     registerNotesEditsRoutes(routes, store, dataDir);
 
-    // Diagram routes (feature-flagged via excalidraw.enabled)
-    if (opts.resolvedConfig?.excalidraw?.enabled) {
-        registerDiagramRoutes(routes, store, dataDir);
-    }
+    // Diagram routes — always registered so excalidraw.enabled (classified
+    // as live) can be toggled via admin config without restart. The SPA
+    // gates the UI via runtime config.
+    registerDiagramRoutes(routes, store, dataDir);
     registerWorkflowRoutes(routes, store);
     registerWorkspaceSummaryRoutes(routes, store, dataDir);
     registerWorkflowWriteRoutes(routes, store, (workspaceId) => {
@@ -230,8 +241,19 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         getQueuePersistence: () => queuePersistence,
         restartExitCode: 75,
         configFunctions: { getConfigFilePath, getResolvedConfigWithSource, loadConfigFile, writeConfigFile },
+        runtimeConfigService: opts.runtimeConfigService,
         tokenTtlMs,
     });
+
+    // Runtime config endpoint for SPA feature flag freshness
+    if (opts.runtimeConfigService) {
+        registerRuntimeConfigRoutes(routes, {
+            runtimeConfigService: opts.runtimeConfigService,
+            hostname: opts.hostname ?? '',
+            bindAddress: opts.bindAddress ?? '127.0.0.1',
+        });
+    }
+
     registerScheduleRoutes(routes, scheduleManager, async (repoId) => {
         const workspaces = await store.getWorkspaces();
         return workspaces.find(w => w.id === repoId)?.rootPath;

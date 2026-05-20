@@ -38,7 +38,7 @@ import { createWebSocketInfrastructure } from './infrastructure/websocket-infras
 import { createWatcherInfrastructure } from './infrastructure/watcher-infrastructure';
 import { createTerminalInfrastructure } from './infrastructure/terminal-infrastructure';
 import { HeapMonitor } from './admin/heap-monitor';
-import { resolveConfig } from '../config';
+import { RuntimeConfigService } from '../config/runtime-config-service';
 import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
 import { autoUpdateBundledSkills, autoInstallDefaultSkills, autoInstallMyWorkSkills, DEFAULT_SKILLS_SETTINGS } from '@plusplusoneplusplus/forge';
 import { createStubStore } from './processes/in-memory-process-store';
@@ -153,7 +153,29 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const store = options.store ?? createStubStore();
     fs.mkdirSync(dataDir, { recursive: true });
 
-    const resolvedConfig = resolveConfig(options.configPath, options.fileConfig);
+    const runtimeConfigService = new RuntimeConfigService({ configPath: options.configPath, fileConfig: options.fileConfig });
+
+    // Startup-captured config snapshot. Consumers below that use this directly
+    // are infrastructure that wires once at startup. Admin-editable fields among
+    // them are classified as follows:
+    //
+    //   restartRequired (infrastructure wired at startup):
+    //     - terminal.enabled   → terminal pty/session manager
+    //     - loops.enabled      → loop executor, timer registry
+    //
+    //   Live but still startup-captured in queue infrastructure (future migration):
+    //     - timeout            → defaultTimeoutMs passed to queue infra
+    //     - chat.followUpSuggestions, chat.askUser → queue executor behavior
+    //
+    //   Non-admin-editable (no migration needed):
+    //     - mcpOauth.enabled   → MCP OAuth infra
+    //     - monitoring.heapCheck → heap monitor
+    //     - skills.autoUpdate, skills.defaultSkills → startup skill install
+    //     - features.autoMemoryPromotion → auto-promote scheduler
+    //
+    // Route handlers and SPA feature flags use runtimeConfigService for live
+    // reads (see registerAllRoutes and spaHtml closure below).
+    const resolvedConfig = runtimeConfigService.config;
     const defaultTimeoutMs = resolvedConfig.timeout ? resolvedConfig.timeout * 1000 : DEFAULT_AI_TIMEOUT_MS;
 
     // Forward declaration — bridge captures this via closure before wsServer is assigned
@@ -361,12 +383,15 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         aiInvoker,
         getTerminalSessionManager: () => terminalInfra?.terminalSessionManager,
         resolvedConfig,
+        runtimeConfigService,
         remoteServerStore,
         remoteServerConnector,
         loopStore: loopInfra?.loopStore,
         loopExecutor: loopInfra?.loopExecutor,
         mcpOauthManager: mcpOauthInfra?.manager,
         loopEmit: loopInfra?.emit,
+        hostname: os.hostname(),
+        bindAddress: host,
     });
     // Restore auto-commit timers for all workspaces that had it enabled
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });
@@ -374,9 +399,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const rawHostname = os.hostname();
     const handler = createRequestHandler({
         routes, spaHtml: () => {
-            // Re-read config on each page load so that feature-flag changes made via the
-            // admin UI take effect on the next browser refresh — no server restart needed.
-            const liveConfig = resolveConfig(options.configPath);
+            // Use RuntimeConfigService snapshot for feature flags so admin
+            // config updates are reflected without re-reading disk on every
+            // page load. The SPA also fetches /api/config/runtime for fresh
+            // feature flags, making the embedded values bootstrap-only.
+            const liveConfig = runtimeConfigService.config;
             return generateDashboardHtml({
                 enableWiki: true,
                 hostname: liveConfig.serve?.serverName || shortenHostname(rawHostname),
@@ -398,7 +425,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 bindAddress: host,
             });
         },
-        store, spaETag: getBundleETag,
+        store, spaETag: () => getBundleETag(runtimeConfigService.revision),
         staticDir: path.join(__dirname, 'spa', 'client', 'dist'),
         getIconSvg: () => generateIconSvg(rawHostname),
     });
@@ -470,6 +497,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
 export type { ExecutionServerOptions, ExecutionServer, Route, WikiServerOptions, ServerCloseOptions, ServeCommandOptions } from './types';
 export type { ProcessStore } from '@plusplusoneplusplus/forge';
+
+// Runtime Config Service
+export { RuntimeConfigService } from '../config/runtime-config-service';
+export type { RuntimeConfigSnapshot, RuntimeConfigUpdateResult, ConfigChangeEffect, ConfigFieldRuntime, ConfigChangeListener } from '../config/runtime-config-service';
 
 // HTTP helpers (canonical source: shared/router.ts)
 export { sendJson, send404, send400, send500, sendError, readJsonBody } from './shared/router';

@@ -1175,7 +1175,7 @@ export function AdminPanel() {
                                     onCancel={handleCancelFeatures}
                                     data-testid="settings-features"
                                 >
-                                    <AdminRow name="Terminal" hint="Web terminal for shell access to the server machine.">
+                                    <AdminRow name={<>Terminal <span className="ar-badge ar-badge-warning">Restart</span></>} hint="Web terminal for shell access to the server machine. Toggling requires a server restart.">
                                         <SourceBadge source={sources['terminal.enabled']} />
                                         <AdminToggle checked={terminalEnabled} onChange={setTerminalEnabled} data-testid="toggle-terminal-enabled" />
                                     </AdminRow>

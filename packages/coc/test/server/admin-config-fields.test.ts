@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { ADMIN_CONFIG_FIELDS, ADMIN_EDITABLE_KEYS } from '../../src/server/admin/admin-config-fields';
+import { ADMIN_CONFIG_FIELDS, ADMIN_EDITABLE_KEYS, getAdminFieldMetadata } from '../../src/server/admin/admin-config-fields';
 import type { AdminConfigFieldSpec } from '../../src/server/admin/admin-config-fields';
 import type { CLIConfig } from '../../src/config';
 
@@ -346,5 +346,55 @@ describe('apply()', () => {
             fieldFor('scratchpad.layout').apply(cfg, 'vertical');
             expect(cfg.scratchpad?.layout).toBe('vertical');
         });
+    });
+});
+
+// ── runtime classification ────────────────────────────────────────────────────
+
+describe('runtime classification', () => {
+    it('marks terminal.enabled as restartRequired', () => {
+        expect(fieldFor('terminal.enabled').runtime).toBe('restartRequired');
+    });
+
+    it('marks loops.enabled as restartRequired', () => {
+        expect(fieldFor('loops.enabled').runtime).toBe('restartRequired');
+    });
+
+    it('marks mcpOauth.enabled as restartRequired', () => {
+        expect(fieldFor('mcpOauth.enabled').runtime).toBe('restartRequired');
+    });
+
+    const liveFeatures = [
+        'notes.enabled', 'myWork.enabled', 'myLife.enabled',
+        'scratchpad.enabled', 'workflows.enabled', 'pullRequests.enabled',
+        'servers.enabled', 'ralph.enabled', 'vimNavigation.enabled',
+        'excalidraw.enabled', 'features.focusedDiff',
+    ];
+
+    for (const key of liveFeatures) {
+        it(`marks ${key} as live`, () => {
+            expect(fieldFor(key).runtime).toBe('live');
+        });
+    }
+});
+
+// ── getAdminFieldMetadata() ───────────────────────────────────────────────────
+
+describe('getAdminFieldMetadata()', () => {
+    it('returns metadata for every registered field', () => {
+        const meta = getAdminFieldMetadata();
+        for (const field of ADMIN_CONFIG_FIELDS) {
+            expect(meta[field.key]).toEqual({ runtime: field.runtime });
+        }
+    });
+
+    it('includes restartRequired for terminal.enabled', () => {
+        const meta = getAdminFieldMetadata();
+        expect(meta['terminal.enabled'].runtime).toBe('restartRequired');
+    });
+
+    it('includes restartRequired for mcpOauth.enabled', () => {
+        const meta = getAdminFieldMetadata();
+        expect(meta['mcpOauth.enabled'].runtime).toBe('restartRequired');
     });
 });

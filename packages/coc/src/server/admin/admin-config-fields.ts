@@ -16,9 +16,14 @@
 
 import type { CLIConfig } from '../../config';
 
+/** Runtime behavior classification for admin-editable config fields. */
+export type AdminConfigFieldRuntime = 'live' | 'reloadable' | 'restartRequired';
+
 export interface AdminConfigFieldSpec {
     /** Flat key used in the PUT /api/admin/config request body, e.g. 'loops.enabled' */
     key: string;
+    /** Runtime behavior: 'live' (immediate), 'reloadable', or 'restartRequired' */
+    runtime: AdminConfigFieldRuntime;
     /** Return an error message string if invalid, undefined if valid */
     validate: (value: unknown) => string | undefined;
     /** Write the (already-validated) value into the CLIConfig that will be persisted */
@@ -27,8 +32,9 @@ export interface AdminConfigFieldSpec {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-const bool = (key: string, set: (cfg: CLIConfig, v: boolean) => void): AdminConfigFieldSpec => ({
+const bool = (key: string, set: (cfg: CLIConfig, v: boolean) => void, runtime: AdminConfigFieldRuntime = 'live'): AdminConfigFieldSpec => ({
     key,
+    runtime,
     validate: (v) => typeof v === 'boolean' ? undefined : `${key} must be a boolean`,
     apply: (cfg, v) => set(cfg, v as boolean),
 });
@@ -45,16 +51,19 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
     // ── AI execution ──────────────────────────────────────────────────────────
     {
         key: 'model',
+        runtime: 'live',
         validate: (v) => typeof v === 'string' && v.length > 0 ? undefined : 'model must be a non-empty string',
         apply: (cfg, v) => { cfg.model = v as string; },
     },
     {
         key: 'parallel',
+        runtime: 'live',
         validate: (v) => typeof v === 'number' && v > 0 ? undefined : 'parallel must be a number greater than 0',
         apply: (cfg, v) => { cfg.parallel = v as number; },
     },
     {
         key: 'timeout',
+        runtime: 'live',
         validate: (v) => v === null || (typeof v === 'number' && v > 0)
             ? undefined
             : 'timeout must be a number greater than 0, or null to clear',
@@ -64,6 +73,7 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
     },
     {
         key: 'output',
+        runtime: 'live',
         validate: (v) => typeof v === 'string' && (VALID_OUTPUT_VALUES as readonly string[]).includes(v)
             ? undefined
             : `output must be one of: ${VALID_OUTPUT_VALUES.join(', ')}`,
@@ -74,6 +84,7 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
     bool('showReportIntent', (cfg, v) => { cfg.showReportIntent = v; }),
     {
         key: 'toolCompactness',
+        runtime: 'live',
         validate: (v) =>
             typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 3
                 ? undefined
@@ -82,6 +93,7 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
     },
     {
         key: 'taskCardDensity',
+        runtime: 'live',
         validate: (v) => v === 'compact' || v === 'dense'
             ? undefined
             : 'taskCardDensity must be "compact" or "dense"',
@@ -92,6 +104,7 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
     // ── serve ─────────────────────────────────────────────────────────────────
     {
         key: 'serve.serverName',
+        runtime: 'live',
         validate: (v) => v === null || v === undefined || (typeof v === 'string' && v.length <= 64)
             ? undefined
             : 'serve.serverName must be a string of at most 64 characters, or null to clear',
@@ -113,6 +126,7 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
     }),
     {
         key: 'chat.followUpSuggestions.count',
+        runtime: 'live',
         validate: (v) =>
             typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 5
                 ? undefined
@@ -133,7 +147,7 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
     bool('terminal.enabled', (cfg, v) => {
         if (!cfg.terminal) { cfg.terminal = {}; }
         cfg.terminal.enabled = v;
-    }),
+    }, 'restartRequired'),
     bool('notes.enabled', (cfg, v) => {
         if (!cfg.notes) { cfg.notes = {}; }
         cfg.notes.enabled = v;
@@ -152,6 +166,7 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
     }),
     {
         key: 'scratchpad.layout',
+        runtime: 'live',
         validate: (v) => v === 'horizontal' || v === 'vertical'
             ? undefined
             : 'scratchpad.layout must be "horizontal" or "vertical"',
@@ -183,7 +198,7 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
     bool('loops.enabled', (cfg, v) => {
         if (!cfg.loops) { cfg.loops = {}; }
         cfg.loops.enabled = v;
-    }),
+    }, 'restartRequired'),
     bool('excalidraw.enabled', (cfg, v) => {
         if (!cfg.excalidraw) { cfg.excalidraw = {}; }
         cfg.excalidraw.enabled = v;
@@ -191,7 +206,7 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
     bool('mcpOauth.enabled', (cfg, v) => {
         if (!cfg.mcpOauth) { cfg.mcpOauth = {}; }
         cfg.mcpOauth.enabled = v;
-    }),
+    }, 'restartRequired'),
     bool('features.focusedDiff', (cfg, v) => {
         if (!cfg.features) { cfg.features = {}; }
         cfg.features.focusedDiff = v;
@@ -200,3 +215,12 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
 
 /** Flat keys accepted by PUT /api/admin/config — derived from the registry. */
 export const ADMIN_EDITABLE_KEYS: readonly string[] = ADMIN_CONFIG_FIELDS.map(f => f.key);
+
+/** Build a key→metadata map for API responses. */
+export function getAdminFieldMetadata(): Record<string, { runtime: AdminConfigFieldRuntime }> {
+    const meta: Record<string, { runtime: AdminConfigFieldRuntime }> = {};
+    for (const field of ADMIN_CONFIG_FIELDS) {
+        meta[field.key] = { runtime: field.runtime };
+    }
+    return meta;
+}
