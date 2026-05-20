@@ -4,7 +4,8 @@
  * Manages the MS Teams bot lifecycle (connect, disconnect, poll).
  * Persists Teams configuration (team name, channel name, resolved IDs, botName).
  * On "connect", ensures the MCP server entry exists in ~/.copilot/mcp-config.json,
- * acquires a Graph token via az CLI, resolves team/channel IDs, and starts polling.
+ * acquires a token for the MCP server resource via az CLI, resolves team/channel
+ * IDs via MCP tools, and starts the bot in MCP mode for polling.
  */
 
 import * as fs from 'fs';
@@ -90,9 +91,9 @@ export class TeamsMessagingManager {
     /**
      * Connect (or reconnect) the bot.
      * 1. Ensures MCP server config is in ~/.copilot/mcp-config.json.
-     * 2. Acquires Graph token via az CLI.
-     * 3. Resolves team + channel IDs (creates them if missing).
-     * 4. Starts message polling.
+     * 2. Acquires a bearer token for the MCP server resource via az CLI.
+     * 3. Resolves team + channel IDs via MCP tools.
+     * 4. Starts the TeamsBot in MCP mode for message polling.
      */
     async connect(): Promise<void> {
         if (!this.config.enabled) {
@@ -111,41 +112,27 @@ export class TeamsMessagingManager {
             // Step 1: Ensure MCP server is configured
             this.ensureMcpServerConfig();
 
-            // Step 2: Acquire token via az CLI (Graph scope)
+            // Step 2: Acquire token for the MCP server resource via az CLI
             this._status = 'authenticating';
-            const { acquireTokenViaAzCli } = await import('@plusplusoneplusplus/teams-bot');
-            const token = await acquireTokenViaAzCli();
+            const { acquireTokenViaAzCli, McpClient } = await import('@plusplusoneplusplus/teams-bot');
+            const token = await acquireTokenViaAzCli(TEAMS_MCP_SERVER_URL);
 
-            // Step 3: Create bot in Graph mode and resolve team/channel
-            this.bot = new TeamsBot({
-                mode: 'graph',
-                teamId: this.config.teamId ?? 'placeholder',
-                auth: { bearerToken: token },
-                botName: this.config.botName,
-                onMessage: async (msg) => {
-                    if (this.onInboundMessage) {
-                        await this.onInboundMessage(msg);
-                    }
-                },
-                onStatusChange: (s) => { this._status = s; },
-                onError: (e) => { this._lastError = e; },
+            // Step 3: Resolve team and channel via MCP tools
+            const mcpClient = new McpClient({
+                serverUrl: TEAMS_MCP_SERVER_URL,
+                bearerToken: token,
             });
+            await mcpClient.initialize();
 
-            // Resolve team and channel using GraphClient directly
-            const { GraphClient } = await import('@plusplusoneplusplus/teams-bot');
-            const graphClient = new GraphClient({ bearerToken: token });
-            const resolved = await graphClient.resolveOrCreateTeamAndChannel(
-                this.config.teamName,
-                this.config.channelName,
-            );
-
+            const resolved = await this.resolveTeamAndChannelViaMcp(mcpClient);
             this.config.teamId = resolved.teamId;
             this.config.channelId = resolved.channelId;
             this.saveConfig();
 
-            // Re-create bot with correct teamId
+            // Step 4: Create bot in MCP mode for polling
             this.bot = new TeamsBot({
-                mode: 'graph',
+                mode: 'mcp',
+                mcpServerUrl: TEAMS_MCP_SERVER_URL,
                 teamId: resolved.teamId,
                 auth: { bearerToken: token },
                 botName: this.config.botName,
@@ -163,6 +150,71 @@ export class TeamsMessagingManager {
             this._lastError = err.message ?? 'Failed to connect';
             this._status = 'error';
         }
+    }
+
+    /**
+     * Resolve team and channel IDs using MCP tools (ListTeams + ListChannels).
+     * Creates the team/channel if they don't exist.
+     */
+    private async resolveTeamAndChannelViaMcp(mcpClient: InstanceType<typeof import('@plusplusoneplusplus/teams-bot').McpClient>): Promise<{ teamId: string; channelId: string }> {
+        // List teams to find the configured one
+        const teamsResult = await mcpClient.callTool('Microsoft-Teams-ListTeams', {});
+        const teamsText = teamsResult.content?.[0]?.text ?? '{}';
+        let teams: Array<{ id: string; displayName: string }> = [];
+        try {
+            const parsed = JSON.parse(teamsText);
+            teams = parsed.teams ?? parsed.value ?? (Array.isArray(parsed) ? parsed : []);
+        } catch { /* empty */ }
+
+        let teamId = teams.find(
+            t => t.displayName.toLowerCase() === this.config.teamName.toLowerCase(),
+        )?.id;
+
+        if (!teamId) {
+            // Create the team
+            const createResult = await mcpClient.callTool('Microsoft-Teams-CreateTeam', {
+                displayName: this.config.teamName,
+                description: `CoC Teams bridge — ${this.config.teamName}`,
+            });
+            const createText = createResult.content?.[0]?.text ?? '{}';
+            try {
+                const parsed = JSON.parse(createText);
+                teamId = parsed.id ?? parsed.teamId;
+            } catch { /* empty */ }
+            if (!teamId) throw new Error(`Failed to create team "${this.config.teamName}"`);
+            // Wait for team provisioning
+            await new Promise(r => setTimeout(r, 3000));
+        }
+
+        // List channels to find the configured one
+        const channelsResult = await mcpClient.callTool('Microsoft-Teams-ListChannels', { teamId });
+        const channelsText = channelsResult.content?.[0]?.text ?? '{}';
+        let channels: Array<{ id: string; displayName: string }> = [];
+        try {
+            const parsed = JSON.parse(channelsText);
+            channels = parsed.channels ?? parsed.value ?? (Array.isArray(parsed) ? parsed : []);
+        } catch { /* empty */ }
+
+        let channelId = channels.find(
+            c => c.displayName.toLowerCase() === this.config.channelName.toLowerCase(),
+        )?.id;
+
+        if (!channelId) {
+            // Create the channel
+            const createChResult = await mcpClient.callTool('Microsoft-Teams-CreateChannel', {
+                teamId,
+                displayName: this.config.channelName,
+                description: `CoC bridge channel — ${this.config.channelName}`,
+            });
+            const createChText = createChResult.content?.[0]?.text ?? '{}';
+            try {
+                const parsed = JSON.parse(createChText);
+                channelId = parsed.id ?? parsed.channelId;
+            } catch { /* empty */ }
+            if (!channelId) throw new Error(`Failed to create channel "${this.config.channelName}"`);
+        }
+
+        return { teamId, channelId };
     }
 
     /** Disconnect the bot. */

@@ -168,21 +168,14 @@ export class TeamsBot {
     private async sendViaMcp(channelId: string, text: string, opts?: { replyToId?: string }): Promise<string> {
         if (!this.mcpClient) throw new Error('MCP client not initialized');
 
-        // Use real Teams MCP server tool names and argument shapes
-        let toolName: string;
-        const args: Record<string, unknown> = {};
-
+        const toolName = 'Microsoft-Teams-SendMessageToChannel';
+        const args: Record<string, unknown> = {
+            teamId: this.opts.teamId,
+            channelId,
+            message: text,
+        };
         if (opts?.replyToId) {
-            toolName = 'mcp_graph_teams_replyToChannelMessage';
-            args['team-id'] = this.opts.teamId;
-            args['channel-id'] = channelId;
-            args['message-id'] = opts.replyToId;
-            args['body'] = { content: text };
-        } else {
-            toolName = 'mcp_graph_teams_postChannelMessage';
-            args['team-id'] = this.opts.teamId;
-            args['channel-id'] = channelId;
-            args['body'] = { content: text };
+            args['replyToId'] = opts.replyToId;
         }
 
         const result = await this.mcpClient.callTool(toolName, args);
@@ -212,8 +205,8 @@ export class TeamsBot {
 
         // MCP mode
         if (!this.mcpClient) return [];
-        const result = await this.mcpClient.callTool('mcp_graph_teams_listChannels', {
-            'team-id': this.opts.teamId,
+        const result = await this.mcpClient.callTool('Microsoft-Teams-ListChannels', {
+            teamId: this.opts.teamId,
         });
         const responseText = result.content?.[0]?.text ?? '[]';
         try {
@@ -337,22 +330,19 @@ export class TeamsBot {
 
         try {
             const args: Record<string, unknown> = {
-                'team-id': this.opts.teamId,
-                'channel-id': this._channelId,
-                '$top': 10,
+                teamId: this.opts.teamId,
+                channelId: this._channelId,
+                top: 10,
             };
-            if (this._lastSeenTimestamp) {
-                args['$filter'] = `createdDateTime gt ${this._lastSeenTimestamp}`;
-            }
 
-            const result = await this.mcpClient.callTool('mcp_graph_teams_listChannelMessages', args);
+            const result = await this.mcpClient.callTool('Microsoft-Teams-ListChannelMessages', args);
             const responseText = result.content?.[0]?.text ?? '[]';
             let messages: Array<{
                 id: string;
-                body?: { content?: string };
+                body?: { content?: string; contentType?: string };
                 text?: string;
                 content?: string;
-                from?: { user?: { displayName?: string; id?: string } };
+                from?: { user?: { displayName?: string; id?: string; userId?: string }; displayName?: string; userId?: string };
                 senderName?: string;
                 senderAadId?: string;
                 replyToId?: string;
@@ -390,8 +380,8 @@ export class TeamsBot {
                     channelId: this._channelId!,
                     messageId: msg.id,
                     text,
-                    senderName: msg.from?.user?.displayName ?? msg.senderName,
-                    senderAadId: msg.from?.user?.id ?? msg.senderAadId,
+                    senderName: msg.from?.user?.displayName ?? msg.from?.displayName ?? msg.senderName,
+                    senderAadId: msg.from?.user?.id ?? msg.from?.userId ?? msg.senderAadId,
                     replyToMessageId: msg.replyToId,
                 };
 
