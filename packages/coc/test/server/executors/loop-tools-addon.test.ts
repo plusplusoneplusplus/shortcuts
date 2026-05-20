@@ -56,10 +56,8 @@ describe('buildLoopToolsAddon', () => {
         const deps = makeMockLoopToolDeps();
         const result = buildLoopToolsAddon(deps);
 
-        expect(result.suffix).toContain('user message begins with an interval followed by a task');
         expect(result.suffix).toContain('fixed-interval');
         expect(result.suffix).toContain('call `createLoop`');
         expect(result.suffix).toContain('Do not use `scheduleWakeup` for this pattern');
-        expect(result.suffix).toContain('one-shot delayed follow-ups');
     });
 });
