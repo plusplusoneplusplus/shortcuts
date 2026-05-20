@@ -9,14 +9,23 @@ import type { McpToolCall, McpToolResult, McpToolsListResult } from './types';
 export interface McpClientOptions {
     /** Base URL of the MCP server. */
     serverUrl: string;
+    /** Bearer token for authentication. */
+    bearerToken?: string;
 }
 
 export class McpClient {
     private readonly serverUrl: string;
     private sessionId: string | null = null;
+    private bearerToken: string | null;
 
     constructor(opts: McpClientOptions) {
         this.serverUrl = opts.serverUrl;
+        this.bearerToken = opts.bearerToken ?? null;
+    }
+
+    /** Update the bearer token (e.g., after device code flow completes). */
+    setBearerToken(token: string): void {
+        this.bearerToken = token;
     }
 
     /** Initialize the MCP session. */
@@ -71,6 +80,9 @@ export class McpClient {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
         };
+        if (this.bearerToken) {
+            headers['Authorization'] = `Bearer ${this.bearerToken}`;
+        }
         if (this.sessionId) {
             headers['Mcp-Session-Id'] = this.sessionId;
         }

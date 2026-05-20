@@ -12,10 +12,25 @@ export interface InboundTeamsMessage {
     senderAadId?: string;
 }
 
+/**
+ * Transport mode for the Teams bot.
+ * - 'graph': Use Microsoft Graph API directly (works with az login tokens). Primary/recommended.
+ * - 'mcp': Use the Teams MCP server (requires McpServers.Teams.All — preauthorized apps only).
+ */
+export type TeamsTransportMode = 'graph' | 'mcp';
+
 /** Options for creating a TeamsBot instance. */
 export interface TeamsBotOptions {
-    /** MCP server URL for the Teams server. */
-    mcpServerUrl: string;
+    /**
+     * Transport mode (default: 'graph').
+     * - 'graph': Uses Graph API directly. Requires teamId + bearerToken (from az login).
+     * - 'mcp': Uses Teams MCP server. Requires mcpServerUrl + preauthorized app.
+     */
+    mode?: TeamsTransportMode;
+    /** Team ID (GUID) — required for 'graph' mode. */
+    teamId?: string;
+    /** MCP server URL for the Teams server — required for 'mcp' mode. */
+    mcpServerUrl?: string;
     /** Called when an inbound text message arrives. */
     onMessage: (msg: InboundTeamsMessage) => Promise<void>;
     /** Called when connection state changes. */
@@ -26,10 +41,34 @@ export interface TeamsBotOptions {
     pollIntervalMs?: number;
     /** Display name for the bot in Teams (default: "CoC"). */
     botName?: string;
+    /** Azure AD auth config for token acquisition. */
+    auth?: TeamsAuthConfig;
+}
+
+/** Azure AD authentication configuration for the Teams MCP server. */
+export interface TeamsAuthConfig {
+    /** Azure AD tenant ID (default: extracted from mcpServerUrl). */
+    tenantId?: string;
+    /** Azure AD client/app ID for device code flow. */
+    clientId?: string;
+    /** OAuth2 scope for the Teams MCP resource. */
+    scope?: string;
+    /** Pre-existing bearer token (skips device code flow). */
+    bearerToken?: string;
+    /** Called when device code flow requires user interaction. */
+    onDeviceCode?: (verification: DeviceCodeInfo) => void;
+}
+
+/** Device code verification info shown to the user. */
+export interface DeviceCodeInfo {
+    userCode: string;
+    verificationUri: string;
+    message: string;
+    expiresIn: number;
 }
 
 /** Connection status of the bot. */
-export type BotStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+export type BotStatus = 'disconnected' | 'connecting' | 'authenticating' | 'connected' | 'error';
 
 /** MCP tool call request. */
 export interface McpToolCall {
