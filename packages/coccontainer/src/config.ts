@@ -25,7 +25,11 @@ export interface WhatsAppConfig {
 export interface TeamsConfig {
     /** Enable Teams bridge (default: false) */
     enabled?: boolean;
-    /** MCP server URL for the Teams server */
+    /** Transport mode: 'graph' (default, uses Graph API with az tokens) or 'mcp' (Teams MCP server). */
+    mode?: 'graph' | 'mcp';
+    /** Team ID (GUID) — required for graph mode. */
+    teamId?: string;
+    /** MCP server URL for the Teams server — required for mcp mode. */
     mcpServerUrl?: string;
     /** Teams channel ID for broadcast (optional) */
     channelId?: string;
@@ -35,6 +39,10 @@ export interface TeamsConfig {
     pollIntervalMs?: number;
     /** Agent ID to host global sessions (falls back to first online agent) */
     defaultAgentId?: string;
+    /** Azure AD client ID for device code flow (optional, uses Azure CLI public client by default) */
+    clientId?: string;
+    /** OAuth2 scope for the Teams MCP resource (optional) */
+    scope?: string;
 }
 
 export interface ContainerConfig {
@@ -64,11 +72,15 @@ export interface ResolvedWhatsAppConfig {
 
 export interface ResolvedTeamsConfig {
     enabled: boolean;
+    mode: 'graph' | 'mcp';
+    teamId?: string;
     mcpServerUrl: string;
     channelId?: string;
     botName: string;
     pollIntervalMs: number;
     defaultAgentId?: string;
+    clientId?: string;
+    scope?: string;
 }
 
 export interface ResolvedContainerConfig {
@@ -103,6 +115,7 @@ const DEFAULTS: ResolvedContainerConfig = {
         },
         teams: {
             enabled: true,
+            mode: 'graph',
             mcpServerUrl: 'https://agent365.svc.cloud.microsoft/agents/tenants/72f988bf-86f1-41af-91ab-2d7cd011db47/servers/mcp_TeamsServer',
             botName: 'CoC',
             pollIntervalMs: 3000,
@@ -141,6 +154,8 @@ export function resolveConfig(overrides?: Partial<ContainerConfig>): ResolvedCon
             },
             teams: {
                 enabled: teamsOver?.enabled ?? teamsFile?.enabled ?? DEFAULTS.messaging.teams.enabled,
+                mode: teamsOver?.mode ?? teamsFile?.mode ?? DEFAULTS.messaging.teams.mode,
+                teamId: teamsOver?.teamId ?? teamsFile?.teamId ?? DEFAULTS.messaging.teams.teamId,
                 mcpServerUrl: teamsOver?.mcpServerUrl ?? teamsFile?.mcpServerUrl ?? DEFAULTS.messaging.teams.mcpServerUrl,
                 channelId: teamsOver?.channelId ?? teamsFile?.channelId ?? DEFAULTS.messaging.teams.channelId,
                 botName: teamsOver?.botName ?? teamsFile?.botName ?? DEFAULTS.messaging.teams.botName,

@@ -27,6 +27,11 @@ export interface TeamsStatus {
     error: string | null;
     channelId?: string;
     botName: string;
+    deviceCode?: {
+        userCode: string;
+        verificationUri: string;
+        message: string;
+    } | null;
 }
 
 export class TeamsBridge {
@@ -41,9 +46,18 @@ export class TeamsBridge {
     async start(): Promise<void> {
         this.store = new MessagingStore(this.opts.dataDir);
         this.bot = new TeamsBot({
+            mode: this.opts.config.mode,
+            teamId: this.opts.config.teamId,
             mcpServerUrl: this.opts.config.mcpServerUrl,
             botName: this.opts.config.botName,
             pollIntervalMs: this.opts.config.pollIntervalMs,
+            auth: {
+                clientId: this.opts.config.clientId,
+                scope: this.opts.config.scope,
+                onDeviceCode: (info) => {
+                    console.log(`[teams-bridge] Device code login required: ${info.message}`);
+                },
+            },
             onMessage: (msg) => this.onInboundMessage(msg),
             onStatusChange: (status) => {
                 console.log(`[teams-bridge] Status changed: ${status}`);
@@ -53,7 +67,8 @@ export class TeamsBridge {
             },
         });
 
-        await this.bot.start();
+        // Start in background — don't await because device code flow blocks
+        this.bot.start().catch(err => console.error('[teams-bridge] Start failed:', err));
 
         // Set the configured channel for polling
         if (this.opts.config.channelId) {
@@ -77,12 +92,18 @@ export class TeamsBridge {
 
     /** Get current Teams bridge status for REST API. */
     getTeamsStatus(): TeamsStatus {
+        const deviceCode = this.bot?.getDeviceCode();
         return {
             enabled: true,
             status: this.bot?.getStatus() ?? 'disconnected',
             error: this.bot?.getLastError() ?? null,
             channelId: this.opts.config.channelId,
             botName: this.opts.config.botName,
+            deviceCode: deviceCode ? {
+                userCode: deviceCode.userCode,
+                verificationUri: deviceCode.verificationUri,
+                message: deviceCode.message,
+            } : null,
         };
     }
 
@@ -103,13 +124,22 @@ export class TeamsBridge {
         await this.persistTeamsConfig(patch as Record<string, string | boolean | undefined>);
     }
 
-    /** Reconnect to the Teams MCP server. */
+    /** Reconnect to Teams. */
     async reconnect(): Promise<void> {
         await this.bot?.stop();
         this.bot = new TeamsBot({
+            mode: this.opts.config.mode,
+            teamId: this.opts.config.teamId,
             mcpServerUrl: this.opts.config.mcpServerUrl,
             botName: this.opts.config.botName,
             pollIntervalMs: this.opts.config.pollIntervalMs,
+            auth: {
+                clientId: this.opts.config.clientId,
+                scope: this.opts.config.scope,
+                onDeviceCode: (info) => {
+                    console.log(`[teams-bridge] Device code login required: ${info.message}`);
+                },
+            },
             onMessage: (msg) => this.onInboundMessage(msg),
             onStatusChange: (status) => {
                 console.log(`[teams-bridge] Status changed: ${status}`);
@@ -118,7 +148,8 @@ export class TeamsBridge {
                 console.error(`[teams-bridge] Error: ${error}`);
             },
         });
-        await this.bot.start();
+        // Start in background — device code flow blocks
+        this.bot.start().catch(err => console.error('[teams-bridge] Reconnect start failed:', err));
         if (this.opts.config.channelId) {
             this.bot.setChannelId(this.opts.config.channelId);
         }
