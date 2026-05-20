@@ -35,6 +35,7 @@ describe('TeamsBot', () => {
             onStatusChange,
             onError,
             pollIntervalMs: 1000,
+            auth: { bearerToken: 'test-token-123' },
             ...opts,
         });
     }
