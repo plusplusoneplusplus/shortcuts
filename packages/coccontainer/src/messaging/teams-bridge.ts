@@ -7,7 +7,7 @@
  */
 
 import type { InboundTeamsMessage, BotStatus } from '@plusplusoneplusplus/teams-bot';
-import { TeamsBot, GraphClient, McpClient, acquireTokenViaAzCli } from '@plusplusoneplusplus/teams-bot';
+import { TeamsBot, GraphClient, McpClient, acquireTokenViaAzCli, acquireMcpOAuthToken } from '@plusplusoneplusplus/teams-bot';
 import type { WebSocketRelay, WSRelayMessage } from '../proxy/ws-relay';
 import type { AgentStore } from '../store/agent-store';
 import type { TunnelBridge } from '../proxy/tunnel-bridge';
@@ -128,10 +128,10 @@ export class TeamsBridge {
     /** Reconnect to Teams. */
     async reconnect(): Promise<void> {
         await this.bot?.stop();
-        // Re-acquire token: for MCP mode, target the MCP server resource
+        // Re-acquire token: for MCP mode, use cached OAuth tokens
         try {
             if (this.opts.config.mode === 'mcp') {
-                this._azToken = await acquireTokenViaAzCli(this.opts.config.mcpServerUrl);
+                this._azToken = await acquireMcpOAuthToken(this.opts.config.mcpServerUrl);
             } else {
                 this._azToken = await acquireTokenViaAzCli();
             }
@@ -191,9 +191,9 @@ export class TeamsBridge {
     /** Resolve team/channel IDs using MCP tools. */
     private async resolveViaMcp(teamName?: string, channelName?: string): Promise<void> {
         try {
-            this._azToken = await acquireTokenViaAzCli(this.opts.config.mcpServerUrl);
+            this._azToken = await acquireMcpOAuthToken(this.opts.config.mcpServerUrl);
         } catch (err: any) {
-            console.error(`[teams-bridge] Failed to acquire MCP token: ${err.message}`);
+            console.error(`[teams-bridge] Failed to acquire MCP OAuth token: ${err.message}`);
             return;
         }
 

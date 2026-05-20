@@ -167,3 +167,109 @@ describe('acquireTokenWithDeviceCode', () => {
         vi.useRealTimers();
     });
 });
+
+describe('acquireMcpOAuthToken', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
+    let tmpDir: string;
+
+    beforeEach(() => {
+        mockFetch.mockReset();
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-oauth-test-'));
+        const configDir = path.join(tmpDir, '.copilot', 'mcp-oauth-config');
+        fs.mkdirSync(configDir, { recursive: true });
+    });
+
+    // Lazy import to get the version with mocked fetch
+    async function getAcquireFn() {
+        const mod = await import('../src/auth');
+        return mod.acquireMcpOAuthToken;
+    }
+
+    it('should return cached token when not expired', async () => {
+        const configDir = path.join(tmpDir, '.copilot', 'mcp-oauth-config');
+        const serverUrl = 'https://agent365.svc.cloud.microsoft/agents/tenants/test/servers/mcp_TeamsServer';
+
+        fs.writeFileSync(path.join(configDir, 'abc.json'), JSON.stringify({
+            serverUrl,
+            authorizationServerUrl: 'https://login.microsoftonline.com/organizations/v2.0',
+            clientId: 'test-client',
+            redirectUri: 'http://127.0.0.1:50000/',
+            resourceUrl: serverUrl,
+        }));
+        fs.writeFileSync(path.join(configDir, 'abc.tokens.json'), JSON.stringify({
+            accessToken: 'valid-token-123',
+            expiresAt: Math.floor(Date.now() / 1000) + 3600,
+            scope: 'McpServers.Teams.All',
+        }));
+
+        const acquireMcpOAuthToken = (await getAcquireFn());
+        const token = await acquireMcpOAuthToken(serverUrl, tmpDir);
+        expect(token).toBe('valid-token-123');
+        expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('should refresh expired token using refresh_token', async () => {
+        const configDir = path.join(tmpDir, '.copilot', 'mcp-oauth-config');
+        const serverUrl = 'https://agent365.svc.cloud.microsoft/agents/tenants/test/servers/mcp_TeamsServer';
+
+        fs.writeFileSync(path.join(configDir, 'abc.json'), JSON.stringify({
+            serverUrl,
+            authorizationServerUrl: 'https://login.microsoftonline.com/organizations/v2.0',
+            clientId: 'test-client',
+            redirectUri: 'http://127.0.0.1:50000/',
+            resourceUrl: serverUrl,
+        }));
+        fs.writeFileSync(path.join(configDir, 'abc.tokens.json'), JSON.stringify({
+            accessToken: 'expired-token',
+            expiresAt: Math.floor(Date.now() / 1000) - 100,
+            scope: 'McpServers.Teams.All',
+            refreshToken: 'refresh-token-xyz',
+        }));
+
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                access_token: 'new-refreshed-token',
+                expires_in: 3600,
+                refresh_token: 'new-refresh-token',
+                scope: 'McpServers.Teams.All',
+            }),
+        });
+
+        const acquireMcpOAuthToken = (await getAcquireFn());
+        const token = await acquireMcpOAuthToken(serverUrl, tmpDir);
+        expect(token).toBe('new-refreshed-token');
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+
+        // Verify persisted
+        const saved = JSON.parse(fs.readFileSync(path.join(configDir, 'abc.tokens.json'), 'utf-8'));
+        expect(saved.accessToken).toBe('new-refreshed-token');
+        expect(saved.refreshToken).toBe('new-refresh-token');
+    });
+
+    it('should throw when no config dir exists', async () => {
+        const acquireMcpOAuthToken = (await getAcquireFn());
+        const nonExistentDir = path.join(tmpDir, 'no-exist');
+        await expect(
+            acquireMcpOAuthToken('https://example.com/mcp', nonExistentDir),
+        ).rejects.toThrow('No MCP OAuth config found');
+    });
+
+    it('should throw when server URL not found in config', async () => {
+        const configDir = path.join(tmpDir, '.copilot', 'mcp-oauth-config');
+        fs.writeFileSync(path.join(configDir, 'other.json'), JSON.stringify({
+            serverUrl: 'https://other-server.com',
+            authorizationServerUrl: 'https://login.microsoftonline.com/organizations/v2.0',
+            clientId: 'x',
+            redirectUri: 'http://127.0.0.1:0/',
+            resourceUrl: 'https://other-server.com',
+        }));
+
+        const acquireMcpOAuthToken = (await getAcquireFn());
+        await expect(
+            acquireMcpOAuthToken('https://not-found.com/mcp', tmpDir),
+        ).rejects.toThrow('No OAuth config found for MCP server');
+    });
+});
