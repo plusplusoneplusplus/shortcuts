@@ -156,7 +156,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.loops?.enabled ?? false, getLiveFeatureFlags);
     const repoTreeService = new RepoTreeService(dataDir, undefined, store);
     registerRepoRoutes(routes, dataDir, repoTreeService);
-    registerPrRoutes(routes, dataDir, repoTreeService);
+    registerPrRoutes(routes, dataDir, repoTreeService, undefined, resolvedAiService);
     // Focused-diff classification routes — always registered so the feature
     // can be toggled live via admin config. The SPA gates the UI based on
     // runtime config; having the routes present when disabled is harmless.

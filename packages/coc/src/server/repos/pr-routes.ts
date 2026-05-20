@@ -24,7 +24,8 @@ import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import { readReviewHistoryCache, fetchAndCacheReviewHistory } from './pr-suggestions';
+import { readReviewHistoryCache, fetchAndCacheReviewHistory, readSuggestionsCache, rankAndCacheSuggestions, toPrMetadata } from './pr-suggestions';
+import type { CopilotSDKService } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Helpers
@@ -127,7 +128,7 @@ export function clearPrDetailCache(): void {
  * @param dataDir - CoC data directory (e.g. ~/.coc)
  * @param service - Shared RepoTreeService instance (singleton)
  */
-export function registerPrRoutes(routes: Route[], dataDir: string, service?: RepoTreeService, store?: ProcessStore): void {
+export function registerPrRoutes(routes: Route[], dataDir: string, service?: RepoTreeService, store?: ProcessStore, aiService?: CopilotSDKService): void {
     const svc = service ?? new RepoTreeService(dataDir, undefined, store);
 
     // -- List PRs -------------------------------------------------------------
@@ -248,6 +249,76 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 }
 
                 const cached = await fetchAndCacheReviewHistory(dataDir, repoId, prSvc, repoId);
+                sendJson(res, cached);
+            } catch (err) {
+                if (isAuthError(err)) {
+                    sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 401);
+                } else {
+                    send500(res, err instanceof Error ? err.message : String(err));
+                }
+            }
+        },
+    });
+
+    // -- Get cached suggestions -----------------------------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/suggestions$/,
+        handler: async (_req, res, match) => {
+            try {
+                const repoId = decodeURIComponent(match![1]);
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+
+                const cached = readSuggestionsCache(dataDir, repoId);
+                if (cached) {
+                    sendJson(res, cached);
+                } else {
+                    sendJson(res, { suggestions: [], rankedAt: null });
+                }
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    // -- Refresh suggestions (LLM ranking) ------------------------------------
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/suggestions\/refresh$/,
+        handler: async (_req, res, match) => {
+            try {
+                if (!aiService) {
+                    return sendJson(res, { error: 'AI service not available' }, 503);
+                }
+
+                const repoId = decodeURIComponent(match![1]);
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+
+                // Need review history first
+                const history = readReviewHistoryCache(dataDir, repoId);
+                if (!history || history.reviews.length === 0) {
+                    return sendJson(res, { error: 'No review history cached. Refresh review history first.' }, 400);
+                }
+
+                // Fetch current open PRs
+                const cfg = await readProvidersConfig(dataDir);
+                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+                if (!prSvc || isNoAdoCredentials(prSvc)) {
+                    if (isNoAdoCredentials(prSvc)) {
+                        return sendJson(res, { error: 'no-ado-credentials' }, 401);
+                    }
+                    const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
+                    return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
+                }
+
+                const openPrs = await prSvc.listPullRequests(repoId, { status: 'open', top: 100, scope: 'all' });
+                const prMetadata = openPrs.map(toPrMetadata);
+
+                const cached = await rankAndCacheSuggestions(dataDir, repoId, aiService, history, prMetadata);
                 sendJson(res, cached);
             } catch (err) {
                 if (isAuthError(err)) {
