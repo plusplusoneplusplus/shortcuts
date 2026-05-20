@@ -168,14 +168,18 @@ export class TeamsBot {
     private async sendViaMcp(channelId: string, text: string, opts?: { replyToId?: string }): Promise<string> {
         if (!this.mcpClient) throw new Error('MCP client not initialized');
 
-        const toolName = 'Microsoft-Teams-SendMessageToChannel';
+        let toolName: string;
         const args: Record<string, unknown> = {
             teamId: this.opts.teamId,
             channelId,
-            message: text,
+            content: text,
         };
+
         if (opts?.replyToId) {
-            args['replyToId'] = opts.replyToId;
+            toolName = 'ReplyToChannelMessage';
+            args['messageId'] = opts.replyToId;
+        } else {
+            toolName = 'SendMessageToChannel';
         }
 
         const result = await this.mcpClient.callTool(toolName, args);
@@ -205,7 +209,7 @@ export class TeamsBot {
 
         // MCP mode
         if (!this.mcpClient) return [];
-        const result = await this.mcpClient.callTool('Microsoft-Teams-ListChannels', {
+        const result = await this.mcpClient.callTool('ListChannels', {
             teamId: this.opts.teamId,
         });
         const responseText = result.content?.[0]?.text ?? '[]';
@@ -335,7 +339,7 @@ export class TeamsBot {
                 top: 10,
             };
 
-            const result = await this.mcpClient.callTool('Microsoft-Teams-ListChannelMessages', args);
+            const result = await this.mcpClient.callTool('ListChannelMessages', args);
             const responseText = result.content?.[0]?.text ?? '[]';
             let messages: Array<{
                 id: string;
