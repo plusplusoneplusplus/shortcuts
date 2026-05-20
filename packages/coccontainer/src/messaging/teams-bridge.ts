@@ -2,12 +2,12 @@
  * TeamsBridge — glue between WS relay / agent proxy and TeamsBot.
  *
  * Only imported via dynamic import when messaging.teams.enabled is true.
- * Supports Graph API (primary) and MCP server (fallback) transports.
- * On startup, resolves team/channel names to IDs (creating them if missing).
+ * Uses the Teams MCP server for all communication (send, poll, resolve).
+ * On startup, resolves team/channel names to IDs via MCP tools.
  */
 
 import type { InboundTeamsMessage, BotStatus } from '@plusplusoneplusplus/teams-bot';
-import { TeamsBot, GraphClient, acquireTokenViaAzCli } from '@plusplusoneplusplus/teams-bot';
+import { TeamsBot, GraphClient, McpClient, acquireTokenViaAzCli } from '@plusplusoneplusplus/teams-bot';
 import type { WebSocketRelay, WSRelayMessage } from '../proxy/ws-relay';
 import type { AgentStore } from '../store/agent-store';
 import type { TunnelBridge } from '../proxy/tunnel-bridge';
@@ -128,11 +128,15 @@ export class TeamsBridge {
     /** Reconnect to Teams. */
     async reconnect(): Promise<void> {
         await this.bot?.stop();
-        // Re-acquire token via az CLI for reconnect
+        // Re-acquire token: for MCP mode, target the MCP server resource
         try {
-            this._azToken = await acquireTokenViaAzCli();
+            if (this.opts.config.mode === 'mcp') {
+                this._azToken = await acquireTokenViaAzCli(this.opts.config.mcpServerUrl);
+            } else {
+                this._azToken = await acquireTokenViaAzCli();
+            }
         } catch (err: any) {
-            console.error(`[teams-bridge] Failed to acquire az token on reconnect: ${err.message}`);
+            console.error(`[teams-bridge] Failed to acquire token on reconnect: ${err.message}`);
         }
 
         this.bot = new TeamsBot({
@@ -161,12 +165,11 @@ export class TeamsBridge {
     }
 
     /**
-     * Resolve team/channel names to IDs using Graph API.
-     * Creates team/channel if they don't exist. Acquires token via `az` CLI.
+     * Resolve team/channel names to IDs.
+     * In MCP mode: uses MCP tools (Microsoft-Teams-ListTeams/ListChannels).
+     * In Graph mode: uses Graph API (legacy, requires ChannelMessage.Read.All).
      */
     private async resolveTeamAndChannel(): Promise<void> {
-        if (this.opts.config.mode !== 'graph') return;
-
         // Already have explicit IDs — no resolution needed
         if (this.opts.config.teamId && this.opts.config.channelId) return;
 
@@ -177,6 +180,82 @@ export class TeamsBridge {
             console.warn('[teams-bridge] No teamName or teamId configured — cannot resolve');
             return;
         }
+
+        if (this.opts.config.mode === 'mcp') {
+            await this.resolveViaMcp(teamName, channelName);
+        } else {
+            await this.resolveViaGraph(teamName, channelName);
+        }
+    }
+
+    /** Resolve team/channel IDs using MCP tools. */
+    private async resolveViaMcp(teamName?: string, channelName?: string): Promise<void> {
+        try {
+            this._azToken = await acquireTokenViaAzCli(this.opts.config.mcpServerUrl);
+        } catch (err: any) {
+            console.error(`[teams-bridge] Failed to acquire MCP token: ${err.message}`);
+            return;
+        }
+
+        const mcpClient = new McpClient({
+            serverUrl: this.opts.config.mcpServerUrl,
+            bearerToken: this._azToken!,
+        });
+
+        try {
+            await mcpClient.initialize();
+
+            if (teamName && !this.opts.config.teamId) {
+                const teamsResult = await mcpClient.callTool('Microsoft-Teams-ListTeams', {});
+                const teamsText = teamsResult.content?.[0]?.text ?? '{}';
+                let teams: Array<{ id: string; displayName: string }> = [];
+                try {
+                    const parsed = JSON.parse(teamsText);
+                    teams = parsed.teams ?? parsed.value ?? (Array.isArray(parsed) ? parsed : []);
+                } catch { /* empty */ }
+
+                const team = teams.find(t => t.displayName.toLowerCase() === teamName.toLowerCase());
+                if (team) {
+                    this.opts.config.teamId = team.id;
+                    console.log(`[teams-bridge] Resolved team "${teamName}" → ${team.id}`);
+                } else {
+                    console.warn(`[teams-bridge] Team "${teamName}" not found via MCP`);
+                    return;
+                }
+            }
+
+            if (this.opts.config.teamId && channelName && !this.opts.config.channelId) {
+                const channelsResult = await mcpClient.callTool('Microsoft-Teams-ListChannels', {
+                    teamId: this.opts.config.teamId,
+                });
+                const channelsText = channelsResult.content?.[0]?.text ?? '{}';
+                let channels: Array<{ id: string; displayName: string }> = [];
+                try {
+                    const parsed = JSON.parse(channelsText);
+                    channels = parsed.channels ?? parsed.value ?? (Array.isArray(parsed) ? parsed : []);
+                } catch { /* empty */ }
+
+                const channel = channels.find(c => c.displayName.toLowerCase() === channelName.toLowerCase());
+                if (channel) {
+                    this.opts.config.channelId = channel.id;
+                    console.log(`[teams-bridge] Resolved channel "${channelName}" → ${channel.id}`);
+                } else {
+                    console.warn(`[teams-bridge] Channel "${channelName}" not found via MCP`);
+                    return;
+                }
+            }
+
+            await this.persistTeamsConfig({
+                teamId: this.opts.config.teamId,
+                channelId: this.opts.config.channelId,
+            });
+        } catch (err: any) {
+            console.error(`[teams-bridge] Failed to resolve team/channel via MCP: ${err.message}`);
+        }
+    }
+
+    /** Resolve team/channel IDs using Graph API (legacy). */
+    private async resolveViaGraph(teamName?: string, channelName?: string): Promise<void> {
 
         try {
             this._azToken = await acquireTokenViaAzCli();
