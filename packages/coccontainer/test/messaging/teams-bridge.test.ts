@@ -33,13 +33,20 @@ vi.mock('@plusplusoneplusplus/teams-bot', () => {
             getChannelId = vi.fn().mockReturnValue(null);
             getStatus = vi.fn().mockReturnValue('connected');
             getLastError = vi.fn().mockReturnValue(null);
-            getDeviceCode = vi.fn().mockReturnValue(null);
             listChannels = vi.fn().mockResolvedValue([]);
             constructor(opts: any) {
                 this.opts = opts;
                 botInstances.push(this as any);
             }
         },
+        GraphClient: class MockGraphClient {
+            constructor(_opts: any) {}
+            resolveOrCreateTeamAndChannel = vi.fn().mockResolvedValue({ teamId: 'team-123', channelId: 'channel-456' });
+            setTeamId = vi.fn();
+            findChannelByName = vi.fn().mockResolvedValue({ id: 'channel-456', displayName: 'test' });
+            createChannel = vi.fn().mockResolvedValue('channel-new');
+        },
+        acquireTokenViaAzCli: vi.fn().mockResolvedValue('mock-az-token'),
     };
 });
 
