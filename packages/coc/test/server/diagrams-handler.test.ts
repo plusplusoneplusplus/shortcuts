@@ -308,10 +308,11 @@ describe('Diagrams Handler — CRUD API', { timeout: 30_000 }, () => {
     });
 
     // -------------------------------------------------------------------------
-    // Feature flag — routes not registered when disabled
+    // Feature flag — routes always registered (live-togglable), but runtime
+    // config reports excalidraw as disabled so the SPA gates the UI.
     // -------------------------------------------------------------------------
 
-    it('returns 404 when excalidraw feature is disabled', async () => {
+    it('routes remain accessible when excalidraw is disabled (SPA gates UI)', async () => {
         const store = new FileProcessStore({ dataDir });
         server = await createExecutionServer({
             port: 0,
@@ -330,9 +331,16 @@ describe('Diagrams Handler — CRUD API', { timeout: 30_000 }, () => {
         });
         expect(wsRes.status).toBe(201);
 
-        // Diagrams endpoint should not exist
+        // Diagram routes are always registered so the feature can be toggled
+        // live via admin config. The endpoint responds normally; the SPA
+        // checks runtime config to decide whether to show the UI.
         const res = await request(`${srv.url}/api/workspaces/${wsId}/diagrams`);
-        // Since routes aren't registered, the server falls through to SPA or 404
-        expect(res.status).not.toBe(200);
+        expect(res.status).toBe(200);
+
+        // Runtime config should report excalidraw as disabled
+        const configRes = await request(`${srv.url}/api/config/runtime`);
+        expect(configRes.status).toBe(200);
+        const configBody = await configRes.json();
+        expect(configBody.excalidrawEnabled).toBe(false);
     });
 });
