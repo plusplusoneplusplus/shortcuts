@@ -49,14 +49,19 @@ Use this skill when the user asks you to **implement** a change in the codebase 
    - If behavior, architecture, workflows, commands, or constraints changed, patch `AGENTS.md` to match the new state.
    - Keep updates concise, compact and current-state only. Do not add history text like "after this change..." or "it used to...".
 
-8. **If a plan file exists, keep it updated**
+8. **Update `coc-knowledge` skill if needed**
+   - If the change touches any CoC subsystem covered by a reference file under `.github/skills/coc-knowledge/references/` (server, memory system, LLM tools, SDK wrapper, process store, workflow engine, deep-wiki, dashboard SPA, admin config, MCP settings, REST API, etc.), update the relevant reference file(s) to reflect the new behavior.
+   - Make targeted edits only — do not rewrite sections that are still accurate.
+   - Keep updates current-state only; no history text.
+
+9. **If a plan file exists, keep it updated**
    - If a plan markdown file is provided with task checkboxes, mark tasks complete as you finish them.
 
-9. **Commit when clean**
+10. **Commit when clean**
    - Only create a commit after the build succeeds and all related tests pass (step 6).
    - Write a clear commit message describing the change and the test additions.
 
-10. **Archive the task file**
+11. **Archive the task file**
    - If the task/plan file you followed lives under `.vscode/` or `~/.coc/repos/<repoId>/tasks/`, you must archive it after the commit succeeds:
 ```bash
      python3 .github/skills/impl/scripts/archive-task-file.py --task <path-to-task-file>
