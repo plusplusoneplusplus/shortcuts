@@ -6,6 +6,12 @@
  * - GET /api/workspaces/:id/notes/content?path=...&root=...
  * - GET /api/workspaces/:id/notes/search?q=...&root=...
  *
+ * Tests for write endpoints with multi-root:
+ * - POST/PUT/PATCH/DELETE with root parameter
+ *
+ * Tests for git scoping:
+ * - Git operations always operate on default managed root
+ *
  * Verifies:
  * - Default root behavior unchanged (backward compat)
  * - Repo-folder root resolution via configured preferences
@@ -13,6 +19,7 @@
  * - rootId included in tree response
  * - Search scoped to selected root
  * - Security: unconfigured root rejected with 400
+ * - Git operations scoped to default managed root only
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -612,6 +619,94 @@ describe('Notes Multi-Root — write endpoints', { timeout: 30_000 }, () => {
                 root: 'nope',
             });
             expect(res.status).toBe(400);
+        });
+    });
+
+    // ========================================================================
+    // Git scoping — git endpoints always operate on default managed root
+    // ========================================================================
+
+    describe('git scoping', () => {
+        it('git init operates on default managed root regardless of configured repo-folder roots', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            writeRepoFile('docs/notes/page.md', '# Hello');
+            configureRoots(['docs/notes']);
+
+            // Initialize git on the default root
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/notes/git/init`, {});
+            expect(res.status).toBe(200);
+
+            // .git should exist in the default managed root, NOT in the repo-folder root
+            const defaultRoot = getRepoDataPath(dataDir, wsId, 'notes');
+            expect(fs.existsSync(path.join(defaultRoot, '.git'))).toBe(true);
+            expect(fs.existsSync(path.join(workspaceDir, 'docs/notes', '.git'))).toBe(false);
+        });
+
+        it('git status returns status of default managed root only', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            configureRoots(['docs/notes']);
+
+            // Status with no git init — returns uninitialized
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/notes/git/status`);
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.initialized).toBe(false);
+
+            // Init and check again
+            await postJSON(`${srv.url}/api/workspaces/${wsId}/notes/git/init`, {});
+            const res2 = await request(`${srv.url}/api/workspaces/${wsId}/notes/git/status`);
+            expect(res2.status).toBe(200);
+            const body2 = JSON.parse(res2.body);
+            expect(body2.initialized).toBe(true);
+        });
+
+        it('git commit applies only to files in the default managed root', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+
+            // Configure a repo-folder root and write a note there
+            writeRepoFile('docs/notes/repo-note.md', '# Repo Note');
+            configureRoots(['docs/notes']);
+
+            // Init git on the default managed root first
+            await postJSON(`${srv.url}/api/workspaces/${wsId}/notes/git/init`, {});
+
+            // Write a note in the default managed root AFTER init so there's a change to commit
+            const defaultRoot = getRepoDataPath(dataDir, wsId, 'notes');
+            fs.writeFileSync(path.join(defaultRoot, 'managed-note.md'), '# Managed Note', 'utf-8');
+
+            // Commit
+            const commitRes = await postJSON(`${srv.url}/api/workspaces/${wsId}/notes/git/commit`, {
+                message: 'test commit',
+            });
+            expect(commitRes.status).toBe(200);
+            const commitBody = JSON.parse(commitRes.body);
+            expect(commitBody.committed).toBe(true);
+
+            // Verify the log shows the commit
+            const logRes = await request(`${srv.url}/api/workspaces/${wsId}/notes/git/log`);
+            expect(logRes.status).toBe(200);
+            const logBody = JSON.parse(logRes.body);
+            expect(logBody.entries.length).toBeGreaterThanOrEqual(2);
+            // Most recent commit is our test commit
+            expect(logBody.entries[0].message).toBe('test commit');
+        });
+
+        it('git log returns only the initial commit when no additional commits made', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            configureRoots(['docs/notes']);
+
+            // Init but don't commit anything new
+            await postJSON(`${srv.url}/api/workspaces/${wsId}/notes/git/init`, {});
+            const logRes = await request(`${srv.url}/api/workspaces/${wsId}/notes/git/log`);
+            expect(logRes.status).toBe(200);
+            const logBody = JSON.parse(logRes.body);
+            // Only the initial commit from git init
+            expect(logBody.entries.length).toBe(1);
+            expect(logBody.entries[0].message).toContain('Initial');
         });
     });
 });

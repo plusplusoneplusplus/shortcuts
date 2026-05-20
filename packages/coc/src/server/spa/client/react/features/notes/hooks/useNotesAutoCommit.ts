@@ -21,7 +21,7 @@ export interface UseNotesAutoCommitReturn {
     updateInterval: (intervalMs: number) => Promise<void>;
 }
 
-export function useNotesAutoCommit(workspaceId: string): UseNotesAutoCommitReturn {
+export function useNotesAutoCommit(workspaceId: string, isDefaultRoot = true): UseNotesAutoCommitReturn {
     const [autoCommitEnabled, setAutoCommitEnabled] = useState(false);
     const [intervalMs, setIntervalMs] = useState<number | null>(null);
     const [lastCommittedAt, setLastCommittedAt] = useState<string | null>(null);
@@ -59,12 +59,23 @@ export function useNotesAutoCommit(workspaceId: string): UseNotesAutoCommitRetur
     // Initial load
     useEffect(() => {
         cancelledRef.current = false;
+
+        // Auto-commit is only available for the default managed root
+        if (!isDefaultRoot) {
+            setAutoCommitEnabled(false);
+            setIntervalMs(null);
+            setLastCommittedAt(null);
+            setLastError(null);
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
         fetchStatus().finally(() => {
             if (!cancelledRef.current) setLoading(false);
         });
         return () => { cancelledRef.current = true; };
-    }, [workspaceId, fetchStatus]);
+    }, [workspaceId, isDefaultRoot, fetchStatus]);
 
     const enable = useCallback(async (ms?: number) => {
         setEnabling(true);

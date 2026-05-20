@@ -141,9 +141,11 @@ export interface NotesSidebarProps {
     onRestoreEditorFocus?: () => void;
     /** Ref populated with a callback that marks the currently selected note as seen. */
     markSeenRef?: React.RefObject<(() => void) | null>;
+    /** Whether the current root is the default managed root. Defaults to true. */
+    isDefaultRoot?: boolean;
 }
 
-export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack, onNotesRootReady, onRestoreEditorFocus, markSeenRef }: NotesSidebarProps) {
+export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack, onNotesRootReady, onRestoreEditorFocus, markSeenRef, isDefaultRoot = true }: NotesSidebarProps) {
     const { tree, notesRoot, systemFolders, loading, error, refresh, createNode, renameNode, deleteNode, reorderNodes } = useNotesTree(workspaceId);
     const { isNoteUpdated, markAsSeen, syncSeenState } = useNoteSeenState(workspaceId);
     const { ctxMenu, dialog, openContextMenu, closeContextMenu, openDialog, closeDialog, setSubmitting } = useNotesContextMenu();
@@ -217,8 +219,13 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     }, [markSeenRef, selectedPath, markAsSeen]);
 
     // One-shot fetch of notes git status for the "tracked" meta pill.
+    // Only fetched for the default managed root — repo-folder roots have no separate git tracking.
     // Refreshed when the server emits `notes-changed` for this workspace.
     useEffect(() => {
+        if (!isDefaultRoot) {
+            setGitInitialized(false);
+            return;
+        }
         let cancelled = false;
         const fetchStatus = () => {
             notesApi.getGitStatus(workspaceId)
@@ -236,7 +243,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
             cancelled = true;
             window.removeEventListener('notes-changed', handler);
         };
-    }, [workspaceId]);
+    }, [workspaceId, isDefaultRoot]);
 
     const handleToggleExpand = useCallback((path: string) => {
         setExpandedPaths(prev => {

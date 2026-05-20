@@ -74,6 +74,9 @@ export interface NoteEditorProps {
     /** Called when the user selects "Add to chat as reference" from the context menu.
      *  Only provided when the chat panel is open and below the reference cap. */
     onAddNoteReference?: (text: string, notePath: string, noteTitle: string) => void;
+    /** Whether the current root is the default managed root. Defaults to true.
+     *  When false, version history and git features are hidden. */
+    isDefaultRoot?: boolean;
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error' | 'conflict';
@@ -173,6 +176,7 @@ export function NoteEditor({
     hasExistingChat,
     onNavigateToNote,
     onAddNoteReference,
+    isDefaultRoot = true,
 }: NoteEditorProps) {
     const [loading, setLoading] = useState(false);
     const [refreshCounter, setRefreshCounter] = useState(0);
@@ -261,13 +265,17 @@ export function NoteEditor({
         return md;
     }, [viewMode, rawMarkdown]);
 
-    // ── Load git initialized state ──────────────────────────────────────────
+    // ── Load git initialized state (only for default managed root) ────────
 
     useEffect(() => {
+        if (!isDefaultRoot) {
+            setGitInitialized(false);
+            return;
+        }
         notesApi.getGitStatus(workspaceId)
             .then(({ initialized }) => setGitInitialized(!!initialized))
             .catch(() => setGitInitialized(false));
-    }, [workspaceId]);
+    }, [workspaceId, isDefaultRoot]);
 
     // ── Tiptap editor (via RichEditorCore) ─────────────────────────────────
     const onCommentCreateRef = useRef(onCommentCreate);
@@ -1173,6 +1181,7 @@ export function NoteEditor({
                                     <span>🔄</span> Run Ralph
                                 </button>
                             )}
+                            {isDefaultRoot && (
                             <button
                                 type="button"
                                 className={
@@ -1188,6 +1197,7 @@ export function NoteEditor({
                             >
                                 🕐
                             </button>
+                            )}
                             {toolbarRight}
                         </>
                     }

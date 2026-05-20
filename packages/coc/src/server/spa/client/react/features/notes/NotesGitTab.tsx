@@ -19,6 +19,8 @@ import type { NotesGitLogEntry, NotesGitDiff } from '../../../../../notes/git/no
 
 interface NotesGitTabProps {
     workspaceId: string;
+    /** Whether the current root is the default managed root. Defaults to true. */
+    isDefaultRoot?: boolean;
 }
 
 // ── Sub-component: Init prompt ─────────────────────────────────────
@@ -256,11 +258,11 @@ function NotesGitDetailPane({
 
 // ── Main component ─────────────────────────────────────────────────
 
-export function NotesGitTab({ workspaceId }: NotesGitTabProps) {
+export function NotesGitTab({ workspaceId, isDefaultRoot = true }: NotesGitTabProps) {
     const {
         status, log, loading, error, initialized,
         initialize, commit, getDiff, refresh,
-    } = useNotesGit(workspaceId);
+    } = useNotesGit(workspaceId, isDefaultRoot);
 
     const [selectedHash, setSelectedHash] = useState<string | null>(null);
     const [diffData, setDiffData] = useState<NotesGitDiff | null>(null);
@@ -306,6 +308,26 @@ export function NotesGitTab({ workspaceId }: NotesGitTabProps) {
         return (
             <div className="flex items-center justify-center py-8" data-testid="notes-git-loading">
                 <Spinner size="lg" />
+            </div>
+        );
+    }
+
+    // Non-default root: git features are not available
+    if (!isDefaultRoot) {
+        return (
+            <div className="flex items-center justify-center h-full" data-testid="notes-git-non-default-root">
+                <div className="max-w-md w-full mx-4 p-8 rounded-lg border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] text-center">
+                    <div className="text-3xl mb-4">📂</div>
+                    <h2 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">
+                        Git tracking not available
+                    </h2>
+                    <p className="text-sm text-[#848484] mb-2">
+                        Version tracking is only available for the default managed notes root.
+                    </p>
+                    <p className="text-xs text-[#848484]">
+                        This folder is part of your workspace repository and is already tracked by its own git history.
+                    </p>
+                </div>
             </div>
         );
     }
