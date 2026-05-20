@@ -302,7 +302,7 @@ describe('NotesSidebar', () => {
         });
 
         await waitFor(() => {
-            expect(mockCreateNode).toHaveBeenCalledWith('ws1', 'Notebook1/NewPage', 'page');
+            expect(mockCreateNode).toHaveBeenCalledWith('ws1', 'Notebook1/NewPage', 'page', undefined);
         });
 
         // Tree should refresh (getTree called again)
@@ -356,7 +356,7 @@ describe('NotesSidebar', () => {
         });
 
         await waitFor(() => {
-            expect(mockDeleteNode).toHaveBeenCalledWith('ws1', 'Notebook1/TopPage');
+            expect(mockDeleteNode).toHaveBeenCalledWith('ws1', 'Notebook1/TopPage', undefined);
         });
     });
 
@@ -406,7 +406,7 @@ describe('NotesSidebar', () => {
         });
 
         await waitFor(() => {
-            expect(mockRenameNode).toHaveBeenCalledWith('ws1', 'Notebook1/TopPage', 'Notebook1/RenamedPage');
+            expect(mockRenameNode).toHaveBeenCalledWith('ws1', 'Notebook1/TopPage', 'Notebook1/RenamedPage', undefined);
         });
     });
 

@@ -155,7 +155,7 @@ describe('NoteEditorCommentBackend', () => {
             });
 
             await waitFor(() => {
-                expect(mockLoadContent).toHaveBeenCalledWith('ws1', 'page.md');
+                expect(mockLoadContent).toHaveBeenCalledWith('ws1', 'page.md', undefined);
                 expect(mockSetContent).toHaveBeenCalledWith('<p># Hello</p>', { emitUpdate: false });
             });
 
