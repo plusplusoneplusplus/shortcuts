@@ -135,17 +135,34 @@ export async function acquireTokenWithDeviceCode(
 export async function acquireTokenViaAzCli(resource?: string): Promise<string> {
     const { execFile } = await import('child_process');
     const { promisify } = await import('util');
+    const fs = await import('fs');
     const execFileAsync = promisify(execFile);
 
     const targetResource = resource ?? 'https://graph.microsoft.com';
 
+    // Resolve the az CLI executable — search common install paths on Windows
+    let azCmd = 'az';
+    if (process.platform === 'win32') {
+        const candidates = [
+            'C:\\Program Files\\Microsoft SDKs\\Azure\\CLI2\\wbin\\az.cmd',
+            'C:\\Program Files (x86)\\Microsoft SDKs\\Azure\\CLI2\\wbin\\az.cmd',
+        ];
+        for (const candidate of candidates) {
+            try {
+                fs.accessSync(candidate, fs.constants.X_OK);
+                azCmd = candidate;
+                break;
+            } catch { /* try next */ }
+        }
+    }
+
     try {
-        const { stdout } = await execFileAsync('az', [
+        const { stdout } = await execFileAsync(azCmd, [
             'account', 'get-access-token',
             '--resource', targetResource,
             '--query', 'accessToken',
             '-o', 'tsv',
-        ], { timeout: 15000 });
+        ], { timeout: 15000, shell: process.platform === 'win32' });
         const token = stdout.trim();
         if (!token) {
             throw new Error('az CLI returned empty token — run `az login` first');
