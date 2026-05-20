@@ -45,7 +45,7 @@ describe('buildLoopToolsAddon', () => {
         const deps = makeMockLoopToolDeps();
         const result = buildLoopToolsAddon(deps);
 
-        expect(result.suffix).toContain('loop management tools');
+        expect(result.suffix).toContain('Loop management tools');
         expect(result.suffix).toContain('createLoop');
         expect(result.suffix).toContain('cancelLoop');
         expect(result.suffix).toContain('listLoops');

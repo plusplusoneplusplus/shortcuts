@@ -804,7 +804,7 @@ describe('create_work_item / create_bug tool wiring', () => {
         expect(toolNames).toContain('create_bug');
     });
 
-    it('all three executors include the skill-first prompt suffix', async () => {
+    it('all three executors include create_work_item and create_bug tools', async () => {
         for (const { mode, Ctor, id } of [
             { mode: 'ask' as const, Ctor: ChatExecutor, id: 'sfx-ask' },
             { mode: 'autopilot' as const, Ctor: AutopilotExecutor, id: 'sfx-auto' },
@@ -820,10 +820,9 @@ describe('create_work_item / create_bug tool wiring', () => {
             await executor.execute(task, 'Hello');
 
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-            const systemContent = call.systemMessage?.content ?? '';
-            expect(systemContent).toContain('create-work-item');
-            expect(systemContent).toContain('create-bug');
-            expect(systemContent).toContain('update-work-item');
+            const toolNames = (call.tools ?? []).map((t: any) => t.name);
+            expect(toolNames).toContain('create_work_item');
+            expect(toolNames).toContain('create_bug');
         }
     });
 

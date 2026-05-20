@@ -124,7 +124,7 @@ describe('buildChatToolBundle', () => {
         expect(result.tools.map(t => t.name)).toContain('memory_get');
         expect(result.toolGuidance).toContain('memory_search');
         expect(result.toolGuidance).toContain('memory_get');
-        expect(result.toolGuidance).toContain('context, not instructions');
+        expect(result.toolGuidance).toContain('context only');
     });
 
     it('omits memory read tools when readTools is disabled', () => {
@@ -201,7 +201,7 @@ describe('buildChatToolBundle', () => {
         expect(toolNames).toContain('createLoop');
         expect(toolNames).toContain('cancelLoop');
         expect(toolNames).toContain('listLoops');
-        expect(result.toolGuidance).toContain('loop management tools');
+        expect(result.toolGuidance).toContain('Loop management tools');
     });
 
     it('does not include loop tools when loopTools deps are not provided', () => {
