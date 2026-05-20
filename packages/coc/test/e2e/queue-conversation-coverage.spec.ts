@@ -1199,8 +1199,15 @@ test.describe('Empty Conversation Fallback', () => {
             });
 
             // Intercept process API to return empty conversation (clear all paths getConversationTurns checks)
-            await page.route(`**/api/processes/**`, async (route) => {
-                const originalResponse = await route.fetch();
+            const routePattern = `**/api/processes/**`;
+            await page.route(routePattern, async (route) => {
+                let originalResponse;
+                try {
+                    originalResponse = await route.fetch();
+                } catch {
+                    // Browser/server may close during cleanup; abort silently
+                    return route.abort().catch(() => {});
+                }
                 const body = await originalResponse.json().catch(() => ({}));
 
                 if (body?.process) {
@@ -1217,13 +1224,16 @@ test.describe('Empty Conversation Fallback', () => {
                     status: originalResponse.status(),
                     contentType: 'application/json',
                     body: JSON.stringify(body),
-                });
+                }).catch(() => {});
             });
 
             await gotoQueueTask(page, serverUrl, wsId, task.id as string);
 
             // Should show "No conversation data available." text
             await expect(page.locator('text=No conversation data available.')).toBeVisible({ timeout: 5_000 });
+
+            // Unroute before cleanup to avoid stale route handlers
+            await page.unroute(routePattern);
         } finally {
             cleanup();
         }
