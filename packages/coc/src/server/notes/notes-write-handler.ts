@@ -17,18 +17,15 @@ import { isWithinDirectory, SqliteProcessStore } from '@plusplusoneplusplus/forg
 import { sendJSON, sendError } from '../core/api-handler';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
-import { getRepoDataPath } from '../paths';
-import { readOrderFile, writeOrderFile, removeFromOrder, updateOrderOnRename } from './notes-order';
+import { writeOrderFile, removeFromOrder, updateOrderOnRename } from './notes-order';
 import { SYSTEM_FOLDER_NAMES } from './notes-constants';
 import { NoteChatBindingStore } from './note-chat-binding-store';
+import { resolveNotesRoot, isRootResolveError } from './notes-root-resolver';
+import { readRepoPreferences } from '../preferences-handler';
 
 // ============================================================================
 // Helpers
 // ============================================================================
-
-function getNotesRoot(dataDir: string, workspaceId: string): string {
-    return getRepoDataPath(dataDir, workspaceId, 'notes');
-}
 
 function getWorkspaceDataDir(dataDir: string, workspaceId: string): string {
     return path.join(dataDir, 'repos', workspaceId);
@@ -139,7 +136,7 @@ export function registerNotesWriteRoutes(
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
-            const { path: notePath, type } = body || {};
+            const { path: notePath, type, root: rootParam } = body || {};
             if (!notePath || typeof notePath !== 'string') {
                 return sendError(res, 400, 'Missing required field: path');
             }
@@ -147,7 +144,13 @@ export function registerNotesWriteRoutes(
                 return sendError(res, 400, 'Missing or invalid field: type (must be notebook, section, or page)');
             }
 
-            const notesRoot = getNotesRoot(dataDir, ws.id);
+            const prefs = readRepoPreferences(dataDir, ws.id);
+            const rootResult = resolveNotesRoot(dataDir, ws.id, ws.rootPath, rootParam, prefs.additionalNotesRoots);
+            if (isRootResolveError(rootResult)) {
+                return sendError(res, rootResult.statusCode, rootResult.error);
+            }
+
+            const notesRoot = rootResult.absolutePath;
             await fs.promises.mkdir(notesRoot, { recursive: true });
 
             const resolved = path.resolve(notesRoot, notePath);
@@ -189,7 +192,7 @@ export function registerNotesWriteRoutes(
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
-            const { path: notePath, content, expectedMtime } = body || {};
+            const { path: notePath, content, expectedMtime, root: rootParam } = body || {};
             if (!notePath || typeof notePath !== 'string') {
                 return sendError(res, 400, 'Missing required field: path');
             }
@@ -197,13 +200,26 @@ export function registerNotesWriteRoutes(
                 return sendError(res, 400, 'Missing required field: content');
             }
 
-            // Absolute paths are used as-is (scratchpad / session-state files).
-            // Relative paths are resolved against notesRoot (notes tree entries).
-            const notesRoot = getNotesRoot(dataDir, ws.id);
-            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
-            const resolved = path.isAbsolute(notePath) ? path.resolve(notePath) : path.resolve(notesRoot, notePath);
+            const prefs = readRepoPreferences(dataDir, ws.id);
+            const rootResult = resolveNotesRoot(dataDir, ws.id, ws.rootPath, rootParam, prefs.additionalNotesRoots);
+            if (isRootResolveError(rootResult)) {
+                return sendError(res, rootResult.statusCode, rootResult.error);
+            }
 
-            if (!isAllowedPath(resolved, wsDataDir)) {
+            const notesRoot = rootResult.absolutePath;
+            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
+
+            // Absolute paths are used as-is (scratchpad / session-state files) — only for default root.
+            // Relative paths are resolved against the active notesRoot.
+            const resolved = (path.isAbsolute(notePath) && rootResult.isDefault)
+                ? path.resolve(notePath)
+                : path.resolve(notesRoot, notePath);
+
+            // For non-default roots, allow paths within the resolved root directory
+            const allowed = rootResult.isDefault
+                ? isAllowedPath(resolved, wsDataDir)
+                : isWithinDirectory(resolved, notesRoot);
+            if (!allowed) {
                 return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 
@@ -254,7 +270,7 @@ export function registerNotesWriteRoutes(
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
-            const { oldPath, newPath } = body || {};
+            const { oldPath, newPath, root: rootParam } = body || {};
             if (!oldPath || typeof oldPath !== 'string') {
                 return sendError(res, 400, 'Missing required field: oldPath');
             }
@@ -262,7 +278,13 @@ export function registerNotesWriteRoutes(
                 return sendError(res, 400, 'Missing required field: newPath');
             }
 
-            const notesRoot = getNotesRoot(dataDir, ws.id);
+            const prefs = readRepoPreferences(dataDir, ws.id);
+            const rootResult = resolveNotesRoot(dataDir, ws.id, ws.rootPath, rootParam, prefs.additionalNotesRoots);
+            if (isRootResolveError(rootResult)) {
+                return sendError(res, rootResult.statusCode, rootResult.error);
+            }
+
+            const notesRoot = rootResult.absolutePath;
             const resolvedOld = path.resolve(notesRoot, oldPath);
             const resolvedNew = path.resolve(notesRoot, newPath);
 
@@ -273,7 +295,8 @@ export function registerNotesWriteRoutes(
                 return sendError(res, 403, 'Access denied: path is outside notes directory');
             }
 
-            if (isSystemFolder(notesRoot, resolvedOld)) {
+            // System folder protection only applies to the default managed root
+            if (rootResult.isDefault && isSystemFolder(notesRoot, resolvedOld)) {
                 return sendError(res, 403, 'Cannot rename a system folder');
             }
 
@@ -367,14 +390,22 @@ export function registerNotesWriteRoutes(
                 return sendError(res, 400, 'Missing required query parameter: path');
             }
 
-            const notesRoot = getNotesRoot(dataDir, ws.id);
+            const rootParam = typeof parsed.query.root === 'string' ? parsed.query.root : undefined;
+            const prefs = readRepoPreferences(dataDir, ws.id);
+            const rootResult = resolveNotesRoot(dataDir, ws.id, ws.rootPath, rootParam, prefs.additionalNotesRoots);
+            if (isRootResolveError(rootResult)) {
+                return sendError(res, rootResult.statusCode, rootResult.error);
+            }
+
+            const notesRoot = rootResult.absolutePath;
             const resolved = path.resolve(notesRoot, notePath);
 
             if (!isWithinDirectory(resolved, notesRoot)) {
                 return sendError(res, 403, 'Access denied: path is outside notes directory');
             }
 
-            if (isSystemFolder(notesRoot, resolved)) {
+            // System folder protection only applies to the default managed root
+            if (rootResult.isDefault && isSystemFolder(notesRoot, resolved)) {
                 return sendError(res, 403, 'Cannot delete a system folder');
             }
 
@@ -433,7 +464,7 @@ export function registerNotesWriteRoutes(
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
-            const { parentPath, order } = body || {};
+            const { parentPath, order, root: rootParam } = body || {};
 
             // parentPath can be '' (root) or a relative path
             if (typeof parentPath !== 'string') {
@@ -443,7 +474,13 @@ export function registerNotesWriteRoutes(
                 return sendError(res, 400, 'Missing or invalid field: order (must be string[])');
             }
 
-            const notesRoot = getNotesRoot(dataDir, ws.id);
+            const prefs = readRepoPreferences(dataDir, ws.id);
+            const rootResult = resolveNotesRoot(dataDir, ws.id, ws.rootPath, rootParam, prefs.additionalNotesRoots);
+            if (isRootResolveError(rootResult)) {
+                return sendError(res, rootResult.statusCode, rootResult.error);
+            }
+
+            const notesRoot = rootResult.absolutePath;
             const targetDir = parentPath
                 ? path.resolve(notesRoot, parentPath)
                 : notesRoot;

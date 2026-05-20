@@ -308,6 +308,315 @@ describe('Notes Multi-Root — read endpoints', { timeout: 30_000 }, () => {
 });
 
 // ============================================================================
+// Write endpoints — multi-root support
+// ============================================================================
+
+describe('Notes Multi-Root — write endpoints', { timeout: 30_000 }, () => {
+    let server: ExecutionServer | undefined;
+    let dataDir: string;
+    let workspaceDir: string;
+    let wsId: string;
+
+    beforeEach(() => {
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'notes-wr-multi-'));
+        workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'notes-wr-multi-ws-'));
+        wsId = 'test-ws-wr-' + Date.now();
+    });
+
+    afterEach(async () => {
+        if (server) {
+            await server.close();
+            server = undefined;
+        }
+        await safeRm(dataDir);
+        await safeRm(workspaceDir);
+    });
+
+    async function startServer(): Promise<ExecutionServer> {
+        const store = new FileProcessStore({ dataDir });
+        server = await createExecutionServer({ port: 0, host: '127.0.0.1', store, dataDir });
+        return server;
+    }
+
+    async function registerWorkspace(srv: ExecutionServer): Promise<void> {
+        const res = await postJSON(`${srv.url}/api/workspaces`, {
+            id: wsId,
+            name: 'Test Workspace',
+            rootPath: workspaceDir,
+        });
+        expect(res.status).toBe(201);
+    }
+
+    function writeRepoFile(relPath: string, content: string): void {
+        const abs = path.join(workspaceDir, relPath);
+        fs.mkdirSync(path.dirname(abs), { recursive: true });
+        fs.writeFileSync(abs, content, 'utf-8');
+    }
+
+    function configureRoots(roots: string[]): void {
+        writeRepoPreferences(dataDir, wsId, { additionalNotesRoots: roots });
+    }
+
+    function putJSON(urlStr: string, data: unknown): Promise<{ status: number; body: string }> {
+        const body = JSON.stringify(data);
+        return request(urlStr, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Content-Length': String(Buffer.byteLength(body)) },
+            body,
+        });
+    }
+
+    function patchJSON(urlStr: string, data: unknown): Promise<{ status: number; body: string }> {
+        const body = JSON.stringify(data);
+        return request(urlStr, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'Content-Length': String(Buffer.byteLength(body)) },
+            body,
+        });
+    }
+
+    function deleteReq(urlStr: string): Promise<{ status: number; body: string }> {
+        return request(urlStr, { method: 'DELETE' });
+    }
+
+    // ========================================================================
+    // POST /notes/page — Create page in repo-folder root
+    // ========================================================================
+
+    describe('POST /notes/page', () => {
+        it('creates a page in a repo-folder root', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            // Ensure the repo-folder root directory exists
+            fs.mkdirSync(path.join(workspaceDir, 'docs/notes'), { recursive: true });
+            configureRoots(['docs/notes']);
+
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/notes/page`, {
+                path: 'new-page',
+                type: 'page',
+                root: 'docs/notes',
+            });
+            expect(res.status).toBe(201);
+            const data = JSON.parse(res.body);
+            expect(data.path).toBe('new-page.md');
+
+            // Verify the file was created under the repo-folder root
+            const created = path.join(workspaceDir, 'docs/notes', 'new-page.md');
+            expect(fs.existsSync(created)).toBe(true);
+        });
+
+        it('creates a notebook in a repo-folder root', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            fs.mkdirSync(path.join(workspaceDir, 'docs/notes'), { recursive: true });
+            configureRoots(['docs/notes']);
+
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/notes/page`, {
+                path: 'my-notebook',
+                type: 'notebook',
+                root: 'docs/notes',
+            });
+            expect(res.status).toBe(201);
+
+            const created = path.join(workspaceDir, 'docs/notes', 'my-notebook');
+            expect(fs.existsSync(created)).toBe(true);
+            expect(fs.statSync(created).isDirectory()).toBe(true);
+        });
+
+        it('rejects create in unconfigured root', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+
+            const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/notes/page`, {
+                path: 'new-page',
+                type: 'page',
+                root: 'unconfigured',
+            });
+            expect(res.status).toBe(400);
+        });
+    });
+
+    // ========================================================================
+    // PUT /notes/content — Autosave in repo-folder root
+    // ========================================================================
+
+    describe('PUT /notes/content', () => {
+        it('writes content to a repo-folder root note', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            writeRepoFile('docs/notes/existing.md', '# Old Content');
+            configureRoots(['docs/notes']);
+
+            const res = await putJSON(`${srv.url}/api/workspaces/${wsId}/notes/content`, {
+                path: 'existing.md',
+                content: '# Updated Content',
+                root: 'docs/notes',
+            });
+            expect(res.status).toBe(200);
+            const data = JSON.parse(res.body);
+            expect(data.updated).toBe(true);
+
+            // Verify on disk
+            const diskContent = fs.readFileSync(
+                path.join(workspaceDir, 'docs/notes', 'existing.md'),
+                'utf-8',
+            );
+            expect(diskContent).toBe('# Updated Content');
+        });
+
+        it('rejects path traversal via absolute path for non-default roots', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            writeRepoFile('docs/notes/ok.md', 'ok');
+            configureRoots(['docs/notes']);
+
+            // Use an absolute path pointing outside the repo-folder root
+            const outsidePath = path.resolve(workspaceDir, '..', 'secret.md');
+            const res = await putJSON(`${srv.url}/api/workspaces/${wsId}/notes/content`, {
+                path: outsidePath,
+                content: 'hacked',
+                root: 'docs/notes',
+            });
+            // Absolute path resolved relative to notesRoot becomes outside the root directory
+            expect(res.status).toBe(403);
+        });
+
+        it('rejects path traversal outside repo-folder root', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            writeRepoFile('docs/notes/ok.md', 'ok');
+            configureRoots(['docs/notes']);
+
+            const res = await putJSON(`${srv.url}/api/workspaces/${wsId}/notes/content`, {
+                path: '../../etc/passwd',
+                content: 'hacked',
+                root: 'docs/notes',
+            });
+            expect(res.status).toBe(403);
+        });
+    });
+
+    // ========================================================================
+    // PATCH /notes/path — Rename in repo-folder root
+    // ========================================================================
+
+    describe('PATCH /notes/path', () => {
+        it('renames a note in a repo-folder root', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            writeRepoFile('docs/notes/old-name.md', '# My Note');
+            configureRoots(['docs/notes']);
+
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/notes/path`, {
+                oldPath: 'old-name.md',
+                newPath: 'new-name.md',
+                root: 'docs/notes',
+            });
+            expect(res.status).toBe(200);
+
+            // Old path should be gone, new path should exist
+            expect(fs.existsSync(path.join(workspaceDir, 'docs/notes', 'old-name.md'))).toBe(false);
+            expect(fs.existsSync(path.join(workspaceDir, 'docs/notes', 'new-name.md'))).toBe(true);
+        });
+
+        it('rejects rename in unconfigured root', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/notes/path`, {
+                oldPath: 'a.md',
+                newPath: 'b.md',
+                root: 'bad-root',
+            });
+            expect(res.status).toBe(400);
+        });
+    });
+
+    // ========================================================================
+    // DELETE /notes/path — Delete in repo-folder root
+    // ========================================================================
+
+    describe('DELETE /notes/path', () => {
+        it('deletes a note in a repo-folder root', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            writeRepoFile('docs/notes/to-delete.md', '# Delete me');
+            configureRoots(['docs/notes']);
+
+            const res = await deleteReq(
+                `${srv.url}/api/workspaces/${wsId}/notes/path?path=${encodeURIComponent('to-delete.md')}&root=${encodeURIComponent('docs/notes')}`,
+            );
+            expect(res.status).toBe(204);
+
+            // Verify file is removed
+            expect(fs.existsSync(path.join(workspaceDir, 'docs/notes', 'to-delete.md'))).toBe(false);
+        });
+
+        it('deletes a directory in a repo-folder root', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            writeRepoFile('docs/notes/subdir/page.md', '# Page');
+            configureRoots(['docs/notes']);
+
+            const res = await deleteReq(
+                `${srv.url}/api/workspaces/${wsId}/notes/path?path=subdir&root=${encodeURIComponent('docs/notes')}`,
+            );
+            expect(res.status).toBe(204);
+            expect(fs.existsSync(path.join(workspaceDir, 'docs/notes', 'subdir'))).toBe(false);
+        });
+
+        it('rejects delete with unconfigured root', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+
+            const res = await deleteReq(
+                `${srv.url}/api/workspaces/${wsId}/notes/path?path=x.md&root=bogus`,
+            );
+            expect(res.status).toBe(400);
+        });
+    });
+
+    // ========================================================================
+    // PUT /notes/order — Order in repo-folder root
+    // ========================================================================
+
+    describe('PUT /notes/order', () => {
+        it('persists order in a repo-folder root', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            writeRepoFile('docs/notes/a.md', 'a');
+            writeRepoFile('docs/notes/b.md', 'b');
+            configureRoots(['docs/notes']);
+
+            const res = await putJSON(`${srv.url}/api/workspaces/${wsId}/notes/order`, {
+                parentPath: '',
+                order: ['b.md', 'a.md'],
+                root: 'docs/notes',
+            });
+            expect(res.status).toBe(200);
+
+            // Verify .order.json was written in the repo-folder root
+            const orderPath = path.join(workspaceDir, 'docs/notes', '.order.json');
+            expect(fs.existsSync(orderPath)).toBe(true);
+            const orderContent = JSON.parse(fs.readFileSync(orderPath, 'utf-8'));
+            expect(orderContent).toEqual({ order: ['b.md', 'a.md'] });
+        });
+
+        it('rejects order with unconfigured root', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+
+            const res = await putJSON(`${srv.url}/api/workspaces/${wsId}/notes/order`, {
+                parentPath: '',
+                order: ['a.md'],
+                root: 'nope',
+            });
+            expect(res.status).toBe(400);
+        });
+    });
+});
+
+// ============================================================================
 // Helpers
 // ============================================================================
 
