@@ -1003,30 +1003,32 @@ describe('NotesSidebar', () => {
     });
 
     // ── Scroll behaviour ───────────────────────────────────────────────
+    //
+    // The sidebar must NEVER auto-scroll the tree on selection changes. The
+    // user's scroll position should be preserved regardless of whether the
+    // selected item is visible, off-screen, or partially visible. Auto-scroll
+    // on click was confusing because clicking a partially-visible item caused
+    // the list to jump so the item aligned to the nearest container edge.
 
-    it('does not scroll when the selected item is already visible', async () => {
+    it('does not auto-scroll the tree when selection changes (item visible)', async () => {
         const scrollIntoViewMock = vi.fn();
 
         const { findByTestId, rerender } = render(
             <NotesSidebar workspaceId="ws1" selectedPath={null} onSelectPage={vi.fn()} />,
         );
-        // Wait for tree to load
         await findByTestId('notes-tree-area');
         await waitFor(() => expect(mockGetTree).toHaveBeenCalled());
 
-        // Expand Notebook1 so Page1 is visible
         rerender(
             <NotesSidebar workspaceId="ws1" selectedPath="Notebook1/Section1/Page1" onSelectPage={vi.fn()} />,
         );
 
         const treeArea = await findByTestId('notes-tree-area');
 
-        // Wait for the 50ms deferred scroll effect to fire
         await act(async () => { await new Promise(r => setTimeout(r, 100)); });
 
         const selectedEl = treeArea.querySelector('[data-node-path="Notebook1/Section1/Page1"]');
         if (selectedEl) {
-            // Mock for next re-render: element is visible
             (selectedEl as HTMLElement).scrollIntoView = scrollIntoViewMock;
             vi.spyOn(selectedEl, 'getBoundingClientRect').mockReturnValue({
                 top: 100, bottom: 120, left: 0, right: 200, width: 200, height: 20, x: 0, y: 100, toJSON: () => ({}),
@@ -1036,7 +1038,6 @@ describe('NotesSidebar', () => {
             top: 0, bottom: 500, left: 0, right: 200, width: 200, height: 500, x: 0, y: 0, toJSON: () => ({}),
         });
 
-        // Trigger re-selection to fire the useEffect again
         rerender(
             <NotesSidebar workspaceId="ws1" selectedPath={null} onSelectPage={vi.fn()} />,
         );
@@ -1049,7 +1050,7 @@ describe('NotesSidebar', () => {
         expect(scrollIntoViewMock).not.toHaveBeenCalled();
     });
 
-    it('scrolls into view when the selected item is off-screen', async () => {
+    it('does not auto-scroll the tree when selection changes (item off-screen)', async () => {
         const scrollIntoViewMock = vi.fn();
 
         const { findByTestId, rerender } = render(
@@ -1064,13 +1065,14 @@ describe('NotesSidebar', () => {
 
         const treeArea = await findByTestId('notes-tree-area');
 
-        // Wait for initial effect
         await act(async () => { await new Promise(r => setTimeout(r, 100)); });
 
         const selectedEl = treeArea.querySelector('[data-node-path="Notebook1/Section1/Page1"]');
         if (selectedEl) {
             (selectedEl as HTMLElement).scrollIntoView = scrollIntoViewMock;
-            // Element is below visible area
+            // Pretend the element is well below the visible area — previously
+            // this would have triggered an auto-scroll, but the sidebar must
+            // now leave the user's scroll position untouched.
             vi.spyOn(selectedEl, 'getBoundingClientRect').mockReturnValue({
                 top: 600, bottom: 620, left: 0, right: 200, width: 200, height: 20, x: 0, y: 600, toJSON: () => ({}),
             });
@@ -1079,7 +1081,6 @@ describe('NotesSidebar', () => {
             top: 0, bottom: 500, left: 0, right: 200, width: 200, height: 500, x: 0, y: 0, toJSON: () => ({}),
         });
 
-        // Trigger re-selection
         rerender(
             <NotesSidebar workspaceId="ws1" selectedPath={null} onSelectPage={vi.fn()} />,
         );
@@ -1089,6 +1090,6 @@ describe('NotesSidebar', () => {
 
         await act(async () => { await new Promise(r => setTimeout(r, 100)); });
 
-        expect(scrollIntoViewMock).toHaveBeenCalledWith({ block: 'nearest', behavior: 'smooth' });
+        expect(scrollIntoViewMock).not.toHaveBeenCalled();
     });
 });
