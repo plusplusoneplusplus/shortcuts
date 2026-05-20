@@ -155,7 +155,6 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     const dragDrop = useNotesDragDrop();
     const [addDropdownOpen, setAddDropdownOpen] = useState(false);
     const addDropdownRef = useRef<HTMLDivElement>(null);
-    const treeAreaRef = useRef<HTMLDivElement>(null);
 
     // Close dropdown on outside click
     useEffect(() => {
@@ -238,21 +237,6 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
             window.removeEventListener('notes-changed', handler);
         };
     }, [workspaceId]);
-
-    // Scroll the selected tree item into view after tree renders (only if off-screen)
-    useEffect(() => {
-        if (!selectedPath || loading) return;
-        // Defer to allow DOM update after expansion
-        const timer = setTimeout(() => {
-            const el = document.querySelector(`[data-node-path="${CSS.escape(selectedPath)}"]`);
-            if (!el || !treeAreaRef.current) return;
-            const elRect = el.getBoundingClientRect();
-            const cRect = treeAreaRef.current.getBoundingClientRect();
-            if (elRect.top >= cRect.top && elRect.bottom <= cRect.bottom) return;
-            el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        }, 50);
-        return () => clearTimeout(timer);
-    }, [selectedPath, loading]);
 
     const handleToggleExpand = useCallback((path: string) => {
         setExpandedPaths(prev => {
@@ -719,7 +703,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
             </div>
 
             {/* Tree area */}
-            <div ref={treeAreaRef} className="flex-1 overflow-y-auto py-1" data-testid="notes-tree-area" onContextMenu={handleBackgroundContextMenu}>
+            <div className="flex-1 overflow-y-auto py-1" data-testid="notes-tree-area" onContextMenu={handleBackgroundContextMenu}>
                 {loading && (
                     <div className="flex items-center justify-center py-6" data-testid="notes-loading">
                         <Spinner size="md" />
