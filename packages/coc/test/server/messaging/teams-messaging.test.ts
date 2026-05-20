@@ -38,6 +38,7 @@ vi.mock('@plusplusoneplusplus/teams-bot', () => ({
             return { content: [{ type: 'text', text: '{}' }] };
         }),
     })),
+    acquireMcpOAuthToken: vi.fn().mockResolvedValue('fake-mcp-token-abc'),
     acquireTokenViaAzCli: vi.fn().mockResolvedValue('fake-mcp-token-abc'),
 }));
 

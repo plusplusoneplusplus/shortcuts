@@ -3,9 +3,15 @@
  *
  * Uses the Microsoft identity platform device code flow to interactively
  * authenticate the user and obtain a bearer token.
+ *
+ * Also supports reading cached OAuth tokens from ~/.copilot/mcp-oauth-config/
+ * (obtained via Copilot CLI's OAuth flow) and refreshing them when expired.
  */
 
 import type { TeamsAuthConfig, DeviceCodeInfo } from './types';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 /** Default client ID — Azure CLI public client (works for Graph API). */
 const DEFAULT_CLIENT_ID = '04b07795-8ddb-461a-bbee-02f9e1bf7b46';
@@ -183,4 +189,132 @@ export async function acquireTokenViaAzCli(resource?: string): Promise<string> {
         }
         throw new Error(`az CLI token acquisition failed: ${err.message ?? err}`);
     }
+}
+
+// ── MCP OAuth Token Cache ────────────────────────────────────────────
+
+interface McpOAuthMetadata {
+    serverUrl: string;
+    authorizationServerUrl: string;
+    clientId: string;
+    redirectUri: string;
+    resourceUrl: string;
+}
+
+interface McpOAuthTokens {
+    accessToken: string;
+    expiresAt: number;
+    scope: string;
+    refreshToken?: string;
+}
+
+/**
+ * Acquire an access token for an MCP server by reading the cached OAuth tokens
+ * from `~/.copilot/mcp-oauth-config/`. These tokens are obtained through the
+ * Copilot CLI's OAuth flow (triggered on first use of an MCP server).
+ *
+ * If the token is expired and a refresh token is available, refreshes it automatically.
+ * Throws if no cached token exists (user must use Copilot CLI to authenticate first).
+ */
+export async function acquireMcpOAuthToken(mcpServerUrl: string, homeDir?: string): Promise<string> {
+    const configDir = path.join(homeDir ?? os.homedir(), '.copilot', 'mcp-oauth-config');
+
+    if (!fs.existsSync(configDir)) {
+        throw new Error('No MCP OAuth config found — use Copilot CLI to authenticate to the Teams MCP server first');
+    }
+
+    // Scan *.json (excluding *.tokens.json) to find metadata matching this server URL
+    const files = fs.readdirSync(configDir).filter(f => f.endsWith('.json') && !f.includes('.tokens.'));
+    let metadataFile: string | undefined;
+    let metadata: McpOAuthMetadata | undefined;
+
+    for (const file of files) {
+        try {
+            const raw = fs.readFileSync(path.join(configDir, file), 'utf-8');
+            const parsed = JSON.parse(raw) as McpOAuthMetadata;
+            if (parsed.serverUrl === mcpServerUrl) {
+                metadataFile = file;
+                metadata = parsed;
+                break;
+            }
+        } catch { /* skip unreadable files */ }
+    }
+
+    if (!metadataFile || !metadata) {
+        throw new Error(`No OAuth config found for MCP server "${mcpServerUrl}" — use Copilot CLI to authenticate first`);
+    }
+
+    // Read the tokens file
+    const tokensFileName = metadataFile.replace('.json', '.tokens.json');
+    const tokensFilePath = path.join(configDir, tokensFileName);
+
+    if (!fs.existsSync(tokensFilePath)) {
+        throw new Error(`OAuth tokens file missing for MCP server — use Copilot CLI to re-authenticate`);
+    }
+
+    let tokens: McpOAuthTokens;
+    try {
+        tokens = JSON.parse(fs.readFileSync(tokensFilePath, 'utf-8'));
+    } catch {
+        throw new Error('Failed to parse OAuth tokens file');
+    }
+
+    // Check if token is still valid (with 5-minute buffer)
+    const now = Math.floor(Date.now() / 1000);
+    if (tokens.expiresAt && tokens.expiresAt > now + 300) {
+        return tokens.accessToken;
+    }
+
+    // Token expired — try to refresh
+    if (!tokens.refreshToken) {
+        throw new Error('MCP OAuth token expired and no refresh token available — use Copilot CLI to re-authenticate');
+    }
+
+    const refreshed = await refreshMcpToken(metadata, tokens.refreshToken);
+
+    // Persist refreshed tokens
+    const updatedTokens: McpOAuthTokens = {
+        accessToken: refreshed.access_token,
+        expiresAt: Math.floor(Date.now() / 1000) + refreshed.expires_in,
+        scope: refreshed.scope ?? tokens.scope,
+        refreshToken: refreshed.refresh_token ?? tokens.refreshToken,
+    };
+
+    try {
+        fs.writeFileSync(tokensFilePath, JSON.stringify(updatedTokens));
+    } catch { /* best effort */ }
+
+    return updatedTokens.accessToken;
+}
+
+async function refreshMcpToken(
+    metadata: McpOAuthMetadata,
+    refreshToken: string,
+): Promise<{ access_token: string; refresh_token?: string; expires_in: number; scope?: string }> {
+    // Derive token endpoint from authorizationServerUrl
+    // e.g. "https://login.microsoftonline.com/organizations/v2.0" → ".../token"
+    const tokenUrl = metadata.authorizationServerUrl.replace(/\/?$/, '') + '/token';
+    // But the format is v2.0, token endpoint is under the same path
+    // Actually AAD token endpoints: https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token
+    const tokenEndpoint = tokenUrl.includes('/oauth2/') ? tokenUrl : tokenUrl.replace('/v2.0', '/oauth2/v2.0/token');
+
+    const body = new URLSearchParams({
+        client_id: metadata.clientId,
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        scope: `${metadata.resourceUrl}/.default offline_access`,
+    });
+
+    const response = await fetch(tokenEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Token refresh failed (${response.status}): ${errorText}`);
+    }
+
+    return response.json() as Promise<{ access_token: string; refresh_token?: string; expires_in: number; scope?: string }>;
 }
