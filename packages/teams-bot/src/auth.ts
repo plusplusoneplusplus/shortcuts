@@ -139,30 +139,39 @@ export async function acquireTokenViaAzCli(resource?: string): Promise<string> {
     const execFileAsync = promisify(execFile);
 
     const targetResource = resource ?? 'https://graph.microsoft.com';
+    const args = ['account', 'get-access-token', '--resource', targetResource, '--query', 'accessToken', '-o', 'tsv'];
 
     // Resolve the az CLI executable — search common install paths on Windows
-    let azCmd = 'az';
     if (process.platform === 'win32') {
         const candidates = [
             'C:\\Program Files\\Microsoft SDKs\\Azure\\CLI2\\wbin\\az.cmd',
             'C:\\Program Files (x86)\\Microsoft SDKs\\Azure\\CLI2\\wbin\\az.cmd',
         ];
+        let azPath: string | undefined;
         for (const candidate of candidates) {
             try {
-                fs.accessSync(candidate, fs.constants.X_OK);
-                azCmd = candidate;
+                fs.accessSync(candidate);
+                azPath = candidate;
                 break;
             } catch { /* try next */ }
         }
+
+        if (azPath) {
+            try {
+                // Use cmd.exe /c to handle .cmd files with spaces in path
+                const { stdout } = await execFileAsync('cmd.exe', ['/c', azPath, ...args], { timeout: 15000 });
+                const token = stdout.trim();
+                if (!token) throw new Error('az CLI returned empty token — run `az login` first');
+                return token;
+            } catch (err: any) {
+                throw new Error(`az CLI token acquisition failed: ${err.message ?? err}`);
+            }
+        }
     }
 
+    // Unix or az in PATH
     try {
-        const { stdout } = await execFileAsync(azCmd, [
-            'account', 'get-access-token',
-            '--resource', targetResource,
-            '--query', 'accessToken',
-            '-o', 'tsv',
-        ], { timeout: 15000, shell: process.platform === 'win32' });
+        const { stdout } = await execFileAsync('az', args, { timeout: 15000 });
         const token = stdout.trim();
         if (!token) {
             throw new Error('az CLI returned empty token — run `az login` first');
