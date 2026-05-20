@@ -18,6 +18,7 @@ let botInstances: Array<{
     getChannelId: ReturnType<typeof vi.fn>;
     getStatus: ReturnType<typeof vi.fn>;
     getLastError: ReturnType<typeof vi.fn>;
+    getDeviceCode: ReturnType<typeof vi.fn>;
     listChannels: ReturnType<typeof vi.fn>;
 }> = [];
 
@@ -25,13 +26,14 @@ vi.mock('@plusplusoneplusplus/teams-bot', () => {
     return {
         TeamsBot: class MockTeamsBot {
             opts: any;
-            start = vi.fn();
-            stop = vi.fn();
+            start = vi.fn().mockResolvedValue(undefined);
+            stop = vi.fn().mockResolvedValue(undefined);
             send = vi.fn().mockResolvedValue('teams-msg-001');
             setChannelId = vi.fn();
             getChannelId = vi.fn().mockReturnValue(null);
             getStatus = vi.fn().mockReturnValue('connected');
             getLastError = vi.fn().mockReturnValue(null);
+            getDeviceCode = vi.fn().mockReturnValue(null);
             listChannels = vi.fn().mockResolvedValue([]);
             constructor(opts: any) {
                 this.opts = opts;
@@ -100,7 +102,15 @@ describe('TeamsBridge', () => {
     });
 
     afterEach(async () => {
-        fs.rmSync(tmpDir, { recursive: true, force: true });
+        // Stop all bot instances to release resources
+        for (const bot of botInstances) {
+            await bot.stop();
+        }
+        try {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        } catch {
+            // On Windows, SQLite db may still be locked briefly
+        }
     });
 
     function createBridge(configOverrides?: Partial<TeamsBridgeOptions['config']>): TeamsBridge {
