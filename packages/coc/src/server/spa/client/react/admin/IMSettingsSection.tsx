@@ -28,11 +28,6 @@ interface TeamsStatus {
     teamId?: string;
     channelId?: string;
     botName: string;
-    deviceCode?: {
-        userCode: string;
-        verificationUri: string;
-        message: string;
-    } | null;
 }
 
 async function fetchMessagingStatus(): Promise<WhatsAppStatus> {
@@ -566,34 +561,6 @@ function TeamsSettingsCard() {
                     {status.error && (
                         <div className="text-xs text-red-600 dark:text-red-400">
                             Error: {status.error}
-                        </div>
-                    )}
-
-                    {/* Device code login prompt */}
-                    {status.deviceCode && (
-                        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 space-y-2">
-                            <p className="text-sm font-medium text-blue-800 dark:text-blue-300">
-                                🔐 Sign in to Microsoft Teams
-                            </p>
-                            <p className="text-xs text-[#616161] dark:text-[#999]">
-                                Open the link below and enter the code to authenticate:
-                            </p>
-                            <div className="flex items-center gap-3">
-                                <a
-                                    href={status.deviceCode.verificationUri}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-sm text-blue-600 dark:text-blue-400 underline hover:no-underline"
-                                >
-                                    {status.deviceCode.verificationUri}
-                                </a>
-                                <span className="text-lg font-mono font-bold text-[#1e1e1e] dark:text-white bg-[#f0f0f0] dark:bg-[#3c3c3c] px-3 py-1 rounded">
-                                    {status.deviceCode.userCode}
-                                </span>
-                            </div>
-                            <p className="text-[10px] text-[#999]">
-                                Waiting for you to complete sign-in… The page will update automatically.
-                            </p>
                         </div>
                     )}
 

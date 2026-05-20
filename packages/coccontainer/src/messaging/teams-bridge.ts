@@ -31,11 +31,6 @@ export interface TeamsStatus {
     teamId?: string;
     channelId?: string;
     botName: string;
-    deviceCode?: {
-        userCode: string;
-        verificationUri: string;
-        message: string;
-    } | null;
 }
 
 export class TeamsBridge {
@@ -64,9 +59,6 @@ export class TeamsBridge {
                 bearerToken: this._azToken ?? undefined,
                 clientId: this.opts.config.clientId,
                 scope: this.opts.config.scope,
-                onDeviceCode: (info) => {
-                    console.log(`[teams-bridge] Device code login required: ${info.message}`);
-                },
             },
             onMessage: (msg) => this.onInboundMessage(msg),
             onStatusChange: (status) => {
@@ -77,7 +69,7 @@ export class TeamsBridge {
             },
         });
 
-        // Start in background — don't await because device code flow blocks
+        // Start in background
         this.bot.start().catch(err => console.error('[teams-bridge] Start failed:', err));
 
         // Set the configured channel for polling
@@ -102,7 +94,6 @@ export class TeamsBridge {
 
     /** Get current Teams bridge status for REST API. */
     getTeamsStatus(): TeamsStatus {
-        const deviceCode = this.bot?.getDeviceCode();
         return {
             enabled: true,
             status: this.bot?.getStatus() ?? 'disconnected',
@@ -112,11 +103,6 @@ export class TeamsBridge {
             teamId: this.opts.config.teamId,
             channelId: this.opts.config.channelId,
             botName: this.opts.config.botName,
-            deviceCode: deviceCode ? {
-                userCode: deviceCode.userCode,
-                verificationUri: deviceCode.verificationUri,
-                message: deviceCode.message,
-            } : null,
         };
     }
 
@@ -142,6 +128,13 @@ export class TeamsBridge {
     /** Reconnect to Teams. */
     async reconnect(): Promise<void> {
         await this.bot?.stop();
+        // Re-acquire token via az CLI for reconnect
+        try {
+            this._azToken = await acquireTokenViaAzCli();
+        } catch (err: any) {
+            console.error(`[teams-bridge] Failed to acquire az token on reconnect: ${err.message}`);
+        }
+
         this.bot = new TeamsBot({
             mode: this.opts.config.mode,
             teamId: this.opts.config.teamId,
@@ -149,11 +142,9 @@ export class TeamsBridge {
             botName: this.opts.config.botName,
             pollIntervalMs: this.opts.config.pollIntervalMs,
             auth: {
+                bearerToken: this._azToken ?? undefined,
                 clientId: this.opts.config.clientId,
                 scope: this.opts.config.scope,
-                onDeviceCode: (info) => {
-                    console.log(`[teams-bridge] Device code login required: ${info.message}`);
-                },
             },
             onMessage: (msg) => this.onInboundMessage(msg),
             onStatusChange: (status) => {
@@ -163,7 +154,6 @@ export class TeamsBridge {
                 console.error(`[teams-bridge] Error: ${error}`);
             },
         });
-        // Start in background — device code flow blocks
         this.bot.start().catch(err => console.error('[teams-bridge] Reconnect start failed:', err));
         if (this.opts.config.channelId) {
             this.bot.setChannelId(this.opts.config.channelId);

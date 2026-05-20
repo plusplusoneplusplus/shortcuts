@@ -93,7 +93,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
     }
 
     // ── Teams bridge (only when enabled) ─────────────
-    let teamsBridge: { stop(): Promise<void>; getTeamsStatus(): { enabled: boolean; status: string; error: string | null; channelId?: string; botName: string; deviceCode?: { userCode: string; verificationUri: string; message: string } | null }; updateConfig(patch: { botName?: string; channelId?: string; enabled?: boolean; teamName?: string; channelName?: string }): Promise<void>; reconnect(): Promise<void>; listChannels(): Promise<Array<{ id: string; displayName: string }>> } | undefined;
+    let teamsBridge: { stop(): Promise<void>; getTeamsStatus(): { enabled: boolean; status: string; error: string | null; teamName?: string; channelName?: string; teamId?: string; channelId?: string; botName: string }; updateConfig(patch: { botName?: string; channelId?: string; enabled?: boolean; teamName?: string; channelName?: string }): Promise<void>; reconnect(): Promise<void>; listChannels(): Promise<Array<{ id: string; displayName: string }>> } | undefined;
     const teamsConfig = config.messaging?.teams;
     if (teamsConfig?.enabled) {
         const { TeamsBridge } = await import('../messaging/teams-bridge');
