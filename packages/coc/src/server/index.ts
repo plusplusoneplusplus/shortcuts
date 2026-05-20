@@ -53,6 +53,7 @@ import { RemoteServerStore } from './servers/remote-server-store';
 import { AutoPromoteScheduler } from './memory/auto-promote';
 import { setMemoryCandidateCapturedCallback } from './executors/bounded-memory-addon';
 import { pruneAllStaleClassifications } from './repos/classification-store';
+import { SyncEngine } from './sync/sync-engine';
 
 // ============================================================================
 // Close Handler Builder
@@ -80,6 +81,7 @@ interface CloseHandlerDeps {
     loopExecutor?: { shutdownAll(): void };
     loopInfraDispose?: () => void;
     mcpOauthDispose?: () => void;
+    syncEngine?: SyncEngine;
     activeSockets: Set<import('net').Socket>;
     server: http.Server;
 }
@@ -102,6 +104,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.loopExecutor?.shutdownAll();
         deps.loopInfraDispose?.();
         deps.mcpOauthDispose?.();
+        deps.syncEngine?.stop();
         gitInfoCache.dispose();
         deps.notesGitTimerManager.dispose();
         deps.autoPromoteScheduler?.dispose();
@@ -371,6 +374,14 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const notesGitTimerManager = new NotesGitTimerManager();
     const remoteServerStore = new RemoteServerStore(dataDir);
     const remoteServerConnector = new DevTunnelConnector();
+
+    // Sync engine — instantiated always, but only active when gitRemote is configured.
+    const syncEngine = new SyncEngine({
+        dataDir,
+        resolvedConfig,
+        aiInvoker,
+    });
+
     const routes: Route[] = [];
     const { wikiManager } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
@@ -392,6 +403,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         loopEmit: loopInfra?.emit,
         hostname: os.hostname(),
         bindAddress: host,
+        syncEngine,
     });
     // Restore auto-commit timers for all workspaces that had it enabled
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });
@@ -466,6 +478,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         /* best-effort */
     }
 
+    // Start sync engine after server is listening (fire-and-forget — never blocks startup)
+    syncEngine.start(resolvedConfig).catch(() => { /* best-effort */ });
+
     const address = server.address();
     const actualPort = typeof address === 'object' && address ? address.port : port;
     const displayHost = host === '0.0.0.0' || host === '::' || host === '127.0.0.1' ? 'localhost' : host;
@@ -486,6 +501,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             loopExecutor: loopInfra?.loopExecutor,
             loopInfraDispose: loopInfra?.dispose,
             mcpOauthDispose: mcpOauthInfra?.dispose,
+            syncEngine,
             activeSockets, server,
         }),
     };

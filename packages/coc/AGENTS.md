@@ -19,6 +19,7 @@ detailed architecture lives in its `references/*.md` files.
 | Process store / SQLite schema / FTS5 / pin / archive | [process-store.md](../../.github/skills/coc-knowledge/references/process-store.md) |
 | Dashboard SPA (`src/server/spa/`) | [dashboard-spa.md](../../.github/skills/coc-knowledge/references/dashboard-spa.md) |
 | REST endpoints | [rest-api.md](../../.github/skills/coc-knowledge/references/rest-api.md) |
+| Notes sync engine (`src/server/sync/`) | [sync.md](../../.github/skills/coc-knowledge/references/sync.md) |
 
 Other domains (memory, workflow engine, prompt autocomplete, wiki serving,
 remote servers, task comments, llm-tools, sdk-wrapper, chat-prompt-history)

@@ -42,6 +42,7 @@ It consists of three packages (`coc`, `forge`, `deep-wiki`) plus a shared client
 | Wiki Serving | [wiki-serving.md](references/wiki-serving.md) | WikiManager, TF-IDF context retrieval, AI Q&A sessions, file watching |
 | Remote Servers | [remote-servers.md](references/remote-servers.md) | DevTunnel integration, connection lifecycle, server registry |
 | Task Comments | [task-comments.md](references/task-comments.md) | Inline commenting, categories, anchoring, AI prompt generation |
+| Notes Sync | [sync.md](references/sync.md) | Git-backed My Work/My Life sync, AI conflict resolution, periodic scheduling |
 
 ## Key Invariants
 
