@@ -9,10 +9,10 @@
  *   (Copilot Studio, M365 Copilot, VS Code Copilot Chat).
  */
 
-import type { TeamsBotOptions, BotStatus, InboundTeamsMessage, TeamsChannel, DeviceCodeInfo, TeamsTransportMode } from './types';
+import type { TeamsBotOptions, BotStatus, InboundTeamsMessage, TeamsChannel, TeamsTransportMode } from './types';
 import { McpClient } from './mcp-client';
 import { GraphClient } from './graph-client';
-import { acquireTokenWithDeviceCode } from './auth';
+import { acquireTokenViaAzCli } from './auth';
 
 export class TeamsBot {
     private readonly opts: Required<Pick<TeamsBotOptions, 'onMessage' | 'pollIntervalMs' | 'botName'>> & TeamsBotOptions;
@@ -24,7 +24,6 @@ export class TeamsBot {
     private _pollTimer: ReturnType<typeof setInterval> | null = null;
     private _lastSeenTimestamp: string | null = null;
     private _channelId: string | null = null;
-    private _deviceCode: DeviceCodeInfo | null = null;
     /** Track message IDs sent by this bot to distinguish from user-typed messages. */
     private _sentMessageIds = new Set<string>();
 
@@ -49,7 +48,6 @@ export class TeamsBot {
     async start(): Promise<void> {
         this.setStatus('connecting');
         this._lastError = null;
-        this._deviceCode = null;
 
         if (this.mode === 'graph') {
             await this.startGraph();
@@ -61,19 +59,13 @@ export class TeamsBot {
     private async startGraph(): Promise<void> {
         let token = this.opts.auth?.bearerToken;
 
-        // If no token, try acquiring via device code flow
+        // If no token provided, acquire via az CLI
         if (!token) {
             try {
                 this.setStatus('authenticating');
-                token = await acquireTokenWithDeviceCode(
-                    { ...this.opts.auth, mcpServerUrl: this.opts.mcpServerUrl },
-                    (info) => {
-                        this._deviceCode = info;
-                        this.opts.auth?.onDeviceCode?.(info);
-                    },
-                );
+                token = await acquireTokenViaAzCli();
             } catch (err: any) {
-                this._lastError = err.message ?? 'Authentication failed';
+                this._lastError = err.message ?? 'Failed to acquire token via az CLI';
                 this.setStatus('error');
                 this.opts.onError?.(this._lastError!);
                 return;
@@ -95,7 +87,6 @@ export class TeamsBot {
 
         try {
             await this.graphClient.verifyConnection();
-            this._deviceCode = null;
             this.setStatus('connected');
             console.log('[teams-bot] Connected via Graph API');
             this.startPolling();
@@ -113,20 +104,14 @@ export class TeamsBot {
             return;
         }
 
-        // If no bearer token, initiate device code flow
+        // If no bearer token, acquire via az CLI
         if (!this.opts.auth?.bearerToken) {
             try {
                 this.setStatus('authenticating');
-                const token = await acquireTokenWithDeviceCode(
-                    { ...this.opts.auth, mcpServerUrl: this.opts.mcpServerUrl },
-                    (info) => {
-                        this._deviceCode = info;
-                        this.opts.auth?.onDeviceCode?.(info);
-                    },
-                );
+                const token = await acquireTokenViaAzCli();
                 this.mcpClient.setBearerToken(token);
             } catch (err: any) {
-                this._lastError = err.message ?? 'Authentication failed';
+                this._lastError = err.message ?? 'Failed to acquire token via az CLI';
                 this.setStatus('error');
                 this.opts.onError?.(this._lastError!);
                 return;
@@ -135,7 +120,6 @@ export class TeamsBot {
 
         try {
             await this.mcpClient.initialize();
-            this._deviceCode = null;
             this.setStatus('connected');
             console.log('[teams-bot] Connected to Teams MCP server');
             this.startPolling();
@@ -266,11 +250,6 @@ export class TeamsBot {
     /** Last error message, if any. */
     getLastError(): string | null {
         return this._lastError;
-    }
-
-    /** Get device code info if a login is pending. */
-    getDeviceCode(): DeviceCodeInfo | null {
-        return this._deviceCode;
     }
 
     /** Get the transport mode. */
