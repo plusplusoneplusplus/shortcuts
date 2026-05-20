@@ -224,6 +224,12 @@ export class WhatsAppBridge {
         const target = this.opts.config.groupJid;
         if (!target) { console.log('[whatsapp-bridge] No groupJid set, skipping'); this._processingLocks.delete(processId); return; }
 
+        // Skip if WhatsApp is not connected (e.g. qr-pending, disconnected)
+        if (!this.bot || this.bot.getStatus() !== 'connected') {
+            this._processingLocks.delete(processId);
+            return;
+        }
+
         const agentId = msg.agentId;
         const agentAddr = this.getAgentAddress(agentId);
         if (!agentAddr) { console.log(`[whatsapp-bridge] No address for agent ${agentId}`); this._processingLocks.delete(processId); return; }
