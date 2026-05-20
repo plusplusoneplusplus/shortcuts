@@ -257,6 +257,17 @@ describe('countTasks', () => {
             children: [{ singleDocuments: [2, 3], documentGroups: [4] }],
         })).toBe(4);
     });
+
+    it('excludes archive folders recursively', () => {
+        expect(countTasks({
+            singleDocuments: [1],
+            children: [
+                { name: 'archive', singleDocuments: [2, 3], documentGroups: [4] },
+                { relativePath: 'archive/sub', singleDocuments: [5] },
+                { name: 'work-items', singleDocuments: [6], children: [{ relativePath: 'archive', singleDocuments: [7] }] },
+            ],
+        })).toBe(2);
+    });
 });
 
 describe('truncatePath', () => {

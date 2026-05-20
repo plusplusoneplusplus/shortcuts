@@ -171,6 +171,11 @@ export function hashString(s: string): string {
 /** Recursively count tasks from the server task tree response. */
 export function countTasks(node: any): number {
     if (!node) return 0;
+    const nodeName = typeof node.name === 'string' ? node.name.toLowerCase() : '';
+    const relativePath = typeof node.relativePath === 'string' ? node.relativePath.toLowerCase() : '';
+    if (nodeName === 'archive' || relativePath === 'archive' || relativePath.startsWith('archive/')) {
+        return 0;
+    }
     let count = 0;
     if (node.singleDocuments) count += node.singleDocuments.length;
     if (node.documentGroups) count += node.documentGroups.length;
