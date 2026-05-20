@@ -234,7 +234,7 @@ describe('NoteEditor', () => {
             render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
         });
         await waitFor(() => {
-            expect(mockLoadContent).toHaveBeenCalledWith('ws1', 'page.md');
+            expect(mockLoadContent).toHaveBeenCalledWith('ws1', 'page.md', undefined);
             expect(mockSetContent).toHaveBeenCalledWith('<p># Hello</p>', { emitUpdate: false });
         });
     });
@@ -271,7 +271,7 @@ describe('NoteEditor', () => {
 
         await act(async () => { vi.advanceTimersByTime(1600); });
 
-        expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'p.md', 'content', undefined);
+        expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'p.md', 'content', undefined, undefined);
     });
 
     // ── Debounce resets on rapid edits ──────────────────────────────────
@@ -411,7 +411,7 @@ describe('NoteEditor', () => {
         await act(async () => { document.dispatchEvent(event); });
 
         expect(preventSpy).toHaveBeenCalled();
-        expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'p.md', 'content', undefined);
+        expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'p.md', 'content', undefined, undefined);
     });
 
     it('Cmd+S (metaKey) also suppresses dialog and saves', async () => {
@@ -495,7 +495,7 @@ describe('NoteEditor', () => {
             render(<NoteEditor workspaceId="ws1" notePath="d.md" />);
         });
         await waitFor(() => {
-            expect(mockGetContent).toHaveBeenCalledWith('ws1', 'd.md');
+            expect(mockGetContent).toHaveBeenCalledWith('ws1', 'd.md', undefined);
             expect(mockSetContent).toHaveBeenCalledWith('<p>default</p>', { emitUpdate: false });
         });
     });
@@ -512,7 +512,7 @@ describe('NoteEditor', () => {
             render(<NoteEditor workspaceId="ws1" notePath="c.md" io={customIo} />);
         });
         await waitFor(() => {
-            expect(customIo.loadContent).toHaveBeenCalledWith('ws1', 'c.md');
+            expect(customIo.loadContent).toHaveBeenCalledWith('ws1', 'c.md', undefined);
             expect(mockSetContent).toHaveBeenCalledWith('<p>custom</p>', { emitUpdate: false });
         });
         // notesApi should NOT have been called for content
@@ -522,7 +522,7 @@ describe('NoteEditor', () => {
         act(() => { capturedOnChange?.(mockEditor); });
         await act(async () => { vi.advanceTimersByTime(1600); });
 
-        expect(customIo.saveContent).toHaveBeenCalledWith('ws1', 'c.md', 'content', undefined);
+        expect(customIo.saveContent).toHaveBeenCalledWith('ws1', 'c.md', 'content', undefined, undefined);
         expect(mockSaveContent).not.toHaveBeenCalled();
     });
 
@@ -817,7 +817,7 @@ describe('NoteEditor', () => {
             });
 
             await waitFor(() => {
-                expect(mockLoadContent).toHaveBeenCalledWith('ws1', 'page.md');
+                expect(mockLoadContent).toHaveBeenCalledWith('ws1', 'page.md', undefined);
                 expect(mockSetContent).toHaveBeenCalledWith('<p># Updated by AI</p>', { emitUpdate: false });
             });
         });
@@ -848,7 +848,7 @@ describe('NoteEditor', () => {
             await act(async () => { vi.advanceTimersByTime(1600); });
             await act(async () => { await Promise.resolve(); });
 
-            expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'page.md', 'content', 200);
+            expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'page.md', 'content', 200, undefined);
         });
 
         it('advances the mtime baseline for identical-content notes-changed reloads', async () => {
@@ -868,7 +868,7 @@ describe('NoteEditor', () => {
                     detail: { wsId: 'ws1', changedPaths: ['page.md'] },
                 }));
             });
-            await waitFor(() => expect(mockLoadContent).toHaveBeenCalledWith('ws1', 'page.md'));
+            await waitFor(() => expect(mockLoadContent).toHaveBeenCalledWith('ws1', 'page.md', undefined));
             expect(mockSetContent).not.toHaveBeenCalled();
 
             mockIOSaveContent.mockResolvedValue({ path: 'page.md', updated: true, mtime: 300 });
@@ -878,7 +878,7 @@ describe('NoteEditor', () => {
             await act(async () => { vi.advanceTimersByTime(1600); });
             await act(async () => { await Promise.resolve(); });
 
-            expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'page.md', 'content', 200);
+            expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'page.md', 'content', 200, undefined);
         });
 
         it('keeps conflict detection after a refreshed baseline when a later external write wins', async () => {
@@ -913,7 +913,7 @@ describe('NoteEditor', () => {
             });
 
             expect(screen.getByTestId('note-conflict-banner')).toBeDefined();
-            expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'page.md', 'content', 200);
+            expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'page.md', 'content', 200, undefined);
         });
 
         it('ignores notes-changed event for different workspace', async () => {
@@ -1015,7 +1015,7 @@ describe('NoteEditor', () => {
             await act(async () => { vi.advanceTimersByTime(1600); });
             await act(async () => { await Promise.resolve(); });
 
-            expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'page.md', '# User draft', 100);
+            expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'page.md', '# User draft', 100, undefined);
         });
 
         it('does not listen when notePath is null', () => {
@@ -1180,7 +1180,7 @@ describe('NoteEditor', () => {
             expect(capturedFlush).not.toBeNull();
             await act(async () => { await capturedFlush!(); });
 
-            expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'p.md', 'content', undefined);
+            expect(mockIOSaveContent).toHaveBeenCalledWith('ws1', 'p.md', 'content', undefined, undefined);
         });
     });
 
@@ -1456,6 +1456,7 @@ describe('NoteEditor', () => {
                     'content',
                 ].join('\n'),
                 101,
+                undefined,
             );
         });
 

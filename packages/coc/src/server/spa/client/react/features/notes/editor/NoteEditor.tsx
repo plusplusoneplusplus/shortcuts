@@ -366,6 +366,10 @@ export function NoteEditor({
                 mtimeRef.current ?? undefined,
                 rootRef.current,
             );
+            mtimeRef.current = result.mtime;
+            lastSaveAtRef.current = Date.now();
+            setSaveState('saved');
+            setDirty(false);
             setTimeout(() => setSaveState((s) => (s === 'saved' ? 'idle' : s)), 3000);
 
             // Re-anchor threads after save to keep context fresh
@@ -422,6 +426,10 @@ export function NoteEditor({
                 mtimeRef.current ?? undefined,
                 rootRef.current,
             );
+            mtimeRef.current = result.mtime;
+            lastSaveAtRef.current = Date.now();
+            setSaveState('saved');
+            setSourceDirty(false);
             setDirty(false);
             setTimeout(() => setSaveState((s) => (s === 'saved' ? 'idle' : s)), 3000);
         } catch (err: any) {
