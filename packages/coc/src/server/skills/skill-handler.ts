@@ -21,7 +21,7 @@ import {
     resolveWorkspaceExecutionContext,
 } from '@plusplusoneplusplus/forge';
 import { sendJSON } from '../core/api-handler';
-import { handleAPIError, notFound, badRequest } from '../errors';
+import { handleAPIError, notFound, badRequest, internalError } from '../errors';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import { createSkillRouteHandlers } from './skill-route-handlers';
 import { getRepoDataPath } from '../paths';
@@ -495,6 +495,58 @@ export function registerSkillRoutes(routes: Route[], store: ProcessStore, dataDi
             const { handleInstall } = createSkillRouteHandlers({ installPath, sourceRoot: ws.rootPath });
             await handleInstall(req, res);
             skillCache.delete(ws.id);
+        },
+    });
+
+    // GET /api/workspaces/:id/skills/:name/file?path=<rel> — Read a single file
+    // inside a skill's folder (works for repo, global, linked-repo, extra-folder).
+    // The relative path is resolved against the skill's folder and must remain
+    // within it; the file size is capped at 1 MiB and returned as utf-8 text.
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/skills\/([^/]+)\/file$/,
+        handler: async (req, res, match) => {
+            const skillName = decodeURIComponent(match![2]);
+            if (RESERVED_SKILL_NAMES.has(skillName)) {
+                return handleAPIError(res, badRequest(`Invalid skill name: ${skillName}`));
+            }
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            const url = new URL(req.url ?? '', 'http://localhost');
+            const relPath = url.searchParams.get('path');
+            if (!relPath) {
+                return handleAPIError(res, badRequest('`path` query parameter is required'));
+            }
+
+            const skills = await loadSkillsForWorkspace(ws, dataDir, store);
+            const skill = skills.find(s => s.name === skillName);
+            if (!skill || !skill.folderPath) {
+                return handleAPIError(res, notFound('Skill'));
+            }
+
+            const skillDir = path.join(skill.folderPath, skillName);
+            const absFilePath = path.resolve(skillDir, relPath);
+            if (!isWithinDirectory(absFilePath, skillDir)) {
+                return handleAPIError(res, badRequest('Invalid file path'));
+            }
+
+            try {
+                if (!fs.existsSync(absFilePath)) {
+                    return handleAPIError(res, notFound('File'));
+                }
+                const stat = fs.statSync(absFilePath);
+                if (!stat.isFile()) {
+                    return handleAPIError(res, badRequest('Not a file'));
+                }
+                if (stat.size > 1024 * 1024) {
+                    return handleAPIError(res, badRequest('File too large (max 1 MiB)'));
+                }
+                const content = fs.readFileSync(absFilePath, 'utf-8');
+                sendJSON(res, 200, { path: relPath, content, size: stat.size });
+            } catch (err: any) {
+                return handleAPIError(res, internalError(`Failed to read file: ${err.message}`));
+            }
         },
     });
 

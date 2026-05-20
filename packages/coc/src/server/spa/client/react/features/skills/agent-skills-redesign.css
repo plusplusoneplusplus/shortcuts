@@ -1,0 +1,1102 @@
+/*
+ * Agent Skills tab redesign.
+ *
+ * Visual styles for the Repo > Settings > Agent Skills panel.
+ *
+ * Scoped under `.agent-skills-redesign` so that the new visual system applies
+ * only to this panel and never bleeds into other dashboard surfaces. Light is
+ * the default; dark variables are applied when an ancestor carries
+ * `data-theme="dark"` (set by `ThemeProvider`).
+ */
+
+.agent-skills-redesign {
+  /* Light theme (default) */
+  --ask-bg: #fbfbfa;
+  --ask-surface: #ffffff;
+  --ask-surface-2: #f4f4f2;
+  --ask-surface-3: #ececea;
+  --ask-border: #e3e3e0;
+  --ask-border-strong: #d4d4d0;
+  --ask-text: #18181a;
+  --ask-text-2: #4b4b4f;
+  --ask-text-3: #8a8a8f;
+  --ask-accent: #2f6feb;
+  --ask-accent-soft: rgba(47, 111, 235, 0.12);
+  --ask-accent-fg: #ffffff;
+  --ask-danger: #c4322b;
+  --ask-warn: #b8731a;
+  --ask-ok: #1f7a4d;
+  --ask-shadow-1: 0 1px 2px rgba(20, 20, 30, 0.05), 0 1px 1px rgba(20, 20, 30, 0.04);
+  --ask-shadow-2: 0 8px 24px -8px rgba(20, 20, 30, 0.12), 0 2px 6px rgba(20, 20, 30, 0.06);
+  --ask-radius: 8px;
+  --ask-radius-sm: 6px;
+  --ask-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--ask-bg);
+  color: var(--ask-text);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+[data-theme="dark"] .agent-skills-redesign {
+  --ask-bg: #0e0f11;
+  --ask-surface: #16181b;
+  --ask-surface-2: #1c1f23;
+  --ask-surface-3: #23272c;
+  --ask-border: #2a2e34;
+  --ask-border-strong: #383d44;
+  --ask-text: #e8e9eb;
+  --ask-text-2: #aeb3ba;
+  --ask-text-3: #6f757e;
+  --ask-accent: #5b8def;
+  --ask-accent-soft: rgba(91, 141, 239, 0.18);
+  --ask-accent-fg: #0b0d10;
+  --ask-danger: #ef6b62;
+  --ask-warn: #e0a049;
+  --ask-ok: #4cb286;
+  --ask-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --ask-shadow-2: 0 12px 32px -8px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.agent-skills-redesign * {
+  box-sizing: border-box;
+}
+
+.agent-skills-redesign button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.agent-skills-redesign input,
+.agent-skills-redesign textarea {
+  font: inherit;
+  color: inherit;
+}
+
+.agent-skills-redesign code,
+.agent-skills-redesign .ask-mono {
+  font-family: var(--ask-font-mono);
+  font-size: 12px;
+}
+
+/* ---- Page header ---- */
+.agent-skills-redesign .ask-page-header {
+  padding: 28px 36px 18px;
+  border-bottom: 1px solid var(--ask-border);
+  background: var(--ask-bg);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.agent-skills-redesign .ask-crumbs {
+  color: var(--ask-text-3);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.agent-skills-redesign .ask-crumbs .ask-sep {
+  opacity: 0.5;
+}
+.agent-skills-redesign .ask-crumbs .ask-current {
+  color: var(--ask-text-2);
+}
+.agent-skills-redesign .ask-h1 {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0 0 4px;
+  color: var(--ask-text);
+}
+.agent-skills-redesign .ask-lede {
+  color: var(--ask-text-2);
+  font-size: 13px;
+  max-width: 64ch;
+  margin: 0;
+}
+.agent-skills-redesign .ask-lede b,
+.agent-skills-redesign .ask-lede strong {
+  color: var(--ask-text);
+  font-weight: 600;
+}
+.agent-skills-redesign .ask-lede code {
+  font-family: var(--ask-font-mono);
+  font-size: 12px;
+  background: var(--ask-surface-2);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.agent-skills-redesign .ask-h1-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* ---- Toolbar ---- */
+.agent-skills-redesign .ask-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 14px 36px;
+  border-bottom: 1px solid var(--ask-border);
+  background: var(--ask-bg);
+  position: sticky;
+  top: 99px;
+  z-index: 4;
+}
+.agent-skills-redesign .ask-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--ask-surface);
+  border: 1px solid var(--ask-border);
+  padding: 6px 10px;
+  border-radius: var(--ask-radius-sm);
+  flex: 1 1 320px;
+  max-width: 420px;
+  transition: border-color 0.12s, box-shadow 0.12s;
+  color: var(--ask-text-3);
+}
+.agent-skills-redesign .ask-search:focus-within {
+  border-color: var(--ask-accent);
+  box-shadow: 0 0 0 3px var(--ask-accent-soft);
+}
+.agent-skills-redesign .ask-search input {
+  background: transparent;
+  border: none;
+  outline: none;
+  flex: 1;
+  min-width: 0;
+  color: var(--ask-text);
+}
+.agent-skills-redesign .ask-search input::placeholder {
+  color: var(--ask-text-3);
+}
+.agent-skills-redesign .ask-search .ask-kbd {
+  font-family: var(--ask-font-mono);
+  font-size: 10.5px;
+  color: var(--ask-text-3);
+  border: 1px solid var(--ask-border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  background: var(--ask-surface-2);
+}
+.agent-skills-redesign .ask-chips {
+  display: flex;
+  gap: 4px;
+}
+.agent-skills-redesign .ask-chip {
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  color: var(--ask-text-2);
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.agent-skills-redesign .ask-chip:hover {
+  background: var(--ask-surface-2);
+  color: var(--ask-text);
+}
+.agent-skills-redesign .ask-chip.active {
+  background: var(--ask-surface);
+  border-color: var(--ask-border-strong);
+  color: var(--ask-text);
+}
+.agent-skills-redesign .ask-chip .ask-ct {
+  color: var(--ask-text-3);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+}
+.agent-skills-redesign .ask-chip.active .ask-ct {
+  color: var(--ask-text-2);
+}
+.agent-skills-redesign .ask-spacer {
+  flex: 1;
+}
+
+/* ---- Buttons ---- */
+.agent-skills-redesign .ask-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--ask-radius-sm);
+  border: 1px solid var(--ask-border-strong);
+  background: var(--ask-surface);
+  color: var(--ask-text);
+  font-weight: 500;
+  transition: background 0.12s, border-color 0.12s;
+  font-size: 13px;
+  line-height: 1.2;
+}
+.agent-skills-redesign .ask-btn:hover {
+  background: var(--ask-surface-2);
+}
+.agent-skills-redesign .ask-btn.ask-primary {
+  background: var(--ask-accent);
+  color: var(--ask-accent-fg);
+  border-color: var(--ask-accent);
+}
+.agent-skills-redesign .ask-btn.ask-primary:hover {
+  background: color-mix(in oklab, var(--ask-accent) 85%, #000);
+}
+.agent-skills-redesign .ask-btn.ask-ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ask-text-2);
+}
+.agent-skills-redesign .ask-btn.ask-ghost:hover {
+  background: var(--ask-surface-2);
+  color: var(--ask-text);
+}
+.agent-skills-redesign .ask-btn.ask-danger {
+  color: var(--ask-danger);
+  border-color: color-mix(in oklab, var(--ask-danger) 35%, var(--ask-border));
+}
+.agent-skills-redesign .ask-btn.ask-sm {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.agent-skills-redesign .ask-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.agent-skills-redesign .ask-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+}
+
+/* ---- Body grid ---- */
+.agent-skills-redesign .ask-body {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 0;
+  flex: 1;
+}
+@media (max-width: 900px) {
+  .agent-skills-redesign .ask-body {
+    grid-template-columns: 200px 1fr;
+  }
+  .agent-skills-redesign .ask-page-header,
+  .agent-skills-redesign .ask-toolbar {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  .agent-skills-redesign .ask-list {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+}
+
+/* ---- Sources rail ---- */
+.agent-skills-redesign .ask-rail {
+  padding: 20px 16px 40px 20px;
+  border-right: 1px solid var(--ask-border);
+}
+.agent-skills-redesign .ask-rail h4 {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ask-text-3);
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+.agent-skills-redesign .ask-source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.agent-skills-redesign .ask-source {
+  display: grid;
+  grid-template-columns: 8px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--ask-radius-sm);
+  cursor: pointer;
+  color: var(--ask-text-2);
+  background: transparent;
+  border: 1px solid transparent;
+  text-align: left;
+  width: 100%;
+}
+.agent-skills-redesign .ask-source:hover {
+  background: var(--ask-surface-2);
+  color: var(--ask-text);
+}
+.agent-skills-redesign .ask-source.active {
+  background: var(--ask-surface);
+  border-color: var(--ask-border-strong);
+  color: var(--ask-text);
+  box-shadow: var(--ask-shadow-1);
+}
+.agent-skills-redesign .ask-source .ask-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--ask-text-3);
+}
+.agent-skills-redesign .ask-source[data-kind="global"] .ask-swatch {
+  background: #6e56cf;
+}
+.agent-skills-redesign .ask-source[data-kind="repo"] .ask-swatch {
+  background: var(--ask-accent);
+}
+.agent-skills-redesign .ask-source[data-kind="linked"] .ask-swatch {
+  background: #1f9d77;
+}
+.agent-skills-redesign .ask-source[data-kind="extra"] .ask-swatch {
+  background: #c08a2c;
+}
+.agent-skills-redesign .ask-source-meta {
+  grid-column: 2 / 4;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+.agent-skills-redesign .ask-source .ask-name {
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+.agent-skills-redesign .ask-source .ask-path {
+  color: var(--ask-text-3);
+  font-size: 10.5px;
+  font-family: var(--ask-font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-skills-redesign .ask-source .ask-count {
+  color: var(--ask-text-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.agent-skills-redesign .ask-source.active .ask-count {
+  color: var(--ask-text-2);
+}
+.agent-skills-redesign .ask-source-remove {
+  margin-left: 4px;
+  width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 4px;
+  color: var(--ask-text-3);
+  opacity: 0;
+  transition: opacity 0.1s, color 0.1s, background 0.1s;
+}
+.agent-skills-redesign .ask-source:hover .ask-source-remove,
+.agent-skills-redesign .ask-source.active .ask-source-remove {
+  opacity: 1;
+}
+.agent-skills-redesign .ask-source-remove:hover {
+  background: var(--ask-surface-3);
+  color: var(--ask-danger);
+}
+
+.agent-skills-redesign .ask-source-add {
+  margin-top: 8px;
+  padding: 7px 10px;
+  border: 1px dashed var(--ask-border-strong);
+  border-radius: var(--ask-radius-sm);
+  color: var(--ask-text-3);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  background: transparent;
+  width: 100%;
+}
+.agent-skills-redesign .ask-source-add:hover {
+  color: var(--ask-text);
+  border-color: var(--ask-accent);
+  background: var(--ask-accent-soft);
+}
+
+.agent-skills-redesign .ask-rail-help {
+  margin-top: 22px;
+  padding: 12px;
+  border: 1px solid var(--ask-border);
+  border-radius: var(--ask-radius);
+  background: var(--ask-surface);
+  font-size: 12px;
+  color: var(--ask-text-2);
+  line-height: 1.55;
+}
+.agent-skills-redesign .ask-rail-help b {
+  color: var(--ask-text);
+  font-weight: 600;
+}
+.agent-skills-redesign .ask-rail-help a {
+  color: var(--ask-accent);
+  text-decoration: none;
+}
+
+/* ---- Skill list ---- */
+.agent-skills-redesign .ask-list {
+  padding: 18px 36px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.agent-skills-redesign .ask-skill-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.agent-skills-redesign .ask-list-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ask-text-3);
+  font-size: 12px;
+  padding: 2px 2px 4px;
+}
+.agent-skills-redesign .ask-list-meta .ask-order {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--ask-border);
+  border-radius: var(--ask-radius-sm);
+  padding: 3px 8px;
+  background: var(--ask-surface);
+  color: var(--ask-text-2);
+}
+
+.agent-skills-redesign .ask-skill {
+  background: var(--ask-surface);
+  border: 1px solid var(--ask-border);
+  border-radius: var(--ask-radius);
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.agent-skills-redesign .ask-skill:hover {
+  border-color: var(--ask-border-strong);
+}
+.agent-skills-redesign .ask-skill.is-open {
+  box-shadow: var(--ask-shadow-2);
+  border-color: var(--ask-border-strong);
+}
+.agent-skills-redesign .ask-skill.is-disabled .ask-name {
+  color: var(--ask-text-3);
+}
+.agent-skills-redesign .ask-skill.is-disabled .ask-skill-desc {
+  opacity: 0.7;
+}
+
+.agent-skills-redesign .ask-skill-head {
+  display: grid;
+  grid-template-columns: 4px 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 16px;
+  cursor: pointer;
+}
+.agent-skills-redesign .ask-skill-spine {
+  width: 4px;
+  height: 36px;
+  border-radius: 4px;
+  background: var(--ask-text-3);
+  align-self: center;
+}
+.agent-skills-redesign .ask-skill[data-source="global"] .ask-skill-spine {
+  background: #6e56cf;
+}
+.agent-skills-redesign .ask-skill[data-source="repo"] .ask-skill-spine {
+  background: var(--ask-accent);
+}
+.agent-skills-redesign .ask-skill[data-source="linked"] .ask-skill-spine {
+  background: #1f9d77;
+}
+.agent-skills-redesign .ask-skill[data-source="extra"] .ask-skill-spine {
+  background: #c08a2c;
+}
+
+.agent-skills-redesign .ask-skill-body {
+  min-width: 0;
+}
+.agent-skills-redesign .ask-skill-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.agent-skills-redesign .ask-skill-top .ask-name {
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: -0.005em;
+  color: var(--ask-text);
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 1 auto;
+}
+.agent-skills-redesign .ask-skill-top .ask-version {
+  font-family: var(--ask-font-mono);
+  font-size: 10.5px;
+  color: var(--ask-text-3);
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--ask-surface-2);
+}
+.agent-skills-redesign .ask-src-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--ask-border);
+  color: var(--ask-text-2);
+  background: var(--ask-surface-2);
+}
+.agent-skills-redesign .ask-src-pill .ask-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ask-text-3);
+}
+.agent-skills-redesign .ask-src-pill[data-kind="global"] .ask-dot {
+  background: #6e56cf;
+}
+.agent-skills-redesign .ask-src-pill[data-kind="repo"] .ask-dot {
+  background: var(--ask-accent);
+}
+.agent-skills-redesign .ask-src-pill[data-kind="linked"] .ask-dot {
+  background: #1f9d77;
+}
+.agent-skills-redesign .ask-src-pill[data-kind="extra"] .ask-dot {
+  background: #c08a2c;
+}
+
+.agent-skills-redesign .ask-skill-desc {
+  color: var(--ask-text-2);
+  font-size: 13px;
+  margin-top: 4px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+.agent-skills-redesign .ask-skill-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--ask-text-3);
+  font-size: 11.5px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.agent-skills-redesign .ask-skill-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.agent-skills-redesign .ask-skill-meta .ask-trigger {
+  color: var(--ask-text-2);
+}
+.agent-skills-redesign .ask-skill-meta .ask-trigger code {
+  color: var(--ask-accent);
+}
+
+.agent-skills-redesign .ask-skill-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.agent-skills-redesign .ask-skill-delete {
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.agent-skills-redesign .ask-skill:hover .ask-skill-delete,
+.agent-skills-redesign .ask-skill .ask-skill-delete:focus-visible,
+.agent-skills-redesign .ask-skill.is-open .ask-skill-delete {
+  opacity: 1;
+}
+.agent-skills-redesign .ask-toggle {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--ask-surface-3);
+  transition: background 0.15s;
+  flex: 0 0 32px;
+  cursor: pointer;
+  border: none;
+}
+.agent-skills-redesign .ask-toggle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+.agent-skills-redesign .ask-toggle.on {
+  background: var(--ask-accent);
+}
+.agent-skills-redesign .ask-toggle.on::after {
+  transform: translateX(14px);
+}
+[data-theme="dark"] .agent-skills-redesign .ask-toggle::after {
+  background: #e8e9eb;
+}
+.agent-skills-redesign .ask-toggle:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.agent-skills-redesign .ask-icon-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: var(--ask-text-3);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.agent-skills-redesign .ask-icon-btn:hover {
+  background: var(--ask-surface-2);
+  color: var(--ask-text);
+}
+.agent-skills-redesign .ask-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.agent-skills-redesign .ask-icon-btn:disabled:hover {
+  background: transparent;
+  color: var(--ask-text-3);
+}
+
+/* ---- Expanded skill detail ---- */
+.agent-skills-redesign .ask-skill-detail {
+  border-top: 1px solid var(--ask-border);
+  padding: 16px 18px 18px 34px;
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 24px;
+}
+.agent-skills-redesign .ask-skill-detail h5 {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ask-text-3);
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+.agent-skills-redesign .ask-skill-detail p {
+  color: var(--ask-text-2);
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+.agent-skills-redesign .ask-codeblock {
+  background: var(--ask-surface-2);
+  border: 1px solid var(--ask-border);
+  border-radius: var(--ask-radius-sm);
+  padding: 12px 14px;
+  font-family: var(--ask-font-mono);
+  font-size: 12px;
+  color: var(--ask-text);
+  white-space: pre-wrap;
+  overflow-x: auto;
+  line-height: 1.55;
+  max-height: 280px;
+}
+.agent-skills-redesign .ask-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.agent-skills-redesign .ask-file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  font-family: var(--ask-font-mono);
+  font-size: 11.5px;
+  color: var(--ask-text-2);
+  background: transparent;
+  border: 1px solid transparent;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+.agent-skills-redesign .ask-file-row:hover {
+  background: var(--ask-surface-2);
+  color: var(--ask-text);
+}
+.agent-skills-redesign .ask-file-row.is-active {
+  background: var(--ask-accent-soft);
+  border-color: color-mix(in oklab, var(--ask-accent) 25%, transparent);
+  color: var(--ask-accent);
+}
+.agent-skills-redesign .ask-file-row.is-active .ask-ico {
+  color: var(--ask-accent);
+}
+.agent-skills-redesign .ask-file-row .ask-ico {
+  color: var(--ask-text-3);
+}
+
+/* File viewer header (shown above the codeblock when a file is selected). */
+.agent-skills-redesign .ask-file-viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 8px;
+}
+.agent-skills-redesign .ask-file-viewer-header h5 {
+  margin: 0;
+  font-family: var(--ask-font-mono);
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+  color: var(--ask-text);
+  word-break: break-all;
+}
+.agent-skills-redesign .ask-aside .ask-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px dashed var(--ask-border);
+  font-size: 12px;
+}
+.agent-skills-redesign .ask-aside .ask-row:last-child {
+  border-bottom: 0;
+}
+.agent-skills-redesign .ask-aside .ask-k {
+  color: var(--ask-text-3);
+}
+.agent-skills-redesign .ask-aside .ask-v {
+  color: var(--ask-text);
+  font-family: var(--ask-font-mono);
+  font-size: 11.5px;
+  text-align: right;
+  word-break: break-all;
+}
+
+.agent-skills-redesign .ask-triggers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.agent-skills-redesign .ask-trigger-pill {
+  font-family: var(--ask-font-mono);
+  font-size: 11.5px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--ask-accent-soft);
+  color: var(--ask-accent);
+  border: 1px solid color-mix(in oklab, var(--ask-accent) 25%, transparent);
+}
+
+.agent-skills-redesign .ask-pill-warn {
+  color: var(--ask-warn);
+  background: color-mix(in oklab, var(--ask-warn) 15%, transparent);
+  border-color: color-mix(in oklab, var(--ask-warn) 30%, var(--ask-border));
+}
+
+/* ---- Resolution order ---- */
+.agent-skills-redesign .ask-resolution {
+  margin-top: 26px;
+  border: 1px solid var(--ask-border);
+  border-radius: var(--ask-radius);
+  background: var(--ask-surface);
+  padding: 18px 20px;
+}
+.agent-skills-redesign .ask-resolution h3 {
+  font-size: 13px;
+  margin: 0 0 4px;
+  font-weight: 600;
+  color: var(--ask-text);
+}
+.agent-skills-redesign .ask-resolution p {
+  margin: 0 0 14px;
+  color: var(--ask-text-2);
+  font-size: 12.5px;
+}
+.agent-skills-redesign .ask-order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.agent-skills-redesign .ask-order-row {
+  display: grid;
+  grid-template-columns: 22px 8px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--ask-border);
+  border-radius: var(--ask-radius-sm);
+  background: var(--ask-surface);
+}
+.agent-skills-redesign .ask-order-row .ask-idx {
+  color: var(--ask-text-3);
+  font-family: var(--ask-font-mono);
+  font-size: 11px;
+}
+.agent-skills-redesign .ask-order-row .ask-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--ask-text-3);
+}
+.agent-skills-redesign .ask-order-row[data-kind="global"] .ask-swatch {
+  background: #6e56cf;
+}
+.agent-skills-redesign .ask-order-row[data-kind="repo"] .ask-swatch {
+  background: var(--ask-accent);
+}
+.agent-skills-redesign .ask-order-row[data-kind="linked"] .ask-swatch {
+  background: #1f9d77;
+}
+.agent-skills-redesign .ask-order-row[data-kind="extra"] .ask-swatch {
+  background: #c08a2c;
+}
+.agent-skills-redesign .ask-order-row .ask-label {
+  font-size: 12.5px;
+  color: var(--ask-text);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.agent-skills-redesign .ask-order-row .ask-label .ask-label-name {
+  font-weight: 500;
+}
+.agent-skills-redesign .ask-order-row .ask-label .ask-path {
+  color: var(--ask-text-3);
+  font-family: var(--ask-font-mono);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-skills-redesign .ask-footer-note {
+  margin-top: 18px;
+  color: var(--ask-text-3);
+  font-size: 11.5px;
+  text-align: center;
+}
+
+/* ---- Empty / Loading ---- */
+.agent-skills-redesign .ask-empty-source {
+  padding: 18px;
+  text-align: center;
+  color: var(--ask-text-3);
+  border: 1px dashed var(--ask-border-strong);
+  border-radius: var(--ask-radius);
+  background: var(--ask-surface);
+}
+
+.agent-skills-redesign .ask-loading {
+  padding: 18px;
+  text-align: center;
+  color: var(--ask-text-3);
+  font-size: 12.5px;
+}
+
+/* ---- Popover (Link a repo) ---- */
+.agent-skills-redesign .ask-popover-anchor {
+  position: relative;
+}
+.agent-skills-redesign .ask-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 50;
+  background: var(--ask-surface);
+  border: 1px solid var(--ask-border-strong);
+  border-radius: var(--ask-radius);
+  box-shadow: var(--ask-shadow-2);
+  width: 320px;
+  overflow: hidden;
+}
+.agent-skills-redesign .ask-popover-header {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ask-border);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ask-text);
+}
+.agent-skills-redesign .ask-popover-filter {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ask-border);
+}
+.agent-skills-redesign .ask-popover-filter input {
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: var(--ask-radius-sm);
+  border: 1px solid var(--ask-border);
+  background: var(--ask-surface);
+  color: var(--ask-text);
+  font-size: 12px;
+  outline: none;
+}
+.agent-skills-redesign .ask-popover-filter input:focus {
+  border-color: var(--ask-accent);
+}
+.agent-skills-redesign .ask-popover-list {
+  max-height: 280px;
+  overflow-y: auto;
+}
+.agent-skills-redesign .ask-popover-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  width: 100%;
+  text-align: left;
+  border-bottom: 1px solid var(--ask-border);
+  background: transparent;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  cursor: pointer;
+}
+.agent-skills-redesign .ask-popover-item:hover {
+  background: var(--ask-surface-2);
+}
+.agent-skills-redesign .ask-popover-item:last-child {
+  border-bottom: none;
+}
+.agent-skills-redesign .ask-popover-item .ask-repo-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.agent-skills-redesign .ask-popover-item .ask-repo-meta {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.agent-skills-redesign .ask-popover-item .ask-repo-name {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ask-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-skills-redesign .ask-popover-item .ask-repo-url {
+  font-size: 10.5px;
+  color: var(--ask-text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-skills-redesign .ask-popover-item .ask-repo-count {
+  font-size: 11px;
+  color: var(--ask-text-3);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+/* ---- Source add input row ---- */
+.agent-skills-redesign .ask-source-input-row {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+}
+.agent-skills-redesign .ask-source-input-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: var(--ask-radius-sm);
+  border: 1px solid var(--ask-border);
+  background: var(--ask-surface);
+  color: var(--ask-text);
+  font-family: var(--ask-font-mono);
+  font-size: 11.5px;
+  outline: none;
+}
+.agent-skills-redesign .ask-source-input-row input:focus {
+  border-color: var(--ask-accent);
+}
+
+/* ---- Inline delete confirmation ---- */
+.agent-skills-redesign .ask-delete-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--ask-text-2);
+}
+.agent-skills-redesign .ask-delete-confirm .ask-confirm-yes {
+  color: var(--ask-danger);
+  font-weight: 500;
+}
+.agent-skills-redesign .ask-delete-confirm .ask-confirm-no {
+  color: var(--ask-text-3);
+}
+
+/* ---- Install dialog (modal) ---- */
+.agent-skills-redesign-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 15, 18, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.agent-skills-redesign-modal {
+  background: var(--ask-surface, #ffffff);
+  border-radius: var(--ask-radius, 8px);
+  box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.3);
+  width: 100%;
+  max-width: 520px;
+  margin: 0 16px;
+  display: flex;
+  flex-direction: column;
+  max-height: 80vh;
+  color: var(--ask-text, #18181a);
+  border: 1px solid var(--ask-border, #e3e3e0);
+}
+[data-theme="dark"] .agent-skills-redesign-modal {
+  --ask-surface: #16181b;
+  --ask-text: #e8e9eb;
+  --ask-border: #2a2e34;
+  background: #16181b;
+  color: #e8e9eb;
+  border-color: #2a2e34;
+}

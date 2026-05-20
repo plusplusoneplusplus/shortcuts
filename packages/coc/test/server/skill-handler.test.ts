@@ -64,14 +64,19 @@ async function dispatchRoute(
     const { res, getStatusCode, getBody } = createMockResponse();
     const req = makeRequest(method, url, body);
 
+    // Match routes against pathname only, mirroring the production router which
+    // strips the query string before pattern matching.
+    const qIdx = url.indexOf('?');
+    const pathname = qIdx >= 0 ? url.slice(0, qIdx) : url;
+
     for (const route of routes) {
         const pattern = route.pattern;
         let match: RegExpMatchArray | null = null;
 
         if (typeof pattern === 'string') {
-            if (pattern === url) match = [url];
+            if (pattern === pathname) match = [pathname];
         } else {
-            match = url.match(pattern);
+            match = pathname.match(pattern);
         }
 
         if (match && route.method === method) {
@@ -422,6 +427,95 @@ describe('registerSkillRoutes', () => {
             );
             expect(statusCode).toBe(400);
         }
+    });
+
+    // -----------------------------------------------------------------------
+    // GET /api/workspaces/:id/skills/:name/file (file content endpoint)
+    // -----------------------------------------------------------------------
+
+    function makeFileSkill(): string {
+        const skillsDir = path.join(workspaceDir, '.github', 'skills');
+        const skillDir = path.join(skillsDir, 'file-skill');
+        fs.mkdirSync(path.join(skillDir, 'references'), { recursive: true });
+        fs.mkdirSync(path.join(skillDir, 'scripts'), { recursive: true });
+        fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '# File Skill');
+        fs.writeFileSync(path.join(skillDir, 'references', 'spec.md'), '# Reference\nDetails here.');
+        fs.writeFileSync(path.join(skillDir, 'scripts', 'run.py'), 'print("ok")\n');
+        return skillDir;
+    }
+
+    it('GET /api/workspaces/:id/skills/:name/file returns reference file content', async () => {
+        makeFileSkill();
+        const { statusCode, body } = await dispatchRoute(
+            routes, 'GET',
+            `/api/workspaces/${workspaceId}/skills/file-skill/file?path=${encodeURIComponent('references/spec.md')}`,
+        );
+        expect(statusCode).toBe(200);
+        expect(body.path).toBe('references/spec.md');
+        expect(body.content).toBe('# Reference\nDetails here.');
+        expect(body.size).toBeGreaterThan(0);
+    });
+
+    it('GET /api/workspaces/:id/skills/:name/file returns script file content', async () => {
+        makeFileSkill();
+        const { statusCode, body } = await dispatchRoute(
+            routes, 'GET',
+            `/api/workspaces/${workspaceId}/skills/file-skill/file?path=${encodeURIComponent('scripts/run.py')}`,
+        );
+        expect(statusCode).toBe(200);
+        expect(body.content).toBe('print("ok")\n');
+    });
+
+    it('GET /api/workspaces/:id/skills/:name/file rejects path escaping the skill directory', async () => {
+        makeFileSkill();
+        const { statusCode } = await dispatchRoute(
+            routes, 'GET',
+            `/api/workspaces/${workspaceId}/skills/file-skill/file?path=${encodeURIComponent('../other/secret.txt')}`,
+        );
+        expect(statusCode).toBe(400);
+    });
+
+    it('GET /api/workspaces/:id/skills/:name/file requires path query parameter', async () => {
+        makeFileSkill();
+        const { statusCode } = await dispatchRoute(
+            routes, 'GET',
+            `/api/workspaces/${workspaceId}/skills/file-skill/file`,
+        );
+        expect(statusCode).toBe(400);
+    });
+
+    it('GET /api/workspaces/:id/skills/:name/file returns 404 when file does not exist', async () => {
+        makeFileSkill();
+        const { statusCode } = await dispatchRoute(
+            routes, 'GET',
+            `/api/workspaces/${workspaceId}/skills/file-skill/file?path=${encodeURIComponent('references/missing.md')}`,
+        );
+        expect(statusCode).toBe(404);
+    });
+
+    it('GET /api/workspaces/:id/skills/:name/file returns 404 for unknown skill', async () => {
+        const { statusCode } = await dispatchRoute(
+            routes, 'GET',
+            `/api/workspaces/${workspaceId}/skills/nonexistent-skill/file?path=${encodeURIComponent('SKILL.md')}`,
+        );
+        expect(statusCode).toBe(404);
+    });
+
+    it('GET /api/workspaces/:id/skills/:name/file rejects directories', async () => {
+        makeFileSkill();
+        const { statusCode } = await dispatchRoute(
+            routes, 'GET',
+            `/api/workspaces/${workspaceId}/skills/file-skill/file?path=${encodeURIComponent('references')}`,
+        );
+        expect(statusCode).toBe(400);
+    });
+
+    it('GET /api/workspaces/:id/skills/:name/file rejects reserved skill names', async () => {
+        const { statusCode } = await dispatchRoute(
+            routes, 'GET',
+            `/api/workspaces/${workspaceId}/skills/bundled/file?path=${encodeURIComponent('SKILL.md')}`,
+        );
+        expect(statusCode).toBe(400);
     });
 
     // -----------------------------------------------------------------------

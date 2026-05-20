@@ -97,3 +97,9 @@ export interface UpdateWorkspaceSkillsConfigRequest {
   disabledSkills: string[];
   extraSkillFolders?: string[];
 }
+
+export interface SkillFileResponse {
+  path: string;
+  content: string;
+  size: number;
+}
