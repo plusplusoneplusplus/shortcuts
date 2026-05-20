@@ -143,10 +143,19 @@ export interface NotesSidebarProps {
     markSeenRef?: React.RefObject<(() => void) | null>;
     /** Whether the current root is the default managed root. Defaults to true. */
     isDefaultRoot?: boolean;
+    /** The selected root ID to pass to the tree fetch ('default' or a relative path). */
+    selectedRootId?: string;
+    /** Display label for the currently selected root. */
+    selectedRootLabel?: string;
+    /** All available roots for the dropdown. */
+    roots?: import('../notesApi').NotesRootEntry[];
+    /** Callback when the user selects a different root. */
+    onSelectRoot?: (rootId: string) => void;
 }
 
-export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack, onNotesRootReady, onRestoreEditorFocus, markSeenRef, isDefaultRoot = true }: NotesSidebarProps) {
-    const { tree, notesRoot, systemFolders, loading, error, refresh, createNode, renameNode, deleteNode, reorderNodes } = useNotesTree(workspaceId);
+export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack, onNotesRootReady, onRestoreEditorFocus, markSeenRef, isDefaultRoot = true, selectedRootId, selectedRootLabel, roots, onSelectRoot }: NotesSidebarProps) {
+    const rootParam = selectedRootId && selectedRootId !== 'default' ? selectedRootId : undefined;
+    const { tree, notesRoot, systemFolders, loading, error, refresh, createNode, renameNode, deleteNode, reorderNodes } = useNotesTree(workspaceId, rootParam);
     const { isNoteUpdated, markAsSeen, syncSeenState } = useNoteSeenState(workspaceId);
     const { ctxMenu, dialog, openContextMenu, closeContextMenu, openDialog, closeDialog, setSubmitting } = useNotesContextMenu();
     const { selectedPaths: multiSelectedPaths, handleSelect: handleMultiSelect, clearSelection } = useNotesSelection();
@@ -157,6 +166,32 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     const dragDrop = useNotesDragDrop();
     const [addDropdownOpen, setAddDropdownOpen] = useState(false);
     const addDropdownRef = useRef<HTMLDivElement>(null);
+    const treeAreaRef = useRef<HTMLDivElement>(null);
+    const [rootDropdownOpen, setRootDropdownOpen] = useState(false);
+    const rootDropdownRef = useRef<HTMLDivElement>(null);
+    const hasMultipleRoots = roots && roots.length > 1;
+
+    // Close root dropdown on outside click
+    useEffect(() => {
+        if (!rootDropdownOpen) return;
+        function handleClickOutside(e: MouseEvent) {
+            if (rootDropdownRef.current && !rootDropdownRef.current.contains(e.target as Node)) {
+                setRootDropdownOpen(false);
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [rootDropdownOpen]);
+
+    // Close root dropdown on Escape
+    useEffect(() => {
+        if (!rootDropdownOpen) return;
+        function handleKeyDown(e: KeyboardEvent) {
+            if (e.key === 'Escape') setRootDropdownOpen(false);
+        }
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [rootDropdownOpen]);
 
     // Close dropdown on outside click
     useEffect(() => {
@@ -578,9 +613,57 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                         <path d="M10 12L6 8l4-4" />
                     </svg>
                 </button>
-                <span className="flex-1 min-w-0 text-[13px] font-semibold text-[#1f2328] dark:text-[#cccccc] truncate">
-                    Notes
-                </span>
+                {/* Root selector — dropdown when multiple roots, static label when single */}
+                {hasMultipleRoots ? (
+                    <div className="relative flex-1 min-w-0" ref={rootDropdownRef}>
+                        <button
+                            type="button"
+                            className="flex items-center gap-1 max-w-full text-[13px] font-semibold text-[#1f2328] dark:text-[#cccccc] truncate hover:bg-[#f6f8fa] dark:hover:bg-[#2a2d2e] rounded-md px-1.5 py-0.5"
+                            onClick={() => setRootDropdownOpen(prev => !prev)}
+                            aria-haspopup="listbox"
+                            aria-expanded={rootDropdownOpen}
+                            data-testid="notes-root-selector"
+                            title={`Current root: ${selectedRootLabel ?? 'Notes'}`}
+                        >
+                            <span className="truncate">{selectedRootLabel ?? 'Notes'}</span>
+                            <svg className="w-3 h-3 flex-shrink-0 opacity-60" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M4 6l4 4 4-4" />
+                            </svg>
+                        </button>
+                        {rootDropdownOpen && (
+                            <div
+                                className="absolute left-0 top-full mt-1 z-30 min-w-[180px] max-w-[300px] bg-white dark:bg-[#252526] border border-[#d0d7de] dark:border-[#3c3c3c] rounded-md shadow-[0_8px_24px_rgba(140,149,159,0.2)] py-1"
+                                role="listbox"
+                                data-testid="notes-root-dropdown"
+                            >
+                                {roots!.map(r => (
+                                    <button
+                                        key={r.rootId}
+                                        className={`w-full text-left px-3 py-1.5 text-xs truncate ${
+                                            r.rootId === selectedRootId
+                                                ? 'bg-[#ddf4ff] dark:bg-[#0a3b66]/40 text-[#0969da] dark:text-[#79c0ff] font-semibold'
+                                                : 'text-[#1f2328] dark:text-[#cccccc] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2d2e]'
+                                        }`}
+                                        role="option"
+                                        aria-selected={r.rootId === selectedRootId}
+                                        onClick={() => {
+                                            onSelectRoot?.(r.rootId);
+                                            setRootDropdownOpen(false);
+                                        }}
+                                        data-testid={`notes-root-option-${r.rootId}`}
+                                        title={r.isDefault ? 'Default managed root' : r.rootId}
+                                    >
+                                        {r.isDefault ? '📓 ' : '📁 '}{r.label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <span className="flex-1 min-w-0 text-[13px] font-semibold text-[#1f2328] dark:text-[#cccccc] truncate">
+                        Notes
+                    </span>
+                )}
                 <button
                     type="button"
                     className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-transparent text-[#1f2328] dark:text-[#cccccc] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2d2e] disabled:opacity-40 disabled:cursor-not-allowed"

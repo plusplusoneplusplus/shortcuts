@@ -183,5 +183,28 @@ describe('NotesClient', () => {
       expect.objectContaining({ method: 'GET' }),
     );
   });
+
+  it('calls listRoots and getTree with root param', async () => {
+    const adapter = createMockAdapter({
+      roots: [
+        { rootId: 'default', label: 'Notes', isDefault: true },
+        { rootId: 'docs/notes', label: 'docs/notes', isDefault: false },
+      ],
+      maxAdditionalRoots: 10,
+      tree: [],
+      notesRoot: '/some/path',
+    });
+    const client = new NotesClient(adapter);
+
+    await client.listRoots('repo/a');
+    await client.getTree('repo/a', 'docs/notes');
+    await client.getTree('repo/a');
+
+    expect(adapter.calls).toMatchObject([
+      { path: '/workspaces/repo%2Fa/notes/roots' },
+      { path: '/workspaces/repo%2Fa/notes/tree', options: { query: { root: 'docs/notes' } } },
+      { path: '/workspaces/repo%2Fa/notes/tree', options: { query: { root: undefined } } },
+    ]);
+  });
 });
 

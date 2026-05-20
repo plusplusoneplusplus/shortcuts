@@ -19,6 +19,7 @@ import {
     type NoteTreeNode,
     type NoteTreeResponse,
     type NotesGitAutoCommitStatus,
+    type NotesRootsResponse,
     type NotesGitCommitResponse,
     type NotesGitDiff,
     type NotesGitLogResponse,
@@ -40,6 +41,8 @@ export type {
     NoteSearchResponse,
     NoteSearchResult,
     NoteSidecar,
+    NotesRootEntry,
+    NotesRootsResponse,
     NoteTreeNode,
     NoteTreeResponse,
     TextAnchor,
@@ -70,8 +73,12 @@ async function withConflictError<T>(request: Promise<T>): Promise<T> {
 const notesClient = () => getSpaCocClient().notes;
 
 export const notesApi = {
-    getTree(wsId: string): Promise<NoteTreeResponse> {
-        return withSpaErrors(notesClient().getTree(wsId));
+    getTree(wsId: string, root?: string): Promise<NoteTreeResponse> {
+        return withSpaErrors(notesClient().getTree(wsId, root));
+    },
+
+    listRoots(wsId: string): Promise<NotesRootsResponse> {
+        return withSpaErrors(notesClient().listRoots(wsId));
     },
 
     getContent(wsId: string, notePath: string): Promise<NoteContentResponse> {

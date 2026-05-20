@@ -14,7 +14,7 @@ export interface UseNotesTreeResult {
     reorderNodes: (parentPath: string, order: string[]) => Promise<void>;
 }
 
-export function useNotesTree(workspaceId: string): UseNotesTreeResult {
+export function useNotesTree(workspaceId: string, root?: string): UseNotesTreeResult {
     const [tree, setTree] = useState<NoteTreeNode[] | null>(null);
     const [notesRoot, setNotesRoot] = useState<string | null>(null);
     const [systemFolders, setSystemFolders] = useState<string[]>([]);
@@ -25,7 +25,7 @@ export function useNotesTree(workspaceId: string): UseNotesTreeResult {
         setLoading(true);
         setError(null);
         try {
-            const data = await notesApi.getTree(workspaceId);
+            const data = await notesApi.getTree(workspaceId, root);
             setTree(data.tree);
             setNotesRoot(data.notesRoot);
             setSystemFolders(data.systemFolders ?? []);
@@ -34,7 +34,7 @@ export function useNotesTree(workspaceId: string): UseNotesTreeResult {
         } finally {
             setLoading(false);
         }
-    }, [workspaceId]);
+    }, [workspaceId, root]);
 
     useEffect(() => {
         fetchTree();

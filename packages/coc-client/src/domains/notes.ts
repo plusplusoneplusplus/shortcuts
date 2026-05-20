@@ -21,6 +21,7 @@ import type {
   NotesGitDiff,
   NotesGitLogResponse,
   NotesGitStatus,
+  NotesRootsResponse,
   NoteTreeResponse,
   NoteNodeType,
   RenameNoteNodeResponse,
@@ -60,8 +61,14 @@ export interface NotesGitLogQuery {
 export class NotesClient {
   constructor(private readonly transport: RequestAdapter) {}
 
-  getTree(workspaceId: string): Promise<NoteTreeResponse> {
-    return this.transport.request<NoteTreeResponse>(workspaceNotesPath(workspaceId, '/tree'));
+  getTree(workspaceId: string, root?: string): Promise<NoteTreeResponse> {
+    return this.transport.request<NoteTreeResponse>(workspaceNotesPath(workspaceId, '/tree'), {
+      query: compactQuery({ root }),
+    });
+  }
+
+  listRoots(workspaceId: string): Promise<NotesRootsResponse> {
+    return this.transport.request<NotesRootsResponse>(workspaceNotesPath(workspaceId, '/roots'));
   }
 
   getContent(workspaceId: string, notePath: string): Promise<NoteContentResponse> {

@@ -17,6 +17,7 @@ import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { useApp } from '../../contexts/AppContext';
 import { buildNoteHash } from '../../layout/Router';
 import { useNoteReferences } from './editor/useNoteReferences';
+import { useNotesRoots } from './hooks/useNotesRoots';
 
 export interface NotesViewProps {
     workspaceId: string;
@@ -67,6 +68,20 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
     // ── Note references (shared between editor and chat panel) ──────────────
 
     const noteRefs = useNoteReferences();
+
+    // ── Notes roots (multi-root support) ────────────────────────────────────
+
+    const { roots, selectedRootId, isDefaultRoot, selectedRootLabel, selectRoot } = useNotesRoots(workspaceId);
+
+    // Clear selected path when root changes
+    const prevRootRef = useRef(selectedRootId);
+    useEffect(() => {
+        if (prevRootRef.current !== selectedRootId) {
+            prevRootRef.current = selectedRootId;
+            setSelectedPath(null);
+            dispatch({ type: 'SET_SELECTED_NOTE_PATH', notePath: null });
+        }
+    }, [selectedRootId, dispatch]);
 
     // ── Notes root path (surfaced from NotesSidebar for plan-file skill button) ──
 
@@ -387,6 +402,11 @@ export function NotesView({ workspaceId, initialNotePath, chatPanelOpen: chatPan
                     onNotesRootReady={setNotesRoot}
                     onRestoreEditorFocus={handleRestoreEditorFocus}
                     markSeenRef={markSeenRef}
+                    isDefaultRoot={isDefaultRoot}
+                    selectedRootId={selectedRootId}
+                    selectedRootLabel={selectedRootLabel}
+                    roots={roots}
+                    onSelectRoot={selectRoot}
                 />
             </ResponsiveSidebar>
 
