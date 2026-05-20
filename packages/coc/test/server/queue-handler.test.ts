@@ -757,7 +757,7 @@ describe('Queue Handler', () => {
             expect(body.running).toEqual([]);
         });
 
-        it('should treat empty repoId parameter as global workspace scope', async () => {
+        it('should treat empty repoId parameter as aggregate queue scope', async () => {
             const srv = await startServer();
 
             await postJSON(`${srv.url}/api/queue/pause`, {});
@@ -770,9 +770,7 @@ describe('Queue Handler', () => {
             const res = await request(`${srv.url}/api/queue?repoId=`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            // Only the global task (no workingDirectory) should appear
-            expect(body.queued).toHaveLength(1);
-            expect(body.queued[0].displayName).toBe('Global');
+            expect(body.queued.map((t: any) => t.displayName).sort()).toEqual(['A', 'B', 'Global']);
         });
 
         it('should return per-repo stats when filtering by repoId', async () => {
@@ -2221,7 +2219,7 @@ describe('Queue Handler', () => {
             expect(allTasks.length).toBeGreaterThanOrEqual(1);
         });
 
-        it('GET /api/queue (no repoId) returns only global workspace tasks', async () => {
+        it('GET /api/queue (no repoId) includes repo-specific tasks', async () => {
             const srv = await startServer();
 
             // Register a non-global workspace and enqueue a task to it
@@ -2240,14 +2238,14 @@ describe('Queue Handler', () => {
                 displayName: 'Global task',
             }));
 
-            // GET /api/queue (no repoId) should NOT include the repo-specific task
+            // GET /api/queue (no repoId) aggregates all queues for the activity list.
             const listRes = await request(`${srv.url}/api/queue`);
             const list = JSON.parse(listRes.body);
             const allTasks = [...list.queued, ...list.running];
             const repoTasks = allTasks.filter((t: any) =>
                 t.payload?.workingDirectory === repoDir
             );
-            expect(repoTasks).toHaveLength(0);
+            expect(repoTasks).toHaveLength(1);
         });
     });
 

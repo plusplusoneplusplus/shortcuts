@@ -1089,7 +1089,7 @@ describe('Per-Repo Queue Integration', () => {
     // Scenario 18: Aggregate GET /api/queue
     // ------------------------------------------------------------------
     describe('aggregate GET /api/queue', () => {
-        it('should return only global workspace tasks when no repoId filter', async () => {
+        it('should return tasks from all repo queues when no repoId filter', async () => {
             const repoA = '/repo/aggregate-a';
             const repoB = '/repo/aggregate-b';
 
@@ -1103,9 +1103,8 @@ describe('Per-Repo Queue Integration', () => {
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
 
-            // GET /api/queue (no repoId) now returns only the global workspace queue
-            expect(body.queued.length).toBe(0);
-            expect(body.stats.queued).toBe(0);
+            expect(body.queued.map((t: any) => t.displayName).sort()).toEqual(['Agg A1', 'Agg B1', 'Agg B2']);
+            expect(body.stats.queued).toBe(3);
 
             await postJSON(`${baseUrl}/api/queue/resume`, {});
         });
