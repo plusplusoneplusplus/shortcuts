@@ -55,7 +55,7 @@ async function fetchTeamsStatus(): Promise<TeamsStatus> {
     return res.json();
 }
 
-async function postTeamsConfig(patch: { botName?: string; channelId?: string }): Promise<void> {
+async function postTeamsConfig(patch: { botName?: string; channelId?: string; enabled?: boolean }): Promise<void> {
     const res = await fetch(getRawApiBase() + '/container/messaging/teams/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -387,6 +387,7 @@ function TeamsSettingsCard() {
     const [editName, setEditName] = useState('');
     const [nameEditing, setNameEditing] = useState(false);
     const [nameSaving, setNameSaving] = useState(false);
+    const [toggling, setToggling] = useState(false);
 
     const loadStatus = useCallback(async () => {
         try {
@@ -428,23 +429,34 @@ function TeamsSettingsCard() {
                 </div>
             )}
 
+            {/* Enable/Disable toggle */}
+            <div className="flex items-center justify-between mb-3 pb-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                <span className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">
+                    {status?.enabled ? 'Enabled' : 'Disabled'}
+                </span>
+                <button
+                    disabled={toggling}
+                    onClick={async () => {
+                        setToggling(true);
+                        try {
+                            await postTeamsConfig({ enabled: !status?.enabled });
+                            setTimeout(() => void loadStatus(), 1000);
+                        } catch (e: any) {
+                            setError(e.message);
+                        } finally {
+                            setToggling(false);
+                        }
+                    }}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${status?.enabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-[#555]'} ${toggling ? 'opacity-50' : ''}`}
+                >
+                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${status?.enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'}`} />
+                </button>
+            </div>
+
             {!status?.enabled ? (
-                <div className="space-y-2">
-                    <p className="text-xs text-[#616161] dark:text-[#999]">
-                        Teams integration is disabled. Set <code className="text-[10px] bg-[#f0f0f0] dark:bg-[#3c3c3c] px-1 py-0.5 rounded">messaging.teams.enabled: true</code> and provide <code className="text-[10px] bg-[#f0f0f0] dark:bg-[#3c3c3c] px-1 py-0.5 rounded">mcpServerUrl</code> in your <code className="text-[10px] bg-[#f0f0f0] dark:bg-[#3c3c3c] px-1 py-0.5 rounded">~/.coccontainer/config.yaml</code>.
-                    </p>
-                    <pre className="text-[10px] bg-[#1e1e1e] text-[#d4d4d4] p-2 rounded overflow-x-auto">
-{`messaging:
-  teams:
-    enabled: true
-    mcpServerUrl: "https://agent365.svc.cloud.microsoft/..."
-    channelId: "your-channel-id"  # optional
-    botName: "CoC"`}
-                    </pre>
-                    <p className="text-[10px] text-[#616161] dark:text-[#999]">
-                        Restart the container after changing config.
-                    </p>
-                </div>
+                <p className="text-xs text-[#616161] dark:text-[#999]">
+                    Teams integration is disabled. Toggle the switch above to enable it. A container restart is required for changes to take effect.
+                </p>
             ) : (
                 <div className="space-y-3">
                     <div className="flex items-center justify-between">
