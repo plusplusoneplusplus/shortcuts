@@ -464,7 +464,12 @@ export function buildCreateWorkItemAddon(
     const { tool: workItemTool } = createWorkItemTool(dataDir, repoId, broadcastFn);
     const { tool: bugTool } = createBugTool(dataDir, repoId, broadcastFn);
 
-    return { tools: [workItemTool, bugTool], suffix: '' };
+    const suffix =
+        '\n\nInvoke the matching skill for work item operations — do not handle inline: ' +
+        '`create-work-item` skill for create_work_item, `create-bug` skill for create_bug, `update-work-item` skill to update. ' +
+        'When new implementation work is identified, create a work item automatically — do not ask the user whether to create a plan first.';
+
+    return { tools: [workItemTool, bugTool], suffix };
 }
 
 /**
