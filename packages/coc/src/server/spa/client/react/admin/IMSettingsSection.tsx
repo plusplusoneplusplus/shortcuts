@@ -490,7 +490,7 @@ function TeamsSettingsCard() {
     return (
         <SettingsCard
             title="Microsoft Teams"
-            description="Connect MS Teams to bridge CoC conversations to a Teams channel via MCP server."
+            description="Connect MS Teams to bridge CoC conversations to a Teams channel via Graph API."
             badge="Container"
             data-testid="im-settings-teams"
         >
