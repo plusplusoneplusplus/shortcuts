@@ -14,11 +14,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
+import type { PrSuggestion } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useApp } from '../../contexts/AppContext';
 import { cn } from '../../ui';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
+import { isPullRequestsSuggestionsEnabled } from '../../utils/config';
 import { PullRequestDetail } from './PullRequestDetail';
 import { PullRequestRow } from './PullRequestRow';
 import { PrQueueFilters } from './PrQueueFilters';
@@ -86,12 +88,15 @@ function persistQueueCollapsed(value: boolean): void {
 
 /** Map a queue filter pill to the server scope it requires. */
 function scopeForFilter(filter: QueueFilter): 'mine' | 'all' {
-    return filter === 'all' ? 'all' : 'mine';
+    return (filter === 'all' || filter === 'foryou') ? 'all' : 'mine';
 }
 
 /** Filter pills that classify a PR by attention/queue section. */
-function matchesFilter(pr: PullRequest, filter: QueueFilter): boolean {
+function matchesFilter(pr: PullRequest, filter: QueueFilter, suggestedPrNumbers?: Set<number>): boolean {
     if (filter === 'all' || filter === 'mine') return true;
+    if (filter === 'foryou') {
+        return suggestedPrNumbers != null && suggestedPrNumbers.has(pr.number ?? 0);
+    }
     const group = classifyPr(pr);
     if (filter === 'blocked') {
         return group === AttentionGroup.RerunNeeded || group === AttentionGroup.ManualUpdateNeeded;
@@ -123,6 +128,16 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     const [batchMode, setBatchMode] = useState(false);
     const [queueCollapsed, setQueueCollapsed] = useState<boolean>(() => loadQueueCollapsed());
     const [now, setNow] = useState(() => Date.now());
+
+    // ── PR suggestions state ─────────────────────────────────────
+    const suggestionsEnabled = isPullRequestsSuggestionsEnabled();
+    const [suggestions, setSuggestions] = useState<PrSuggestion[]>([]);
+    const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+
+    const suggestedPrNumbers = useMemo(
+        () => new Set(suggestions.map(s => s.prNumber)),
+        [suggestions],
+    );
 
     // Live ticker: refresh the "Updated X min ago" label every 30 s.
     useEffect(() => {
@@ -239,6 +254,23 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         fetchPrs(true);
     }, [fetchPrs]);
 
+    // Fetch cached suggestions on mount when feature is enabled.
+    useEffect(() => {
+        if (!suggestionsEnabled) return;
+        getSpaCocClient().pullRequests.getSuggestions(repoId)
+            .then(data => setSuggestions(data.suggestions ?? []))
+            .catch(() => { /* non-fatal */ });
+    }, [repoId, suggestionsEnabled]);
+
+    const handleRefreshSuggestions = useCallback(() => {
+        if (suggestionsLoading) return;
+        setSuggestionsLoading(true);
+        getSpaCocClient().pullRequests.refreshSuggestions(repoId)
+            .then(data => setSuggestions(data.suggestions ?? []))
+            .catch(() => { /* non-fatal */ })
+            .finally(() => setSuggestionsLoading(false));
+    }, [repoId, suggestionsLoading]);
+
     const filteredBySearch = useMemo(() => {
         if (!searchText) return prs;
         const query = searchText.toLowerCase();
@@ -246,8 +278,8 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     }, [prs, searchText]);
 
     const filteredByPill = useMemo(
-        () => filteredBySearch.filter(pr => matchesFilter(pr, activeFilter)),
-        [filteredBySearch, activeFilter],
+        () => filteredBySearch.filter(pr => matchesFilter(pr, activeFilter, suggestedPrNumbers)),
+        [filteredBySearch, activeFilter, suggestedPrNumbers],
     );
 
     const groupedPrs = useMemo(() => {
@@ -263,7 +295,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     }, [filteredByPill]);
 
     const filterCounts: QueueFilterCounts = useMemo(() => {
-        const counts: QueueFilterCounts = { all: 0, mine: 0, blocked: 0, ready: 0 };
+        const counts: QueueFilterCounts = { all: 0, mine: 0, blocked: 0, ready: 0, foryou: 0 };
         // 'all' / 'mine' counts represent the size of the currently fetched
         // scope; 'blocked' / 'ready' are derived per-PR via the classifier.
         counts.all = filteredBySearch.length;
@@ -276,9 +308,12 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
             if (mapAttentionToQueueSection(group) === 'ready') {
                 counts.ready += 1;
             }
+            if (suggestedPrNumbers.has(pr.number ?? 0)) {
+                counts.foryou += 1;
+            }
         }
         return counts;
-    }, [filteredBySearch, effectiveScope]);
+    }, [filteredBySearch, effectiveScope, suggestedPrNumbers]);
 
     const selectedPrs = useMemo(
         () => prs.filter(pr => selectedPrIds.has(getPrSelectionId(pr))),
@@ -447,7 +482,26 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                         active={activeFilter}
                         counts={filterCounts}
                         onChange={handleFilterChange}
+                        suggestionsEnabled={suggestionsEnabled}
                     />
+                )}
+
+                {!queueCollapsed && suggestionsEnabled && activeFilter === 'foryou' && (
+                    <div
+                        className="flex items-center justify-between border-b border-yellow-100 bg-yellow-50 px-2.5 py-1 text-[11px] text-yellow-800 dark:border-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200"
+                        data-testid="suggestions-toolbar"
+                    >
+                        <span className="font-medium">AI-suggested PRs</span>
+                        <button
+                            type="button"
+                            onClick={handleRefreshSuggestions}
+                            disabled={suggestionsLoading}
+                            className="text-xs font-semibold text-yellow-700 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-yellow-300"
+                            data-testid="refresh-suggestions-button"
+                        >
+                            {suggestionsLoading ? 'Ranking…' : 'Refresh'}
+                        </button>
+                    </div>
                 )}
 
                 {!queueCollapsed && batchMode && selectedPrIds.size > 0 && (
@@ -513,6 +567,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                                             }
                                             batchMode={batchMode && !queueCollapsed}
                                             compact={queueCollapsed}
+                                            isSuggested={suggestionsEnabled && suggestedPrNumbers.has(pr.number ?? 0)}
                                         />
                                     ))}
                                 </PrQueueGroupSection>

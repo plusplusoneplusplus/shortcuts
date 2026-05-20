@@ -154,3 +154,17 @@ export interface ClassificationStatusResponse {
   result?: DiffClassificationResult;
   createdAt?: string;
 }
+
+// ── PR review suggestions ──────────────────────────────────────────
+
+/** A single suggested PR with relevance score. */
+export interface PrSuggestion {
+  prNumber: number;
+  score: number;
+}
+
+/** Response from GET/POST suggestions endpoints. */
+export interface PrSuggestionsResponse {
+  suggestions: PrSuggestion[];
+  rankedAt: string | null;
+}

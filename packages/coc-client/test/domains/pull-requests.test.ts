@@ -200,4 +200,54 @@ describe('PullRequestsClient', () => {
       '/api/repos/repo%2Fa/pull-requests/pr%2F1/diff/files/src%2Ffoo.ts',
     );
   });
+
+  // ── PR suggestions ──────────────────────────────────────────
+
+  it('getSuggestions sends GET to suggestions endpoint', async () => {
+    const adapter = createMockAdapter({ suggestions: [], rankedAt: null });
+    const client = new PullRequestsClient(adapter);
+
+    await client.getSuggestions('repo/a');
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/repos/repo%2Fa/pull-requests/suggestions',
+        options: { signal: undefined },
+      },
+    ]);
+  });
+
+  it('refreshSuggestions sends POST to suggestions/refresh endpoint', async () => {
+    const adapter = createMockAdapter({ suggestions: [{ prNumber: 1, score: 90 }], rankedAt: '2026-01-01' });
+    const client = new PullRequestsClient(adapter);
+
+    await client.refreshSuggestions('repo/a');
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/repos/repo%2Fa/pull-requests/suggestions/refresh',
+        options: { method: 'POST', signal: undefined },
+      },
+    ]);
+  });
+
+  it('getSuggestions forwards abort signal', async () => {
+    const adapter = createMockAdapter({ suggestions: [], rankedAt: null });
+    const client = new PullRequestsClient(adapter);
+    const controller = new AbortController();
+
+    await client.getSuggestions('r1', { signal: controller.signal });
+
+    expect(adapter.calls[0].options?.signal).toBe(controller.signal);
+  });
+
+  it('refreshSuggestions forwards abort signal', async () => {
+    const adapter = createMockAdapter({ suggestions: [], rankedAt: null });
+    const client = new PullRequestsClient(adapter);
+    const controller = new AbortController();
+
+    await client.refreshSuggestions('r1', { signal: controller.signal });
+
+    expect(adapter.calls[0].options?.signal).toBe(controller.signal);
+  });
 });

@@ -506,4 +506,25 @@ describe('queue helpers', () => {
             'ready',
         ]);
     });
+
+    it('includes "foryou" filter when suggestionsEnabled is true', () => {
+        expect(getQueueFilterDefinitions({ suggestionsEnabled: true }).map(f => f.id)).toEqual([
+            'all',
+            'mine',
+            'blocked',
+            'ready',
+            'foryou',
+        ]);
+    });
+
+    it('labels the foryou filter as "For You"', () => {
+        const foryou = getQueueFilterDefinitions({ suggestionsEnabled: true }).find(f => f.id === 'foryou');
+        expect(foryou).toBeDefined();
+        expect(foryou!.label).toBe('For You');
+    });
+
+    it('excludes "foryou" filter by default', () => {
+        const ids = getQueueFilterDefinitions().map(f => f.id);
+        expect(ids).not.toContain('foryou');
+    });
 });

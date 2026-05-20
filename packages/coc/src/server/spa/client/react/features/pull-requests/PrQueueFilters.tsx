@@ -15,10 +15,11 @@ interface PrQueueFiltersProps {
     active: QueueFilter;
     counts: QueueFilterCounts;
     onChange: (filter: QueueFilter) => void;
+    suggestionsEnabled?: boolean;
 }
 
-export function PrQueueFilters({ active, counts, onChange }: PrQueueFiltersProps) {
-    const filters = getQueueFilterDefinitions();
+export function PrQueueFilters({ active, counts, onChange, suggestionsEnabled }: PrQueueFiltersProps) {
+    const filters = getQueueFilterDefinitions({ suggestionsEnabled });
     return (
         <div
             role="toolbar"
