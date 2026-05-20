@@ -278,19 +278,12 @@ test.describe('Queue Task Conversation – Streaming', () => {
     test('updates message content progressively as chunks arrive', async ({ page, serverUrl, mockAI }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'stream-2');
         try {
-            mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
-                // Wait for SSE to connect
-                await new Promise((r) => setTimeout(r, 2500));
-                if (opts && opts.onStreamingChunk) {
-                    opts.onStreamingChunk('First');
-                    await new Promise((r) => setTimeout(r, 500));
-                    opts.onStreamingChunk(' second');
-                    await new Promise((r) => setTimeout(r, 500));
-                    opts.onStreamingChunk(' third');
-                }
-                await new Promise((r) => setTimeout(r, 1000));
-                return { success: true, response: 'First second third', sessionId: 'sess-prog' };
+            const chunks = ['First', ' second', ' third'];
+            const { implementation, gate } = mockAI.createGatedStreamingResponse(chunks, {
+                finalResponse: 'First second third',
+                sessionId: 'sess-prog',
             });
+            mockAI.mockSendMessage.mockImplementation(implementation);
 
             const task = await seedQueueTask(serverUrl, {
                 repoId: wsId,
@@ -298,15 +291,24 @@ test.describe('Queue Task Conversation – Streaming', () => {
             });
             const taskId = task.id as string;
 
+            const sseConnected = page.waitForRequest(req => req.url().includes('/stream'), { timeout: 10_000 });
             await gotoQueueTask(page, serverUrl, wsId, taskId);
 
-            // Wait for progressive content (timeline may render each chunk as separate content div)
-            await expect(page.locator('.chat-message.assistant').last())
-                .toContainText('First', { timeout: 8000 });
+            // Wait for SSE to be fully established before releasing chunks
+            await expect(page.locator('.streaming-indicator')).toBeVisible({ timeout: 8000 });
+            await sseConnected;
 
-            // Full content eventually
-            await expect(page.locator('.chat-message.assistant').last())
-                .toContainText('First second third', { timeout: 8000 });
+            const bubbleContent = page.locator('.chat-message.assistant').last().locator('.chat-message-content');
+
+            // Release chunks one at a time and verify progressive content
+            await gate.releaseNext();
+            await expect(bubbleContent).toContainText('First', { timeout: 5000 });
+
+            await gate.releaseNext();
+            await expect(bubbleContent).toContainText('First second', { timeout: 5000 });
+
+            await gate.releaseNext();
+            await expect(bubbleContent).toContainText('First second third', { timeout: 5000 });
         } finally {
             cleanup();
         }
