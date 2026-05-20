@@ -2,11 +2,12 @@
  * TeamsBridge — glue between WS relay / agent proxy and TeamsBot.
  *
  * Only imported via dynamic import when messaging.teams.enabled is true.
- * Mirrors WhatsAppBridge functionality for MS Teams using the Teams MCP server.
+ * Supports Graph API (primary) and MCP server (fallback) transports.
+ * On startup, resolves team/channel names to IDs (creating them if missing).
  */
 
 import type { InboundTeamsMessage, BotStatus } from '@plusplusoneplusplus/teams-bot';
-import { TeamsBot } from '@plusplusoneplusplus/teams-bot';
+import { TeamsBot, GraphClient, acquireTokenViaAzCli } from '@plusplusoneplusplus/teams-bot';
 import type { WebSocketRelay, WSRelayMessage } from '../proxy/ws-relay';
 import type { AgentStore } from '../store/agent-store';
 import type { TunnelBridge } from '../proxy/tunnel-bridge';
@@ -25,6 +26,9 @@ export interface TeamsStatus {
     enabled: boolean;
     status: BotStatus;
     error: string | null;
+    teamName?: string;
+    channelName?: string;
+    teamId?: string;
     channelId?: string;
     botName: string;
     deviceCode?: {
@@ -40,11 +44,16 @@ export class TeamsBridge {
     private wsHandler: ((msg: WSRelayMessage) => void) | null = null;
     private _processingLocks = new Set<string>();
     private _workspaceNameCache = new Map<string, string>();
+    private _azToken: string | null = null;
 
     constructor(private opts: TeamsBridgeOptions) {}
 
     async start(): Promise<void> {
         this.store = new MessagingStore(this.opts.dataDir);
+
+        // Resolve team/channel names → IDs (create if missing) using az token
+        await this.resolveTeamAndChannel();
+
         this.bot = new TeamsBot({
             mode: this.opts.config.mode,
             teamId: this.opts.config.teamId,
@@ -52,6 +61,7 @@ export class TeamsBridge {
             botName: this.opts.config.botName,
             pollIntervalMs: this.opts.config.pollIntervalMs,
             auth: {
+                bearerToken: this._azToken ?? undefined,
                 clientId: this.opts.config.clientId,
                 scope: this.opts.config.scope,
                 onDeviceCode: (info) => {
@@ -97,6 +107,9 @@ export class TeamsBridge {
             enabled: true,
             status: this.bot?.getStatus() ?? 'disconnected',
             error: this.bot?.getLastError() ?? null,
+            teamName: this.opts.config.teamName,
+            channelName: this.opts.config.channelName,
+            teamId: this.opts.config.teamId,
             channelId: this.opts.config.channelId,
             botName: this.opts.config.botName,
             deviceCode: deviceCode ? {
@@ -114,12 +127,14 @@ export class TeamsBridge {
     }
 
     /** Update mutable config fields and persist to config.yaml. */
-    async updateConfig(patch: { botName?: string; channelId?: string; enabled?: boolean }): Promise<void> {
+    async updateConfig(patch: { botName?: string; channelId?: string; enabled?: boolean; teamName?: string; channelName?: string }): Promise<void> {
         if (patch.botName !== undefined) this.opts.config.botName = patch.botName;
         if (patch.channelId !== undefined) {
             this.opts.config.channelId = patch.channelId;
             this.bot?.setChannelId(patch.channelId);
         }
+        if (patch.teamName !== undefined) this.opts.config.teamName = patch.teamName;
+        if (patch.channelName !== undefined) this.opts.config.channelName = patch.channelName;
         if (patch.enabled !== undefined) this.opts.config.enabled = patch.enabled;
         await this.persistTeamsConfig(patch as Record<string, string | boolean | undefined>);
     }
@@ -152,6 +167,62 @@ export class TeamsBridge {
         this.bot.start().catch(err => console.error('[teams-bridge] Reconnect start failed:', err));
         if (this.opts.config.channelId) {
             this.bot.setChannelId(this.opts.config.channelId);
+        }
+    }
+
+    /**
+     * Resolve team/channel names to IDs using Graph API.
+     * Creates team/channel if they don't exist. Acquires token via `az` CLI.
+     */
+    private async resolveTeamAndChannel(): Promise<void> {
+        if (this.opts.config.mode !== 'graph') return;
+
+        // Already have explicit IDs — no resolution needed
+        if (this.opts.config.teamId && this.opts.config.channelId) return;
+
+        // Need team/channel names to resolve
+        const teamName = this.opts.config.teamName;
+        const channelName = this.opts.config.channelName;
+        if (!teamName && !this.opts.config.teamId) {
+            console.warn('[teams-bridge] No teamName or teamId configured — cannot resolve');
+            return;
+        }
+
+        try {
+            this._azToken = await acquireTokenViaAzCli();
+        } catch (err: any) {
+            console.error(`[teams-bridge] Failed to acquire az token: ${err.message}`);
+            return;
+        }
+
+        const graph = new GraphClient({ bearerToken: this._azToken });
+
+        try {
+            if (teamName && !this.opts.config.teamId) {
+                const { teamId, channelId } = await graph.resolveOrCreateTeamAndChannel(
+                    teamName,
+                    channelName ?? 'General',
+                );
+                this.opts.config.teamId = teamId;
+                this.opts.config.channelId = channelId;
+                console.log(`[teams-bridge] Resolved team "${teamName}" → ${teamId}, channel "${channelName}" → ${channelId}`);
+                // Persist resolved IDs
+                await this.persistTeamsConfig({ teamId, channelId });
+            } else if (this.opts.config.teamId && channelName && !this.opts.config.channelId) {
+                graph.setTeamId(this.opts.config.teamId);
+                let channel = await graph.findChannelByName(channelName);
+                if (!channel) {
+                    console.log(`[teams-bridge] Channel "${channelName}" not found, creating...`);
+                    const channelId = await graph.createChannel(channelName);
+                    this.opts.config.channelId = channelId;
+                } else {
+                    this.opts.config.channelId = channel.id;
+                }
+                console.log(`[teams-bridge] Resolved channel "${channelName}" → ${this.opts.config.channelId}`);
+                await this.persistTeamsConfig({ channelId: this.opts.config.channelId });
+            }
+        } catch (err: any) {
+            console.error(`[teams-bridge] Failed to resolve team/channel: ${err.message}`);
         }
     }
 

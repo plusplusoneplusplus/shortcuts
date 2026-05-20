@@ -27,11 +27,15 @@ export interface TeamsConfig {
     enabled?: boolean;
     /** Transport mode: 'graph' (default, uses Graph API with az tokens) or 'mcp' (Teams MCP server). */
     mode?: 'graph' | 'mcp';
-    /** Team ID (GUID) — required for graph mode. */
+    /** Team display name — resolved to ID on startup, created if missing. */
+    teamName?: string;
+    /** Channel display name — resolved to ID on startup, created if missing. */
+    channelName?: string;
+    /** Team ID (GUID) — auto-resolved from teamName if not set. */
     teamId?: string;
     /** MCP server URL for the Teams server — required for mcp mode. */
     mcpServerUrl?: string;
-    /** Teams channel ID for broadcast (optional) */
+    /** Teams channel ID for broadcast — auto-resolved from channelName if not set. */
     channelId?: string;
     /** Display name for bot in Teams messages (default: "CoC") */
     botName?: string;
@@ -73,6 +77,8 @@ export interface ResolvedWhatsAppConfig {
 export interface ResolvedTeamsConfig {
     enabled: boolean;
     mode: 'graph' | 'mcp';
+    teamName?: string;
+    channelName?: string;
     teamId?: string;
     mcpServerUrl: string;
     channelId?: string;
@@ -116,6 +122,8 @@ const DEFAULTS: ResolvedContainerConfig = {
         teams: {
             enabled: true,
             mode: 'graph',
+            teamName: 'Coc',
+            channelName: 'Coc-General',
             mcpServerUrl: 'https://agent365.svc.cloud.microsoft/agents/tenants/72f988bf-86f1-41af-91ab-2d7cd011db47/servers/mcp_TeamsServer',
             botName: 'CoC',
             pollIntervalMs: 3000,
@@ -155,6 +163,8 @@ export function resolveConfig(overrides?: Partial<ContainerConfig>): ResolvedCon
             teams: {
                 enabled: teamsOver?.enabled ?? teamsFile?.enabled ?? DEFAULTS.messaging.teams.enabled,
                 mode: teamsOver?.mode ?? teamsFile?.mode ?? DEFAULTS.messaging.teams.mode,
+                teamName: teamsOver?.teamName ?? teamsFile?.teamName ?? DEFAULTS.messaging.teams.teamName,
+                channelName: teamsOver?.channelName ?? teamsFile?.channelName ?? DEFAULTS.messaging.teams.channelName,
                 teamId: teamsOver?.teamId ?? teamsFile?.teamId ?? DEFAULTS.messaging.teams.teamId,
                 mcpServerUrl: teamsOver?.mcpServerUrl ?? teamsFile?.mcpServerUrl ?? DEFAULTS.messaging.teams.mcpServerUrl,
                 channelId: teamsOver?.channelId ?? teamsFile?.channelId ?? DEFAULTS.messaging.teams.channelId,
