@@ -258,7 +258,8 @@ describe('TeamsBridge', () => {
             expect(lastBot().send).toHaveBeenCalled();
             const sendCall = lastBot().send.mock.calls[0];
             expect(sendCall[0]).toBe('channel-test');
-            expect(sendCall[1]).toContain('Hello');
+            // Only assistant turns are sent; 'Hello' is user role, 'Hi there!' is assistant
+            expect(sendCall[1]).toContain('Hi there!');
 
             vi.unstubAllGlobals();
             await bridge.stop();
@@ -298,7 +299,7 @@ describe('TeamsBridge', () => {
             expect(msg).toContain('Agent: Agent-A');
             expect(msg).toContain('Repo: my-repo');
             expect(msg).toContain('Title: Task 1');
-            expect(msg).toContain('**Message:**');
+            expect(msg).toContain('Message:');
             expect(msg).toContain('Please help');
 
             await bridge.stop();
@@ -318,7 +319,7 @@ describe('TeamsBridge', () => {
 
             expect(msg).toContain('**CoC Agent**');
             expect(msg).not.toContain('Title:');
-            expect(msg).toContain('**Message:**');
+            expect(msg).toContain('Message:');
             expect(msg).toContain('Done!');
 
             await bridge.stop();

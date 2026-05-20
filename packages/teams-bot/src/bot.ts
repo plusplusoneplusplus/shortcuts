@@ -23,6 +23,7 @@ export class TeamsBot {
     private _lastError: string | null = null;
     private _pollTimer: ReturnType<typeof setInterval> | null = null;
     private _lastSeenTimestamp: string | null = null;
+    private _firstPollDone = false;
     private _channelId: string | null = null;
     /** Track message IDs sent by this bot to distinguish from user-typed messages. */
     private _sentMessageIds = new Set<string>();
@@ -367,7 +368,24 @@ export class TeamsBot {
                 return ta - tb;
             });
 
+            // On first poll, just set the watermark — don't process existing messages
+            if (!this._firstPollDone) {
+                this._firstPollDone = true;
+                const last = messages[messages.length - 1];
+                if (last?.createdDateTime) {
+                    this._lastSeenTimestamp = last.createdDateTime;
+                }
+                return;
+            }
+
             for (const msg of messages) {
+                // Skip messages we've already seen
+                if (this._lastSeenTimestamp && msg.createdDateTime) {
+                    if (new Date(msg.createdDateTime).getTime() <= new Date(this._lastSeenTimestamp).getTime()) {
+                        continue;
+                    }
+                }
+
                 if (this._sentMessageIds.has(msg.id)) {
                     this._sentMessageIds.delete(msg.id);
                     if (msg.createdDateTime) this._lastSeenTimestamp = msg.createdDateTime;

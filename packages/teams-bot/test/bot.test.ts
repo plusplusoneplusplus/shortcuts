@@ -375,13 +375,36 @@ describe('TeamsBot', () => {
         });
 
         describe('polling', () => {
-            it('should poll via ListChannelMessages', async () => {
+            it('should skip first poll (set watermark) then process new messages', async () => {
                 mockMcpResponse({ protocolVersion: '2025-03-26', capabilities: {} });
 
                 const bot = createMcpBot();
                 await bot.start();
                 bot.setChannelId('19:channel@thread.tacv2');
 
+                // First poll: sets watermark, does NOT call onMessage
+                mockFetch.mockResolvedValueOnce({
+                    ok: true,
+                    headers: new Map(),
+                    json: async () => ({
+                        result: {
+                            content: [{
+                                type: 'text',
+                                text: JSON.stringify([{
+                                    id: 'msg-old',
+                                    body: { content: 'Old message' },
+                                    from: { user: { displayName: 'Alice' } },
+                                    createdDateTime: '2026-05-19T22:00:00Z',
+                                }]),
+                            }],
+                        },
+                    }),
+                } as any);
+
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage).not.toHaveBeenCalled();
+
+                // Second poll: new message after watermark → delivered
                 mockFetch.mockResolvedValueOnce({
                     ok: true,
                     headers: new Map(),
