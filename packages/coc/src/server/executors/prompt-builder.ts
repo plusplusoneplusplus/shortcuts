@@ -467,19 +467,8 @@ export function buildCreateWorkItemAddon(
 
     const { tool: workItemTool } = createWorkItemTool(dataDir, repoId, broadcastFn);
     const { tool: bugTool } = createBugTool(dataDir, repoId, broadcastFn);
-    const suffix =
-        '\n\nYou have access to the `create_work_item` and `create_bug` tools. ' +
-        'When the user asks to create a work item, track a feature, or save a task for later execution, ' +
-        'invoke the `create-work-item` skill — it guides the draft→refine→create workflow and calls the tool at the right time. ' +
-        'When the user asks to file a bug, report a defect, or log an issue, ' +
-        'invoke the `create-bug` skill instead. ' +
-        'When the user asks to modify, edit, revise, or update an existing work item, ' +
-        'invoke the `update-work-item` skill. ' +
-        'Do NOT handle the work-item creation/update workflow inline — always defer to the matching skill. ' +
-        'When a conversation identifies new implementation work, create a work item automatically — ' +
-        'do not ask the user whether to create a plan first.';
 
-    return { tools: [workItemTool, bugTool], suffix };
+    return { tools: [workItemTool, bugTool], suffix: '' };
 }
 
 /**
