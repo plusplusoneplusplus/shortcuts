@@ -112,10 +112,10 @@ export class TeamsMessagingManager {
             // Step 1: Ensure MCP server is configured
             this.ensureMcpServerConfig();
 
-            // Step 2: Acquire token for the MCP server resource via az CLI
+            // Step 2: Acquire token from cached MCP OAuth tokens (obtained via Copilot CLI)
             this._status = 'authenticating';
-            const { acquireTokenViaAzCli, McpClient } = await import('@plusplusoneplusplus/teams-bot');
-            const token = await acquireTokenViaAzCli(TEAMS_MCP_SERVER_URL);
+            const { acquireMcpOAuthToken, McpClient } = await import('@plusplusoneplusplus/teams-bot');
+            const token = await acquireMcpOAuthToken(TEAMS_MCP_SERVER_URL, this._homeDir);
 
             // Step 3: Resolve team and channel via MCP tools
             const mcpClient = new McpClient({
