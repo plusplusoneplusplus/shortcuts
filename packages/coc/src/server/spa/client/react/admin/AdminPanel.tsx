@@ -168,6 +168,7 @@ export function AdminPanel() {
     const [scratchpadLayout, setScratchpadLayout] = useState<'horizontal' | 'vertical'>('horizontal');
     const [workflowsEnabled, setWorkflowsEnabled] = useState(false);
     const [pullRequestsEnabled, setPullRequestsEnabled] = useState(false);
+    const [pullRequestsSuggestionsEnabled, setPullRequestsSuggestionsEnabled] = useState(false);
     const [serversEnabled, setServersEnabled] = useState(false);
     const [ralphEnabled, setRalphEnabled] = useState(false);
     const [vimNavigationEnabled, setVimNavigationEnabled] = useState(false);
@@ -214,7 +215,7 @@ export function AdminPanel() {
         taskCardDensity: 'compact' as 'compact' | 'dense',
         historyGrouping: true,
     });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, servers: false, ralph: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -305,6 +306,8 @@ export function AdminPanel() {
             setWorkflowsEnabled(we);
             const pre = resolved.pullRequests?.enabled ?? false;
             setPullRequestsEnabled(pre);
+            const prse = resolved.pullRequests?.suggestions ?? false;
+            setPullRequestsSuggestionsEnabled(prse);
             const svre = resolved.servers?.enabled ?? false;
             setServersEnabled(svre);
             const re = resolved.ralph?.enabled ?? false;
@@ -319,7 +322,7 @@ export function AdminPanel() {
             setMcpOauthEnabled(moae);
             const fde = resolved.features?.focusedDiff ?? false;
             setFocusedDiffEnabled(fde);
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, servers: svre, ralph: re, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde });
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde });
             const sgr = resolved.sync?.gitRemote ?? '';
             const sim = String(resolved.sync?.intervalMinutes ?? 5);
             setSyncGitRemote(sgr);
@@ -401,6 +404,7 @@ export function AdminPanel() {
         scratchpadLayout !== featuresSnapshot.scratchpadLayout ||
         workflowsEnabled !== featuresSnapshot.workflows ||
         pullRequestsEnabled !== featuresSnapshot.pullRequests ||
+        pullRequestsSuggestionsEnabled !== featuresSnapshot.pullRequestsSuggestions ||
         serversEnabled !== featuresSnapshot.servers ||
         ralphEnabled !== featuresSnapshot.ralph ||
         vimNavigationEnabled !== featuresSnapshot.vimNavigation ||
@@ -607,6 +611,7 @@ export function AdminPanel() {
                 'scratchpad.layout': scratchpadLayout,
                 'workflows.enabled': workflowsEnabled,
                 'pullRequests.enabled': pullRequestsEnabled,
+                'pullRequests.suggestions': pullRequestsSuggestionsEnabled,
                 'servers.enabled': serversEnabled,
                 'ralph.enabled': ralphEnabled,
                 'vimNavigation.enabled': vimNavigationEnabled,
@@ -617,13 +622,13 @@ export function AdminPanel() {
             });
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, servers: serversEnabled, ralph: ralphEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled });
+            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, serversEnabled, ralphEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setTerminalEnabled(featuresSnapshot.terminal);
@@ -634,6 +639,7 @@ export function AdminPanel() {
         setScratchpadLayout(featuresSnapshot.scratchpadLayout);
         setWorkflowsEnabled(featuresSnapshot.workflows);
         setPullRequestsEnabled(featuresSnapshot.pullRequests);
+        setPullRequestsSuggestionsEnabled(featuresSnapshot.pullRequestsSuggestions);
         setServersEnabled(featuresSnapshot.servers);
         setRalphEnabled(featuresSnapshot.ralph);
         setVimNavigationEnabled(featuresSnapshot.vimNavigation);
@@ -1285,6 +1291,12 @@ export function AdminPanel() {
                                         <SourceBadge source={sources['pullRequests.enabled']} />
                                         <AdminToggle checked={pullRequestsEnabled} onChange={setPullRequestsEnabled} data-testid="toggle-pull-requests-enabled" />
                                     </AdminRow>
+                                    {pullRequestsEnabled && (
+                                        <AdminRow name="PR Review Suggestions" hint="AI-ranked suggestions for which open PRs to review, based on your review history. Adds a 'For You' filter pill to the PR queue.">
+                                            <SourceBadge source={sources['pullRequests.suggestions']} />
+                                            <AdminToggle checked={pullRequestsSuggestionsEnabled} onChange={setPullRequestsSuggestionsEnabled} data-testid="toggle-pull-requests-suggestions-enabled" />
+                                        </AdminRow>
+                                    )}
                                     <AdminRow name="Servers" hint="Multi-server connection manager (devtunnel).">
                                         <SourceBadge source={sources['servers.enabled']} />
                                         <AdminToggle checked={serversEnabled} onChange={setServersEnabled} data-testid="toggle-servers-enabled" />
