@@ -21,6 +21,7 @@ import type {
   NotesGitDiff,
   NotesGitLogResponse,
   NotesGitStatus,
+  NotesRootEntry,
   NotesRootsResponse,
   NoteTreeResponse,
   NoteNodeType,
@@ -69,6 +70,20 @@ export class NotesClient {
 
   listRoots(workspaceId: string): Promise<NotesRootsResponse> {
     return this.transport.request<NotesRootsResponse>(workspaceNotesPath(workspaceId, '/roots'));
+  }
+
+  addRoot(workspaceId: string, rootPath: string): Promise<NotesRootEntry> {
+    return this.transport.request<NotesRootEntry>(workspaceNotesPath(workspaceId, '/roots'), {
+      method: 'POST',
+      body: { rootPath },
+    });
+  }
+
+  removeRoot(workspaceId: string, rootPath: string): Promise<{ removed: string }> {
+    return this.transport.request<{ removed: string }>(workspaceNotesPath(workspaceId, '/roots'), {
+      method: 'DELETE',
+      body: { rootPath },
+    });
   }
 
   getContent(workspaceId: string, notePath: string): Promise<NoteContentResponse> {

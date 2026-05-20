@@ -19,6 +19,7 @@ import {
     type NoteTreeNode,
     type NoteTreeResponse,
     type NotesGitAutoCommitStatus,
+    type NotesRootEntry,
     type NotesRootsResponse,
     type NotesGitCommitResponse,
     type NotesGitDiff,
@@ -79,6 +80,14 @@ export const notesApi = {
 
     listRoots(wsId: string): Promise<NotesRootsResponse> {
         return withSpaErrors(notesClient().listRoots(wsId));
+    },
+
+    addRoot(wsId: string, rootPath: string): Promise<NotesRootEntry> {
+        return withSpaErrors(notesClient().addRoot(wsId, rootPath));
+    },
+
+    removeRoot(wsId: string, rootPath: string): Promise<{ removed: string }> {
+        return withSpaErrors(notesClient().removeRoot(wsId, rootPath));
     },
 
     getContent(wsId: string, notePath: string): Promise<NoteContentResponse> {

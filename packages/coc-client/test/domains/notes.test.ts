@@ -206,5 +206,27 @@ describe('NotesClient', () => {
       { path: '/workspaces/repo%2Fa/notes/tree', options: { query: { root: undefined } } },
     ]);
   });
+
+  it('calls addRoot with POST and body', async () => {
+    const adapter = createMockAdapter({ rootId: 'docs/notes', label: 'docs/notes', isDefault: false });
+    const client = new NotesClient(adapter);
+
+    await client.addRoot('repo/a', 'docs/notes');
+
+    expect(adapter.calls).toMatchObject([
+      { path: '/workspaces/repo%2Fa/notes/roots', options: { method: 'POST', body: { rootPath: 'docs/notes' } } },
+    ]);
+  });
+
+  it('calls removeRoot with DELETE and body', async () => {
+    const adapter = createMockAdapter({ removed: 'docs/notes' });
+    const client = new NotesClient(adapter);
+
+    await client.removeRoot('repo/a', 'docs/notes');
+
+    expect(adapter.calls).toMatchObject([
+      { path: '/workspaces/repo%2Fa/notes/roots', options: { method: 'DELETE', body: { rootPath: 'docs/notes' } } },
+    ]);
+  });
 });
 
