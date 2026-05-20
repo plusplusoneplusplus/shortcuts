@@ -158,7 +158,7 @@ export class TeamsMessagingManager {
      */
     private async resolveTeamAndChannelViaMcp(mcpClient: InstanceType<typeof import('@plusplusoneplusplus/teams-bot').McpClient>): Promise<{ teamId: string; channelId: string }> {
         // List teams to find the configured one
-        const teamsResult = await mcpClient.callTool('Microsoft-Teams-ListTeams', {});
+        const teamsResult = await mcpClient.callTool('ListTeams', {});
         const teamsText = teamsResult.content?.[0]?.text ?? '{}';
         let teams: Array<{ id: string; displayName: string }> = [];
         try {
@@ -172,7 +172,7 @@ export class TeamsMessagingManager {
 
         if (!teamId) {
             // Create the team
-            const createResult = await mcpClient.callTool('Microsoft-Teams-CreateTeam', {
+            const createResult = await mcpClient.callTool('CreateTeam', {
                 displayName: this.config.teamName,
                 description: `CoC Teams bridge — ${this.config.teamName}`,
             });
@@ -187,7 +187,7 @@ export class TeamsMessagingManager {
         }
 
         // List channels to find the configured one
-        const channelsResult = await mcpClient.callTool('Microsoft-Teams-ListChannels', { teamId });
+        const channelsResult = await mcpClient.callTool('ListChannels', { teamId });
         const channelsText = channelsResult.content?.[0]?.text ?? '{}';
         let channels: Array<{ id: string; displayName: string }> = [];
         try {
@@ -201,7 +201,7 @@ export class TeamsMessagingManager {
 
         if (!channelId) {
             // Create the channel
-            const createChResult = await mcpClient.callTool('Microsoft-Teams-CreateChannel', {
+            const createChResult = await mcpClient.callTool('CreateChannel', {
                 teamId,
                 displayName: this.config.channelName,
                 description: `CoC bridge channel — ${this.config.channelName}`,
