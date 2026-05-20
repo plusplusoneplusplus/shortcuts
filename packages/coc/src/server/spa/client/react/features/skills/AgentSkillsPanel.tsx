@@ -388,6 +388,7 @@ interface SkillCardProps {
     sourcePillLabel: string;
     hideDelete: boolean;
     toggleDisabled: boolean;
+    workspaceId: string;
     onToggleOpen: () => void;
     onToggleEnabled: (next: boolean) => void;
     onSetDeleteConfirm: (confirming: boolean) => void;
@@ -406,6 +407,7 @@ function SkillCard({
     sourcePillLabel,
     hideDelete,
     toggleDisabled,
+    workspaceId,
     onToggleOpen,
     onToggleEnabled,
     onSetDeleteConfirm,
@@ -413,12 +415,53 @@ function SkillCard({
 }: SkillCardProps) {
     const effectiveDetail = detail?.name === skill.name ? detail : skill;
     const triggers = effectiveDetail.variables ?? [];
-    const files = useMemo(() => {
-        const refs = effectiveDetail.references ?? [];
-        const scripts = effectiveDetail.scripts ?? [];
+    const fileEntries = useMemo(() => {
+        const refs = (effectiveDetail.references ?? []).map(f => ({ name: f, relPath: `references/${f}` }));
+        const scripts = (effectiveDetail.scripts ?? []).map(f => ({ name: f, relPath: `scripts/${f}` }));
         return [...refs, ...scripts];
     }, [effectiveDetail.references, effectiveDetail.scripts]);
     const updatedRelative = (effectiveDetail as Skill & { updatedRelative?: string }).updatedRelative;
+
+    // File viewer state — which file (relative to skill folder) is currently
+    // being viewed, plus its content/loading/error. Resets when the card closes.
+    const [selectedFile, setSelectedFile] = useState<string | null>(null);
+    const [fileContent, setFileContent] = useState<string | null>(null);
+    const [fileLoading, setFileLoading] = useState(false);
+    const [fileError, setFileError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!isOpen) {
+            setSelectedFile(null);
+            setFileContent(null);
+            setFileError(null);
+            setFileLoading(false);
+        }
+    }, [isOpen]);
+
+    const handleFileClick = (relPath: string) => {
+        if (selectedFile === relPath) {
+            setSelectedFile(null);
+            setFileContent(null);
+            setFileError(null);
+            return;
+        }
+        setSelectedFile(relPath);
+        setFileContent(null);
+        setFileError(null);
+        setFileLoading(true);
+        getSpaCocClient().skills
+            .readWorkspaceSkillFile(workspaceId, skill.name, relPath)
+            .then(res => {
+                setFileContent(res.content);
+                setFileLoading(false);
+            })
+            .catch(err => {
+                setFileError(getSpaCocClientErrorMessage(err, 'Failed to read file'));
+                setFileLoading(false);
+            });
+    };
+
+    const showFileViewer = selectedFile != null;
 
     return (
         <article
@@ -464,12 +507,12 @@ function SkillCard({
                     {skill.description && (
                         <div className="ask-skill-desc">{skill.description}</div>
                     )}
-                    {(files.length > 0 || triggers.length > 0) && (
+                    {(fileEntries.length > 0 || triggers.length > 0) && (
                         <div className="ask-skill-meta">
-                            {files.length > 0 && (
+                            {fileEntries.length > 0 && (
                                 <span>
                                     <I.file className="ask-icon" />
-                                    {files.length} file{files.length === 1 ? '' : 's'}
+                                    {fileEntries.length} file{fileEntries.length === 1 ? '' : 's'}
                                 </span>
                             )}
                             {updatedRelative && (
@@ -585,7 +628,36 @@ function SkillCard({
                             </>
                         )}
 
-                        {effectiveDetail.promptBody && (
+                        {showFileViewer ? (
+                            <>
+                                <div className="ask-file-viewer-header">
+                                    <h5>{selectedFile}</h5>
+                                    <button
+                                        type="button"
+                                        className="ask-btn ask-sm ask-ghost"
+                                        onClick={() => {
+                                            setSelectedFile(null);
+                                            setFileContent(null);
+                                            setFileError(null);
+                                        }}
+                                        data-testid="skill-file-close"
+                                    >
+                                        Back to SKILL.md
+                                    </button>
+                                </div>
+                                {fileLoading ? (
+                                    <pre className="ask-codeblock">Loading…</pre>
+                                ) : fileError ? (
+                                    <pre
+                                        className="ask-codeblock"
+                                        style={{ color: 'var(--ask-danger)' }}
+                                        data-testid="skill-file-error"
+                                    >{fileError}</pre>
+                                ) : (
+                                    <pre className="ask-codeblock" data-testid="skill-file-content">{fileContent}</pre>
+                                )}
+                            </>
+                        ) : effectiveDetail.promptBody && (
                             <>
                                 <h5>Skill body — SKILL.md (preview)</h5>
                                 <pre className="ask-codeblock">{effectiveDetail.promptBody}</pre>
@@ -607,10 +679,10 @@ function SkillCard({
                                 </span>
                             </div>
                         )}
-                        {files.length > 0 && (
+                        {fileEntries.length > 0 && (
                             <div className="ask-row">
                                 <span className="ask-k">Files</span>
-                                <span className="ask-v">{files.length}</span>
+                                <span className="ask-v">{fileEntries.length}</span>
                             </div>
                         )}
                         {effectiveDetail.relativePath && (
@@ -620,33 +692,25 @@ function SkillCard({
                             </div>
                         )}
 
-                        {files.length > 0 && (
+                        {fileEntries.length > 0 && (
                             <>
                                 <h5 style={{ marginTop: 18 }}>Files</h5>
                                 <div className="ask-file-list">
-                                    {files.map(f => (
-                                        <div key={f} className="ask-file-row">
+                                    {fileEntries.map(({ name, relPath }) => (
+                                        <button
+                                            key={relPath}
+                                            type="button"
+                                            className={`ask-file-row ${selectedFile === relPath ? 'is-active' : ''}`}
+                                            onClick={() => handleFileClick(relPath)}
+                                            title={`View ${relPath}`}
+                                            data-testid={`skill-file-row-${relPath}`}
+                                        >
                                             <I.file className="ask-icon ask-ico" />
-                                            <span>{f}</span>
-                                        </div>
+                                            <span>{name}</span>
+                                        </button>
                                     ))}
                                 </div>
                             </>
-                        )}
-
-                        {!hideDelete && (
-                            <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
-                                <button type="button" className="ask-btn ask-sm">
-                                    <I.file className="ask-icon" /> Open
-                                </button>
-                                <button
-                                    type="button"
-                                    className="ask-btn ask-sm ask-danger"
-                                    onClick={() => onSetDeleteConfirm(true)}
-                                >
-                                    <I.trash className="ask-icon" /> Delete
-                                </button>
-                            </div>
                         )}
                     </aside>
                 </div>
@@ -933,9 +997,6 @@ export function AgentSkillsPanel({
                 <div className="ask-h1-row">
                     <div>
                         <h1 className="ask-h1">Agent Skills</h1>
-                        <p className="ask-lede">
-                            Skills are AI prompt modules the agent loads on demand. They sit alongside your code in <code>.github/skills/</code>, are versioned in git, and combine cleanly across repos. <b>{enabledCount} of {skills.length}</b> currently enabled.
-                        </p>
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                         <button
@@ -1210,6 +1271,7 @@ export function AgentSkillsPanel({
                                                 sourcePillLabel={sourcePillLabel}
                                                 hideDelete={kind === 'linked' || kind === 'global'}
                                                 toggleDisabled={skillToggleSaving || skillsLoading}
+                                                workspaceId={workspaceId}
                                                 onToggleOpen={() => onExpandSkill(skill.name)}
                                                 onToggleEnabled={(next) => onSkillToggle(skill.name, next)}
                                                 onSetDeleteConfirm={(c) => onSetDeleteConfirm(c ? skill.name : null)}

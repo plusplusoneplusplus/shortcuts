@@ -82,6 +82,25 @@ describe('SkillsClient mock server contract', () => {
     expectEmptyRequest(mock.requests[2], 'GET', '/api/workspaces/repo%2Fa/preferences/skill-usage', { skillName: 'impl' });
     expectEmptyRequest(mock.requests[3], 'DELETE', '/api/workspaces/repo%2Fa/skills/missing');
   });
+
+  it('reads a workspace skill file with path query param', async () => {
+    mock = await startMockServer();
+    mock.on('GET', '/api/workspaces/repo%2Fa/skills/impl/file', {
+      body: { path: 'references/spec.md', content: '# spec', size: 6 },
+    });
+    const client = createClient(mock);
+
+    await expect(
+      client.skills.readWorkspaceSkillFile('repo/a', 'impl', 'references/spec.md'),
+    ).resolves.toEqual({ path: 'references/spec.md', content: '# spec', size: 6 });
+
+    expectEmptyRequest(
+      mock.requests[0],
+      'GET',
+      '/api/workspaces/repo%2Fa/skills/impl/file',
+      { path: 'references/spec.md' },
+    );
+  });
 });
 
 function createClient(mock: MockServer): CocClient {

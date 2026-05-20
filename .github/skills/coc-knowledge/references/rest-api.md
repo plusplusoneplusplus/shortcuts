@@ -106,6 +106,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 |--------|------|-------------|
 | GET | `/api/workspaces/:id/skills` | List skills |
 | POST | `/api/workspaces/:id/skills/install` | Install skill |
+| GET | `/api/workspaces/:id/skills/:name/file?path=<rel>` | Read a file inside a skill folder |
 | DELETE | `/api/workspaces/:id/skills/:name` | Delete skill |
 | GET | `/api/skills` | Global skills |
 | POST | `/api/skills/install` | Install global skill |

@@ -9,6 +9,7 @@ import type {
   ScanSkillsRequest,
   ScanSkillsResponse,
   SkillDetailResponse,
+  SkillFileResponse,
   SkillInfo,
   SkillUsageListResponse,
   SkillUsageQuery,
@@ -137,6 +138,17 @@ export class SkillsClient {
 
   detailWorkspace(workspaceId: string, skillName: string): Promise<SkillDetailResponse> {
     return this.transport.request<SkillDetailResponse>(workspaceSkillsPath(workspaceId, `/${encodePathSegment(skillName)}`));
+  }
+
+  readWorkspaceSkillFile(
+    workspaceId: string,
+    skillName: string,
+    filePath: string,
+  ): Promise<SkillFileResponse> {
+    return this.transport.request<SkillFileResponse>(
+      workspaceSkillsPath(workspaceId, `/${encodePathSegment(skillName)}/file`),
+      { query: { path: filePath } },
+    );
   }
 
   deleteWorkspace(workspaceId: string, skillName: string): Promise<void> {
