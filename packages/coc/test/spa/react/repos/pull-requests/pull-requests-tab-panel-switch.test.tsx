@@ -9,6 +9,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '',
     isRalphEnabled: () => false,
+    isPullRequestsSuggestionsEnabled: () => false,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({
