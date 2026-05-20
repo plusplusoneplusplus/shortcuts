@@ -76,7 +76,7 @@ The `src/server/` tree is grouped by feature domain. Cross-cutting plumbing stay
 | `queue/` | queue-handler, executor-bridge, multi-repo-router, image-blob-store, partitioner |
 | `schedule/` | cron-utils, schedule-handler/manager, run-persistence, yaml-persistence, repo-schedule-loader/overrides |
 | `tasks/` | task-types, cache, watcher, migration, root-resolver, generation, read/write handlers, comments/ |
-| `notes/` | read/write/comments/AI/file-preview/image/edits handlers, git/ sub-module |
+| `notes/` | read/write/comments/AI/file-preview/image/edits handlers, git/ sub-module, notes-root-resolver (multi-root), notes-roots-handler (roots CRUD API) |
 | `workflows/` | constants, utils, watcher, read/write handlers |
 | `templates/` | template-watcher, CRUD handler, replicate-apply |
 | `skills/` | skill-handler, route-handlers, global-skill-handler, instruction-handler |

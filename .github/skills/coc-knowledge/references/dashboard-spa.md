@@ -20,7 +20,7 @@ spa/client/react/
 ├── layout/             # Layout (Router, TopBar, BottomNav, ThemeProvider)
 ├── features/
 │   ├── chat/           # Chat UI: ChatDetail, ChatListPane, ConversationArea
-│   ├── notes/          # Notes UI: NoteEditor, sidebar
+│   ├── notes/          # Notes UI: NoteEditor, sidebar, multi-root dropdown (useNotesRoots)
 │   ├── pull-requests/  # PR dashboard: attention groups, BatchCommandPanel
 │   └── terminal/       # Terminal UI: TerminalView, pin/unpin
 ├── processes/          # Process detail, DAG visualization
