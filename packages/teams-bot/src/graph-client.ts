@@ -14,7 +14,7 @@ export interface GraphClientOptions {
     /** Bearer token for Microsoft Graph API. */
     bearerToken: string;
     /** Team ID (GUID). */
-    teamId: string;
+    teamId?: string;
     /** Channel ID (e.g., "19:...@thread.tacv2"). */
     channelId?: string;
     /** Chat ID for 1:1 or group chats. */
@@ -31,6 +31,18 @@ export interface GraphMessage {
     replyToId?: string;
 }
 
+export interface GraphTeam {
+    id: string;
+    displayName: string;
+    description?: string;
+}
+
+export interface GraphChannel {
+    id: string;
+    displayName: string;
+    description?: string;
+}
+
 interface GraphListResponse {
     value: GraphMessage[];
     '@odata.nextLink'?: string;
@@ -39,14 +51,14 @@ interface GraphListResponse {
 export class GraphClient {
     private readonly graphBase: string;
     private bearerToken: string;
-    private readonly teamId: string;
+    private teamId: string | null;
     private channelId: string | null;
     private chatId: string | null;
 
     constructor(opts: GraphClientOptions) {
         this.graphBase = opts.graphBaseUrl?.replace(/\/$/, '') ?? 'https://graph.microsoft.com/v1.0';
         this.bearerToken = opts.bearerToken;
-        this.teamId = opts.teamId;
+        this.teamId = opts.teamId ?? null;
         this.channelId = opts.channelId ?? null;
         this.chatId = opts.chatId ?? null;
     }
@@ -54,6 +66,11 @@ export class GraphClient {
     /** Update the bearer token (e.g., after refresh). */
     setBearerToken(token: string): void {
         this.bearerToken = token;
+    }
+
+    /** Update the target team. */
+    setTeamId(teamId: string): void {
+        this.teamId = teamId;
     }
 
     /** Update the target channel. */
@@ -66,9 +83,153 @@ export class GraphClient {
         this.chatId = chatId;
     }
 
+    /** Get current team ID. */
+    getTeamId(): string | null {
+        return this.teamId;
+    }
+
+    /** Get current channel ID. */
+    getChannelId(): string | null {
+        return this.channelId;
+    }
+
+    // ── Team/Channel discovery & creation ─────────────────────
+
+    /** List teams the authenticated user has joined. */
+    async listJoinedTeams(): Promise<GraphTeam[]> {
+        const url = `${this.graphBase}/me/joinedTeams`;
+        const data = await this.get<{ value: GraphTeam[] }>(url);
+        return data.value ?? [];
+    }
+
+    /** Find a team by display name (case-insensitive). */
+    async findTeamByName(name: string): Promise<GraphTeam | undefined> {
+        const teams = await this.listJoinedTeams();
+        return teams.find(t => t.displayName.toLowerCase() === name.toLowerCase());
+    }
+
+    /**
+     * Create a new team. Returns the team ID.
+     * Note: Team creation is async in Graph — the team may not be immediately available.
+     */
+    async createTeam(displayName: string, description?: string): Promise<string> {
+        const url = `${this.graphBase}/teams`;
+        const body = {
+            'template@odata.bind': `${this.graphBase}/teamsTemplates('standard')`,
+            displayName,
+            description: description ?? `CoC Teams bridge — ${displayName}`,
+        };
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${this.bearerToken}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+        });
+
+        if (res.status === 202) {
+            // Async creation — extract team ID from Content-Location header
+            const location = res.headers.get('Content-Location') ?? '';
+            const match = location.match(/teams\('([^']+)'\)/);
+            if (match) return match[1];
+            // Fallback: poll teamsAsyncOperation from location header
+            const teamId = await this.waitForTeamCreation(res.headers.get('Location'));
+            if (teamId) return teamId;
+            throw new Error('Team creation accepted but could not determine team ID');
+        }
+
+        if (!res.ok) {
+            const text = await res.text().catch(() => '');
+            throw new Error(`Graph API create team ${res.status}: ${text}`);
+        }
+
+        const data = await res.json() as GraphTeam;
+        return data.id;
+    }
+
+    /** Wait for async team creation to complete. */
+    private async waitForTeamCreation(operationUrl: string | null): Promise<string | null> {
+        if (!operationUrl) return null;
+        const maxAttempts = 30;
+        for (let i = 0; i < maxAttempts; i++) {
+            await new Promise(r => setTimeout(r, 2000));
+            try {
+                const res = await fetch(operationUrl, {
+                    headers: { 'Authorization': `Bearer ${this.bearerToken}` },
+                });
+                if (!res.ok) continue;
+                const data = await res.json() as { status: string; targetResourceId?: string };
+                if (data.status === 'succeeded' && data.targetResourceId) {
+                    return data.targetResourceId;
+                }
+                if (data.status === 'failed') {
+                    throw new Error('Team creation failed');
+                }
+            } catch (e: any) {
+                if (e.message === 'Team creation failed') throw e;
+            }
+        }
+        return null;
+    }
+
+    /** Find a channel by display name within the configured team. */
+    async findChannelByName(name: string, teamId?: string): Promise<GraphChannel | undefined> {
+        const tid = teamId ?? this.teamId;
+        if (!tid) throw new Error('No teamId configured');
+        const channels = await this.listChannels(tid);
+        return channels.find(c => c.displayName.toLowerCase() === name.toLowerCase());
+    }
+
+    /** Create a channel in the team. Returns the channel ID. */
+    async createChannel(displayName: string, teamId?: string, description?: string): Promise<string> {
+        const tid = teamId ?? this.teamId;
+        if (!tid) throw new Error('No teamId configured');
+        const url = `${this.graphBase}/teams/${tid}/channels`;
+        const res = await this.post(url, {
+            displayName,
+            description: description ?? `CoC bridge channel — ${displayName}`,
+        });
+        return res.id;
+    }
+
+    /**
+     * Resolve team and channel by name, creating them if they don't exist.
+     * Updates internal teamId and channelId.
+     * Returns the resolved IDs.
+     */
+    async resolveOrCreateTeamAndChannel(teamName: string, channelName: string): Promise<{ teamId: string; channelId: string }> {
+        // Resolve team
+        let team = await this.findTeamByName(teamName);
+        if (!team) {
+            console.log(`[graph-client] Team "${teamName}" not found, creating...`);
+            const teamId = await this.createTeam(teamName);
+            // Wait a moment for team to be provisioned
+            await new Promise(r => setTimeout(r, 3000));
+            this.teamId = teamId;
+        } else {
+            this.teamId = team.id;
+        }
+
+        // Resolve channel
+        let channel = await this.findChannelByName(channelName, this.teamId!);
+        if (!channel) {
+            console.log(`[graph-client] Channel "${channelName}" not found, creating...`);
+            const channelId = await this.createChannel(channelName, this.teamId!);
+            this.channelId = channelId;
+        } else {
+            this.channelId = channel.id;
+        }
+
+        return { teamId: this.teamId!, channelId: this.channelId! };
+    }
+
+    // ── Messaging ─────────────────────────────────────────────
+
     /** Post a message to the configured channel. Returns the message ID. */
     async postChannelMessage(content: string): Promise<string> {
         if (!this.channelId) throw new Error('No channelId configured');
+        if (!this.teamId) throw new Error('No teamId configured');
         const url = `${this.graphBase}/teams/${this.teamId}/channels/${encodeURIComponent(this.channelId)}/messages`;
         const res = await this.post(url, { body: { content } });
         return res.id;
@@ -77,6 +238,7 @@ export class GraphClient {
     /** Reply to a thread in the configured channel. Returns the reply message ID. */
     async replyToChannelMessage(parentMessageId: string, content: string): Promise<string> {
         if (!this.channelId) throw new Error('No channelId configured');
+        if (!this.teamId) throw new Error('No teamId configured');
         const url = `${this.graphBase}/teams/${this.teamId}/channels/${encodeURIComponent(this.channelId)}/messages/${parentMessageId}/replies`;
         const res = await this.post(url, { body: { content } });
         return res.id;
@@ -98,6 +260,7 @@ export class GraphClient {
      */
     async listChannelMessages(opts?: { top?: number; filter?: string }): Promise<GraphMessage[]> {
         if (!this.channelId) throw new Error('No channelId configured');
+        if (!this.teamId) throw new Error('No teamId configured');
         const params = new URLSearchParams();
         if (opts?.top) params.set('$top', String(opts.top));
         if (opts?.filter) params.set('$filter', opts.filter);
@@ -123,14 +286,17 @@ export class GraphClient {
     }
 
     /** List channels in the team. */
-    async listChannels(): Promise<Array<{ id: string; displayName: string }>> {
-        const url = `${this.graphBase}/teams/${this.teamId}/channels`;
+    async listChannels(teamId?: string): Promise<Array<{ id: string; displayName: string }>> {
+        const tid = teamId ?? this.teamId;
+        if (!tid) throw new Error('No teamId configured');
+        const url = `${this.graphBase}/teams/${tid}/channels`;
         const data = await this.get<{ value: Array<{ id: string; displayName: string }> }>(url);
         return data.value ?? [];
     }
 
     /** Verify connectivity by fetching team info. */
     async verifyConnection(): Promise<void> {
+        if (!this.teamId) throw new Error('No teamId configured');
         const url = `${this.graphBase}/teams/${this.teamId}`;
         await this.get(url);
     }

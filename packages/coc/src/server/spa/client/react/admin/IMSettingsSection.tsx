@@ -21,10 +21,18 @@ interface WhatsAppStatus {
 
 interface TeamsStatus {
     enabled: boolean;
-    status: 'disconnected' | 'connecting' | 'connected' | 'error';
+    status: 'disconnected' | 'connecting' | 'authenticating' | 'connected' | 'error';
     error: string | null;
+    teamName?: string;
+    channelName?: string;
+    teamId?: string;
     channelId?: string;
     botName: string;
+    deviceCode?: {
+        userCode: string;
+        verificationUri: string;
+        message: string;
+    } | null;
 }
 
 async function fetchMessagingStatus(): Promise<WhatsAppStatus> {
@@ -55,7 +63,7 @@ async function fetchTeamsStatus(): Promise<TeamsStatus> {
     return res.json();
 }
 
-async function postTeamsConfig(patch: { botName?: string; channelId?: string; enabled?: boolean }): Promise<void> {
+async function postTeamsConfig(patch: { botName?: string; channelId?: string; enabled?: boolean; teamName?: string; channelName?: string }): Promise<void> {
     const res = await fetch(getRawApiBase() + '/container/messaging/teams/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -364,6 +372,7 @@ function TeamsStatusDot({ status }: { status: TeamsStatus['status'] }) {
     const colors: Record<string, string> = {
         connected: 'bg-green-500',
         connecting: 'bg-blue-500 animate-pulse',
+        authenticating: 'bg-amber-500 animate-pulse',
         error: 'bg-red-500',
         disconnected: 'bg-gray-400',
     };
@@ -374,10 +383,66 @@ function TeamsStatusLabel({ status }: { status: TeamsStatus['status'] }) {
     const labels: Record<string, string> = {
         connected: 'Connected',
         connecting: 'Connecting…',
+        authenticating: 'Waiting for login…',
         error: 'Error',
         disconnected: 'Not connected',
     };
     return <span className="text-sm">{labels[status] ?? status}</span>;
+}
+
+/** Inline editable fields for Team name + Channel name. */
+function TeamsTargetConfig({ status, onSaved, setError }: { status: TeamsStatus; onSaved: () => void; setError: (e: string) => void }) {
+    const [teamName, setTeamName] = useState(status.teamName ?? '');
+    const [channelName, setChannelName] = useState(status.channelName ?? '');
+    const [saving, setSaving] = useState(false);
+
+    const dirty = teamName !== (status.teamName ?? '') || channelName !== (status.channelName ?? '');
+
+    return (
+        <div className="space-y-2 pt-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
+            <p className="text-[10px] text-[#616161] dark:text-[#999]">
+                Set the team & channel where CoC messages are sent. If they don't exist they'll be created automatically.
+            </p>
+            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 items-center">
+                <label className="text-xs text-[#616161] dark:text-[#999]">Team</label>
+                <input
+                    type="text"
+                    value={teamName}
+                    onChange={(e) => setTeamName(e.target.value)}
+                    className="text-sm px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-blue-500"
+                    placeholder="Coc"
+                />
+                <label className="text-xs text-[#616161] dark:text-[#999]">Channel</label>
+                <input
+                    type="text"
+                    value={channelName}
+                    onChange={(e) => setChannelName(e.target.value)}
+                    className="text-sm px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-blue-500"
+                    placeholder="Coc-General"
+                />
+            </div>
+            {dirty && (
+                <Button
+                    size="sm"
+                    variant="primary"
+                    loading={saving}
+                    onClick={async () => {
+                        setSaving(true);
+                        try {
+                            await postTeamsConfig({ teamName: teamName.trim(), channelName: channelName.trim() });
+                            onSaved();
+                        } catch (e: any) {
+                            setError(e.message);
+                        } finally {
+                            setSaving(false);
+                        }
+                    }}
+                >
+                    Save & Resolve
+                </Button>
+            )}
+        </div>
+    );
 }
 
 function TeamsSettingsCard() {
@@ -405,6 +470,17 @@ function TeamsSettingsCard() {
     useEffect(() => {
         void loadStatus();
     }, [loadStatus]);
+
+    // Poll while authenticating so UI updates when login completes
+    const teamsPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    useEffect(() => {
+        if (status?.status === 'authenticating' || status?.status === 'connecting') {
+            teamsPollRef.current = setInterval(() => void loadStatus(), 3000);
+            return () => { if (teamsPollRef.current) clearInterval(teamsPollRef.current); };
+        } else {
+            if (teamsPollRef.current) { clearInterval(teamsPollRef.current); teamsPollRef.current = null; }
+        }
+    }, [status?.status, loadStatus]);
 
     if (loading) {
         return (
@@ -493,6 +569,34 @@ function TeamsSettingsCard() {
                         </div>
                     )}
 
+                    {/* Device code login prompt */}
+                    {status.deviceCode && (
+                        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 space-y-2">
+                            <p className="text-sm font-medium text-blue-800 dark:text-blue-300">
+                                🔐 Sign in to Microsoft Teams
+                            </p>
+                            <p className="text-xs text-[#616161] dark:text-[#999]">
+                                Open the link below and enter the code to authenticate:
+                            </p>
+                            <div className="flex items-center gap-3">
+                                <a
+                                    href={status.deviceCode.verificationUri}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-sm text-blue-600 dark:text-blue-400 underline hover:no-underline"
+                                >
+                                    {status.deviceCode.verificationUri}
+                                </a>
+                                <span className="text-lg font-mono font-bold text-[#1e1e1e] dark:text-white bg-[#f0f0f0] dark:bg-[#3c3c3c] px-3 py-1 rounded">
+                                    {status.deviceCode.userCode}
+                                </span>
+                            </div>
+                            <p className="text-[10px] text-[#999]">
+                                Waiting for you to complete sign-in… The page will update automatically.
+                            </p>
+                        </div>
+                    )}
+
                     {/* Editable bot name */}
                     <div className="space-y-2">
                         <label className="block text-xs text-[#616161] dark:text-[#999]">
@@ -530,12 +634,21 @@ function TeamsSettingsCard() {
                         </div>
                     </div>
 
+                    {/* Team & Channel name inputs */}
+                    <TeamsTargetConfig status={status} onSaved={() => void loadStatus()} setError={setError} />
+
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                        <span className="text-[#616161] dark:text-[#999]">Channel</span>
+                        <span className="text-[#616161] dark:text-[#999]">Resolved Team</span>
+                        <span className="text-[#1e1e1e] dark:text-[#cccccc] font-mono text-[10px]">
+                            {status.teamId
+                                ? status.teamId
+                                : <span className="italic text-[#999]">not resolved</span>}
+                        </span>
+                        <span className="text-[#616161] dark:text-[#999]">Resolved Channel</span>
                         <span className="text-[#1e1e1e] dark:text-[#cccccc] font-mono text-[10px]">
                             {status.channelId
                                 ? status.channelId
-                                : <span className="italic text-[#999]">not configured</span>}
+                                : <span className="italic text-[#999]">not resolved</span>}
                         </span>
                     </div>
                 </div>
