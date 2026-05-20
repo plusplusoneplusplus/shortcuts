@@ -340,7 +340,7 @@ describe('Diagrams Handler — CRUD API', { timeout: 30_000 }, () => {
         // Runtime config should report excalidraw as disabled
         const configRes = await request(`${srv.url}/api/config/runtime`);
         expect(configRes.status).toBe(200);
-        const configBody = await configRes.json();
+        const configBody = JSON.parse(configRes.body);
         expect(configBody.excalidrawEnabled).toBe(false);
     });
 });
