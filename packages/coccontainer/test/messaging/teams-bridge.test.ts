@@ -294,11 +294,11 @@ describe('TeamsBridge', () => {
                 botName: 'TestBot',
             });
 
-            expect(msg).toContain('💬');
             expect(msg).toContain('**TestBot**');
             expect(msg).toContain('Agent: Agent-A');
             expect(msg).toContain('Repo: my-repo');
             expect(msg).toContain('Title: Task 1');
+            expect(msg).toContain('**Message:**');
             expect(msg).toContain('Please help');
 
             await bridge.stop();
@@ -316,9 +316,10 @@ describe('TeamsBridge', () => {
                 content: 'Done!',
             });
 
-            expect(msg).toContain('🤖');
             expect(msg).toContain('**CoC Agent**');
             expect(msg).not.toContain('Title:');
+            expect(msg).toContain('**Message:**');
+            expect(msg).toContain('Done!');
 
             await bridge.stop();
         });
