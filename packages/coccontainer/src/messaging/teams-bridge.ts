@@ -93,13 +93,14 @@ export class TeamsBridge {
     }
 
     /** Update mutable config fields and persist to config.yaml. */
-    async updateConfig(patch: { botName?: string; channelId?: string }): Promise<void> {
+    async updateConfig(patch: { botName?: string; channelId?: string; enabled?: boolean }): Promise<void> {
         if (patch.botName !== undefined) this.opts.config.botName = patch.botName;
         if (patch.channelId !== undefined) {
             this.opts.config.channelId = patch.channelId;
             this.bot?.setChannelId(patch.channelId);
         }
-        await this.persistTeamsConfig(patch);
+        if (patch.enabled !== undefined) this.opts.config.enabled = patch.enabled;
+        await this.persistTeamsConfig(patch as Record<string, string | boolean | undefined>);
     }
 
     /** Reconnect to the Teams MCP server. */
@@ -124,7 +125,7 @@ export class TeamsBridge {
     }
 
     /** Save Teams config fields to the config file. */
-    private async persistTeamsConfig(fields: Record<string, string | undefined>): Promise<void> {
+    private async persistTeamsConfig(fields: Record<string, string | boolean | undefined>): Promise<void> {
         try {
             const fs = await import('fs');
             const path = await import('path');
