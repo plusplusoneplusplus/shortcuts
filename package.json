@@ -14,7 +14,8 @@
     "packages/coc-client",
     "packages/deep-wiki",
     "packages/coccontainer",
-    "packages/whatsapp-bot"
+    "packages/whatsapp-bot",
+    "packages/teams-bot"
   ],
   "engines": {
     "vscode": "^1.95.0"

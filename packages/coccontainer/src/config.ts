@@ -22,6 +22,21 @@ export interface WhatsAppConfig {
     defaultAgentId?: string;
 }
 
+export interface TeamsConfig {
+    /** Enable Teams bridge (default: false) */
+    enabled?: boolean;
+    /** MCP server URL for the Teams server */
+    mcpServerUrl?: string;
+    /** Teams channel ID for broadcast (optional) */
+    channelId?: string;
+    /** Display name for bot in Teams messages (default: "CoC") */
+    botName?: string;
+    /** Polling interval in ms for checking new messages (default: 3000) */
+    pollIntervalMs?: number;
+    /** Agent ID to host global sessions (falls back to first online agent) */
+    defaultAgentId?: string;
+}
+
 export interface ContainerConfig {
     serve?: {
         port?: number;
@@ -35,6 +50,7 @@ export interface ContainerConfig {
     /** Messaging integrations */
     messaging?: {
         whatsapp?: WhatsAppConfig;
+        teams?: TeamsConfig;
     };
 }
 
@@ -43,6 +59,15 @@ export interface ResolvedWhatsAppConfig {
     sessionDir: string;
     groupJid?: string;
     userName: string;
+    defaultAgentId?: string;
+}
+
+export interface ResolvedTeamsConfig {
+    enabled: boolean;
+    mcpServerUrl: string;
+    channelId?: string;
+    botName: string;
+    pollIntervalMs: number;
     defaultAgentId?: string;
 }
 
@@ -56,6 +81,7 @@ export interface ResolvedContainerConfig {
     tunnelBridgeBasePort: number;
     messaging: {
         whatsapp: ResolvedWhatsAppConfig;
+        teams: ResolvedTeamsConfig;
     };
 }
 
@@ -75,6 +101,12 @@ const DEFAULTS: ResolvedContainerConfig = {
             sessionDir: path.join(DEFAULT_DATA_DIR, 'whatsapp-session'),
             userName: 'CoC',
         },
+        teams: {
+            enabled: false,
+            mcpServerUrl: '',
+            botName: 'CoC',
+            pollIntervalMs: 3000,
+        },
     },
 };
 
@@ -89,6 +121,8 @@ export function resolveConfig(overrides?: Partial<ContainerConfig>): ResolvedCon
     const fileConfig = loadConfigFile();
     const waFile = fileConfig.messaging?.whatsapp;
     const waOver = overrides?.messaging?.whatsapp;
+    const teamsFile = fileConfig.messaging?.teams;
+    const teamsOver = overrides?.messaging?.teams;
     return {
         serve: {
             port: overrides?.serve?.port ?? fileConfig.serve?.port ?? DEFAULTS.serve.port,
@@ -104,6 +138,14 @@ export function resolveConfig(overrides?: Partial<ContainerConfig>): ResolvedCon
                 groupJid: waOver?.groupJid ?? waFile?.groupJid ?? DEFAULTS.messaging.whatsapp.groupJid,
                 userName: waOver?.userName ?? waFile?.userName ?? DEFAULTS.messaging.whatsapp.userName,
                 defaultAgentId: waOver?.defaultAgentId ?? waFile?.defaultAgentId ?? DEFAULTS.messaging.whatsapp.defaultAgentId,
+            },
+            teams: {
+                enabled: teamsOver?.enabled ?? teamsFile?.enabled ?? DEFAULTS.messaging.teams.enabled,
+                mcpServerUrl: teamsOver?.mcpServerUrl ?? teamsFile?.mcpServerUrl ?? DEFAULTS.messaging.teams.mcpServerUrl,
+                channelId: teamsOver?.channelId ?? teamsFile?.channelId ?? DEFAULTS.messaging.teams.channelId,
+                botName: teamsOver?.botName ?? teamsFile?.botName ?? DEFAULTS.messaging.teams.botName,
+                pollIntervalMs: teamsOver?.pollIntervalMs ?? teamsFile?.pollIntervalMs ?? DEFAULTS.messaging.teams.pollIntervalMs,
+                defaultAgentId: teamsOver?.defaultAgentId ?? teamsFile?.defaultAgentId ?? DEFAULTS.messaging.teams.defaultAgentId,
             },
         },
     };
