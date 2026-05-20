@@ -628,13 +628,8 @@ export function buildExcalidrawToolsAddon(
     }
 
     const { createOrUpdate, read } = createExcalidrawTools({ dataDir, workspaceId });
-    const suffix =
-        '\n\nYou have access to Excalidraw diagram tools: `create_or_update_excalidraw` and `read_excalidraw`. ' +
-        'Use them to generate, read, and iteratively modify Excalidraw diagrams. ' +
-        'When you create or update a diagram, include the returned `excalidrawLink` in your response ' +
-        'so the user can see an inline preview.';
 
-    return { tools: [createOrUpdate, read], suffix };
+    return { tools: [createOrUpdate, read], suffix: '' };
 }
 
 // ============================================================================
