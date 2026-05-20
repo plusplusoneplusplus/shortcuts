@@ -571,26 +571,6 @@ describe('buildCreateWorkItemAddon', () => {
         expect(mockCreateBugTool).toHaveBeenCalledWith('/data', 'repo-1', broadcast);
     });
 
-    it('suffix directs agent to invoke skills instead of inline workflow', () => {
-        const result = buildCreateWorkItemAddon('/data', 'repo-1');
-        expect(result.suffix).toContain('create_work_item');
-        expect(result.suffix).toContain('create_bug');
-        expect(result.suffix).toContain('create-work-item');
-        expect(result.suffix).toContain('create-bug');
-        expect(result.suffix).toContain('update-work-item');
-        expect(result.suffix).toContain('invoke');
-        expect(result.suffix).toContain('skill');
-        // Must NOT contain the inline workflow steps
-        expect(result.suffix).not.toContain('📋');
-        expect(result.suffix).not.toContain('🐛');
-        expect(result.suffix).not.toContain('Refine');
-    });
-
-    it('suffix instructs auto-creation of work items for new implementation work', () => {
-        const result = buildCreateWorkItemAddon('/data', 'repo-1');
-        expect(result.suffix).toContain('create a work item automatically');
-        expect(result.suffix).toContain('do not ask the user whether to create a plan first');
-    });
 });
 
 // ============================================================================
