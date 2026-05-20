@@ -93,6 +93,28 @@ export function clearPrListCache(): void {
 }
 
 // ============================================================================
+// PR detail cache (in-memory, 10-min TTL)
+// ============================================================================
+
+const PR_DETAIL_TTL_MS = 10 * 60 * 1000;
+
+interface PrDetailCacheEntry {
+    data: any;
+    expiresAt: number;
+}
+
+const prDetailCache = new Map<string, PrDetailCacheEntry>();
+
+function makePrDetailCacheKey(repoId: string, prId: string): string {
+    return `${repoId}|${prId}`;
+}
+
+/** Clear all cached PR detail entries. Exported for testing. */
+export function clearPrDetailCache(): void {
+    prDetailCache.clear();
+}
+
+// ============================================================================
 // Registration
 // ============================================================================
 
@@ -181,10 +203,29 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
     routes.push({
         method: 'GET',
         pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/([^/]+)$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             try {
                 const repoId = decodeURIComponent(match![1]);
                 const prId = decodeURIComponent(match![2]);
+                const query = url.parse(req.url ?? '', true).query;
+                const force = query.force === 'true';
+                const cacheKey = makePrDetailCacheKey(repoId, prId);
+
+                // Serve from cache if valid and not forced
+                if (force) {
+                    prDetailCache.delete(cacheKey);
+                    console.debug(`[pr-detail-cache] bypass key=${cacheKey}`);
+                }
+
+                const cached = !force ? prDetailCache.get(cacheKey) : undefined;
+                if (cached && cached.expiresAt > Date.now()) {
+                    console.debug(`[pr-detail-cache] hit key=${cacheKey}`);
+                    return sendJson(res, cached.data);
+                }
+
+                if (!cached) {
+                    console.debug(`[pr-detail-cache] miss key=${cacheKey}`);
+                }
 
                 const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
@@ -200,6 +241,8 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 }
 
                 const pr = await prSvc.getPullRequest(repoId, prId);
+                prDetailCache.set(cacheKey, { data: pr, expiresAt: Date.now() + PR_DETAIL_TTL_MS });
+                console.debug(`[pr-detail-cache] set key=${cacheKey}`);
                 sendJson(res, pr);
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {

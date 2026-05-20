@@ -95,6 +95,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     const [checks, setChecks] = useState<PullRequestCheck[]>([]);
     const [checksError, setChecksError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const initialTab = (state.selectedPrDetailTab as PrDetailTab) ?? 'overview';
     const [detailTab, setDetailTab] = useState<PrDetailTab>(initialTab);
@@ -134,8 +135,8 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
         [dispatch, repoId, prId],
     );
 
-    useEffect(() => {
-        setLoading(true);
+    const fetchAll = useCallback((force = false) => {
+        if (!force) setLoading(true);
         setError(null);
         setDiff(EMPTY_FILES);
         setDiffError(null);
@@ -149,7 +150,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
 
         Promise.all([
             client.pullRequests
-                .get(repoIdStr, prIdStr)
+                .get(repoIdStr, prIdStr, { force })
                 .then(body => body as PullRequest),
             client.pullRequests
                 .getThreads(repoIdStr, prIdStr)
@@ -197,8 +198,20 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                 }
             })
             .catch(err => setError(getSpaCocClientErrorMessage(err, 'Failed to load pull request')))
-            .finally(() => setLoading(false));
+            .finally(() => {
+                setLoading(false);
+                setRefreshing(false);
+            });
     }, [repoId, prId]);
+
+    useEffect(() => {
+        fetchAll();
+    }, [fetchAll]);
+
+    const handleRefresh = useCallback(() => {
+        setRefreshing(true);
+        fetchAll(true);
+    }, [fetchAll]);
 
     // Sync local tab state when context changes (e.g. hash navigation)
     useEffect(() => {
@@ -426,6 +439,15 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
                                 Open 🔗
                             </a>
                         )}
+                        <button
+                            type="button"
+                            disabled={refreshing}
+                            onClick={handleRefresh}
+                            className="inline-flex min-h-[20px] items-center justify-center rounded border border-gray-300 bg-white px-1.5 py-0 text-[11px] font-semibold leading-none text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                            data-testid="pr-refresh"
+                        >
+                            {refreshing ? '↻…' : '↻'}
+                        </button>
                     </div>
                 </div>
                 <nav className="flex gap-0.5 overflow-x-auto border-t border-gray-100 px-2.5 dark:border-gray-800" aria-label="Pull request sections">

@@ -53,8 +53,9 @@ export class PullRequestsClient {
     });
   }
 
-  get(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<unknown> {
+  get(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'> & { force?: boolean }): Promise<unknown> {
     return this.transport.request<unknown>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}`, {
+      query: options?.force ? { force: 'true' } : undefined,
       signal: options?.signal,
     });
   }

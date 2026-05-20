@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createRouter } from '../../src/server/shared/router';
-import { registerPrRoutes, clearPrListCache } from '../../src/server/repos/pr-routes';
+import { registerPrRoutes, clearPrListCache, clearPrDetailCache } from '../../src/server/repos/pr-routes';
 import type { Route } from '../../src/server/types';
 import type { IPullRequestsService } from '@plusplusoneplusplus/forge';
 import type { PullRequest, CommentThread, Reviewer } from '@plusplusoneplusplus/forge';
@@ -136,6 +136,7 @@ async function stopServer(): Promise<void> {
 
 beforeEach(async () => {
     clearPrListCache();
+    clearPrDetailCache();
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pr-routes-test-'));
     dataDir = path.join(tmpDir, 'data');
     fs.mkdirSync(dataDir, { recursive: true });
@@ -693,5 +694,97 @@ describe('GET /api/repos/:id/pull-requests/:prId/checks', () => {
         (mockSvc.getChecks as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network'));
         const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/checks`);
         expect(res.status).toBe(500);
+    });
+});
+
+// ── PR detail cache tests ─────────────────────────────────────────────────────
+
+describe('PR detail cache (GET /api/repos/:id/pull-requests/:prId)', () => {
+    it('serves from cache on second call without hitting upstream', async () => {
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(1);
+
+        const res2 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        expect(res2.status).toBe(200);
+        const body = await res2.json() as { number: number };
+        expect(body.number).toBe(42);
+        // Still only one upstream call
+        expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(1);
+    });
+
+    it('force=true bypasses cache and repopulates', async () => {
+        // Warm the cache
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(1);
+
+        // Force refresh
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42?force=true`);
+        expect(res.status).toBe(200);
+        expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(2);
+    });
+
+    it('re-fetches after TTL expiry', async () => {
+        // Warm the cache
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(1);
+
+        // Expire the cache by manipulating Date.now
+        const realNow = Date.now;
+        Date.now = () => realNow() + 11 * 60 * 1000; // 11 minutes into the future
+        try {
+            const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+            expect(res.status).toBe(200);
+            expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(2);
+        } finally {
+            Date.now = realNow;
+        }
+    });
+
+    it('uses separate cache entries per repo and PR', async () => {
+        // Fetch PR 42 for repo-abc123
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        // Fetch PR 99 for repo-abc123
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/99`);
+        expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(2);
+
+        // Both are now cached — no additional calls
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/99`);
+        expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not cache 404 errors', async () => {
+        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('PR 999 not found'));
+        const res1 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/999`);
+        expect(res1.status).toBe(404);
+
+        // Retry should hit upstream again (not serve cached error)
+        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockPr);
+        const res2 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/999`);
+        expect(res2.status).toBe(200);
+        expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not cache auth errors', async () => {
+        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('401 unauthorized'));
+        const res1 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        expect(res1.status).toBe(401);
+
+        // Retry should hit upstream again
+        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockPr);
+        const res2 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        expect(res2.status).toBe(200);
+        expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(2);
+    });
+
+    it('clearPrDetailCache() clears all detail entries', async () => {
+        // Warm the cache
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(1);
+
+        // Clear and verify re-fetch
+        clearPrDetailCache();
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+        expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(2);
     });
 });
