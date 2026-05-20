@@ -807,9 +807,6 @@ timeout: 300
                 '  enabled: true',
                 'excalidraw:',
                 '  enabled: true',
-                'sync:',
-                '  gitRemote: git@github.com:user/notes.git',
-                '  intervalMinutes: 10',
                 'features:',
                 '  autoMemoryPromotion: true',
                 '  focusedDiff: true',
@@ -1039,10 +1036,6 @@ timeout: 300
                   "store": {
                     "backend": "file",
                   },
-                  "sync": {
-                    "gitRemote": "",
-                    "intervalMinutes": 5,
-                  },
                   "taskCardDensity": "compact",
                   "terminal": {
                     "enabled": false,
@@ -1093,8 +1086,6 @@ timeout: 300
                   "serve.theme": "file",
                   "servers.enabled": "file",
                   "showReportIntent": "file",
-                  "sync.gitRemote": "default",
-                  "sync.intervalMinutes": "default",
                   "taskCardDensity": "file",
                   "terminal.enabled": "file",
                   "timeout": "file",

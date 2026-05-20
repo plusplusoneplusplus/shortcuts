@@ -43,7 +43,6 @@ describe('ADMIN_EDITABLE_KEYS', () => {
             'ralph.enabled', 'vimNavigation.enabled', 'loops.enabled',
             'excalidraw.enabled',
             'mcpOauth.enabled',
-            'sync.gitRemote', 'sync.intervalMinutes',
         ];
         for (const k of expected) {
             expect(ADMIN_EDITABLE_KEYS).toContain(k);
@@ -349,26 +348,6 @@ describe('apply()', () => {
         });
     });
 
-    describe('sync.gitRemote', () => {
-        it('sets gitRemote, initializing namespace', () => {
-            const cfg: CLIConfig = {};
-            fieldFor('sync.gitRemote').apply(cfg, 'git@github.com:user/notes.git');
-            expect(cfg.sync?.gitRemote).toBe('git@github.com:user/notes.git');
-        });
-        it('sets empty string to disable', () => {
-            const cfg: CLIConfig = {};
-            fieldFor('sync.gitRemote').apply(cfg, '');
-            expect(cfg.sync?.gitRemote).toBe('');
-        });
-    });
-
-    describe('sync.intervalMinutes', () => {
-        it('sets intervalMinutes, initializing namespace', () => {
-            const cfg: CLIConfig = {};
-            fieldFor('sync.intervalMinutes').apply(cfg, 10);
-            expect(cfg.sync?.intervalMinutes).toBe(10);
-        });
-    });
 });
 
 // ── runtime classification ────────────────────────────────────────────────────
@@ -420,36 +399,4 @@ describe('getAdminFieldMetadata()', () => {
         expect(meta['mcpOauth.enabled'].runtime).toBe('restartRequired');
     });
 });
-// ── sync validate() ────────────────────────────────────────────────────────────
 
-describe('sync validate()', () => {
-    describe('sync.gitRemote', () => {
-        it('accepts non-empty string', () => {
-            expect(fieldFor('sync.gitRemote').validate('git@github.com:user/notes.git')).toBeUndefined();
-        });
-        it('accepts empty string (disables sync)', () => {
-            expect(fieldFor('sync.gitRemote').validate('')).toBeUndefined();
-        });
-        it('rejects non-string', () => {
-            expect(fieldFor('sync.gitRemote').validate(42)).toMatch(/string/);
-        });
-    });
-
-    describe('sync.intervalMinutes', () => {
-        it('accepts positive integer', () => {
-            expect(fieldFor('sync.intervalMinutes').validate(5)).toBeUndefined();
-        });
-        it('accepts 1', () => {
-            expect(fieldFor('sync.intervalMinutes').validate(1)).toBeUndefined();
-        });
-        it('rejects 0', () => {
-            expect(fieldFor('sync.intervalMinutes').validate(0)).toMatch(/positive/);
-        });
-        it('rejects float', () => {
-            expect(fieldFor('sync.intervalMinutes').validate(2.5)).toMatch(/positive/);
-        });
-        it('rejects string', () => {
-            expect(fieldFor('sync.intervalMinutes').validate('5')).toMatch(/positive/);
-        });
-    });
-});

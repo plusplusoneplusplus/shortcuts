@@ -1,19 +1,18 @@
 /**
  * Git-backed sync engine for My Work / My Life notes.
  *
- * Clones/pulls/pushes a user-configured Git remote to synchronize
- * note files across machines. Uses a single shared repo at ~/.coc/sync/.
+ * Each workspace gets its own SyncEngine instance. The engine
+ * clones/pulls/pushes a user-configured Git remote to synchronize
+ * note files across machines.
  *
- * Mapping:
- *   ~/.coc/repos/my_work/notes/  ↔  sync-repo/my-work/
- *   ~/.coc/repos/my_life/notes/  ↔  sync-repo/my-life/
+ * Mapping (per workspace):
+ *   ~/.coc/repos/<workspaceId>/notes/  ↔  ~/.coc/sync/<sync-subfolder>/
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
 import type { AIInvoker } from '@plusplusoneplusplus/forge';
-import type { ResolvedCLIConfig } from '../../config';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -30,7 +29,8 @@ export interface SyncStatus {
 
 export interface SyncEngineOptions {
     dataDir: string;
-    resolvedConfig: ResolvedCLIConfig;
+    /** Virtual workspace ID: 'my_work' or 'my_life' */
+    workspaceId: string;
     logger?: SyncLogger;
     /** Optional AI invoker for intelligent merge conflict resolution. Falls back to simple resolution when absent. */
     aiInvoker?: AIInvoker;
@@ -55,19 +55,6 @@ interface FolderMapping {
     repoFolder: string;
     /** Absolute path to the local notes directory */
     localDir: string;
-}
-
-function buildFolderMappings(dataDir: string): FolderMapping[] {
-    return [
-        {
-            repoFolder: 'my-work',
-            localDir: path.join(dataDir, 'repos', 'my_work', 'notes'),
-        },
-        {
-            repoFolder: 'my-life',
-            localDir: path.join(dataDir, 'repos', 'my_life', 'notes'),
-        },
-    ];
 }
 
 // ── Git helpers ──────────────────────────────────────────────────────────────
@@ -161,10 +148,11 @@ function copyDirContents(src: string, dest: string): void {
 
 export class SyncEngine {
     private readonly dataDir: string;
+    private readonly workspaceId: string;
     private readonly syncRepoDir: string;
     private readonly lockPath: string;
     private readonly logger: SyncLogger;
-    private readonly mappings: FolderMapping[];
+    private readonly mapping: FolderMapping;
     private readonly aiInvoker?: AIInvoker;
 
     private status: SyncStatus = {
@@ -178,12 +166,16 @@ export class SyncEngine {
 
     constructor(opts: SyncEngineOptions) {
         this.dataDir = opts.dataDir;
-        this.syncRepoDir = path.join(opts.dataDir, 'sync');
+        this.workspaceId = opts.workspaceId;
+        const syncSubfolder = opts.workspaceId.replace(/_/g, '-');
+        this.syncRepoDir = path.join(opts.dataDir, 'sync', syncSubfolder);
         this.lockPath = path.join(this.syncRepoDir, '.lock');
         this.logger = opts.logger ?? DEFAULT_LOGGER;
-        this.mappings = buildFolderMappings(opts.dataDir);
+        this.mapping = {
+            repoFolder: '.',
+            localDir: path.join(opts.dataDir, 'repos', opts.workspaceId, 'notes'),
+        };
         this.aiInvoker = opts.aiInvoker;
-        this.status.enabled = isSyncEnabled(opts.resolvedConfig);
     }
 
     /** Returns the current sync status. */
@@ -191,35 +183,23 @@ export class SyncEngine {
         return { ...this.status };
     }
 
-    /** Update the config (e.g. after admin config change). */
-    updateConfig(config: ResolvedCLIConfig): void {
-        const wasEnabled = this.status.enabled;
-        this.status.enabled = isSyncEnabled(config);
-
-        if (this.status.enabled && !wasEnabled) {
-            this.startPeriodicSync(config.sync.intervalMinutes);
-        } else if (!this.status.enabled && wasEnabled) {
-            this.stopPeriodicSync();
-        }
-    }
-
     /**
      * Start the sync engine: do an initial sync, then schedule periodic syncs.
-     * Safe to call even when sync is disabled (will be a no-op).
+     * No-op when gitRemote is empty.
      */
-    async start(config: ResolvedCLIConfig): Promise<void> {
-        if (!isSyncEnabled(config)) {
-            this.logger.info('Sync disabled (no gitRemote configured)');
+    async start(gitRemote: string, intervalMinutes: number): Promise<void> {
+        if (!gitRemote) {
+            this.logger.info(`Sync disabled for ${this.workspaceId} (no gitRemote configured)`);
             return;
         }
 
         this.status.enabled = true;
-        this.logger.info('Starting sync engine');
+        this.logger.info(`Starting sync engine for ${this.workspaceId}`);
 
         // Fire-and-forget initial sync — don't block server startup
-        this.performSync(config.sync.gitRemote).catch(() => {});
+        this.performSync(gitRemote).catch(() => {});
 
-        this.startPeriodicSync(config.sync.intervalMinutes);
+        this.startPeriodicSync(intervalMinutes);
     }
 
     /** Stop the periodic sync timer. */
@@ -347,11 +327,8 @@ export class SyncEngine {
     }
 
     private copyLocalToRepo(): void {
-        for (const mapping of this.mappings) {
-            const repoSubDir = path.join(this.syncRepoDir, mapping.repoFolder);
-            if (fs.existsSync(mapping.localDir)) {
-                copyDirContents(mapping.localDir, repoSubDir);
-            }
+        if (fs.existsSync(this.mapping.localDir)) {
+            copyDirContents(this.mapping.localDir, this.syncRepoDir);
         }
     }
 
@@ -465,21 +442,24 @@ export class SyncEngine {
     }
 
     private copyRepoToLocal(): void {
-        for (const mapping of this.mappings) {
-            const repoSubDir = path.join(this.syncRepoDir, mapping.repoFolder);
-            if (fs.existsSync(repoSubDir)) {
-                fs.mkdirSync(mapping.localDir, { recursive: true });
-                copyDirContents(repoSubDir, mapping.localDir);
+        if (fs.existsSync(this.syncRepoDir)) {
+            fs.mkdirSync(this.mapping.localDir, { recursive: true });
+            // Copy everything except .git and .lock
+            for (const entry of fs.readdirSync(this.syncRepoDir, { withFileTypes: true })) {
+                if (entry.name === '.git' || entry.name === '.lock') continue;
+                const src = path.join(this.syncRepoDir, entry.name);
+                const dest = path.join(this.mapping.localDir, entry.name);
+                if (entry.isDirectory()) {
+                    copyDirContents(src, dest);
+                } else {
+                    fs.copyFileSync(src, dest);
+                }
             }
         }
     }
 }
 
 // ── Utilities ────────────────────────────────────────────────────────────────
-
-export function isSyncEnabled(config: ResolvedCLIConfig): boolean {
-    return typeof config.sync?.gitRemote === 'string' && config.sync.gitRemote.length > 0;
-}
 
 /**
  * Simple merge-conflict resolution: extracts both sides and concatenates them,

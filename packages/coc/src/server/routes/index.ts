@@ -5,6 +5,8 @@
  * `createExecutionServer` only deals with infrastructure setup.
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import type { Route } from '../types';
 import type { ProcessStore, TaskQueueManager, CopilotSDKService, AIInvoker } from '@plusplusoneplusplus/forge';
 import { modelMetadataStore } from '@plusplusoneplusplus/forge';
@@ -135,7 +137,7 @@ export interface RegisterRoutesOptions {
     loopEmit?: LoopEventEmit;
     hostname?: string;
     bindAddress?: string;
-    syncEngine?: SyncEngine;
+    syncEngines?: Map<string, SyncEngine>;
 }
 
 export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined } {
@@ -432,11 +434,19 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
     });
 
-    // Sync routes (notes git sync)
+    // Sync routes (notes git sync — per-workspace)
     registerSyncRoutes(
         routes,
-        () => opts.syncEngine,
-        () => opts.resolvedConfig,
+        (workspaceId) => opts.syncEngines?.get(workspaceId),
+        (workspaceId) => {
+            try {
+                const prefsPath = path.join(opts.dataDir, 'repos', workspaceId, 'preferences.json');
+                if (fs.existsSync(prefsPath)) {
+                    return JSON.parse(fs.readFileSync(prefsPath, 'utf8'));
+                }
+            } catch { /* return undefined */ }
+            return undefined;
+        },
     );
 
     return { wikiManager };

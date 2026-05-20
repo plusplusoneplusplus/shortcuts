@@ -212,31 +212,6 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         cfg.mcpOauth.enabled = v;
     }, 'restartRequired'),
 
-    // ── sync ──────────────────────────────────────────────────────────────────
-    {
-        key: 'sync.gitRemote',
-        runtime: 'live',
-        validate: (v) => v === '' || (typeof v === 'string')
-            ? undefined
-            : 'sync.gitRemote must be a string',
-        apply: (cfg, v) => {
-            if (!cfg.sync) { cfg.sync = {}; }
-            cfg.sync.gitRemote = v as string;
-        },
-    },
-    {
-        key: 'sync.intervalMinutes',
-        runtime: 'live',
-        validate: (v) =>
-            typeof v === 'number' && Number.isInteger(v) && v >= 1
-                ? undefined
-                : 'sync.intervalMinutes must be a positive integer',
-        apply: (cfg, v) => {
-            if (!cfg.sync) { cfg.sync = {}; }
-            cfg.sync.intervalMinutes = v as number;
-        },
-    },
-
     bool('features.focusedDiff', (cfg, v) => {
         if (!cfg.features) { cfg.features = {}; }
         cfg.features.focusedDiff = v;

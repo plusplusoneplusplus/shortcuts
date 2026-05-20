@@ -67,10 +67,6 @@ export interface AdminResolvedConfig {
   servers?: { enabled?: boolean };
   excalidraw?: { enabled?: boolean };
   mcpOauth?: { enabled?: boolean };
-  sync?: {
-    gitRemote?: string;
-    intervalMinutes?: number;
-  };
   [key: string]: unknown;
 }
 
@@ -122,8 +118,6 @@ export interface AdminConfigUpdate {
   'servers.enabled'?: boolean;
   'excalidraw.enabled'?: boolean;
   'mcpOauth.enabled'?: boolean;
-  'sync.gitRemote'?: string;
-  'sync.intervalMinutes'?: number;
   [key: string]: unknown;
 }
 

@@ -81,7 +81,7 @@ interface CloseHandlerDeps {
     loopExecutor?: { shutdownAll(): void };
     loopInfraDispose?: () => void;
     mcpOauthDispose?: () => void;
-    syncEngine?: SyncEngine;
+    syncEngines?: Map<string, SyncEngine>;
     activeSockets: Set<import('net').Socket>;
     server: http.Server;
 }
@@ -104,7 +104,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.loopExecutor?.shutdownAll();
         deps.loopInfraDispose?.();
         deps.mcpOauthDispose?.();
-        deps.syncEngine?.stop();
+        deps.syncEngines?.forEach(e => e.stop());
         gitInfoCache.dispose();
         deps.notesGitTimerManager.dispose();
         deps.autoPromoteScheduler?.dispose();
@@ -375,12 +375,15 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const remoteServerStore = new RemoteServerStore(dataDir);
     const remoteServerConnector = new DevTunnelConnector();
 
-    // Sync engine — instantiated always, but only active when gitRemote is configured.
-    const syncEngine = new SyncEngine({
-        dataDir,
-        resolvedConfig,
-        aiInvoker,
-    });
+    // Sync engines — one per virtual workspace, only active when gitRemote is configured.
+    const syncEngines = new Map<string, SyncEngine>();
+    for (const workspaceId of ['my_work', 'my_life']) {
+        syncEngines.set(workspaceId, new SyncEngine({
+            dataDir,
+            workspaceId,
+            aiInvoker,
+        }));
+    }
 
     const routes: Route[] = [];
     const { wikiManager } = registerAllRoutes(routes, {
@@ -403,7 +406,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         loopEmit: loopInfra?.emit,
         hostname: os.hostname(),
         bindAddress: host,
-        syncEngine,
+        syncEngines,
     });
     // Restore auto-commit timers for all workspaces that had it enabled
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });
@@ -479,8 +482,18 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         /* best-effort */
     }
 
-    // Start sync engine after server is listening (fire-and-forget — never blocks startup)
-    syncEngine.start(resolvedConfig).catch(() => { /* best-effort */ });
+    // Start sync engines after server is listening (fire-and-forget — never blocks startup)
+    for (const [workspaceId, engine] of syncEngines) {
+        try {
+            const prefsPath = path.join(dataDir, 'repos', workspaceId, 'preferences.json');
+            if (fs.existsSync(prefsPath)) {
+                const prefs = JSON.parse(fs.readFileSync(prefsPath, 'utf8'));
+                if (prefs?.sync?.gitRemote) {
+                    engine.start(prefs.sync.gitRemote, prefs.sync.intervalMinutes ?? 5).catch(() => {});
+                }
+            }
+        } catch { /* best-effort */ }
+    }
 
     const address = server.address();
     const actualPort = typeof address === 'object' && address ? address.port : port;
@@ -502,7 +515,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             loopExecutor: loopInfra?.loopExecutor,
             loopInfraDispose: loopInfra?.dispose,
             mcpOauthDispose: mcpOauthInfra?.dispose,
-            syncEngine,
+            syncEngines,
             activeSockets, server,
         }),
     };

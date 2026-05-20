@@ -240,6 +240,13 @@ export interface PerRepoPreferences {
     maxRalphIterations?: number;
     /** Additional notes root folders (relative paths from workspace git root). Max 10. */
     additionalNotesRoots?: string[];
+    /** Git-based notes sync settings (only for my_work / my_life virtual workspaces). */
+    sync?: {
+        /** Git remote URL. Sync is disabled when empty/absent. */
+        gitRemote?: string;
+        /** Sync interval in minutes (default: 5). */
+        intervalMinutes?: number;
+    };
 }
 
 /** Hardcoded fallback for Ralph max iterations when no preference is set. */

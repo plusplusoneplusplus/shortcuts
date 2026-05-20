@@ -135,13 +135,6 @@ export interface CLIConfig {
     excalidraw?: {
         enabled?: boolean;
     };
-    /** Git-based sync for My Work / My Life notes across machines. Disabled by default. */
-    sync?: {
-        /** Git remote URL (e.g. git@github.com:user/my-coc-notes.git). Sync is disabled when empty. */
-        gitRemote?: string;
-        /** Sync interval in minutes (default: 5). */
-        intervalMinutes?: number;
-    };
     /** Development feature flags. */
     features?: {
         autoMemoryPromotion?: boolean;
@@ -312,11 +305,6 @@ export interface ResolvedCLIConfig {
     excalidraw: {
         enabled: boolean;
     };
-    /** Git-based sync for My Work / My Life notes. */
-    sync: {
-        gitRemote: string;
-        intervalMinutes: number;
-    };
     /** Development feature flags. */
     features: {
         autoMemoryPromotion: boolean;
@@ -445,10 +433,6 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     excalidraw: {
         enabled: false,
-    },
-    sync: {
-        gitRemote: '',
-        intervalMinutes: 5,
     },
     features: {
         autoMemoryPromotion: false,
