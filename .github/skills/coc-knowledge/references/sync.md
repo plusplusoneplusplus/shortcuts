@@ -18,8 +18,9 @@ Git-backed synchronization of My Work and My Life notes across multiple machines
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │  Dashboard UI                                                        │
-│  SyncStatusIndicator (TopBar pill) — status dot + manual trigger     │
-│  useSyncStatus hook — polls GET /api/workspaces/:id/sync/status      │
+│  SyncSettingsSection (per-report RepoSettingsTab → Notes section)    │
+│  Inline status pill, manual trigger, git remote / interval inputs    │
+│  Polls GET /api/workspaces/:id/sync/status                          │
 └──────────────┬───────────────────────────────────────────────────────┘
                │ REST
 ┌──────────────▼───────────────────────────────────────────────────────┐
@@ -49,8 +50,7 @@ Git-backed synchronization of My Work and My Life notes across multiple machines
 | `src/server/sync/sync-engine.ts` | `SyncEngine` class, `resolveConflictSimple()`, `resolveConflictWithAI()` |
 | `src/server/sync/sync-handler.ts` | REST route registration (`registerSyncRoutes`) — workspace-scoped |
 | `src/server/sync/index.ts` | Barrel exports |
-| `src/server/spa/client/react/layout/SyncStatusIndicator.tsx` | TopBar status pill (syncing/error/synced/never-synced states) |
-| `src/server/spa/client/react/hooks/useSyncStatus.ts` | React hook polling sync status |
+| `src/server/spa/client/react/features/repo-settings/SyncSettingsSection.tsx` | Per-report sync config UI (git remote, interval, status, trigger) |
 
 ## Per-Workspace Configuration
 

@@ -63,6 +63,11 @@ export interface PerRepoPreferences {
       };
     };
   };
+  /** Git-based notes sync settings (only for my_work / my_life virtual workspaces). */
+  sync?: {
+    gitRemote?: string;
+    intervalMinutes?: number;
+  };
   [key: string]: unknown;
 }
 

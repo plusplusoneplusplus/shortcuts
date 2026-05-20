@@ -177,14 +177,6 @@ export function AdminPanel() {
     const [mcpOauthEnabled, setMcpOauthEnabled] = useState(false);
     const [focusedDiffEnabled, setFocusedDiffEnabled] = useState(false);
 
-    // Sync settings
-    const [syncGitRemote, setSyncGitRemote] = useState('');
-    const [syncIntervalMinutes, setSyncIntervalMinutes] = useState('5');
-    const [syncSaving, setSyncSaving] = useState(false);
-    const [syncSnapshot, setSyncSnapshot] = useState({ gitRemote: '', intervalMinutes: '5' });
-    const [syncStatus, setSyncStatus] = useState<{ enabled: boolean; inProgress: boolean; lastSyncTime: string | null; lastError: string | null } | null>(null);
-    const [syncTriggering, setSyncTriggering] = useState(false);
-
     // Preferences(theme, reposSidebarCollapsed, uiLayoutMode) — for Appearance card
     const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('auto');
     const [reposSidebarCollapsed, setReposSidebarCollapsed] = useState(false);
@@ -370,9 +362,6 @@ export function AdminPanel() {
         getSpaCocClient().admin.getVersion()
             .then(data => { if (data) setVersionInfo(data); })
             .catch(() => {});
-        getSpaCocClient().sync.getStatus()
-            .then(data => setSyncStatus(data))
-            .catch(() => {});
     }, [loadStats, loadConfig, loadPreferences]);
 
     // ── Per-card dirty state ──
@@ -412,58 +401,6 @@ export function AdminPanel() {
         excalidrawEnabled !== featuresSnapshot.excalidraw ||
         mcpOauthEnabled !== featuresSnapshot.mcpOauth ||
         focusedDiffEnabled !== featuresSnapshot.focusedDiff;
-
-    const syncDirty = syncGitRemote !== syncSnapshot.gitRemote ||
-        syncIntervalMinutes !== syncSnapshot.intervalMinutes;
-
-    // ── Sync card ──
-    const handleSaveSync = useCallback(async () => {
-        const errors: string[] = [];
-        const interval = Number(syncIntervalMinutes);
-        if (syncIntervalMinutes.trim() !== '' && (isNaN(interval) || !Number.isInteger(interval) || interval < 1)) {
-            errors.push('Sync interval must be a positive integer');
-        }
-        if (errors.length > 0) { addToast(errors.join('. '), 'error'); return; }
-
-        setSyncSaving(true);
-        try {
-            await getSpaCocClient().admin.updateConfig({
-                'sync.gitRemote': syncGitRemote,
-                'sync.intervalMinutes': interval || 5,
-            });
-            addToast('Sync settings saved', 'success');
-            setSyncSnapshot({ gitRemote: syncGitRemote, intervalMinutes: syncIntervalMinutes });
-            getSpaCocClient().sync.getStatus()
-                .then(data => setSyncStatus(data))
-                .catch(() => {});
-        } catch (err: unknown) {
-            addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
-        } finally {
-            setSyncSaving(false);
-        }
-    }, [syncGitRemote, syncIntervalMinutes, addToast]);
-
-    const handleCancelSync = useCallback(() => {
-        setSyncGitRemote(syncSnapshot.gitRemote);
-        setSyncIntervalMinutes(syncSnapshot.intervalMinutes);
-    }, [syncSnapshot]);
-
-    const handleTriggerSync = useCallback(async () => {
-        setSyncTriggering(true);
-        try {
-            const result = await getSpaCocClient().sync.trigger();
-            setSyncStatus(result);
-            if (result.lastError) {
-                addToast(`Sync error: ${result.lastError}`, 'error');
-            } else {
-                addToast('Sync completed', 'success');
-            }
-        } catch (err: unknown) {
-            addToast(getSpaCocClientErrorMessage(err, 'Sync trigger failed'), 'error');
-        } finally {
-            setSyncTriggering(false);
-        }
-    }, [addToast]);
 
     // ── AI & Execution card ──
     const handleSaveAiExec = useCallback(async () => {
@@ -1363,77 +1300,6 @@ export function AdminPanel() {
                                             />
                                         </AdminRow>
                                     ))}
-                                </SettingsCard>
-                                )}
-
-                                {/* ── Notes Git Sync (Integrations) ── */}
-                                {settingsSubTab === 'integrations' && (
-                                <SettingsCard
-                                    title="Notes Git Sync"
-                                    badge={syncStatus?.enabled ? 'Active' : 'Off'}
-                                    description="Synchronize My Work and My Life notes across machines via a Git remote."
-                                    dirty={syncDirty}
-                                    saving={syncSaving}
-                                    onSave={handleSaveSync}
-                                    onCancel={handleCancelSync}
-                                    data-testid="settings-sync"
-                                >
-                                    <AdminRow
-                                        name="Git Remote URL"
-                                        hint="SSH or HTTPS URL for the sync repository. Leave empty to disable sync."
-                                    >
-                                        <input
-                                            className="ar-input"
-                                            type="text"
-                                            value={syncGitRemote}
-                                            onChange={e => setSyncGitRemote(e.target.value)}
-                                            placeholder="git@github.com:user/my-coc-notes.git"
-                                            style={{ minWidth: 300 }}
-                                            data-testid="input-sync-git-remote"
-                                        />
-                                    </AdminRow>
-                                    <AdminRow
-                                        name="Sync Interval"
-                                        hint="How often to auto-sync in the background."
-                                    >
-                                        <AdminInputSuffix suffix="min">
-                                            <input
-                                                className="ar-input"
-                                                type="number"
-                                                min={1}
-                                                value={syncIntervalMinutes}
-                                                onChange={e => setSyncIntervalMinutes(e.target.value)}
-                                                style={{ width: 70 }}
-                                                data-testid="input-sync-interval"
-                                            />
-                                        </AdminInputSuffix>
-                                    </AdminRow>
-                                    {syncStatus && (
-                                        <AdminRow
-                                            name="Status"
-                                            hint={syncStatus.lastError ? `Error: ${syncStatus.lastError}` : (syncStatus.lastSyncTime ? `Last sync: ${new Date(syncStatus.lastSyncTime).toLocaleString()}` : 'Never synced')}
-                                        >
-                                            <span className="ar-hstack" style={{ gap: 8, alignItems: 'center' }}>
-                                                <span className={`ar-pill ${syncStatus.lastError ? 'ar-pill-danger' : syncStatus.inProgress ? 'ar-pill-warn' : syncStatus.enabled ? 'ar-pill-ok' : ''}`}
-                                                    data-testid="sync-status-pill"
-                                                >
-                                                    {syncStatus.inProgress ? '⟳ Syncing…' : syncStatus.lastError ? '✗ Error' : syncStatus.enabled ? '✓ OK' : '○ Disabled'}
-                                                </span>
-                                                {syncStatus.enabled && (
-                                                    <button
-                                                        type="button"
-                                                        className="ar-btn ar-btn-secondary ar-btn-sm"
-                                                        onClick={handleTriggerSync}
-                                                        disabled={syncTriggering || syncStatus.inProgress}
-                                                        data-testid="btn-sync-trigger"
-                                                    >
-                                                        {syncTriggering && <Spinner size="sm" />}
-                                                        Sync Now
-                                                    </button>
-                                                )}
-                                            </span>
-                                        </AdminRow>
-                                    )}
                                 </SettingsCard>
                                 )}
 
