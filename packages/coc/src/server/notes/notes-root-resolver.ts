@@ -7,6 +7,7 @@
  */
 
 import * as path from 'path';
+import * as crypto from 'crypto';
 import { getRepoDataPath } from '../paths';
 
 /** Maximum number of additional notes roots per workspace. */
@@ -129,4 +130,48 @@ export function validateNotesRootPath(rootPath: string): string | undefined {
     }
 
     return undefined;
+}
+
+/**
+ * Encode a root path into a filesystem-safe directory name.
+ * Uses a short SHA-256 prefix plus the sanitized path for readability.
+ */
+export function encodeRootPath(rootPath: string): string {
+    const normalized = rootPath.replace(/\\/g, '/').replace(/\/+$/, '');
+    const hash = crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 8);
+    const safe = normalized.replace(/[/\\]/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '_');
+    return `${safe}__${hash}`;
+}
+
+/**
+ * Resolve the filesystem path for a comment sidecar file.
+ *
+ * - Default root: sidecar is co-located next to the note file under the managed notes root.
+ * - Repo-folder roots: sidecar is stored in the managed area at
+ *   `~/.coc/repos/<workspaceId>/notes-comments/<encoded-root-path>/`.
+ *   This keeps the workspace repo clean.
+ *
+ * @param dataDir - The CoC data directory (~/.coc)
+ * @param workspaceId - The workspace identifier
+ * @param resolvedRoot - The resolved notes root info
+ * @param notePath - Relative path to the note within the root
+ * @returns Absolute path to the sidecar JSON file
+ */
+export function resolveCommentsSidecarPath(
+    dataDir: string,
+    workspaceId: string,
+    resolvedRoot: ResolvedNotesRoot,
+    notePath: string,
+): string {
+    if (resolvedRoot.isDefault) {
+        // Default root: co-located sidecar (existing behavior)
+        return path.isAbsolute(notePath)
+            ? path.resolve(notePath + '.comments.json')
+            : path.resolve(resolvedRoot.absolutePath, notePath + '.comments.json');
+    }
+
+    // Repo-folder root: store sidecar in managed area
+    const encoded = encodeRootPath(resolvedRoot.rootId);
+    const commentsDir = path.join(dataDir, 'repos', workspaceId, 'notes-comments', encoded);
+    return path.resolve(commentsDir, notePath + '.comments.json');
 }

@@ -4,8 +4,12 @@
  * HTTP API routes for CRUD operations on comment threads and individual
  * comments attached to notes for a given workspace.
  *
- * Sidecar storage: each note `<path>.md` gets a `<path>.md.comments.json`
- * file in the same directory under the notes root.
+ * Sidecar storage:
+ * - Default root: each note `<path>.md` gets a `<path>.md.comments.json`
+ *   file co-located in the same directory under the managed notes root.
+ * - Repo-folder roots: sidecar files are stored in the managed area at
+ *   `~/.coc/repos/<workspaceId>/notes-comments/<encoded-root-path>/`
+ *   to keep the workspace repo clean.
  *
  * No VS Code dependencies - uses only Node.js built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -23,9 +27,12 @@ import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-uti
 import type { Route } from '../types';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import { getRepoDataPath } from '../paths';
+import { readRepoPreferences } from '../preferences-handler';
 import type { NoteSidecar, CommentThread, Comment } from './notes-comments-types';
 import { createEmptySidecar } from './notes-comments-types';
 import { buildNotesBatchResolvePrompt } from './notes-comments-ai';
+import { resolveNotesRoot, isRootResolveError, resolveCommentsSidecarPath } from './notes-root-resolver';
+import type { ResolvedNotesRoot } from './notes-root-resolver';
 
 // ============================================================================
 // Helpers
@@ -47,12 +54,30 @@ function isAllowedPath(resolved: string, wsDataDir: string): boolean {
     return isWithinDirectory(resolved, wsDataDir) || isWithinDirectory(resolved, getCopilotDir());
 }
 
-// Absolute paths are used as-is (scratchpad / session-state files).
-// Relative paths are resolved against notesRoot (notes tree entries).
-function sidecarPath(notesRoot: string, notePath: string): string {
-    return path.isAbsolute(notePath)
-        ? path.resolve(notePath + '.comments.json')
-        : path.resolve(notesRoot, notePath + '.comments.json');
+/**
+ * Resolve the sidecar file path for a note, taking the active root into account.
+ * For non-default roots, the sidecar path already points into the managed area,
+ * so the isAllowedPath check will pass naturally.
+ */
+function resolveSidecar(
+    dataDir: string,
+    workspaceId: string,
+    root: ResolvedNotesRoot,
+    notePath: string,
+): string {
+    return resolveCommentsSidecarPath(dataDir, workspaceId, root, notePath);
+}
+
+/**
+ * Resolve the root from query/body `root` param, reading preferences to validate.
+ */
+function resolveRoot(
+    dataDir: string,
+    ws: { id: string; rootPath?: string },
+    rootParam: string | undefined,
+): ResolvedNotesRoot | { error: string; statusCode: number } {
+    const prefs = readRepoPreferences(dataDir, ws.id);
+    return resolveNotesRoot(dataDir, ws.id, ws.rootPath, rootParam, prefs.additionalNotesRoots);
 }
 
 async function loadSidecar(filePath: string): Promise<NoteSidecar> {
@@ -85,7 +110,7 @@ export function registerNotesCommentsRoutes(
     bridge?: MultiRepoQueueRouter,
 ): void {
 
-    // GET /api/workspaces/:id/notes/comments?path=...
+    // GET /api/workspaces/:id/notes/comments?path=...&root=...
     routes.push({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/notes\/comments$/,
@@ -99,9 +124,14 @@ export function registerNotesCommentsRoutes(
                 return sendError(res, 400, 'Missing required field: path');
             }
 
-            const notesRoot = getNotesRoot(dataDir, ws.id);
+            const rootParam = typeof parsed.query.root === 'string' ? parsed.query.root : undefined;
+            const root = resolveRoot(dataDir, ws, rootParam);
+            if (isRootResolveError(root)) {
+                return sendError(res, root.statusCode, root.error);
+            }
+
             const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
-            const resolved = sidecarPath(notesRoot, notePath);
+            const resolved = resolveSidecar(dataDir, ws.id, root, notePath);
             if (!isAllowedPath(resolved, wsDataDir)) {
                 return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
@@ -122,7 +152,7 @@ export function registerNotesCommentsRoutes(
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
-            const { path: notePath, threads } = body || {};
+            const { path: notePath, threads, root: rootParam } = body || {};
             if (!notePath || typeof notePath !== 'string') {
                 return sendError(res, 400, 'Missing required field: path');
             }
@@ -130,9 +160,13 @@ export function registerNotesCommentsRoutes(
                 return sendError(res, 400, 'Missing required field: threads');
             }
 
-            const notesRoot = getNotesRoot(dataDir, ws.id);
+            const root = resolveRoot(dataDir, ws, rootParam);
+            if (isRootResolveError(root)) {
+                return sendError(res, root.statusCode, root.error);
+            }
+
             const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
-            const resolved = sidecarPath(notesRoot, notePath);
+            const resolved = resolveSidecar(dataDir, ws.id, root, notePath);
             if (!isAllowedPath(resolved, wsDataDir)) {
                 return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
@@ -154,7 +188,7 @@ export function registerNotesCommentsRoutes(
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
-            const { path: notePath, thread } = body || {};
+            const { path: notePath, thread, root: rootParam } = body || {};
             if (!notePath || typeof notePath !== 'string') {
                 return sendError(res, 400, 'Missing required field: path');
             }
@@ -168,9 +202,13 @@ export function registerNotesCommentsRoutes(
                 return sendError(res, 400, 'Missing required field: thread.comments');
             }
 
-            const notesRoot = getNotesRoot(dataDir, ws.id);
+            const root = resolveRoot(dataDir, ws, rootParam);
+            if (isRootResolveError(root)) {
+                return sendError(res, root.statusCode, root.error);
+            }
+
             const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
-            const resolved = sidecarPath(notesRoot, notePath);
+            const resolved = resolveSidecar(dataDir, ws.id, root, notePath);
             if (!isAllowedPath(resolved, wsDataDir)) {
                 return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
@@ -207,7 +245,7 @@ export function registerNotesCommentsRoutes(
             if (body === null) return;
 
             const threadId = decodeURIComponent(match![2]);
-            const { path: notePath, status } = body || {};
+            const { path: notePath, status, root: rootParam } = body || {};
             if (!notePath || typeof notePath !== 'string') {
                 return sendError(res, 400, 'Missing required field: path');
             }
@@ -215,9 +253,13 @@ export function registerNotesCommentsRoutes(
                 return sendError(res, 400, 'Missing or invalid field: status (must be open or resolved)');
             }
 
-            const notesRoot = getNotesRoot(dataDir, ws.id);
+            const root = resolveRoot(dataDir, ws, rootParam);
+            if (isRootResolveError(root)) {
+                return sendError(res, root.statusCode, root.error);
+            }
+
             const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
-            const resolved = sidecarPath(notesRoot, notePath);
+            const resolved = resolveSidecar(dataDir, ws.id, root, notePath);
             if (!isAllowedPath(resolved, wsDataDir)) {
                 return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
@@ -240,7 +282,7 @@ export function registerNotesCommentsRoutes(
         },
     });
 
-    // DELETE /api/workspaces/:id/notes/comments/thread/:threadId?path=...
+    // DELETE /api/workspaces/:id/notes/comments/thread/:threadId?path=...&root=...
     routes.push({
         method: 'DELETE',
         pattern: /^\/api\/workspaces\/([^/]+)\/notes\/comments\/thread\/([^/]+)$/,
@@ -255,9 +297,14 @@ export function registerNotesCommentsRoutes(
                 return sendError(res, 400, 'Missing required field: path');
             }
 
-            const notesRoot = getNotesRoot(dataDir, ws.id);
+            const rootParam = typeof parsed.query.root === 'string' ? parsed.query.root : undefined;
+            const root = resolveRoot(dataDir, ws, rootParam);
+            if (isRootResolveError(root)) {
+                return sendError(res, root.statusCode, root.error);
+            }
+
             const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
-            const resolved = sidecarPath(notesRoot, notePath);
+            const resolved = resolveSidecar(dataDir, ws.id, root, notePath);
             if (!isAllowedPath(resolved, wsDataDir)) {
                 return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
@@ -286,7 +333,7 @@ export function registerNotesCommentsRoutes(
             if (body === null) return;
 
             const threadId = decodeURIComponent(match![2]);
-            const { path: notePath, content } = body || {};
+            const { path: notePath, content, root: rootParam } = body || {};
             if (!notePath || typeof notePath !== 'string') {
                 return sendError(res, 400, 'Missing required field: path');
             }
@@ -294,9 +341,13 @@ export function registerNotesCommentsRoutes(
                 return sendError(res, 400, 'Missing required field: content');
             }
 
-            const notesRoot = getNotesRoot(dataDir, ws.id);
+            const root = resolveRoot(dataDir, ws, rootParam);
+            if (isRootResolveError(root)) {
+                return sendError(res, root.statusCode, root.error);
+            }
+
             const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
-            const resolved = sidecarPath(notesRoot, notePath);
+            const resolved = resolveSidecar(dataDir, ws.id, root, notePath);
             if (!isAllowedPath(resolved, wsDataDir)) {
                 return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
@@ -331,7 +382,7 @@ export function registerNotesCommentsRoutes(
 
             const threadId = decodeURIComponent(match![2]);
             const commentId = decodeURIComponent(match![3]);
-            const { path: notePath, content } = body || {};
+            const { path: notePath, content, root: rootParam } = body || {};
             if (!notePath || typeof notePath !== 'string') {
                 return sendError(res, 400, 'Missing required field: path');
             }
@@ -339,9 +390,13 @@ export function registerNotesCommentsRoutes(
                 return sendError(res, 400, 'Missing required field: content');
             }
 
-            const notesRoot = getNotesRoot(dataDir, ws.id);
+            const root = resolveRoot(dataDir, ws, rootParam);
+            if (isRootResolveError(root)) {
+                return sendError(res, root.statusCode, root.error);
+            }
+
             const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
-            const resolved = sidecarPath(notesRoot, notePath);
+            const resolved = resolveSidecar(dataDir, ws.id, root, notePath);
             if (!isAllowedPath(resolved, wsDataDir)) {
                 return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
@@ -364,7 +419,7 @@ export function registerNotesCommentsRoutes(
         },
     });
 
-    // DELETE /api/workspaces/:id/notes/comments/thread/:threadId/comment/:commentId?path=...
+    // DELETE /api/workspaces/:id/notes/comments/thread/:threadId/comment/:commentId?path=...&root=...
     routes.push({
         method: 'DELETE',
         pattern: /^\/api\/workspaces\/([^/]+)\/notes\/comments\/thread\/([^/]+)\/comment\/([^/]+)$/,
@@ -380,9 +435,14 @@ export function registerNotesCommentsRoutes(
                 return sendError(res, 400, 'Missing required field: path');
             }
 
-            const notesRoot = getNotesRoot(dataDir, ws.id);
+            const rootParam = typeof parsed.query.root === 'string' ? parsed.query.root : undefined;
+            const root = resolveRoot(dataDir, ws, rootParam);
+            if (isRootResolveError(root)) {
+                return sendError(res, root.statusCode, root.error);
+            }
+
             const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
-            const resolved = sidecarPath(notesRoot, notePath);
+            const resolved = resolveSidecar(dataDir, ws.id, root, notePath);
             if (!isAllowedPath(resolved, wsDataDir)) {
                 return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
@@ -405,7 +465,7 @@ export function registerNotesCommentsRoutes(
         },
     });
 
-    // POST /api/workspaces/:id/notes/batch-resolve?path=...
+    // POST /api/workspaces/:id/notes/batch-resolve?path=...&root=...
     routes.push({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/notes\/batch-resolve$/,
@@ -429,9 +489,14 @@ export function registerNotesCommentsRoutes(
 
             const userContext: string | undefined = body.userContext;
 
-            const notesRoot = getNotesRoot(dataDir, ws.id);
+            const rootParam = typeof parsed.query.root === 'string' ? parsed.query.root : undefined;
+            const root = resolveRoot(dataDir, ws, rootParam);
+            if (isRootResolveError(root)) {
+                return sendError(res, root.statusCode, root.error);
+            }
+
             const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
-            const resolved = sidecarPath(notesRoot, notePath);
+            const resolved = resolveSidecar(dataDir, ws.id, root, notePath);
             if (!isAllowedPath(resolved, wsDataDir)) {
                 return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
@@ -456,11 +521,6 @@ export function registerNotesCommentsRoutes(
                 const input: CreateTaskInput = {
                     type: 'chat',
                     priority: 'normal',
-                    // repoId is required so the task's resulting process inherits
-                    // the workspace_id column. process-lifecycle-runner falls back
-                    // to task.repoId when payload.workspaceId is missing; without
-                    // either, the conversation is invisible to the workspace
-                    // history endpoint that powers the Activity tab.
                     repoId: ws.id,
                     payload: {
                         kind: 'chat',
