@@ -65,7 +65,7 @@ const MY_WORK_SOURCE_KEYS = ['myWork.enabled'] as const;
 const MY_LIFE_SOURCE_KEYS = ['myLife.enabled'] as const;
 const SCRATCHPAD_SOURCE_KEYS = ['scratchpad.enabled', 'scratchpad.layout'] as const;
 const WORKFLOWS_SOURCE_KEYS = ['workflows.enabled'] as const;
-const PULL_REQUESTS_SOURCE_KEYS = ['pullRequests.enabled'] as const;
+const PULL_REQUESTS_SOURCE_KEYS = ['pullRequests.enabled', 'pullRequests.suggestions'] as const;
 const SERVERS_SOURCE_KEYS = ['servers.enabled'] as const;
 const RALPH_SOURCE_KEYS = ['ralph.enabled'] as const;
 const VIM_NAVIGATION_SOURCE_KEYS = ['vimNavigation.enabled'] as const;
@@ -225,7 +225,7 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
         {
             name: 'pullRequests',
             sourceDescriptors: [source('pullRequests.', ['pullRequests'], PULL_REQUESTS_SOURCE_KEYS)],
-            merge: (base, override) => ({ pullRequests: { enabled: override?.pullRequests?.enabled ?? base.pullRequests?.enabled ?? false } }),
+            merge: (base, override) => ({ pullRequests: { enabled: override?.pullRequests?.enabled ?? base.pullRequests?.enabled ?? false, suggestions: override?.pullRequests?.suggestions ?? base.pullRequests?.suggestions ?? false } }),
         },
         {
             name: 'servers',

@@ -108,6 +108,8 @@ export interface CLIConfig {
     /** Pull Requests configuration */
     pullRequests?: {
         enabled?: boolean;
+        /** AI-suggested reviews: surfaces a ranked "For You" section in the PR queue. Disabled by default. */
+        suggestions?: boolean;
     };
     /** Servers configuration (multi-server connection manager). */
     servers?: {
@@ -284,6 +286,7 @@ export interface ResolvedCLIConfig {
     /** Pull Requests configuration */
     pullRequests: {
         enabled: boolean;
+        suggestions: boolean;
     };
     /** Servers configuration (multi-server connection manager). */
     servers: {
@@ -423,6 +426,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     pullRequests: {
         enabled: false,
+        suggestions: false,
     },
     servers: {
         enabled: false,

@@ -150,6 +150,31 @@ export interface PullRequestCommit {
     raw?: unknown;
 }
 
+// ── Reviewed pull-request summary (for review-history fetch) ─
+
+/**
+ * Lightweight summary of a pull request the user has previously reviewed.
+ * Used by the PR-suggestion feature to learn the user's review patterns.
+ */
+export interface ReviewedPullRequest {
+    /** PR number. */
+    number: number;
+    /** PR title at time of review. */
+    title: string;
+    /** PR author identity. */
+    author: Identity;
+    /** Repository-relative file paths changed in the PR. */
+    filesChanged: string[];
+    /** Labels on the PR at time of review. */
+    labels: string[];
+    /** When the user submitted their review. */
+    reviewedAt: Date;
+    /** Target branch (e.g. 'main'). */
+    targetBranch: string;
+    /** Web URL for the PR. */
+    url: string;
+}
+
 // ── Canonical pull-request entity ────────────────────────────
 
 export interface PullRequest {

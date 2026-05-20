@@ -427,6 +427,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 scratchpadLayout: liveConfig.scratchpad?.layout ?? 'horizontal',
                 workflowsEnabled: liveConfig.workflows?.enabled ?? false,
                 pullRequestsEnabled: liveConfig.pullRequests?.enabled ?? false,
+                pullRequestsSuggestionsEnabled: liveConfig.pullRequests?.suggestions ?? false,
                 serversEnabled: liveConfig.servers?.enabled ?? false,
                 ralphEnabled: liveConfig.ralph?.enabled ?? false,
                 vimNavigationEnabled: liveConfig.vimNavigation?.enabled ?? false,

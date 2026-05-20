@@ -7,6 +7,7 @@ import type {
     PullRequestCheck,
     PullRequestCommit,
     Reviewer,
+    ReviewedPullRequest,
     SearchCriteria,
     UpdatePullRequestInput,
     UpdateWorkItemInput,
@@ -68,6 +69,12 @@ export interface IPullRequestsService {
      * across retries). Optional — not all providers support this.
      */
     getChecks?(repositoryId: string, pullRequestId: number | string): Promise<PullRequestCheck[]>;
+    /**
+     * Returns pull requests previously reviewed by the authenticated user, most recent first.
+     * Used by the PR-suggestion feature to learn review patterns.
+     * Optional — not all providers support this.
+     */
+    getReviewedPullRequests?(repositoryId: string, top?: number): Promise<ReviewedPullRequest[]>;
 }
 
 export interface IWorkItemsService {

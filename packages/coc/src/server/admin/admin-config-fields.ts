@@ -183,6 +183,10 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         if (!cfg.pullRequests) { cfg.pullRequests = {}; }
         cfg.pullRequests.enabled = v;
     }),
+    bool('pullRequests.suggestions', (cfg, v) => {
+        if (!cfg.pullRequests) { cfg.pullRequests = {}; }
+        cfg.pullRequests.suggestions = v;
+    }),
     bool('servers.enabled', (cfg, v) => {
         if (!cfg.servers) { cfg.servers = {}; }
         cfg.servers.enabled = v;

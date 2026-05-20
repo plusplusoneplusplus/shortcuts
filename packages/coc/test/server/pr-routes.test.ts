@@ -788,3 +788,79 @@ describe('PR detail cache (GET /api/repos/:id/pull-requests/:prId)', () => {
         expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(2);
     });
 });
+
+// ── GET /api/repos/:id/pull-requests/review-history ──────────────────────────
+
+describe('GET /api/repos/:id/pull-requests/review-history', () => {
+    it('returns empty reviews when no cache exists', async () => {
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/review-history`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { reviews: unknown[]; fetchedAt: string | null };
+        expect(body.reviews).toEqual([]);
+        expect(body.fetchedAt).toBeNull();
+    });
+
+    it('returns cached review history from disk', async () => {
+        // Write a cache file
+        const repoDir = path.join(dataDir, 'repos', REPO_ID);
+        fs.mkdirSync(repoDir, { recursive: true });
+        const cache = {
+            fetchedAt: '2024-06-01T12:00:00.000Z',
+            reviews: [{ number: 1, title: 'Test PR', author: { id: 'u1', displayName: 'Alice' }, filesChanged: [], labels: [], reviewedAt: '2024-06-01T10:00:00.000Z', targetBranch: 'main', url: 'https://example.com/pr/1' }],
+        };
+        fs.writeFileSync(path.join(repoDir, 'pr-review-history.json'), JSON.stringify(cache), 'utf-8');
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/review-history`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { reviews: unknown[]; fetchedAt: string };
+        expect(body.reviews).toHaveLength(1);
+        expect(body.fetchedAt).toBe('2024-06-01T12:00:00.000Z');
+    });
+
+    it('returns 404 when repo not found', async () => {
+        mockResolveRepo.mockResolvedValueOnce(null);
+        const res = await fetch(`${baseUrl}/api/repos/unknown/pull-requests/review-history`);
+        expect(res.status).toBe(404);
+    });
+});
+
+// ── POST /api/repos/:id/pull-requests/review-history/refresh ─────────────────
+
+describe('POST /api/repos/:id/pull-requests/review-history/refresh', () => {
+    it('fetches review history and caches to disk', async () => {
+        const mockReviews = [
+            { number: 10, title: 'PR 10', author: { id: 'u1', displayName: 'Alice' }, filesChanged: ['a.ts'], labels: [], reviewedAt: new Date('2024-01-01'), targetBranch: 'main', url: 'https://example.com/pr/10' },
+        ];
+        mockSvc.getReviewedPullRequests = vi.fn().mockResolvedValue(mockReviews);
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/review-history/refresh`, { method: 'POST' });
+        expect(res.status).toBe(200);
+        const body = await res.json() as { reviews: unknown[]; fetchedAt: string };
+        expect(body.reviews).toHaveLength(1);
+        expect(body.fetchedAt).toBeTruthy();
+
+        // Verify written to disk
+        const cached = fs.readFileSync(path.join(dataDir, 'repos', REPO_ID, 'pr-review-history.json'), 'utf-8');
+        expect(JSON.parse(cached).reviews).toHaveLength(1);
+    });
+
+    it('returns 501 when provider does not support review history', async () => {
+        // Ensure getReviewedPullRequests is NOT present
+        delete (mockSvc as any).getReviewedPullRequests;
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/review-history/refresh`, { method: 'POST' });
+        expect(res.status).toBe(501);
+    });
+
+    it('returns 404 when repo not found', async () => {
+        mockResolveRepo.mockResolvedValueOnce(null);
+        const res = await fetch(`${baseUrl}/api/repos/unknown/pull-requests/review-history/refresh`, { method: 'POST' });
+        expect(res.status).toBe(404);
+    });
+
+    it('returns 401 when no credentials', async () => {
+        (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/review-history/refresh`, { method: 'POST' });
+        expect(res.status).toBe(401);
+    });
+});

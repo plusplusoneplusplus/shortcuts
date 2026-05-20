@@ -90,6 +90,7 @@ export const CLIConfigSchema = z.object({
     }).passthrough().optional(),
     pullRequests: z.object({
         enabled: z.boolean().optional(),
+        suggestions: z.boolean().optional(),
     }).passthrough().optional(),
     servers: z.object({
         enabled: z.boolean().optional(),

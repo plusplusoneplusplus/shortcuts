@@ -24,6 +24,7 @@ import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { readReviewHistoryCache, fetchAndCacheReviewHistory } from './pr-suggestions';
 
 // ============================================================================
 // Helpers
@@ -188,6 +189,66 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 }
 
                 sendJson(res, { pullRequests: page, total: page.length });
+            } catch (err) {
+                if (isAuthError(err)) {
+                    sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 401);
+                } else {
+                    send500(res, err instanceof Error ? err.message : String(err));
+                }
+            }
+        },
+    });
+
+    // -- Get review history (cached) ------------------------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/review-history$/,
+        handler: async (_req, res, match) => {
+            try {
+                const repoId = decodeURIComponent(match![1]);
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+
+                const cached = readReviewHistoryCache(dataDir, repoId);
+                if (cached) {
+                    sendJson(res, cached);
+                } else {
+                    sendJson(res, { reviews: [], fetchedAt: null });
+                }
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    // -- Refresh review history (fetch from provider & cache) -----------------
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/review-history\/refresh$/,
+        handler: async (_req, res, match) => {
+            try {
+                const repoId = decodeURIComponent(match![1]);
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+
+                const cfg = await readProvidersConfig(dataDir);
+                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+                if (!prSvc || isNoAdoCredentials(prSvc)) {
+                    if (isNoAdoCredentials(prSvc)) {
+                        return sendJson(res, { error: 'no-ado-credentials' }, 401);
+                    }
+                    const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
+                    return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
+                }
+
+                if (typeof prSvc.getReviewedPullRequests !== 'function') {
+                    return sendJson(res, { error: 'Provider does not support review history' }, 501);
+                }
+
+                const cached = await fetchAndCacheReviewHistory(dataDir, repoId, prSvc, repoId);
+                sendJson(res, cached);
             } catch (err) {
                 if (isAuthError(err)) {
                     sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 401);
