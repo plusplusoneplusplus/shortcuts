@@ -244,7 +244,7 @@ export class TeamsBridge {
 
     // ── Outbound: CoC process update → Teams ────────────
     private async onWsMessage(msg: WSRelayMessage): Promise<void> {
-        if (!this.bot) return;
+        if (!this.bot) { console.log('[teams-bridge] WS ignored: bot is null'); return; }
         if (!this.store) return;
 
         let parsed: Record<string, unknown>;
@@ -272,13 +272,22 @@ export class TeamsBridge {
 
         const agentId = msg.agentId;
         const agentAddr = this.getAgentAddress(agentId);
-        if (!agentAddr) { this._processingLocks.delete(processId); return; }
+        if (!agentAddr) {
+            console.warn(`[teams-bridge] No address for agent ${agentId} (${msg.agentName}) — skipping outbound`);
+            this._processingLocks.delete(processId);
+            return;
+        }
+
+        console.log(`[teams-bridge] Process ${processId} status=${status} from=${msg.agentName}`);
 
         try {
             const workspaceId = (proc.workspaceId ?? proc.workspace) as string || '';
             const url = `${agentAddr}/api/processes/${processId}?workspaceId=${encodeURIComponent(workspaceId)}`;
             const res = await fetch(url);
-            if (!res.ok) return;
+            if (!res.ok) {
+                console.warn(`[teams-bridge] Process fetch failed: ${res.status} from ${url}`);
+                return;
+            }
             const body = await res.json() as Record<string, unknown>;
             const processData = (body.process ?? body) as Record<string, unknown>;
             const turns = (processData.conversationTurns ?? processData.conversation ?? processData.turns) as Array<{ role: string; content?: string; text?: string; streaming?: boolean }> | undefined;
