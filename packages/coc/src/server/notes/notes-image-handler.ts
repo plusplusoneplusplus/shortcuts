@@ -1,8 +1,9 @@
 /**
  * Notes Image Handler — upload and serve image attachments for notes.
  *
- * Images are stored under `<notesRoot>/.attachments/<uuid>.<ext>`.
- * Markdown references use relative paths: `.attachments/<uuid>.<ext>`.
+ * Default root: images stored under `<notesRoot>/.attachments/<uuid>.<ext>`.
+ * Repo-folder roots: images stored co-located at `<repoRoot>/.images/<uuid>.<ext>`.
+ * Markdown references use relative paths: `.attachments/<uuid>.<ext>` or `.images/<uuid>.<ext>`.
  *
  * No VS Code dependencies — uses only Node.js built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -18,7 +19,9 @@ import { sendJSON, sendError } from '../core/api-handler';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import { serveStaticFile } from '../shared/router';
 import type { Route } from '../types';
-import { getRepoDataPath } from '../paths';
+import { resolveNotesRoot, isRootResolveError } from './notes-root-resolver';
+import type { ResolvedNotesRoot } from './notes-root-resolver';
+import { readRepoPreferences } from '../preferences-handler';
 
 // ============================================================================
 // Constants
@@ -26,14 +29,21 @@ import { getRepoDataPath } from '../paths';
 
 const ALLOWED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp']);
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+/** Image directory for the default managed root. */
 const ATTACHMENTS_DIR = '.attachments';
+/** Image directory for repo-folder roots (co-located in the repo). */
+const IMAGES_DIR = '.images';
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
-function getNotesRoot(dataDir: string, workspaceId: string): string {
-    return getRepoDataPath(dataDir, workspaceId, 'notes');
+/**
+ * Return the image storage directory name for the given root.
+ * Default root uses `.attachments`; repo-folder roots use `.images`.
+ */
+function getImageDirName(resolved: ResolvedNotesRoot): string {
+    return resolved.isDefault ? ATTACHMENTS_DIR : IMAGES_DIR;
 }
 
 /**
@@ -71,6 +81,7 @@ export function registerNotesImageRoutes(
 
     // ------------------------------------------------------------------
     // POST /api/workspaces/:id/notes/image — Upload image attachment
+    // Body: { fileName, data, root? }
     // ------------------------------------------------------------------
     routes.push({
         method: 'POST',
@@ -82,7 +93,7 @@ export function registerNotesImageRoutes(
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
-            const { fileName, data } = body;
+            const { fileName, data, root: rootParam } = body;
 
             if (!fileName || typeof fileName !== 'string') {
                 return sendError(res, 400, 'Missing or invalid "fileName" field');
@@ -107,8 +118,15 @@ export function registerNotesImageRoutes(
                 return sendError(res, 400, `Image too large (${Math.round(parsed.buffer.length / 1024 / 1024)}MB). Maximum: ${MAX_IMAGE_SIZE_BYTES / 1024 / 1024}MB`);
             }
 
-            const notesRoot = getNotesRoot(dataDir, ws.id);
-            const attachmentsDir = path.join(notesRoot, ATTACHMENTS_DIR);
+            // Resolve notes root (default or repo-folder)
+            const prefs = readRepoPreferences(dataDir, ws.id);
+            const resolved = resolveNotesRoot(dataDir, ws.id, ws.rootPath, rootParam, prefs.additionalNotesRoots);
+            if (isRootResolveError(resolved)) {
+                return sendError(res, resolved.statusCode, resolved.error);
+            }
+
+            const imgDirName = getImageDirName(resolved);
+            const attachmentsDir = path.join(resolved.absolutePath, imgDirName);
 
             try {
                 await fs.promises.mkdir(attachmentsDir, { recursive: true });
@@ -116,11 +134,11 @@ export function registerNotesImageRoutes(
                 const uuid = crypto.randomUUID();
                 const storedName = `${uuid}${parsed.ext}`;
                 const fullPath = path.join(attachmentsDir, storedName);
-                const relativePath = `${ATTACHMENTS_DIR}/${storedName}`;
+                const relativePath = `${imgDirName}/${storedName}`;
 
                 await fs.promises.writeFile(fullPath, parsed.buffer);
 
-                sendJSON(res, 201, { path: relativePath });
+                sendJSON(res, 201, { path: relativePath, rootId: resolved.rootId });
             } catch (err: any) {
                 return sendError(res, 500, 'Failed to save image: ' + err.message);
             }
@@ -128,7 +146,7 @@ export function registerNotesImageRoutes(
     });
 
     // ------------------------------------------------------------------
-    // GET /api/workspaces/:id/notes/image?path=.attachments/xxx.png
+    // GET /api/workspaces/:id/notes/image?path=.attachments/xxx.png&root=...
     // ------------------------------------------------------------------
     routes.push({
         method: 'GET',
@@ -139,26 +157,35 @@ export function registerNotesImageRoutes(
 
             const parsed = url.parse(req.url || '/', true);
             const imagePath = typeof parsed.query.path === 'string' ? parsed.query.path : '';
+            const rootParam = typeof parsed.query.root === 'string' ? parsed.query.root : undefined;
 
             if (!imagePath) {
                 return sendError(res, 400, 'Missing "path" query parameter');
             }
 
-            const notesRoot = getNotesRoot(dataDir, ws.id);
-            const resolved = path.resolve(notesRoot, imagePath);
+            // Resolve notes root (default or repo-folder)
+            const prefs = readRepoPreferences(dataDir, ws.id);
+            const resolved = resolveNotesRoot(dataDir, ws.id, ws.rootPath, rootParam, prefs.additionalNotesRoots);
+            if (isRootResolveError(resolved)) {
+                return sendError(res, resolved.statusCode, resolved.error);
+            }
+
+            const notesRoot = resolved.absolutePath;
+            const resolvedPath = path.resolve(notesRoot, imagePath);
 
             // Security: ensure resolved path is within the notes directory
-            if (!isWithinDirectory(resolved, notesRoot)) {
+            if (!isWithinDirectory(resolvedPath, notesRoot)) {
                 return sendError(res, 403, 'Access denied: path is outside notes directory');
             }
 
-            // Validate the file is within the .attachments directory
-            const attachmentsDir = path.join(notesRoot, ATTACHMENTS_DIR);
-            if (!isWithinDirectory(resolved, attachmentsDir)) {
-                return sendError(res, 403, 'Access denied: path must be within .attachments directory');
+            // Validate the file is within the image directory
+            const imgDirName = getImageDirName(resolved);
+            const imgDir = path.join(notesRoot, imgDirName);
+            if (!isWithinDirectory(resolvedPath, imgDir)) {
+                return sendError(res, 403, `Access denied: path must be within ${imgDirName} directory`);
             }
 
-            const served = serveStaticFile(resolved, res);
+            const served = serveStaticFile(resolvedPath, res);
             if (!served) {
                 return sendError(res, 404, 'Image not found');
             }
