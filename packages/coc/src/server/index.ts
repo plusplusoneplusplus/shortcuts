@@ -648,3 +648,4 @@ export type { HeapSnapshot, HeapMonitorConfig } from './admin/heap-monitor';
 /** @internal */ export { registerScheduleRoutes } from './schedule/schedule-handler';
 /** @internal */ export { registerNotesGitAutoCommitRoutes } from './notes/git/notes-git-autocommit-handler';
 /** @internal */ export { registerNotesEditsRoutes } from './notes/notes-edits-handler';
+/** @internal */ export { registerNotesRootsRoutes } from './notes/notes-roots-handler';

@@ -39,7 +39,7 @@ import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from '..
 import { registerWorkflowRoutes, registerWorkflowWriteRoutes } from '../workflows/workflows-handler';
 import { registerWorkspaceSummaryRoutes } from '../workspaces/workspace-summary-handler';
 import { registerTemplateRoutes, registerTemplateWriteRoutes } from '../templates/templates-handler';
-import { registerNotesRoutes, registerNotesWriteRoutes, registerNotesCommentsRoutes, registerNotesImageRoutes, registerNotesGitRoutes, registerNotesGitAutoCommitRoutes, registerNotesFilePreviewRoutes, registerNotesAICreateRoutes } from '../notes/notes-handler';
+import { registerNotesRoutes, registerNotesWriteRoutes, registerNotesCommentsRoutes, registerNotesImageRoutes, registerNotesGitRoutes, registerNotesGitAutoCommitRoutes, registerNotesFilePreviewRoutes, registerNotesAICreateRoutes, registerNotesRootsRoutes } from '../notes/notes-handler';
 import { registerNotesEditsRoutes } from '../notes/notes-edits-handler';
 import { registerReplicateApplyRoutes } from '../templates/replicate-apply-handler';
 import { registerScheduleRoutes } from '../schedule/schedule-handler';
@@ -200,6 +200,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerNotesFilePreviewRoutes(routes, store, dataDir);
     registerNotesAICreateRoutes(routes, store, dataDir, bridge);
     registerNotesEditsRoutes(routes, store, dataDir);
+    registerNotesRootsRoutes(routes, store, dataDir);
 
     // Diagram routes — always registered so excalidraw.enabled (classified
     // as live) can be toggled via admin config without restart. The SPA

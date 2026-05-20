@@ -10,3 +10,4 @@ export { registerNotesGitRoutes } from './git/notes-git-handler';
 export { registerNotesGitAutoCommitRoutes } from './git/notes-git-autocommit-handler';
 export { registerNotesFilePreviewRoutes } from './notes-file-preview-handler';
 export { registerNotesAICreateRoutes } from './notes-ai-handler';
+export { registerNotesRootsRoutes } from './notes-roots-handler';
