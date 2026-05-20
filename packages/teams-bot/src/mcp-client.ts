@@ -78,7 +78,7 @@ export class McpClient {
     private async sendRequest(body: Record<string, unknown>): Promise<{ result?: unknown; error?: { code: number; message: string } }> {
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
-            'Accept': 'application/json',
+            'Accept': 'application/json, text/event-stream',
         };
         if (this.bearerToken) {
             headers['Authorization'] = `Bearer ${this.bearerToken}`;
@@ -101,6 +101,23 @@ export class McpClient {
 
         if (!res.ok) {
             throw new Error(`MCP HTTP error: ${res.status} ${res.statusText}`);
+        }
+
+        const contentType = res.headers.get('Content-Type') ?? '';
+
+        if (contentType.includes('text/event-stream')) {
+            // Parse SSE response — extract the last JSON-RPC message from data lines
+            const text = await res.text();
+            let lastData: string | undefined;
+            for (const line of text.split('\n')) {
+                if (line.startsWith('data: ')) {
+                    lastData = line.slice(6);
+                }
+            }
+            if (!lastData) {
+                throw new Error('MCP SSE response contained no data');
+            }
+            return JSON.parse(lastData) as { result?: unknown; error?: { code: number; message: string } };
         }
 
         return await res.json() as { result?: unknown; error?: { code: number; message: string } };

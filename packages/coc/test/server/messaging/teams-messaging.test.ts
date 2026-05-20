@@ -29,10 +29,10 @@ vi.mock('@plusplusoneplusplus/teams-bot', () => ({
     McpClient: vi.fn().mockImplementation(() => ({
         initialize: vi.fn().mockResolvedValue(undefined),
         callTool: vi.fn().mockImplementation(async (name: string) => {
-            if (name === 'Microsoft-Teams-ListTeams') {
+            if (name === 'ListTeams') {
                 return { content: [{ type: 'text', text: JSON.stringify({ teams: [{ id: 'team-id-resolved', displayName: 'TestTeam' }] }) }] };
             }
-            if (name === 'Microsoft-Teams-ListChannels') {
+            if (name === 'ListChannels') {
                 return { content: [{ type: 'text', text: JSON.stringify({ channels: [{ id: 'channel-id-resolved', displayName: 'TestChannel' }] }) }] };
             }
             return { content: [{ type: 'text', text: '{}' }] };

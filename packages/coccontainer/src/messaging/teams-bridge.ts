@@ -166,7 +166,7 @@ export class TeamsBridge {
 
     /**
      * Resolve team/channel names to IDs.
-     * In MCP mode: uses MCP tools (Microsoft-Teams-ListTeams/ListChannels).
+     * In MCP mode: uses MCP tools (ListTeams/ListChannels).
      * In Graph mode: uses Graph API (legacy, requires ChannelMessage.Read.All).
      */
     private async resolveTeamAndChannel(): Promise<void> {
@@ -206,7 +206,7 @@ export class TeamsBridge {
             await mcpClient.initialize();
 
             if (teamName && !this.opts.config.teamId) {
-                const teamsResult = await mcpClient.callTool('Microsoft-Teams-ListTeams', {});
+                const teamsResult = await mcpClient.callTool('ListTeams', {});
                 const teamsText = teamsResult.content?.[0]?.text ?? '{}';
                 let teams: Array<{ id: string; displayName: string }> = [];
                 try {
@@ -225,7 +225,7 @@ export class TeamsBridge {
             }
 
             if (this.opts.config.teamId && channelName && !this.opts.config.channelId) {
-                const channelsResult = await mcpClient.callTool('Microsoft-Teams-ListChannels', {
+                const channelsResult = await mcpClient.callTool('ListChannels', {
                     teamId: this.opts.config.teamId,
                 });
                 const channelsText = channelsResult.content?.[0]?.text ?? '{}';
