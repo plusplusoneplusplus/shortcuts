@@ -126,3 +126,35 @@ export async function acquireTokenWithDeviceCode(
 
     throw new Error('Device code flow expired — user did not complete login in time');
 }
+
+/**
+ * Acquire a Graph API token using the Azure CLI (`az account get-access-token`).
+ * Requires user to have previously run `az login`.
+ * Returns the access token string.
+ */
+export async function acquireTokenViaAzCli(resource?: string): Promise<string> {
+    const { execFile } = await import('child_process');
+    const { promisify } = await import('util');
+    const execFileAsync = promisify(execFile);
+
+    const targetResource = resource ?? 'https://graph.microsoft.com';
+
+    try {
+        const { stdout } = await execFileAsync('az', [
+            'account', 'get-access-token',
+            '--resource', targetResource,
+            '--query', 'accessToken',
+            '-o', 'tsv',
+        ], { timeout: 15000 });
+        const token = stdout.trim();
+        if (!token) {
+            throw new Error('az CLI returned empty token — run `az login` first');
+        }
+        return token;
+    } catch (err: any) {
+        if (err.code === 'ENOENT') {
+            throw new Error('Azure CLI (az) not found — install it or provide a bearerToken');
+        }
+        throw new Error(`az CLI token acquisition failed: ${err.message ?? err}`);
+    }
+}

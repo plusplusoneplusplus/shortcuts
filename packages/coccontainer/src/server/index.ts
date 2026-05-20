@@ -93,9 +93,9 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
     }
 
     // ── Teams bridge (only when enabled) ─────────────
-    let teamsBridge: { stop(): Promise<void>; getTeamsStatus(): { enabled: boolean; status: string; error: string | null; channelId?: string; botName: string }; updateConfig(patch: { botName?: string; channelId?: string; enabled?: boolean }): Promise<void>; reconnect(): Promise<void>; listChannels(): Promise<Array<{ id: string; displayName: string }>> } | undefined;
+    let teamsBridge: { stop(): Promise<void>; getTeamsStatus(): { enabled: boolean; status: string; error: string | null; channelId?: string; botName: string; deviceCode?: { userCode: string; verificationUri: string; message: string } | null }; updateConfig(patch: { botName?: string; channelId?: string; enabled?: boolean; teamName?: string; channelName?: string }): Promise<void>; reconnect(): Promise<void>; listChannels(): Promise<Array<{ id: string; displayName: string }>> } | undefined;
     const teamsConfig = config.messaging?.teams;
-    if (teamsConfig?.enabled && teamsConfig?.mcpServerUrl) {
+    if (teamsConfig?.enabled) {
         const { TeamsBridge } = await import('../messaging/teams-bridge');
         const bridge = new TeamsBridge({
             config: teamsConfig,
@@ -317,9 +317,9 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
 
             if (url.pathname === '/api/container/messaging/teams/config' && req.method === 'POST') {
                 const body = await readBody(req);
-                const { botName, channelId, enabled } = body as { botName?: string; channelId?: string; enabled?: boolean };
+                const { botName, channelId, enabled, teamName, channelName } = body as { botName?: string; channelId?: string; enabled?: boolean; teamName?: string; channelName?: string };
                 if (teamsBridge) {
-                    await teamsBridge.updateConfig({ botName, channelId, enabled });
+                    await teamsBridge.updateConfig({ botName, channelId, enabled, teamName, channelName });
                     return sendJson(res, { ok: true, message: 'Teams config updated' });
                 }
                 // Even without active bridge, persist the config
@@ -335,6 +335,8 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                     if (enabled !== undefined) doc.messaging.teams.enabled = enabled;
                     if (botName !== undefined) doc.messaging.teams.botName = botName;
                     if (channelId !== undefined) doc.messaging.teams.channelId = channelId;
+                    if (teamName !== undefined) doc.messaging.teams.teamName = teamName;
+                    if (channelName !== undefined) doc.messaging.teams.channelName = channelName;
                     fs.writeFileSync(configPath, jsYaml.dump(doc), 'utf8');
                     return sendJson(res, { ok: true, message: 'Teams config saved (restart required)' });
                 } catch (err: any) {
