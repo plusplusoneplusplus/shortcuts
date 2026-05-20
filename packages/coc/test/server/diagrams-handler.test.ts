@@ -341,6 +341,6 @@ describe('Diagrams Handler — CRUD API', { timeout: 30_000 }, () => {
         const configRes = await request(`${srv.url}/api/config/runtime`);
         expect(configRes.status).toBe(200);
         const configBody = JSON.parse(configRes.body);
-        expect(configBody.excalidrawEnabled).toBe(false);
+        expect(configBody.features.excalidrawEnabled).toBe(false);
     });
 });
