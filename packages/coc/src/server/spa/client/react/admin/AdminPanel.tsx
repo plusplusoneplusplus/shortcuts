@@ -234,6 +234,11 @@ export function AdminPanel() {
     // Relaunch welcome
     const [relaunchingWelcome, setRelaunchingWelcome] = useState(false);
 
+    // Sync settings (Integrations sub-tab)
+    const [syncGitRemote, setSyncGitRemote] = useState('');
+    const [syncIntervalMinutes, setSyncIntervalMinutes] = useState('5');
+    const [syncSnapshot, setSyncSnapshot] = useState({ gitRemote: '', intervalMinutes: '5' });
+
     const loadStats = useCallback(async () => {
         setStatsLoading(true);
         try {
