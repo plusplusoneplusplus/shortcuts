@@ -337,19 +337,21 @@ export class TeamsBridge {
 
     /** Format a structured Teams message. */
     formatOutboundMessage(opts: { role: string; agent: string; repo: string; title: string; content: string; botName?: string }): string {
-        const icon = opts.role === 'user' ? '💬' : '🤖';
         const sender = opts.role === 'user'
             ? (opts.botName || 'You')
             : 'CoC Agent';
 
-        const chatSection = [`${icon} **${sender}**`, '**Chat:**'];
-        chatSection.push(`  Agent: ${opts.agent}`);
-        chatSection.push(`  Repo: ${opts.repo}`);
+        const lines = [
+            `**${sender}**`,
+            `Agent: ${opts.agent}`,
+            `Repo: ${opts.repo}`,
+        ];
         if (opts.title) {
-            chatSection.push(`  Title: ${opts.title}`);
+            lines.push(`Title: ${opts.title}`);
         }
+        lines.push('', '**Message:**', opts.content.trimStart());
 
-        return chatSection.join('\n') + '\n\n**Message:**\n' + opts.content.trimStart();
+        return lines.join('\n');
     }
 
     /** Resolve a workspace ID to a human-readable name. */
