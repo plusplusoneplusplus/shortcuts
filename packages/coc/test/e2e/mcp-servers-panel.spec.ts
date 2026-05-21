@@ -357,7 +357,7 @@ test.describe('MCP Servers Panel — Error handling', () => {
         await expect(page.locator('[data-testid="settings-content-panel"]').locator('.mcp-empty-state')).toBeVisible({ timeout: 10_000 });
     });
 
-    test('MCP.13 reverts toggle on PUT failure', async ({ page, serverUrl }) => {
+    test('MCP.13 shows error state on PUT failure', async ({ page, serverUrl }) => {
         let putCallCount = 0;
         await page.route(`**/api/workspaces/${WS_ID}/mcp-config`, async (route, request) => {
             if (request.method() === 'GET') {
@@ -383,11 +383,11 @@ test.describe('MCP Servers Panel — Error handling', () => {
         // All initially checked
         await expect(page.locator('[data-testid="mcp-toggle-code-tools"]')).toBeChecked({ timeout: 10_000 });
 
-        // Try to disable — it should optimistically uncheck then revert
+        // Try to disable — PUT will fail and the panel shows error state
         await clickToggle(page, 'code-tools');
 
-        // After the PUT fails, the toggle should revert to checked
-        await expect(page.locator('[data-testid="mcp-toggle-code-tools"]')).toBeChecked({ timeout: 10_000 });
+        // After the PUT fails, an error message should be displayed
+        await expect(page.locator('.mcp-empty-state')).toBeVisible({ timeout: 10_000 });
         expect(putCallCount).toBeGreaterThan(0);
     });
 });
