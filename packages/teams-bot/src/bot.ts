@@ -176,7 +176,7 @@ export class TeamsBot {
             teamId: this.opts.teamId,
             channelId,
             content: text,
-            contentType: 'text',
+            contentType: 'html',
         };
 
         if (opts?.replyToId) {
@@ -397,7 +397,12 @@ export class TeamsBot {
             if (!rawText.trim()) return;
 
             // Strip HTML tags (Teams wraps messages in <p>, <div>, etc.)
-            const text = rawText.replace(/<[^>]*>/g, '').trim();
+            // Convert <br> and block-level closing tags to newlines first
+            const text = rawText
+                .replace(/<br\s*\/?>/gi, '\n')
+                .replace(/<\/(p|div|li)>/gi, '\n')
+                .replace(/<[^>]*>/g, '')
+                .trim();
             if (!text) return;
 
             // Skip bot-formatted messages (CoC outbound format: lines with Agent:/Repo:/Message:)
