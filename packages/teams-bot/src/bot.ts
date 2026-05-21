@@ -176,6 +176,7 @@ export class TeamsBot {
             teamId: this.opts.teamId,
             channelId,
             content: text,
+            contentType: 'text',
         };
 
         if (opts?.replyToId) {
