@@ -92,6 +92,11 @@ export class GitInfoCacheService {
         this.store = null;
     }
 
+    /** Drop all cached entries without stopping the background refresh. Used by tests. */
+    clear(): void {
+        this.entries.clear();
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     // Public API
     // ──────────────────────────────────────────────────────────────────────────

@@ -20,6 +20,7 @@ import type { Route } from '../../src/server/types';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { MockProcessStore } from './helpers/mock-process-store';
 import { gitCache } from '../../src/server/git/git-cache';
+import { gitInfoCache } from '../../src/server/git/git-info-cache';
 
 // ============================================================================
 // Mock execGitSync and child_process
@@ -136,6 +137,7 @@ describe('Git API endpoints', () => {
         mockGetCurrentBranch.mockReturnValue('main');
         mockGetBranchStatus.mockReturnValue({ name: 'main', isDetached: false, ahead: 0, behind: 0, hasUncommittedChanges: false });
         gitCache.clear();
+        gitInfoCache.clear();
         mockForgeExecGit.mockReset();
         mockForgeExecGit.mockReturnValue('');
     });
