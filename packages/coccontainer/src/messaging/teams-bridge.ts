@@ -37,7 +37,6 @@ export class TeamsBridge {
     private store: MessagingStore | null = null;
     private bot: TeamsBot | null = null;
     private wsHandler: ((msg: WSRelayMessage) => void) | null = null;
-    private _processingLocks = new Set<string>();
     private _runningLocks: Set<string> | undefined;
     private _workspaceNameCache = new Map<string, string>();
     private _azToken: string | null = null;
@@ -367,27 +366,17 @@ export class TeamsBridge {
 
         if (status !== 'completed' && status !== 'running') return;
 
-        // For completed processes, skip if already processed (permanent lock)
-        if (this._processingLocks.has(processId)) return;
-
-        // For running processes, use a temporary lock to prevent concurrent processing
-        // but allow re-entry on subsequent events (watermark prevents duplicate sends)
-        if (status === 'completed') {
-            this._processingLocks.add(processId);
-        } else {
-            // running: if currently being processed, skip this event
-            // (the watermark will catch up on the next event)
-            if (this._runningLocks?.has(processId)) return;
-            if (!this._runningLocks) this._runningLocks = new Set();
-            this._runningLocks.add(processId);
-        }
+        // Prevent concurrent processing of the same process (watermark prevents duplicate sends)
+        if (!this._runningLocks) this._runningLocks = new Set();
+        if (this._runningLocks.has(processId)) return;
+        this._runningLocks.add(processId);
 
         const target = this.opts.config.channelId;
-        if (!target) { this.releaseLock(processId, status); return; }
+        if (!target) { this._runningLocks.delete(processId); return; }
 
         // Skip if Teams bot is not connected
         if (!this.bot || this.bot.getStatus() !== 'connected') {
-            this.releaseLock(processId, status);
+            this._runningLocks.delete(processId);
             return;
         }
 
@@ -395,7 +384,7 @@ export class TeamsBridge {
         const agentAddr = this.getAgentAddress(agentId);
         if (!agentAddr) {
             console.warn(`[teams-bridge] No address for agent ${agentId} (${msg.agentName}) — skipping outbound`);
-            this.releaseLock(processId, status);
+            this._runningLocks.delete(processId);
             return;
         }
 
@@ -407,12 +396,13 @@ export class TeamsBridge {
             const res = await fetch(url);
             if (!res.ok) {
                 console.warn(`[teams-bridge] Process fetch failed: ${res.status} from ${url}`);
+                this._runningLocks.delete(processId);
                 return;
             }
             const body = await res.json() as Record<string, unknown>;
             const processData = (body.process ?? body) as Record<string, unknown>;
             const turns = (processData.conversationTurns ?? processData.conversation ?? processData.turns) as Array<{ role: string; content?: string; text?: string; streaming?: boolean }> | undefined;
-            if (!turns || turns.length === 0) return;
+            if (!turns || turns.length === 0) { this._runningLocks.delete(processId); return; }
 
             const lastSeen = this.store!.getWatermark(processId);
 
@@ -424,7 +414,7 @@ export class TeamsBridge {
             }
 
             const newTurns = turns.slice(lastSeen, sendableEnd);
-            if (newTurns.length === 0) return;
+            if (newTurns.length === 0) { this._runningLocks.delete(processId); return; }
 
             // Advance watermark BEFORE sending — prevents infinite retry on send failure
             if (sendableEnd > lastSeen) {
@@ -469,18 +459,8 @@ export class TeamsBridge {
         } catch (err) {
             console.error('[teams-bridge] Failed to fetch process turns:', err);
         } finally {
-            // Release running lock so future events for this process can be processed
-            if (status !== 'completed') {
-                this._runningLocks?.delete(processId);
-            }
-        }
-    }
-
-    private releaseLock(processId: string, status: string): void {
-        if (status === 'completed') {
-            this._processingLocks.delete(processId);
-        } else {
-            this._runningLocks?.delete(processId);
+            // Always release lock so future events can be processed
+            this._runningLocks.delete(processId);
         }
     }
 
@@ -605,9 +585,6 @@ export class TeamsBridge {
 
         try {
             if (isFollowUp) {
-                // Clear the completed-lock so future outbound events for this process are not suppressed
-                this._processingLocks.delete(processId!);
-
                 const wsParam = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : '';
                 const url = `${agentAddr}/api/processes/${processId}/message${wsParam}`;
                 const res = await fetch(url, {
