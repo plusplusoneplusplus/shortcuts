@@ -1,17 +1,19 @@
 /**
  * NotesSettingsSection — Notes preferences panel within Repo Settings.
  *
- * Shows Git Version Tracking controls:
- *   - If git not initialized: inline "Initialize Git Tracking" button.
- *   - Enable/disable auto-commit toggle.
- *   - Interval dropdown (1 min to 1 hour) when auto-commit is enabled.
- *   - Last-committed timestamp and last-error display.
- *   - Danger zone with "Disable Git Tracking" (with confirmation) when initialized.
+ * Shows:
+ *   - Additional Notes Roots: add/remove repo-folder roots (up to 10).
+ *   - Git Version Tracking controls (applies only to default managed root):
+ *     - If git not initialized: inline "Initialize Git Tracking" button.
+ *     - Enable/disable auto-commit toggle.
+ *     - Interval dropdown (1 min to 1 hour) when auto-commit is enabled.
+ *     - Last-committed timestamp and last-error display.
+ *     - Danger zone with "Disable Git Tracking" (with confirmation) when initialized.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNotesAutoCommit } from '../notes/hooks/useNotesAutoCommit';
-import { notesApi } from '../notes/notesApi';
+import { notesApi, type NotesRootEntry } from '../notes/notesApi';
 import { useGlobalToast } from '../../contexts/ToastContext';
 import { formatRelativeTime } from '../../utils/format';
 
@@ -58,6 +60,58 @@ export function NotesSettingsSection({ workspaceId }: NotesSettingsSectionProps)
     const [deinitBusy, setDeinitBusy] = useState(false);
     const [confirmingDeinit, setConfirmingDeinit] = useState(false);
 
+    // ── Additional Notes Roots state ─────────────────────────────────────────
+    const [roots, setRoots] = useState<NotesRootEntry[]>([]);
+    const [maxAdditionalRoots, setMaxAdditionalRoots] = useState(10);
+    const [rootsLoading, setRootsLoading] = useState(true);
+    const [newRootPath, setNewRootPath] = useState('');
+    const [addingRoot, setAddingRoot] = useState(false);
+    const [removingRoot, setRemovingRoot] = useState<string | null>(null);
+
+    const additionalRoots = roots.filter(r => !r.isDefault);
+
+    const fetchRoots = useCallback(async () => {
+        setRootsLoading(true);
+        try {
+            const data = await notesApi.listRoots(workspaceId);
+            setRoots(data.roots);
+            setMaxAdditionalRoots(data.maxAdditionalRoots);
+        } catch {
+            // ignore — roots will remain empty
+        } finally {
+            setRootsLoading(false);
+        }
+    }, [workspaceId]);
+
+    const handleAddRoot = async () => {
+        const trimmed = newRootPath.trim();
+        if (!trimmed) return;
+        setAddingRoot(true);
+        try {
+            await notesApi.addRoot(workspaceId, trimmed);
+            setNewRootPath('');
+            await fetchRoots();
+            addToast(`Root '${trimmed}' added`, 'success');
+        } catch (e: any) {
+            addToast(e?.message ?? 'Failed to add root', 'error');
+        } finally {
+            setAddingRoot(false);
+        }
+    };
+
+    const handleRemoveRoot = async (rootPath: string) => {
+        setRemovingRoot(rootPath);
+        try {
+            await notesApi.removeRoot(workspaceId, rootPath);
+            await fetchRoots();
+            addToast(`Root '${rootPath}' removed`, 'success');
+        } catch (e: any) {
+            addToast(e?.message ?? 'Failed to remove root', 'error');
+        } finally {
+            setRemovingRoot(null);
+        }
+    };
+
     useEffect(() => {
         let cancelled = false;
         setGitStatusLoading(true);
@@ -71,8 +125,9 @@ export function NotesSettingsSection({ workspaceId }: NotesSettingsSectionProps)
                 .then(t => { if (!cancelled) setNotesRoot(t.notesRoot); })
                 .catch(() => {}),
         ]).finally(() => { if (!cancelled) setGitStatusLoading(false); });
+        fetchRoots();
         return () => { cancelled = true; };
-    }, [workspaceId]);
+    }, [workspaceId, fetchRoots]);
 
     const handleInitGit = async () => {
         setInitBusy(true);
@@ -141,6 +196,82 @@ export function NotesSettingsSection({ workspaceId }: NotesSettingsSectionProps)
                     </span>
                 </div>
             )}
+
+            {/* Additional Notes Roots */}
+            <div className={sectionHeadClass} data-testid="section-additional-roots">
+                Additional Notes Roots
+            </div>
+
+            <div className="flex flex-col gap-2 mb-4" data-testid="additional-roots-section">
+                <div className="text-xs text-[#616161] dark:text-[#cccccc] mb-1">
+                    Add subfolders from the workspace git repo as additional notes roots. Only markdown files will be shown.
+                </div>
+
+                {/* Existing additional roots list */}
+                {rootsLoading ? (
+                    <div className="text-xs text-[#848484]" data-testid="roots-loading">Loading…</div>
+                ) : additionalRoots.length > 0 ? (
+                    <div className="flex flex-col gap-1" data-testid="roots-list">
+                        {additionalRoots.map(root => (
+                            <div
+                                key={root.rootId}
+                                className="flex items-center gap-2 px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]"
+                                data-testid={`root-item-${root.rootId}`}
+                            >
+                                <span className="text-xs font-mono text-[#1e1e1e] dark:text-[#cccccc] flex-1 break-all">
+                                    {root.label}
+                                </span>
+                                <button
+                                    type="button"
+                                    disabled={removingRoot === root.rootId}
+                                    onClick={() => handleRemoveRoot(root.rootId)}
+                                    className="px-1.5 py-0.5 text-xs rounded text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-[#3c1f1f] disabled:opacity-60 disabled:cursor-not-allowed shrink-0"
+                                    data-testid={`root-remove-${root.rootId}`}
+                                    title={`Remove ${root.label}`}
+                                >
+                                    {removingRoot === root.rootId ? '…' : '✕'}
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-xs text-[#848484]" data-testid="roots-empty">
+                        No additional roots configured.
+                    </div>
+                )}
+
+                {/* Add root input */}
+                {!rootsLoading && additionalRoots.length < maxAdditionalRoots && (
+                    <div className="flex items-center gap-2" data-testid="add-root-form">
+                        <input
+                            type="text"
+                            value={newRootPath}
+                            onChange={e => setNewRootPath(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter' && newRootPath.trim()) handleAddRoot(); }}
+                            placeholder="Relative path from git root (e.g., docs/notes)"
+                            disabled={addingRoot}
+                            className="flex-1 px-2 py-1 text-xs rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] placeholder:text-[#999]"
+                            data-testid="add-root-input"
+                        />
+                        <button
+                            type="button"
+                            disabled={addingRoot || !newRootPath.trim()}
+                            onClick={handleAddRoot}
+                            className="px-3 py-1 text-xs rounded bg-[#0078d4] text-white hover:bg-[#106ebe] disabled:opacity-60 disabled:cursor-not-allowed shrink-0"
+                            data-testid="add-root-button"
+                        >
+                            {addingRoot ? 'Adding…' : 'Add root'}
+                        </button>
+                    </div>
+                )}
+
+                {/* Max roots reached */}
+                {!rootsLoading && additionalRoots.length >= maxAdditionalRoots && (
+                    <div className="text-xs text-[#848484]" data-testid="roots-max-reached">
+                        Maximum of {maxAdditionalRoots} additional roots reached.
+                    </div>
+                )}
+            </div>
 
             {/* Git Version Tracking */}
             <div className={sectionHeadClass} data-testid="section-git-tracking">

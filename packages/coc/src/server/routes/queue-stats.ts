@@ -28,7 +28,7 @@ import {
 import { processToHistorySummary, processToTaskDetail } from '../shared/process-history-mapper';
 
 export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext): void {
-    const { bridge, store, globalWorkspaceRootPath, state } = ctx;
+    const { bridge, store, state } = ctx;
 
     // ------------------------------------------------------------------
     // GET /api/queue — List all queued tasks
@@ -63,11 +63,13 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
                     stats = { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0, total: 0, isPaused: false, isDraining: false, isAutopilotPaused: false };
                 }
             } else {
-                const globalPath = globalWorkspaceRootPath ?? process.cwd();
-                const globalMgr = bridge.registry.getQueueForRepo(globalPath);
-                queued = globalMgr.getQueueItems().map(serializeQueueItemSummary);
-                running = globalMgr.getRunning().map(serializeTaskSummary);
-                stats = globalMgr.getStats();
+                queued = [];
+                running = [];
+                for (const manager of bridge.registry.getAllQueues().values()) {
+                    queued.push(...manager.getQueueItems().map(serializeQueueItemSummary));
+                    running.push(...manager.getRunning().map(serializeTaskSummary));
+                }
+                stats = getAggregateStats(bridge, state);
             }
 
             if (typeFilter) {
@@ -82,7 +84,9 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
             if (store && running.length > 0) {
                 await Promise.all(running.map(async (task) => {
                     const processId = typeof task.processId === 'string' ? task.processId : undefined;
-                    if (!processId) return;
+                    if (!processId) {
+                        return;
+                    }
                     try {
                         const proc = await store.getProcess(processId);
                         const count = Array.isArray(proc?.pendingAskUser) ? proc!.pendingAskUser!.length : 0;

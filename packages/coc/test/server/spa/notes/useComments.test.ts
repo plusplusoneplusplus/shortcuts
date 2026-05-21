@@ -164,7 +164,7 @@ describe('useComments', () => {
             );
 
             await waitFor(() => expect(result.current.loading).toBe(false));
-            expect(mockGetComments).toHaveBeenCalledWith('ws-abc', 'MyNotebook/Note1');
+            expect(mockGetComments).toHaveBeenCalledWith('ws-abc', 'MyNotebook/Note1', undefined);
         });
     });
 
@@ -382,7 +382,7 @@ describe('useComments', () => {
 
             await act(async () => { await result.current.resolveThread('thread-1'); });
 
-            expect(mockUpdateThread).toHaveBeenCalledWith('ws1', 'Notebook1/Page1', 'thread-1', 'resolved');
+            expect(mockUpdateThread).toHaveBeenCalledWith('ws1', 'Notebook1/Page1', 'thread-1', 'resolved', undefined);
         });
 
         it('reverts on API failure and sets error', async () => {
@@ -428,7 +428,7 @@ describe('useComments', () => {
 
             await act(async () => { await result.current.reopenThread('thread-2'); });
 
-            expect(mockUpdateThread).toHaveBeenCalledWith('ws1', 'Notebook1/Page1', 'thread-2', 'open');
+            expect(mockUpdateThread).toHaveBeenCalledWith('ws1', 'Notebook1/Page1', 'thread-2', 'open', undefined);
         });
 
         it('reverts on API failure and sets error', async () => {
@@ -474,7 +474,7 @@ describe('useComments', () => {
 
             await act(async () => { await result.current.deleteThread('thread-1'); });
 
-            expect(mockDeleteThread).toHaveBeenCalledWith('ws1', 'Notebook1/Page1', 'thread-1');
+            expect(mockDeleteThread).toHaveBeenCalledWith('ws1', 'Notebook1/Page1', 'thread-1', undefined);
         });
 
         it('clears selectedThreadId if deleted thread was selected', async () => {
@@ -536,7 +536,7 @@ describe('useComments', () => {
 
             await act(async () => { await result.current.addComment('thread-1', 'New reply'); });
 
-            expect(mockAddComment).toHaveBeenCalledWith('ws1', 'Notebook1/Page1', 'thread-1', 'New reply');
+            expect(mockAddComment).toHaveBeenCalledWith('ws1', 'Notebook1/Page1', 'thread-1', 'New reply', undefined);
         });
 
         it('reverts on API failure', async () => {
@@ -584,7 +584,7 @@ describe('useComments', () => {
 
             await act(async () => { await result.current.editComment('thread-1', 'c1', 'Updated'); });
 
-            expect(mockEditComment).toHaveBeenCalledWith('ws1', 'Notebook1/Page1', 'thread-1', 'c1', 'Updated');
+            expect(mockEditComment).toHaveBeenCalledWith('ws1', 'Notebook1/Page1', 'thread-1', 'c1', 'Updated', undefined);
         });
 
         it('reverts on API failure', async () => {
@@ -630,7 +630,7 @@ describe('useComments', () => {
 
             await act(async () => { await result.current.deleteComment('thread-1', 'c2'); });
 
-            expect(mockDeleteComment).toHaveBeenCalledWith('ws1', 'Notebook1/Page1', 'thread-1', 'c2');
+            expect(mockDeleteComment).toHaveBeenCalledWith('ws1', 'Notebook1/Page1', 'thread-1', 'c2', undefined);
         });
 
         it('reverts on API failure', async () => {

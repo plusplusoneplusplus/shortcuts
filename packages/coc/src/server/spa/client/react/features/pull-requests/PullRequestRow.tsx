@@ -44,6 +44,8 @@ interface PullRequestRowProps {
      * sourced from the deterministic AI mock summary.
      */
     risk?: QueueRiskBadge;
+    /** When true, show a ⭐ badge indicating this PR is AI-suggested for the user. */
+    isSuggested?: boolean;
 }
 
 const RISK_LABEL: Record<QueueRiskBadge, string> = {
@@ -69,6 +71,7 @@ export function PullRequestRow({
     compact,
     dotState,
     risk,
+    isSuggested,
 }: PullRequestRowProps) {
     const effectiveRisk: QueueRiskBadge = risk ?? getMockQueueRisk(pr);
     const effectiveDot: QueueDotState = dotState ?? deriveDotState(pr, effectiveRisk);
@@ -148,6 +151,13 @@ export function PullRequestRow({
                     className="pr-title block truncate text-[12px] font-semibold leading-[1.25] text-gray-900 dark:text-gray-100"
                     title={pr.title}
                 >
+                    {isSuggested && (
+                        <span
+                            className="pr-suggested-badge mr-0.5 text-yellow-500"
+                            data-testid="pr-suggested-badge"
+                            aria-label="Suggested for you"
+                        >⭐</span>
+                    )}
                     {pr.title}
                 </span>
                 <div className="pr-meta mt-px flex items-center gap-1 text-[11px] leading-[1.3] text-gray-500 dark:text-gray-400">

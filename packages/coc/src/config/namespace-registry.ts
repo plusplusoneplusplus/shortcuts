@@ -34,7 +34,6 @@ export type ResolvedConfigNamespaceValues = Pick<
     | 'loops'
     | 'mcpOauth'
     | 'excalidraw'
-    | 'sync'
     | 'features'
     | 'memoryPromotion'
     | 'store'
@@ -65,14 +64,13 @@ const MY_WORK_SOURCE_KEYS = ['myWork.enabled'] as const;
 const MY_LIFE_SOURCE_KEYS = ['myLife.enabled'] as const;
 const SCRATCHPAD_SOURCE_KEYS = ['scratchpad.enabled', 'scratchpad.layout'] as const;
 const WORKFLOWS_SOURCE_KEYS = ['workflows.enabled'] as const;
-const PULL_REQUESTS_SOURCE_KEYS = ['pullRequests.enabled'] as const;
+const PULL_REQUESTS_SOURCE_KEYS = ['pullRequests.enabled', 'pullRequests.suggestions'] as const;
 const SERVERS_SOURCE_KEYS = ['servers.enabled'] as const;
 const RALPH_SOURCE_KEYS = ['ralph.enabled'] as const;
 const VIM_NAVIGATION_SOURCE_KEYS = ['vimNavigation.enabled'] as const;
 const LOOPS_SOURCE_KEYS = ['loops.enabled'] as const;
 const MCP_OAUTH_SOURCE_KEYS = ['mcpOauth.enabled'] as const;
 const EXCALIDRAW_SOURCE_KEYS = ['excalidraw.enabled'] as const;
-const SYNC_SOURCE_KEYS = ['sync.gitRemote', 'sync.intervalMinutes'] as const;
 const FEATURES_SOURCE_KEYS = ['features.autoMemoryPromotion', 'features.focusedDiff'] as const;
 
 const MEMORY_PROMOTION_SOURCE_KEYS = [
@@ -104,7 +102,6 @@ export const CONFIG_NAMESPACE_SOURCE_KEYS = [
     ...LOOPS_SOURCE_KEYS,
     ...MCP_OAUTH_SOURCE_KEYS,
     ...EXCALIDRAW_SOURCE_KEYS,
-    ...SYNC_SOURCE_KEYS,
     ...FEATURES_SOURCE_KEYS,
     ...MEMORY_PROMOTION_SOURCE_KEYS,
     ...MEMORY_PROMOTION_AI_NORMALIZATION_SOURCE_KEYS,
@@ -225,7 +222,7 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
         {
             name: 'pullRequests',
             sourceDescriptors: [source('pullRequests.', ['pullRequests'], PULL_REQUESTS_SOURCE_KEYS)],
-            merge: (base, override) => ({ pullRequests: { enabled: override?.pullRequests?.enabled ?? base.pullRequests?.enabled ?? false } }),
+            merge: (base, override) => ({ pullRequests: { enabled: override?.pullRequests?.enabled ?? base.pullRequests?.enabled ?? false, suggestions: override?.pullRequests?.suggestions ?? base.pullRequests?.suggestions ?? false } }),
         },
         {
             name: 'servers',
@@ -256,16 +253,6 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
             name: 'excalidraw',
             sourceDescriptors: [source('excalidraw.', ['excalidraw'], EXCALIDRAW_SOURCE_KEYS)],
             merge: (base, override) => ({ excalidraw: { enabled: override?.excalidraw?.enabled ?? base.excalidraw?.enabled ?? false } }),
-        },
-        {
-            name: 'sync',
-            sourceDescriptors: [source('sync.', ['sync'], SYNC_SOURCE_KEYS)],
-            merge: (base, override) => ({
-                sync: {
-                    gitRemote: override?.sync?.gitRemote ?? base.sync?.gitRemote ?? '',
-                    intervalMinutes: override?.sync?.intervalMinutes ?? base.sync?.intervalMinutes ?? 5,
-                },
-            }),
         },
         {
             name: 'features',

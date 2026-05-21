@@ -183,5 +183,111 @@ describe('NotesClient', () => {
       expect.objectContaining({ method: 'GET' }),
     );
   });
+
+  it('calls listRoots and getTree with root param', async () => {
+    const adapter = createMockAdapter({
+      roots: [
+        { rootId: 'default', label: 'Notes', isDefault: true },
+        { rootId: 'docs/notes', label: 'docs/notes', isDefault: false },
+      ],
+      maxAdditionalRoots: 10,
+      tree: [],
+      notesRoot: '/some/path',
+    });
+    const client = new NotesClient(adapter);
+
+    await client.listRoots('repo/a');
+    await client.getTree('repo/a', 'docs/notes');
+    await client.getTree('repo/a');
+
+    expect(adapter.calls).toMatchObject([
+      { path: '/workspaces/repo%2Fa/notes/roots' },
+      { path: '/workspaces/repo%2Fa/notes/tree', options: { query: { root: 'docs/notes' } } },
+      { path: '/workspaces/repo%2Fa/notes/tree', options: { query: { root: undefined } } },
+    ]);
+  });
+
+  it('calls addRoot with POST and body', async () => {
+    const adapter = createMockAdapter({ rootId: 'docs/notes', label: 'docs/notes', isDefault: false });
+    const client = new NotesClient(adapter);
+
+    await client.addRoot('repo/a', 'docs/notes');
+
+    expect(adapter.calls).toMatchObject([
+      { path: '/workspaces/repo%2Fa/notes/roots', options: { method: 'POST', body: { rootPath: 'docs/notes' } } },
+    ]);
+  });
+
+  it('calls removeRoot with DELETE and body', async () => {
+    const adapter = createMockAdapter({ removed: 'docs/notes' });
+    const client = new NotesClient(adapter);
+
+    await client.removeRoot('repo/a', 'docs/notes');
+
+    expect(adapter.calls).toMatchObject([
+      { path: '/workspaces/repo%2Fa/notes/roots', options: { method: 'DELETE', body: { rootPath: 'docs/notes' } } },
+    ]);
+  });
+
+  it('passes root param through content, CRUD, search, image, and comment methods', async () => {
+    const adapter = createMockAdapter({
+      content: '# Note',
+      path: 'Page.md',
+      updated: true,
+      mtime: 123,
+      results: [],
+      truncated: false,
+      version: 1,
+      threads: {},
+      taskId: 'task-1',
+      exists: true,
+      type: 'note',
+    });
+    const client = new NotesClient(adapter);
+    const root = 'docs/notes';
+    const thread = {
+      id: 'thread/1',
+      anchor: { quotedText: 'x', prefix: '', suffix: '' },
+      status: 'open' as const,
+      comments: [],
+      createdAt: '2026-01-01T00:00:00Z',
+    };
+
+    await client.getContent('repo/a', 'Page.md', root);
+    await client.saveContent('repo/a', 'Page.md', '# Updated', 42, root);
+    await client.createNode('repo/a', 'New.md', 'page', root);
+    await client.renameNode('repo/a', 'Old.md', 'New.md', root);
+    await client.deleteNode('repo/a', 'Delete.md', root);
+    await client.reorder('repo/a', 'Notebook', ['A.md', 'B.md'], root);
+    await client.search('repo/a', 'hello', root);
+    await client.uploadImage('repo/a', 'img.png', 'data:image/png;base64,AA==', root);
+    await client.getComments('repo/a', 'Page.md', root);
+    await client.createThread('repo/a', 'Page.md', thread, root);
+    await client.updateThread('repo/a', 'Page.md', 'thread/1', 'resolved', root);
+    await client.deleteThread('repo/a', 'Page.md', 'thread/1', root);
+    await client.addComment('repo/a', 'Page.md', 'thread/1', 'hi', root);
+    await client.editComment('repo/a', 'Page.md', 'thread/1', 'c/2', 'edited', root);
+    await client.deleteComment('repo/a', 'Page.md', 'thread/1', 'c/2', root);
+    await client.batchResolve('repo/a', 'Page.md', '# Doc', 'ctx', root);
+
+    expect(adapter.calls).toMatchObject([
+      { path: '/workspaces/repo%2Fa/notes/content', options: { query: { path: 'Page.md', root } } },
+      { path: '/workspaces/repo%2Fa/notes/content', options: { method: 'PUT', body: { path: 'Page.md', content: '# Updated', expectedMtime: 42, root } } },
+      { path: '/workspaces/repo%2Fa/notes/page', options: { method: 'POST', body: { path: 'New.md', type: 'page', root } } },
+      { path: '/workspaces/repo%2Fa/notes/path', options: { method: 'PATCH', body: { oldPath: 'Old.md', newPath: 'New.md', root } } },
+      { path: '/workspaces/repo%2Fa/notes/path', options: { method: 'DELETE', query: { path: 'Delete.md', root } } },
+      { path: '/workspaces/repo%2Fa/notes/order', options: { method: 'PUT', body: { parentPath: 'Notebook', order: ['A.md', 'B.md'], root } } },
+      { path: '/workspaces/repo%2Fa/notes/search', options: { query: { q: 'hello', root } } },
+      { path: '/workspaces/repo%2Fa/notes/image', options: { method: 'POST', body: { fileName: 'img.png', data: 'data:image/png;base64,AA==', root } } },
+      { path: '/workspaces/repo%2Fa/notes/comments', options: { query: { path: 'Page.md', root } } },
+      { path: '/workspaces/repo%2Fa/notes/comments/thread', options: { method: 'POST', body: { path: 'Page.md', thread, root } } },
+      { path: '/workspaces/repo%2Fa/notes/comments/thread/thread%2F1', options: { method: 'PATCH', body: { path: 'Page.md', status: 'resolved', root } } },
+      { path: '/workspaces/repo%2Fa/notes/comments/thread/thread%2F1', options: { method: 'DELETE', query: { path: 'Page.md', root } } },
+      { path: '/workspaces/repo%2Fa/notes/comments/thread/thread%2F1/comment', options: { method: 'POST', body: { path: 'Page.md', content: 'hi', root } } },
+      { path: '/workspaces/repo%2Fa/notes/comments/thread/thread%2F1/comment/c%2F2', options: { method: 'PATCH', body: { path: 'Page.md', content: 'edited', root } } },
+      { path: '/workspaces/repo%2Fa/notes/comments/thread/thread%2F1/comment/c%2F2', options: { method: 'DELETE', query: { path: 'Page.md', root } } },
+      { path: '/workspaces/repo%2Fa/notes/batch-resolve', options: { method: 'POST', query: { path: 'Page.md', root } } },
+    ]);
+  });
 });
 

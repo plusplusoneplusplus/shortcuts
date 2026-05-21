@@ -108,6 +108,8 @@ export interface CLIConfig {
     /** Pull Requests configuration */
     pullRequests?: {
         enabled?: boolean;
+        /** AI-suggested reviews: surfaces a ranked "For You" section in the PR queue. Disabled by default. */
+        suggestions?: boolean;
     };
     /** Servers configuration (multi-server connection manager). */
     servers?: {
@@ -132,13 +134,6 @@ export interface CLIConfig {
     /** Excalidraw diagram support. Disabled by default. */
     excalidraw?: {
         enabled?: boolean;
-    };
-    /** Git-based sync for My Work / My Life notes across machines. Disabled by default. */
-    sync?: {
-        /** Git remote URL (e.g. git@github.com:user/my-coc-notes.git). Sync is disabled when empty. */
-        gitRemote?: string;
-        /** Sync interval in minutes (default: 5). */
-        intervalMinutes?: number;
     };
     /** Development feature flags. */
     features?: {
@@ -284,6 +279,7 @@ export interface ResolvedCLIConfig {
     /** Pull Requests configuration */
     pullRequests: {
         enabled: boolean;
+        suggestions: boolean;
     };
     /** Servers configuration (multi-server connection manager). */
     servers: {
@@ -308,11 +304,6 @@ export interface ResolvedCLIConfig {
     /** Excalidraw diagram support. */
     excalidraw: {
         enabled: boolean;
-    };
-    /** Git-based sync for My Work / My Life notes. */
-    sync: {
-        gitRemote: string;
-        intervalMinutes: number;
     };
     /** Development feature flags. */
     features: {
@@ -423,6 +414,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     pullRequests: {
         enabled: false,
+        suggestions: false,
     },
     servers: {
         enabled: false,
@@ -441,10 +433,6 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     excalidraw: {
         enabled: false,
-    },
-    sync: {
-        gitRemote: '',
-        intervalMinutes: 5,
     },
     features: {
         autoMemoryPromotion: false,

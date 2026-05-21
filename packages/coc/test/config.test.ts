@@ -794,6 +794,7 @@ timeout: 300
                 '  enabled: true',
                 'pullRequests:',
                 '  enabled: true',
+                '  suggestions: true',
                 'servers:',
                 '  enabled: true',
                 'ralph:',
@@ -806,9 +807,6 @@ timeout: 300
                 '  enabled: true',
                 'excalidraw:',
                 '  enabled: true',
-                'sync:',
-                '  gitRemote: git@github.com:user/notes.git',
-                '  intervalMinutes: 10',
                 'features:',
                 '  autoMemoryPromotion: true',
                 '  focusedDiff: true',
@@ -885,6 +883,7 @@ timeout: 300
                 '  enabled: true',
                 'pullRequests:',
                 '  enabled: true',
+                '  suggestions: true',
                 'servers:',
                 '  enabled: true',
                 'ralph:',
@@ -1002,6 +1001,7 @@ timeout: 300
                   "persist": false,
                   "pullRequests": {
                     "enabled": true,
+                    "suggestions": true,
                   },
                   "queue": {
                     "historyLimit": 25,
@@ -1035,10 +1035,6 @@ timeout: 300
                   },
                   "store": {
                     "backend": "file",
-                  },
-                  "sync": {
-                    "gitRemote": "",
-                    "intervalMinutes": 5,
                   },
                   "taskCardDensity": "compact",
                   "terminal": {
@@ -1079,6 +1075,7 @@ timeout: 300
                   "parallel": "file",
                   "persist": "file",
                   "pullRequests.enabled": "file",
+                  "pullRequests.suggestions": "file",
                   "ralph.enabled": "file",
                   "scratchpad.enabled": "file",
                   "scratchpad.layout": "file",
@@ -1089,8 +1086,6 @@ timeout: 300
                   "serve.theme": "file",
                   "servers.enabled": "file",
                   "showReportIntent": "file",
-                  "sync.gitRemote": "default",
-                  "sync.intervalMinutes": "default",
                   "taskCardDensity": "file",
                   "terminal.enabled": "file",
                   "timeout": "file",

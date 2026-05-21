@@ -10,11 +10,11 @@ export interface SyncStatus {
 export class SyncClient {
   constructor(private readonly transport: RequestAdapter) {}
 
-  getStatus(): Promise<SyncStatus> {
-    return this.transport.request<SyncStatus>('/sync/status');
+  getStatus(workspaceId: string): Promise<SyncStatus> {
+    return this.transport.request<SyncStatus>(`/workspaces/${encodeURIComponent(workspaceId)}/sync/status`);
   }
 
-  trigger(): Promise<SyncStatus> {
-    return this.transport.request<SyncStatus>('/sync/trigger', { method: 'POST' });
+  trigger(workspaceId: string): Promise<SyncStatus> {
+    return this.transport.request<SyncStatus>(`/workspaces/${encodeURIComponent(workspaceId)}/sync/trigger`, { method: 'POST' });
   }
 }

@@ -17,6 +17,7 @@ import { getRepoDataPath } from './paths';
 import type { Route } from './types';
 import type { NotesGitConfig } from './notes/git/notes-git-types';
 import { getEffectiveDefaultDisabledTools } from './llm-tools/llm-tool-registry';
+import { MAX_ADDITIONAL_NOTES_ROOTS } from './notes/notes-root-resolver';
 
 // ============================================================================
 // Types
@@ -237,6 +238,15 @@ export interface PerRepoPreferences {
      * Range: 1..200. When unset, server falls back to {@link RALPH_DEFAULT_MAX_ITERATIONS} (20).
      */
     maxRalphIterations?: number;
+    /** Additional notes root folders (relative paths from workspace git root). Max 10. */
+    additionalNotesRoots?: string[];
+    /** Git-based notes sync settings (only for my_work / my_life virtual workspaces). */
+    sync?: {
+        /** Git remote URL. Sync is disabled when empty/absent. */
+        gitRemote?: string;
+        /** Sync interval in minutes (default: 5). */
+        intervalMinutes?: number;
+    };
 }
 
 /** Hardcoded fallback for Ralph max iterations when no preference is set. */
@@ -727,6 +737,16 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
         if (Object.keys(validated).length > 0) {
             result.defaultModels = validated;
         }
+    }
+
+    if (Array.isArray(obj.additionalNotesRoots)) {
+        const roots = (obj.additionalNotesRoots as unknown[])
+            .filter((r): r is string => typeof r === 'string' && r.length > 0 && r.length <= 500)
+            .map(r => r.replace(/\\/g, '/').replace(/\/+$/, ''))  // normalize
+            .filter(r => r.length > 0 && !r.startsWith('/') && !r.startsWith('..') && !r.includes('/../'));
+        // Deduplicate
+        const unique = [...new Set(roots)];
+        result.additionalNotesRoots = unique.slice(0, MAX_ADDITIONAL_NOTES_ROOTS);
     }
 
     return result;

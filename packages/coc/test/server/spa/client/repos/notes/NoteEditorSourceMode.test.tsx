@@ -7,7 +7,7 @@ import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-libra
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
 let mockGetContentResult: { content: string; path: string } = { content: '# Hello\n', path: 'test.md' };
-let mockSaveContentResult: { path: string; updated: boolean } = { path: 'test.md', updated: true };
+let mockSaveContentResult: { path: string; updated: boolean; mtime: number } = { path: 'test.md', updated: true, mtime: 1000 };
 
 vi.mock('../../../../../../src/server/spa/client/react/features/notes/notesApi', () => ({
     notesApi: {
@@ -110,7 +110,7 @@ describe('NoteEditor — Source Mode', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockGetContentResult = { content: '# Hello\n\nWorld\n', path: 'test.md' };
-        mockSaveContentResult = { path: 'test.md', updated: true };
+        mockSaveContentResult = { path: 'test.md', updated: true, mtime: 1000 };
     });
 
     afterEach(() => {
@@ -228,7 +228,7 @@ describe('NoteEditor — Source Mode', () => {
             });
 
             await waitFor(() => {
-                expect(notesApi.saveContent).toHaveBeenCalledWith('ws1', 'test.md', '# Modified\n', undefined);
+                expect(notesApi.saveContent).toHaveBeenCalledWith('ws1', 'test.md', '# Modified\n', undefined, undefined);
             });
         });
 
@@ -369,7 +369,7 @@ describe('NoteEditor — Source Mode', () => {
             expect(screen.getByTestId('save-indicator').textContent).toContain('Saving');
 
             await act(async () => {
-                resolveSave({ path: 'test.md', updated: true });
+                resolveSave({ path: 'test.md', updated: true, mtime: 1000 });
             });
 
             await waitFor(() => {

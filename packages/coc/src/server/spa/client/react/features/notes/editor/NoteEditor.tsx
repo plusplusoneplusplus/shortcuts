@@ -74,6 +74,11 @@ export interface NoteEditorProps {
     /** Called when the user selects "Add to chat as reference" from the context menu.
      *  Only provided when the chat panel is open and below the reference cap. */
     onAddNoteReference?: (text: string, notePath: string, noteTitle: string) => void;
+    /** Whether the current root is the default managed root. Defaults to true.
+     *  When false, version history and git features are hidden. */
+    isDefaultRoot?: boolean;
+    /** Root identifier for multi-root notes support. When set, scopes content/image API calls. */
+    root?: string;
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error' | 'conflict';
@@ -173,6 +178,8 @@ export function NoteEditor({
     hasExistingChat,
     onNavigateToNote,
     onAddNoteReference,
+    isDefaultRoot = true,
+    root,
 }: NoteEditorProps) {
     const [loading, setLoading] = useState(false);
     const [refreshCounter, setRefreshCounter] = useState(0);
@@ -235,12 +242,14 @@ export function NoteEditor({
     const commentBackendRef = useRef(commentBackend);
     const frontMatterResultRef = useRef<NoteFrontMatterParseResult>(frontMatterResult);
     const onNotFoundRef = useRef(onNotFound);
+    const rootRef = useRef(root);
 
     // Keep refs in sync
     notePathRef.current = notePath;
     workspaceIdRef.current = workspaceId;
     ioRef.current = io;
     commentBackendRef.current = commentBackend;
+    rootRef.current = root;
     frontMatterResultRef.current = frontMatterResult;
     onNotFoundRef.current = onNotFound;
 
@@ -261,13 +270,17 @@ export function NoteEditor({
         return md;
     }, [viewMode, rawMarkdown]);
 
-    // ── Load git initialized state ──────────────────────────────────────────
+    // ── Load git initialized state (only for default managed root) ────────
 
     useEffect(() => {
+        if (!isDefaultRoot) {
+            setGitInitialized(false);
+            return;
+        }
         notesApi.getGitStatus(workspaceId)
             .then(({ initialized }) => setGitInitialized(!!initialized))
             .catch(() => setGitInitialized(false));
-    }, [workspaceId]);
+    }, [workspaceId, isDefaultRoot]);
 
     // ── Tiptap editor (via RichEditorCore) ─────────────────────────────────
     const onCommentCreateRef = useRef(onCommentCreate);
@@ -311,8 +324,9 @@ export function NoteEditor({
                             workspaceIdRef.current,
                             file.name || 'pasted-image',
                             dataUrl,
+                            rootRef.current,
                         );
-                        const apiUrl = ioRef.current.imageApiUrl(workspaceIdRef.current, result.path);
+                        const apiUrl = ioRef.current.imageApiUrl(workspaceIdRef.current, result.path, rootRef.current);
                         view.dispatch(
                             view.state.tr.replaceSelectionWith(
                                 view.state.schema.nodes.image.create({ src: apiUrl, alt: file.name || '' }),
@@ -350,6 +364,7 @@ export function NoteEditor({
             const result = await ioRef.current.saveContent(
                 workspaceIdRef.current, path, content,
                 mtimeRef.current ?? undefined,
+                rootRef.current,
             );
             mtimeRef.current = result.mtime;
             lastSaveAtRef.current = Date.now();
@@ -409,6 +424,7 @@ export function NoteEditor({
             const result = await ioRef.current.saveContent(
                 workspaceIdRef.current, path, content,
                 mtimeRef.current ?? undefined,
+                rootRef.current,
             );
             mtimeRef.current = result.mtime;
             lastSaveAtRef.current = Date.now();
@@ -477,6 +493,7 @@ export function NoteEditor({
                             workspaceIdRef.current,
                             file.name || 'pasted-image',
                             dataUrl,
+                            rootRef.current,
                         );
                         const mdImg = `![${file.name || ''}](${result.path})`;
                         const ta = sourceTextareaRef.current;
@@ -536,7 +553,7 @@ export function NoteEditor({
         const path = notePathRef.current;
         if (!path) return;
         try {
-            const { content, mtime } = await ioRef.current.loadContent(workspaceIdRef.current, path);
+            const { content, mtime } = await ioRef.current.loadContent(workspaceIdRef.current, path, rootRef.current);
             mtimeRef.current = mtime;
             setRawMarkdown(content);
             setSourceDirty(false);
@@ -553,7 +570,7 @@ export function NoteEditor({
             const path = notePathRef.current;
             if (path) {
                 try {
-                    await ioRef.current.saveContent(workspaceIdRef.current, path, pendingSource);
+                    await ioRef.current.saveContent(workspaceIdRef.current, path, pendingSource, undefined, rootRef.current);
                     pendingSourceContentRef.current = null;
                 } catch { /* continue anyway */ }
             }
@@ -571,7 +588,7 @@ export function NoteEditor({
                 ? parsedFrontMatter.frontMatter.body
                 : rawMarkdown;
             let html = markdownToHtml(richMarkdown);
-            html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current);
+            html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current, rootRef.current);
             ed.commands.setContent(html, { emitUpdate: false });
             ed.commands.setTextSelection?.(1);
 
@@ -623,7 +640,7 @@ export function NoteEditor({
                 ? parsedFrontMatter.frontMatter.body
                 : conflictContent;
             let html = markdownToHtml(richMarkdown);
-            html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current);
+            html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current, rootRef.current);
             ed.commands.setContent(html, { emitUpdate: false });
         }
         setRawMarkdown(conflictContent);
@@ -636,7 +653,7 @@ export function NoteEditor({
         setConflictContent(null);
         setSaveState('idle');
         // Refresh mtime from disk
-        ioRef.current.loadContent(workspaceIdRef.current, notePathRef.current!)
+        ioRef.current.loadContent(workspaceIdRef.current, notePathRef.current!, rootRef.current)
             .then(r => { mtimeRef.current = r.mtime; })
             .catch(() => {});
     }, [conflictContent]);
@@ -701,7 +718,7 @@ export function NoteEditor({
         setSaveState('idle');
 
         ioRef.current
-            .loadContent(workspaceId, notePath)
+            .loadContent(workspaceId, notePath, rootRef.current)
             .then(({ content, mtime }) => {
                 if (cancelled) return;
                 mtimeRef.current = mtime;
@@ -711,7 +728,7 @@ export function NoteEditor({
                     ? parsedFrontMatter.frontMatter.body
                     : content;
                 let html = markdownToHtml(richMarkdown);
-                html = rewriteHtmlImageSrc(html, ioRef.current, workspaceId);
+                html = rewriteHtmlImageSrc(html, ioRef.current, workspaceId, rootRef.current);
 
                 const ed = editorRef.current;
                 if (ed && !ed.isDestroyed) {
@@ -957,7 +974,7 @@ export function NoteEditor({
             // Skip reload if user has unsaved edits
             if (pendingContentRef.current !== null) return;
             if (pendingSourceContentRef.current !== null) return;
-            ioRef.current.loadContent(workspaceIdRef.current, notePath).then(({ content, mtime }) => {
+            ioRef.current.loadContent(workspaceIdRef.current, notePath, rootRef.current).then(({ content, mtime }) => {
                 mtimeRef.current = mtime;
                 // Skip redundant reload — content already matches what's displayed
                 if (content === rawMarkdownRef.current) return;
@@ -978,7 +995,7 @@ export function NoteEditor({
                     ? parsedFrontMatter.frontMatter.body
                     : content;
                 let html = markdownToHtml(richMarkdown);
-                html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current);
+                html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current, rootRef.current);
                 ed.commands.setContent(html, { emitUpdate: false });
                 setDirty(false);
                 setRawMarkdown(content);
@@ -1173,6 +1190,7 @@ export function NoteEditor({
                                     <span>🔄</span> Run Ralph
                                 </button>
                             )}
+                            {isDefaultRoot && (
                             <button
                                 type="button"
                                 className={
@@ -1188,6 +1206,7 @@ export function NoteEditor({
                             >
                                 🕐
                             </button>
+                            )}
                             {toolbarRight}
                         </>
                     }

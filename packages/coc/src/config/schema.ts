@@ -90,6 +90,7 @@ export const CLIConfigSchema = z.object({
     }).passthrough().optional(),
     pullRequests: z.object({
         enabled: z.boolean().optional(),
+        suggestions: z.boolean().optional(),
     }).passthrough().optional(),
     servers: z.object({
         enabled: z.boolean().optional(),
@@ -99,10 +100,6 @@ export const CLIConfigSchema = z.object({
     }).passthrough().optional(),
     excalidraw: z.object({
         enabled: z.boolean().optional(),
-    }).passthrough().optional(),
-    sync: z.object({
-        gitRemote: z.string().optional(),
-        intervalMinutes: z.number().int().positive().optional(),
     }).passthrough().optional(),
     loops: z.object({
         enabled: z.boolean().optional(),

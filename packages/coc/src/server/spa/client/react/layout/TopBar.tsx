@@ -25,10 +25,7 @@ import { useMyWorkEnabled } from '../hooks/feature-flags/useMyWorkEnabled';
 import { useMyLifeEnabled } from '../hooks/feature-flags/useMyLifeEnabled';
 import { RepoManagementPopover } from '../repos/RepoManagementPopover';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
-import { useSyncStatus } from '../hooks/useSyncStatus';
-import { SyncStatusIndicator } from './SyncStatusIndicator';
 import { getHostname, isServersEnabled } from '../utils/config';
-import { getSpaCocClient } from '../api/cocClient';
 import type { DashboardTab } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 
@@ -90,18 +87,8 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     const myWorkEnabled = useMyWorkEnabled();
     const myLifeEnabled = useMyLifeEnabled();
     const serversEnabled = isServersEnabled();
-    const { status: syncStatus, refresh: refreshSyncStatus } = useSyncStatus();
 
-    const handleTriggerSync = useCallback(async () => {
-        try {
-            await getSpaCocClient().sync.trigger();
-            refreshSyncStatus();
-        } catch {
-            // Errors surfaced via next poll
-        }
-    }, [refreshSyncStatus]);
-
-    const switchTab = useCallback((tab: DashboardTab) => {
+    const switchTab= useCallback((tab: DashboardTab) => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab });
         location.hash = '#' + tab;
     }, [dispatch]);
@@ -359,7 +346,6 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                         className={`inline-block w-2 h-2 rounded-full ${wsConfig.color}${wsConfig.pulse ? ' animate-pulse' : ''}`}
                     />
                 </span>
-                <SyncStatusIndicator status={syncStatus} onTriggerSync={handleTriggerSync} />
                 <NotificationBell />
                 <div ref={toolsContainerRef} className="relative hidden md:inline-flex">
                     <button

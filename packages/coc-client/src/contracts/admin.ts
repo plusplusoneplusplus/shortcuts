@@ -63,14 +63,10 @@ export interface AdminResolvedConfig {
     layout?: 'horizontal' | 'vertical';
   };
   workflows?: { enabled?: boolean };
-  pullRequests?: { enabled?: boolean };
+  pullRequests?: { enabled?: boolean; suggestions?: boolean };
   servers?: { enabled?: boolean };
   excalidraw?: { enabled?: boolean };
   mcpOauth?: { enabled?: boolean };
-  sync?: {
-    gitRemote?: string;
-    intervalMinutes?: number;
-  };
   [key: string]: unknown;
 }
 
@@ -118,11 +114,10 @@ export interface AdminConfigUpdate {
   'scratchpad.layout'?: 'horizontal' | 'vertical';
   'workflows.enabled'?: boolean;
   'pullRequests.enabled'?: boolean;
+  'pullRequests.suggestions'?: boolean;
   'servers.enabled'?: boolean;
   'excalidraw.enabled'?: boolean;
   'mcpOauth.enabled'?: boolean;
-  'sync.gitRemote'?: string;
-  'sync.intervalMinutes'?: number;
   [key: string]: unknown;
 }
 
@@ -142,6 +137,7 @@ export interface RuntimeDashboardConfig {
     scratchpadLayout: 'horizontal' | 'vertical';
     workflowsEnabled: boolean;
     pullRequestsEnabled: boolean;
+    pullRequestsSuggestionsEnabled: boolean;
     serversEnabled: boolean;
     ralphEnabled: boolean;
     vimNavigationEnabled: boolean;

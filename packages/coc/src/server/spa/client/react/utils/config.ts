@@ -19,6 +19,7 @@ interface DashboardConfig {
     scratchpadLayout?: 'horizontal' | 'vertical';
     workflowsEnabled?: boolean;
     pullRequestsEnabled?: boolean;
+    pullRequestsSuggestionsEnabled?: boolean;
     serversEnabled?: boolean;
     ralphEnabled?: boolean;
     vimNavigationEnabled?: boolean;
@@ -77,6 +78,7 @@ async function _doLoadRuntimeConfig(): Promise<void> {
             scratchpadLayout: data.features.scratchpadLayout,
             workflowsEnabled: data.features.workflowsEnabled,
             pullRequestsEnabled: data.features.pullRequestsEnabled,
+            pullRequestsSuggestionsEnabled: data.features.pullRequestsSuggestionsEnabled,
             serversEnabled: data.features.serversEnabled,
             ralphEnabled: data.features.ralphEnabled,
             vimNavigationEnabled: data.features.vimNavigationEnabled,
@@ -169,6 +171,10 @@ export function isWorkflowsEnabled(): boolean {
 
 export function isPullRequestsEnabled(): boolean {
     return getConfig().pullRequestsEnabled === true;
+}
+
+export function isPullRequestsSuggestionsEnabled(): boolean {
+    return getConfig().pullRequestsSuggestionsEnabled === true;
 }
 
 export function isServersEnabled(): boolean {

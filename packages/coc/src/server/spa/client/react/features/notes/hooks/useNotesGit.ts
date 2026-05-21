@@ -23,7 +23,7 @@ export interface UseNotesGitReturn {
     refresh: () => Promise<void>;
 }
 
-export function useNotesGit(workspaceId: string): UseNotesGitReturn {
+export function useNotesGit(workspaceId: string, isDefaultRoot = true): UseNotesGitReturn {
     const [status, setStatus] = useState<NotesGitStatus | null>(null);
     const [log, setLog] = useState<NotesGitLogEntry[]>([]);
     const [loading, setLoading] = useState(true);
@@ -72,6 +72,17 @@ export function useNotesGit(workspaceId: string): UseNotesGitReturn {
 
     useEffect(() => {
         cancelledRef.current = false;
+
+        // Git is only available for the default managed root
+        if (!isDefaultRoot) {
+            setStatus(null);
+            setLog([]);
+            setInitialized(false);
+            setLoading(false);
+            setError(null);
+            return;
+        }
+
         setLoading(true);
         setError(null);
 
@@ -100,7 +111,7 @@ export function useNotesGit(workspaceId: string): UseNotesGitReturn {
         return () => {
             cancelledRef.current = true;
         };
-    }, [workspaceId, fetchStatus, fetchLog]);
+    }, [workspaceId, isDefaultRoot, fetchStatus, fetchLog]);
 
     // ── Window event listener: notes-changed → debounced refresh ────
 

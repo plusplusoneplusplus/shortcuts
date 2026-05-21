@@ -475,4 +475,88 @@ describe('GitHubPullRequestsAdapter', () => {
             expect(checks[0].source).toBe('check');
         });
     });
+
+    describe('getReviewedPullRequests', () => {
+        it('returns reviewed PRs from search API', async () => {
+            const mockSearchItem = {
+                number: 99,
+                title: 'Reviewed PR',
+                user: { id: 200, login: 'bob', name: 'Bob' },
+                updated_at: '2024-02-01T00:00:00Z',
+                html_url: 'https://github.com/owner/repo/pull/99',
+                labels: [{ name: 'bug' }],
+            };
+
+            (octokit as any).search = {
+                issuesAndPullRequests: vi.fn().mockResolvedValue({
+                    data: { items: [mockSearchItem] },
+                }),
+            };
+            (octokit as any).pulls.listFiles = vi.fn().mockResolvedValue({
+                data: [{ filename: 'src/fix.ts' }, { filename: 'test/fix.test.ts' }],
+            });
+
+            const result = await adapter.getReviewedPullRequests('repo', 10);
+            expect(result).toHaveLength(1);
+            expect(result[0].number).toBe(99);
+            expect(result[0].title).toBe('Reviewed PR');
+            expect(result[0].author.displayName).toBe('Bob');
+            expect(result[0].filesChanged).toEqual(['src/fix.ts', 'test/fix.test.ts']);
+            expect(result[0].labels).toEqual(['bug']);
+        });
+
+        it('handles file listing failure gracefully', async () => {
+            const mockSearchItem = {
+                number: 50,
+                title: 'PR without files',
+                user: { id: 300, login: 'carol' },
+                updated_at: '2024-03-01T00:00:00Z',
+                html_url: 'https://github.com/owner/repo/pull/50',
+                labels: [],
+            };
+
+            (octokit as any).search = {
+                issuesAndPullRequests: vi.fn().mockResolvedValue({
+                    data: { items: [mockSearchItem] },
+                }),
+            };
+            (octokit as any).pulls.listFiles = vi.fn().mockRejectedValue(new Error('404'));
+
+            const result = await adapter.getReviewedPullRequests('repo', 10);
+            expect(result).toHaveLength(1);
+            expect(result[0].filesChanged).toEqual([]);
+        });
+
+        it('respects the top parameter', async () => {
+            const items = Array.from({ length: 5 }, (_, i) => ({
+                number: i + 1,
+                title: `PR ${i + 1}`,
+                user: { id: i, login: `user${i}` },
+                updated_at: '2024-01-01T00:00:00Z',
+                html_url: `https://github.com/owner/repo/pull/${i + 1}`,
+                labels: [],
+            }));
+
+            (octokit as any).search = {
+                issuesAndPullRequests: vi.fn().mockResolvedValue({
+                    data: { items },
+                }),
+            };
+            (octokit as any).pulls.listFiles = vi.fn().mockResolvedValue({ data: [] });
+
+            const result = await adapter.getReviewedPullRequests('repo', 3);
+            expect(result).toHaveLength(3);
+        });
+
+        it('returns empty array when no reviewed PRs found', async () => {
+            (octokit as any).search = {
+                issuesAndPullRequests: vi.fn().mockResolvedValue({
+                    data: { items: [] },
+                }),
+            };
+
+            const result = await adapter.getReviewedPullRequests('repo', 10);
+            expect(result).toEqual([]);
+        });
+    });
 });

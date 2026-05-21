@@ -38,6 +38,7 @@ export function buildRuntimeDashboardConfig(
             scratchpadLayout: config.scratchpad?.layout ?? 'horizontal',
             workflowsEnabled: config.workflows?.enabled ?? false,
             pullRequestsEnabled: config.pullRequests?.enabled ?? false,
+            pullRequestsSuggestionsEnabled: config.pullRequests?.suggestions ?? false,
             serversEnabled: config.servers?.enabled ?? false,
             ralphEnabled: config.ralph?.enabled ?? false,
             vimNavigationEnabled: config.vimNavigation?.enabled ?? false,

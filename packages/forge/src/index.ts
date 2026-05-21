@@ -867,6 +867,7 @@ export {
     type PullRequestCommit,
     type PullRequest as ProviderPullRequest,
     type PullRequestCommit as ProviderPullRequestCommit,
+    type ReviewedPullRequest,
     type CheckStatus as ProviderCheckStatus,
     type CheckSource as ProviderCheckSource,
     type PullRequestCheck as ProviderPullRequestCheck,

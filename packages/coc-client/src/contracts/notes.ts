@@ -29,6 +29,22 @@ export interface NoteTreeResponse {
   tree: NoteTreeNode[];
   notesRoot: string;
   systemFolders?: string[];
+  /** Identifies which root is being served (e.g. 'default' or a relative path). */
+  rootId?: string;
+}
+
+export interface NotesRootEntry {
+  /** 'default' for the managed root, or the relative path for repo-folder roots. */
+  rootId: string;
+  /** Display label for the root. */
+  label: string;
+  /** Whether this is the default managed root (always present, cannot be removed). */
+  isDefault: boolean;
+}
+
+export interface NotesRootsResponse {
+  roots: NotesRootEntry[];
+  maxAdditionalRoots: number;
 }
 
 export interface NoteContentResponse {

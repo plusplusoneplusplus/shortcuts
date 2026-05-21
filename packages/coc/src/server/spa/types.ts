@@ -27,6 +27,8 @@ export interface DashboardOptions {
     workflowsEnabled?: boolean;
     /** Whether the pull requests feature is enabled in server config. */
     pullRequestsEnabled?: boolean;
+    /** Whether the AI-suggested PR reviews feature is enabled. */
+    pullRequestsSuggestionsEnabled?: boolean;
     /** Whether the servers feature is enabled in server config. */
     serversEnabled?: boolean;
     /** Whether the Ralph mode feature is enabled in server config. */

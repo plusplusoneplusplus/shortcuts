@@ -3,6 +3,7 @@ import type {
   ClassifyDiffRequest,
   ClassifyDiffResponse,
   ProviderConfigRequest,
+  PrSuggestionsResponse,
   PullRequestChatBinding,
   PullRequestChatBindingListResponse,
   PullRequestChecksResponse,
@@ -53,8 +54,9 @@ export class PullRequestsClient {
     });
   }
 
-  get(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<unknown> {
+  get(repoId: string, prId: string, options?: Pick<CocRequestOptions, 'signal'> & { force?: boolean }): Promise<unknown> {
     return this.transport.request<unknown>(`/repos/${encodePathSegment(repoId)}/pull-requests/${encodePathSegment(prId)}`, {
+      query: options?.force ? { force: 'true' } : undefined,
       signal: options?.signal,
     });
   }
@@ -143,6 +145,24 @@ export class PullRequestsClient {
         query: { headSha },
         signal: options?.signal,
       },
+    );
+  }
+
+  // ── PR review suggestions ──────────────────────────────────────
+
+  /** Get cached PR suggestions (top-5 LLM-ranked PRs for the user). */
+  getSuggestions(repoId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PrSuggestionsResponse> {
+    return this.transport.request<PrSuggestionsResponse>(
+      `/repos/${encodePathSegment(repoId)}/pull-requests/suggestions`,
+      { signal: options?.signal },
+    );
+  }
+
+  /** Refresh PR suggestions: re-fetch review history and re-rank via LLM. */
+  refreshSuggestions(repoId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PrSuggestionsResponse> {
+    return this.transport.request<PrSuggestionsResponse>(
+      `/repos/${encodePathSegment(repoId)}/pull-requests/suggestions/refresh`,
+      { method: 'POST', signal: options?.signal },
     );
   }
 }

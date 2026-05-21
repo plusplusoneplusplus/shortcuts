@@ -80,15 +80,31 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 
 ## Notes
 
+All read/write/comment/search/image endpoints accept an optional `root` query or body param to scope operations to a specific notes root. Omit `root` for the default managed root.
+
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/workspaces/:id/notes` | Note tree |
-| POST | `/api/workspaces/:id/notes` | Create note |
-| GET | `/api/workspaces/:id/notes/:path` | Read note |
-| PUT | `/api/workspaces/:id/notes/:path` | Update note |
-| DELETE | `/api/workspaces/:id/notes/:path` | Delete note |
-| GET | `/api/workspaces/:id/notes-git/status` | Git status |
-| POST | `/api/workspaces/:id/notes-git/commit` | Git commit |
+| GET | `/api/workspaces/:id/notes` | Note tree (`?root=` optional) |
+| POST | `/api/workspaces/:id/notes` | Create note (body `root` optional) |
+| GET | `/api/workspaces/:id/notes/:path` | Read note (`?root=` optional) |
+| PUT | `/api/workspaces/:id/notes/:path` | Update note (body `root` optional) |
+| DELETE | `/api/workspaces/:id/notes/:path` | Delete note (`?root=` optional) |
+| GET | `/api/workspaces/:id/notes-git/status` | Git status (default root only) |
+| POST | `/api/workspaces/:id/notes-git/commit` | Git commit (default root only) |
+| GET | `/api/workspaces/:id/notes/roots` | List configured roots |
+| POST | `/api/workspaces/:id/notes/roots` | Add a repo-folder root |
+| DELETE | `/api/workspaces/:id/notes/roots` | Remove a repo-folder root |
+
+### Multi-Root Notes
+
+Users can add up to **10** additional notes roots per workspace — subfolders inside the workspace git repo. The default managed root (`~/.coc/repos/<workspaceId>/notes/`) is always present.
+
+- **Root resolution:** default root via `getRepoDataPath(dataDir, workspaceId, 'notes')`; repo-folder roots via `<workspace-git-root>/<relative-path>`.
+- **Git ops** apply only to the default root; repo-folder roots inherit the workspace repo's git.
+- **Comment sidecar** for repo-folder roots is stored at `~/.coc/repos/<workspaceId>/notes-comments/<encoded-root-path>/`.
+- **Images** for repo-folder roots are co-located in `<root>/.images/`; default root uses `.attachments/`.
+- **System folders** (e.g., Plans) are auto-created only in the default root.
+- Configured roots are persisted in `PerRepoPreferences.additionalNotesRoots`.
 
 ## Workflows
 

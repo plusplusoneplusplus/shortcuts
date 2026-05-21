@@ -28,6 +28,7 @@ import { TasksSettingsSection } from './TasksSettingsSection';
 import { RepoPreferencesSection } from './RepoPreferencesSection';
 import { LlmToolsPanel } from './LlmToolsPanel';
 import { NotesSettingsSection } from './NotesSettingsSection';
+import { SyncSettingsSection } from './SyncSettingsSection';
 
 interface RepoSettingsTabProps {
     workspaceId: string;
@@ -596,17 +597,11 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
     const visibleGroups = useMemo<NavGroup[]>(() => {
         return NAV_GROUPS.map(group => ({
             ...group,
-            items: isVirtualWorkspace ? group.items.filter(i => i.id !== 'notes') : group.items,
+            items: group.items,
         })).filter(g => g.items.length > 0);
-    }, [isVirtualWorkspace]);
+    }, []);
 
-    useEffect(() => {
-        if (!isVirtualWorkspace || activeSection !== 'notes') return;
-        dispatch({ type: 'SET_SETTINGS_SECTION', section: 'info' });
-        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/settings/info';
-    }, [activeSection, dispatch, isVirtualWorkspace, workspaceId]);
-
-    const setActiveSection = useCallback((section: ActiveSection) => {
+    const setActiveSection= useCallback((section: ActiveSection) => {
         dispatch({ type: 'SET_SETTINGS_SECTION', section });
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/settings/' + section;
     }, [dispatch, workspaceId]);
@@ -969,6 +964,11 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                     {activeSection === 'notes' && !isVirtualWorkspace && (
                         <SectionCard>
                             <NotesSettingsSection workspaceId={workspaceId} />
+                        </SectionCard>
+                    )}
+                    {activeSection === 'notes' && isVirtualWorkspace && (
+                        <SectionCard>
+                            <SyncSettingsSection workspaceId={workspaceId} />
                         </SectionCard>
                     )}
                 </div>

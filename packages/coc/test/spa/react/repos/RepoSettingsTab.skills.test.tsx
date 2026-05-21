@@ -49,6 +49,12 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-settings/NotesSet
     ),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/features/repo-settings/SyncSettingsSection', () => ({
+    SyncSettingsSection: ({ workspaceId }: { workspaceId: string }) => (
+        <div data-testid="sync-settings-section">Sync settings for {workspaceId}</div>
+    ),
+}));
+
 vi.mock('../../../../src/server/spa/client/react/features/repo-settings/RepoPreferencesSection', () => ({
     RepoPreferencesSection: ({ workspaceId }: { workspaceId: string }) => (
         <div data-testid="preferences-section-stub">Preferences for {workspaceId}</div>
@@ -165,22 +171,21 @@ describe('RepoSettingsTab skill expansion', () => {
         expect(location.hash).toBe('#repos/ws-1/settings/notes');
     });
 
-    it.each(['my_work', 'my_life'])('hides the Notes nav item for virtual workspace %s', async (workspaceId) => {
+    it.each(['my_work', 'my_life'])('shows Notes nav item with sync settings for virtual workspace %s', async (workspaceId) => {
         await act(async () => { await renderSettingsTab({ workspaceId }); });
         await waitFor(() => expect(screen.getByTestId('settings-sidebar')).toBeTruthy());
 
-        expect(screen.queryByTestId('nav-item-notes')).toBeNull();
-        expect(screen.queryByTestId('notes-settings-section')).toBeNull();
+        expect(screen.getByTestId('nav-item-notes')).toBeTruthy();
     });
 
-    it.each(['my_work', 'my_life'])('redirects direct Notes settings links for virtual workspace %s to Info', async (workspaceId) => {
+    it.each(['my_work', 'my_life'])('shows sync settings section when Notes is selected for virtual workspace %s', async (workspaceId) => {
         location.hash = `#repos/${workspaceId}/settings/notes`;
 
         await act(async () => { await renderSettingsTab({ workspaceId, initialSection: 'notes' }); });
 
-        await waitFor(() => expect(location.hash).toBe(`#repos/${workspaceId}/settings/info`));
-        expect(screen.queryByTestId('nav-item-notes')).toBeNull();
-        expect(screen.queryByTestId('notes-settings-section')).toBeNull();
+        await waitFor(() => expect(location.hash).toBe(`#repos/${workspaceId}/settings/notes`));
+        expect(screen.getByTestId('nav-item-notes')).toBeTruthy();
+        expect(screen.getByTestId('sync-settings-section')).toBeTruthy();
     });
 });
 

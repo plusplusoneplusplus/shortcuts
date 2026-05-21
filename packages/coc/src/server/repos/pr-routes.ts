@@ -24,6 +24,8 @@ import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { readReviewHistoryCache, fetchAndCacheReviewHistory, readSuggestionsCache, rankAndCacheSuggestions, toPrMetadata } from './pr-suggestions';
+import type { CopilotSDKService } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Helpers
@@ -93,6 +95,28 @@ export function clearPrListCache(): void {
 }
 
 // ============================================================================
+// PR detail cache (in-memory, 10-min TTL)
+// ============================================================================
+
+const PR_DETAIL_TTL_MS = 10 * 60 * 1000;
+
+interface PrDetailCacheEntry {
+    data: any;
+    expiresAt: number;
+}
+
+const prDetailCache = new Map<string, PrDetailCacheEntry>();
+
+function makePrDetailCacheKey(repoId: string, prId: string): string {
+    return `${repoId}|${prId}`;
+}
+
+/** Clear all cached PR detail entries. Exported for testing. */
+export function clearPrDetailCache(): void {
+    prDetailCache.clear();
+}
+
+// ============================================================================
 // Registration
 // ============================================================================
 
@@ -104,7 +128,7 @@ export function clearPrListCache(): void {
  * @param dataDir - CoC data directory (e.g. ~/.coc)
  * @param service - Shared RepoTreeService instance (singleton)
  */
-export function registerPrRoutes(routes: Route[], dataDir: string, service?: RepoTreeService, store?: ProcessStore): void {
+export function registerPrRoutes(routes: Route[], dataDir: string, service?: RepoTreeService, store?: ProcessStore, aiService?: CopilotSDKService): void {
     const svc = service ?? new RepoTreeService(dataDir, undefined, store);
 
     // -- List PRs -------------------------------------------------------------
@@ -176,15 +200,164 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
         },
     });
 
+    // -- Get review history (cached) ------------------------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/review-history$/,
+        handler: async (_req, res, match) => {
+            try {
+                const repoId = decodeURIComponent(match![1]);
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+
+                const cached = readReviewHistoryCache(dataDir, repoId);
+                if (cached) {
+                    sendJson(res, cached);
+                } else {
+                    sendJson(res, { reviews: [], fetchedAt: null });
+                }
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    // -- Refresh review history (fetch from provider & cache) -----------------
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/review-history\/refresh$/,
+        handler: async (_req, res, match) => {
+            try {
+                const repoId = decodeURIComponent(match![1]);
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+
+                const cfg = await readProvidersConfig(dataDir);
+                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+                if (!prSvc || isNoAdoCredentials(prSvc)) {
+                    if (isNoAdoCredentials(prSvc)) {
+                        return sendJson(res, { error: 'no-ado-credentials' }, 401);
+                    }
+                    const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
+                    return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
+                }
+
+                if (typeof prSvc.getReviewedPullRequests !== 'function') {
+                    return sendJson(res, { error: 'Provider does not support review history' }, 501);
+                }
+
+                const cached = await fetchAndCacheReviewHistory(dataDir, repoId, prSvc, repoId);
+                sendJson(res, cached);
+            } catch (err) {
+                if (isAuthError(err)) {
+                    sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 401);
+                } else {
+                    send500(res, err instanceof Error ? err.message : String(err));
+                }
+            }
+        },
+    });
+
+    // -- Get cached suggestions -----------------------------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/suggestions$/,
+        handler: async (_req, res, match) => {
+            try {
+                const repoId = decodeURIComponent(match![1]);
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+
+                const cached = readSuggestionsCache(dataDir, repoId);
+                if (cached) {
+                    sendJson(res, cached);
+                } else {
+                    sendJson(res, { suggestions: [], rankedAt: null });
+                }
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    // -- Refresh suggestions (LLM ranking) ------------------------------------
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/suggestions\/refresh$/,
+        handler: async (_req, res, match) => {
+            try {
+                if (!aiService) {
+                    return sendJson(res, { error: 'AI service not available' }, 503);
+                }
+
+                const repoId = decodeURIComponent(match![1]);
+                const repo = await svc.resolveRepo(repoId);
+                if (!repo) return send404(res, `Repo ${repoId} not found`);
+
+                // Need review history first
+                const history = readReviewHistoryCache(dataDir, repoId);
+                if (!history || history.reviews.length === 0) {
+                    return sendJson(res, { error: 'No review history cached. Refresh review history first.' }, 400);
+                }
+
+                // Fetch current open PRs
+                const cfg = await readProvidersConfig(dataDir);
+                const prSvc = await ProviderFactory.createPullRequestsService(repo.remoteUrl ?? '', cfg);
+                if (!prSvc || isNoAdoCredentials(prSvc)) {
+                    if (isNoAdoCredentials(prSvc)) {
+                        return sendJson(res, { error: 'no-ado-credentials' }, 401);
+                    }
+                    const detected = ProviderFactory.detectProviderType(repo.remoteUrl ?? '');
+                    return sendJson(res, { error: 'unconfigured', detected, remoteUrl: repo.remoteUrl }, 401);
+                }
+
+                const openPrs = await prSvc.listPullRequests(repoId, { status: 'open', top: 100, scope: 'all' });
+                const prMetadata = openPrs.map(toPrMetadata);
+
+                const cached = await rankAndCacheSuggestions(dataDir, repoId, aiService, history, prMetadata);
+                sendJson(res, cached);
+            } catch (err) {
+                if (isAuthError(err)) {
+                    sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 401);
+                } else {
+                    send500(res, err instanceof Error ? err.message : String(err));
+                }
+            }
+        },
+    });
+
     // -- Get single PR --------------------------------------------------------
 
     routes.push({
         method: 'GET',
         pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/([^/]+)$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             try {
                 const repoId = decodeURIComponent(match![1]);
                 const prId = decodeURIComponent(match![2]);
+                const query = url.parse(req.url ?? '', true).query;
+                const force = query.force === 'true';
+                const cacheKey = makePrDetailCacheKey(repoId, prId);
+
+                // Serve from cache if valid and not forced
+                if (force) {
+                    prDetailCache.delete(cacheKey);
+                    console.debug(`[pr-detail-cache] bypass key=${cacheKey}`);
+                }
+
+                const cached = !force ? prDetailCache.get(cacheKey) : undefined;
+                if (cached && cached.expiresAt > Date.now()) {
+                    console.debug(`[pr-detail-cache] hit key=${cacheKey}`);
+                    return sendJson(res, cached.data);
+                }
+
+                if (!cached) {
+                    console.debug(`[pr-detail-cache] miss key=${cacheKey}`);
+                }
 
                 const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
@@ -200,6 +373,8 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 }
 
                 const pr = await prSvc.getPullRequest(repoId, prId);
+                prDetailCache.set(cacheKey, { data: pr, expiresAt: Date.now() + PR_DETAIL_TTL_MS });
+                console.debug(`[pr-detail-cache] set key=${cacheKey}`);
                 sendJson(res, pr);
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {

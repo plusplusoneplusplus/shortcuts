@@ -21,6 +21,8 @@ import { getRepoDataPath } from '../paths';
 import type { ResolvedCLIConfig } from '../../config';
 import { readOrderFile, applyOrder } from './notes-order';
 import { SYSTEM_FOLDER_NAMES } from './notes-constants';
+import { resolveNotesRoot, isRootResolveError, DEFAULT_ROOT_ID } from './notes-root-resolver';
+import { readRepoPreferences } from '../preferences-handler';
 
 // ============================================================================
 // Types
@@ -192,32 +194,48 @@ export function registerNotesRoutes(
 ): void {
 
     // ------------------------------------------------------------------
-    // GET /api/workspaces/:id/notes/tree — Recursive tree scan
+    // GET /api/workspaces/:id/notes/tree?root=... — Recursive tree scan
     // ------------------------------------------------------------------
     routes.push({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/notes\/tree$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
 
-            const notesRoot = getNotesRoot(dataDir, ws.id);
+            const parsed = url.parse(req.url || '/', true);
+            const rootParam = typeof parsed.query.root === 'string' ? parsed.query.root : undefined;
+
+            const prefs = readRepoPreferences(dataDir, ws.id);
+            const resolved = resolveNotesRoot(dataDir, ws.id, ws.rootPath, rootParam, prefs.additionalNotesRoots);
+            if (isRootResolveError(resolved)) {
+                return sendError(res, resolved.statusCode, resolved.error);
+            }
+
+            const notesRoot = resolved.absolutePath;
             await ensureNotesRoot(notesRoot);
 
-            // Auto-create system folders so they always appear in the tree
-            await Promise.all(
-                SYSTEM_FOLDER_NAMES.map(name =>
-                    fs.promises.mkdir(path.join(notesRoot, name), { recursive: true }),
-                ),
-            );
+            // Auto-create system folders only for the default managed root
+            if (resolved.isDefault) {
+                await Promise.all(
+                    SYSTEM_FOLDER_NAMES.map(name =>
+                        fs.promises.mkdir(path.join(notesRoot, name), { recursive: true }),
+                    ),
+                );
+            }
 
             const tree = await buildTree(notesRoot, '');
-            sendJSON(res, 200, { tree, notesRoot, systemFolders: SYSTEM_FOLDER_NAMES });
+            sendJSON(res, 200, {
+                tree,
+                notesRoot,
+                rootId: resolved.rootId,
+                systemFolders: resolved.isDefault ? SYSTEM_FOLDER_NAMES : [],
+            });
         },
     });
 
     // ------------------------------------------------------------------
-    // GET /api/workspaces/:id/notes/content?path=... — Read markdown
+    // GET /api/workspaces/:id/notes/content?path=...&root=... — Read markdown
     // ------------------------------------------------------------------
     routes.push({
         method: 'GET',
@@ -232,13 +250,30 @@ export function registerNotesRoutes(
                 return sendError(res, 400, 'Missing required query parameter: path');
             }
 
-            // Absolute paths are used as-is (scratchpad / session-state files).
-            // Relative paths are resolved against notesRoot (notes tree entries).
-            const notesRoot = getNotesRoot(dataDir, ws.id);
-            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
-            const resolved = path.isAbsolute(filePath) ? path.resolve(filePath) : path.resolve(notesRoot, filePath);
+            const rootParam = typeof parsed.query.root === 'string' ? parsed.query.root : undefined;
+            const prefs = readRepoPreferences(dataDir, ws.id);
+            const rootResult = resolveNotesRoot(dataDir, ws.id, ws.rootPath, rootParam, prefs.additionalNotesRoots);
+            if (isRootResolveError(rootResult)) {
+                return sendError(res, rootResult.statusCode, rootResult.error);
+            }
 
-            if (!isAllowedPath(resolved, wsDataDir)) {
+            const notesRoot = rootResult.absolutePath;
+            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
+
+            // Absolute paths are used as-is (scratchpad / session-state files) — only for default root.
+            // Relative paths are resolved against the active notesRoot.
+            let resolved: string;
+            if (path.isAbsolute(filePath) && rootResult.isDefault) {
+                resolved = path.resolve(filePath);
+            } else {
+                resolved = path.resolve(notesRoot, filePath);
+            }
+
+            // For non-default roots, allow paths within the resolved root directory
+            const allowed = rootResult.isDefault
+                ? isAllowedPath(resolved, wsDataDir)
+                : isWithinDirectory(resolved, notesRoot);
+            if (!allowed) {
                 return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 
@@ -258,7 +293,7 @@ export function registerNotesRoutes(
     });
 
     // ------------------------------------------------------------------
-    // GET /api/workspaces/:id/notes/search?q=... — Full-text search
+    // GET /api/workspaces/:id/notes/search?q=...&root=... — Full-text search
     // ------------------------------------------------------------------
     routes.push({
         method: 'GET',
@@ -273,7 +308,14 @@ export function registerNotesRoutes(
                 return sendError(res, 400, 'Missing required query parameter: q');
             }
 
-            const notesRoot = getNotesRoot(dataDir, ws.id);
+            const rootParam = typeof parsed.query.root === 'string' ? parsed.query.root : undefined;
+            const prefs = readRepoPreferences(dataDir, ws.id);
+            const rootResult = resolveNotesRoot(dataDir, ws.id, ws.rootPath, rootParam, prefs.additionalNotesRoots);
+            if (isRootResolveError(rootResult)) {
+                return sendError(res, rootResult.statusCode, rootResult.error);
+            }
+
+            const notesRoot = rootResult.absolutePath;
 
             const MAX_FILES = 50;
             const MAX_MATCHES = 100;

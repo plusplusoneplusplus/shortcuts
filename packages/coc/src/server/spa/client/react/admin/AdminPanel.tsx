@@ -168,6 +168,7 @@ export function AdminPanel() {
     const [scratchpadLayout, setScratchpadLayout] = useState<'horizontal' | 'vertical'>('horizontal');
     const [workflowsEnabled, setWorkflowsEnabled] = useState(false);
     const [pullRequestsEnabled, setPullRequestsEnabled] = useState(false);
+    const [pullRequestsSuggestionsEnabled, setPullRequestsSuggestionsEnabled] = useState(false);
     const [serversEnabled, setServersEnabled] = useState(false);
     const [ralphEnabled, setRalphEnabled] = useState(false);
     const [vimNavigationEnabled, setVimNavigationEnabled] = useState(false);
@@ -175,14 +176,6 @@ export function AdminPanel() {
     const [excalidrawEnabled, setExcalidrawEnabled] = useState(false);
     const [mcpOauthEnabled, setMcpOauthEnabled] = useState(false);
     const [focusedDiffEnabled, setFocusedDiffEnabled] = useState(false);
-
-    // Sync settings
-    const [syncGitRemote, setSyncGitRemote] = useState('');
-    const [syncIntervalMinutes, setSyncIntervalMinutes] = useState('5');
-    const [syncSaving, setSyncSaving] = useState(false);
-    const [syncSnapshot, setSyncSnapshot] = useState({ gitRemote: '', intervalMinutes: '5' });
-    const [syncStatus, setSyncStatus] = useState<{ enabled: boolean; inProgress: boolean; lastSyncTime: string | null; lastError: string | null } | null>(null);
-    const [syncTriggering, setSyncTriggering] = useState(false);
 
     // Preferences(theme, reposSidebarCollapsed, uiLayoutMode) — for Appearance card
     const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('auto');
@@ -214,7 +207,7 @@ export function AdminPanel() {
         taskCardDensity: 'compact' as 'compact' | 'dense',
         historyGrouping: true,
     });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, servers: false, ralph: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -240,6 +233,11 @@ export function AdminPanel() {
 
     // Relaunch welcome
     const [relaunchingWelcome, setRelaunchingWelcome] = useState(false);
+
+    // Sync settings (Integrations sub-tab)
+    const [syncGitRemote, setSyncGitRemote] = useState('');
+    const [syncIntervalMinutes, setSyncIntervalMinutes] = useState('5');
+    const [syncSnapshot, setSyncSnapshot] = useState({ gitRemote: '', intervalMinutes: '5' });
 
     const loadStats = useCallback(async () => {
         setStatsLoading(true);
@@ -305,6 +303,8 @@ export function AdminPanel() {
             setWorkflowsEnabled(we);
             const pre = resolved.pullRequests?.enabled ?? false;
             setPullRequestsEnabled(pre);
+            const prse = resolved.pullRequests?.suggestions ?? false;
+            setPullRequestsSuggestionsEnabled(prse);
             const svre = resolved.servers?.enabled ?? false;
             setServersEnabled(svre);
             const re = resolved.ralph?.enabled ?? false;
@@ -319,7 +319,7 @@ export function AdminPanel() {
             setMcpOauthEnabled(moae);
             const fde = resolved.features?.focusedDiff ?? false;
             setFocusedDiffEnabled(fde);
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, servers: svre, ralph: re, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde });
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde });
             const sgr = resolved.sync?.gitRemote ?? '';
             const sim = String(resolved.sync?.intervalMinutes ?? 5);
             setSyncGitRemote(sgr);
@@ -367,9 +367,6 @@ export function AdminPanel() {
         getSpaCocClient().admin.getVersion()
             .then(data => { if (data) setVersionInfo(data); })
             .catch(() => {});
-        getSpaCocClient().sync.getStatus()
-            .then(data => setSyncStatus(data))
-            .catch(() => {});
     }, [loadStats, loadConfig, loadPreferences]);
 
     // ── Per-card dirty state ──
@@ -401,6 +398,7 @@ export function AdminPanel() {
         scratchpadLayout !== featuresSnapshot.scratchpadLayout ||
         workflowsEnabled !== featuresSnapshot.workflows ||
         pullRequestsEnabled !== featuresSnapshot.pullRequests ||
+        pullRequestsSuggestionsEnabled !== featuresSnapshot.pullRequestsSuggestions ||
         serversEnabled !== featuresSnapshot.servers ||
         ralphEnabled !== featuresSnapshot.ralph ||
         vimNavigationEnabled !== featuresSnapshot.vimNavigation ||
@@ -408,58 +406,6 @@ export function AdminPanel() {
         excalidrawEnabled !== featuresSnapshot.excalidraw ||
         mcpOauthEnabled !== featuresSnapshot.mcpOauth ||
         focusedDiffEnabled !== featuresSnapshot.focusedDiff;
-
-    const syncDirty = syncGitRemote !== syncSnapshot.gitRemote ||
-        syncIntervalMinutes !== syncSnapshot.intervalMinutes;
-
-    // ── Sync card ──
-    const handleSaveSync = useCallback(async () => {
-        const errors: string[] = [];
-        const interval = Number(syncIntervalMinutes);
-        if (syncIntervalMinutes.trim() !== '' && (isNaN(interval) || !Number.isInteger(interval) || interval < 1)) {
-            errors.push('Sync interval must be a positive integer');
-        }
-        if (errors.length > 0) { addToast(errors.join('. '), 'error'); return; }
-
-        setSyncSaving(true);
-        try {
-            await getSpaCocClient().admin.updateConfig({
-                'sync.gitRemote': syncGitRemote,
-                'sync.intervalMinutes': interval || 5,
-            });
-            addToast('Sync settings saved', 'success');
-            setSyncSnapshot({ gitRemote: syncGitRemote, intervalMinutes: syncIntervalMinutes });
-            getSpaCocClient().sync.getStatus()
-                .then(data => setSyncStatus(data))
-                .catch(() => {});
-        } catch (err: unknown) {
-            addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
-        } finally {
-            setSyncSaving(false);
-        }
-    }, [syncGitRemote, syncIntervalMinutes, addToast]);
-
-    const handleCancelSync = useCallback(() => {
-        setSyncGitRemote(syncSnapshot.gitRemote);
-        setSyncIntervalMinutes(syncSnapshot.intervalMinutes);
-    }, [syncSnapshot]);
-
-    const handleTriggerSync = useCallback(async () => {
-        setSyncTriggering(true);
-        try {
-            const result = await getSpaCocClient().sync.trigger();
-            setSyncStatus(result);
-            if (result.lastError) {
-                addToast(`Sync error: ${result.lastError}`, 'error');
-            } else {
-                addToast('Sync completed', 'success');
-            }
-        } catch (err: unknown) {
-            addToast(getSpaCocClientErrorMessage(err, 'Sync trigger failed'), 'error');
-        } finally {
-            setSyncTriggering(false);
-        }
-    }, [addToast]);
 
     // ── AI & Execution card ──
     const handleSaveAiExec = useCallback(async () => {
@@ -607,6 +553,7 @@ export function AdminPanel() {
                 'scratchpad.layout': scratchpadLayout,
                 'workflows.enabled': workflowsEnabled,
                 'pullRequests.enabled': pullRequestsEnabled,
+                'pullRequests.suggestions': pullRequestsSuggestionsEnabled,
                 'servers.enabled': serversEnabled,
                 'ralph.enabled': ralphEnabled,
                 'vimNavigation.enabled': vimNavigationEnabled,
@@ -617,13 +564,13 @@ export function AdminPanel() {
             });
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, servers: serversEnabled, ralph: ralphEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled });
+            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, serversEnabled, ralphEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setTerminalEnabled(featuresSnapshot.terminal);
@@ -634,6 +581,7 @@ export function AdminPanel() {
         setScratchpadLayout(featuresSnapshot.scratchpadLayout);
         setWorkflowsEnabled(featuresSnapshot.workflows);
         setPullRequestsEnabled(featuresSnapshot.pullRequests);
+        setPullRequestsSuggestionsEnabled(featuresSnapshot.pullRequestsSuggestions);
         setServersEnabled(featuresSnapshot.servers);
         setRalphEnabled(featuresSnapshot.ralph);
         setVimNavigationEnabled(featuresSnapshot.vimNavigation);
@@ -1285,6 +1233,12 @@ export function AdminPanel() {
                                         <SourceBadge source={sources['pullRequests.enabled']} />
                                         <AdminToggle checked={pullRequestsEnabled} onChange={setPullRequestsEnabled} data-testid="toggle-pull-requests-enabled" />
                                     </AdminRow>
+                                    {pullRequestsEnabled && (
+                                        <AdminRow name="PR Review Suggestions" hint="AI-ranked suggestions for which open PRs to review, based on your review history. Adds a 'For You' filter pill to the PR queue.">
+                                            <SourceBadge source={sources['pullRequests.suggestions']} />
+                                            <AdminToggle checked={pullRequestsSuggestionsEnabled} onChange={setPullRequestsSuggestionsEnabled} data-testid="toggle-pull-requests-suggestions-enabled" />
+                                        </AdminRow>
+                                    )}
                                     <AdminRow name="Servers" hint="Multi-server connection manager (devtunnel).">
                                         <SourceBadge source={sources['servers.enabled']} />
                                         <AdminToggle checked={serversEnabled} onChange={setServersEnabled} data-testid="toggle-servers-enabled" />
@@ -1351,77 +1305,6 @@ export function AdminPanel() {
                                             />
                                         </AdminRow>
                                     ))}
-                                </SettingsCard>
-                                )}
-
-                                {/* ── Notes Git Sync (Integrations) ── */}
-                                {settingsSubTab === 'integrations' && (
-                                <SettingsCard
-                                    title="Notes Git Sync"
-                                    badge={syncStatus?.enabled ? 'Active' : 'Off'}
-                                    description="Synchronize My Work and My Life notes across machines via a Git remote."
-                                    dirty={syncDirty}
-                                    saving={syncSaving}
-                                    onSave={handleSaveSync}
-                                    onCancel={handleCancelSync}
-                                    data-testid="settings-sync"
-                                >
-                                    <AdminRow
-                                        name="Git Remote URL"
-                                        hint="SSH or HTTPS URL for the sync repository. Leave empty to disable sync."
-                                    >
-                                        <input
-                                            className="ar-input"
-                                            type="text"
-                                            value={syncGitRemote}
-                                            onChange={e => setSyncGitRemote(e.target.value)}
-                                            placeholder="git@github.com:user/my-coc-notes.git"
-                                            style={{ minWidth: 300 }}
-                                            data-testid="input-sync-git-remote"
-                                        />
-                                    </AdminRow>
-                                    <AdminRow
-                                        name="Sync Interval"
-                                        hint="How often to auto-sync in the background."
-                                    >
-                                        <AdminInputSuffix suffix="min">
-                                            <input
-                                                className="ar-input"
-                                                type="number"
-                                                min={1}
-                                                value={syncIntervalMinutes}
-                                                onChange={e => setSyncIntervalMinutes(e.target.value)}
-                                                style={{ width: 70 }}
-                                                data-testid="input-sync-interval"
-                                            />
-                                        </AdminInputSuffix>
-                                    </AdminRow>
-                                    {syncStatus && (
-                                        <AdminRow
-                                            name="Status"
-                                            hint={syncStatus.lastError ? `Error: ${syncStatus.lastError}` : (syncStatus.lastSyncTime ? `Last sync: ${new Date(syncStatus.lastSyncTime).toLocaleString()}` : 'Never synced')}
-                                        >
-                                            <span className="ar-hstack" style={{ gap: 8, alignItems: 'center' }}>
-                                                <span className={`ar-pill ${syncStatus.lastError ? 'ar-pill-danger' : syncStatus.inProgress ? 'ar-pill-warn' : syncStatus.enabled ? 'ar-pill-ok' : ''}`}
-                                                    data-testid="sync-status-pill"
-                                                >
-                                                    {syncStatus.inProgress ? '⟳ Syncing…' : syncStatus.lastError ? '✗ Error' : syncStatus.enabled ? '✓ OK' : '○ Disabled'}
-                                                </span>
-                                                {syncStatus.enabled && (
-                                                    <button
-                                                        type="button"
-                                                        className="ar-btn ar-btn-secondary ar-btn-sm"
-                                                        onClick={handleTriggerSync}
-                                                        disabled={syncTriggering || syncStatus.inProgress}
-                                                        data-testid="btn-sync-trigger"
-                                                    >
-                                                        {syncTriggering && <Spinner size="sm" />}
-                                                        Sync Now
-                                                    </button>
-                                                )}
-                                            </span>
-                                        </AdminRow>
-                                    )}
                                 </SettingsCard>
                                 )}
 

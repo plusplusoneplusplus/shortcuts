@@ -21,6 +21,8 @@ import type {
   NotesGitDiff,
   NotesGitLogResponse,
   NotesGitStatus,
+  NotesRootEntry,
+  NotesRootsResponse,
   NoteTreeResponse,
   NoteNodeType,
   RenameNoteNodeResponse,
@@ -60,65 +62,86 @@ export interface NotesGitLogQuery {
 export class NotesClient {
   constructor(private readonly transport: RequestAdapter) {}
 
-  getTree(workspaceId: string): Promise<NoteTreeResponse> {
-    return this.transport.request<NoteTreeResponse>(workspaceNotesPath(workspaceId, '/tree'));
-  }
-
-  getContent(workspaceId: string, notePath: string): Promise<NoteContentResponse> {
-    return this.transport.request<NoteContentResponse>(workspaceNotesPath(workspaceId, '/content'), {
-      query: { path: notePath },
+  getTree(workspaceId: string, root?: string): Promise<NoteTreeResponse> {
+    return this.transport.request<NoteTreeResponse>(workspaceNotesPath(workspaceId, '/tree'), {
+      query: compactQuery({ root }),
     });
   }
 
-  saveContent(workspaceId: string, notePath: string, content: string, expectedMtime?: number): Promise<SaveNoteContentResponse> {
+  listRoots(workspaceId: string): Promise<NotesRootsResponse> {
+    return this.transport.request<NotesRootsResponse>(workspaceNotesPath(workspaceId, '/roots'));
+  }
+
+  addRoot(workspaceId: string, rootPath: string): Promise<NotesRootEntry> {
+    return this.transport.request<NotesRootEntry>(workspaceNotesPath(workspaceId, '/roots'), {
+      method: 'POST',
+      body: { rootPath },
+    });
+  }
+
+  removeRoot(workspaceId: string, rootPath: string): Promise<{ removed: string }> {
+    return this.transport.request<{ removed: string }>(workspaceNotesPath(workspaceId, '/roots'), {
+      method: 'DELETE',
+      body: { rootPath },
+    });
+  }
+
+  getContent(workspaceId: string, notePath: string, root?: string): Promise<NoteContentResponse> {
+    return this.transport.request<NoteContentResponse>(workspaceNotesPath(workspaceId, '/content'), {
+      query: compactQuery({ path: notePath, root }),
+    });
+  }
+
+  saveContent(workspaceId: string, notePath: string, content: string, expectedMtime?: number, root?: string): Promise<SaveNoteContentResponse> {
     return this.transport.request<SaveNoteContentResponse>(workspaceNotesPath(workspaceId, '/content'), {
       method: 'PUT',
       body: {
         path: notePath,
         content,
         ...(expectedMtime !== undefined ? { expectedMtime } : {}),
+        ...(root ? { root } : {}),
       },
     });
   }
 
-  createNode(workspaceId: string, nodePath: string, type: NoteNodeType): Promise<CreateNoteNodeResponse> {
+  createNode(workspaceId: string, nodePath: string, type: NoteNodeType, root?: string): Promise<CreateNoteNodeResponse> {
     return this.transport.request<CreateNoteNodeResponse>(workspaceNotesPath(workspaceId, '/page'), {
       method: 'POST',
-      body: { path: nodePath, type },
+      body: { path: nodePath, type, ...(root ? { root } : {}) },
     });
   }
 
-  renameNode(workspaceId: string, oldPath: string, newPath: string): Promise<RenameNoteNodeResponse> {
+  renameNode(workspaceId: string, oldPath: string, newPath: string, root?: string): Promise<RenameNoteNodeResponse> {
     return this.transport.request<RenameNoteNodeResponse>(workspaceNotesPath(workspaceId, '/path'), {
       method: 'PATCH',
-      body: { oldPath, newPath },
+      body: { oldPath, newPath, ...(root ? { root } : {}) },
     });
   }
 
-  deleteNode(workspaceId: string, nodePath: string): Promise<void> {
+  deleteNode(workspaceId: string, nodePath: string, root?: string): Promise<void> {
     return this.transport.request<void>(workspaceNotesPath(workspaceId, '/path'), {
       method: 'DELETE',
-      query: { path: nodePath },
+      query: compactQuery({ path: nodePath, root }),
     });
   }
 
-  reorder(workspaceId: string, parentPath: string, order: string[]): Promise<ReorderNotesResponse> {
+  reorder(workspaceId: string, parentPath: string, order: string[], root?: string): Promise<ReorderNotesResponse> {
     return this.transport.request<ReorderNotesResponse>(workspaceNotesPath(workspaceId, '/order'), {
       method: 'PUT',
-      body: { parentPath, order: [...order] },
+      body: { parentPath, order: [...order], ...(root ? { root } : {}) },
     });
   }
 
-  search(workspaceId: string, query: string): Promise<NoteSearchResponse> {
+  search(workspaceId: string, query: string, root?: string): Promise<NoteSearchResponse> {
     return this.transport.request<NoteSearchResponse>(workspaceNotesPath(workspaceId, '/search'), {
-      query: { q: query },
+      query: compactQuery({ q: query, root }),
     });
   }
 
-  uploadImage(workspaceId: string, fileName: string, data: string): Promise<UploadNoteImageResponse> {
+  uploadImage(workspaceId: string, fileName: string, data: string, root?: string): Promise<UploadNoteImageResponse> {
     return this.transport.request<UploadNoteImageResponse>(workspaceNotesPath(workspaceId, '/image'), {
       method: 'POST',
-      body: { fileName, data },
+      body: { fileName, data, ...(root ? { root } : {}) },
     });
   }
 
@@ -128,80 +151,80 @@ export class NotesClient {
     });
   }
 
-  getComments(workspaceId: string, notePath: string): Promise<NoteSidecar> {
+  getComments(workspaceId: string, notePath: string, root?: string): Promise<NoteSidecar> {
     return this.transport.request<NoteSidecar>(workspaceNotesPath(workspaceId, '/comments'), {
-      query: { path: notePath },
+      query: compactQuery({ path: notePath, root }),
     });
   }
 
-  saveComments(workspaceId: string, notePath: string, threads: Record<string, CommentThread>): Promise<void> {
+  saveComments(workspaceId: string, notePath: string, threads: Record<string, CommentThread>, root?: string): Promise<void> {
     return this.transport.request<void>(workspaceNotesPath(workspaceId, '/comments'), {
       method: 'PUT',
-      body: { path: notePath, threads: { ...threads } },
+      body: { path: notePath, threads: { ...threads }, ...(root ? { root } : {}) },
     });
   }
 
-  createThread(workspaceId: string, notePath: string, thread: CommentThread): Promise<{ thread: CommentThread }> {
+  createThread(workspaceId: string, notePath: string, thread: CommentThread, root?: string): Promise<{ thread: CommentThread }> {
     return this.transport.request<{ thread: CommentThread }>(workspaceNotesPath(workspaceId, '/comments/thread'), {
       method: 'POST',
-      body: { path: notePath, thread },
+      body: { path: notePath, thread, ...(root ? { root } : {}) },
     });
   }
 
-  updateThread(workspaceId: string, notePath: string, threadId: string, status: CommentThreadStatus): Promise<{ thread: CommentThread }> {
+  updateThread(workspaceId: string, notePath: string, threadId: string, status: CommentThreadStatus, root?: string): Promise<{ thread: CommentThread }> {
     return this.transport.request<{ thread: CommentThread }>(
       workspaceNotesPath(workspaceId, `/comments/thread/${encodePathSegment(threadId)}`),
       {
         method: 'PATCH',
-        body: { path: notePath, status },
+        body: { path: notePath, status, ...(root ? { root } : {}) },
       },
     );
   }
 
-  deleteThread(workspaceId: string, notePath: string, threadId: string): Promise<void> {
+  deleteThread(workspaceId: string, notePath: string, threadId: string, root?: string): Promise<void> {
     return this.transport.request<void>(
       workspaceNotesPath(workspaceId, `/comments/thread/${encodePathSegment(threadId)}`),
       {
         method: 'DELETE',
-        query: { path: notePath },
+        query: compactQuery({ path: notePath, root }),
       },
     );
   }
 
-  addComment(workspaceId: string, notePath: string, threadId: string, content: string): Promise<{ comment: Comment }> {
+  addComment(workspaceId: string, notePath: string, threadId: string, content: string, root?: string): Promise<{ comment: Comment }> {
     return this.transport.request<{ comment: Comment }>(
       workspaceNotesPath(workspaceId, `/comments/thread/${encodePathSegment(threadId)}/comment`),
       {
         method: 'POST',
-        body: { path: notePath, content },
+        body: { path: notePath, content, ...(root ? { root } : {}) },
       },
     );
   }
 
-  editComment(workspaceId: string, notePath: string, threadId: string, commentId: string, content: string): Promise<{ comment: Comment }> {
+  editComment(workspaceId: string, notePath: string, threadId: string, commentId: string, content: string, root?: string): Promise<{ comment: Comment }> {
     return this.transport.request<{ comment: Comment }>(
       workspaceNotesPath(workspaceId, `/comments/thread/${encodePathSegment(threadId)}/comment/${encodePathSegment(commentId)}`),
       {
         method: 'PATCH',
-        body: { path: notePath, content },
+        body: { path: notePath, content, ...(root ? { root } : {}) },
       },
     );
   }
 
-  deleteComment(workspaceId: string, notePath: string, threadId: string, commentId: string): Promise<void> {
+  deleteComment(workspaceId: string, notePath: string, threadId: string, commentId: string, root?: string): Promise<void> {
     return this.transport.request<void>(
       workspaceNotesPath(workspaceId, `/comments/thread/${encodePathSegment(threadId)}/comment/${encodePathSegment(commentId)}`),
       {
         method: 'DELETE',
-        query: { path: notePath },
+        query: compactQuery({ path: notePath, root }),
       },
     );
   }
 
-  batchResolve(workspaceId: string, notePath: string, documentContent: string, userContext?: string): Promise<BatchResolveNoteCommentsResponse> {
+  batchResolve(workspaceId: string, notePath: string, documentContent: string, userContext?: string, root?: string): Promise<BatchResolveNoteCommentsResponse> {
     return this.transport.request<BatchResolveNoteCommentsResponse>(workspaceNotesPath(workspaceId, '/batch-resolve'), {
       method: 'POST',
-      query: { path: notePath },
+      query: compactQuery({ path: notePath, root }),
       body: { documentContent, ...(userContext ? { userContext } : {}) },
     });
   }

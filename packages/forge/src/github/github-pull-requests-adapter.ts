@@ -10,6 +10,7 @@ import type {
     PullRequestCheck,
     PullRequestCommit,
     PullRequestStatus,
+    ReviewedPullRequest,
     Reviewer,
     ReviewVote,
     SearchCriteria,
@@ -448,5 +449,54 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
         }
 
         return checks;
+    }
+
+    async getReviewedPullRequests(_repositoryId: string, top: number = 50): Promise<ReviewedPullRequest[]> {
+        // Use GitHub search API to find PRs the authenticated user reviewed in this repo.
+        const q = `is:pr reviewed-by:@me repo:${this.owner}/${this.repo} is:closed`;
+        const perPage = Math.min(top, 100);
+
+        const { data } = await this.octokit.search.issuesAndPullRequests({
+            q,
+            sort: 'updated',
+            order: 'desc',
+            per_page: perPage,
+        });
+
+        const results: ReviewedPullRequest[] = [];
+
+        for (const item of data.items) {
+            if (results.length >= top) break;
+
+            const prNumber = item.number;
+            const author = mapGitHubUser(item.user as GitHubUser | null | undefined);
+
+            // Fetch files changed in the PR (best-effort)
+            let filesChanged: string[] = [];
+            try {
+                const { data: files } = await this.octokit.pulls.listFiles({
+                    owner: this.owner,
+                    repo: this.repo,
+                    pull_number: prNumber,
+                    per_page: 100,
+                });
+                filesChanged = (files as unknown as Array<{ filename: string }>).map(f => f.filename);
+            } catch {
+                // Files fetch is best-effort
+            }
+
+            results.push({
+                number: prNumber,
+                title: item.title,
+                author,
+                filesChanged,
+                labels: (item.labels as Array<{ name?: string }>).map(l => l.name ?? '').filter(Boolean),
+                reviewedAt: new Date(item.updated_at),
+                targetBranch: '',  // search API doesn't expose base ref; filled by caller if needed
+                url: item.html_url,
+            });
+        }
+
+        return results;
     }
 }

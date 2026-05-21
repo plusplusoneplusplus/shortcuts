@@ -735,7 +735,7 @@ export function getMockReviewSummaryText(pr: PullRequest): string {
 // Queue/list helpers (left rail)
 // ──────────────────────────────────────────────────────────────────────────────
 
-export type QueueFilter = 'all' | 'mine' | 'blocked' | 'ready';
+export type QueueFilter = 'all' | 'mine' | 'blocked' | 'ready' | 'foryou';
 export type QueueDotState = 'open' | 'draft' | 'blocked' | 'ready';
 export type QueueRiskBadge = 'low' | 'med' | 'high';
 
@@ -844,17 +844,22 @@ export interface QueueFilterCounts {
     mine: number;
     blocked: number;
     ready: number;
+    foryou: number;
 }
 
-const ALL_FILTERS: QueueFilter[] = ['all', 'mine', 'blocked', 'ready'];
+const ALL_FILTERS: QueueFilter[] = ['all', 'mine', 'blocked', 'ready', 'foryou'];
 
-export function getQueueFilterDefinitions(): Array<{ id: QueueFilter; label: string }> {
-    return [
+export function getQueueFilterDefinitions(options?: { suggestionsEnabled?: boolean }): Array<{ id: QueueFilter; label: string }> {
+    const filters: Array<{ id: QueueFilter; label: string }> = [
         { id: 'all',     label: 'All' },
         { id: 'mine',    label: 'Mine' },
         { id: 'blocked', label: 'Blocked' },
         { id: 'ready',   label: 'Ready' },
     ];
+    if (options?.suggestionsEnabled) {
+        filters.push({ id: 'foryou', label: 'For You' });
+    }
+    return filters;
 }
 
 export { ALL_FILTERS as QUEUE_FILTERS };
