@@ -22,10 +22,12 @@ export class TeamsBot {
     private _status: BotStatus = 'disconnected';
     private _lastError: string | null = null;
     private _pollTimer: ReturnType<typeof setInterval> | null = null;
-    private _lastSeenTimestamp: string | null = null;
-    private _firstPollDone = false;
     private _channelId: string | null = null;
-    /** Track message IDs sent by this bot to distinguish from user-typed messages. */
+    /** Last polled message ID — only messages after this are considered new (MCP mode). */
+    private _lastPolledId: string | null = null;
+    /** Last seen timestamp for Graph API delta queries. */
+    private _lastSeenTimestamp: string | null = null;
+    /** Track message IDs sent by this bot to skip on poll. */
     private _sentMessageIds = new Set<string>();
 
     constructor(opts: TeamsBotOptions) {
@@ -337,7 +339,7 @@ export class TeamsBot {
             const args: Record<string, unknown> = {
                 teamId: this.opts.teamId,
                 channelId: this._channelId,
-                top: 10,
+                top: 5,
             };
 
             const result = await this.mcpClient.callTool('ListChannelMessages', args);
@@ -361,65 +363,56 @@ export class TeamsBot {
                 return;
             }
 
-            // Sort oldest-first
+            if (messages.length === 0) return;
+
+            // Sort oldest-first so the last element is the newest
             messages.sort((a, b) => {
                 const ta = a.createdDateTime ? new Date(a.createdDateTime).getTime() : 0;
                 const tb = b.createdDateTime ? new Date(b.createdDateTime).getTime() : 0;
                 return ta - tb;
             });
 
-            // On first poll, just set the watermark — don't process existing messages
-            if (!this._firstPollDone) {
-                this._firstPollDone = true;
-                const last = messages[messages.length - 1];
-                if (last?.createdDateTime) {
-                    this._lastSeenTimestamp = last.createdDateTime;
-                }
+            const lastMsg = messages[messages.length - 1];
+
+            // First poll: just set the watermark, don't process
+            if (!this._lastPolledId) {
+                this._lastPolledId = lastMsg.id;
                 return;
             }
 
-            for (const msg of messages) {
-                // Skip messages we've already seen
-                if (this._lastSeenTimestamp && msg.createdDateTime) {
-                    if (new Date(msg.createdDateTime).getTime() <= new Date(this._lastSeenTimestamp).getTime()) {
-                        continue;
-                    }
-                }
+            // No new message since last poll
+            if (lastMsg.id === this._lastPolledId) return;
 
-                if (this._sentMessageIds.has(msg.id)) {
-                    this._sentMessageIds.delete(msg.id);
-                    if (msg.createdDateTime) this._lastSeenTimestamp = msg.createdDateTime;
-                    continue;
-                }
+            // Update watermark
+            this._lastPolledId = lastMsg.id;
 
-                const text = msg.body?.content ?? msg.text ?? msg.content ?? '';
-                if (!text.trim()) {
-                    if (msg.createdDateTime) this._lastSeenTimestamp = msg.createdDateTime;
-                    continue;
-                }
-
-                // Skip messages sent by this bot (formatted output starts with **CoC Agent** or **<botName>**)
-                const plainText = text.replace(/<[^>]*>/g, '').trim();
-                if (plainText.startsWith('**CoC Agent**') || plainText.startsWith(`**${this.opts.botName}**`)) {
-                    if (msg.createdDateTime) this._lastSeenTimestamp = msg.createdDateTime;
-                    continue;
-                }
-
-                const inbound: InboundTeamsMessage = {
-                    channelId: this._channelId!,
-                    messageId: msg.id,
-                    text,
-                    senderName: msg.from?.user?.displayName ?? msg.from?.displayName ?? msg.senderName,
-                    senderAadId: msg.from?.user?.id ?? msg.from?.userId ?? msg.senderAadId,
-                    replyToMessageId: msg.replyToId,
-                };
-
-                await this.opts.onMessage(inbound).catch((err) => {
-                    console.error('[teams-bot] Error handling message:', err);
-                });
-
-                if (msg.createdDateTime) this._lastSeenTimestamp = msg.createdDateTime;
+            // Skip if this message was sent by us
+            if (this._sentMessageIds.has(lastMsg.id)) {
+                this._sentMessageIds.delete(lastMsg.id);
+                return;
             }
+
+            const text = lastMsg.body?.content ?? lastMsg.text ?? lastMsg.content ?? '';
+            if (!text.trim()) return;
+
+            // Skip bot-formatted messages (sent by us but ID didn't match)
+            const plainText = text.replace(/<[^>]*>/g, '').trim();
+            if (plainText.startsWith('**CoC Agent**') || plainText.startsWith(`**${this.opts.botName}**`)) {
+                return;
+            }
+
+            const inbound: InboundTeamsMessage = {
+                channelId: this._channelId!,
+                messageId: lastMsg.id,
+                text,
+                senderName: lastMsg.from?.user?.displayName ?? lastMsg.from?.displayName ?? lastMsg.senderName,
+                senderAadId: lastMsg.from?.user?.id ?? lastMsg.from?.userId ?? lastMsg.senderAadId,
+                replyToMessageId: lastMsg.replyToId,
+            };
+
+            await this.opts.onMessage(inbound).catch((err) => {
+                console.error('[teams-bot] Error handling message:', err);
+            });
         } catch (err: any) {
             console.error('[teams-bot] MCP poll error:', err.message);
         }
