@@ -469,16 +469,17 @@ export class TeamsBridge {
             : 'CoC Agent';
 
         const lines = [
-            sender,
+            `${sender}:`,
             `Agent: ${opts.agent}`,
             `Repo: ${opts.repo}`,
         ];
         if (opts.title) {
             lines.push(`Title: ${opts.title}`);
         }
-        lines.push('Message:', opts.content.trimStart());
+        // Replace \n in content with <br> as well
+        lines.push('Message:', opts.content.trimStart().replace(/\n/g, '<br>'));
 
-        return lines.join('\n');
+        return lines.join('<br>');
     }
 
     /** Resolve a workspace ID to a human-readable name. */
