@@ -138,6 +138,16 @@ Users can add up to **10** additional notes roots per workspace — subfolders i
 | DELETE | `/api/repos/:repoId/memory` | Wipe repo memory |
 | GET | `/api/repos/:repoId/memory/entries` | List memory entries |
 
+## Pull Requests
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/repos/:repoId/pull-requests` | List pull requests |
+| GET | `/api/repos/:repoId/pull-requests/review-history` | Read cached PR review history |
+| POST | `/api/repos/:repoId/pull-requests/review-history/refresh` | Fetch and cache PR review history |
+| GET | `/api/repos/:repoId/pull-requests/suggestions` | Read cached AI-ranked PR suggestions |
+| POST | `/api/repos/:repoId/pull-requests/suggestions/refresh` | Rank open PRs using cached review history |
+
 ## Loops
 
 See [loops.md](loops.md) for the full subsystem. Gated by `loops.enabled` (default `false`).

@@ -231,6 +231,20 @@ describe('PullRequestsClient', () => {
     ]);
   });
 
+  it('refreshReviewHistory sends POST to review-history/refresh endpoint', async () => {
+    const adapter = createMockAdapter({ reviews: [], fetchedAt: '2026-01-01' });
+    const client = new PullRequestsClient(adapter);
+
+    await client.refreshReviewHistory('repo/a');
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/repos/repo%2Fa/pull-requests/review-history/refresh',
+        options: { method: 'POST', signal: undefined },
+      },
+    ]);
+  });
+
   it('getSuggestions forwards abort signal', async () => {
     const adapter = createMockAdapter({ suggestions: [], rankedAt: null });
     const client = new PullRequestsClient(adapter);
@@ -247,6 +261,16 @@ describe('PullRequestsClient', () => {
     const controller = new AbortController();
 
     await client.refreshSuggestions('r1', { signal: controller.signal });
+
+    expect(adapter.calls[0].options?.signal).toBe(controller.signal);
+  });
+
+  it('refreshReviewHistory forwards abort signal', async () => {
+    const adapter = createMockAdapter({ reviews: [], fetchedAt: null });
+    const client = new PullRequestsClient(adapter);
+    const controller = new AbortController();
+
+    await client.refreshReviewHistory('r1', { signal: controller.signal });
 
     expect(adapter.calls[0].options?.signal).toBe(controller.signal);
   });
