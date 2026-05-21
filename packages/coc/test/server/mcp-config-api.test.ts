@@ -28,6 +28,13 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     };
 });
 
+// Mock mcp-config-writer so readAllDescriptions doesn't touch real filesystem
+const mockReadAllDescriptions = vi.hoisted(() => vi.fn().mockReturnValue({}));
+vi.mock('../../src/server/routes/mcp-config-writer', async (importOriginal) => {
+    const actual = await importOriginal<Record<string, unknown>>();
+    return { ...actual, readAllDescriptions: mockReadAllDescriptions };
+});
+
 // ============================================================================
 // Test Helpers
 // ============================================================================
@@ -102,6 +109,8 @@ describe('MCP Config API endpoints', () => {
     beforeEach(() => {
         mockLoadDefaultMcpConfig.mockReset();
         mockLoadWorkspaceMcpConfig.mockReset();
+        mockReadAllDescriptions.mockReset();
+        mockReadAllDescriptions.mockReturnValue({});
         mockLoadDefaultMcpConfig.mockReturnValue({ mcpServers: {}, configPath: '~/.copilot/mcp-config.json', fileExists: false });
         mockLoadWorkspaceMcpConfig.mockReturnValue({ mcpServers: {}, configPath: '/projects/my/.vscode/mcp.json', fileExists: false });
         (mockStore.getWorkspaces as any).mockResolvedValue([
@@ -184,15 +193,17 @@ describe('MCP Config API endpoints', () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`);
             expect(res.status).toBe(200);
             const data = res.json();
-            expect(data.availableServers).toEqual([{
+            // availableServers now includes a `status` field derived server-side
+            expect(data.availableServers).toMatchObject([{
                 name: 'repo',
                 type: 'sse',
                 url: 'http://localhost:1234/sse',
                 source: 'workspace',
                 effective: true,
+                status: 'auth', // sse → 'auth' when enabled
             }]);
+            expect(data.availableServers[0].env).toBeUndefined();
             expect(data.sources.global.servers).toEqual([]);
-            expect(data.sources.workspace.servers).toEqual(data.availableServers);
         });
 
         it('returns distinct global and workspace servers in source sections', async () => {
@@ -323,9 +334,10 @@ describe('MCP Config API endpoints', () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`);
             expect(res.status).toBe(200);
             const data = res.json();
-            expect(data.availableServers).toEqual([
-                { name: 'workspace', type: 'stdio', command: 'workspace-cmd', source: 'workspace', effective: true },
+            expect(data.availableServers).toMatchObject([
+                { name: 'workspace', type: 'stdio', command: 'workspace-cmd', source: 'workspace', effective: true, status: 'ok' },
             ]);
+            expect(data.availableServers[0].env).toBeUndefined();
             expect(data.sources.global).toMatchObject({
                 success: false,
                 error: 'Failed to parse MCP config: bad global JSON',
@@ -355,9 +367,11 @@ describe('MCP Config API endpoints', () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`);
             expect(res.status).toBe(200);
             const data = res.json();
-            expect(data.availableServers).toEqual([
-                { name: 'global', type: 'stdio', command: 'global-cmd', source: 'global', effective: true },
+            expect(data.availableServers).toMatchObject([
+                { name: 'global', type: 'stdio', command: 'global-cmd', source: 'global', effective: true, status: 'ok' },
             ]);
+            expect(data.availableServers[0].env).toBeUndefined();
+            expect(data.availableServers[0].args).toBeUndefined();
             expect(data.sources.global.success).toBe(true);
             expect(data.sources.global.servers[0].args).toBeUndefined();
             expect(data.sources.workspace).toMatchObject({
@@ -451,6 +465,78 @@ describe('MCP Config API endpoints', () => {
             expect(res.status).toBe(400);
             const data = res.json();
             expect(data.code).toBe('BAD_REQUEST');
+        });
+    });
+
+    // ========================================================================
+    // GET /api/workspaces/:id/mcp-config — status and description fields
+    // ========================================================================
+
+    describe('GET /api/workspaces/:id/mcp-config — status and description', () => {
+        it('includes status:ok for stdio server that is enabled', async () => {
+            mockLoadDefaultMcpConfig.mockReturnValue({
+                configPath: '~/.copilot/mcp-config.json',
+                fileExists: true,
+                mcpServers: { github: { command: 'npx', type: 'stdio' } },
+            });
+            (mockStore.getWorkspaces as any).mockResolvedValue([
+                { id: WORKSPACE_ID, name: 'My Project', rootPath: '/projects/my', enabledMcpServers: null },
+            ]);
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`);
+            const data = res.json();
+            expect(data.availableServers[0].status).toBe('ok');
+        });
+
+        it('includes status:auth for http server that is enabled', async () => {
+            mockLoadDefaultMcpConfig.mockReturnValue({
+                configPath: '~/.copilot/mcp-config.json',
+                fileExists: true,
+                mcpServers: { myapi: { type: 'http', url: 'http://localhost:8080' } },
+            });
+            (mockStore.getWorkspaces as any).mockResolvedValue([
+                { id: WORKSPACE_ID, name: 'My Project', rootPath: '/projects/my', enabledMcpServers: null },
+            ]);
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`);
+            const data = res.json();
+            expect(data.availableServers[0].status).toBe('auth');
+        });
+
+        it('includes status:off for server that is disabled in enabledMcpServers', async () => {
+            mockLoadDefaultMcpConfig.mockReturnValue({
+                configPath: '~/.copilot/mcp-config.json',
+                fileExists: true,
+                mcpServers: { github: { command: 'npx', type: 'stdio' } },
+            });
+            (mockStore.getWorkspaces as any).mockResolvedValue([
+                { id: WORKSPACE_ID, name: 'My Project', rootPath: '/projects/my', enabledMcpServers: [] },
+            ]);
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`);
+            const data = res.json();
+            expect(data.availableServers[0].status).toBe('off');
+        });
+
+        it('includes description from readAllDescriptions when present', async () => {
+            mockLoadDefaultMcpConfig.mockReturnValue({
+                configPath: '~/.copilot/mcp-config.json',
+                fileExists: true,
+                mcpServers: { github: { command: 'npx', type: 'stdio' } },
+            });
+            mockReadAllDescriptions.mockReturnValue({ github: 'GitHub MCP server' });
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`);
+            const data = res.json();
+            expect(data.availableServers[0].description).toBe('GitHub MCP server');
+        });
+
+        it('omits description when readAllDescriptions returns nothing for that server', async () => {
+            mockLoadDefaultMcpConfig.mockReturnValue({
+                configPath: '~/.copilot/mcp-config.json',
+                fileExists: true,
+                mcpServers: { github: { command: 'npx', type: 'stdio' } },
+            });
+            // default mock returns {}
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`);
+            const data = res.json();
+            expect(data.availableServers[0].description).toBeUndefined();
         });
     });
 });
