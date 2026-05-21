@@ -349,6 +349,12 @@ export class TeamsBridge {
         const target = this.opts.config.channelId;
         if (!target) { this._processingLocks.delete(processId); return; }
 
+        // Skip if Teams bot is not connected
+        if (!this.bot || this.bot.getStatus() !== 'connected') {
+            this._processingLocks.delete(processId);
+            return;
+        }
+
         const agentId = msg.agentId;
         const agentAddr = this.getAgentAddress(agentId);
         if (!agentAddr) {
