@@ -7,7 +7,7 @@
  */
 
 import type { InboundTeamsMessage, BotStatus } from '@plusplusoneplusplus/teams-bot';
-import { TeamsBot, GraphClient, McpClient, acquireTokenViaAzCli, acquireMcpOAuthToken } from '@plusplusoneplusplus/teams-bot';
+import { TeamsBot, GraphClient, McpClient, acquireTokenViaAzCli, acquireMcpOAuthToken, acquireTokenViaBrowser } from '@plusplusoneplusplus/teams-bot';
 import type { WebSocketRelay, WSRelayMessage } from '../proxy/ws-relay';
 import type { AgentStore } from '../store/agent-store';
 import type { TunnelBridge } from '../proxy/tunnel-bridge';
@@ -128,10 +128,21 @@ export class TeamsBridge {
     /** Reconnect to Teams. */
     async reconnect(): Promise<void> {
         await this.bot?.stop();
-        // Re-acquire token: for MCP mode, use cached OAuth tokens
+
+        // Re-acquire token: for MCP mode, try cached first, then browser OAuth
         try {
             if (this.opts.config.mode === 'mcp') {
-                this._azToken = await acquireMcpOAuthToken(this.opts.config.mcpServerUrl);
+                try {
+                    this._azToken = await acquireMcpOAuthToken(this.opts.config.mcpServerUrl);
+                } catch {
+                    // Cached token failed — open browser for OAuth login
+                    console.log('[teams-bridge] Cached token unavailable, opening browser for login...');
+                    this._azToken = await acquireTokenViaBrowser(this.opts.config.mcpServerUrl, {
+                        clientId: this.opts.config.clientId,
+                        scope: this.opts.config.scope,
+                    });
+                    console.log('[teams-bridge] Browser OAuth login succeeded');
+                }
             } else {
                 this._azToken = await acquireTokenViaAzCli();
             }

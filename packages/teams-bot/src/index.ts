@@ -7,5 +7,5 @@
 export { TeamsBot } from './bot';
 export { McpClient } from './mcp-client';
 export { GraphClient } from './graph-client';
-export { extractTenantId, acquireTokenViaAzCli, acquireMcpOAuthToken } from './auth';
-export type { InboundTeamsMessage, TeamsBotOptions, BotStatus, TeamsChannel, McpToolResult, McpToolsListResult, TeamsAuthConfig, TeamsTransportMode } from './types';
+export { extractTenantId, acquireTokenViaAzCli, acquireMcpOAuthToken, acquireTokenWithDeviceCode, acquireTokenViaBrowser } from './auth';
+export type { InboundTeamsMessage, TeamsBotOptions, BotStatus, TeamsChannel, McpToolResult, McpToolsListResult, TeamsAuthConfig, TeamsTransportMode, DeviceCodeInfo } from './types';
