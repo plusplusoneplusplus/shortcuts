@@ -134,7 +134,13 @@ export class TeamsMessagingManager {
                 mode: 'mcp',
                 mcpServerUrl: TEAMS_MCP_SERVER_URL,
                 teamId: resolved.teamId,
-                auth: { bearerToken: token },
+                auth: {
+                    bearerToken: token,
+                    onTokenRefresh: async () => {
+                        const { acquireMcpOAuthToken } = await import('@plusplusoneplusplus/teams-bot');
+                        return acquireMcpOAuthToken(TEAMS_MCP_SERVER_URL, this._homeDir);
+                    },
+                },
                 botName: this.config.botName,
                 onMessage: async (msg) => {
                     if (this.onInboundMessage) {

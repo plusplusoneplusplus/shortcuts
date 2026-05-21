@@ -199,8 +199,8 @@ export class TeamsBot {
         try {
             return await this.doMcpSend(toolName, args);
         } catch (err: any) {
-            // On 401, refresh token and retry once
-            if (err.message?.includes('401')) {
+            // On 401/502, refresh token and retry once
+            if (err.message?.includes('401') || err.message?.includes('502')) {
                 const refreshed = await this.refreshToken();
                 if (refreshed) {
                     return await this.doMcpSend(toolName, args);
@@ -448,8 +448,8 @@ export class TeamsBot {
                 console.error('[teams-bot] Error handling message:', err);
             });
         } catch (err: any) {
-            // On 401, attempt token refresh
-            if (err.message?.includes('401') && !this._refreshingToken) {
+            // On 401/502, attempt token refresh (502 often means expired upstream token)
+            if ((err.message?.includes('401') || err.message?.includes('502')) && !this._refreshingToken) {
                 await this.refreshToken();
             } else {
                 console.error('[teams-bot] MCP poll error:', err.message);
