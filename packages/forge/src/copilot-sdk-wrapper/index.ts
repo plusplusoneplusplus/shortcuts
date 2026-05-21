@@ -96,6 +96,21 @@ export {
 
 export type { BackgroundTasksInfo } from './copilot-sdk-service';
 
+// ISDKService interface and provider-agnostic types
+export type {
+    ISDKService,
+    IModelInfo,
+    IAvailabilityResult,
+    IInvocationResult,
+} from './sdk-service-interface';
+
+// SDK Service Registry
+export {
+    SDKServiceRegistry,
+    sdkServiceRegistry,
+    COPILOT_PROVIDER,
+} from './sdk-service-registry';
+
 // Session Manager
 export {
     SessionManager,
@@ -129,6 +144,7 @@ export {
     mergeMcpConfigs,
     mergeMcpConfigSources,
     clearMcpConfigCache,
+    invalidateCachedConfig,
     mcpConfigExists,
     getCachedMcpConfig,
     setHomeDirectoryOverride,

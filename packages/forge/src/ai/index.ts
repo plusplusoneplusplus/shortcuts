@@ -102,6 +102,7 @@ export {
     mergeMcpConfigs,
     mergeMcpConfigSources,
     clearMcpConfigCache,
+    invalidateCachedConfig,
     mcpConfigExists,
     getCachedMcpConfig,
     setHomeDirectoryOverride,

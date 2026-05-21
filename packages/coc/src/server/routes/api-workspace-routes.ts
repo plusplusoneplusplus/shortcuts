@@ -27,6 +27,18 @@ import {
 import { getEffectiveDefaultDisabledTools, getEffectiveLlmToolRegistry } from '../llm-tools/llm-tool-registry';
 import { detectEnDevEligibility } from '../endev/endev-detector';
 import { skillCache } from '../skills/skill-handler';
+import {
+    getServerDetail,
+    updateServerConfig,
+    deleteServerFromConfig,
+    addServerToConfig,
+    migrateServerScope,
+    readAllDescriptions,
+    findServerSource,
+    type McpToolScope,
+    type McpConfigScope,
+} from './mcp-config-writer';
+import { testMcpConnection } from './mcp-connection-tester';
 
 // Lazy singleton service
 let _branchService: BranchService | undefined;
@@ -64,6 +76,10 @@ interface WorkspaceMcpServerEntry {
     source?: WorkspaceMcpServerSource;
     effective?: boolean;
     overriddenBy?: WorkspaceMcpServerSource;
+    /** Derived server status (added to availableServers only). */
+    status?: 'ok' | 'auth' | 'off' | 'err';
+    /** User-provided description from config file (added to availableServers only). */
+    description?: string;
 }
 
 interface WorkspaceMcpSourceSection {
@@ -104,6 +120,13 @@ function toMcpSourceSection(
     };
 }
 
+/** Derive server status for the list view: ok | auth | off | err. */
+function deriveServerStatus(type: string, isEnabled: boolean): 'ok' | 'auth' | 'off' | 'err' {
+    if (!isEnabled) return 'off';
+    if (type === 'http' || type === 'sse') return 'auth';
+    return 'ok';
+}
+
 function buildMcpConfigResponse(ws: WorkspaceInfo, forceReload = false) {
     const globalConfig = loadDefaultMcpConfig(forceReload);
     const workspaceConfig = loadWorkspaceMcpConfig(ws.rootPath, forceReload);
@@ -115,12 +138,24 @@ function buildMcpConfigResponse(ws: WorkspaceInfo, forceReload = false) {
     const workspaceServers = Object.entries(workspaceConfig.mcpServers).map(([name, config]) =>
         toMcpServerEntry(name, config, 'workspace', true)
     );
+
+    // Read descriptions from raw config files (not filtered/normalized by loader)
+    const descriptions = readAllDescriptions(ws.rootPath);
+
+    // Compute effective server list with status and description
+    const enabledSet = ws.enabledMcpServers;
     const availableServers = Object.entries({
         ...globalConfig.mcpServers,
         ...workspaceConfig.mcpServers,
-    }).map(([name, config]) =>
-        toMcpServerEntry(name, config, workspaceNames.has(name) ? 'workspace' : 'global', true)
-    );
+    }).map(([name, config]) => {
+        const isEnabled = enabledSet === null || enabledSet === undefined || enabledSet.includes(name);
+        const type = config.type ?? 'stdio';
+        const entry = toMcpServerEntry(name, config, workspaceNames.has(name) ? 'workspace' : 'global', true);
+        entry.status = deriveServerStatus(type, isEnabled);
+        const desc = descriptions[name];
+        if (desc) entry.description = desc;
+        return entry;
+    });
 
     return {
         availableServers,
@@ -415,7 +450,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
         },
     });
 
-    // PUT /api/workspaces/:id/mcp-config — Save workspace-enabled MCP server list
+    // PUT /api/workspaces/:id/mcp-config — Save workspace-enabled MCP server list (+ optional enabledMcpTools)
     routes.push({
         method: 'PUT',
         pattern: /^\/api\/workspaces\/([^/]+)\/mcp-config$/,
@@ -438,7 +473,186 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             if (!updated) {
                 return handleAPIError(res, notFound('Workspace'));
             }
+
+            // Optional enabledMcpTools — stored in per-repo preferences
+            if (Object.prototype.hasOwnProperty.call(body, 'enabledMcpTools')) {
+                if (!ctx.dataDir) {
+                    return handleAPIError(res, badRequest('dataDir is required to save enabledMcpTools'));
+                }
+                if (body.enabledMcpTools !== null
+                    && (typeof body.enabledMcpTools !== 'object' || Array.isArray(body.enabledMcpTools))) {
+                    return handleAPIError(res, badRequest('`enabledMcpTools` must be a Record<string, string[]> or null'));
+                }
+                const existing = readRepoPreferences(ctx.dataDir, id);
+                const patch = body.enabledMcpTools === null ? { enabledMcpTools: undefined } : { enabledMcpTools: body.enabledMcpTools };
+                const merged = validatePerRepoPreferences({ ...existing, ...patch });
+                writeRepoPreferences(ctx.dataDir, id, merged);
+            }
+
             sendJSON(res, 200, { workspace: updated });
+        },
+    });
+
+    // GET /api/workspaces/:id/mcp-config/:server/detail — Full server detail
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/mcp-config\/([^/]+)\/detail$/,
+        handler: async (_req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const serverName = decodeURIComponent(match![2]);
+            const detail = getServerDetail(serverName, ws.rootPath);
+            if (!detail) {
+                return handleAPIError(res, notFound('MCP server'));
+            }
+            sendJSON(res, 200, detail);
+        },
+    });
+
+    // POST /api/workspaces/:id/mcp-config — Add a new MCP server entry
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/mcp-config$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+
+            if (typeof body.name !== 'string' || !body.name.trim()) {
+                return handleAPIError(res, missingFields(['name']));
+            }
+            if (!['stdio', 'http', 'sse'].includes(body.type)) {
+                return handleAPIError(res, badRequest('`type` must be "stdio", "http", or "sse"'));
+            }
+            if (!['global', 'workspace'].includes(body.scope)) {
+                return handleAPIError(res, badRequest('`scope` must be "global" or "workspace"'));
+            }
+            if (body.type === 'http' || body.type === 'sse') {
+                if (typeof body.url !== 'string' || !body.url.trim()) {
+                    return handleAPIError(res, badRequest('`url` is required for http/sse transport'));
+                }
+            }
+
+            // Check for name conflict
+            const existing = findServerSource(body.name, ws.rootPath);
+            if (existing) {
+                return handleAPIError(res, badRequest(`Server "${body.name}" already exists in ${existing.source} config`));
+            }
+
+            await addServerToConfig(ws.rootPath, {
+                name: body.name,
+                type: body.type,
+                command: typeof body.command === 'string' ? body.command : undefined,
+                url: typeof body.url === 'string' ? body.url : undefined,
+                args: Array.isArray(body.args) ? body.args : undefined,
+                env: (typeof body.env === 'object' && body.env !== null && !Array.isArray(body.env)) ? body.env : undefined,
+                description: typeof body.description === 'string' ? body.description : undefined,
+                toolScope: (['all', 'readonly', 'allowlist'] as McpToolScope[]).includes(body.toolScope) ? body.toolScope as McpToolScope : undefined,
+                scope: body.scope as McpConfigScope,
+            });
+
+            sendJSON(res, 201, { name: body.name, scope: body.scope });
+        },
+    });
+
+    // PUT /api/workspaces/:id/mcp-config/:server — Update a server's config in its source file
+    routes.push({
+        method: 'PUT',
+        pattern: /^\/api\/workspaces\/([^/]+)\/mcp-config\/([^/]+)$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const serverName = decodeURIComponent(match![2]);
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+
+            const update: { description?: string; args?: string[]; env?: Record<string, string>; toolScope?: McpToolScope } = {};
+            if (typeof body.description === 'string') update.description = body.description;
+            if (Array.isArray(body.args)) update.args = body.args;
+            if (typeof body.env === 'object' && body.env !== null && !Array.isArray(body.env)) {
+                update.env = body.env;
+            }
+            if (['all', 'readonly', 'allowlist'].includes(body.toolScope)) {
+                update.toolScope = body.toolScope as McpToolScope;
+            }
+
+            const ok = await updateServerConfig(serverName, ws.rootPath, update);
+            if (!ok) {
+                return handleAPIError(res, notFound('MCP server'));
+            }
+            sendJSON(res, 200, { name: serverName, updated: true });
+        },
+    });
+
+    // DELETE /api/workspaces/:id/mcp-config/:server — Remove a server from its source config
+    routes.push({
+        method: 'DELETE',
+        pattern: /^\/api\/workspaces\/([^/]+)\/mcp-config\/([^/]+)$/,
+        handler: async (_req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const serverName = decodeURIComponent(match![2]);
+            const ok = await deleteServerFromConfig(serverName, ws.rootPath);
+            if (!ok) {
+                return handleAPIError(res, notFound('MCP server'));
+            }
+            sendJSON(res, 200, { name: serverName, deleted: true });
+        },
+    });
+
+    // POST /api/workspaces/:id/mcp-config/:server/migrate — Move a server between global/workspace
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/mcp-config\/([^/]+)\/migrate$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const serverName = decodeURIComponent(match![2]);
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+
+            if (!['global', 'workspace'].includes(body.targetScope)) {
+                return handleAPIError(res, badRequest('`targetScope` must be "global" or "workspace"'));
+            }
+
+            const ok = await migrateServerScope(serverName, ws.rootPath, body.targetScope as McpConfigScope);
+            if (!ok) {
+                return handleAPIError(res, notFound('MCP server'));
+            }
+            sendJSON(res, 200, { name: serverName, scope: body.targetScope });
+        },
+    });
+
+    // POST /api/workspaces/:id/mcp-config/test — Test MCP server connectivity
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/mcp-config\/test$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+
+            if (!['stdio', 'http', 'sse'].includes(body.type)) {
+                return handleAPIError(res, badRequest('`type` must be "stdio", "http", or "sse"'));
+            }
+            if (body.type === 'stdio' && (typeof body.command !== 'string' || !body.command.trim())) {
+                return handleAPIError(res, badRequest('`command` is required for stdio transport'));
+            }
+            if ((body.type === 'http' || body.type === 'sse') && (typeof body.url !== 'string' || !body.url.trim())) {
+                return handleAPIError(res, badRequest('`url` is required for http/sse transport'));
+            }
+
+            const result = await testMcpConnection({
+                type: body.type as 'stdio' | 'http' | 'sse',
+                command: typeof body.command === 'string' ? body.command : undefined,
+                url: typeof body.url === 'string' ? body.url : undefined,
+                args: Array.isArray(body.args) ? body.args : undefined,
+                env: (typeof body.env === 'object' && body.env !== null && !Array.isArray(body.env)) ? body.env : undefined,
+            });
+
+            sendJSON(res, result.success ? 200 : 422, result);
         },
     });
 

@@ -247,6 +247,13 @@ export interface PerRepoPreferences {
         /** Sync interval in minutes (default: 5). */
         intervalMinutes?: number;
     };
+    /**
+     * Per-server tool allow-list.
+     * - `undefined` — all tools for every server are enabled (default).
+     * - Keys are MCP server names; values are arrays of tool names that are
+     *   allowed. Only effective when the server itself is also enabled.
+     */
+    enabledMcpTools?: Record<string, string[]>;
 }
 
 /** Hardcoded fallback for Ralph max iterations when no preference is set. */
@@ -747,6 +754,21 @@ export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
         // Deduplicate
         const unique = [...new Set(roots)];
         result.additionalNotesRoots = unique.slice(0, MAX_ADDITIONAL_NOTES_ROOTS);
+    }
+
+    if (typeof obj.enabledMcpTools === 'object' && obj.enabledMcpTools !== null && !Array.isArray(obj.enabledMcpTools)) {
+        const validated: Record<string, string[]> = {};
+        for (const [serverName, tools] of Object.entries(obj.enabledMcpTools as Record<string, unknown>)) {
+            if (typeof serverName === 'string' && serverName.length > 0 && Array.isArray(tools)) {
+                const toolNames = (tools as unknown[]).filter(
+                    (t): t is string => typeof t === 'string' && t.length > 0
+                );
+                validated[serverName] = toolNames;
+            }
+        }
+        if (Object.keys(validated).length > 0) {
+            result.enabledMcpTools = validated;
+        }
     }
 
     return result;
