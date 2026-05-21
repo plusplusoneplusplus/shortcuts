@@ -16,6 +16,10 @@ export interface ProcessHistoryItem {
     // Display
     title: string;
     promptPreview?: string;
+    /** User-set custom title (rename UI). Orthogonal to the AI-generated `title`. */
+    customTitle?: string;
+    /** Denormalized cleaned snapshot of the latest user prompt (~120 chars). */
+    lastMessagePreview?: string;
 
     // Timing (Unix ms)
     startTime: number;
@@ -59,11 +63,18 @@ export function toProcessHistoryItem(
     const startTime = new Date(proc.startTime).getTime();
     const endTime = proc.endTime ? new Date(proc.endTime).getTime() : undefined;
 
+    // Prefer `lastEventAt` (maintained by the store on every turn append) so this
+    // mapper does not depend on conversationTurns being hydrated. The history
+    // endpoint loads processes with `exclude: ['conversation']` for speed.
+    const lastEventMs = proc.lastEventAt instanceof Date
+        ? proc.lastEventAt.getTime()
+        : (proc.lastEventAt ? new Date(proc.lastEventAt as any).getTime() : undefined);
     const turns = proc.conversationTurns ?? [];
     const lastTurn = turns[turns.length - 1];
-    const lastActivityAt = lastTurn?.timestamp
+    const lastTurnMs = lastTurn?.timestamp
         ? new Date(lastTurn.timestamp).getTime()
-        : endTime;
+        : undefined;
+    const lastActivityAt = lastTurnMs ?? lastEventMs ?? endTime;
 
     return {
         id: proc.id,
@@ -71,6 +82,8 @@ export function toProcessHistoryItem(
         status: proc.status,
         title: proc.title || proc.promptPreview || proc.id,
         promptPreview: proc.promptPreview,
+        customTitle: proc.customTitle,
+        lastMessagePreview: proc.lastMessagePreview,
         startTime,
         endTime,
         error: proc.error,

@@ -45,10 +45,13 @@ export function registerProcessHistoryRoutes(
 
             const limit = Math.min(parsedLimit, MAX_LIMIT);
 
+            // Exclude conversation turns entirely — the history list view does
+            // not display per-turn data. Loading turns for every history entry
+            // (N+1 queries) is the dominant cost when scrolling history.
             const processes = await store.getAllProcesses({
                 workspaceId,
                 status: ['completed', 'failed', 'cancelled'],
-                exclude: ['toolCalls'],
+                exclude: ['conversation'],
                 type: typeFilter as any,
                 limit: limit + 1,
                 offset: parsedOffset,

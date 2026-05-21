@@ -90,6 +90,8 @@ export interface ChatHeaderProps {
     hasActiveLoops?: boolean;
     /** Called when the user clicks the loop badge */
     onToggleLoopPanel?: () => void;
+    /** Called when the user double-clicks the title to rename. Header always shows the user-set name. */
+    onRenameTitle?: () => void;
 }
 
 /** Build overflow menu items based on what's hidden at the current container tier */
@@ -308,6 +310,7 @@ export function ChatHeader({
     loopCount,
     hasActiveLoops = false,
     onToggleLoopPanel,
+    onRenameTitle,
 }: ChatHeaderProps) {
     const { isMobile } = useBreakpoint();
     const { isFloating } = useFloatingChats();
@@ -415,10 +418,15 @@ export function ChatHeader({
                         ← Back
                     </button>
                 )}
-                <span className={cn(
-                    'text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]',
-                    isNarrow && 'truncate max-w-[120px]',
-                )}>
+                <span
+                    className={cn(
+                        'text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc]',
+                        isNarrow && 'truncate max-w-[120px]',
+                        onRenameTitle && 'cursor-text select-none',
+                    )}
+                    title={onRenameTitle ? 'Double-click to rename' : undefined}
+                    onDoubleClick={onRenameTitle ? (e) => { e.stopPropagation(); onRenameTitle(); } : undefined}
+                >
                     {title ?? 'Chat'}
                 </span>
                 {task && (

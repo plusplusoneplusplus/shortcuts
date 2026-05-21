@@ -23,6 +23,8 @@ export interface AIProcess {
   metadata?: JsonObject;
   conversationTurns?: ConversationTurn[];
   title?: string;
+  customTitle?: string;
+  lastMessagePreview?: string;
   [key: string]: unknown;
 }
 

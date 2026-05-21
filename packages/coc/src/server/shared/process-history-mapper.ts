@@ -21,6 +21,12 @@ export interface HistorySummary {
     prompt?: string;
     promptPreview?: string;
     payload?: Record<string, unknown>;
+    /** User-set custom title (rename UI). Orthogonal to the AI-generated title. */
+    customTitle?: string;
+    /** Denormalized cleaned snapshot of the most recent conversation turn. */
+    lastMessagePreview?: string;
+    /** AI-generated title (separate from customTitle). */
+    title?: string;
 }
 
 export function processToHistorySummary(proc: AIProcess): HistorySummary {
@@ -28,7 +34,8 @@ export function processToHistorySummary(proc: AIProcess): HistorySummary {
         ? new Date(proc.endTime).getTime()
         : null;
 
-    const displayName = proc.title
+    const displayName = proc.customTitle
+        || proc.title
         || proc.promptPreview
         || proc.id;
 
@@ -48,6 +55,9 @@ export function processToHistorySummary(proc: AIProcess): HistorySummary {
             pipelineName: proc.metadata?.pipelineName as string | undefined,
             workItemId: proc.metadata?.workItemId as string | undefined,
         },
+        customTitle: proc.customTitle,
+        lastMessagePreview: proc.lastMessagePreview,
+        title: proc.title,
     };
 }
 
@@ -78,7 +88,7 @@ export function processToTaskDetail(proc: AIProcess): Partial<QueuedTask> {
             pipelineName: proc.metadata?.pipelineName,
             workItemId: proc.metadata?.workItemId,
         } as any,
-        displayName: proc.title || proc.promptPreview || proc.id,
+        displayName: proc.customTitle || proc.title || proc.promptPreview || proc.id,
         processId: proc.id,
         repoId: proc.metadata?.workspaceId,
         createdAt: proc.startTime ? new Date(proc.startTime).getTime() : Date.now(),
@@ -86,6 +96,9 @@ export function processToTaskDetail(proc: AIProcess): Partial<QueuedTask> {
         completedAt: proc.endTime ? new Date(proc.endTime).getTime() : undefined,
         error: proc.error,
         config: { model: proc.metadata?.model as string | undefined } as any,
+        customTitle: proc.customTitle,
+        lastMessagePreview: proc.lastMessagePreview,
+        title: proc.title,
     } as any;
 }
 
@@ -105,9 +118,12 @@ export function processToQueuedTask(proc: AIProcess): Partial<QueuedTask> {
             workspaceId: proc.metadata?.workspaceId,
             mode: proc.metadata?.mode,
         } as any,
-        displayName: proc.title || proc.promptPreview || proc.id,
+        displayName: proc.customTitle || proc.title || proc.promptPreview || proc.id,
         processId: proc.id,
         repoId: proc.metadata?.workspaceId,
         createdAt: Date.now(),
+        customTitle: proc.customTitle,
+        lastMessagePreview: proc.lastMessagePreview,
+        title: proc.title,
     } as any;
 }

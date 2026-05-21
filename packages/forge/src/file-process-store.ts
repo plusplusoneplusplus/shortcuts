@@ -27,6 +27,7 @@ import {
 } from './ai/process-types';
 import { withRetry } from './runtime/retry';
 import { getLogger } from './logger';
+import { computeMessagePreview } from './utils/message-preview';
 
 /** On-disk shape for individual process files (repos/<workspaceId>/processes/<id>.json) */
 export interface StoredProcessEntry {
@@ -409,6 +410,9 @@ export class FileProcessStore implements ProcessStore {
                 : (options?.additionalUpdates ?? {});
 
             const merged: AIProcess = { ...existing, ...extraUpdates, conversationTurns: allTurns, lastEventAt: new Date() };
+            if (typeof turn.content === 'string' && turn.content.trim().length > 0) {
+                merged.lastMessagePreview = computeMessagePreview(turn.content);
+            }
             const newEntry: StoredProcessEntry = {
                 workspaceId: merged.metadata?.workspaceId ?? entry.workspaceId,
                 process: serializeProcess(merged),
@@ -971,6 +975,8 @@ export class FileProcessStore implements ProcessStore {
             error: entry.process.error,
             parentProcessId: entry.process.parentProcessId,
             title: entry.process.title,
+            customTitle: entry.process.customTitle,
+            lastMessagePreview: entry.process.lastMessagePreview,
             duration: entry.process.endTime && entry.process.startTime
                 ? new Date(entry.process.endTime).getTime() - new Date(entry.process.startTime).getTime()
                 : undefined,

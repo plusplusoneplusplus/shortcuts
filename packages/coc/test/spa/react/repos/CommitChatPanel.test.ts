@@ -255,7 +255,7 @@ describe('ChatDetail — standalone, title, hideModeSelector props', () => {
     });
 
     it('passes title to ChatHeader', () => {
-        expect(actSource).toContain('title={title || task?.displayName}');
+        expect(actSource).toContain('title={(task?.customTitle as string | undefined) || title || task?.title || task?.displayName}');
     });
 
     it('passes hideModeSelector to FollowUpInputArea', () => {

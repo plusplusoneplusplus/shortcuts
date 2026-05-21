@@ -161,6 +161,9 @@ export {
 // Version comparison
 export { compareVersions } from './version-compare';
 
+// Message preview cleaner
+export { computeMessagePreview } from './message-preview';
+
 // Template engine
 export {
     TEMPLATE_VARIABLE_REGEX,

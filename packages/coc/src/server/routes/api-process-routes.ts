@@ -371,13 +371,24 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             if (body.metadata !== undefined) { updates.metadata = body.metadata; }
             if (body.sdkSessionId !== undefined) { updates.sdkSessionId = body.sdkSessionId; }
             if (body.conversationTurns !== undefined) { updates.conversationTurns = body.conversationTurns; }
-            if (body.title !== undefined) { updates.title = body.title; }
+            if (body.customTitle !== undefined) {
+                const raw = body.customTitle;
+                if (raw !== null && typeof raw !== 'string') {
+                    return handleAPIError(res, badRequest('customTitle must be a string or null'));
+                }
+                const trimmed = typeof raw === 'string' ? raw.trim() : '';
+                if (trimmed.length > 80) {
+                    return handleAPIError(res, badRequest('customTitle exceeds 80 characters'));
+                }
+                updates.customTitle = trimmed;
+            }
 
             await store.updateProcess(existing.id, updates);
 
-            // Sync queue task displayName when title is updated
-            if (body.title !== undefined && isQueueProcessId(existing.id) && bridge) {
-                bridge.updateTaskDisplayName?.(existing.id, body.title);
+            // Sync queue task displayName when the user-set custom title changes.
+            if (updates.customTitle !== undefined && isQueueProcessId(existing.id) && bridge) {
+                const displayName = updates.customTitle || existing.title || existing.promptPreview || existing.id;
+                bridge.updateTaskDisplayName?.(existing.id, displayName, { customTitle: updates.customTitle });
             }
 
             const updated = await store.getProcess(existing.id, wsId);

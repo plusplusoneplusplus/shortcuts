@@ -37,6 +37,8 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
         workingDirectory: process.workingDirectory,
         // Title
         title: process.title,
+        customTitle: process.customTitle,
+        lastMessagePreview: process.lastMessagePreview,
         // Conversation turns (Date → ISO string)
         conversationTurns: process.conversationTurns?.map(turn => ({
             role: turn.role,
@@ -143,7 +145,8 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
         workingDirectory: serialized.workingDirectory,
         // Title
         title: serialized.title,
-        // Conversation turns (ISO string → Date)
+        customTitle: serialized.customTitle,
+        lastMessagePreview: serialized.lastMessagePreview,
         conversationTurns: serialized.conversationTurns?.map(turn => ({
             role: turn.role,
             content: turn.content,

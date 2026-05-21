@@ -224,18 +224,27 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         setLoading(false);
     }, [repoQueue, history, fetchHistory]);
 
-    // Merge title updates from process-updated WS events into history items
+    // Merge title / customTitle / lastMessagePreview updates from process-updated
+    // WS events into history items so the sidebar reflects renames and new turn
+    // previews without a refetch.
     useEffect(() => {
         if (!history.length || !appState.processes.length) return;
         setHistory(prev => {
             let changed = false;
-            const next = prev.map(item => {
-                const proc = appState.processes.find((p: any) => p.id === item.id);
-                if (proc?.title && proc.title !== item.title) {
-                    changed = true;
-                    return { ...item, title: proc.title };
+            const next = prev.map((item: any) => {
+                const proc: any = appState.processes.find((p: any) => p.id === item.id);
+                if (!proc) return item;
+                const patch: any = {};
+                if (proc.title !== undefined && proc.title !== item.title) patch.title = proc.title;
+                if (proc.customTitle !== undefined && proc.customTitle !== item.customTitle) patch.customTitle = proc.customTitle;
+                if (proc.lastMessagePreview !== undefined && proc.lastMessagePreview !== item.lastMessagePreview) patch.lastMessagePreview = proc.lastMessagePreview;
+                if (Object.keys(patch).length === 0) return item;
+                // Recompute displayName so downstream consumers stay consistent.
+                if (patch.customTitle !== undefined || patch.title !== undefined) {
+                    patch.displayName = patch.customTitle ?? item.customTitle ?? patch.title ?? item.title ?? item.displayName;
                 }
-                return item;
+                changed = true;
+                return { ...item, ...patch };
             });
             return changed ? next : prev;
         });

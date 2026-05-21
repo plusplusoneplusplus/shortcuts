@@ -91,8 +91,8 @@ export function ProcessesSidebar() {
         if (!renameTarget) return;
         setRenameTarget(null);
         try {
-            await getSpaCocClient().processes.update(renameTarget.id, { title: newTitle });
-            dispatch({ type: 'PROCESS_UPDATED', process: { id: renameTarget.id, title: newTitle } });
+            await getSpaCocClient().processes.update(renameTarget.id, { customTitle: newTitle });
+            dispatch({ type: 'PROCESS_UPDATED', process: { id: renameTarget.id, customTitle: newTitle } });
         } catch { /* WS will sync eventually */ }
     }, [renameTarget, dispatch]);
 
@@ -125,7 +125,7 @@ export function ProcessesSidebar() {
                 if (state.typeFilter !== '__all' && p.type !== state.typeFilter) return false;
                 if (state.searchQuery) {
                     const q = state.searchQuery.toLowerCase();
-                    const title = (p.title || p.promptPreview || p.id || '').toLowerCase();
+                    const title = (p.customTitle || p.title || p.lastMessagePreview || p.promptPreview || p.id || '').toLowerCase();
                     if (title.indexOf(q) === -1) return false;
                 }
                 return true;
@@ -318,10 +318,21 @@ export function ProcessesSidebar() {
                             : p.duration != null
                                 ? formatDuration(p.duration)
                                 : '';
-                        const hasAITitle = Boolean(p.title);
-                        const preview = p.title || (p.promptPreview
-                            ? (p.promptPreview.length > 80 ? p.promptPreview.slice(0, 80) + '…' : p.promptPreview)
-                            : p.id);
+                        const hasCustomTitle = Boolean(p.customTitle);
+                        const hasAITitle = !hasCustomTitle && Boolean(p.title);
+                        // Display priority (per rename feature):
+                        //   1) user-set custom title
+                        //   2) latest message preview (newest turn)
+                        //   3) AI-generated title (legacy fallback)
+                        //   4) prompt preview / id
+                        const previewSource = p.customTitle
+                            || p.lastMessagePreview
+                            || p.title
+                            || p.promptPreview
+                            || p.id;
+                        const preview = typeof previewSource === 'string' && previewSource.length > 80
+                            ? previewSource.slice(0, 80) + '…'
+                            : previewSource;
                         const wsId = getProcessWorkspaceId(p);
                         const wsName = resolveWorkspaceName(wsId, getProcessWorkspaceName(p), state.workspaces);
 
@@ -373,7 +384,14 @@ export function ProcessesSidebar() {
                                         </button>
                                     </div>
                                 )}
-                                <div className="text-xs text-[#1e1e1e] dark:text-[#cccccc] line-clamp-2 break-words">
+                                <div
+                                    className="text-xs text-[#1e1e1e] dark:text-[#cccccc] line-clamp-2 break-words cursor-text select-none"
+                                    title="Double-click to rename"
+                                    onDoubleClick={(e) => {
+                                        e.stopPropagation();
+                                        setRenameTarget({ id: p.id, title: p.customTitle || '' });
+                                    }}
+                                >
                                     {preview}
                                     {hasAITitle && <span className="ml-1 text-[10px] text-[#848484]">✦</span>}
                                 </div>
@@ -455,8 +473,8 @@ export function ProcessesSidebar() {
                             label: 'Rename',
                             icon: '✏️',
                             onClick: () => {
-                                const p = state.processes.find((proc: any) => proc.id === contextMenu.processId);
-                                setRenameTarget({ id: contextMenu.processId, title: p?.title || p?.promptPreview || '' });
+                                const p: any = state.processes.find((proc: any) => proc.id === contextMenu.processId);
+                                setRenameTarget({ id: contextMenu.processId, title: p?.customTitle || '' });
                                 setContextMenu(null);
                             },
                         },

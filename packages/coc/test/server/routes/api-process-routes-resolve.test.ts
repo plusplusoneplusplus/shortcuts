@@ -203,10 +203,10 @@ describe('Process ID resolution: queue_ prefix fallback', () => {
 
         const res = await request(baseUrl, `/api/processes/queue_${bareId}`, {
             method: 'PATCH',
-            body: JSON.stringify({ title: 'Updated Title' }),
+            body: JSON.stringify({ customTitle: 'Updated Title' }),
         });
         expect(res.status).toBe(200);
-        expect(res.json().process.title).toBe('Updated Title');
+        expect(res.json().process.customTitle).toBe('Updated Title');
     });
 
     // ---------------------------------------------------------------

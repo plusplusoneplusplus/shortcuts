@@ -96,7 +96,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(15);
+        expect(SCHEMA_VERSION).toBe(17);
     });
 
     it('creates queue pause timer columns', () => {

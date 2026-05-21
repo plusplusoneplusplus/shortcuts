@@ -158,7 +158,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => 
 // ── Factory helpers ────────────────────────────────────────────────────
 
 function makeTask(overrides: Record<string, any> = {}): Record<string, any> {
-    return {
+    const base = {
         id: 'task-1',
         type: 'chat',
         displayName: 'Test Task',
@@ -167,6 +167,13 @@ function makeTask(overrides: Record<string, any> = {}): Record<string, any> {
         payload: {},
         ...overrides,
     };
+    // For sidebar tests: mirror displayName to customTitle by default unless
+    // explicitly overridden, since the sidebar reads customTitle (not
+    // displayName) for chat-row titles after the rename feature.
+    if (!('customTitle' in overrides) && typeof base.displayName === 'string') {
+        (base as any).customTitle = base.displayName;
+    }
+    return base;
 }
 
 function makeRunningTask(overrides: Record<string, any> = {}) {
@@ -1115,7 +1122,7 @@ describe('ChatListPane', () => {
                     );
                     expect(patchCall).toBeTruthy();
                     const body = JSON.parse(patchCall![1].body);
-                    expect(body.title).toBe('New Name');
+                    expect(body.customTitle).toBe('New Name');
                 });
             });
         });
@@ -1783,32 +1790,47 @@ describe('ChatListPane', () => {
     });
 
     describe('History card: title fallback', () => {
-        it('renders title field when displayName is absent', () => {
+        it('renders customTitle when set (user-set name)', () => {
             const task = makeHistoryTask({
                 displayName: undefined,
-                title: 'My Chat Title',
+                customTitle: 'My Chat Title',
             });
             renderPane({ history: [task] });
             expect(screen.getByText('My Chat Title')).toBeTruthy();
         });
 
-        it('prefers displayName over title', () => {
-            const task = makeHistoryTask({
-                displayName: 'Display Name',
-                title: 'Title Name',
-            });
-            renderPane({ history: [task] });
-            expect(screen.getByText('Display Name')).toBeTruthy();
-            expect(screen.queryByText('Title Name')).toBeNull();
-        });
-
-        it('falls back to type when both displayName and title are absent', () => {
+        it('prefers customTitle over lastMessagePreview', () => {
             const task = makeHistoryTask({
                 displayName: undefined,
-                title: undefined,
+                customTitle: 'Custom Name',
+                lastMessagePreview: 'Latest message...',
             });
             renderPane({ history: [task] });
-            expect(screen.getByText('chat')).toBeTruthy();
+            expect(screen.getByText('Custom Name')).toBeTruthy();
+            expect(screen.queryByText('Latest message...')).toBeNull();
+        });
+
+        it('falls back to lastMessagePreview when no customTitle', () => {
+            const task = makeHistoryTask({
+                displayName: undefined,
+                customTitle: undefined,
+                lastMessagePreview: 'recent activity',
+            });
+            renderPane({ history: [task] });
+            expect(screen.getByText('recent activity')).toBeTruthy();
+        });
+
+        it('falls back to chat label when no customTitle, preview, or prompt', () => {
+            const task = makeHistoryTask({
+                displayName: undefined,
+                customTitle: undefined,
+                lastMessagePreview: undefined,
+                title: undefined,
+                prompt: undefined,
+                promptPreview: undefined,
+            });
+            renderPane({ history: [task] });
+            expect(screen.getByText('Chat')).toBeTruthy();
         });
     });
 

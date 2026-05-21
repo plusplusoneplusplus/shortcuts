@@ -184,7 +184,7 @@ function defaultProps(overrides: Partial<Parameters<typeof ChatListPane>[0]> = {
 }
 
 function makeChatTask(id: string, title: string) {
-    return { id, type: 'chat', status: 'completed', displayName: title, completedAt: new Date().toISOString() };
+    return { id, type: 'chat', status: 'completed', displayName: title, customTitle: title, completedAt: new Date().toISOString() };
 }
 
 function makeSearchResult(id: string, displayName: string, snippet = '') {
@@ -193,6 +193,7 @@ function makeSearchResult(id: string, displayName: string, snippet = '') {
         type: 'chat',
         status: 'completed',
         displayName,
+        customTitle: displayName,
         title: displayName,
         promptPreview: '',
         completedAt: new Date().toISOString(),
