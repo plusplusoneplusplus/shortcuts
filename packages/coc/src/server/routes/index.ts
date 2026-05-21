@@ -90,6 +90,7 @@ import { registerDiagramRoutes } from '../diagrams/diagrams-handler';
 import { registerRuntimeConfigRoutes } from '../config/runtime-config-handler';
 import { registerSyncRoutes } from '../sync/sync-handler';
 import type { SyncEngine } from '../sync/sync-engine';
+import { registerTeamsMessagingRoutes } from '../messaging/teams-messaging-handler';
 
 /** Collect git commits made between headBefore and current HEAD. Non-fatal — returns [] on error. */
 function collectWorkItemCommits(
@@ -304,6 +305,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerHeapRoutes(routes);
     registerMyWorkRoutes(routes, store, dataDir);
     registerMyLifeRoutes(routes, store, dataDir);
+
+    // Teams messaging routes (container-mode)
+    registerTeamsMessagingRoutes(routes, { dataDir });
 
     // Ralph routes
     registerRalphRoutes(routes, { bridge, store, dataDir });

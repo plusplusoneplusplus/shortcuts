@@ -52,4 +52,33 @@ describe('config', () => {
         expect(config.messaging.whatsapp.defaultAgentId).toBe('agent-123');
         expect(config.messaging.whatsapp.userName).toBe('CoC');
     });
+
+    it('should default teams to enabled', () => {
+        const config = resolveConfig();
+        expect(config.messaging.teams.enabled).toBe(true);
+        expect(config.messaging.teams.botName).toBe('CoC');
+        expect(config.messaging.teams.pollIntervalMs).toBe(3000);
+        expect(config.messaging.teams.mcpServerUrl).toContain('agent365.svc.cloud.microsoft');
+    });
+
+    it('should apply teams overrides', () => {
+        const config = resolveConfig({
+            messaging: {
+                teams: {
+                    enabled: true,
+                    mcpServerUrl: 'https://test.mcp/server',
+                    channelId: 'ch-123',
+                    botName: 'MyBot',
+                    pollIntervalMs: 5000,
+                    defaultAgentId: 'agent-456',
+                },
+            },
+        });
+        expect(config.messaging.teams.enabled).toBe(true);
+        expect(config.messaging.teams.mcpServerUrl).toBe('https://test.mcp/server');
+        expect(config.messaging.teams.channelId).toBe('ch-123');
+        expect(config.messaging.teams.botName).toBe('MyBot');
+        expect(config.messaging.teams.pollIntervalMs).toBe(5000);
+        expect(config.messaging.teams.defaultAgentId).toBe('agent-456');
+    });
 });

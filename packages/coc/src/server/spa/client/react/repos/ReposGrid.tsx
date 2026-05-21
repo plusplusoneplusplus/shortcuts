@@ -119,7 +119,8 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
         });
     };
 
-    const selectRepo = (id: string) => {
+    const selectRepo = (id: string, agentId?: string | null) => {
+        if (agentId) dispatch({ type: 'SET_CURRENT_AGENT', agentId });
         dispatch({ type: 'SET_SELECTED_REPO', id });
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null });
         location.hash = '#repos/' + encodeURIComponent(id);
@@ -275,7 +276,7 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
                                     repo={repo}
                                     isSelected={repo.workspace.id === state.selectedRepoId}
                                     inGroup
-                                    onClick={() => selectRepo(repo.workspace.id)}
+                                    onClick={() => selectRepo(repo.workspace.id, repo.workspace.agentId)}
                                 />
                             ))}
                         </div>
@@ -302,7 +303,7 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
                     <RepoCard
                         repo={repo}
                         isSelected={repo.workspace.id === state.selectedRepoId}
-                        onClick={() => selectRepo(repo.workspace.id)}
+                        onClick={() => selectRepo(repo.workspace.id, repo.workspace.agentId)}
                     />
                 </div>
                 {showBelow && repoIdx === group.repos.length - 1 && <div className={dropIndicatorClass} />}

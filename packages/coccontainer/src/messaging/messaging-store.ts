@@ -21,6 +21,11 @@ export interface GlobalSession {
     agentId: string;
 }
 
+export interface ProcessSender {
+    senderAadId: string;
+    senderName: string;
+}
+
 export class MessagingStore {
     private db: ReturnType<typeof Database>;
 
@@ -87,6 +92,22 @@ export class MessagingStore {
         ).run(senderJid, processId, agentId);
     }
 
+    /** Store the sender info for a process (for @mentions on outbound). */
+    setProcessSender(processId: string, senderAadId: string, senderName: string): void {
+        this.db.prepare(
+            `INSERT OR REPLACE INTO process_senders (process_id, sender_aad_id, sender_name) VALUES (?, ?, ?)`
+        ).run(processId, senderAadId, senderName);
+    }
+
+    /** Get the sender info for a process. */
+    getProcessSender(processId: string): ProcessSender | null {
+        const row = this.db.prepare(
+            `SELECT sender_aad_id, sender_name FROM process_senders WHERE process_id = ?`
+        ).get(processId) as { sender_aad_id: string; sender_name: string } | undefined;
+        if (!row) return null;
+        return { senderAadId: row.sender_aad_id, senderName: row.sender_name };
+    }
+
     /** Get the last pushed turn index for a process (0 = nothing pushed yet). */
     getWatermark(processId: string): number {
         const row = this.db.prepare(
@@ -129,6 +150,13 @@ export class MessagingStore {
                 process_id      TEXT PRIMARY KEY,
                 last_turn_index INTEGER NOT NULL DEFAULT 0,
                 updated_at      INTEGER NOT NULL DEFAULT (unixepoch())
+            );
+
+            CREATE TABLE IF NOT EXISTS process_senders (
+                process_id      TEXT PRIMARY KEY,
+                sender_aad_id   TEXT NOT NULL,
+                sender_name     TEXT NOT NULL,
+                created_at      INTEGER NOT NULL DEFAULT (unixepoch())
             );
         `);
         // Migration: add workspace_id if table already exists without it

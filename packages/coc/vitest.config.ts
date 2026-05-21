@@ -10,6 +10,7 @@ export default defineConfig({
         alias: {
             '@plusplusoneplusplus/coc-server': path.resolve(__dirname, 'src/server/index.ts'),
             '@plusplusoneplusplus/coc-client': path.resolve(__dirname, '../coc-client/src/index.ts'),
+            '@plusplusoneplusplus/teams-bot': path.resolve(__dirname, '../teams-bot/src/index.ts'),
         },
     },
     test: {

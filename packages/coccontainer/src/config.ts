@@ -22,6 +22,33 @@ export interface WhatsAppConfig {
     defaultAgentId?: string;
 }
 
+export interface TeamsConfig {
+    /** Enable Teams bridge (default: false) */
+    enabled?: boolean;
+    /** Transport mode: 'graph' (default, uses Graph API with az tokens) or 'mcp' (Teams MCP server). */
+    mode?: 'graph' | 'mcp';
+    /** Team display name — resolved to ID on startup, created if missing. */
+    teamName?: string;
+    /** Channel display name — resolved to ID on startup, created if missing. */
+    channelName?: string;
+    /** Team ID (GUID) — auto-resolved from teamName if not set. */
+    teamId?: string;
+    /** MCP server URL for the Teams server — required for mcp mode. */
+    mcpServerUrl?: string;
+    /** Teams channel ID for broadcast — auto-resolved from channelName if not set. */
+    channelId?: string;
+    /** Display name for bot in Teams messages (default: "CoC") */
+    botName?: string;
+    /** Polling interval in ms for checking new messages (default: 3000) */
+    pollIntervalMs?: number;
+    /** Agent ID to host global sessions (falls back to first online agent) */
+    defaultAgentId?: string;
+    /** Azure AD client ID for device code flow (optional, uses Azure CLI public client by default) */
+    clientId?: string;
+    /** OAuth2 scope for the Teams MCP resource (optional) */
+    scope?: string;
+}
+
 export interface ContainerConfig {
     serve?: {
         port?: number;
@@ -35,6 +62,7 @@ export interface ContainerConfig {
     /** Messaging integrations */
     messaging?: {
         whatsapp?: WhatsAppConfig;
+        teams?: TeamsConfig;
     };
 }
 
@@ -44,6 +72,21 @@ export interface ResolvedWhatsAppConfig {
     groupJid?: string;
     userName: string;
     defaultAgentId?: string;
+}
+
+export interface ResolvedTeamsConfig {
+    enabled: boolean;
+    mode: 'graph' | 'mcp';
+    teamName?: string;
+    channelName?: string;
+    teamId?: string;
+    mcpServerUrl: string;
+    channelId?: string;
+    botName: string;
+    pollIntervalMs: number;
+    defaultAgentId?: string;
+    clientId?: string;
+    scope?: string;
 }
 
 export interface ResolvedContainerConfig {
@@ -56,6 +99,7 @@ export interface ResolvedContainerConfig {
     tunnelBridgeBasePort: number;
     messaging: {
         whatsapp: ResolvedWhatsAppConfig;
+        teams: ResolvedTeamsConfig;
     };
 }
 
@@ -75,6 +119,15 @@ const DEFAULTS: ResolvedContainerConfig = {
             sessionDir: path.join(DEFAULT_DATA_DIR, 'whatsapp-session'),
             userName: 'CoC',
         },
+        teams: {
+            enabled: true,
+            mode: 'mcp',
+            teamName: 'Coc',
+            channelName: 'Coc-General',
+            mcpServerUrl: 'https://agent365.svc.cloud.microsoft/agents/tenants/72f988bf-86f1-41af-91ab-2d7cd011db47/servers/mcp_TeamsServer',
+            botName: 'CoC',
+            pollIntervalMs: 3000,
+        },
     },
 };
 
@@ -89,6 +142,8 @@ export function resolveConfig(overrides?: Partial<ContainerConfig>): ResolvedCon
     const fileConfig = loadConfigFile();
     const waFile = fileConfig.messaging?.whatsapp;
     const waOver = overrides?.messaging?.whatsapp;
+    const teamsFile = fileConfig.messaging?.teams;
+    const teamsOver = overrides?.messaging?.teams;
     return {
         serve: {
             port: overrides?.serve?.port ?? fileConfig.serve?.port ?? DEFAULTS.serve.port,
@@ -104,6 +159,18 @@ export function resolveConfig(overrides?: Partial<ContainerConfig>): ResolvedCon
                 groupJid: waOver?.groupJid ?? waFile?.groupJid ?? DEFAULTS.messaging.whatsapp.groupJid,
                 userName: waOver?.userName ?? waFile?.userName ?? DEFAULTS.messaging.whatsapp.userName,
                 defaultAgentId: waOver?.defaultAgentId ?? waFile?.defaultAgentId ?? DEFAULTS.messaging.whatsapp.defaultAgentId,
+            },
+            teams: {
+                enabled: teamsOver?.enabled ?? teamsFile?.enabled ?? DEFAULTS.messaging.teams.enabled,
+                mode: teamsOver?.mode ?? teamsFile?.mode ?? DEFAULTS.messaging.teams.mode,
+                teamName: teamsOver?.teamName ?? teamsFile?.teamName ?? DEFAULTS.messaging.teams.teamName,
+                channelName: teamsOver?.channelName ?? teamsFile?.channelName ?? DEFAULTS.messaging.teams.channelName,
+                teamId: teamsOver?.teamId ?? teamsFile?.teamId ?? DEFAULTS.messaging.teams.teamId,
+                mcpServerUrl: teamsOver?.mcpServerUrl ?? teamsFile?.mcpServerUrl ?? DEFAULTS.messaging.teams.mcpServerUrl,
+                channelId: teamsOver?.channelId ?? teamsFile?.channelId ?? DEFAULTS.messaging.teams.channelId,
+                botName: teamsOver?.botName ?? teamsFile?.botName ?? DEFAULTS.messaging.teams.botName,
+                pollIntervalMs: teamsOver?.pollIntervalMs ?? teamsFile?.pollIntervalMs ?? DEFAULTS.messaging.teams.pollIntervalMs,
+                defaultAgentId: teamsOver?.defaultAgentId ?? teamsFile?.defaultAgentId ?? DEFAULTS.messaging.teams.defaultAgentId,
             },
         },
     };

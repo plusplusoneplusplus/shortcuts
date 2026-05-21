@@ -1,6 +1,6 @@
 /**
  * IMSettingsSection — container-mode admin panel for Instant Messaging integrations.
- * Currently supports WhatsApp via Baileys.
+ * Supports WhatsApp via Baileys and MS Teams via MCP server.
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -17,6 +17,17 @@ interface WhatsAppStatus {
     error: string | null;
     groupJid?: string;
     userName: string;
+}
+
+interface TeamsStatus {
+    enabled: boolean;
+    status: 'disconnected' | 'connecting' | 'authenticating' | 'connected' | 'error';
+    error: string | null;
+    teamName?: string;
+    channelName?: string;
+    teamId?: string;
+    channelId?: string;
+    botName: string;
 }
 
 async function fetchMessagingStatus(): Promise<WhatsAppStatus> {
@@ -36,6 +47,28 @@ async function postMessagingConfig(patch: { userName?: string; groupJid?: string
 
 async function postMessagingReconnect(): Promise<void> {
     const res = await fetch(getRawApiBase() + '/container/messaging/reconnect', {
+        method: 'POST',
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
+async function fetchTeamsStatus(): Promise<TeamsStatus> {
+    const res = await fetch(getRawApiBase() + '/container/messaging/teams/status');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
+async function postTeamsConfig(patch: { botName?: string; channelId?: string; enabled?: boolean; teamName?: string; channelName?: string }): Promise<void> {
+    const res = await fetch(getRawApiBase() + '/container/messaging/teams/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
+async function postTeamsReconnect(): Promise<void> {
+    const res = await fetch(getRawApiBase() + '/container/messaging/teams/reconnect', {
         method: 'POST',
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -324,6 +357,269 @@ export function IMSettingsSection() {
                     )}
                 </div>
             </Dialog>
+
+            <TeamsSettingsCard />
         </div>
+    );
+}
+
+function TeamsStatusDot({ status }: { status: TeamsStatus['status'] }) {
+    const colors: Record<string, string> = {
+        connected: 'bg-green-500',
+        connecting: 'bg-blue-500 animate-pulse',
+        authenticating: 'bg-amber-500 animate-pulse',
+        error: 'bg-red-500',
+        disconnected: 'bg-gray-400',
+    };
+    return <span className={`inline-block w-2 h-2 rounded-full ${colors[status] ?? colors.disconnected}`} />;
+}
+
+function TeamsStatusLabel({ status }: { status: TeamsStatus['status'] }) {
+    const labels: Record<string, string> = {
+        connected: 'Connected',
+        connecting: 'Connecting…',
+        authenticating: 'Waiting for login…',
+        error: 'Error',
+        disconnected: 'Not connected',
+    };
+    return <span className="text-sm">{labels[status] ?? status}</span>;
+}
+
+/** Inline editable fields for Team name + Channel name. */
+function TeamsTargetConfig({ status, onSaved, setError }: { status: TeamsStatus; onSaved: () => void; setError: (e: string) => void }) {
+    const [teamName, setTeamName] = useState(status.teamName ?? '');
+    const [channelName, setChannelName] = useState(status.channelName ?? '');
+    const [saving, setSaving] = useState(false);
+
+    const dirty = teamName !== (status.teamName ?? '') || channelName !== (status.channelName ?? '');
+
+    return (
+        <div className="space-y-2 pt-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
+            <p className="text-[10px] text-[#616161] dark:text-[#999]">
+                Set the team & channel where CoC messages are sent. If they don't exist they'll be created automatically.
+            </p>
+            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 items-center">
+                <label className="text-xs text-[#616161] dark:text-[#999]">Team</label>
+                <input
+                    type="text"
+                    value={teamName}
+                    onChange={(e) => setTeamName(e.target.value)}
+                    className="text-sm px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-blue-500"
+                    placeholder="Coc"
+                />
+                <label className="text-xs text-[#616161] dark:text-[#999]">Channel</label>
+                <input
+                    type="text"
+                    value={channelName}
+                    onChange={(e) => setChannelName(e.target.value)}
+                    className="text-sm px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-blue-500"
+                    placeholder="Coc-General"
+                />
+            </div>
+            {dirty && (
+                <Button
+                    size="sm"
+                    variant="primary"
+                    loading={saving}
+                    onClick={async () => {
+                        setSaving(true);
+                        try {
+                            await postTeamsConfig({ teamName: teamName.trim(), channelName: channelName.trim() });
+                            onSaved();
+                        } catch (e: any) {
+                            setError(e.message);
+                        } finally {
+                            setSaving(false);
+                        }
+                    }}
+                >
+                    Save & Resolve
+                </Button>
+            )}
+        </div>
+    );
+}
+
+function TeamsSettingsCard() {
+    const [status, setStatus] = useState<TeamsStatus | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [editName, setEditName] = useState('');
+    const [nameEditing, setNameEditing] = useState(false);
+    const [nameSaving, setNameSaving] = useState(false);
+    const [toggling, setToggling] = useState(false);
+
+    const loadStatus = useCallback(async () => {
+        try {
+            const data = await fetchTeamsStatus();
+            setStatus(data);
+            if (!nameEditing) setEditName(data.botName);
+            setError(null);
+        } catch (e: any) {
+            setError(e.message ?? 'Failed to fetch status');
+        } finally {
+            setLoading(false);
+        }
+    }, [nameEditing]);
+
+    useEffect(() => {
+        void loadStatus();
+    }, [loadStatus]);
+
+    // Poll while authenticating so UI updates when login completes
+    const teamsPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    useEffect(() => {
+        if (status?.status === 'authenticating' || status?.status === 'connecting') {
+            teamsPollRef.current = setInterval(() => void loadStatus(), 3000);
+            return () => { if (teamsPollRef.current) clearInterval(teamsPollRef.current); };
+        } else {
+            if (teamsPollRef.current) { clearInterval(teamsPollRef.current); teamsPollRef.current = null; }
+        }
+    }, [status?.status, loadStatus]);
+
+    if (loading) {
+        return (
+            <Card className="p-4">
+                <div className="flex items-center gap-2 text-sm text-[#848484]">
+                    <Spinner size="sm" /> Loading Teams status…
+                </div>
+            </Card>
+        );
+    }
+
+    return (
+        <SettingsCard
+            title="Microsoft Teams"
+            description="Connect MS Teams to bridge CoC conversations to a Teams channel via Graph API."
+            badge="Container"
+            data-testid="im-settings-teams"
+        >
+            {error && (
+                <div className="text-xs text-red-600 dark:text-red-400 mb-2">
+                    ⚠ {error}
+                </div>
+            )}
+
+            {/* Enable/Disable toggle */}
+            <div className="flex items-center justify-between mb-3 pb-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                <span className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">
+                    {status?.enabled ? 'Enabled' : 'Disabled'}
+                </span>
+                <button
+                    disabled={toggling}
+                    onClick={async () => {
+                        setToggling(true);
+                        try {
+                            await postTeamsConfig({ enabled: !status?.enabled });
+                            setTimeout(() => void loadStatus(), 1000);
+                        } catch (e: any) {
+                            setError(e.message);
+                        } finally {
+                            setToggling(false);
+                        }
+                    }}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${status?.enabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-[#555]'} ${toggling ? 'opacity-50' : ''}`}
+                >
+                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${status?.enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'}`} />
+                </button>
+            </div>
+
+            {!status?.enabled ? (
+                <p className="text-xs text-[#616161] dark:text-[#999]">
+                    Teams integration is disabled. Toggle the switch above to enable it. A container restart is required for changes to take effect.
+                </p>
+            ) : (
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <TeamsStatusDot status={status.status} />
+                            <TeamsStatusLabel status={status.status} />
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                size="sm"
+                                variant={status.status === 'connected' ? 'secondary' : 'primary'}
+                                onClick={async () => {
+                                    try {
+                                        await postTeamsReconnect();
+                                        setTimeout(() => void loadStatus(), 2000);
+                                    } catch (e: any) {
+                                        setError(e.message);
+                                    }
+                                }}
+                            >
+                                {status.status === 'connected' ? 'Reconnect' : 'Connect'}
+                            </Button>
+                            <button
+                                onClick={() => void loadStatus()}
+                                title="Refresh status"
+                                className="text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-base leading-none px-1"
+                            >↻</button>
+                        </div>
+                    </div>
+
+                    {status.error && (
+                        <div className="text-xs text-red-600 dark:text-red-400">
+                            Error: {status.error}
+                        </div>
+                    )}
+
+                    {/* Editable bot name */}
+                    <div className="space-y-2">
+                        <label className="block text-xs text-[#616161] dark:text-[#999]">
+                            Bot name <span className="text-[10px] italic">(shown in Teams messages)</span>
+                        </label>
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="text"
+                                value={editName}
+                                onChange={(e) => { setEditName(e.target.value); setNameEditing(true); }}
+                                className="flex-1 text-sm px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-blue-500"
+                                placeholder="CoC"
+                            />
+                            {nameEditing && editName !== status.botName && (
+                                <Button
+                                    size="sm"
+                                    variant="primary"
+                                    loading={nameSaving}
+                                    onClick={async () => {
+                                        setNameSaving(true);
+                                        try {
+                                            await postTeamsConfig({ botName: editName.trim() || 'CoC' });
+                                            setNameEditing(false);
+                                            setTimeout(() => void loadStatus(), 1000);
+                                        } catch (e: any) {
+                                            setError(e.message);
+                                        } finally {
+                                            setNameSaving(false);
+                                        }
+                                    }}
+                                >
+                                    Save
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Team & Channel name inputs */}
+                    <TeamsTargetConfig status={status} onSaved={() => void loadStatus()} setError={setError} />
+
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                        <span className="text-[#616161] dark:text-[#999]">Resolved Team</span>
+                        <span className="text-[#1e1e1e] dark:text-[#cccccc] font-mono text-[10px]">
+                            {status.teamId
+                                ? status.teamId
+                                : <span className="italic text-[#999]">not resolved</span>}
+                        </span>
+                        <span className="text-[#616161] dark:text-[#999]">Resolved Channel</span>
+                        <span className="text-[#1e1e1e] dark:text-[#cccccc] font-mono text-[10px]">
+                            {status.channelId
+                                ? status.channelId
+                                : <span className="italic text-[#999]">not resolved</span>}
+                        </span>
+                    </div>
+                </div>
+            )}
+        </SettingsCard>
     );
 }

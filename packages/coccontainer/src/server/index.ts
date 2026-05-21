@@ -92,6 +92,22 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
         whatsappBridge = bridge;
     }
 
+    // ── Teams bridge (only when enabled) ─────────────
+    let teamsBridge: { stop(): Promise<void>; getTeamsStatus(): { enabled: boolean; status: string; error: string | null; teamName?: string; channelName?: string; teamId?: string; channelId?: string; botName: string }; updateConfig(patch: { botName?: string; channelId?: string; enabled?: boolean; teamName?: string; channelName?: string }): Promise<void>; reconnect(): Promise<void>; listChannels(): Promise<Array<{ id: string; displayName: string }>> } | undefined;
+    const teamsConfig = config.messaging?.teams;
+    if (teamsConfig?.enabled) {
+        const { TeamsBridge } = await import('../messaging/teams-bridge');
+        const bridge = new TeamsBridge({
+            config: teamsConfig,
+            dataDir: config.serve.dataDir,
+            wsRelay,
+            agentStore,
+            tunnelBridge,
+        });
+        await bridge.start();
+        teamsBridge = bridge;
+    }
+
     const server = http.createServer(async (req, res) => {
         const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
 
@@ -284,6 +300,68 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                     }
                 }
                 return sendJson(res, { groups: [], error: 'WhatsApp not enabled' });
+            }
+
+            // ── Teams Messaging API ────────────────────────────────
+            if (url.pathname === '/api/container/messaging/teams/status' && req.method === 'GET') {
+                if (teamsBridge) {
+                    return sendJson(res, teamsBridge.getTeamsStatus());
+                }
+                return sendJson(res, {
+                    enabled: false,
+                    status: 'disconnected',
+                    error: null,
+                    botName: config.messaging?.teams?.botName ?? 'CoC',
+                });
+            }
+
+            if (url.pathname === '/api/container/messaging/teams/config' && req.method === 'POST') {
+                const body = await readBody(req);
+                const { botName, channelId, enabled, teamName, channelName } = body as { botName?: string; channelId?: string; enabled?: boolean; teamName?: string; channelName?: string };
+                if (teamsBridge) {
+                    await teamsBridge.updateConfig({ botName, channelId, enabled, teamName, channelName });
+                    return sendJson(res, { ok: true, message: 'Teams config updated' });
+                }
+                // Even without active bridge, persist the config
+                try {
+                    const fs = await import('fs');
+                    const path = await import('path');
+                    const jsYaml = await import('js-yaml');
+                    const configPath = path.join(config.serve.dataDir, 'config.yaml');
+                    let doc: Record<string, any> = {};
+                    try { const raw = fs.readFileSync(configPath, 'utf8'); doc = (jsYaml.load(raw) as Record<string, any>) ?? {}; } catch {}
+                    if (!doc.messaging) doc.messaging = {};
+                    if (!doc.messaging.teams) doc.messaging.teams = {};
+                    if (enabled !== undefined) doc.messaging.teams.enabled = enabled;
+                    if (botName !== undefined) doc.messaging.teams.botName = botName;
+                    if (channelId !== undefined) doc.messaging.teams.channelId = channelId;
+                    if (teamName !== undefined) doc.messaging.teams.teamName = teamName;
+                    if (channelName !== undefined) doc.messaging.teams.channelName = channelName;
+                    fs.writeFileSync(configPath, jsYaml.dump(doc), 'utf8');
+                    return sendJson(res, { ok: true, message: 'Teams config saved (restart required)' });
+                } catch (err: any) {
+                    return sendJson(res, { ok: false, error: err.message });
+                }
+            }
+
+            if (url.pathname === '/api/container/messaging/teams/reconnect' && req.method === 'POST') {
+                if (teamsBridge) {
+                    teamsBridge.reconnect().catch(err => console.error('[container] Teams reconnect error:', err));
+                    return sendJson(res, { ok: true, message: 'Reconnecting to Teams' });
+                }
+                return sendJson(res, { ok: false, error: 'Teams not enabled' });
+            }
+
+            if (url.pathname === '/api/container/messaging/teams/channels' && req.method === 'GET') {
+                if (teamsBridge) {
+                    try {
+                        const channels = await teamsBridge.listChannels();
+                        return sendJson(res, { channels });
+                    } catch (err: any) {
+                        return sendJson(res, { channels: [], error: err.message });
+                    }
+                }
+                return sendJson(res, { channels: [], error: 'Teams not enabled' });
             }
 
             // ── Agent-scoped proxy ──────────────────────────────

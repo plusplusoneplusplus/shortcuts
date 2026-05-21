@@ -44,6 +44,7 @@ export class WhatsAppBridge {
         this.bot = new WhatsAppBot({
             sessionDir: this.opts.config.sessionDir,
             deviceName: this.opts.config.userName,
+            printQR: false,
             onMessage: (msg) => this.onInboundMessage(msg),
             onStatusChange: (status) => {
                 if (status === 'connected') {
@@ -103,6 +104,7 @@ export class WhatsAppBridge {
         this.bot = new WhatsAppBot({
             sessionDir: this.opts.config.sessionDir,
             deviceName: this.opts.config.userName,
+            printQR: false,
             onMessage: (msg) => this.onInboundMessage(msg),
             onStatusChange: (status) => {
                 if (status === 'connected') {
@@ -199,28 +201,30 @@ export class WhatsAppBridge {
             return;
         }
 
-        console.log(`[whatsapp-bridge] WS event: type=${parsed.type} from=${msg.agentName}`);
-
         if (parsed.type !== 'process-updated') return;
         const proc = parsed.process as Record<string, unknown> | undefined;
-        if (!proc) { console.log('[whatsapp-bridge] No process in event'); return; }
+        if (!proc) return;
 
         const status = proc.status as string;
         const processId = proc.id as string;
-        console.log(`[whatsapp-bridge] Process ${processId} status=${status}`);
         if (!processId) return;
 
         if (status !== 'completed' && status !== 'running') return;
 
         // Per-process concurrency guard to prevent duplicate sends
         if (this._processingLocks.has(processId)) {
-            console.log(`[whatsapp-bridge] Process ${processId} already being handled, skipping`);
             return;
         }
         this._processingLocks.add(processId);
 
         const target = this.opts.config.groupJid;
-        if (!target) { console.log('[whatsapp-bridge] No groupJid set, skipping'); this._processingLocks.delete(processId); return; }
+        if (!target) { this._processingLocks.delete(processId); return; }
+
+        // Skip if WhatsApp is not connected (e.g. qr-pending, disconnected)
+        if (!this.bot || this.bot.getStatus() !== 'connected') {
+            this._processingLocks.delete(processId);
+            return;
+        }
 
         const agentId = msg.agentId;
         const agentAddr = this.getAgentAddress(agentId);
@@ -290,25 +294,31 @@ export class WhatsAppBridge {
         } catch (err) {
             console.error('[whatsapp-bridge] Failed to fetch process turns:', err);
         } finally {
-            this._processingLocks.delete(processId);
+            // Only release lock for running processes (may get new turns later)
+            // Keep lock for completed processes — no more turns will come
+            if (status !== 'completed') {
+                this._processingLocks.delete(processId);
+            }
         }
     }
 
     /** Format a structured WhatsApp message with two sections. */
     formatOutboundMessage(opts: { role: string; agent: string; repo: string; title: string; content: string; userName?: string }): string {
-        const icon = opts.role === 'user' ? '💬' : '🤖';
         const sender = opts.role === 'user'
             ? (opts.userName || 'You')
             : 'CoC Agent';
 
-        const chatSection = [`${icon} *${sender}*`, '*Chat:*'];
-        chatSection.push(`  Agent: ${opts.agent}`);
-        chatSection.push(`  Repo: ${opts.repo}`);
+        const lines = [
+            `*${sender}*`,
+            `Agent: ${opts.agent}`,
+            `Repo: ${opts.repo}`,
+        ];
         if (opts.title) {
-            chatSection.push(`  Title: ${opts.title}`);
+            lines.push(`Title: ${opts.title}`);
         }
+        lines.push('', '*Message:*', opts.content.trimStart());
 
-        return chatSection.join('\n') + '\n\n*Message:*\n' + opts.content.trimStart();
+        return lines.join('\n');
     }
 
     /** Resolve a workspace ID to a human-readable name, using cache and agent API. */
