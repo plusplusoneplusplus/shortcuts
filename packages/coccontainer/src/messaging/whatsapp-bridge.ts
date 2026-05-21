@@ -201,28 +201,24 @@ export class WhatsAppBridge {
             return;
         }
 
-        console.log(`[whatsapp-bridge] WS event: type=${parsed.type} from=${msg.agentName}`);
-
         if (parsed.type !== 'process-updated') return;
         const proc = parsed.process as Record<string, unknown> | undefined;
-        if (!proc) { console.log('[whatsapp-bridge] No process in event'); return; }
+        if (!proc) return;
 
         const status = proc.status as string;
         const processId = proc.id as string;
-        console.log(`[whatsapp-bridge] Process ${processId} status=${status}`);
         if (!processId) return;
 
         if (status !== 'completed' && status !== 'running') return;
 
         // Per-process concurrency guard to prevent duplicate sends
         if (this._processingLocks.has(processId)) {
-            console.log(`[whatsapp-bridge] Process ${processId} already being handled, skipping`);
             return;
         }
         this._processingLocks.add(processId);
 
         const target = this.opts.config.groupJid;
-        if (!target) { console.log('[whatsapp-bridge] No groupJid set, skipping'); this._processingLocks.delete(processId); return; }
+        if (!target) { this._processingLocks.delete(processId); return; }
 
         // Skip if WhatsApp is not connected (e.g. qr-pending, disconnected)
         if (!this.bot || this.bot.getStatus() !== 'connected') {
@@ -298,7 +294,11 @@ export class WhatsAppBridge {
         } catch (err) {
             console.error('[whatsapp-bridge] Failed to fetch process turns:', err);
         } finally {
-            this._processingLocks.delete(processId);
+            // Only release lock for running processes (may get new turns later)
+            // Keep lock for completed processes — no more turns will come
+            if (status !== 'completed') {
+                this._processingLocks.delete(processId);
+            }
         }
     }
 
