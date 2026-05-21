@@ -113,8 +113,8 @@ test.describe('MCP Servers Panel — Navigation', () => {
         // Click MCP nav
         await page.locator('[data-testid="nav-item-mcp"]').click();
 
-        // Should show server list
-        await expect(page.locator('[data-testid="mcp-toggle-code-tools"]')).toBeVisible({ timeout: 10_000 });
+        // Should show server list (checkbox is opacity:0, so check it's attached)
+        await expect(page.locator('[data-testid="mcp-toggle-code-tools"]')).toBeAttached({ timeout: 10_000 });
     });
 });
 
@@ -143,15 +143,15 @@ test.describe('MCP Servers Panel — Server list', () => {
         await mockMcpConfig(page, TWO_SERVERS);
         await setupAndNavigate(page, serverUrl);
 
-        const panel = page.locator('[data-testid="settings-content-panel"]');
+        const panel = page.locator('[data-testid="mcp-server-list"]');
 
         // Both server names visible
         await expect(panel.getByText('code-tools')).toBeVisible({ timeout: 10_000 });
         await expect(panel.getByText('web-search')).toBeVisible();
 
-        // Type badges visible (uppercase)
-        await expect(panel.getByText('STDIO')).toBeVisible();
-        await expect(panel.getByText('SSE')).toBeVisible();
+        // Type badges visible in the server list (scoped to avoid AddServerCard duplicates)
+        await expect(panel.getByText('stdio').first()).toBeVisible();
+        await expect(panel.getByText('sse').first()).toBeVisible();
     });
 
     test('MCP.5 all servers enabled when enabledMcpServers is null', async ({ page, serverUrl }) => {
@@ -353,8 +353,8 @@ test.describe('MCP Servers Panel — Error handling', () => {
 
         await setupAndNavigate(page, serverUrl);
 
-        // Error message should be displayed (fetchApi throws on non-ok responses)
-        await expect(page.locator('[data-testid="settings-content-panel"]').locator('.text-red-500')).toBeVisible({ timeout: 10_000 });
+        // Error message should be displayed in the mcp-empty-state element
+        await expect(page.locator('[data-testid="settings-content-panel"]').locator('.mcp-empty-state')).toBeVisible({ timeout: 10_000 });
     });
 
     test('MCP.13 reverts toggle on PUT failure', async ({ page, serverUrl }) => {

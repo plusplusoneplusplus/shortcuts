@@ -732,8 +732,8 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
 
             {/* ── Right content panel ── */}
             <div className="flex-1 overflow-y-auto min-w-0" data-testid="settings-content-panel">
-                {/* Section header (hidden for Agent Skills — panel ships its own header) */}
-                {activeSection !== 'skills' && (
+                {/* Section header (hidden for Agent Skills / MCP — panels ship their own header) */}
+                {activeSection !== 'skills' && activeSection !== 'mcp' && (
                 <header className="flex items-start justify-between gap-4 px-6 pt-5 pb-4">
                     <div className="min-w-0">
                         <h2 className="text-[18px] font-semibold leading-tight text-[#1f2328] dark:text-[#e6edf3]" data-testid="settings-section-title">
@@ -787,7 +787,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                 )}
 
                 {/* Section body */}
-                <div className={activeSection === 'skills' ? '' : 'px-6 pb-8 flex flex-col gap-4'}>
+                <div className={activeSection === 'skills' || activeSection === 'mcp' ? '' : 'px-6 pb-8 flex flex-col gap-4'}>
                     {activeSection === 'info' && (
                         <>
                             {/* WORKSPACE card */}
@@ -896,18 +896,16 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                         </SectionCard>
                     )}
                     {activeSection === 'mcp' && (
-                        <SectionCard>
-                            <McpServersPanel
-                                loading={loading}
-                                error={error}
-                                saving={saving}
-                                availableServers={availableServers}
-                                sources={mcpSources}
-                                isEnabled={isEnabled}
-                                onToggle={handleToggle}
-                                onRefresh={() => fetchMcpConfig(true)}
-                            />
-                        </SectionCard>
+                        <McpServersPanel
+                            loading={loading}
+                            error={error}
+                            saving={saving}
+                            availableServers={availableServers}
+                            sources={mcpSources}
+                            isEnabled={isEnabled}
+                            onToggle={handleToggle}
+                            onRefresh={() => fetchMcpConfig(true)}
+                        />
                     )}
                     {activeSection === 'skills' && (
                         <AgentSkillsPanel
