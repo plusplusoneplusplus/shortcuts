@@ -57,6 +57,8 @@ export interface TeamsAuthConfig {
     bearerToken?: string;
     /** Called when device code flow requires user interaction. */
     onDeviceCode?: (verification: DeviceCodeInfo) => void;
+    /** Called to refresh the token when a 401 is received. Should return a new bearer token. */
+    onTokenRefresh?: () => Promise<string | null>;
 }
 
 /** Device code verification info shown to the user. */

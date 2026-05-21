@@ -67,6 +67,7 @@ export class TeamsBridge {
                 bearerToken: this._azToken ?? undefined,
                 clientId: this.opts.config.clientId,
                 scope: this.opts.config.scope,
+                onTokenRefresh: () => this.refreshMcpToken(),
             },
             onMessage: (msg) => this.onInboundMessage(msg),
             onStatusChange: (status) => {
@@ -98,6 +99,19 @@ export class TeamsBridge {
         this.bot = null;
         this.store?.close();
         this.store = null;
+    }
+
+    /** Refresh MCP OAuth token (called by bot on 401). */
+    private async refreshMcpToken(): Promise<string | null> {
+        if (this.opts.config.mode !== 'mcp') return null;
+        try {
+            this._azToken = await acquireMcpOAuthToken(this.opts.config.mcpServerUrl);
+            console.log('[teams-bridge] MCP token refreshed');
+            return this._azToken;
+        } catch (err: any) {
+            console.error(`[teams-bridge] MCP token refresh failed: ${err.message}`);
+            return null;
+        }
     }
 
     /** Get current Teams bridge status for REST API. */
@@ -158,6 +172,7 @@ export class TeamsBridge {
                 bearerToken: this._azToken ?? undefined,
                 clientId: this.opts.config.clientId,
                 scope: this.opts.config.scope,
+                onTokenRefresh: () => this.refreshMcpToken(),
             },
             onMessage: (msg) => this.onInboundMessage(msg),
             onStatusChange: (status) => {
