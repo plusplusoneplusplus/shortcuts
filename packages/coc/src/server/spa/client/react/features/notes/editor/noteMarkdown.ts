@@ -391,6 +391,40 @@ turndown.addRule('filePathRef', {
     },
 });
 
+// Aligned or indented paragraphs/headings: no standard markdown syntax exists, so
+// these are serialized as raw HTML blocks that `marked` will pass through unchanged.
+// Handles paragraphs and headings (H1–H3) that carry a non-default text-align style
+// or a data-indent attribute.
+function hasAlignOrIndent(el: HTMLElement): boolean {
+    const style = el.getAttribute('style') ?? '';
+    const indent = el.getAttribute('data-indent');
+    const hasNonDefaultAlign =
+        /text-align/i.test(style) && !/text-align:\s*left\b/i.test(style);
+    const hasIndent = indent != null && indent !== '0' && indent !== '';
+    return hasNonDefaultAlign || hasIndent;
+}
+
+turndown.addRule('alignedOrIndentedBlock', {
+    filter(node) {
+        const tag = node.nodeName;
+        if (!['P', 'H1', 'H2', 'H3'].includes(tag)) return false;
+        return hasAlignOrIndent(node as HTMLElement);
+    },
+    replacement(_content, node) {
+        const el = node as HTMLElement;
+        const tag = el.tagName.toLowerCase();
+        const attrs: string[] = [];
+        const style = el.getAttribute('style');
+        if (style) attrs.push(`style="${style}"`);
+        const indent = el.getAttribute('data-indent');
+        if (indent && indent !== '0') attrs.push(`data-indent="${indent}"`);
+        const attrStr = attrs.length > 0 ? ' ' + attrs.join(' ') : '';
+        // Use innerHTML so inline formatting (bold, italic, etc.) is preserved
+        const inner = el.innerHTML;
+        return `\n\n<${tag}${attrStr}>${inner}</${tag}>\n\n`;
+    },
+});
+
 // Empty paragraphs (from pressing Enter multiple times) → `&nbsp;` placeholder line.
 // Required because turndown drops `<p></p>` and CommonMark collapses blank lines, so
 // without a placeholder consecutive empty paragraphs vanish in the markdown round-trip.

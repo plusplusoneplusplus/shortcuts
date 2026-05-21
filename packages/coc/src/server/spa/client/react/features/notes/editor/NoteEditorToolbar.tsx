@@ -346,6 +346,18 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
                         icon="⊞"
                         command={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
                     />
+
+                    {/* Alignment */}
+                    <Sep />
+                    <TB editor={editor} label="Align left"    icon="⫷" command={() => c().setTextAlign('left').run()}    activeName="textStyle" activeAttrs={{ textAlign: 'left' }} />
+                    <TB editor={editor} label="Align center"  icon="≡" command={() => c().setTextAlign('center').run()}  activeName="textStyle" activeAttrs={{ textAlign: 'center' }} />
+                    <TB editor={editor} label="Align right"   icon="⫸" command={() => c().setTextAlign('right').run()}   activeName="textStyle" activeAttrs={{ textAlign: 'right' }} />
+                    <TB editor={editor} label="Justify"       icon="☰" command={() => c().setTextAlign('justify').run()} activeName="textStyle" activeAttrs={{ textAlign: 'justify' }} />
+
+                    {/* Indent */}
+                    <Sep />
+                    <TB editor={editor} label="Increase indent" icon="→|" command={() => editor.chain().focus().increaseIndent().run()} />
+                    <TB editor={editor} label="Decrease indent" icon="|←" command={() => editor.chain().focus().decreaseIndent().run()} />
                 </>
             )}
 

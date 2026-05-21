@@ -38,3 +38,5 @@ export { shortenFilePath, linkifyFilePaths, FILE_PATH_RE } from './file-path-uti
 export { RalphLaunchDialog } from './RalphLaunchDialog';
 export type { RalphLaunchDialogProps } from './RalphLaunchDialog';
 export { isGoalFile } from './goal-file-utils';
+export { useUndoRedo } from './useUndoRedo';
+export type { HistorySnapshot } from './useUndoRedo';

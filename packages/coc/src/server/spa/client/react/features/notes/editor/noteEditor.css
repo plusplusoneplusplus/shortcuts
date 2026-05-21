@@ -315,6 +315,17 @@
     border-color: rgba(78, 166, 234, 0.65);
 }
 
+/* ── Paragraph / heading indentation (data-indent attribute) ─────────── */
+
+.note-editor .ProseMirror [data-indent="1"] { padding-left: 2rem; }
+.note-editor .ProseMirror [data-indent="2"] { padding-left: 4rem; }
+.note-editor .ProseMirror [data-indent="3"] { padding-left: 6rem; }
+.note-editor .ProseMirror [data-indent="4"] { padding-left: 8rem; }
+.note-editor .ProseMirror [data-indent="5"] { padding-left: 10rem; }
+.note-editor .ProseMirror [data-indent="6"] { padding-left: 12rem; }
+.note-editor .ProseMirror [data-indent="7"] { padding-left: 14rem; }
+.note-editor .ProseMirror [data-indent="8"] { padding-left: 16rem; }
+
 /* ── File-path references ──────────────────────────────────────────── */
 
 .note-editor .ProseMirror .file-ref-link {
