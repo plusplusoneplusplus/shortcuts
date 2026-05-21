@@ -26,6 +26,12 @@ export interface QueueContextState {
     history: any[];
     stats: QueueStats;
     repoQueueMap: Record<string, { queued: any[]; running: any[]; stats: QueueStats }>;
+    /**
+     * Per-workspace history cache so revisiting a repo can render the sidebar
+     * instantly from the last known snapshot while the freshness fetch runs in
+     * the background. Avoids a full loading spinner on every repo switch.
+     */
+    repoHistoryMap: Record<string, { items: any[]; hasMore: boolean; updatedAt: number }>;
     /** Per-workspace count of chats currently streaming (follow-up SSE). */
     streamingChatWorkspaces: Record<string, number>;
     showDialog: boolean;
@@ -97,6 +103,7 @@ const initialState: QueueContextState = {
     history: [],
     stats: createEmptyQueueStats(),
     repoQueueMap: {},
+    repoHistoryMap: {},
     streamingChatWorkspaces: {},
     showDialog: false,
     dialogInitialFolderPath: null,
@@ -129,6 +136,7 @@ export type QueueAction =
     | { type: 'QUEUE_UPDATED'; queue: { queued: any[]; running: any[]; stats: any } }
     | { type: 'REPO_QUEUE_UPDATED'; repoId: string; queue: { queued?: any[]; running?: any[]; stats?: any } }
     | { type: 'REPO_QUEUE_STATS_UPDATED'; repoId: string; stats: Partial<QueueStats> }
+    | { type: 'REPO_HISTORY_UPDATED'; repoId: string; items: any[]; hasMore: boolean }
     | { type: 'SET_HISTORY'; history: any[] }
     | { type: 'DRAIN_START'; queued: number; running: number }
     | { type: 'DRAIN_PROGRESS'; queued: number; running: number }
@@ -188,6 +196,19 @@ export function queueReducer(state: QueueContextState, action: QueueAction): Que
             return {
                 ...state,
                 repoQueueMap: { ...state.repoQueueMap, [action.repoId]: repoData },
+            };
+        }
+        case 'REPO_HISTORY_UPDATED': {
+            return {
+                ...state,
+                repoHistoryMap: {
+                    ...state.repoHistoryMap,
+                    [action.repoId]: {
+                        items: action.items,
+                        hasMore: action.hasMore,
+                        updatedAt: Date.now(),
+                    },
+                },
             };
         }
         case 'SET_HISTORY':

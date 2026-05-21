@@ -46,11 +46,20 @@ function getActiveProcessIds(tasks: any[]): string[] {
 }
 
 export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
-    const [running, setRunning] = useState<any[]>([]);
-    const [queued, setQueued] = useState<any[]>([]);
-    const [history, setHistory] = useState<ProcessHistoryItem[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [hasMore, setHasMore] = useState(false);
+    const { state: queueState, dispatch: queueDispatch } = useQueue();
+
+    // Seed from per-workspace caches so revisiting a repo renders the sidebar
+    // instantly while the freshness fetch runs in the background.
+    const cachedHistory = queueState.repoHistoryMap?.[workspaceId];
+    const cachedQueue = queueState.repoQueueMap[workspaceId];
+
+    const [running, setRunning] = useState<any[]>(cachedQueue?.running ?? []);
+    const [queued, setQueued] = useState<any[]>(cachedQueue?.queued ?? []);
+    const [history, setHistory] = useState<ProcessHistoryItem[]>(
+        (cachedHistory?.items as ProcessHistoryItem[]) ?? [],
+    );
+    const [loading, setLoading] = useState(!cachedHistory && !cachedQueue);
+    const [hasMore, setHasMore] = useState<boolean>(cachedHistory?.hasMore ?? false);
     const [loadingMore, setLoadingMore] = useState(false);
     const [now, setNow] = useState(Date.now());
     const [isPaused, setIsPaused] = useState(false);
@@ -81,7 +90,6 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         setSearchQuery(query);
     }, []);
 
-    const { state: queueState, dispatch: queueDispatch } = useQueue();
     const { state: appState, dispatch: appDispatch } = useApp();
     const { refreshUnseenCounts } = useRepos();
     const selectedTaskId = queueState.selectedTaskIdByRepo[workspaceId] ?? null;
@@ -117,44 +125,62 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     const fetchHistory = useCallback(async (offset = 0) => {
         const data = await getSpaCocClient().workspaces.history(workspaceId, { limit: 100, offset }).catch(() => null);
         const items = (data?.history as ProcessHistoryItem[]) || [];
+        const nextHasMore = data?.hasMore ?? false;
         if (offset === 0) {
             setHistory(items);
+            queueDispatch({ type: 'REPO_HISTORY_UPDATED', repoId: workspaceId, items, hasMore: nextHasMore });
         } else {
-            setHistory(prev => [...prev, ...items]);
+            setHistory(prev => {
+                const merged = [...prev, ...items];
+                queueDispatch({ type: 'REPO_HISTORY_UPDATED', repoId: workspaceId, items: merged, hasMore: nextHasMore });
+                return merged;
+            });
         }
-        setHasMore(data?.hasMore ?? false);
-    }, [workspaceId]);
+        setHasMore(nextHasMore);
+    }, [workspaceId, queueDispatch]);
 
     const fetchQueueAndHistory = useCallback(async () => {
         try {
             const [queueData, historyData] = await Promise.all([
-                getSpaCocClient().queue.list({ repoId: workspaceId }),
+                getSpaCocClient().queue.list({ repoId: workspaceId }).catch(() => null),
                 getSpaCocClient().workspaces.history(workspaceId, { limit: 100, offset: 0 }).catch(() => null),
             ]);
-            const nextRunning = queueData?.running || [];
-            const nextQueued = queueData?.queued || [];
-            const nextStats = queueData?.stats || undefined;
-            setRunning(nextRunning);
-            setQueued(nextQueued);
-            setIsPaused(!!nextStats?.isPaused);
-            setPausedUntil(nextStats?.pausedUntil);
-            setPauseReason(nextStats?.pauseReason);
-            setIsAutopilotPaused(!!nextStats?.isAutopilotPaused);
-            setAutopilotPausedUntil(nextStats?.autopilotPausedUntil);
+            // Only update queue/pause state when the queue fetch actually succeeded —
+            // a transient network error must not clear the running list out from under
+            // the user (this was the "no tasks in queue" flash on rapid repo switches).
+            if (queueData) {
+                const nextRunning = queueData.running || [];
+                const nextQueued = queueData.queued || [];
+                const nextStats = queueData.stats || undefined;
+                setRunning(nextRunning);
+                setQueued(nextQueued);
+                setIsPaused(!!nextStats?.isPaused);
+                setPausedUntil(nextStats?.pausedUntil);
+                setPauseReason(nextStats?.pauseReason);
+                setIsAutopilotPaused(!!nextStats?.isAutopilotPaused);
+                setAutopilotPausedUntil(nextStats?.autopilotPausedUntil);
+                queueDispatch({
+                    type: 'REPO_QUEUE_UPDATED',
+                    repoId: workspaceId,
+                    queue: { queued: nextQueued, running: nextRunning, stats: nextStats },
+                });
+            }
 
-            const items = (historyData?.history as ProcessHistoryItem[]) || [];
-            setHistory(items);
-            setHasMore(historyData?.hasMore ?? false);
-
-            queueDispatch({
-                type: 'REPO_QUEUE_UPDATED',
-                repoId: workspaceId,
-                queue: { queued: nextQueued, running: nextRunning, stats: nextStats },
-            });
+            if (historyData) {
+                const items = (historyData.history as ProcessHistoryItem[]) || [];
+                const nextHasMore = historyData.hasMore ?? false;
+                setHistory(items);
+                setHasMore(nextHasMore);
+                queueDispatch({
+                    type: 'REPO_HISTORY_UPDATED',
+                    repoId: workspaceId,
+                    items,
+                    hasMore: nextHasMore,
+                });
+            }
         } catch {
-            setRunning([]);
-            setQueued([]);
-            setHistory([]);
+            // Both fetches already have inner `.catch(() => null)`; this outer catch is
+            // defensive. Deliberately do NOT clear local lists — keep the cached view.
         }
         setLoading(false);
     }, [workspaceId, queueDispatch]);
@@ -171,8 +197,16 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     }, [fetchHistory, history.length]);
 
     useEffect(() => {
-        setLoading(true);
+        // Only show a loading spinner when we have nothing cached for this repo.
+        // If a cache hit seeded `history`/`running`, fetch silently in the
+        // background so the user never sees a flash of "loading…" on revisit.
+        const hasCachedQueue = !!queueState.repoQueueMap[workspaceId];
+        const hasCachedHistory = !!queueState.repoHistoryMap?.[workspaceId];
+        if (!hasCachedQueue && !hasCachedHistory) {
+            setLoading(true);
+        }
         fetchQueue();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [workspaceId, fetchQueue]);
 
     // Refresh queue when a Ralph session completes (fired by App.tsx WS handler)

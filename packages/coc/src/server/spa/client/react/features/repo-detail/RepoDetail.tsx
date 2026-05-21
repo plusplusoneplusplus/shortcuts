@@ -96,6 +96,26 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
     const color = ws.color || '#848484';
     const activeSubTab = state.activeRepoSubTab;
     const taskCount = repo.taskCount || 0;
+
+    // Track which secondary sub-tabs have ever been visible for this workspace,
+    // so we only mount their (often slow) data-fetching hooks on first activation
+    // rather than for every repo switch. Without this guard, opening any repo
+    // would synchronously hammer endpoints like /api/repos/:id/tree,
+    // /workspaces/:id/notes/tree, /workspaces/:id/work-items, and the various
+    // git endpoints — blocking the Node event loop for many seconds on large
+    // repos and starving the chat tab's /queue + /history requests behind them.
+    const [visitedSubTabs, setVisitedSubTabs] = useState<Set<string>>(() => new Set(activeSubTab ? [activeSubTab] : []));
+    const visitTab = useCallback((tab: string | undefined | null) => {
+        if (!tab) return;
+        setVisitedSubTabs(prev => {
+            if (prev.has(tab)) return prev;
+            const next = new Set(prev);
+            next.add(tab);
+            return next;
+        });
+    }, []);
+    useEffect(() => { visitTab(activeSubTab); }, [activeSubTab, visitTab]);
+    const wasVisited = (tab: string): boolean => visitedSubTabs.has(tab);
     const { running: queueRunningCount, queued: queueQueuedCount } = useRepoQueueStats(ws.id);
     const { ahead: gitAhead, behind: gitBehind } = useGitInfo(ws.id);
     const isGitRepo = !!repo.gitInfo?.isGitRepo;
@@ -674,26 +694,26 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                             </div>
                         )}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab key={ws.id} workspaceId={ws.id} />}
-                        {isGitRepo && <div style={{ display: activeSubTab === 'git' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                        {isGitRepo && wasVisited('git') && <div style={{ display: activeSubTab === 'git' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                             <RepoGitTab key={ws.id} workspaceId={ws.id} />
                         </div>}
                         {activeSubTab === 'wiki' && <RepoWikiTab key={ws.id} workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}
-                        <div style={{ display: activeSubTab === 'explorer' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                        {wasVisited('explorer') && <div style={{ display: activeSubTab === 'explorer' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                             <ExplorerPanel key={ws.id} workspaceId={ws.id} />
-                        </div>
-                        {isGitRepo && <div style={{ display: activeSubTab === 'pull-requests' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                        </div>}
+                        {isGitRepo && wasVisited('pull-requests') && <div style={{ display: activeSubTab === 'pull-requests' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                             <PullRequestsTab
                                 repoId={ws.id}
                                 workspaceId={ws.id}
                                 remoteUrl={ws.remoteUrl ?? undefined}
                             />
                         </div>}
-                        {terminalEnabled && (
+                        {terminalEnabled && wasVisited('terminal') && (
                             <div style={{ display: activeSubTab === 'terminal' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                                 <TerminalView key={ws.id} workspaceId={ws.id} />
                             </div>
                         )}
-                        {notesEnabled && (
+                        {notesEnabled && wasVisited('notes') && (
                             <div style={{ display: activeSubTab === 'notes' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                                 <NotesView
                                     key={ws.id}

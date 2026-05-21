@@ -130,7 +130,13 @@ export function createRouter(options: SharedRouterOptions): (req: http.IncomingM
         res.on('finish', () => {
             const durationMs = Date.now() - startTime;
             const log = getServerLogger();
-            log.debug({ method, path: rawPathname, status: res.statusCode, durationMs }, 'request');
+            // Promote slow requests to warn level so they surface without enabling
+            // debug logs. The hot dashboard endpoints should be < ~200ms warm.
+            if (durationMs >= 500 && rawPathname.startsWith('/api/')) {
+                log.warn({ method, path: rawPathname, status: res.statusCode, durationMs }, 'slow request');
+            } else {
+                log.debug({ method, path: rawPathname, status: res.statusCode, durationMs }, 'request');
+            }
         });
 
         // Handle CORS preflight
