@@ -384,6 +384,11 @@ export class TeamsBridge {
             const newTurns = turns.slice(lastSeen, sendableEnd);
             if (newTurns.length === 0) return;
 
+            // Advance watermark BEFORE sending — prevents infinite retry on send failure
+            if (sendableEnd > lastSeen) {
+                this.store!.setWatermark(processId, sendableEnd);
+            }
+
             const repoName = await this.resolveWorkspaceName(
                 proc.workspaceName as string | undefined,
                 (processData.metadata as Record<string, unknown> | undefined)?.workspaceName as string | undefined,
@@ -415,14 +420,14 @@ export class TeamsBridge {
                     console.error('[teams-bridge] Failed to send outbound message:', err);
                 }
             }
-
-            if (sendableEnd > lastSeen) {
-                this.store!.setWatermark(processId, sendableEnd);
-            }
         } catch (err) {
             console.error('[teams-bridge] Failed to fetch process turns:', err);
         } finally {
-            this._processingLocks.delete(processId);
+            // Only release lock for running processes (may get new turns later)
+            // Keep lock for completed processes — no more turns will come
+            if (status !== 'completed') {
+                this._processingLocks.delete(processId);
+            }
         }
     }
 
