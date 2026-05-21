@@ -366,6 +366,7 @@ export const DEFAULT_BUNDLED_SKILLS: readonly string[] = [
     'for-each',
     'map-reduce',
     'grill-me',
+    'loop',
 ];
 
 /** Default configuration values */

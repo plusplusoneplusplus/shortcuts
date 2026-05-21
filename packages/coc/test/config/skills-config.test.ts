@@ -31,6 +31,12 @@ describe('skills config', () => {
         expect(config.skills.defaultSkills).toContain('grill-me');
     });
 
+    it('includes loop in default bundled skills', () => {
+        const config = resolveConfig(undefined, undefined);
+        expect(DEFAULT_BUNDLED_SKILLS).toContain('loop');
+        expect(config.skills.defaultSkills).toContain('loop');
+    });
+
     it('can be disabled via override', () => {
         const config = mergeConfig(DEFAULT_CONFIG, { skills: { autoUpdate: false } });
         expect(config.skills.autoUpdate).toBe(false);
