@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 17;
 
 /**
  * Read the current schema version from the database.
@@ -52,6 +52,8 @@ export function initializeDatabase(db: Database.Database): void {
                 backend               TEXT,
                 working_directory     TEXT,
                 title                 TEXT,
+                custom_title          TEXT,
+                last_message_preview  TEXT,
                 token_limit           INTEGER,
                 current_tokens        INTEGER,
                 cumulative_token_usage TEXT,
@@ -375,6 +377,12 @@ export function initializeDatabase(db: Database.Database): void {
         if (versionBefore < 15) {
             migrateV14toV15(db);
         }
+        if (versionBefore < 16) {
+            migrateV15toV16(db);
+        }
+        if (versionBefore < 17) {
+            migrateV16toV17(db);
+        }
 
         // Stamp the schema version
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -562,4 +570,64 @@ function migrateV14toV15(db: Database.Database): void {
         CREATE INDEX IF NOT EXISTS idx_pull_request_chat_bindings_workspace
             ON pull_request_chat_bindings(workspace_id);
     `);
+}
+
+/**
+ * V15 → V16: add `custom_title TEXT` and `last_message_preview TEXT` columns to
+ * `processes`. `custom_title` holds a user-set session name (orthogonal to the
+ * AI-generated `title`). `last_message_preview` is a denormalized snapshot of
+ * the most recent conversation turn's cleaned content, used as a sidebar
+ * fallback label when no `custom_title` is set.
+ */
+function migrateV15toV16(db: Database.Database): void {
+    ensureColumn(db, 'processes', 'custom_title', 'TEXT');
+    ensureColumn(db, 'processes', 'last_message_preview', 'TEXT');
+}
+
+/**
+ * V16 → V17: backfill `last_message_preview` from the most recent USER turn for
+ * processes where the column is NULL. V16 also wrote previews from assistant
+ * turns; from V17 onwards only user turns refresh the preview so the sidebar
+ * always shows the latest user prompt as a fallback label.
+ */
+function migrateV16toV17(db: Database.Database): void {
+    // Pull processes that have no preview yet but at least one user turn.
+    const rows = db.prepare(`
+        SELECT p.id AS pid,
+               (SELECT ct.content FROM conversation_turns ct
+                WHERE ct.process_id = p.id AND ct.role = 'user'
+                ORDER BY ct.turn_index DESC LIMIT 1) AS content
+        FROM processes p
+        WHERE p.last_message_preview IS NULL
+    `).all() as Array<{ pid: string; content: string | null }>;
+
+    if (rows.length === 0) return;
+
+    const update = db.prepare('UPDATE processes SET last_message_preview = ? WHERE id = ?');
+    for (const r of rows) {
+        const preview = computeMessagePreviewSync(r.content);
+        if (preview !== undefined) {
+            update.run(preview, r.pid);
+        }
+    }
+}
+
+/**
+ * Local copy of computeMessagePreview kept here to avoid a circular import
+ * (`sqlite-schema` is a leaf module). Behaviour must stay in sync with
+ * `utils/message-preview.ts` — both strip markdown, collapse whitespace, and
+ * truncate to 120 chars.
+ */
+function computeMessagePreviewSync(content: string | null | undefined, maxLength: number = 120): string | undefined {
+    if (!content) return undefined;
+    let text = content;
+    text = text.replace(/```[\s\S]*?```/g, ' ');
+    text = text.replace(/`[^`\n]*`/g, ' ');
+    text = text.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ');
+    text = text.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
+    text = text.replace(/<[^>]+>/g, ' ');
+    text = text.replace(/\s+/g, ' ').trim();
+    if (text.length === 0) return undefined;
+    if (text.length <= maxLength) return text;
+    return text.slice(0, maxLength).trimEnd();
 }

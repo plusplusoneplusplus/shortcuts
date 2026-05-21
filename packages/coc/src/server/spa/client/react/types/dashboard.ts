@@ -145,6 +145,10 @@ export interface ProcessHistoryItem {
     status: string;
     title: string;
     promptPreview?: string;
+    /** User-set custom title from the rename UI. */
+    customTitle?: string;
+    /** Denormalized cleaned snapshot of the latest user prompt (~120 chars). */
+    lastMessagePreview?: string;
     startTime: number;
     endTime?: number;
     error?: string;

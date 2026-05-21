@@ -62,6 +62,8 @@ export interface ProcessSummary {
     workspaceName?: string;
     workingDirectory?: string;
     title?: string;
+    customTitle?: string;
+    lastMessagePreview?: string;
     lastEventAt?: string;
     /**
      * Number of unanswered interactive ask-user questions awaiting the user. Omitted
@@ -480,6 +482,8 @@ export function toProcessSummary(process: AIProcess): ProcessSummary {
         workspaceName: process.metadata?.workspaceName,
         workingDirectory: process.workingDirectory,
         title: process.title,
+        customTitle: process.customTitle,
+        lastMessagePreview: process.lastMessagePreview,
         lastEventAt: process.lastEventAt instanceof Date ? process.lastEventAt.toISOString() : (process.lastEventAt ? String(process.lastEventAt) : undefined),
         pendingAskUserCount: askUserCount > 0 ? askUserCount : 0,
     };

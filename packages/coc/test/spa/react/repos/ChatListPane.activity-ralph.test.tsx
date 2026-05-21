@@ -143,6 +143,7 @@ function makeStandaloneChat(id: string, label: string): any {
         type: 'chat',
         status: 'completed',
         displayName: label,
+        customTitle: label,
         completedAt: new Date(NOW - 5000).toISOString(),
         lastActivityAt: NOW - 5000,
         payload: { mode: 'ask' },

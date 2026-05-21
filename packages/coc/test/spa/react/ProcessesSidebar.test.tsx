@@ -667,7 +667,7 @@ describe('ProcessesSidebar — rename via context menu', () => {
             );
             expect(patchCall).toBeDefined();
             const body = JSON.parse(patchCall![1].body);
-            expect(body.title).toBe('New Name');
+            expect(body.customTitle).toBe('New Name');
         });
     });
 });

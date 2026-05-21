@@ -62,6 +62,12 @@ export function RenameDialog({ open, currentTitle, onConfirm, onCancel }: Rename
                     maxLength={TITLE_MAX}
                     className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[var(--vscode-foreground,#1e1e1e)] outline-none focus:border-[#0078d4]"
                     placeholder="Chat title"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    data-form-type="other"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
                 />
                 {error && <p className="text-xs text-[#f14c4c]">{error}</p>}
             </div>

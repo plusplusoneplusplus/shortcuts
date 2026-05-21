@@ -57,6 +57,7 @@ import type { ImplementationRecord, ExistingRun, RunLiveStatus } from './Impleme
 import { getRalphContext } from '../../../../../tasks/task-types';
 import { useLoops } from './hooks/useLoops';
 import { LoopManagementPanel } from './LoopManagementPanel';
+import { RenameDialog } from '../../ui/RenameDialog';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -180,6 +181,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         : null);
     const loopsHook = useLoops(workspaceId, processId);
     const [loopPanelOpen, setLoopPanelOpen] = useState(false);
+    const [renameOpen, setRenameOpen] = useState(false);
 
     const scratchpadEnabled = useScratchpadEnabled() && !disableScratchpad;
     const { scratchpadLayout } = useDisplaySettings();
@@ -418,21 +420,25 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // Reset impl-fetch guard when switching tasks
     useEffect(() => { implFetchedRef.current = false; }, [taskId]);
 
-    // Reactively sync title and status from process-updated WS events (via AppContext)
+    // Reactively sync title, customTitle, lastMessagePreview, and status from
+    // process-updated WS events (via AppContext).
     useEffect(() => {
         if (!processId) return;
         const proc = appState.processes.find((p: any) => p.id === processId);
         if (!proc) return;
         setTask((prev: any) => {
             if (!prev) return prev;
-            const titleChanged = proc.title && prev.displayName !== proc.title;
+            const titleChanged = proc.title !== undefined && prev.title !== proc.title;
+            const customTitleChanged = proc.customTitle !== undefined && prev.customTitle !== proc.customTitle;
+            const previewChanged = proc.lastMessagePreview !== undefined && prev.lastMessagePreview !== proc.lastMessagePreview;
             const statusChanged = proc.status && prev.status !== proc.status;
-            if (!titleChanged && !statusChanged) return prev;
-            return {
-                ...prev,
-                ...(titleChanged ? { displayName: proc.title } : {}),
-                ...(statusChanged ? { status: proc.status } : {}),
-            };
+            if (!titleChanged && !customTitleChanged && !previewChanged && !statusChanged) return prev;
+            const next: any = { ...prev };
+            if (titleChanged) { next.title = proc.title; next.displayName = proc.customTitle || proc.title; }
+            if (customTitleChanged) { next.customTitle = proc.customTitle; next.displayName = proc.customTitle || prev.title || prev.displayName; }
+            if (previewChanged) next.lastMessagePreview = proc.lastMessagePreview;
+            if (statusChanged) next.status = proc.status;
+            return next;
         });
     }, [processId, appState.processes]);
 
@@ -691,7 +697,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             type: loadedProcess.type ?? 'chat',
                             payload: loadedProcess.payload ?? {},
                             metadata: loadedProcess.metadata ?? {},
-                            displayName: loadedProcess.title,
+                            title: loadedProcess.title,
+                            customTitle: loadedProcess.customTitle,
+                            lastMessagePreview: loadedProcess.lastMessagePreview,
+                            displayName: loadedProcess.customTitle || loadedProcess.title,
                         });
                         const turns = getConversationTurns(processData);
                         setTurnsAndRef(turns);
@@ -729,6 +738,18 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     getSpaCocClient().processes.get(pid)
                         .then((data: any) => {
                             setProcessDetails(data?.process || null);
+                            // Merge customTitle/title/lastMessagePreview into task so
+                            // the chat header reflects the persisted custom name even
+                            // on cached loads where loadedTask lacked these fields.
+                            const proc = data?.process;
+                            if (proc) {
+                                setTask((prev: any) => prev ? {
+                                    ...prev,
+                                    title: proc.title ?? prev.title,
+                                    customTitle: proc.customTitle ?? prev.customTitle,
+                                    lastMessagePreview: proc.lastMessagePreview ?? prev.lastMessagePreview,
+                                } : prev);
+                            }
                             // Sync queued follow-ups from server
                             const serverPending: any[] = data?.process?.pendingMessages ?? [];
                             setPendingQueue(serverPending.map((m: any) => ({
@@ -742,10 +763,21 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     const procData = await getSpaCocClient().processes.get(pid);
                     if (loadCounterRef.current !== loadId) return;
 
-                    // Reconcile: process status is authoritative over queue status
-                    const procStatus = procData?.process?.status;
-                    const effectiveTask = procStatus && procStatus !== loadedTask?.status
-                        ? { ...loadedTask, status: procStatus }
+                    // Reconcile: process status is authoritative over queue status.
+                    // Also propagate customTitle/lastMessagePreview/title from the
+                    // process row — queue.getTask does not include them.
+                    const proc = procData?.process;
+                    const procStatus = proc?.status;
+                    const effectiveTask = (procStatus && procStatus !== loadedTask?.status) || proc
+                        ? {
+                            ...loadedTask,
+                            ...(procStatus ? { status: procStatus } : {}),
+                            ...(proc ? {
+                                title: proc.title ?? loadedTask?.title,
+                                customTitle: proc.customTitle ?? loadedTask?.customTitle,
+                                lastMessagePreview: proc.lastMessagePreview ?? loadedTask?.lastMessagePreview,
+                            } : {}),
+                        }
                         : loadedTask;
 
                     setTask(effectiveTask);
@@ -826,7 +858,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             type: procData.process.type ?? 'chat',
                             payload: procData.process.payload ?? {},
                             metadata: procData.process.metadata ?? {},
-                            displayName: procData.process.title,
+                            title: procData.process.title,
+                            customTitle: procData.process.customTitle,
+                            lastMessagePreview: procData.process.lastMessagePreview,
+                            displayName: procData.process.customTitle || procData.process.title,
                         });
                         setProcessDetails(procData.process);
                         const refreshedTurns = getConversationTurns(procData);
@@ -847,10 +882,21 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
 
                 const procData = await getSpaCocClient().processes.get(pid);
 
-                // Reconcile: process status is authoritative over queue status
-                const procStatus = procData?.process?.status;
-                const effectiveTask = procStatus && procStatus !== refreshedTask?.status
-                    ? { ...refreshedTask, status: procStatus }
+                // Reconcile: process status is authoritative over queue status.
+                // Also propagate customTitle/lastMessagePreview/title from the
+                // process row — queue.getTask does not include them.
+                const proc = procData?.process;
+                const procStatus = proc?.status;
+                const effectiveTask = (procStatus && procStatus !== refreshedTask?.status) || proc
+                    ? {
+                        ...refreshedTask,
+                        ...(procStatus ? { status: procStatus } : {}),
+                        ...(proc ? {
+                            title: proc.title ?? refreshedTask?.title,
+                            customTitle: proc.customTitle ?? refreshedTask?.customTitle,
+                            lastMessagePreview: proc.lastMessagePreview ?? refreshedTask?.lastMessagePreview,
+                        } : {}),
+                    }
                     : refreshedTask;
 
                 setTask(effectiveTask);
@@ -1097,7 +1143,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 onLaunchInteractiveResume={() => { void launchInteractiveResume(); }}
                 onPopOut={handlePopOut}
                 onFloat={handleFloat}
-                title={title || task?.displayName}
+                title={(task?.customTitle as string | undefined) || title || task?.title || task?.displayName}
                 wsId={workspaceId}
                 turnsContainerRef={turnsContainerRef}
                 isSelecting={selection.isSelecting}
@@ -1109,6 +1155,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 loopCount={loopsHook.manageableCount}
                 hasActiveLoops={loopsHook.hasActiveLoops}
                 onToggleLoopPanel={() => setLoopPanelOpen(v => !v)}
+                onRenameTitle={processId ? () => setRenameOpen(true) : undefined}
             />
             {loopPanelOpen && isLoopsEnabled() && (
                 <div className="relative">
@@ -1421,6 +1468,18 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     onClose={scratchpad.close}
                 />
             )}
+            <RenameDialog
+                open={renameOpen}
+                currentTitle={(task?.customTitle as string | undefined) || ''}
+                onCancel={() => setRenameOpen(false)}
+                onConfirm={async (newTitle) => {
+                    setRenameOpen(false);
+                    if (!processId) return;
+                    try {
+                        await getSpaCocClient().processes.update(processId, { customTitle: newTitle });
+                    } catch { /* WS will sync eventually */ }
+                }}
+            />
         </div>
     );
 }

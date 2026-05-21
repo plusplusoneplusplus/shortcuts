@@ -430,15 +430,20 @@ export class MultiRepoQueueRouter extends EventEmitter {
     }
 
     /**
-     * Update the displayName of a queue task by its processId.
-     * Returns true if the task was found and updated.
+     * Update the displayName (and optional customTitle/lastMessagePreview)
+     * of a queue task by its processId. Returns true if the task was found
+     * and updated.
      */
-    updateTaskDisplayName(processId: string, displayName: string): boolean {
+    updateTaskDisplayName(
+        processId: string,
+        displayName: string,
+        extras?: { customTitle?: string; lastMessagePreview?: string },
+    ): boolean {
         if (!isQueueProcessId(processId)) return false;
         const taskId = toTaskId(processId);
         const manager = this.findManagerForTask(taskId);
         if (!manager) return false;
-        return manager.updateTask(taskId, { displayName });
+        return manager.updateTask(taskId, { displayName, ...(extras ?? {}) } as any);
     }
 
     /**

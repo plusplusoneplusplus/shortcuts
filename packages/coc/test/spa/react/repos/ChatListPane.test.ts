@@ -149,7 +149,7 @@ describe('ChatListPane pinned chats', () => {
         it('compact row also sets title={titleText} on the truncated title span', () => {
             // The inner span carries the chat-title class and the truncate utility;
             // the title text is rendered inside it.
-            expect(source).toContain("'chat-title truncate text-[#1e1e1e] dark:text-[#cccccc]'");
+            expect(source).toContain("'chat-title truncate text-[#1e1e1e] dark:text-[#cccccc] cursor-text select-none'");
         });
 
         it('QueueTaskItem task name has title attribute', () => {

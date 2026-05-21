@@ -41,6 +41,7 @@ import type { AIBackendType } from './ai/types';
 import type { TokenUsage } from './copilot-sdk-wrapper/types';
 import { initializeDatabase } from './sqlite-schema';
 import { getLogger } from './logger';
+import { computeMessagePreview } from './utils/message-preview';
 
 const logger = getLogger();
 
@@ -78,6 +79,8 @@ interface ProcessRow {
     backend: string | null;
     working_directory: string | null;
     title: string | null;
+    custom_title: string | null;
+    last_message_preview: string | null;
     token_limit: number | null;
     current_tokens: number | null;
     cumulative_token_usage: string | null;
@@ -329,6 +332,8 @@ function processToRow(process: AIProcess): Record<string, unknown> {
         backend: process.backend ?? null,
         working_directory: process.workingDirectory ?? null,
         title: process.title ?? null,
+        custom_title: process.customTitle ?? null,
+        last_message_preview: process.lastMessagePreview ?? null,
         token_limit: process.tokenLimit ?? null,
         current_tokens: process.currentTokens ?? null,
         cumulative_token_usage: jsonStringify(process.cumulativeTokenUsage),
@@ -383,6 +388,8 @@ function rowToProcess(row: ProcessRow, turns?: ConversationTurn[]): AIProcess {
         backend: (row.backend ?? undefined) as AIBackendType | undefined,
         workingDirectory: row.working_directory ?? undefined,
         title: row.title ?? undefined,
+        customTitle: row.custom_title ?? undefined,
+        lastMessagePreview: row.last_message_preview ?? undefined,
         tokenLimit: row.token_limit ?? undefined,
         currentTokens: row.current_tokens ?? undefined,
         cumulativeTokenUsage: jsonParse<TokenUsage>(row.cumulative_token_usage),
@@ -585,14 +592,14 @@ export class SqliteProcessStore implements ProcessStore {
                 start_time, end_time, error, result, result_file_path,
                 raw_stdout_file_path, metadata, group_metadata, structured_result,
                 parent_process_id, sdk_session_id, backend, working_directory,
-                title, token_limit, current_tokens, cumulative_token_usage,
+                title, custom_title, last_message_preview, token_limit, current_tokens, cumulative_token_usage,
                 stale, data_file_path, archived, pinned_at, last_event_at
             ) VALUES (
                 @id, @workspace_id, @type, @prompt_preview, @full_prompt, @status,
                 @start_time, @end_time, @error, @result, @result_file_path,
                 @raw_stdout_file_path, @metadata, @group_metadata, @structured_result,
                 @parent_process_id, @sdk_session_id, @backend, @working_directory,
-                @title, @token_limit, @current_tokens, @cumulative_token_usage,
+                @title, @custom_title, @last_message_preview, @token_limit, @current_tokens, @cumulative_token_usage,
                 @stale, @data_file_path, @archived, @pinned_at, @last_event_at
             )
         `);
@@ -712,6 +719,8 @@ export class SqliteProcessStore implements ProcessStore {
                 backend: sourceRow.backend,
                 working_directory: sourceRow.working_directory,
                 title: forkTitle,
+                custom_title: sourceRow.custom_title,
+                last_message_preview: sourceRow.last_message_preview,
                 token_limit: null,
                 current_tokens: null,
                 cumulative_token_usage: null,
@@ -814,7 +823,7 @@ export class SqliteProcessStore implements ProcessStore {
         // Fetch summary columns with pagination. Derive `pending_ask_user_count` from
         // the metadata JSON envelope so list/sidebar views can show an "awaiting input"
         // indicator without loading the full process row.
-        const selectQuery = `SELECT id, workspace_id, status, type, start_time, end_time, prompt_preview, error, parent_process_id, title, last_event_at, pinned_at, archived, ` +
+        const selectQuery = `SELECT id, workspace_id, status, type, start_time, end_time, prompt_preview, error, parent_process_id, title, custom_title, last_message_preview, last_event_at, pinned_at, archived, ` +
             `COALESCE(json_array_length(json_extract(metadata, '$.__pendingAskUser')), 0) AS pending_ask_user_count ` +
             `FROM processes ${sql} ORDER BY COALESCE(last_event_at, start_time) DESC` +
             (filter?.limit !== undefined ? ` LIMIT ?` : '') +
@@ -842,6 +851,8 @@ export class SqliteProcessStore implements ProcessStore {
                 error: row.error ?? undefined,
                 parentProcessId: row.parent_process_id ?? undefined,
                 title: row.title ?? undefined,
+                customTitle: row.custom_title ?? undefined,
+                lastMessagePreview: row.last_message_preview ?? undefined,
                 duration: endMs !== undefined ? endMs - startMs : undefined,
                 lastEventAt: row.last_event_at ? new Date(row.last_event_at).toISOString() : undefined,
                 activityAt: new Date(row.last_event_at ?? row.start_time).toISOString(),
@@ -896,6 +907,8 @@ export class SqliteProcessStore implements ProcessStore {
         mapField('backend', updates.backend);
         mapField('working_directory', updates.workingDirectory);
         mapField('title', updates.title);
+        mapField('custom_title', updates.customTitle, v => (v === '' ? null : v));
+        mapField('last_message_preview', updates.lastMessagePreview, v => (v === '' ? null : v));
         mapField('token_limit', updates.tokenLimit);
         mapField('current_tokens', updates.currentTokens);
         mapField('cumulative_token_usage', updates.cumulativeTokenUsage, v => jsonStringify(v));
@@ -1002,7 +1015,7 @@ export class SqliteProcessStore implements ProcessStore {
 
     getPinnedProcesses(workspaceId: string): ProcessIndexEntry[] {
         const rows = this.db.prepare(
-            'SELECT id, workspace_id, status, type, start_time, end_time, prompt_preview, error, parent_process_id, title, last_event_at, pinned_at, archived FROM processes WHERE workspace_id = ? AND pinned_at IS NOT NULL ORDER BY pinned_at DESC'
+            'SELECT id, workspace_id, status, type, start_time, end_time, prompt_preview, error, parent_process_id, title, custom_title, last_message_preview, last_event_at, pinned_at, archived FROM processes WHERE workspace_id = ? AND pinned_at IS NOT NULL ORDER BY pinned_at DESC'
         ).all(workspaceId) as ProcessRow[];
 
         return rows.map(row => {
@@ -1019,6 +1032,8 @@ export class SqliteProcessStore implements ProcessStore {
                 error: row.error ?? undefined,
                 parentProcessId: row.parent_process_id ?? undefined,
                 title: row.title ?? undefined,
+                customTitle: row.custom_title ?? undefined,
+                lastMessagePreview: row.last_message_preview ?? undefined,
                 duration: endMs !== undefined ? endMs - startMs : undefined,
                 lastEventAt: row.last_event_at ? new Date(row.last_event_at).toISOString() : undefined,
                 pinnedAt: row.pinned_at ?? undefined,
@@ -1219,9 +1234,20 @@ export class SqliteProcessStore implements ProcessStore {
             // Insert the new turn
             this.insertTurnStmt.run(turnToRow(turn, processId));
 
-            // Update last_event_at to current time
-            this.db.prepare('UPDATE processes SET last_event_at = ? WHERE id = ?')
-                .run(new Date().toISOString(), processId);
+            // Update last_event_at to current time. Refresh the denormalized
+            // last_message_preview snapshot only when the new turn is a USER
+            // message — the sidebar shows this as the "latest user prompt"
+            // fallback when no custom title is set.
+            const previewText = turn.role === 'user'
+                ? computeMessagePreview(turn.content)
+                : undefined;
+            if (previewText !== undefined) {
+                this.db.prepare('UPDATE processes SET last_event_at = ?, last_message_preview = ? WHERE id = ?')
+                    .run(new Date().toISOString(), previewText, processId);
+            } else {
+                this.db.prepare('UPDATE processes SET last_event_at = ? WHERE id = ?')
+                    .run(new Date().toISOString(), processId);
+            }
 
             // Apply additional updates
             if (options?.additionalUpdates) {
@@ -1985,7 +2011,7 @@ export class SqliteProcessStore implements ProcessStore {
 
         const query = `
             SELECT id, workspace_id, status, type, start_time, end_time,
-                   prompt_preview, error, parent_process_id, title,
+                   prompt_preview, error, parent_process_id, title, custom_title, last_message_preview,
                    last_event_at, pinned_at, archived
             FROM processes ${whereSQL}
             ORDER BY COALESCE(last_event_at, start_time) DESC
@@ -2007,6 +2033,8 @@ export class SqliteProcessStore implements ProcessStore {
                 error: row.error ?? undefined,
                 parentProcessId: row.parent_process_id ?? undefined,
                 title: row.title ?? undefined,
+                customTitle: row.custom_title ?? undefined,
+                lastMessagePreview: row.last_message_preview ?? undefined,
                 duration: endMs !== undefined ? endMs - startMs : undefined,
                 lastEventAt: row.last_event_at ? new Date(row.last_event_at).toISOString() : undefined,
                 activityAt: new Date(row.last_event_at ?? row.start_time).toISOString(),
@@ -2119,6 +2147,8 @@ export class SqliteProcessStore implements ProcessStore {
         mapField('backend', updates.backend);
         mapField('working_directory', updates.workingDirectory);
         mapField('title', updates.title);
+        mapField('custom_title', updates.customTitle, v => (v === '' ? null : v));
+        mapField('last_message_preview', updates.lastMessagePreview, v => (v === '' ? null : v));
         mapField('token_limit', updates.tokenLimit);
         mapField('current_tokens', updates.currentTokens);
         mapField('cumulative_token_usage', updates.cumulativeTokenUsage, v => jsonStringify(v));

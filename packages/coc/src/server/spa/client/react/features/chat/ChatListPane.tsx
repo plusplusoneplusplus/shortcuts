@@ -113,9 +113,10 @@ export function taskMatchesFilter(task: any, excludedTypes: Set<string>): boolea
 export function taskMatchesSearch(task: any, query: string): boolean {
     if (!query) return true;
     const q = query.toLowerCase();
-    const title = (task.displayName || task.title || '').toLowerCase();
+    const title = (task.customTitle || task.displayName || task.title || '').toLowerCase();
     const prompt = (task.prompt || task.promptPreview || task.payload?.promptContent || task.payload?.prompt || '').toLowerCase();
-    return title.includes(q) || prompt.includes(q);
+    const lastMsg = (task.lastMessagePreview || '').toLowerCase();
+    return title.includes(q) || prompt.includes(q) || lastMsg.includes(q);
 }
 
 /** Return a type-specific icon for a task, matching the chat mode selector icons. */
@@ -1037,7 +1038,7 @@ export function ChatListPane({
         const processId = ensureQueueProcessId(renameTarget.taskId);
         setRenameTarget(null);
         try {
-            await getSpaCocClient().processes.update(processId, { title: newTitle });
+            await getSpaCocClient().processes.update(processId, { customTitle: newTitle });
             fetchQueue();
         } catch { /* WS will sync eventually */ }
     }, [renameTarget, fetchQueue]);
@@ -1146,7 +1147,7 @@ export function ChatListPane({
                 ...(isUnseen && onMarkRead ? [{ label: 'Mark as Read', icon: '✓', onClick: () => onMarkRead(taskId) }] : []),
                 ...(!isUnseen && onMarkUnread ? [{ label: 'Mark as Unread', icon: '●', onClick: () => onMarkUnread(taskId) }] : []),
                 { label: 'Rename', icon: '✏️', onClick: () => {
-                    setRenameTarget({ taskId, title: task?.displayName || task?.title || task?.type || '' });
+                    setRenameTarget({ taskId, title: (task as any)?.customTitle || '' });
                     closeContextMenu();
                 }},
                 ...(isArchived && onUnarchiveChat ? [{ label: 'Unarchive', icon: '📤', onClick: () => onUnarchiveChat(taskId) }] : []),
@@ -1228,13 +1229,21 @@ export function ChatListPane({
                 : (CHAT_MODE_LABELS[task.payload?.mode ?? task.mode ?? 'autopilot'] || 'Autopilot'))
             : task.type === 'run-script' ? 'Script' : 'Workflow';
 
-        // Display title: prefer displayName / title; fall back to chat-title helper (uses prompt
-        // text when present), otherwise to the task type or 'Task'.
-        const titleText = task.displayName
-            || task.title
-            || (task.type === 'chat' && (task.prompt || task.promptPreview || task.payload?.promptContent || task.payload?.prompt)
-                ? getChatTitle(task)
-                : (task.type || 'Task'));
+        // Display title for the sidebar row.
+        // Priority (per rename feature):
+        //   1) User-set custom title (rename UI)
+        //   2) Latest message preview (denormalized snapshot of newest turn)
+        //   3) Prompt-based fallback (truncated)
+        //   4) Task type / 'Task'
+        // We intentionally do NOT fall back to `displayName` or AI-generated `title`
+        // in the sidebar — those are shown in the chat header instead.
+        const promptText = (task.prompt || task.promptPreview || task.payload?.promptContent || task.payload?.prompt || '') as string;
+        const promptFallback = promptText && !/^Use the \S+ skill\.$/.test(promptText)
+            ? (promptText.length > 50 ? promptText.substring(0, 47) + '…' : promptText)
+            : (task.type === 'chat' ? 'Chat' : (task.type || 'Task'));
+        const titleText = (task.customTitle as string | undefined)
+            || (task.lastMessagePreview as string | undefined)
+            || promptFallback;
 
         const ts = task.completedAt ?? task.endTime ?? task.startedAt ?? task.startTime ?? task.createdAt;
         const timeText = isRunning
@@ -1341,7 +1350,14 @@ export function ChatListPane({
                         {isFrozen && (
                             <span className="shrink-0 text-[10px] text-[#848484]" title="Frozen" aria-hidden="true">❄️</span>
                         )}
-                        <span className={cn('chat-title truncate text-[#1e1e1e] dark:text-[#cccccc]', isUnseen && 'font-semibold', isFailed && 'text-red-700 dark:text-red-400', isFrozen && 'text-[#848484]')}>
+                        <span
+                            className={cn('chat-title truncate text-[#1e1e1e] dark:text-[#cccccc] cursor-text select-none', isUnseen && 'font-semibold', isFailed && 'text-red-700 dark:text-red-400', isFrozen && 'text-[#848484]')}
+                            title="Double-click to rename"
+                            onDoubleClick={(e) => {
+                                e.stopPropagation();
+                                setRenameTarget({ taskId: task.id, title: (task as any).customTitle || '' });
+                            }}
+                        >
                             {titleText}
                         </span>
                         {isHeld && (

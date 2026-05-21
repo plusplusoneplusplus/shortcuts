@@ -282,6 +282,10 @@ export interface ProcessIndexEntry {
     error?: string;
     parentProcessId?: string;
     title?: string;
+    /** User-set custom title (set via rename UI). Orthogonal to AI-generated `title`. */
+    customTitle?: string;
+    /** Denormalized cleaned snapshot of the latest conversation turn (~120 chars). */
+    lastMessagePreview?: string;
     /** Duration in milliseconds (computed from startTime/endTime). */
     duration?: number;
     /** Timestamp of the last conversation event (ISO string). */

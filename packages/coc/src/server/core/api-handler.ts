@@ -54,7 +54,7 @@ export interface QueueExecutorBridge {
     /** Steer a running process by injecting an immediate message into its SDK session. */
     steerProcess?(processId: string, message: string): Promise<boolean>;
     /** Update the displayName of a queue task associated with a process. */
-    updateTaskDisplayName?(processId: string, displayName: string): boolean;
+    updateTaskDisplayName?(processId: string, displayName: string, extras?: { customTitle?: string; lastMessagePreview?: string }): boolean;
     /** Subscribe to queue change events (e.g. task completed/failed) for task monitoring. */
     on?(event: 'queueChange', listener: (event: Record<string, unknown>) => void): void;
     /** Unsubscribe from queue change events. */
