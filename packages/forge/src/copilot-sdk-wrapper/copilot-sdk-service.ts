@@ -34,6 +34,8 @@ export type { StreamingResult, IStreamableSession, StreamingState, StreamingSess
 import { SessionManager } from './session-manager';
 import { StreamErrorGuard, isStreamDestroyedError } from './stream-error-guard';
 import { RequestRunner } from './request-runner';
+import type { ISDKService } from './sdk-service-interface';
+import { sdkServiceRegistry, COPILOT_PROVIDER } from './sdk-service-registry';
 
 // Re-export types that were previously exported from this file
 export {
@@ -56,7 +58,7 @@ export {
 
 export { tryConvertImageFileToDataUrl } from './image-converter';
 
-export class CopilotSDKService {
+export class CopilotSDKService implements ISDKService {
     private static instance: CopilotSDKService | null = null;
 
     private availabilityCache: SDKAvailabilityResult | null = null;
@@ -82,6 +84,7 @@ export class CopilotSDKService {
     public static getInstance(): CopilotSDKService {
         if (!CopilotSDKService.instance) {
             CopilotSDKService.instance = new CopilotSDKService();
+            sdkServiceRegistry.register(COPILOT_PROVIDER, CopilotSDKService.instance);
         }
         return CopilotSDKService.instance;
     }
@@ -90,6 +93,7 @@ export class CopilotSDKService {
         if (CopilotSDKService.instance) {
             CopilotSDKService.instance.dispose();
             CopilotSDKService.instance = null;
+            sdkServiceRegistry.unregister(COPILOT_PROVIDER);
         }
     }
 
