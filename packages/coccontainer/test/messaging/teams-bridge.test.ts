@@ -255,11 +255,14 @@ describe('TeamsBridge', () => {
             // Wait for async processing
             await new Promise(resolve => setTimeout(resolve, 50));
 
-            expect(lastBot().send).toHaveBeenCalled();
-            const sendCall = lastBot().send.mock.calls[0];
-            expect(sendCall[0]).toBe('channel-test');
-            // Only assistant turns are sent; 'Hello' is user role, 'Hi there!' is assistant
-            expect(sendCall[1]).toContain('Hi there!');
+            expect(lastBot().send).toHaveBeenCalledTimes(2);
+            const calls = lastBot().send.mock.calls;
+            // First call is user turn with botName as sender
+            expect(calls[0][1]).toContain('TestBot');
+            expect(calls[0][1]).toContain('Hello');
+            // Second call is assistant turn with 'CoC Agent' as sender
+            expect(calls[1][1]).toContain('CoC Agent');
+            expect(calls[1][1]).toContain('Hi there!');
 
             vi.unstubAllGlobals();
             await bridge.stop();
@@ -295,7 +298,8 @@ describe('TeamsBridge', () => {
                 botName: 'TestBot',
             });
 
-            expect(msg).toContain('**TestBot**');
+            expect(msg).toContain('TestBot');
+            expect(msg).not.toContain('**');
             expect(msg).toContain('Agent: Agent-A');
             expect(msg).toContain('Repo: my-repo');
             expect(msg).toContain('Title: Task 1');
@@ -317,7 +321,8 @@ describe('TeamsBridge', () => {
                 content: 'Done!',
             });
 
-            expect(msg).toContain('**CoC Agent**');
+            expect(msg).toContain('CoC Agent');
+            expect(msg).not.toContain('**');
             expect(msg).not.toContain('Title:');
             expect(msg).toContain('Message:');
             expect(msg).toContain('Done!');

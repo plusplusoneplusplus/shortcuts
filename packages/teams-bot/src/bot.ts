@@ -392,12 +392,15 @@ export class TeamsBot {
                 return;
             }
 
-            const text = lastMsg.body?.content ?? lastMsg.text ?? lastMsg.content ?? '';
-            if (!text.trim()) return;
+            const rawText = lastMsg.body?.content ?? lastMsg.text ?? lastMsg.content ?? '';
+            if (!rawText.trim()) return;
 
-            // Skip bot-formatted messages (sent by us but ID didn't match)
-            const plainText = text.replace(/<[^>]*>/g, '').trim();
-            if (plainText.startsWith('**CoC Agent**') || plainText.startsWith(`**${this.opts.botName}**`)) {
+            // Strip HTML tags (Teams wraps messages in <p>, <div>, etc.)
+            const text = rawText.replace(/<[^>]*>/g, '').trim();
+            if (!text) return;
+
+            // Skip bot-formatted messages (CoC outbound format: lines with Agent:/Repo:/Message:)
+            if (this.isBotFormattedMessage(text)) {
                 return;
             }
 
@@ -416,6 +419,24 @@ export class TeamsBot {
         } catch (err: any) {
             console.error('[teams-bot] MCP poll error:', err.message);
         }
+    }
+
+    /**
+     * Detect if a message matches the CoC outbound format:
+     *   <name>
+     *   Agent: ...
+     *   Repo: ...
+     *   Message:
+     *   ...
+     */
+    private isBotFormattedMessage(text: string): boolean {
+        const lines = text.split('\n');
+        if (lines.length < 4) return false;
+        // Check for "Agent:" and "Repo:" in lines 2-4
+        const hasAgent = lines.some((l, i) => i > 0 && i < 5 && /^Agent:\s/i.test(l.trim()));
+        const hasRepo = lines.some((l, i) => i > 0 && i < 5 && /^Repo:\s/i.test(l.trim()));
+        const hasMessage = lines.some((l, i) => i > 0 && i < 6 && /^Message:\s*$/i.test(l.trim()));
+        return hasAgent && hasRepo && hasMessage;
     }
 }
 
