@@ -482,12 +482,15 @@ async function refreshMcpToken(
     metadata: McpOAuthMetadata,
     refreshToken: string,
 ): Promise<{ access_token: string; refresh_token?: string; expires_in: number; scope?: string }> {
-    // Derive token endpoint from authorizationServerUrl
-    // e.g. "https://login.microsoftonline.com/organizations/v2.0" → ".../token"
-    const tokenUrl = metadata.authorizationServerUrl.replace(/\/?$/, '') + '/token';
-    // But the format is v2.0, token endpoint is under the same path
-    // Actually AAD token endpoints: https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token
-    const tokenEndpoint = tokenUrl.includes('/oauth2/') ? tokenUrl : tokenUrl.replace('/v2.0', '/oauth2/v2.0/token');
+    // AAD token endpoint: https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token
+    // authorizationServerUrl is typically "https://login.microsoftonline.com/organizations/v2.0"
+    let tokenEndpoint: string;
+    if (metadata.authorizationServerUrl.includes('/oauth2/v2.0')) {
+        tokenEndpoint = metadata.authorizationServerUrl.replace(/\/?$/, '') + '/token';
+    } else {
+        // Convert ".../organizations/v2.0" → ".../organizations/oauth2/v2.0/token"
+        tokenEndpoint = metadata.authorizationServerUrl.replace(/\/v2\.0\/?$/, '/oauth2/v2.0/token');
+    }
 
     const body = new URLSearchParams({
         client_id: metadata.clientId,
