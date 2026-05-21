@@ -418,9 +418,6 @@ export class TeamsBridge {
                 const content = (turn.content ?? turn.text ?? '') as string;
                 if (!content.trim()) continue;
 
-                // Only send assistant (final) messages to Teams — skip user turns
-                if (turn.role === 'user') continue;
-
                 const teamsText = this.formatOutboundMessage({
                     role: turn.role,
                     agent: msg.agentName,
@@ -451,8 +448,8 @@ export class TeamsBridge {
     /** Format a structured Teams message for desktop display. */
     formatOutboundMessage(opts: { role: string; agent: string; repo: string; title: string; content: string; botName?: string }): string {
         const sender = opts.role === 'user'
-            ? `**${opts.botName || 'You'}**`
-            : '**CoC Agent**';
+            ? (opts.botName || 'User')
+            : 'CoC Agent';
 
         const lines = [
             sender,
@@ -462,7 +459,7 @@ export class TeamsBridge {
         if (opts.title) {
             lines.push(`Title: ${opts.title}`);
         }
-        lines.push(`Message:`, opts.content.trimStart());
+        lines.push('Message:', opts.content.trimStart());
 
         return lines.join('\n');
     }
