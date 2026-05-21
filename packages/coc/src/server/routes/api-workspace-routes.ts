@@ -38,6 +38,7 @@ import {
     type McpToolScope,
     type McpConfigScope,
 } from './mcp-config-writer';
+import { testMcpConnection } from './mcp-connection-tester';
 
 // Lazy singleton service
 let _branchService: BranchService | undefined;
@@ -620,6 +621,38 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, notFound('MCP server'));
             }
             sendJSON(res, 200, { name: serverName, scope: body.targetScope });
+        },
+    });
+
+    // POST /api/workspaces/:id/mcp-config/test — Test MCP server connectivity
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/mcp-config\/test$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+
+            if (!['stdio', 'http', 'sse'].includes(body.type)) {
+                return handleAPIError(res, badRequest('`type` must be "stdio", "http", or "sse"'));
+            }
+            if (body.type === 'stdio' && (typeof body.command !== 'string' || !body.command.trim())) {
+                return handleAPIError(res, badRequest('`command` is required for stdio transport'));
+            }
+            if ((body.type === 'http' || body.type === 'sse') && (typeof body.url !== 'string' || !body.url.trim())) {
+                return handleAPIError(res, badRequest('`url` is required for http/sse transport'));
+            }
+
+            const result = await testMcpConnection({
+                type: body.type as 'stdio' | 'http' | 'sse',
+                command: typeof body.command === 'string' ? body.command : undefined,
+                url: typeof body.url === 'string' ? body.url : undefined,
+                args: Array.isArray(body.args) ? body.args : undefined,
+                env: (typeof body.env === 'object' && body.env !== null && !Array.isArray(body.env)) ? body.env : undefined,
+            });
+
+            sendJSON(res, result.success ? 200 : 422, result);
         },
     });
 

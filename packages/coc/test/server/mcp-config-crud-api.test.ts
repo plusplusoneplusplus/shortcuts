@@ -50,6 +50,11 @@ vi.mock('../../src/server/routes/mcp-config-writer', () => ({
     findServerSource: mockFindServerSource,
 }));
 
+const mockTestMcpConnection = vi.hoisted(() => vi.fn());
+vi.mock('../../src/server/routes/mcp-connection-tester', () => ({
+    testMcpConnection: mockTestMcpConnection,
+}));
+
 // ============================================================================
 // Test Helpers
 // ============================================================================
@@ -425,6 +430,115 @@ describe('MCP Config CRUD API endpoints', () => {
             });
             expect(res.status).toBe(200);
             expect(mockMigrateServerScope).toHaveBeenCalledWith('github', '/projects/my', 'workspace');
+        });
+    });
+
+    // ========================================================================
+    // POST /api/workspaces/:id/mcp-config/test
+    // ========================================================================
+
+    describe('POST /api/workspaces/:id/mcp-config/test', () => {
+        beforeEach(() => {
+            mockTestMcpConnection.mockResolvedValue({ success: true, message: 'MCP server responded successfully' });
+        });
+
+        it('returns 404 when workspace not found', async () => {
+            const res = await request(`${base()}/api/workspaces/unknown/mcp-config/test`, {
+                method: 'POST',
+                body: JSON.stringify({ type: 'stdio', command: 'npx', args: ['-y', 'some-server'] }),
+            });
+            expect(res.status).toBe(404);
+        });
+
+        it('returns 400 when type is invalid', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config/test`, {
+                method: 'POST',
+                body: JSON.stringify({ type: 'unknown' }),
+            });
+            expect(res.status).toBe(400);
+        });
+
+        it('returns 400 when stdio type has no command', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config/test`, {
+                method: 'POST',
+                body: JSON.stringify({ type: 'stdio' }),
+            });
+            expect(res.status).toBe(400);
+        });
+
+        it('returns 400 when http type has no url', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config/test`, {
+                method: 'POST',
+                body: JSON.stringify({ type: 'http' }),
+            });
+            expect(res.status).toBe(400);
+        });
+
+        it('returns 200 and success when stdio test passes', async () => {
+            mockTestMcpConnection.mockResolvedValue({
+                success: true,
+                message: 'MCP server responded successfully',
+                protocolVersion: '2024-11-05',
+                serverName: 'github-mcp',
+            });
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config/test`, {
+                method: 'POST',
+                body: JSON.stringify({ type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-github'], env: { GITHUB_TOKEN: 'token' } }),
+            });
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.success).toBe(true);
+            expect(data.protocolVersion).toBe('2024-11-05');
+            expect(data.serverName).toBe('github-mcp');
+            expect(mockTestMcpConnection).toHaveBeenCalledWith({
+                type: 'stdio',
+                command: 'npx',
+                args: ['-y', '@modelcontextprotocol/server-github'],
+                env: { GITHUB_TOKEN: 'token' },
+                url: undefined,
+            });
+        });
+
+        it('returns 422 when test fails', async () => {
+            mockTestMcpConnection.mockResolvedValue({
+                success: false,
+                message: 'Timed out waiting for MCP initialize response (10 s)',
+            });
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config/test`, {
+                method: 'POST',
+                body: JSON.stringify({ type: 'stdio', command: 'bad-command' }),
+            });
+            expect(res.status).toBe(422);
+            const data = res.json();
+            expect(data.success).toBe(false);
+            expect(data.message).toContain('Timed out');
+        });
+
+        it('returns 200 for successful http test', async () => {
+            mockTestMcpConnection.mockResolvedValue({ success: true, message: 'Server responded with HTTP 200' });
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config/test`, {
+                method: 'POST',
+                body: JSON.stringify({ type: 'http', url: 'http://localhost:8080/mcp' }),
+            });
+            expect(res.status).toBe(200);
+            expect(res.json().success).toBe(true);
+            expect(mockTestMcpConnection).toHaveBeenCalledWith({
+                type: 'http',
+                url: 'http://localhost:8080/mcp',
+                command: undefined,
+                args: undefined,
+                env: undefined,
+            });
+        });
+
+        it('returns 422 for failed http test', async () => {
+            mockTestMcpConnection.mockResolvedValue({ success: false, message: 'Connection failed: ECONNREFUSED' });
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config/test`, {
+                method: 'POST',
+                body: JSON.stringify({ type: 'sse', url: 'http://localhost:9999/events' }),
+            });
+            expect(res.status).toBe(422);
+            expect(res.json().success).toBe(false);
         });
     });
 });
