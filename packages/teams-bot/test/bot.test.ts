@@ -520,8 +520,8 @@ describe('TeamsBot', () => {
                 } as any);
                 await vi.advanceTimersByTimeAsync(1000);
 
-                // Second poll — bot-formatted message
-                const botMsg = 'CoC Agent\nAgent: dev-agent\nRepo: my-repo\nMessage:\nHere is the result';
+                // Second poll — bot-formatted message (HTML with <br> as sent by CoC)
+                const botMsg = 'CoC Agent:<br>Agent: dev-agent<br>Repo: my-repo<br>Message:<br>Here is the result';
                 mockFetch.mockResolvedValueOnce({
                     ok: true,
                     headers: new Map(),
