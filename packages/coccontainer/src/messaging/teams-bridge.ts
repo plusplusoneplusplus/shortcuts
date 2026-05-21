@@ -47,15 +47,6 @@ export class TeamsBridge {
     async start(): Promise<void> {
         this.store = new MessagingStore(this.opts.dataDir);
 
-        // Acquire token for MCP mode
-        if (this.opts.config.mode === 'mcp') {
-            try {
-                this._azToken = await acquireMcpOAuthToken(this.opts.config.mcpServerUrl);
-            } catch (err: any) {
-                console.error(`[teams-bridge] Failed to acquire MCP OAuth token on start: ${err.message}`);
-            }
-        }
-
         // Resolve team/channel names → IDs (create if missing) using az token
         await this.resolveTeamAndChannel();
 
@@ -211,13 +202,11 @@ export class TeamsBridge {
 
     /** Resolve team/channel IDs using MCP tools. */
     private async resolveViaMcp(teamName?: string, channelName?: string): Promise<void> {
-        if (!this._azToken) {
-            try {
-                this._azToken = await acquireMcpOAuthToken(this.opts.config.mcpServerUrl);
-            } catch (err: any) {
-                console.error(`[teams-bridge] Failed to acquire MCP OAuth token: ${err.message}`);
-                return;
-            }
+        try {
+            this._azToken = await acquireMcpOAuthToken(this.opts.config.mcpServerUrl);
+        } catch (err: any) {
+            console.error(`[teams-bridge] Failed to acquire MCP OAuth token: ${err.message}`);
+            return;
         }
 
         const mcpClient = new McpClient({
@@ -347,7 +336,7 @@ export class TeamsBridge {
     // ── Outbound: CoC process update → Teams ────────────
     private async onWsMessage(msg: WSRelayMessage): Promise<void> {
         if (!this.bot) { console.log('[teams-bridge] WS ignored: bot is null'); return; }
-        if (!this.store) { console.log('[teams-bridge] WS ignored: store is null'); return; }
+        if (!this.store) return;
 
         let parsed: Record<string, unknown>;
         try {
@@ -370,19 +359,22 @@ export class TeamsBridge {
         if (this._processingLocks.has(processId)) return;
 
         // For running processes, use a temporary lock to prevent concurrent processing
+        // but allow re-entry on subsequent events (watermark prevents duplicate sends)
         if (status === 'completed') {
             this._processingLocks.add(processId);
         } else {
+            // running: if currently being processed, skip this event
+            // (the watermark will catch up on the next event)
             if (this._runningLocks?.has(processId)) return;
             if (!this._runningLocks) this._runningLocks = new Set();
             this._runningLocks.add(processId);
         }
 
         const target = this.opts.config.channelId;
-        if (!target) { console.log('[teams-bridge] No channelId configured'); this.releaseLock(processId, status); return; }
+        if (!target) { this.releaseLock(processId, status); return; }
 
+        // Skip if Teams bot is not connected
         if (!this.bot || this.bot.getStatus() !== 'connected') {
-            console.log(`[teams-bridge] Bot not connected (status=${this.bot?.getStatus()}), skipping outbound`);
             this.releaseLock(processId, status);
             return;
         }
@@ -408,7 +400,7 @@ export class TeamsBridge {
             const body = await res.json() as Record<string, unknown>;
             const processData = (body.process ?? body) as Record<string, unknown>;
             const turns = (processData.conversationTurns ?? processData.conversation ?? processData.turns) as Array<{ role: string; content?: string; text?: string; streaming?: boolean }> | undefined;
-            if (!turns || turns.length === 0) { console.log(`[teams-bridge] No turns for ${processId}`); return; }
+            if (!turns || turns.length === 0) return;
 
             const lastSeen = this.store!.getWatermark(processId);
 
@@ -420,9 +412,7 @@ export class TeamsBridge {
             }
 
             const newTurns = turns.slice(lastSeen, sendableEnd);
-            if (newTurns.length === 0) { console.log(`[teams-bridge] No new turns for ${processId} (watermark=${lastSeen}, total=${turns.length}, sendable=${sendableEnd})`); return; }
-
-            console.log(`[teams-bridge] Sending ${newTurns.length} turns for ${processId} (watermark ${lastSeen}→${sendableEnd})`);
+            if (newTurns.length === 0) return;
 
             // Advance watermark BEFORE sending — prevents infinite retry on send failure
             if (sendableEnd > lastSeen) {
