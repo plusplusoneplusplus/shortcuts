@@ -23,6 +23,13 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
 });
 
 import {
+    loadDefaultMcpConfig,
+    loadWorkspaceMcpConfig,
+    setHomeDirectoryOverride,
+    clearMcpConfigCache,
+} from '@plusplusoneplusplus/forge';
+
+import {
     readRawGlobalConfig,
     writeRawGlobalConfig,
     readRawWorkspaceConfig,
@@ -123,24 +130,24 @@ describe('readRawWorkspaceConfig', () => {
 // ============================================================================
 
 describe('writeRawGlobalConfig', () => {
-    it('writes JSON to the global config path', () => {
-        writeRawGlobalConfig({ mcpServers: { test: { command: 'node' } } });
+    it('writes JSON to the global config path', async () => {
+        await writeRawGlobalConfig({ mcpServers: { test: { command: 'node' } } });
         const content = fs.readFileSync(globalConfigPath, 'utf-8');
         const parsed = JSON.parse(content);
         expect(parsed.mcpServers.test.command).toBe('node');
     });
 
-    it('creates parent directories if they do not exist', () => {
+    it('creates parent directories if they do not exist', async () => {
         const deepPath = path.join(tmpDir, 'deep', 'nested', 'mcp-config.json');
         mockGetMcpConfigPath.mockReturnValue(deepPath);
-        writeRawGlobalConfig({ mcpServers: {} });
+        await writeRawGlobalConfig({ mcpServers: {} });
         expect(fs.existsSync(deepPath)).toBe(true);
     });
 });
 
 describe('writeRawWorkspaceConfig', () => {
-    it('writes JSON to the workspace config path', () => {
-        writeRawWorkspaceConfig(workspaceRoot, { servers: { test: { command: 'node' } } });
+    it('writes JSON to the workspace config path', async () => {
+        await writeRawWorkspaceConfig(workspaceRoot, { servers: { test: { command: 'node' } } });
         const content = fs.readFileSync(workspaceConfigPath, 'utf-8');
         const parsed = JSON.parse(content);
         expect(parsed.servers.test.command).toBe('node');
@@ -244,53 +251,53 @@ describe('getServerDetail', () => {
 // ============================================================================
 
 describe('updateServerConfig', () => {
-    it('returns false when server not found', () => {
-        const result = updateServerConfig('missing', workspaceRoot, { description: 'new' });
+    it('returns false when server not found', async () => {
+        const result = await updateServerConfig('missing', workspaceRoot, { description: 'new' });
         expect(result).toBe(false);
     });
 
-    it('updates description in global config', () => {
+    it('updates description in global config', async () => {
         writeGlobal({ mcpServers: { github: { command: 'npx' } } });
-        const result = updateServerConfig('github', workspaceRoot, { description: 'Updated' });
+        const result = await updateServerConfig('github', workspaceRoot, { description: 'Updated' });
         expect(result).toBe(true);
         const config = readRawGlobalConfig();
         expect((config.mcpServers as any).github.description).toBe('Updated');
     });
 
-    it('updates description in workspace config', () => {
+    it('updates description in workspace config', async () => {
         writeWorkspace({ servers: { local: { command: 'node' } } });
-        const result = updateServerConfig('local', workspaceRoot, { description: 'Local server' });
+        const result = await updateServerConfig('local', workspaceRoot, { description: 'Local server' });
         expect(result).toBe(true);
         const config = readRawWorkspaceConfig(workspaceRoot);
         expect((config.servers as any).local.description).toBe('Local server');
     });
 
-    it('updates args', () => {
+    it('updates args', async () => {
         writeGlobal({ mcpServers: { server: { command: 'npx', args: ['old-arg'] } } });
-        updateServerConfig('server', workspaceRoot, { args: ['new-arg', '--flag'] });
+        await updateServerConfig('server', workspaceRoot, { args: ['new-arg', '--flag'] });
         const config = readRawGlobalConfig();
         expect((config.mcpServers as any).server.args).toEqual(['new-arg', '--flag']);
     });
 
-    it('merges new env vars with existing ones', () => {
+    it('merges new env vars with existing ones', async () => {
         writeGlobal({ mcpServers: { server: { command: 'npx', env: { OLD_KEY: 'old-val' } } } });
-        updateServerConfig('server', workspaceRoot, { env: { NEW_KEY: 'new-val' } });
+        await updateServerConfig('server', workspaceRoot, { env: { NEW_KEY: 'new-val' } });
         const config = readRawGlobalConfig();
         const env = (config.mcpServers as any).server.env;
         expect(env.OLD_KEY).toBe('old-val');
         expect(env.NEW_KEY).toBe('new-val');
     });
 
-    it('updates toolScope', () => {
+    it('updates toolScope', async () => {
         writeGlobal({ mcpServers: { server: { command: 'npx' } } });
-        updateServerConfig('server', workspaceRoot, { toolScope: 'allowlist' });
+        await updateServerConfig('server', workspaceRoot, { toolScope: 'allowlist' });
         const config = readRawGlobalConfig();
         expect((config.mcpServers as any).server.toolScope).toBe('allowlist');
     });
 
-    it('only updates provided fields and leaves others intact', () => {
+    it('only updates provided fields and leaves others intact', async () => {
         writeGlobal({ mcpServers: { server: { command: 'npx', args: ['a'], description: 'orig' } } });
-        updateServerConfig('server', workspaceRoot, { description: 'new desc' });
+        await updateServerConfig('server', workspaceRoot, { description: 'new desc' });
         const config = readRawGlobalConfig();
         const entry = (config.mcpServers as any).server;
         expect(entry.description).toBe('new desc');
@@ -304,23 +311,23 @@ describe('updateServerConfig', () => {
 // ============================================================================
 
 describe('deleteServerFromConfig', () => {
-    it('returns false when server not found', () => {
-        const result = deleteServerFromConfig('missing', workspaceRoot);
+    it('returns false when server not found', async () => {
+        const result = await deleteServerFromConfig('missing', workspaceRoot);
         expect(result).toBe(false);
     });
 
-    it('removes server from global config', () => {
+    it('removes server from global config', async () => {
         writeGlobal({ mcpServers: { github: { command: 'npx' }, other: { command: 'other' } } });
-        const result = deleteServerFromConfig('github', workspaceRoot);
+        const result = await deleteServerFromConfig('github', workspaceRoot);
         expect(result).toBe(true);
         const config = readRawGlobalConfig();
         expect((config.mcpServers as any).github).toBeUndefined();
         expect((config.mcpServers as any).other).toBeDefined();
     });
 
-    it('removes server from workspace config', () => {
+    it('removes server from workspace config', async () => {
         writeWorkspace({ servers: { local: { command: 'node' }, other: { command: 'other' } } });
-        const result = deleteServerFromConfig('local', workspaceRoot);
+        const result = await deleteServerFromConfig('local', workspaceRoot);
         expect(result).toBe(true);
         const config = readRawWorkspaceConfig(workspaceRoot);
         expect((config.servers as any).local).toBeUndefined();
@@ -333,8 +340,8 @@ describe('deleteServerFromConfig', () => {
 // ============================================================================
 
 describe('addServerToConfig', () => {
-    it('adds a stdio server to global config', () => {
-        addServerToConfig(workspaceRoot, {
+    it('adds a stdio server to global config', async () => {
+        await addServerToConfig(workspaceRoot, {
             name: 'myserver',
             type: 'stdio',
             command: 'npx',
@@ -347,8 +354,8 @@ describe('addServerToConfig', () => {
         expect(entry.args).toEqual(['-y', '@org/server']);
     });
 
-    it('adds an http server to global config', () => {
-        addServerToConfig(workspaceRoot, {
+    it('adds an http server to global config', async () => {
+        await addServerToConfig(workspaceRoot, {
             name: 'remote',
             type: 'http',
             url: 'https://api.example.com/mcp',
@@ -360,8 +367,8 @@ describe('addServerToConfig', () => {
         expect(entry.url).toBe('https://api.example.com/mcp');
     });
 
-    it('adds a server to workspace config', () => {
-        addServerToConfig(workspaceRoot, {
+    it('adds a server to workspace config', async () => {
+        await addServerToConfig(workspaceRoot, {
             name: 'local',
             type: 'stdio',
             command: 'node',
@@ -371,8 +378,8 @@ describe('addServerToConfig', () => {
         expect((config.servers as any).local.command).toBe('node');
     });
 
-    it('stores description and toolScope when provided', () => {
-        addServerToConfig(workspaceRoot, {
+    it('stores description and toolScope when provided', async () => {
+        await addServerToConfig(workspaceRoot, {
             name: 'srvr',
             type: 'stdio',
             command: 'cmd',
@@ -386,8 +393,8 @@ describe('addServerToConfig', () => {
         expect(entry.toolScope).toBe('readonly');
     });
 
-    it('omits toolScope from config when "all" (the default)', () => {
-        addServerToConfig(workspaceRoot, {
+    it('omits toolScope from config when "all" (the default)', async () => {
+        await addServerToConfig(workspaceRoot, {
             name: 'srvr',
             type: 'stdio',
             command: 'cmd',
@@ -399,8 +406,8 @@ describe('addServerToConfig', () => {
         expect(entry.toolScope).toBeUndefined();
     });
 
-    it('stores env vars when provided', () => {
-        addServerToConfig(workspaceRoot, {
+    it('stores env vars when provided', async () => {
+        await addServerToConfig(workspaceRoot, {
             name: 'srvr',
             type: 'stdio',
             command: 'cmd',
@@ -417,23 +424,23 @@ describe('addServerToConfig', () => {
 // ============================================================================
 
 describe('migrateServerScope', () => {
-    it('returns false when server not found', () => {
-        const result = migrateServerScope('missing', workspaceRoot, 'global');
+    it('returns false when server not found', async () => {
+        const result = await migrateServerScope('missing', workspaceRoot, 'global');
         expect(result).toBe(false);
     });
 
-    it('returns true without moving when server is already in target scope', () => {
+    it('returns true without moving when server is already in target scope', async () => {
         writeGlobal({ mcpServers: { github: { command: 'npx' } } });
-        const result = migrateServerScope('github', workspaceRoot, 'global');
+        const result = await migrateServerScope('github', workspaceRoot, 'global');
         expect(result).toBe(true);
         // Still in global
         const config = readRawGlobalConfig();
         expect((config.mcpServers as any).github).toBeDefined();
     });
 
-    it('moves server from global to workspace', () => {
+    it('moves server from global to workspace', async () => {
         writeGlobal({ mcpServers: { github: { command: 'npx', description: 'GitHub server' } } });
-        const result = migrateServerScope('github', workspaceRoot, 'workspace');
+        const result = await migrateServerScope('github', workspaceRoot, 'workspace');
         expect(result).toBe(true);
         // Removed from global
         const globalConfig = readRawGlobalConfig();
@@ -446,9 +453,9 @@ describe('migrateServerScope', () => {
         expect(entry.description).toBe('GitHub server');
     });
 
-    it('moves server from workspace to global', () => {
+    it('moves server from workspace to global', async () => {
         writeWorkspace({ servers: { local: { command: 'node', args: ['app.js'] } } });
-        const result = migrateServerScope('local', workspaceRoot, 'global');
+        const result = await migrateServerScope('local', workspaceRoot, 'global');
         expect(result).toBe(true);
         // Removed from workspace
         const wsConfig = readRawWorkspaceConfig(workspaceRoot);
@@ -461,11 +468,11 @@ describe('migrateServerScope', () => {
         expect(entry.args).toEqual(['app.js']);
     });
 
-    it('preserves extra fields during migration', () => {
+    it('preserves extra fields during migration', async () => {
         writeGlobal({
             mcpServers: { server: { command: 'npx', description: 'My server', toolScope: 'readonly' } },
         });
-        migrateServerScope('server', workspaceRoot, 'workspace');
+        await migrateServerScope('server', workspaceRoot, 'workspace');
         const wsConfig = readRawWorkspaceConfig(workspaceRoot);
         const entry = (wsConfig.servers as any).server;
         expect(entry.description).toBe('My server');
@@ -510,5 +517,73 @@ describe('readAllDescriptions', () => {
         writeWorkspace({ servers: { shared: { command: 'ws-cmd', description: 'Workspace desc' } } });
         const result = readAllDescriptions(workspaceRoot);
         expect(result.shared).toBe('Workspace desc');
+    });
+});
+
+// ============================================================================
+// Cache invalidation
+// ============================================================================
+
+describe('cache invalidation after write', () => {
+    beforeEach(() => {
+        // Point the forge loader's home directory at the temp dir so
+        // loadDefaultMcpConfig / loadWorkspaceMcpConfig use the same paths
+        // as the writer's mocked getMcpConfigPath / getWorkspaceMcpConfigPath.
+        setHomeDirectoryOverride(tmpDir);
+    });
+
+    afterEach(() => {
+        setHomeDirectoryOverride(null);
+        clearMcpConfigCache();
+    });
+
+    it('invalidates global loader cache after writeRawGlobalConfig', async () => {
+        // Seed initial config and prime the loader cache
+        writeGlobal({ mcpServers: { server: { command: 'cmd-v1' } } });
+        const firstLoad = loadDefaultMcpConfig();
+        expect(Object.keys(firstLoad.mcpServers)).toContain('server');
+
+        // Write a different config via the writer — should invalidate the cache
+        await writeRawGlobalConfig({ mcpServers: { newserver: { command: 'cmd-v2' } } });
+
+        // Loader must return fresh data (not the stale cached version)
+        const secondLoad = loadDefaultMcpConfig();
+        expect(Object.keys(secondLoad.mcpServers)).toContain('newserver');
+        expect(Object.keys(secondLoad.mcpServers)).not.toContain('server');
+    });
+
+    it('invalidates workspace loader cache after writeRawWorkspaceConfig', async () => {
+        // Seed initial workspace config and prime the loader cache
+        writeWorkspace({ servers: { local: { command: 'node-v1' } } });
+        const firstLoad = loadWorkspaceMcpConfig(workspaceRoot);
+        expect(Object.keys(firstLoad.mcpServers)).toContain('local');
+
+        // Write updated workspace config via the writer
+        await writeRawWorkspaceConfig(workspaceRoot, { servers: { newlocal: { command: 'node-v2' } } });
+
+        // Loader must see the new server, not the cached old one
+        const secondLoad = loadWorkspaceMcpConfig(workspaceRoot);
+        expect(Object.keys(secondLoad.mcpServers)).toContain('newlocal');
+        expect(Object.keys(secondLoad.mcpServers)).not.toContain('local');
+    });
+
+    it('invalidates global cache after addServerToConfig', async () => {
+        writeGlobal({ mcpServers: {} });
+        loadDefaultMcpConfig(); // populate cache
+
+        await addServerToConfig(workspaceRoot, { name: 'added', type: 'stdio', command: 'npx', scope: 'global' });
+
+        const result = loadDefaultMcpConfig();
+        expect(Object.keys(result.mcpServers)).toContain('added');
+    });
+
+    it('invalidates global cache after deleteServerFromConfig', async () => {
+        writeGlobal({ mcpServers: { todelete: { command: 'npx' } } });
+        loadDefaultMcpConfig(); // populate cache
+
+        await deleteServerFromConfig('todelete', workspaceRoot);
+
+        const result = loadDefaultMcpConfig();
+        expect(Object.keys(result.mcpServers)).not.toContain('todelete');
     });
 });

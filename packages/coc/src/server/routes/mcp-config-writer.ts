@@ -12,7 +12,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { getMcpConfigPath, getWorkspaceMcpConfigPath } from '@plusplusoneplusplus/forge';
+import { getMcpConfigPath, getWorkspaceMcpConfigPath, invalidateCachedConfig } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Types
@@ -78,10 +78,13 @@ export function readRawGlobalConfig(): Record<string, unknown> {
 }
 
 /** Write raw JSON to the global MCP config file (creates parent dirs if needed). */
-export function writeRawGlobalConfig(data: Record<string, unknown>): void {
+export async function writeRawGlobalConfig(data: Record<string, unknown>): Promise<void> {
     const configPath = getMcpConfigPath();
-    fs.mkdirSync(path.dirname(configPath), { recursive: true });
-    fs.writeFileSync(configPath, JSON.stringify(data, null, 2), 'utf-8');
+    await fs.promises.mkdir(path.dirname(configPath), { recursive: true });
+    const tmpPath = configPath + '.tmp';
+    await fs.promises.writeFile(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+    await fs.promises.rename(tmpPath, configPath);
+    invalidateCachedConfig(configPath);
 }
 
 /**
@@ -106,10 +109,13 @@ export function readRawWorkspaceConfig(rootPath: string): Record<string, unknown
 }
 
 /** Write raw JSON to the workspace MCP config file (creates parent dirs if needed). */
-export function writeRawWorkspaceConfig(rootPath: string, data: Record<string, unknown>): void {
+export async function writeRawWorkspaceConfig(rootPath: string, data: Record<string, unknown>): Promise<void> {
     const configPath = getWorkspaceMcpConfigPath(rootPath);
-    fs.mkdirSync(path.dirname(configPath), { recursive: true });
-    fs.writeFileSync(configPath, JSON.stringify(data, null, 2), 'utf-8');
+    await fs.promises.mkdir(path.dirname(configPath), { recursive: true });
+    const tmpPath = configPath + '.tmp';
+    await fs.promises.writeFile(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+    await fs.promises.rename(tmpPath, configPath);
+    invalidateCachedConfig(configPath);
 }
 
 // ============================================================================
@@ -198,11 +204,11 @@ export function getServerDetail(serverName: string, rootPath: string): McpServer
  * Update a server entry in its source config file.
  * Returns `false` if the server is not found.
  */
-export function updateServerConfig(
+export async function updateServerConfig(
     serverName: string,
     rootPath: string,
     update: McpServerUpdate,
-): boolean {
+): Promise<boolean> {
     const found = findServerSource(serverName, rootPath);
     if (!found) return false;
 
@@ -215,7 +221,7 @@ export function updateServerConfig(
         applyUpdate(entry, update);
         servers[serverName] = entry;
         config.mcpServers = servers;
-        writeRawGlobalConfig(config);
+        await writeRawGlobalConfig(config);
     } else {
         const config = readRawWorkspaceConfig(rootPath);
         const servers = asRecord(config.servers);
@@ -223,7 +229,7 @@ export function updateServerConfig(
         applyUpdate(entry, update);
         servers[serverName] = entry;
         config.servers = servers;
-        writeRawWorkspaceConfig(rootPath, config);
+        await writeRawWorkspaceConfig(rootPath, config);
     }
 
     return true;
@@ -233,7 +239,7 @@ export function updateServerConfig(
  * Remove a server entry from its source config file.
  * Returns `false` if the server is not found.
  */
-export function deleteServerFromConfig(serverName: string, rootPath: string): boolean {
+export async function deleteServerFromConfig(serverName: string, rootPath: string): Promise<boolean> {
     const found = findServerSource(serverName, rootPath);
     if (!found) return false;
 
@@ -242,13 +248,13 @@ export function deleteServerFromConfig(serverName: string, rootPath: string): bo
         const servers = asRecord(config.mcpServers);
         delete servers[serverName];
         config.mcpServers = servers;
-        writeRawGlobalConfig(config);
+        await writeRawGlobalConfig(config);
     } else {
         const config = readRawWorkspaceConfig(rootPath);
         const servers = asRecord(config.servers);
         delete servers[serverName];
         config.servers = servers;
-        writeRawWorkspaceConfig(rootPath, config);
+        await writeRawWorkspaceConfig(rootPath, config);
     }
 
     return true;
@@ -258,7 +264,7 @@ export function deleteServerFromConfig(serverName: string, rootPath: string): bo
  * Add a new server entry to the specified config file.
  * Does not validate if the name already exists — caller must check.
  */
-export function addServerToConfig(rootPath: string, serverData: McpServerCreate): void {
+export async function addServerToConfig(rootPath: string, serverData: McpServerCreate): Promise<void> {
     const entry: Record<string, unknown> = {};
 
     if (serverData.type === 'http' || serverData.type === 'sse') {
@@ -284,13 +290,13 @@ export function addServerToConfig(rootPath: string, serverData: McpServerCreate)
         const servers = asRecord(config.mcpServers);
         servers[serverData.name] = entry;
         config.mcpServers = servers;
-        writeRawGlobalConfig(config);
+        await writeRawGlobalConfig(config);
     } else {
         const config = readRawWorkspaceConfig(rootPath);
         const servers = asRecord(config.servers);
         servers[serverData.name] = entry;
         config.servers = servers;
-        writeRawWorkspaceConfig(rootPath, config);
+        await writeRawWorkspaceConfig(rootPath, config);
     }
 }
 
@@ -298,11 +304,11 @@ export function addServerToConfig(rootPath: string, serverData: McpServerCreate)
  * Move a server entry between global and workspace config files.
  * Returns `false` if the server is not found or is already in `targetScope`.
  */
-export function migrateServerScope(
+export async function migrateServerScope(
     serverName: string,
     rootPath: string,
     targetScope: McpConfigScope,
-): boolean {
+): Promise<boolean> {
     const found = findServerSource(serverName, rootPath);
     if (!found) return false;
     if (found.source === targetScope) return true; // already there
@@ -316,13 +322,13 @@ export function migrateServerScope(
         const servers = asRecord(config.mcpServers);
         delete servers[serverName];
         config.mcpServers = servers;
-        writeRawGlobalConfig(config);
+        await writeRawGlobalConfig(config);
     } else {
         const config = readRawWorkspaceConfig(rootPath);
         const servers = asRecord(config.servers);
         delete servers[serverName];
         config.servers = servers;
-        writeRawWorkspaceConfig(rootPath, config);
+        await writeRawWorkspaceConfig(rootPath, config);
     }
 
     // Add to the target source
@@ -331,13 +337,13 @@ export function migrateServerScope(
         const servers = asRecord(config.mcpServers);
         servers[serverName] = rawEntry;
         config.mcpServers = servers;
-        writeRawGlobalConfig(config);
+        await writeRawGlobalConfig(config);
     } else {
         const config = readRawWorkspaceConfig(rootPath);
         const servers = asRecord(config.servers);
         servers[serverName] = rawEntry;
         config.servers = servers;
-        writeRawWorkspaceConfig(rootPath, config);
+        await writeRawWorkspaceConfig(rootPath, config);
     }
 
     return true;

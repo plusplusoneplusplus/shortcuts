@@ -442,6 +442,17 @@ export function loadEffectiveMcpConfig(options: {
 }
 
 /**
+ * Invalidate the cached entry for a specific config file path.
+ * Call this immediately after writing to a config file so subsequent
+ * reads reload from disk instead of returning stale data.
+ *
+ * @param configPath - Absolute path to the config file whose cache entry should be removed
+ */
+export function invalidateCachedConfig(configPath: string): void {
+    cachedConfigs.delete(configPath);
+}
+
+/**
  * Clear the cached MCP config.
  * Useful for testing or when the config file might have changed.
  */

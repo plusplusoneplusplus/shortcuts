@@ -540,7 +540,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, badRequest(`Server "${body.name}" already exists in ${existing.source} config`));
             }
 
-            addServerToConfig(ws.rootPath, {
+            await addServerToConfig(ws.rootPath, {
                 name: body.name,
                 type: body.type,
                 command: typeof body.command === 'string' ? body.command : undefined,
@@ -577,7 +577,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
                 update.toolScope = body.toolScope as McpToolScope;
             }
 
-            const ok = updateServerConfig(serverName, ws.rootPath, update);
+            const ok = await updateServerConfig(serverName, ws.rootPath, update);
             if (!ok) {
                 return handleAPIError(res, notFound('MCP server'));
             }
@@ -593,7 +593,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
             const serverName = decodeURIComponent(match![2]);
-            const ok = deleteServerFromConfig(serverName, ws.rootPath);
+            const ok = await deleteServerFromConfig(serverName, ws.rootPath);
             if (!ok) {
                 return handleAPIError(res, notFound('MCP server'));
             }
@@ -616,7 +616,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, badRequest('`targetScope` must be "global" or "workspace"'));
             }
 
-            const ok = migrateServerScope(serverName, ws.rootPath, body.targetScope as McpConfigScope);
+            const ok = await migrateServerScope(serverName, ws.rootPath, body.targetScope as McpConfigScope);
             if (!ok) {
                 return handleAPIError(res, notFound('MCP server'));
             }
