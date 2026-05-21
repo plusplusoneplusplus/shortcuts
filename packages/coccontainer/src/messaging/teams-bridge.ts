@@ -50,6 +50,13 @@ export class TeamsBridge {
         // Resolve team/channel names → IDs (create if missing) using az token
         await this.resolveTeamAndChannel();
 
+        // Ensure we have a token even if resolution was skipped (IDs pre-configured)
+        if (!this._azToken && this.opts.config.mode === 'mcp') {
+            try {
+                this._azToken = await acquireMcpOAuthToken(this.opts.config.mcpServerUrl);
+            } catch { /* will be handled by bot start */ }
+        }
+
         this.bot = new TeamsBot({
             mode: this.opts.config.mode,
             teamId: this.opts.config.teamId,
