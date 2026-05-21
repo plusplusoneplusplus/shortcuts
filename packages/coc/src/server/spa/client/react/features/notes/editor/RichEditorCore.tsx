@@ -19,6 +19,8 @@ import { TableRow } from '@tiptap/extension-table-row';
 import { TableCell } from '@tiptap/extension-table-cell';
 import { TableHeader } from '@tiptap/extension-table-header';
 import { Highlight } from '@tiptap/extension-highlight';
+import { TextAlign } from '@tiptap/extension-text-align';
+import { IndentExtension } from './extensions/indentExtension';
 import { ResizableImage } from './extensions/resizableImage';
 import { MermaidBlock } from './extensions/mermaidBlock';
 import { MapBlock } from './extensions/mapBlock';
@@ -108,6 +110,8 @@ export function RichEditorCore({
             TableCell,
             TableHeader,
             Highlight.configure({ multicolor: true }),
+            TextAlign.configure({ types: ['heading', 'paragraph'] }),
+            IndentExtension,
             ResizableImage.configure({ inline: false, allowBase64: false }),
             NoteLinkExtension,
             FilePathNodeExtension,

@@ -853,4 +853,124 @@ describe('noteMarkdown', () => {
             expect(norm(md)).toBe('line one\n\nline two');
         });
     });
+
+    // ── Text alignment and indentation ──────────────────────────────────────
+    //
+    // Aligned/indented paragraphs and headings have no standard markdown syntax,
+    // so they are round-tripped as raw HTML blocks that marked passes through.
+
+    describe('text alignment (htmlToMarkdown)', () => {
+        it('emits raw HTML block for center-aligned paragraph', () => {
+            const html = '<p style="text-align: center">centered</p>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('<p style="text-align: center">centered</p>');
+            // Must not produce a plain paragraph
+            expect(md).not.toMatch(/^centered\n/m);
+        });
+
+        it('emits raw HTML block for right-aligned paragraph', () => {
+            const html = '<p style="text-align: right">right</p>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('<p style="text-align: right">right</p>');
+        });
+
+        it('emits raw HTML block for justify-aligned paragraph', () => {
+            const html = '<p style="text-align: justify">justified</p>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('<p style="text-align: justify">justified</p>');
+        });
+
+        it('does NOT emit raw HTML for left-aligned paragraph (left is default)', () => {
+            const html = '<p style="text-align: left">normal</p>';
+            const md = htmlToMarkdown(html);
+            // Should be plain markdown paragraph, not a raw HTML block
+            expect(md).toContain('normal');
+            expect(md).not.toContain('text-align: left');
+        });
+
+        it('emits raw HTML for center-aligned heading', () => {
+            const html = '<h2 style="text-align: center">Centered H2</h2>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('<h2 style="text-align: center">Centered H2</h2>');
+        });
+
+        it('preserves inline formatting inside aligned paragraph', () => {
+            const html = '<p style="text-align: center"><strong>bold</strong> text</p>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('text-align: center');
+            expect(md).toContain('<strong>bold</strong>');
+        });
+
+        it('round-trip — center-aligned paragraph survives save/reload', () => {
+            const html = '<p style="text-align: center">hello</p>';
+            const md = htmlToMarkdown(html);
+            const reloaded = markdownToHtml(md);
+            expect(reloaded).toContain('text-align: center');
+            expect(reloaded).toContain('hello');
+        });
+
+        it('round-trip — right-aligned heading survives save/reload', () => {
+            const html = '<h1 style="text-align: right">Title</h1>';
+            const md = htmlToMarkdown(html);
+            const reloaded = markdownToHtml(md);
+            expect(reloaded).toContain('text-align: right');
+            expect(reloaded).toContain('Title');
+        });
+
+        it('round-trip — mixed aligned and plain paragraphs', () => {
+            const html = '<p>plain</p><p style="text-align: center">centered</p><p>plain again</p>';
+            const md = htmlToMarkdown(html);
+            const reloaded = markdownToHtml(md);
+            expect(reloaded).toContain('plain');
+            expect(reloaded).toContain('centered');
+            expect(reloaded).toContain('text-align: center');
+        });
+    });
+
+    describe('paragraph indentation (htmlToMarkdown)', () => {
+        it('emits raw HTML block for indented paragraph (data-indent)', () => {
+            const html = '<p data-indent="1">indented</p>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('<p data-indent="1">indented</p>');
+            expect(md).not.toMatch(/^indented\n/m);
+        });
+
+        it('emits raw HTML block for deeply indented paragraph', () => {
+            const html = '<p data-indent="3">deep</p>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('<p data-indent="3">deep</p>');
+        });
+
+        it('does NOT emit raw HTML for data-indent="0" (default)', () => {
+            const html = '<p data-indent="0">normal</p>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('normal');
+            expect(md).not.toContain('data-indent');
+        });
+
+        it('emits raw HTML for indented heading', () => {
+            const html = '<h3 data-indent="2">Indented H3</h3>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('<h3 data-indent="2">Indented H3</h3>');
+        });
+
+        it('round-trip — indented paragraph survives save/reload', () => {
+            const html = '<p data-indent="2">hello</p>';
+            const md = htmlToMarkdown(html);
+            const reloaded = markdownToHtml(md);
+            expect(reloaded).toContain('data-indent="2"');
+            expect(reloaded).toContain('hello');
+        });
+
+        it('round-trip — alignment and indent combined on same paragraph', () => {
+            const html = '<p style="text-align: center" data-indent="1">combo</p>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('text-align: center');
+            expect(md).toContain('data-indent="1"');
+            const reloaded = markdownToHtml(md);
+            expect(reloaded).toContain('text-align: center');
+            expect(reloaded).toContain('data-indent="1"');
+            expect(reloaded).toContain('combo');
+        });
+    });
 });
