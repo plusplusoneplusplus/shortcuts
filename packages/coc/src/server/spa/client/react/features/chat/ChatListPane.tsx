@@ -1235,13 +1235,13 @@ export function ChatListPane({
         //   2) Latest message preview (denormalized snapshot of newest turn)
         //   3) Prompt-based fallback (truncated)
         //   4) Task type / 'Task'
-        // We intentionally do NOT fall back to `displayName` or AI-generated `title`
-        // in the sidebar — those are shown in the chat header instead.
         const promptText = (task.prompt || task.promptPreview || task.payload?.promptContent || task.payload?.prompt || '') as string;
         const promptFallback = promptText && !/^Use the \S+ skill\.$/.test(promptText)
             ? (promptText.length > 50 ? promptText.substring(0, 47) + '…' : promptText)
             : (task.type === 'chat' ? 'Chat' : (task.type || 'Task'));
+        // Display priority: customTitle → AI title → lastMessagePreview → promptFallback
         const titleText = (task.customTitle as string | undefined)
+            || (task.title as string | undefined)
             || (task.lastMessagePreview as string | undefined)
             || promptFallback;
 
