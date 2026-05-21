@@ -59,7 +59,7 @@ if (-not [string]::IsNullOrWhiteSpace($TunnelId) -and $portWasProvided) {
     exit 2
 }
 
-$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$repoRoot = Split-Path -Parent $PSScriptRoot
 
 # If invoked from repo root, use that instead
 if (Test-Path (Join-Path $PWD 'packages\coc')) {
