@@ -575,6 +575,9 @@ export class TeamsBridge {
 
         try {
             if (isFollowUp) {
+                // Clear the completed-lock so future outbound events for this process are not suppressed
+                this._processingLocks.delete(processId!);
+
                 const wsParam = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : '';
                 const url = `${agentAddr}/api/processes/${processId}/message${wsParam}`;
                 const res = await fetch(url, {
