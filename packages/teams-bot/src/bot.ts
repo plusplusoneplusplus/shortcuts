@@ -142,7 +142,7 @@ export class TeamsBot {
     }
 
     /** Send a text message to a Teams channel. Returns the message ID. */
-    async send(channelId: string, text: string, opts?: { replyToId?: string }): Promise<string> {
+    async send(channelId: string, text: string, opts?: { replyToId?: string; mentions?: Array<{ aadId: string; displayName: string }> }): Promise<string> {
         if (this._status !== 'connected') {
             throw new Error('TeamsBot is not connected');
         }
@@ -154,7 +154,7 @@ export class TeamsBot {
         }
     }
 
-    private async sendViaGraph(channelId: string, text: string, opts?: { replyToId?: string }): Promise<string> {
+    private async sendViaGraph(channelId: string, text: string, opts?: { replyToId?: string; mentions?: Array<{ aadId: string; displayName: string }> }): Promise<string> {
         if (!this.graphClient) throw new Error('Graph client not initialized');
 
         // Ensure the graph client targets the right channel
@@ -162,15 +162,15 @@ export class TeamsBot {
 
         let messageId: string;
         if (opts?.replyToId) {
-            messageId = await this.graphClient.replyToChannelMessage(opts.replyToId, text);
+            messageId = await this.graphClient.replyToChannelMessage(opts.replyToId, text, opts.mentions);
         } else {
-            messageId = await this.graphClient.postChannelMessage(text);
+            messageId = await this.graphClient.postChannelMessage(text, opts?.mentions);
         }
         if (messageId) this._sentMessageIds.add(messageId);
         return messageId;
     }
 
-    private async sendViaMcp(channelId: string, text: string, opts?: { replyToId?: string }): Promise<string> {
+    private async sendViaMcp(channelId: string, text: string, opts?: { replyToId?: string; mentions?: Array<{ aadId: string; displayName: string }> }): Promise<string> {
         if (!this.mcpClient) throw new Error('MCP client not initialized');
 
         let toolName: string;
@@ -180,6 +180,14 @@ export class TeamsBot {
             content: text,
             contentType: 'html',
         };
+
+        if (opts?.mentions && opts.mentions.length > 0) {
+            args['mentions'] = opts.mentions.map((m, idx) => ({
+                id: idx,
+                mentionText: m.displayName,
+                mentioned: { user: { id: m.aadId, displayName: m.displayName } },
+            }));
+        }
 
         if (opts?.replyToId) {
             toolName = 'ReplyToChannelMessage';

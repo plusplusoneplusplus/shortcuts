@@ -439,6 +439,9 @@ export class TeamsBridge {
             );
             const title = (processData.title ?? proc.title ?? '') as string;
 
+            // Retrieve sender info for @mention notifications
+            const sender = this.store!.getProcessSender(processId);
+
             for (const turn of newTurns) {
                 const content = (turn.content ?? turn.text ?? '') as string;
                 if (!content.trim()) continue;
@@ -450,10 +453,14 @@ export class TeamsBridge {
                     title,
                     content,
                     botName: this.opts.config.botName,
+                    mentionName: sender?.senderName,
                 });
 
                 try {
-                    const messageId = await this.bot!.send(target, teamsText);
+                    const mentions = sender
+                        ? [{ aadId: sender.senderAadId, displayName: sender.senderName }]
+                        : undefined;
+                    const messageId = await this.bot!.send(target, teamsText, { mentions });
                     this.store!.bindMessage(messageId, processId, agentId, `${msg.agentName}:${repoName}`, workspaceId);
                 } catch (err) {
                     console.error('[teams-bridge] Failed to send outbound message:', err);
@@ -478,12 +485,14 @@ export class TeamsBridge {
     }
 
     /** Format a structured Teams message for desktop display. */
-    formatOutboundMessage(opts: { role: string; agent: string; repo: string; title: string; content: string; botName?: string }): string {
+    formatOutboundMessage(opts: { role: string; agent: string; repo: string; title: string; content: string; botName?: string; mentionName?: string }): string {
         const sender = opts.role === 'user'
             ? (opts.botName || 'User')
             : 'CoC Agent';
 
         const lines = [
+            // Prepend @mention tag so Teams generates a notification
+            ...(opts.mentionName ? [`<at id="0">${opts.mentionName}</at>`] : []),
             `${sender}:`,
             `Agent: ${opts.agent}`,
             `Repo: ${opts.repo}`,
@@ -587,6 +596,11 @@ export class TeamsBridge {
         if (!agentAddr) {
             console.error(`[teams-bridge] No address for agent ${agentId}`);
             return;
+        }
+
+        // Save sender info so outbound messages can @mention them
+        if (processId && msg.senderAadId && msg.senderName) {
+            this.store.setProcessSender(processId, msg.senderAadId, msg.senderName);
         }
 
         try {
