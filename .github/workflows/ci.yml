@@ -440,56 +440,23 @@ jobs:
       - name: Build packages
         run: npm run build:packages
 
-      - name: Start coc serve and verify health (Linux)
-        if: runner.os == 'Linux'
+      - name: Start coc serve and verify health
+        shell: bash
         run: |
-          node packages/coc/dist/index.js serve --no-open --port 4111 &
+          # Pipe from sleep to keep stdin open (prevents Windows readline 'close' shutdown)
+          sleep 120 | node packages/coc/dist/index.js serve --no-open --port 4111 &
           SERVER_PID=$!
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             if curl -sf http://127.0.0.1:4111/api/health > /dev/null 2>&1; then
               echo "✓ Server healthy after ${i}s"
-              kill $SERVER_PID
+              kill $SERVER_PID 2>/dev/null || true
               exit 0
             fi
             sleep 1
           done
-          echo "✗ Server failed to respond within 30s"
+          echo "✗ Server failed to respond within 60s"
           kill $SERVER_PID 2>/dev/null || true
           exit 1
-
-      - name: Start coc serve and verify health (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $nodeExe = (Get-Command node).Source
-          Write-Host "Using node: $nodeExe"
-          $scriptPath = Resolve-Path "packages/coc/dist/index.js"
-          Write-Host "Script: $scriptPath"
-          $proc = Start-Process -FilePath $nodeExe -ArgumentList $scriptPath,"serve","--no-open","--port","4111" -PassThru -RedirectStandardOutput coc-stdout.log -RedirectStandardError coc-stderr.log
-          Write-Host "Started PID: $($proc.Id)"
-          $healthy = $false
-          for ($i = 1; $i -le 60; $i++) {
-            Start-Sleep -Seconds 1
-            if ($proc.HasExited) {
-              Write-Host "Process exited early with code $($proc.ExitCode)"
-              break
-            }
-            try {
-              $resp = Invoke-WebRequest -Uri http://127.0.0.1:4111/api/health -UseBasicParsing -ErrorAction Stop
-              if ($resp.StatusCode -eq 200) {
-                Write-Host "✓ Server healthy after ${i}s"
-                $healthy = $true
-                break
-              }
-            } catch {}
-          }
-          if (-not $healthy) {
-            Write-Host "✗ Server failed to respond within 60s"
-          }
-          if (Test-Path coc-stdout.log) { Write-Host "--- stdout ---"; Get-Content coc-stdout.log }
-          if (Test-Path coc-stderr.log) { Write-Host "--- stderr ---"; Get-Content coc-stderr.log }
-          Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-          if (-not $healthy) { exit 1 }
 
   ci:
     runs-on: ubuntu-latest
