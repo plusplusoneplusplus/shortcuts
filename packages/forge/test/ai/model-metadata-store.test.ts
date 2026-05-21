@@ -7,12 +7,16 @@ import { setLogger, nullLogger } from '../../src/logger';
 
 setLogger(nullLogger);
 
-// Mock getCopilotSDKService before importing the store
-vi.mock('../../src/copilot-sdk-wrapper/copilot-sdk-service', () => ({
-    getCopilotSDKService: vi.fn(),
+// Mock sdkServiceRegistry before importing the store
+const mockGetOrThrow = vi.hoisted(() => vi.fn());
+vi.mock('../../src/copilot-sdk-wrapper/sdk-service-registry', () => ({
+    sdkServiceRegistry: {
+        getOrThrow: mockGetOrThrow,
+    },
+    SDK_PROVIDER_COPILOT: 'copilot',
+    COPILOT_PROVIDER: 'copilot',
 }));
 
-import { getCopilotSDKService } from '../../src/copilot-sdk-wrapper/copilot-sdk-service';
 import { modelMetadataStore } from '../../src/copilot-sdk-wrapper/model-metadata-store';
 import { ModelInfo } from '../../src/copilot-sdk-wrapper/model-info';
 
@@ -24,8 +28,6 @@ const makeModel = (id: string, maxContextWindow: number): ModelInfo => ({
         limits: { max_context_window_tokens: maxContextWindow },
     },
 });
-
-const mockGetService = getCopilotSDKService as ReturnType<typeof vi.fn>;
 
 function resetStore() {
     const s = modelMetadataStore as any;
@@ -40,7 +42,7 @@ describe('ModelMetadataStore', () => {
     });
 
     it('returns SDK value after successful initialize', async () => {
-        mockGetService.mockReturnValue({
+        mockGetOrThrow.mockReturnValue({
             listModels: vi.fn().mockResolvedValue([makeModel('model-x', 300_000)]),
         });
 
@@ -51,7 +53,7 @@ describe('ModelMetadataStore', () => {
 
     it('returns cached model metadata by ID', async () => {
         const metadata = makeModel('model-x', 300_000);
-        mockGetService.mockReturnValue({
+        mockGetOrThrow.mockReturnValue({
             listModels: vi.fn().mockResolvedValue([metadata]),
         });
 
@@ -62,7 +64,7 @@ describe('ModelMetadataStore', () => {
     });
 
     it('falls back to static registry when model not in SDK', async () => {
-        mockGetService.mockReturnValue({
+        mockGetOrThrow.mockReturnValue({
             listModels: vi.fn().mockResolvedValue([]),
         });
 
@@ -72,7 +74,7 @@ describe('ModelMetadataStore', () => {
     });
 
     it('falls back to static registry when SDK throws', async () => {
-        mockGetService.mockReturnValue({
+        mockGetOrThrow.mockReturnValue({
             listModels: vi.fn().mockRejectedValue(new Error('SDK unavailable')),
         });
 
@@ -82,7 +84,7 @@ describe('ModelMetadataStore', () => {
     });
 
     it('returns undefined for unknown model with no SDK data', async () => {
-        mockGetService.mockReturnValue({
+        mockGetOrThrow.mockReturnValue({
             listModels: vi.fn().mockRejectedValue(new Error('SDK unavailable')),
         });
 
@@ -92,7 +94,7 @@ describe('ModelMetadataStore', () => {
     });
 
     it('isInitialized() false before initialize(), true after success', async () => {
-        mockGetService.mockReturnValue({
+        mockGetOrThrow.mockReturnValue({
             listModels: vi.fn().mockResolvedValue([]),
         });
 
@@ -102,7 +104,7 @@ describe('ModelMetadataStore', () => {
     });
 
     it('isInitialized() stays false after SDK failure', async () => {
-        mockGetService.mockReturnValue({
+        mockGetOrThrow.mockReturnValue({
             listModels: vi.fn().mockRejectedValue(new Error('SDK unavailable')),
         });
 
@@ -113,7 +115,7 @@ describe('ModelMetadataStore', () => {
 
     it('getCachedModels() returns all fetched models', async () => {
         const models = [makeModel('model-a', 100_000), makeModel('model-b', 200_000)];
-        mockGetService.mockReturnValue({
+        mockGetOrThrow.mockReturnValue({
             listModels: vi.fn().mockResolvedValue(models),
         });
 
@@ -129,7 +131,7 @@ describe('ModelMetadataStore', () => {
         const listModels = vi.fn()
             .mockResolvedValueOnce([makeModel('model-a', 100_000)])
             .mockResolvedValueOnce([makeModel('model-b', 200_000)]);
-        mockGetService.mockReturnValue({ listModels });
+        mockGetOrThrow.mockReturnValue({ listModels });
 
         await modelMetadataStore.initialize();
         expect(modelMetadataStore.getContextWindow('model-a')).toBe(100_000);
