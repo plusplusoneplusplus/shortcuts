@@ -473,4 +473,275 @@ describe('TeamsBridge', () => {
             await bridge.stop();
         });
     });
+
+    describe('outbound locking — messages sent in all scenarios', () => {
+        function mockProcessFetch(turns: Array<{ role: string; content: string; streaming?: boolean }>) {
+            return vi.fn().mockResolvedValue({
+                ok: true,
+                json: async () => ({
+                    process: {
+                        id: 'proc-lock',
+                        status: 'completed',
+                        conversationTurns: turns,
+                    },
+                }),
+            });
+        }
+
+        it('should send messages after a completed process receives a follow-up', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            // First completion
+            const mockFetch = mockProcessFetch([
+                { role: 'assistant', content: 'First response' },
+            ]);
+            vi.stubGlobal('fetch', mockFetch);
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-lock', status: 'completed', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 50));
+            expect(lastBot().send).toHaveBeenCalledTimes(1);
+
+            // Second completion (simulating follow-up response — same processId)
+            const mockFetch2 = mockProcessFetch([
+                { role: 'assistant', content: 'First response' },
+                { role: 'user', content: 'Follow-up question' },
+                { role: 'assistant', content: 'Second response' },
+            ]);
+            vi.stubGlobal('fetch', mockFetch2);
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-lock', status: 'completed', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            // Should have sent the 2 new turns (watermark was at 1, now 3 turns)
+            expect(lastBot().send).toHaveBeenCalledTimes(3);
+
+            vi.unstubAllGlobals();
+            await bridge.stop();
+        });
+
+        it('should send messages after a process fetch returns empty turns', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            // First event: empty turns
+            const emptyFetch = vi.fn().mockResolvedValue({
+                ok: true,
+                json: async () => ({
+                    process: { id: 'proc-lock', status: 'completed', conversationTurns: [] },
+                }),
+            });
+            vi.stubGlobal('fetch', emptyFetch);
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-lock', status: 'completed', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 50));
+            expect(lastBot().send).not.toHaveBeenCalled();
+
+            // Second event: now has turns — should NOT be blocked
+            const goodFetch = mockProcessFetch([
+                { role: 'assistant', content: 'Now I have something' },
+            ]);
+            vi.stubGlobal('fetch', goodFetch);
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-lock', status: 'completed', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            expect(lastBot().send).toHaveBeenCalledTimes(1);
+            expect(lastBot().send.mock.calls[0][1]).toContain('Now I have something');
+
+            vi.unstubAllGlobals();
+            await bridge.stop();
+        });
+
+        it('should send messages after a process fetch fails (non-200)', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            // First event: fetch fails
+            const failFetch = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+            vi.stubGlobal('fetch', failFetch);
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-lock', status: 'completed', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 50));
+            expect(lastBot().send).not.toHaveBeenCalled();
+
+            // Second event: fetch succeeds — should NOT be blocked
+            const goodFetch = mockProcessFetch([
+                { role: 'assistant', content: 'Recovered!' },
+            ]);
+            vi.stubGlobal('fetch', goodFetch);
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-lock', status: 'completed', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            expect(lastBot().send).toHaveBeenCalledTimes(1);
+            expect(lastBot().send.mock.calls[0][1]).toContain('Recovered!');
+
+            vi.unstubAllGlobals();
+            await bridge.stop();
+        });
+
+        it('should send messages after a fetch throws an exception', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            // First event: fetch throws
+            const throwFetch = vi.fn().mockRejectedValue(new Error('Network error'));
+            vi.stubGlobal('fetch', throwFetch);
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-lock', status: 'completed', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 50));
+            expect(lastBot().send).not.toHaveBeenCalled();
+
+            // Second event: succeeds — should NOT be blocked
+            const goodFetch = mockProcessFetch([
+                { role: 'assistant', content: 'After error' },
+            ]);
+            vi.stubGlobal('fetch', goodFetch);
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-lock', status: 'completed', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            expect(lastBot().send).toHaveBeenCalledTimes(1);
+            expect(lastBot().send.mock.calls[0][1]).toContain('After error');
+
+            vi.unstubAllGlobals();
+            await bridge.stop();
+        });
+
+        it('should send messages for running status after first event completes', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            const mockFetch = mockProcessFetch([
+                { role: 'assistant', content: 'Streaming done' },
+            ]);
+            vi.stubGlobal('fetch', mockFetch);
+
+            // First running event
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-lock', status: 'running', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 50));
+            expect(lastBot().send).toHaveBeenCalledTimes(1);
+
+            // Second running event for same process — lock released, should work again
+            const mockFetch2 = mockProcessFetch([
+                { role: 'assistant', content: 'Streaming done' },
+                { role: 'assistant', content: 'More content' },
+            ]);
+            vi.stubGlobal('fetch', mockFetch2);
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-lock', status: 'running', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            // Watermark was at 1, now 2 turns → sends the new one
+            expect(lastBot().send).toHaveBeenCalledTimes(2);
+
+            vi.unstubAllGlobals();
+            await bridge.stop();
+        });
+
+        it('should not send when bot is disconnected but should send after reconnect', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            // Bot is disconnected
+            lastBot().getStatus.mockReturnValue('disconnected');
+
+            const mockFetch = mockProcessFetch([
+                { role: 'assistant', content: 'Should not arrive' },
+            ]);
+            vi.stubGlobal('fetch', mockFetch);
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-lock', status: 'completed', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 50));
+            expect(lastBot().send).not.toHaveBeenCalled();
+
+            // Bot reconnects
+            lastBot().getStatus.mockReturnValue('connected');
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-lock', status: 'completed', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            expect(lastBot().send).toHaveBeenCalledTimes(1);
+
+            vi.unstubAllGlobals();
+            await bridge.stop();
+        });
+
+        it('should handle multiple different processes independently', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            const mockFetch = vi.fn().mockImplementation((url: string) => {
+                const id = url.includes('proc-A') ? 'proc-A' : 'proc-B';
+                return Promise.resolve({
+                    ok: true,
+                    json: async () => ({
+                        process: {
+                            id,
+                            status: 'completed',
+                            conversationTurns: [
+                                { role: 'assistant', content: `Response from ${id}` },
+                            ],
+                        },
+                    }),
+                });
+            });
+            vi.stubGlobal('fetch', mockFetch);
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-A', status: 'completed', workspaceId: 'ws-1' },
+            });
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-B', status: 'completed', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            expect(lastBot().send).toHaveBeenCalledTimes(2);
+            const messages = lastBot().send.mock.calls.map((c: any[]) => c[1]);
+            expect(messages.some((m: string) => m.includes('proc-A'))).toBe(true);
+            expect(messages.some((m: string) => m.includes('proc-B'))).toBe(true);
+
+            vi.unstubAllGlobals();
+            await bridge.stop();
+        });
+    });
 });
