@@ -163,6 +163,24 @@ export interface PrSuggestion {
   score: number;
 }
 
+/** A reviewed PR entry used to seed AI review suggestions. */
+export interface ReviewedPullRequestSummary {
+  number: number;
+  title: string;
+  author: { id: string; displayName: string; email?: string; avatarUrl?: string };
+  filesChanged: string[];
+  labels: string[];
+  reviewedAt: string;
+  targetBranch: string;
+  url: string;
+}
+
+/** Response from review-history endpoints. */
+export interface PrReviewHistoryResponse {
+  reviews: ReviewedPullRequestSummary[];
+  fetchedAt: string | null;
+}
+
 /** Response from GET/POST suggestions endpoints. */
 export interface PrSuggestionsResponse {
   suggestions: PrSuggestion[];

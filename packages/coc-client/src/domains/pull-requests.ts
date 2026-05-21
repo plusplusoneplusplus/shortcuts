@@ -3,6 +3,7 @@ import type {
   ClassifyDiffRequest,
   ClassifyDiffResponse,
   ProviderConfigRequest,
+  PrReviewHistoryResponse,
   PrSuggestionsResponse,
   PullRequestChatBinding,
   PullRequestChatBindingListResponse,
@@ -158,7 +159,15 @@ export class PullRequestsClient {
     );
   }
 
-  /** Refresh PR suggestions: re-fetch review history and re-rank via LLM. */
+  /** Refresh the cached review history used to seed PR suggestions. */
+  refreshReviewHistory(repoId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PrReviewHistoryResponse> {
+    return this.transport.request<PrReviewHistoryResponse>(
+      `/repos/${encodePathSegment(repoId)}/pull-requests/review-history/refresh`,
+      { method: 'POST', signal: options?.signal },
+    );
+  }
+
+  /** Refresh PR suggestions by re-ranking cached review history via LLM. */
   refreshSuggestions(repoId: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<PrSuggestionsResponse> {
     return this.transport.request<PrSuggestionsResponse>(
       `/repos/${encodePathSegment(repoId)}/pull-requests/suggestions/refresh`,

@@ -110,3 +110,7 @@ Tools popover contains: Skills, Logs, Usage, Models, Servers (when enabled).
 The SPA consumes `@plusplusoneplusplus/coc-client` for typed REST transport. Domain clients: admin, processes, queue, schedules, tasks, notes, workflows, wiki, memory, skills, preferences, seen-state, work-items, models, git.
 
 Local React hooks (`fetchApi`, `useWebSocket`, `seenStateApi`) wrap the client for React state management.
+
+## Pull Request Suggestions
+
+The Pull Requests tab exposes PR review suggestions behind the `pullRequests.suggestions` config flag. The `For You` filter includes a `Generate suggestions`/`Refresh` action that first refreshes review history, then asks the server to rank open PRs. The UI shows inline progress, empty-state guidance, and recovery messages for missing review history or provider errors.

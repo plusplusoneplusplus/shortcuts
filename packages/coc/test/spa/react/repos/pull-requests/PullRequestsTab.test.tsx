@@ -5,12 +5,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 
+const configMock = vi.hoisted(() => ({
+    pullRequestsSuggestionsEnabled: false,
+}));
+
 // Mock getApiBase so fetch URLs are predictable.
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '',
     isRalphEnabled: () => false,
-    isPullRequestsSuggestionsEnabled: () => false,
+    isPullRequestsSuggestionsEnabled: () => configMock.pullRequestsSuggestionsEnabled,
 }));
 
 // Mock AppContext to avoid full context setup.
@@ -80,6 +84,7 @@ async function renderTab(props: Partial<any> = {}) {
 beforeEach(() => {
     vi.resetModules();
     vi.resetAllMocks();
+    configMock.pullRequestsSuggestionsEnabled = false;
     mockDispatch.mockReset();
     mockSelectedPrId = null;
 });
@@ -260,6 +265,103 @@ describe('queue filter pills', () => {
         expect(screen.getByTestId('pr-queue-filter-mine').textContent).toContain('3');
         expect(screen.getByTestId('pr-queue-filter-blocked').textContent).toContain('1');
         expect(screen.getByTestId('pr-queue-filter-ready').textContent).toContain('2');
+    });
+});
+
+// ── PR review suggestions ─────────────────────────────────────────────────────
+
+describe('PR review suggestions', () => {
+    it('generates suggestions by refreshing review history before ranking', async () => {
+        configMock.pullRequestsSuggestionsEnabled = true;
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ pullRequests: [makePr({ id: 1, number: 1, title: 'Suggested PR' })] }),
+            } as any)
+            .mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ suggestions: [], rankedAt: null }),
+            } as any)
+            .mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ pullRequests: [makePr({ id: 1, number: 1, title: 'Suggested PR' })] }),
+            } as any)
+            .mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({
+                    reviews: [{
+                        number: 10,
+                        title: 'Reviewed PR',
+                        author: { id: 'u1', displayName: 'Reviewer' },
+                        filesChanged: ['src/file.ts'],
+                        labels: [],
+                        reviewedAt: '2026-01-01T00:00:00.000Z',
+                        targetBranch: 'main',
+                        url: 'https://example.invalid/pr/10',
+                    }],
+                    fetchedAt: '2026-01-01T00:00:00.000Z',
+                }),
+            } as any)
+            .mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ suggestions: [{ prNumber: 1, score: 95 }], rankedAt: '2026-01-01T00:01:00.000Z' }),
+            } as any);
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('pr-queue-filter-foryou')).toBeInTheDocument());
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('pr-queue-filter-foryou'));
+        });
+        await waitFor(() => expect(screen.getByTestId('suggestions-empty-state')).toBeInTheDocument());
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('generate-suggestions-empty-button'));
+        });
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
+        expect(String(fetchMock.mock.calls[3][0])).toContain('/repos/repo-1/pull-requests/review-history/refresh');
+        expect(fetchMock.mock.calls[3][1]?.method).toBe('POST');
+        expect(String(fetchMock.mock.calls[4][0])).toContain('/repos/repo-1/pull-requests/suggestions/refresh');
+        expect(fetchMock.mock.calls[4][1]?.method).toBe('POST');
+        await waitFor(() => expect(screen.getByText('Suggested PR')).toBeInTheDocument());
+    });
+
+    it('shows an inline recovery message when no review history exists', async () => {
+        configMock.pullRequestsSuggestionsEnabled = true;
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ pullRequests: [makePr({ id: 1, number: 1, title: 'Open PR' })] }),
+            } as any)
+            .mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ suggestions: [], rankedAt: null }),
+            } as any)
+            .mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ pullRequests: [makePr({ id: 1, number: 1, title: 'Open PR' })] }),
+            } as any)
+            .mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ reviews: [], fetchedAt: '2026-01-01T00:00:00.000Z' }),
+            } as any);
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('pr-queue-filter-foryou')).toBeInTheDocument());
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('pr-queue-filter-foryou'));
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('generate-suggestions-empty-button'));
+        });
+
+        await waitFor(() => expect(screen.getByTestId('suggestions-error')).toHaveTextContent('No past reviewed PRs found yet'));
+        expect(fetchMock).toHaveBeenCalledTimes(4);
+        expect(fetchMock.mock.calls.some(call => String(call[0]).includes('/suggestions/refresh'))).toBe(false);
     });
 });
 

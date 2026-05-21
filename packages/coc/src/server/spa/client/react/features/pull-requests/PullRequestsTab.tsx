@@ -133,6 +133,9 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     const suggestionsEnabled = isPullRequestsSuggestionsEnabled();
     const [suggestions, setSuggestions] = useState<PrSuggestion[]>([]);
     const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+    const [suggestionsStatus, setSuggestionsStatus] = useState<string | null>(null);
+    const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
+    const [suggestionsRankedAt, setSuggestionsRankedAt] = useState<string | null>(null);
 
     const suggestedPrNumbers = useMemo(
         () => new Set(suggestions.map(s => s.prNumber)),
@@ -258,16 +261,41 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     useEffect(() => {
         if (!suggestionsEnabled) return;
         getSpaCocClient().pullRequests.getSuggestions(repoId)
-            .then(data => setSuggestions(data.suggestions ?? []))
+            .then(data => {
+                setSuggestions(data.suggestions ?? []);
+                setSuggestionsRankedAt(data.rankedAt ?? null);
+            })
             .catch(() => { /* non-fatal */ });
     }, [repoId, suggestionsEnabled]);
 
     const handleRefreshSuggestions = useCallback(() => {
         if (suggestionsLoading) return;
         setSuggestionsLoading(true);
-        getSpaCocClient().pullRequests.refreshSuggestions(repoId)
-            .then(data => setSuggestions(data.suggestions ?? []))
-            .catch(() => { /* non-fatal */ })
+        setSuggestionsError(null);
+        setSuggestionsStatus('Fetching review history...');
+        const client = getSpaCocClient().pullRequests;
+        client.refreshReviewHistory(repoId)
+            .then(history => {
+                if ((history.reviews ?? []).length === 0) {
+                    setSuggestions([]);
+                    setSuggestionsRankedAt(null);
+                    setSuggestionsStatus(null);
+                    setSuggestionsError('No past reviewed PRs found yet. Suggestions need review history to learn from.');
+                    return null;
+                }
+                setSuggestionsStatus('Ranking open PRs...');
+                return client.refreshSuggestions(repoId);
+            })
+            .then(data => {
+                if (!data) return;
+                setSuggestions(data.suggestions ?? []);
+                setSuggestionsRankedAt(data.rankedAt ?? null);
+                setSuggestionsStatus('Updated just now');
+            })
+            .catch(err => {
+                setSuggestionsStatus(null);
+                setSuggestionsError(getSpaCocClientErrorMessage(err, 'Failed to generate PR suggestions.'));
+            })
             .finally(() => setSuggestionsLoading(false));
     }, [repoId, suggestionsLoading]);
 
@@ -488,10 +516,17 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
 
                 {!queueCollapsed && suggestionsEnabled && activeFilter === 'foryou' && (
                     <div
-                        className="flex items-center justify-between border-b border-yellow-100 bg-yellow-50 px-2.5 py-1 text-[11px] text-yellow-800 dark:border-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200"
+                        className="flex items-center justify-between gap-2 border-b border-yellow-100 bg-yellow-50 px-2.5 py-1 text-[11px] text-yellow-800 dark:border-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200"
                         data-testid="suggestions-toolbar"
                     >
-                        <span className="font-medium">AI-suggested PRs</span>
+                        <div className="min-w-0">
+                            <span className="font-medium">AI-suggested PRs</span>
+                            <span className="ml-1 text-yellow-700/80 dark:text-yellow-200/80" data-testid="suggestions-status">
+                                {suggestionsLoading
+                                    ? suggestionsStatus
+                                    : suggestionsStatus ?? (suggestionsRankedAt ? 'Updated' : 'Generate suggestions to rank open PRs')}
+                            </span>
+                        </div>
                         <button
                             type="button"
                             onClick={handleRefreshSuggestions}
@@ -499,7 +534,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                             className="text-xs font-semibold text-yellow-700 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-yellow-300"
                             data-testid="refresh-suggestions-button"
                         >
-                            {suggestionsLoading ? 'Ranking…' : 'Refresh'}
+                            {suggestionsLoading ? 'Generating...' : suggestions.length > 0 ? 'Refresh' : 'Generate suggestions'}
                         </button>
                     </div>
                 )}
@@ -538,6 +573,12 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                     </div>
                 )}
 
+                {!queueCollapsed && suggestionsEnabled && activeFilter === 'foryou' && suggestionsError && (
+                    <div className="border-b border-red-100 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300" data-testid="suggestions-error">
+                        {suggestionsError}
+                    </div>
+                )}
+
                 {!queueCollapsed && loading && prs.length === 0 && (
                     <div className="flex items-center justify-center py-8" data-testid="loading-spinner">
                         <span className="text-sm text-gray-500">Loading pull requests…</span>
@@ -573,7 +614,24 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                                 </PrQueueGroupSection>
                             ))
                     )}
-                    {!queueCollapsed && !loading && !error && !unconfigured && prs.length > 0 && filteredByPill.length === 0 && (
+                    {!queueCollapsed && !loading && !error && !unconfigured && suggestionsEnabled && activeFilter === 'foryou' && prs.length > 0 && filteredByPill.length === 0 && suggestions.length === 0 && (
+                        <div className="m-3 rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-900 dark:border-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-100" data-testid="suggestions-empty-state">
+                            <div className="font-semibold">Find PRs for you</div>
+                            <div className="mt-1 text-xs text-yellow-800 dark:text-yellow-200">
+                                CoC can suggest open PRs based on your past review history.
+                            </div>
+                            <button
+                                type="button"
+                                onClick={handleRefreshSuggestions}
+                                disabled={suggestionsLoading}
+                                className="mt-2 rounded-md border border-yellow-300 bg-white px-2 py-1 text-xs font-semibold text-yellow-800 hover:bg-yellow-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-100 dark:hover:bg-yellow-900/40"
+                                data-testid="generate-suggestions-empty-button"
+                            >
+                                {suggestionsLoading ? 'Generating...' : 'Generate suggestions'}
+                            </button>
+                        </div>
+                    )}
+                    {!queueCollapsed && !loading && !error && !unconfigured && !(suggestionsEnabled && activeFilter === 'foryou' && suggestions.length === 0) && prs.length > 0 && filteredByPill.length === 0 && (
                         <div className="px-4 py-6 text-center text-sm text-gray-500" data-testid="no-results">
                             No pull requests match your filters.
                         </div>
