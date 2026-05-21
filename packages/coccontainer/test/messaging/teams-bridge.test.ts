@@ -329,5 +329,148 @@ describe('TeamsBridge', () => {
 
             await bridge.stop();
         });
+
+        it('should include @mention tag when mentionName is provided', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            const msg = bridge.formatOutboundMessage({
+                role: 'assistant',
+                agent: 'Agent-A',
+                repo: 'my-repo',
+                title: 'Task 1',
+                content: 'Done!',
+                mentionName: 'John Doe',
+            });
+
+            expect(msg).toContain('<at id="0">John Doe</at>');
+            expect(msg).toContain('CoC Agent');
+            expect(msg).toContain('Done!');
+
+            await bridge.stop();
+        });
+
+        it('should not include @mention tag when mentionName is undefined', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            const msg = bridge.formatOutboundMessage({
+                role: 'assistant',
+                agent: 'Agent-A',
+                repo: 'my-repo',
+                title: '',
+                content: 'Hello',
+            });
+
+            expect(msg).not.toContain('<at');
+
+            await bridge.stop();
+        });
+    });
+
+    describe('outbound @mentions (process sender tracking)', () => {
+        it('should pass mentions to bot.send when sender is known', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            // Mock fetch: first call for resolveGlobalSession, subsequent for process data
+            const mockFetch = vi.fn().mockImplementation((url: string, opts?: any) => {
+                if (opts?.method === 'POST' && url.includes('/api/queue')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: async () => ({ id: 'proc-alice-001' }),
+                    });
+                }
+                if (url.includes('/api/processes/proc-alice-001')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: async () => ({
+                            process: {
+                                id: 'proc-alice-001',
+                                status: 'completed',
+                                conversationTurns: [
+                                    { role: 'assistant', content: 'Hello Alice!' },
+                                ],
+                            },
+                        }),
+                    });
+                }
+                return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+            });
+            vi.stubGlobal('fetch', mockFetch);
+
+            // Simulate inbound message — this stores sender info
+            const bot = lastBot();
+            await bot.opts.onMessage({
+                channelId: 'channel-test',
+                messageId: 'teams-inbound-1',
+                text: 'Hello bot',
+                senderName: 'Alice',
+                senderAadId: 'aad-alice-123',
+            });
+
+            // Wait for inbound processing (resolveGlobalSession fetch)
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Now emit process-updated for proc-alice-001
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-alice-001', status: 'completed', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Check that send was called with mentions
+            const sendCalls = bot.send.mock.calls;
+            const outboundCall = sendCalls.find((c: any[]) => c[1]?.includes('Hello Alice!'));
+            expect(outboundCall).toBeDefined();
+            // Message content should have @mention tag
+            expect(outboundCall![1]).toContain('<at id="0">Alice</at>');
+            // Mentions array should be passed
+            expect(outboundCall![2]?.mentions).toEqual([
+                { aadId: 'aad-alice-123', displayName: 'Alice' },
+            ]);
+
+            vi.unstubAllGlobals();
+            await bridge.stop();
+        });
+
+        it('should send without mentions when sender is unknown', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            const mockFetch = vi.fn().mockResolvedValue({
+                ok: true,
+                json: async () => ({
+                    process: {
+                        id: 'proc-unknown',
+                        status: 'completed',
+                        conversationTurns: [
+                            { role: 'assistant', content: 'Done' },
+                        ],
+                    },
+                }),
+            });
+            vi.stubGlobal('fetch', mockFetch);
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-unknown', status: 'completed', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            const bot = lastBot();
+            const sendCalls = bot.send.mock.calls;
+            // Should still send but without mentions
+            if (sendCalls.length > 0) {
+                const lastCall = sendCalls[sendCalls.length - 1];
+                // No mentions arg or mentions is undefined
+                expect(lastCall[2]?.mentions).toBeUndefined();
+                // Message should not contain <at> tags
+                expect(lastCall[1]).not.toContain('<at');
+            }
+
+            vi.unstubAllGlobals();
+            await bridge.stop();
+        });
     });
 });

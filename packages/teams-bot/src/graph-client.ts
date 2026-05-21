@@ -227,20 +227,36 @@ export class GraphClient {
     // ── Messaging ─────────────────────────────────────────────
 
     /** Post a message to the configured channel. Returns the message ID. */
-    async postChannelMessage(content: string): Promise<string> {
+    async postChannelMessage(content: string, mentions?: Array<{ aadId: string; displayName: string }>): Promise<string> {
         if (!this.channelId) throw new Error('No channelId configured');
         if (!this.teamId) throw new Error('No teamId configured');
         const url = `${this.graphBase}/teams/${this.teamId}/channels/${encodeURIComponent(this.channelId)}/messages`;
-        const res = await this.post(url, { body: { content } });
+        const body: Record<string, unknown> = { body: { content, contentType: 'html' } };
+        if (mentions && mentions.length > 0) {
+            body['mentions'] = mentions.map((m, idx) => ({
+                id: idx,
+                mentionText: m.displayName,
+                mentioned: { user: { id: m.aadId, displayName: m.displayName } },
+            }));
+        }
+        const res = await this.post(url, body);
         return res.id;
     }
 
     /** Reply to a thread in the configured channel. Returns the reply message ID. */
-    async replyToChannelMessage(parentMessageId: string, content: string): Promise<string> {
+    async replyToChannelMessage(parentMessageId: string, content: string, mentions?: Array<{ aadId: string; displayName: string }>): Promise<string> {
         if (!this.channelId) throw new Error('No channelId configured');
         if (!this.teamId) throw new Error('No teamId configured');
         const url = `${this.graphBase}/teams/${this.teamId}/channels/${encodeURIComponent(this.channelId)}/messages/${parentMessageId}/replies`;
-        const res = await this.post(url, { body: { content } });
+        const body: Record<string, unknown> = { body: { content, contentType: 'html' } };
+        if (mentions && mentions.length > 0) {
+            body['mentions'] = mentions.map((m, idx) => ({
+                id: idx,
+                mentionText: m.displayName,
+                mentioned: { user: { id: m.aadId, displayName: m.displayName } },
+            }));
+        }
+        const res = await this.post(url, body);
         return res.id;
     }
 
