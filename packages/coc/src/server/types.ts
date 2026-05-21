@@ -8,7 +8,7 @@
  */
 
 import type * as http from 'http';
-import type { ProcessStore, CopilotSDKService } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, ISDKService } from '@plusplusoneplusplus/forge';
 import type { CLIConfig } from '../config';
 export type { Route } from './shared/router';
 
@@ -71,7 +71,7 @@ export interface ExecutionServerOptions {
     /** Options for the wiki module. */
     wiki?: WikiServerOptions;
     /** Optional AI service injection (for testing). If not provided, uses getCopilotSDKService(). */
-    aiService?: CopilotSDKService;
+    aiService?: ISDKService;
     /** Optional config file path override (for tests). When absent, uses getConfigFilePath(). */
     configPath?: string;
     /** Pre-loaded config file contents. When provided, createExecutionServer skips loadConfigFile(). */

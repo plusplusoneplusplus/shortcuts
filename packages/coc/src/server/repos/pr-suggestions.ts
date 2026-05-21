@@ -14,7 +14,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getRepoDataPath } from '../paths';
-import type { IPullRequestsService, ReviewedPullRequest, CopilotSDKService, ProviderPullRequest } from '@plusplusoneplusplus/forge';
+import type { IPullRequestsService, ReviewedPullRequest, ISDKService, ProviderPullRequest } from '@plusplusoneplusplus/forge';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -353,7 +353,7 @@ export function toPrMetadata(pr: ProviderPullRequest): PrMetadataForRanking {
 export async function rankAndCacheSuggestions(
     dataDir: string,
     workspaceId: string,
-    aiService: CopilotSDKService,
+    aiService: ISDKService,
     reviewHistory: ReviewHistoryCache,
     openPrs: PrMetadataForRanking[],
 ): Promise<SuggestionsCache> {

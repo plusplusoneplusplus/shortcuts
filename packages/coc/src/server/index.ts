@@ -21,6 +21,7 @@ import { generateIconSvg } from './spa/icon-template';
 import type { ExecutionServerOptions, ExecutionServer, ServerCloseOptions } from './types';
 import type { Route } from './types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import type { ModelInfo } from '@plusplusoneplusplus/forge';
 import { getCopilotSDKService, modelMetadataStore } from '@plusplusoneplusplus/forge';
 import { cleanupAllStalePasteFiles } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueRouter } from './queue/multi-repo-queue-router';
@@ -464,7 +465,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
 
     try {
-        await modelMetadataStore.initialize(resolvedAiService);
+        await modelMetadataStore.initialize(resolvedAiService as unknown as { listModels(): Promise<ModelInfo[]> });
     } catch (err) {
         process.stderr.write(`[ModelMetadataStore] warm-up failed: ${(err as Error)?.message ?? err}\n`);
     }

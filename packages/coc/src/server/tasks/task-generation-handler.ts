@@ -32,7 +32,7 @@ import {
     DEFAULT_AI_TIMEOUT_MS,
     AUTO_FOLDER_SENTINEL,
 } from '@plusplusoneplusplus/forge';
-import type { SelectedContext, CopilotSDKService, AutoFolderContext } from '@plusplusoneplusplus/forge';
+import type { SelectedContext, ISDKService, AutoFolderContext } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from '../core/api-handler';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
@@ -68,7 +68,7 @@ function sendEvent(res: ServerResponse, event: string, data: unknown): void {
  * Register task generation API routes on the given route table.
  * Mutates the `routes` array in-place.
  */
-export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStore, bridge: MultiRepoQueueRouter, aiService: CopilotSDKService, dataDir: string): void {
+export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStore, bridge: MultiRepoQueueRouter, aiService: ISDKService, dataDir: string): void {
 
     // ------------------------------------------------------------------
     // POST /api/workspaces/:id/tasks/generate — AI task generation

@@ -23,9 +23,10 @@ import type {
     AutoFolderContext,
     MemoryToolCaptureContext,
     ModelInfo,
-    CopilotSDKService,
+    ISDKService,
     ProcessStore,
     QueuedTask,
+    SDKInvocationResult,
     SystemMessageConfig,
     TimelineItem,
     Tool,
@@ -87,7 +88,7 @@ export interface ChatModeExecutorOptions {
     /** Whether to auto-approve AI permission requests (default: true) */
     approvePermissions?: boolean;
     /** The AI service instance to use for sending messages */
-    aiService: CopilotSDKService;
+    aiService: ISDKService;
     /** Default timeout in ms for tasks that do not specify their own timeoutMs */
     defaultTimeoutMs: number;
     /** Follow-up suggestions configuration */
@@ -135,7 +136,7 @@ export interface ChatModeAIOptions {
 export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly approvePermissions: boolean;
     protected readonly defaultWorkingDirectory?: string;
-    protected readonly aiService: CopilotSDKService;
+    protected readonly aiService: ISDKService;
     protected readonly defaultTimeoutMs: number;
     protected readonly followUpSuggestions: { enabled: boolean; count: number };
     protected readonly askUser: { enabled: boolean };
@@ -195,7 +196,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
 
         let model = modelMetadataStore.getModel(modelId);
         if (!model && !modelMetadataStore.isInitialized()) {
-            await modelMetadataStore.initialize(this.aiService);
+            await modelMetadataStore.initialize(this.aiService as unknown as { listModels(): Promise<ModelInfo[]> });
             model = modelMetadataStore.getModel(modelId);
         }
         return model;
@@ -587,8 +588,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 })(),
             };
 
-            let result;
-            result = await this.aiService.sendMessage(sendOptions);
+            let result: SDKInvocationResult;
+            result = await this.aiService.sendMessage(sendOptions) as SDKInvocationResult;
 
             if (!result.success) {
                 throw new Error(result.error || 'AI execution failed');

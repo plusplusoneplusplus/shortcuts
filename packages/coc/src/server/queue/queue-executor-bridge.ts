@@ -2,7 +2,7 @@ import type { ChatPayload, ChatMode } from '../tasks/task-types';
 import { isChatPayload, isBackgroundReviewPayload, isMemoryPromotePayload, TaskDefs, getTaskDef } from '../tasks/task-types';
 import { applyFollowUpToTask } from '../shared/queue-utils';
 import { processToQueuedTask } from '../shared/process-history-mapper';
-import type { Attachment, ConversationTurn, CopilotSDKService, ProcessStore, QueuedTask, QueueExecutor, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
+import type { Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
 import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, FileToolCallCacheStore, getCopilotSDKService, getLogger, LogCategory, normalizeExecutionPath, resolveToolCallCacheOptions, resolveWorkspaceExecutionContext, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import * as path from 'path';
 import { BaseExecutor } from '../executors/base-executor';
@@ -18,7 +18,7 @@ export const DEFAULT_FOLLOW_UP_SUGGESTIONS = { enabled: true, count: 3 } as cons
 
 export interface CLITaskExecutorOptions {
     approvePermissions?: boolean; workingDirectory?: string; dataDir?: string;
-    aiService?: CopilotSDKService; defaultTimeoutMs?: number;
+    aiService?: ISDKService; defaultTimeoutMs?: number;
     followUpSuggestions?: { enabled: boolean; count: number };
     askUser?: { enabled: boolean };
     memoryPromotion?: MemoryPromoteConfig;
@@ -66,7 +66,7 @@ function pathsReferToSameWorkspace(leftPath: string, rightPath: string): boolean
 export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private readonly approvePermissions: boolean;
     private readonly defaultWorkingDirectory?: string;
-    private readonly aiService: CopilotSDKService;
+    private readonly aiService: ISDKService;
     private queueManager?: TaskQueueManager;
     private queueExecutor?: QueueExecutor;
     private readonly executors: ExecutorRegistry;

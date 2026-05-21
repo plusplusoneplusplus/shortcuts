@@ -12,14 +12,14 @@
  * 5. Collects results and returns
  */
 
-import type { CopilotSDKService, QueuedTask, TaskExecutionResult } from '@plusplusoneplusplus/forge';
+import type { ISDKService, QueuedTask, TaskExecutionResult } from '@plusplusoneplusplus/forge';
 import { BoundedMemoryStore, createMemoryTool, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import type { BackgroundReviewPayload } from './background-review';
 import { MEMORY_REVIEW_PROMPT } from './background-review';
 
 export class BackgroundReviewExecutor {
     constructor(
-        private readonly aiService: CopilotSDKService,
+        private readonly aiService: ISDKService,
         private readonly getMemoryStore: (workspaceId: string) => BoundedMemoryStore | undefined,
     ) {}
 

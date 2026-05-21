@@ -109,6 +109,7 @@ export {
     SDKServiceRegistry,
     sdkServiceRegistry,
     COPILOT_PROVIDER,
+    SDK_PROVIDER_COPILOT,
 } from './sdk-service-registry';
 
 // Session Manager

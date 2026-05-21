@@ -19,6 +19,7 @@ import type {
     DeliveryMode,
     ProcessStore,
     QueuedTask,
+    SDKInvocationResult,
     SystemMessageConfig,
     TurnSource,
 } from '@plusplusoneplusplus/forge';
@@ -370,8 +371,8 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 onBackgroundTasksChanged: this.buildBackgroundTaskHandler(processId),
             };
 
-            let result;
-            result = await this.aiService.sendMessage(sendOptions);
+            let result: SDKInvocationResult;
+            result = await this.aiService.sendMessage(sendOptions) as SDKInvocationResult;
 
             if (resolvedDeliveryMode === 'immediate') {
                 const turnIndex = process.conversationTurns?.length ?? 0;

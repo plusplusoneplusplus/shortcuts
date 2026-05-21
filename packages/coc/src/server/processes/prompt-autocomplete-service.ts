@@ -1,5 +1,5 @@
 import type {
-    CopilotSDKService,
+    ISDKService,
     ProcessStore,
     PromptAutocompleteContext,
     PromptAutocompleteHistoryItem,
@@ -25,10 +25,13 @@ export interface PromptAutocompleteResponse {
     historySource?: 'initial' | 'follow-up';
 }
 
+/** ISDKService extended with an optional warm-up hook provided by concrete implementations. */
+type AutocompleteAiService = ISDKService & { createClient?: () => Promise<unknown> };
+
 export interface PromptAutocompleteServiceOptions {
     store: ProcessStore;
     dataDir?: string;
-    aiService?: Pick<CopilotSDKService, 'sendMessage' | 'createClient'>;
+    aiService?: AutocompleteAiService;
     model?: string;
 }
 

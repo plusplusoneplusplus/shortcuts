@@ -15,6 +15,15 @@ import type { ISDKService } from './sdk-service-interface';
 export const COPILOT_PROVIDER = 'copilot';
 
 /**
+ * Alias for `COPILOT_PROVIDER` — use this constant at call sites so the
+ * name clearly communicates its role as the registry key for the Copilot
+ * SDK provider.
+ *
+ * Usage: `sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT)`
+ */
+export const SDK_PROVIDER_COPILOT = COPILOT_PROVIDER;
+
+/**
  * Registry that maps provider names to `ISDKService` instances.
  *
  * Usage:
