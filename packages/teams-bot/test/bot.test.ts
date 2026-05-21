@@ -440,6 +440,101 @@ describe('TeamsBot', () => {
 
                 await bot.stop();
             });
+
+            it('should strip HTML tags from polled messages', async () => {
+                // Mock initialize
+                mockFetch.mockResolvedValueOnce({
+                    ok: true,
+                    headers: new Map(),
+                    json: async () => ({ result: { serverInfo: { name: 'test' } } }),
+                } as any);
+
+                const bot = new TeamsBot({
+                    mode: 'mcp',
+                    teamId: 'team-123',
+                    mcpServerUrl: 'https://mcp.test/server',
+                    onMessage,
+                    onStatusChange,
+                    pollIntervalMs: 1000,
+                    auth: { bearerToken: 'token' },
+                });
+                await bot.start();
+                bot.setChannelId('19:channel@thread.tacv2');
+
+                // First poll — set watermark
+                mockFetch.mockResolvedValueOnce({
+                    ok: true,
+                    headers: new Map(),
+                    json: async () => ({
+                        result: { content: [{ type: 'text', text: JSON.stringify({ messages: [{ id: 'msg-300', body: { content: '<p>old</p>' }, from: { user: { displayName: 'Alice' } }, createdDateTime: '2026-05-19T22:00:00Z' }] }) }] },
+                    }),
+                } as any);
+                await vi.advanceTimersByTimeAsync(1000);
+
+                // Second poll — new message with HTML
+                mockFetch.mockResolvedValueOnce({
+                    ok: true,
+                    headers: new Map(),
+                    json: async () => ({
+                        result: { content: [{ type: 'text', text: JSON.stringify({ messages: [{ id: 'msg-301', body: { content: '<p>Hello <b>world</b></p>' }, from: { user: { displayName: 'Alice' } }, createdDateTime: '2026-05-19T22:01:00Z' }] }) }] },
+                    }),
+                } as any);
+                await vi.advanceTimersByTimeAsync(1000);
+
+                expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({
+                    messageId: 'msg-301',
+                    text: 'Hello world',
+                    senderName: 'Alice',
+                }));
+
+                await bot.stop();
+            });
+
+            it('should skip bot-formatted messages (Agent:/Repo:/Message: pattern)', async () => {
+                // Mock initialize
+                mockFetch.mockResolvedValueOnce({
+                    ok: true,
+                    headers: new Map(),
+                    json: async () => ({ result: { serverInfo: { name: 'test' } } }),
+                } as any);
+
+                const bot = new TeamsBot({
+                    mode: 'mcp',
+                    teamId: 'team-123',
+                    mcpServerUrl: 'https://mcp.test/server',
+                    onMessage,
+                    onStatusChange,
+                    pollIntervalMs: 1000,
+                    auth: { bearerToken: 'token' },
+                });
+                await bot.start();
+                bot.setChannelId('19:channel@thread.tacv2');
+
+                // First poll — set watermark
+                mockFetch.mockResolvedValueOnce({
+                    ok: true,
+                    headers: new Map(),
+                    json: async () => ({
+                        result: { content: [{ type: 'text', text: JSON.stringify({ messages: [{ id: 'msg-400', body: { content: 'init' }, from: { user: { displayName: 'X' } }, createdDateTime: '2026-05-19T22:00:00Z' }] }) }] },
+                    }),
+                } as any);
+                await vi.advanceTimersByTimeAsync(1000);
+
+                // Second poll — bot-formatted message
+                const botMsg = 'CoC Agent\nAgent: dev-agent\nRepo: my-repo\nMessage:\nHere is the result';
+                mockFetch.mockResolvedValueOnce({
+                    ok: true,
+                    headers: new Map(),
+                    json: async () => ({
+                        result: { content: [{ type: 'text', text: JSON.stringify({ messages: [{ id: 'msg-401', body: { content: botMsg }, from: { user: { displayName: 'Bot' } }, createdDateTime: '2026-05-19T22:01:00Z' }] }) }] },
+                    }),
+                } as any);
+                await vi.advanceTimersByTimeAsync(1000);
+
+                expect(onMessage).not.toHaveBeenCalled();
+
+                await bot.stop();
+            });
         });
     });
 
