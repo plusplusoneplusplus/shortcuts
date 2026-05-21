@@ -398,6 +398,13 @@ export class TeamsBot {
                     continue;
                 }
 
+                // Skip messages sent by this bot (formatted output starts with **CoC Agent** or **<botName>**)
+                const plainText = text.replace(/<[^>]*>/g, '').trim();
+                if (plainText.startsWith('**CoC Agent**') || plainText.startsWith(`**${this.opts.botName}**`)) {
+                    if (msg.createdDateTime) this._lastSeenTimestamp = msg.createdDateTime;
+                    continue;
+                }
+
                 const inbound: InboundTeamsMessage = {
                     channelId: this._channelId!,
                     messageId: msg.id,
