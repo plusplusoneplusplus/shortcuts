@@ -320,14 +320,14 @@ export function ProcessesSidebar() {
                                 : '';
                         const hasCustomTitle = Boolean(p.customTitle);
                         const hasAITitle = !hasCustomTitle && Boolean(p.title);
-                        // Display priority (per rename feature):
+                        // Display priority:
                         //   1) user-set custom title
-                        //   2) latest message preview (newest turn)
-                        //   3) AI-generated title (legacy fallback)
+                        //   2) AI-generated title
+                        //   3) latest message preview (newest turn)
                         //   4) prompt preview / id
                         const previewSource = p.customTitle
-                            || p.lastMessagePreview
                             || p.title
+                            || p.lastMessagePreview
                             || p.promptPreview
                             || p.id;
                         const preview = typeof previewSource === 'string' && previewSource.length > 80

@@ -1810,10 +1810,23 @@ describe('ChatListPane', () => {
             expect(screen.queryByText('Latest message...')).toBeNull();
         });
 
-        it('falls back to lastMessagePreview when no customTitle', () => {
+        it('prefers AI title over lastMessagePreview', () => {
             const task = makeHistoryTask({
                 displayName: undefined,
                 customTitle: undefined,
+                title: 'AI Generated Title',
+                lastMessagePreview: 'recent activity',
+            });
+            renderPane({ history: [task] });
+            expect(screen.getByText('AI Generated Title')).toBeTruthy();
+            expect(screen.queryByText('recent activity')).toBeNull();
+        });
+
+        it('falls back to lastMessagePreview when no customTitle or AI title', () => {
+            const task = makeHistoryTask({
+                displayName: undefined,
+                customTitle: undefined,
+                title: undefined,
                 lastMessagePreview: 'recent activity',
             });
             renderPane({ history: [task] });
