@@ -16,6 +16,9 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         modelMetadataStore: {
             initialize: vi.fn().mockResolvedValue(undefined),
         },
+        sdkServiceRegistry: {
+            getOrThrow: () => ({ sendMessage: vi.fn(), isAvailable: vi.fn().mockResolvedValue({ available: false }) }),
+        },
     };
 });
 

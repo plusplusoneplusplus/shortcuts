@@ -4,6 +4,21 @@ import * as path from 'path';
 import { createExecutionServer, type ExecutionServer } from '../../../coc/src/server';
 import { createProcessStore } from '../../../coc/src/config';
 import { CocClient } from '../../src';
+import type { ISDKService } from '../../../forge/src/copilot-sdk-wrapper/sdk-service-interface';
+
+const stubAiService: ISDKService = {
+    isAvailable: async () => ({ available: false, error: 'stub' }),
+    clearAvailabilityCache: () => {},
+    listModels: async () => [],
+    sendMessage: async () => { throw new Error('AI not available in contract tests'); },
+    transform: async () => { throw new Error('AI not available in contract tests'); },
+    createClient: async () => { throw new Error('AI not available in contract tests'); },
+    abortSession: async () => {},
+    steerSession: async () => { throw new Error('AI not available in contract tests'); },
+    forkSession: async () => { throw new Error('AI not available in contract tests'); },
+    hasKeptAliveSession: () => false,
+    canResumeSession: () => false,
+} as unknown as ISDKService;
 
 export interface ContractHarness {
   server: ExecutionServer;
@@ -20,6 +35,7 @@ export async function startContractHarness(): Promise<ContractHarness> {
     host: '127.0.0.1',
     dataDir,
     store,
+    aiService: stubAiService as any,
     queue: { autoStart: false },
     fileConfig: {
       queue: { autoStart: false },

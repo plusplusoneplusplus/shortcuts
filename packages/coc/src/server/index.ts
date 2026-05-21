@@ -22,7 +22,7 @@ import type { ExecutionServerOptions, ExecutionServer, ServerCloseOptions } from
 import type { Route } from './types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ModelInfo } from '@plusplusoneplusplus/forge';
-import { getCopilotSDKService, modelMetadataStore } from '@plusplusoneplusplus/forge';
+import { sdkServiceRegistry, SDK_PROVIDER_COPILOT, modelMetadataStore } from '@plusplusoneplusplus/forge';
 import { cleanupAllStalePasteFiles } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueRouter } from './queue/multi-repo-queue-router';
 import { createQueueInfrastructure } from './infrastructure/queue-infrastructure';
@@ -368,8 +368,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         scheduleManager.registerWorkspacePath(ws.id, ws.rootPath);
     }
 
-    const resolvedAiService= options.aiService ?? getCopilotSDKService();
-    const aiInvoker = createCLIAIInvoker({ approvePermissions: true });
+    const resolvedAiService= options.aiService ?? sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
+    const aiInvoker = createCLIAIInvoker({ approvePermissions: true, aiService: resolvedAiService });
     cleanupInfra = createCleanupInfrastructure(store, dataDir, queueFacade);
     const { outputPruner, staleDetector } = cleanupInfra;
     const notesGitTimerManager = new NotesGitTimerManager();

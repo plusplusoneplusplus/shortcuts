@@ -16,7 +16,8 @@ import {
     RepoQueueRegistry,
     QueueExecutor,
     TaskQueueManager,
-    getCopilotSDKService,
+    sdkServiceRegistry,
+    SDK_PROVIDER_COPILOT,
     toQueueProcessId,
     isQueueProcessId,
     toTaskId,
@@ -303,10 +304,10 @@ export class MultiRepoQueueRouter extends EventEmitter {
 
     /**
      * Check whether the AI service is available.
-     * Uses the injected aiService if provided, otherwise falls back to getCopilotSDKService().
+     * Uses the injected aiService if provided, otherwise falls back to sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT).
      */
     async isAIAvailable(): Promise<boolean> {
-        const aiService = this.defaultOptions.aiService ?? getCopilotSDKService();
+        const aiService = this.defaultOptions.aiService ?? sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
         try {
             const result = await aiService.isAvailable();
             return result?.available ?? false;

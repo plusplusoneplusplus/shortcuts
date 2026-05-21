@@ -70,7 +70,7 @@ export interface ExecutionServerOptions {
     theme?: 'auto' | 'light' | 'dark';
     /** Options for the wiki module. */
     wiki?: WikiServerOptions;
-    /** Optional AI service injection (for testing). If not provided, uses getCopilotSDKService(). */
+    /** Optional AI service injection (for testing). If not provided, uses sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT). */
     aiService?: ISDKService;
     /** Optional config file path override (for tests). When absent, uses getConfigFilePath(). */
     configPath?: string;

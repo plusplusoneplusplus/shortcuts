@@ -8,7 +8,8 @@
  */
 
 import {
-    getCopilotSDKService,
+    sdkServiceRegistry,
+    SDK_PROVIDER_COPILOT,
     approveAllPermissions,
     denyAllPermissions,
     DEFAULT_AI_TIMEOUT_MS,
@@ -54,6 +55,8 @@ export interface CLIAIInvokerOptions {
     cacheDataDir?: string;
     /** Current git HEAD hash for staleness tracking; optional — cache still works without it */
     gitHash?: string;
+    /** Optional AI service override; if omitted, resolves via sdkServiceRegistry */
+    aiService?: import('@plusplusoneplusplus/forge').ISDKService;
 }
 
 /**
@@ -73,7 +76,7 @@ export interface AIAvailabilityResult {
  */
 export async function checkAIAvailability(): Promise<AIAvailabilityResult> {
     try {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
         const result = await service.isAvailable();
         return {
             available: result.available,
@@ -94,7 +97,7 @@ export async function checkAIAvailability(): Promise<AIAvailabilityResult> {
  * Each invocation creates a direct session (no pool) for proper permission handling.
  */
 export function createCLIAIInvoker(options: CLIAIInvokerOptions = {}): AIInvoker {
-    const service = getCopilotSDKService();
+    const service = options.aiService ?? sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
     const permissionHandler = options.approvePermissions
         ? approveAllPermissions
         : denyAllPermissions;

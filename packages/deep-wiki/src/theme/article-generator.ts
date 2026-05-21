@@ -9,7 +9,8 @@
  */
 
 import {
-    getCopilotSDKService,
+    sdkServiceRegistry,
+    SDK_PROVIDER_COPILOT,
     type SendMessageOptions,
 } from '@plusplusoneplusplus/forge';
 import type {
@@ -238,7 +239,7 @@ async function generateSubArticle(
     model: string | undefined,
     timeout: number | undefined
 ): Promise<ThemeArticle> {
-    const service = getCopilotSDKService();
+    const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
 
     const prompt = buildSubArticlePrompt(themeTitle, plan, analysis, siblingTitles, depth);
 
@@ -283,7 +284,7 @@ async function generateIndexPage(
     model: string | undefined,
     timeout: number | undefined
 ): Promise<ThemeArticle> {
-    const service = getCopilotSDKService();
+    const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
 
     const prompt = buildIndexPagePrompt(
         outline.title, outline, crossCutting, articleSummaries

@@ -9,8 +9,10 @@
  */
 
 import {
-    getCopilotSDKService,
+    sdkServiceRegistry,
+    SDK_PROVIDER_COPILOT,
     CopilotSDKService,
+    type ISDKService,
     type SendMessageOptions,
 } from '@plusplusoneplusplus/forge';
 import type { SeedsCommandOptions, ThemeSeed } from '../types';
@@ -94,7 +96,7 @@ export async function runSeedsSession(
     repoPath: string,
     options: Pick<SeedsCommandOptions, 'maxThemes' | 'model' | 'timeout' | 'verbose'>
 ): Promise<ThemeSeed[]> {
-    const service = getCopilotSDKService();
+    const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
 
     // Check SDK availability
     printInfo('Checking Copilot SDK availability...');
@@ -178,7 +180,7 @@ export async function runSeedsSession(
  * Send a message via the SDK with automatic retry on transient errors.
  */
 async function sendWithRetry(
-    service: ReturnType<typeof getCopilotSDKService>,
+    service: ISDKService,
     sendOptions: SendMessageOptions,
     verbose?: boolean,
 ): Promise<{ success: boolean; response?: string; error?: string }> {

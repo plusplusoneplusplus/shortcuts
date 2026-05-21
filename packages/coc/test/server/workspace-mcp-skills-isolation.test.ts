@@ -25,6 +25,9 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     return {
         ...actual,
         loadDefaultMcpConfig: vi.fn().mockReturnValue({ mcpServers: {} }),
+        sdkServiceRegistry: {
+            getOrThrow: () => ({ sendMessage: vi.fn(), isAvailable: vi.fn().mockResolvedValue({ available: false }) }),
+        },
     };
 });
 

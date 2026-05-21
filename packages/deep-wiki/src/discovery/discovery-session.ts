@@ -9,9 +9,11 @@
  */
 
 import {
-    getCopilotSDKService,
+    sdkServiceRegistry,
+    SDK_PROVIDER_COPILOT,
     type SendMessageOptions,
     type TokenUsage,
+    type SDKInvocationResult,
 } from '@plusplusoneplusplus/forge';
 import type { DiscoveryOptions, ComponentGraph } from '../types';
 import { buildDiscoveryPrompt } from './prompts';
@@ -60,7 +62,7 @@ export interface DiscoverySessionResult {
  * @throws Error if SDK is unavailable, AI times out, or response is malformed
  */
 export async function runDiscoverySession(options: DiscoveryOptions): Promise<DiscoverySessionResult> {
-    const service = getCopilotSDKService();
+    const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
 
     // Check SDK availability
     printInfo('Checking Copilot SDK availability...');
@@ -94,7 +96,7 @@ export async function runDiscoverySession(options: DiscoveryOptions): Promise<Di
 
     // Send the message
     printInfo(`Sending discovery prompt to AI ${gray(`(timeout: ${timeoutMs / 1000}s, tools: ${DISCOVERY_TOOLS.join(', ')})`)}`);
-    const result = await service.sendMessage(sendOptions);
+    const result = await service.sendMessage(sendOptions) as SDKInvocationResult;
 
     if (!result.success) {
         const errorMsg = result.error || 'Unknown SDK error';
@@ -128,7 +130,7 @@ export async function runDiscoverySession(options: DiscoveryOptions): Promise<Di
             prompt: retryPrompt,
         };
 
-        const retryResult = await service.sendMessage(retryOptions);
+        const retryResult = await service.sendMessage(retryOptions) as SDKInvocationResult;
 
         if (!retryResult.success || !retryResult.response) {
             throw new DiscoveryError(

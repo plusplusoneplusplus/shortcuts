@@ -39,7 +39,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     };
     return {
         ...actual,
-        getCopilotSDKService: () => mockServiceCapture,
+        sdkServiceRegistry: { getOrThrow: () => mockServiceCapture },
         ToolCallCapture: SpyToolCallCapture,
     };
 });

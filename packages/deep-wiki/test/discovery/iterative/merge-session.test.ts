@@ -17,10 +17,13 @@ vi.mock('../../../src/utils/resolve-working-directory', () => ({
 }));
 
 vi.mock('@plusplusoneplusplus/forge', () => ({
-    getCopilotSDKService: () => ({
-        sendMessage: mockSendMessage,
-        isAvailable: mockIsAvailable,
-    }),
+    SDK_PROVIDER_COPILOT: 'copilot',
+    sdkServiceRegistry: {
+        getOrThrow: () => ({
+            sendMessage: mockSendMessage,
+            isAvailable: mockIsAvailable,
+        }),
+    },
 }));
 
 vi.mock('../../../src/logger', () => ({
