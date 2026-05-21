@@ -125,12 +125,15 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
         setHasMore(data?.hasMore ?? false);
     }, [workspaceId]);
 
-    const fetchQueue = useCallback(async () => {
+    const fetchQueueAndHistory = useCallback(async () => {
         try {
-            const data = await getSpaCocClient().queue.list({ repoId: workspaceId });
-            const nextRunning = data?.running || [];
-            const nextQueued = data?.queued || [];
-            const nextStats = data?.stats || undefined;
+            const [queueData, historyData] = await Promise.all([
+                getSpaCocClient().queue.list({ repoId: workspaceId }),
+                getSpaCocClient().workspaces.history(workspaceId, { limit: 100, offset: 0 }).catch(() => null),
+            ]);
+            const nextRunning = queueData?.running || [];
+            const nextQueued = queueData?.queued || [];
+            const nextStats = queueData?.stats || undefined;
             setRunning(nextRunning);
             setQueued(nextQueued);
             setIsPaused(!!nextStats?.isPaused);
@@ -138,7 +141,10 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             setPauseReason(nextStats?.pauseReason);
             setIsAutopilotPaused(!!nextStats?.isAutopilotPaused);
             setAutopilotPausedUntil(nextStats?.autopilotPausedUntil);
-            await fetchHistory();
+
+            const items = (historyData?.history as ProcessHistoryItem[]) || [];
+            setHistory(items);
+            setHasMore(historyData?.hasMore ?? false);
 
             queueDispatch({
                 type: 'REPO_QUEUE_UPDATED',
@@ -151,7 +157,9 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             setHistory([]);
         }
         setLoading(false);
-    }, [workspaceId, queueDispatch, fetchHistory]);
+    }, [workspaceId, queueDispatch]);
+
+    const fetchQueue = fetchQueueAndHistory;
 
     const handleLoadMore = useCallback(async () => {
         setLoadingMore(true);

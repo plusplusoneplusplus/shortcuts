@@ -80,23 +80,43 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
             // Enrich running tasks with `pendingAskUserCount` so the activity list can
             // immediately surface tasks that are waiting on the user for input (before
             // the WebSocket `process-updated` stream has had a chance to populate the
-            // global process index on the client).
+            // global process index on the client). Use the narrow batch lookup so we
+            // don't load full process rows + all conversation turns just to read a
+            // single JSON-array length out of `metadata`.
             if (store && running.length > 0) {
-                await Promise.all(running.map(async (task) => {
-                    const processId = typeof task.processId === 'string' ? task.processId : undefined;
-                    if (!processId) {
-                        return;
-                    }
+                const storeWithCounts = store as unknown as {
+                    getPendingAskUserCounts?: (ids: readonly string[]) => Map<string, number>;
+                };
+                const ids: string[] = [];
+                for (const task of running) {
+                    if (typeof task.processId === 'string') ids.push(task.processId);
+                }
+                if (ids.length > 0 && typeof storeWithCounts.getPendingAskUserCounts === 'function') {
                     try {
-                        const proc = await store.getProcess(processId);
-                        const count = Array.isArray(proc?.pendingAskUser) ? proc!.pendingAskUser!.length : 0;
-                        if (count > 0) {
-                            task.pendingAskUserCount = count;
+                        const counts = storeWithCounts.getPendingAskUserCounts(ids);
+                        for (const task of running) {
+                            const pid = typeof task.processId === 'string' ? task.processId : undefined;
+                            if (!pid) continue;
+                            const n = counts.get(pid);
+                            if (n && n > 0) task.pendingAskUserCount = n;
                         }
                     } catch {
                         // Best-effort enrichment — never fail the list response over it.
                     }
-                }));
+                } else if (ids.length > 0) {
+                    // Fallback path for stores without the batch helper (e.g. file store).
+                    await Promise.all(running.map(async (task) => {
+                        const processId = typeof task.processId === 'string' ? task.processId : undefined;
+                        if (!processId) return;
+                        try {
+                            const proc = await store.getProcess(processId);
+                            const count = Array.isArray(proc?.pendingAskUser) ? proc!.pendingAskUser!.length : 0;
+                            if (count > 0) task.pendingAskUserCount = count;
+                        } catch {
+                            // Best-effort enrichment — never fail the list response over it.
+                        }
+                    }));
+                }
             }
 
             sendJSON(res, 200, { queued, running, stats });

@@ -668,6 +668,27 @@ export class SqliteProcessStore implements ProcessStore {
         return rowToProcess(row, turns);
     }
 
+    /**
+     * Light-weight lookup for `pendingAskUser` counts across a set of running
+     * processes. Avoids loading the full process row + all conversation turns
+     * (`getProcess` does both) when callers only need to know whether a task
+     * is awaiting user input.
+     */
+    getPendingAskUserCounts(processIds: readonly string[]): Map<string, number> {
+        const result = new Map<string, number>();
+        if (processIds.length === 0) return result;
+        const placeholders = processIds.map(() => '?').join(',');
+        const rows = this.db.prepare(
+            `SELECT id, COALESCE(json_array_length(json_extract(metadata, '$.__pendingAskUser')), 0) AS cnt ` +
+            `FROM processes WHERE id IN (${placeholders})`
+        ).all(...processIds) as Array<{ id: string; cnt: number | null }>;
+        for (const row of rows) {
+            const count = typeof row.cnt === 'number' ? row.cnt : 0;
+            if (count > 0) result.set(row.id, count);
+        }
+        return result;
+    }
+
     getProcessBySdkSessionId(sdkSessionId: string): AIProcess | undefined {
         const row = this.db.prepare(
             'SELECT * FROM processes WHERE sdk_session_id = ? LIMIT 1'
@@ -768,16 +789,31 @@ export class SqliteProcessStore implements ProcessStore {
 
     async getAllProcesses(filter?: ProcessFilter): Promise<AIProcess[]> {
         const { sql, params } = this.buildProcessWhereClause(filter);
-        const query = `SELECT * FROM processes ${sql} ORDER BY COALESCE(last_event_at, start_time) DESC` +
+
+        const excludeConversation = filter?.exclude?.includes('conversation');
+        const excludeToolCalls = filter?.exclude?.includes('toolCalls');
+
+        // When the caller is only interested in the list-view fields (i.e. is
+        // already discarding fullPrompt/result/conversation), skip reading the
+        // heavy text columns from disk. For a workspace with 100 history items
+        // whose prompts/results/structured_results can each be several KB,
+        // this trims tens of KB to ~1 MB of I/O off every history fetch.
+        const selectCols = excludeConversation
+            ? `id, workspace_id, type, prompt_preview, NULL AS full_prompt, status, ` +
+              `start_time, end_time, error, NULL AS result, result_file_path, ` +
+              `raw_stdout_file_path, metadata, group_metadata, NULL AS structured_result, ` +
+              `parent_process_id, sdk_session_id, backend, working_directory, ` +
+              `title, custom_title, last_message_preview, token_limit, current_tokens, ` +
+              `cumulative_token_usage, stale, data_file_path, archived, pinned_at, ` +
+              `seen_at, last_event_at`
+            : '*';
+        const query = `SELECT ${selectCols} FROM processes ${sql} ORDER BY last_event_at DESC` +
             (filter?.limit !== undefined ? ` LIMIT ?` : '') +
             (filter?.offset !== undefined ? ` OFFSET ?` : '');
 
         const queryParams = [...params];
         if (filter?.limit !== undefined) queryParams.push(filter.limit);
         if (filter?.offset !== undefined) queryParams.push(filter.offset);
-
-        const excludeConversation = filter?.exclude?.includes('conversation');
-        const excludeToolCalls = filter?.exclude?.includes('toolCalls');
 
         // Use .iterate() to avoid materializing all rows at once
         const results: AIProcess[] = [];
@@ -825,7 +861,7 @@ export class SqliteProcessStore implements ProcessStore {
         // indicator without loading the full process row.
         const selectQuery = `SELECT id, workspace_id, status, type, start_time, end_time, prompt_preview, error, parent_process_id, title, custom_title, last_message_preview, last_event_at, pinned_at, archived, ` +
             `COALESCE(json_array_length(json_extract(metadata, '$.__pendingAskUser')), 0) AS pending_ask_user_count ` +
-            `FROM processes ${sql} ORDER BY COALESCE(last_event_at, start_time) DESC` +
+            `FROM processes ${sql} ORDER BY last_event_at DESC` +
             (filter?.limit !== undefined ? ` LIMIT ?` : '') +
             (filter?.offset !== undefined ? ` OFFSET ?` : '');
 
@@ -867,7 +903,7 @@ export class SqliteProcessStore implements ProcessStore {
 
     async getProcessIds(filter?: ProcessFilter): Promise<string[]> {
         const { sql, params } = this.buildProcessWhereClause(filter);
-        const query = `SELECT id FROM processes ${sql} ORDER BY COALESCE(last_event_at, start_time) DESC`;
+        const query = `SELECT id FROM processes ${sql} ORDER BY last_event_at DESC`;
         // Use .iterate() to avoid materializing all ID rows at once
         const ids: string[] = [];
         for (const row of this.db.prepare(query).iterate(...params) as IterableIterator<{ id: string }>) {
@@ -1598,12 +1634,12 @@ export class SqliteProcessStore implements ProcessStore {
         }
 
         if (filter?.since) {
-            whereClauses.push('COALESCE(p.last_event_at, p.start_time) >= ?');
+            whereClauses.push('p.last_event_at >= ?');
             params.push(filter.since.toISOString());
         }
 
         if (filter?.until) {
-            whereClauses.push('COALESCE(p.last_event_at, p.start_time) < ?');
+            whereClauses.push('p.last_event_at < ?');
             params.push(filter.until.toISOString());
         }
 
@@ -1996,12 +2032,12 @@ export class SqliteProcessStore implements ProcessStore {
         }
 
         if (options.since) {
-            conditions.push('COALESCE(last_event_at, start_time) >= ?');
+            conditions.push('last_event_at >= ?');
             params.push(options.since.toISOString());
         }
 
         if (options.until) {
-            conditions.push('COALESCE(last_event_at, start_time) < ?');
+            conditions.push('last_event_at < ?');
             params.push(options.until.toISOString());
         }
 
@@ -2014,7 +2050,7 @@ export class SqliteProcessStore implements ProcessStore {
                    prompt_preview, error, parent_process_id, title, custom_title, last_message_preview,
                    last_event_at, pinned_at, archived
             FROM processes ${whereSQL}
-            ORDER BY COALESCE(last_event_at, start_time) DESC
+            ORDER BY last_event_at DESC
             LIMIT ? OFFSET ?
         `;
 
@@ -2098,7 +2134,7 @@ export class SqliteProcessStore implements ProcessStore {
             conditions.push('type = ?');
             params.push(filter.type);
         }
-        const timeExpression = useActivityTime ? 'COALESCE(last_event_at, start_time)' : 'start_time';
+        const timeExpression = useActivityTime ? 'last_event_at' : 'start_time';
         if (filter.since !== undefined) {
             conditions.push(`${timeExpression} >= ?`);
             params.push(filter.since.toISOString());
