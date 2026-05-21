@@ -1,0 +1,874 @@
+/*
+ * MCP Servers tab redesign.
+ *
+ * Visual styles for the Repo > Settings > MCP Servers panel.
+ *
+ * Scoped under `.mcp-servers-redesign` so that the new visual system applies
+ * only to this panel and never bleeds into other dashboard surfaces. Light is
+ * the default; dark variables are applied when an ancestor carries
+ * `data-theme="dark"` (set by `ThemeProvider`).
+ */
+
+.mcp-servers-redesign {
+  --mcp-bg: #fbfbfa;
+  --mcp-surface: #ffffff;
+  --mcp-surface-2: #f6f8fa;
+  --mcp-surface-3: #eaeef2;
+  --mcp-border: #d0d7de;
+  --mcp-border-muted: #d8dee4;
+  --mcp-border-subtle: #eaeef2;
+  --mcp-fg: #1f2328;
+  --mcp-fg-muted: #656d76;
+  --mcp-fg-subtle: #6e7781;
+  --mcp-accent: #0969da;
+  --mcp-accent-hover: #0550ae;
+  --mcp-accent-subtle: #ddf4ff;
+  --mcp-success: #1f883d;
+  --mcp-success-emph: #1a7f37;
+  --mcp-success-subtle: #dafbe1;
+  --mcp-danger: #cf222e;
+  --mcp-danger-subtle: #ffebe9;
+  --mcp-attention: #9a6700;
+  --mcp-attention-fg: #54450a;
+  --mcp-attention-subtle: #fff8c5;
+  --mcp-done: #8250df;
+  --mcp-shadow-sm: 0 1px 0 rgba(31,35,40,0.04);
+  --mcp-shadow-btn: 0 1px 0 rgba(31,35,40,0.1);
+  --mcp-radius: 6px;
+  --mcp-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--mcp-bg);
+  color: var(--mcp-fg);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+[data-theme="dark"] .mcp-servers-redesign {
+  --mcp-bg: #0d1117;
+  --mcp-surface: #161b22;
+  --mcp-surface-2: #1c2128;
+  --mcp-surface-3: #21262d;
+  --mcp-border: #30363d;
+  --mcp-border-muted: #21262d;
+  --mcp-border-subtle: #21262d;
+  --mcp-fg: #e6edf3;
+  --mcp-fg-muted: #8b949e;
+  --mcp-fg-subtle: #6e7781;
+  --mcp-accent: #58a6ff;
+  --mcp-accent-hover: #79c0ff;
+  --mcp-accent-subtle: rgba(56,139,253,0.15);
+  --mcp-success: #3fb950;
+  --mcp-success-emph: #56d364;
+  --mcp-success-subtle: rgba(63,185,80,0.15);
+  --mcp-danger: #f85149;
+  --mcp-danger-subtle: rgba(248,81,73,0.15);
+  --mcp-attention: #d29922;
+  --mcp-attention-fg: #e3b341;
+  --mcp-attention-subtle: rgba(187,128,9,0.15);
+  --mcp-done: #bc8cff;
+  --mcp-shadow-sm: 0 0 transparent;
+  --mcp-shadow-btn: 0 0 transparent;
+}
+
+.mcp-servers-redesign * {
+  box-sizing: border-box;
+}
+.mcp-servers-redesign code,
+.mcp-servers-redesign .mcp-mono {
+  font-family: var(--mcp-font-mono);
+  font-size: 12px;
+}
+
+/* ---- Page header ---- */
+.mcp-servers-redesign .mcp-page-header {
+  padding: 20px 24px 16px;
+}
+.mcp-servers-redesign .mcp-page-title {
+  font-size: 24px;
+  font-weight: 400;
+  margin: 0 0 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--mcp-border-muted);
+  color: var(--mcp-fg);
+}
+
+/* ---- Configuration sources card ---- */
+.mcp-servers-redesign .mcp-paths {
+  background: var(--mcp-surface);
+  border: 1px solid var(--mcp-border);
+  border-radius: var(--mcp-radius);
+  margin: 0 24px 20px;
+  overflow: hidden;
+}
+.mcp-servers-redesign .mcp-paths-header {
+  background: var(--mcp-surface-2);
+  border-bottom: 1px solid var(--mcp-border);
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mcp-fg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.mcp-servers-redesign .mcp-paths-header .mcp-hint {
+  font-weight: 400;
+  color: var(--mcp-fg-muted);
+}
+.mcp-servers-redesign .mcp-path-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--mcp-border-muted);
+}
+.mcp-servers-redesign .mcp-path-row:last-child {
+  border-bottom: 0;
+}
+.mcp-servers-redesign .mcp-path-row .mcp-path-label {
+  flex: 0 0 132px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--mcp-fg);
+}
+.mcp-servers-redesign .mcp-path-row .mcp-path-body {
+  flex: 1;
+  min-width: 0;
+}
+.mcp-servers-redesign .mcp-path-row .mcp-path-file {
+  font-family: var(--mcp-font-mono);
+  font-size: 12px;
+  color: var(--mcp-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mcp-servers-redesign .mcp-path-row .mcp-path-meta {
+  font-size: 12px;
+  color: var(--mcp-fg-muted);
+  margin-top: 2px;
+}
+.mcp-servers-redesign .mcp-path-row .mcp-path-open {
+  color: var(--mcp-accent);
+  font-size: 12px;
+  text-decoration: none;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+.mcp-servers-redesign .mcp-path-row .mcp-path-open:hover {
+  text-decoration: underline;
+}
+
+/* ---- Toolbar ---- */
+.mcp-servers-redesign .mcp-toolbar {
+  background: var(--mcp-surface);
+  border: 1px solid var(--mcp-border);
+  border-bottom: 0;
+  border-radius: var(--mcp-radius) var(--mcp-radius) 0 0;
+  padding: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 0 24px;
+}
+.mcp-servers-redesign .mcp-seg {
+  display: inline-flex;
+  background: var(--mcp-surface);
+  border: 1px solid var(--mcp-border);
+  border-radius: var(--mcp-radius);
+  overflow: hidden;
+}
+.mcp-servers-redesign .mcp-seg button {
+  background: transparent;
+  border: 0;
+  padding: 5px 12px;
+  font-size: 14px;
+  color: var(--mcp-fg);
+  cursor: pointer;
+  font-family: inherit;
+  border-right: 1px solid var(--mcp-border);
+}
+.mcp-servers-redesign .mcp-seg button:last-child {
+  border-right: 0;
+}
+.mcp-servers-redesign .mcp-seg button.active {
+  background: var(--mcp-surface-2);
+  font-weight: 500;
+  box-shadow: inset 0 -2px 0 var(--mcp-accent);
+}
+.mcp-servers-redesign .mcp-seg button:hover:not(.active) {
+  background: var(--mcp-surface-2);
+}
+.mcp-servers-redesign .mcp-seg .mcp-small {
+  font-size: 12px;
+  color: var(--mcp-fg-muted);
+}
+.mcp-servers-redesign .mcp-search-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 200px;
+  max-width: 360px;
+}
+.mcp-servers-redesign .mcp-search-wrap .mcp-input {
+  width: 100%;
+  padding-left: 32px;
+}
+.mcp-servers-redesign .mcp-search-wrap svg {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--mcp-fg-muted);
+}
+.mcp-servers-redesign .mcp-input {
+  background: var(--mcp-surface);
+  border: 1px solid var(--mcp-border);
+  border-radius: var(--mcp-radius);
+  padding: 5px 12px;
+  font-size: 14px;
+  color: var(--mcp-fg);
+  font-family: inherit;
+  height: 32px;
+}
+.mcp-servers-redesign .mcp-input:focus {
+  outline: none;
+  border-color: var(--mcp-accent);
+  box-shadow: 0 0 0 3px rgba(9,105,218,0.3);
+}
+[data-theme="dark"] .mcp-servers-redesign .mcp-input:focus {
+  box-shadow: 0 0 0 3px rgba(88,166,255,0.3);
+}
+.mcp-servers-redesign .mcp-spacer {
+  flex: 1;
+}
+
+/* ---- Buttons ---- */
+.mcp-servers-redesign .mcp-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 16px;
+  border-radius: var(--mcp-radius);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  background: var(--mcp-surface-2);
+  color: var(--mcp-fg);
+  border: 1px solid var(--mcp-border);
+  box-shadow: var(--mcp-shadow-btn);
+  text-decoration: none;
+  line-height: 20px;
+}
+.mcp-servers-redesign .mcp-btn:hover {
+  background: var(--mcp-surface-3);
+}
+.mcp-servers-redesign .mcp-btn.primary {
+  background: var(--mcp-success);
+  color: #fff;
+  border-color: rgba(31,35,40,0.15);
+}
+.mcp-servers-redesign .mcp-btn.primary:hover {
+  background: var(--mcp-success-emph);
+}
+.mcp-servers-redesign .mcp-btn.danger-outline {
+  color: var(--mcp-danger);
+  background: var(--mcp-surface);
+}
+.mcp-servers-redesign .mcp-btn.danger-outline:hover {
+  background: var(--mcp-danger);
+  color: #fff;
+  border-color: var(--mcp-danger);
+}
+.mcp-servers-redesign .mcp-btn.sm {
+  padding: 3px 12px;
+  font-size: 12px;
+  line-height: 18px;
+}
+.mcp-servers-redesign .mcp-btn.ghost {
+  background: transparent;
+  box-shadow: none;
+  border-color: transparent;
+  color: var(--mcp-accent);
+}
+.mcp-servers-redesign .mcp-btn.ghost:hover {
+  background: var(--mcp-surface-3);
+}
+.mcp-servers-redesign .mcp-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---- Server list ---- */
+.mcp-servers-redesign .mcp-server-list {
+  background: var(--mcp-surface);
+  border: 1px solid var(--mcp-border);
+  border-radius: 0 0 var(--mcp-radius) var(--mcp-radius);
+  margin: 0 24px;
+}
+.mcp-servers-redesign .mcp-row-server {
+  display: grid;
+  grid-template-columns: 24px 1fr auto auto auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--mcp-border-subtle);
+}
+.mcp-servers-redesign .mcp-row-server:first-child {
+  border-top: 0;
+}
+.mcp-servers-redesign .mcp-row-server.expanded {
+  background: var(--mcp-surface-2);
+}
+.mcp-servers-redesign .mcp-row-server .mcp-chev {
+  color: var(--mcp-fg-muted);
+  cursor: pointer;
+  display: inline-flex;
+  transition: transform 0.12s;
+  background: none;
+  border: none;
+  padding: 0;
+}
+.mcp-servers-redesign .mcp-row-server.expanded .mcp-chev {
+  transform: rotate(90deg);
+}
+.mcp-servers-redesign .mcp-row-server .mcp-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.mcp-servers-redesign .mcp-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+  box-shadow: 0 0 0 2px var(--mcp-surface);
+}
+.mcp-servers-redesign .mcp-dot.ok { background: var(--mcp-success); }
+.mcp-servers-redesign .mcp-dot.auth { background: var(--mcp-attention); }
+.mcp-servers-redesign .mcp-dot.off { background: var(--mcp-fg-muted); }
+.mcp-servers-redesign .mcp-dot.err { background: var(--mcp-danger); }
+.mcp-servers-redesign .mcp-row-server .mcp-server-name {
+  font-weight: 600;
+  color: var(--mcp-fg);
+}
+.mcp-servers-redesign .mcp-row-server .mcp-server-desc {
+  color: var(--mcp-fg-muted);
+  font-size: 13px;
+  margin-left: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mcp-servers-redesign .mcp-row-server .mcp-meta {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* ---- Pills ---- */
+.mcp-servers-redesign .mcp-pill {
+  font-size: 11px;
+  height: 20px;
+  line-height: 18px;
+  padding: 0 7px;
+  border-radius: 9999px;
+  border: 1px solid var(--mcp-border);
+  color: var(--mcp-fg-muted);
+  background: var(--mcp-surface);
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.mcp-servers-redesign .mcp-pill.ok {
+  background: var(--mcp-success-subtle);
+  border-color: transparent;
+  color: var(--mcp-success-emph);
+}
+.mcp-servers-redesign .mcp-pill.warn {
+  background: var(--mcp-attention-subtle);
+  border-color: transparent;
+  color: var(--mcp-attention-fg);
+}
+.mcp-servers-redesign .mcp-pill.muted {
+  background: var(--mcp-surface-3);
+  border-color: transparent;
+}
+.mcp-servers-redesign .mcp-pill.accent {
+  background: var(--mcp-accent-subtle);
+  border-color: transparent;
+  color: var(--mcp-accent-hover);
+}
+.mcp-servers-redesign .mcp-pill.done {
+  background: #fbefff;
+  border-color: transparent;
+  color: var(--mcp-done);
+}
+[data-theme="dark"] .mcp-servers-redesign .mcp-pill.done {
+  background: rgba(188,140,255,0.15);
+}
+.mcp-servers-redesign .mcp-tools-count {
+  font-size: 12px;
+  color: var(--mcp-fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Toggle switch ---- */
+.mcp-servers-redesign .mcp-switch {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  display: inline-block;
+  cursor: pointer;
+}
+.mcp-servers-redesign .mcp-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.mcp-servers-redesign .mcp-slider-bg {
+  position: absolute;
+  inset: 0;
+  background: #d0d7de;
+  border-radius: 9999px;
+  transition: 0.12s;
+}
+[data-theme="dark"] .mcp-servers-redesign .mcp-slider-bg {
+  background: #30363d;
+}
+.mcp-servers-redesign .mcp-slider-bg::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+  transition: 0.12s;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+.mcp-servers-redesign .mcp-switch input:checked + .mcp-slider-bg {
+  background: var(--mcp-success);
+}
+.mcp-servers-redesign .mcp-switch input:checked + .mcp-slider-bg::after {
+  left: 16px;
+}
+.mcp-servers-redesign .mcp-switch input:disabled + .mcp-slider-bg {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---- Inspector (expanded detail) ---- */
+.mcp-servers-redesign .mcp-inspector {
+  background: var(--mcp-surface);
+  border-top: 1px solid var(--mcp-border-subtle);
+}
+.mcp-servers-redesign .mcp-inspector-head {
+  padding: 14px 16px 0;
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--mcp-border-muted);
+}
+.mcp-servers-redesign .mcp-inspector-tab {
+  background: transparent;
+  border: 0;
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: var(--mcp-radius) var(--mcp-radius) 0 0;
+  color: var(--mcp-fg);
+  position: relative;
+  top: 1px;
+  border: 1px solid transparent;
+}
+.mcp-servers-redesign .mcp-inspector-tab.active {
+  background: var(--mcp-surface);
+  border-color: var(--mcp-border-muted);
+  border-bottom-color: var(--mcp-surface);
+  font-weight: 500;
+}
+.mcp-servers-redesign .mcp-inspector-tab:hover:not(.active) {
+  background: var(--mcp-surface-3);
+}
+.mcp-servers-redesign .mcp-inspector-tab .mcp-badge {
+  font-size: 11px;
+  color: var(--mcp-fg-muted);
+  font-variant-numeric: tabular-nums;
+  margin-left: 4px;
+}
+.mcp-servers-redesign .mcp-inspector-body {
+  padding: 20px 16px;
+}
+
+/* ---- Overview grid ---- */
+.mcp-servers-redesign .mcp-overview-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 24px;
+}
+@media (max-width: 860px) {
+  .mcp-servers-redesign .mcp-overview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.mcp-servers-redesign .mcp-kv {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 8px 12px;
+  font-size: 13px;
+}
+.mcp-servers-redesign .mcp-kv dt {
+  color: var(--mcp-fg-muted);
+}
+.mcp-servers-redesign .mcp-kv dd {
+  margin: 0;
+  color: var(--mcp-fg);
+  overflow-wrap: anywhere;
+}
+.mcp-servers-redesign .mcp-kv dd code {
+  background: var(--mcp-surface-3);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.mcp-servers-redesign .mcp-health {
+  border: 1px solid var(--mcp-border);
+  border-radius: var(--mcp-radius);
+  padding: 14px;
+}
+.mcp-servers-redesign .mcp-health h4 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.mcp-servers-redesign .mcp-health-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  padding: 6px 0;
+  border-top: 1px solid var(--mcp-border-subtle);
+}
+.mcp-servers-redesign .mcp-health-row:first-of-type {
+  border-top: 0;
+}
+.mcp-servers-redesign .mcp-health-row .mcp-label {
+  color: var(--mcp-fg-muted);
+}
+.mcp-servers-redesign .mcp-health-row .mcp-val {
+  font-variant-numeric: tabular-nums;
+}
+.mcp-servers-redesign .mcp-sparkline {
+  margin-top: 10px;
+  height: 32px;
+  width: 100%;
+  display: block;
+}
+
+/* ---- Tools table ---- */
+.mcp-servers-redesign .mcp-tools-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--mcp-border);
+  border-radius: var(--mcp-radius);
+  overflow: hidden;
+  background: var(--mcp-surface);
+}
+.mcp-servers-redesign .mcp-tools-table thead {
+  background: var(--mcp-surface-2);
+}
+.mcp-servers-redesign .mcp-tools-table th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mcp-fg-muted);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--mcp-border);
+}
+.mcp-servers-redesign .mcp-tools-table td {
+  padding: 10px 12px;
+  border-top: 1px solid var(--mcp-border-subtle);
+  font-size: 13px;
+  vertical-align: top;
+}
+.mcp-servers-redesign .mcp-tools-table tbody tr:first-child td {
+  border-top: 0;
+}
+.mcp-servers-redesign .mcp-tools-table .mcp-tool-name {
+  font-family: var(--mcp-font-mono);
+  font-size: 12px;
+  color: var(--mcp-fg);
+  font-weight: 500;
+}
+.mcp-servers-redesign .mcp-tools-table .mcp-tool-desc {
+  color: var(--mcp-fg-muted);
+  font-size: 12px;
+  margin-top: 2px;
+  line-height: 1.4;
+}
+.mcp-servers-redesign .mcp-tools-table .mcp-scope-pill {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--mcp-surface-3);
+  color: var(--mcp-fg-muted);
+  font-family: var(--mcp-font-mono);
+}
+.mcp-servers-redesign .mcp-tools-table .mcp-scope-pill.write {
+  color: var(--mcp-danger);
+}
+.mcp-servers-redesign .mcp-tools-table .mcp-calls {
+  font-variant-numeric: tabular-nums;
+  color: var(--mcp-fg-muted);
+  text-align: right;
+  font-size: 12px;
+}
+.mcp-servers-redesign .mcp-tools-table tr:hover td {
+  background: var(--mcp-surface-2);
+}
+
+/* ---- Config section ---- */
+.mcp-servers-redesign .mcp-config-section {
+  margin-bottom: 24px;
+}
+.mcp-servers-redesign .mcp-config-section h4 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.mcp-servers-redesign .mcp-config-section .mcp-help {
+  color: var(--mcp-fg-muted);
+  font-size: 12px;
+  margin: 0 0 12px;
+  max-width: 62ch;
+}
+.mcp-servers-redesign .mcp-env-table {
+  width: 100%;
+  border: 1px solid var(--mcp-border);
+  border-radius: var(--mcp-radius);
+  background: var(--mcp-surface);
+  border-collapse: collapse;
+}
+.mcp-servers-redesign .mcp-env-table th,
+.mcp-servers-redesign .mcp-env-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--mcp-border-subtle);
+  font-size: 13px;
+  vertical-align: middle;
+}
+.mcp-servers-redesign .mcp-env-table th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mcp-fg-muted);
+  background: var(--mcp-surface-2);
+  border-bottom-color: var(--mcp-border);
+}
+.mcp-servers-redesign .mcp-env-table tr:last-child td {
+  border-bottom: 0;
+}
+.mcp-servers-redesign .mcp-env-key {
+  font-family: var(--mcp-font-mono);
+  font-size: 12px;
+  color: var(--mcp-fg);
+}
+.mcp-servers-redesign .mcp-env-val {
+  font-family: var(--mcp-font-mono);
+  font-size: 12px;
+  color: var(--mcp-fg-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mcp-servers-redesign .mcp-env-val .mcp-secret {
+  letter-spacing: 2px;
+}
+.mcp-servers-redesign .mcp-icon-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--mcp-fg-muted);
+  display: inline-grid;
+  place-items: center;
+}
+.mcp-servers-redesign .mcp-icon-btn:hover {
+  background: var(--mcp-surface-3);
+  color: var(--mcp-fg);
+}
+.mcp-servers-redesign textarea.mcp-input,
+.mcp-servers-redesign .mcp-input.full {
+  width: 100%;
+  font-family: var(--mcp-font-mono);
+  font-size: 12px;
+}
+.mcp-servers-redesign textarea.mcp-input {
+  min-height: 60px;
+  padding: 8px 12px;
+  height: auto;
+  resize: vertical;
+}
+.mcp-servers-redesign .mcp-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--mcp-border);
+  border-radius: var(--mcp-radius);
+  padding: 10px 14px;
+  background: var(--mcp-surface);
+}
+.mcp-servers-redesign .mcp-radio-group label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-weight: 400;
+  font-size: 13px;
+  cursor: pointer;
+}
+.mcp-servers-redesign .mcp-radio-group label strong {
+  font-weight: 600;
+  color: var(--mcp-fg);
+}
+.mcp-servers-redesign .mcp-radio-group label .mcp-sub {
+  color: var(--mcp-fg-muted);
+  font-size: 12px;
+}
+
+/* ---- Source pane ---- */
+.mcp-servers-redesign .mcp-source-pre {
+  background: var(--mcp-surface-2);
+  border: 1px solid var(--mcp-border);
+  border-radius: var(--mcp-radius);
+  padding: 14px;
+  font-size: 12px;
+  overflow: auto;
+  font-family: var(--mcp-font-mono);
+  line-height: 1.5;
+  color: var(--mcp-fg);
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* ---- Danger zone ---- */
+.mcp-servers-redesign .mcp-danger-zone {
+  border: 1px solid var(--mcp-danger);
+  border-radius: var(--mcp-radius);
+  padding: 14px;
+  background: var(--mcp-surface);
+}
+.mcp-servers-redesign .mcp-danger-zone h4 {
+  margin: 0 0 4px;
+  color: var(--mcp-danger);
+  font-size: 14px;
+  font-weight: 600;
+}
+.mcp-servers-redesign .mcp-danger-zone p {
+  margin: 0 0 10px;
+  color: var(--mcp-fg-muted);
+  font-size: 13px;
+}
+
+/* ---- Add server card ---- */
+.mcp-servers-redesign .mcp-add-card {
+  background: var(--mcp-surface);
+  border: 1px solid var(--mcp-border);
+  border-radius: var(--mcp-radius);
+  margin: 24px 24px 0;
+  overflow: hidden;
+}
+.mcp-servers-redesign .mcp-add-head {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--mcp-border-muted);
+  background: var(--mcp-surface-2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mcp-servers-redesign .mcp-add-head h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  flex: 1;
+}
+.mcp-servers-redesign .mcp-add-body {
+  padding: 20px 16px;
+}
+.mcp-servers-redesign .mcp-field {
+  margin-bottom: 18px;
+}
+.mcp-servers-redesign .mcp-field label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.mcp-servers-redesign .mcp-field .mcp-field-hint {
+  display: block;
+  color: var(--mcp-fg-muted);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.mcp-servers-redesign .mcp-field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+@media (max-width: 700px) {
+  .mcp-servers-redesign .mcp-field-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.mcp-servers-redesign .mcp-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--mcp-border-muted);
+  background: var(--mcp-surface-2);
+}
+
+/* ---- Misc ---- */
+.mcp-servers-redesign hr.mcp-rule {
+  border: 0;
+  border-top: 1px solid var(--mcp-border-muted);
+  margin: 24px 0;
+}
+.mcp-servers-redesign .mcp-small {
+  font-size: 12px;
+  color: var(--mcp-fg-muted);
+}
+.mcp-servers-redesign .mcp-link {
+  color: var(--mcp-accent);
+  text-decoration: none;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+}
+.mcp-servers-redesign .mcp-link:hover {
+  text-decoration: underline;
+}
+.mcp-servers-redesign .mcp-footer {
+  margin: 24px 24px 0;
+  padding-bottom: 24px;
+}
+.mcp-servers-redesign .mcp-empty-state {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--mcp-fg-muted);
+  font-size: 13px;
+}
