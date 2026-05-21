@@ -29,6 +29,8 @@ export class TeamsBot {
     private _lastSeenTimestamp: string | null = null;
     /** Track message IDs sent by this bot to skip on poll. */
     private _sentMessageIds = new Set<string>();
+    /** Whether a token refresh is already in progress. */
+    private _refreshingToken = false;
 
     constructor(opts: TeamsBotOptions) {
         this.opts = {
@@ -186,7 +188,22 @@ export class TeamsBot {
             toolName = 'SendMessageToChannel';
         }
 
-        const result = await this.mcpClient.callTool(toolName, args);
+        try {
+            return await this.doMcpSend(toolName, args);
+        } catch (err: any) {
+            // On 401, refresh token and retry once
+            if (err.message?.includes('401')) {
+                const refreshed = await this.refreshToken();
+                if (refreshed) {
+                    return await this.doMcpSend(toolName, args);
+                }
+            }
+            throw err;
+        }
+    }
+
+    private async doMcpSend(toolName: string, args: Record<string, unknown>): Promise<string> {
+        const result = await this.mcpClient!.callTool(toolName, args);
         const responseText = result.content?.[0]?.text ?? '';
         let messageId = '';
         try {
@@ -423,8 +440,36 @@ export class TeamsBot {
                 console.error('[teams-bot] Error handling message:', err);
             });
         } catch (err: any) {
-            console.error('[teams-bot] MCP poll error:', err.message);
+            // On 401, attempt token refresh
+            if (err.message?.includes('401') && !this._refreshingToken) {
+                await this.refreshToken();
+            } else {
+                console.error('[teams-bot] MCP poll error:', err.message);
+            }
         }
+    }
+
+    /** Attempt to refresh the bearer token via the configured callback. */
+    private async refreshToken(): Promise<boolean> {
+        const refreshFn = this.opts.auth?.onTokenRefresh;
+        if (!refreshFn || this._refreshingToken) return false;
+
+        this._refreshingToken = true;
+        try {
+            const newToken = await refreshFn();
+            if (newToken && this.mcpClient) {
+                this.mcpClient.setBearerToken(newToken);
+                console.log('[teams-bot] Token refreshed successfully');
+                return true;
+            }
+        } catch (err: any) {
+            console.error('[teams-bot] Token refresh failed:', err.message);
+            this._lastError = `Token refresh failed: ${err.message}`;
+            this.setStatus('error');
+        } finally {
+            this._refreshingToken = false;
+        }
+        return false;
     }
 
     /**
