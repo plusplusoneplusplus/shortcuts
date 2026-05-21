@@ -38,6 +38,7 @@ export class TeamsBridge {
     private bot: TeamsBot | null = null;
     private wsHandler: ((msg: WSRelayMessage) => void) | null = null;
     private _processingLocks = new Set<string>();
+    private _runningLocks: Set<string> | undefined;
     private _workspaceNameCache = new Map<string, string>();
     private _azToken: string | null = null;
 
@@ -354,15 +355,27 @@ export class TeamsBridge {
 
         if (status !== 'completed' && status !== 'running') return;
 
+        // For completed processes, skip if already processed (permanent lock)
         if (this._processingLocks.has(processId)) return;
-        this._processingLocks.add(processId);
+
+        // For running processes, use a temporary lock to prevent concurrent processing
+        // but allow re-entry on subsequent events (watermark prevents duplicate sends)
+        if (status === 'completed') {
+            this._processingLocks.add(processId);
+        } else {
+            // running: if currently being processed, skip this event
+            // (the watermark will catch up on the next event)
+            if (this._runningLocks?.has(processId)) return;
+            if (!this._runningLocks) this._runningLocks = new Set();
+            this._runningLocks.add(processId);
+        }
 
         const target = this.opts.config.channelId;
-        if (!target) { this._processingLocks.delete(processId); return; }
+        if (!target) { this.releaseLock(processId, status); return; }
 
         // Skip if Teams bot is not connected
         if (!this.bot || this.bot.getStatus() !== 'connected') {
-            this._processingLocks.delete(processId);
+            this.releaseLock(processId, status);
             return;
         }
 
@@ -370,7 +383,7 @@ export class TeamsBridge {
         const agentAddr = this.getAgentAddress(agentId);
         if (!agentAddr) {
             console.warn(`[teams-bridge] No address for agent ${agentId} (${msg.agentName}) — skipping outbound`);
-            this._processingLocks.delete(processId);
+            this.releaseLock(processId, status);
             return;
         }
 
@@ -437,11 +450,18 @@ export class TeamsBridge {
         } catch (err) {
             console.error('[teams-bridge] Failed to fetch process turns:', err);
         } finally {
-            // Only release lock for running processes (may get new turns later)
-            // Keep lock for completed processes — no more turns will come
+            // Release running lock so future events for this process can be processed
             if (status !== 'completed') {
-                this._processingLocks.delete(processId);
+                this._runningLocks?.delete(processId);
             }
+        }
+    }
+
+    private releaseLock(processId: string, status: string): void {
+        if (status === 'completed') {
+            this._processingLocks.delete(processId);
+        } else {
+            this._runningLocks?.delete(processId);
         }
     }
 
