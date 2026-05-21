@@ -1,5 +1,7 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import './mcp-servers-redesign.css';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import type { McpServerDetail as ClientMcpServerDetail, McpConfigScope } from '@plusplusoneplusplus/coc-client';
 
 export type McpServerSource = 'global' | 'workspace';
 export type McpServerEntry = {
@@ -10,6 +12,10 @@ export type McpServerEntry = {
     source?: McpServerSource;
     effective?: boolean;
     overriddenBy?: McpServerSource;
+    /** Derived status from the server response. */
+    status?: 'ok' | 'auth' | 'off' | 'err';
+    /** User-provided description from config file. */
+    description?: string;
 };
 
 export type McpServerSourceSection = {
@@ -26,6 +32,7 @@ export type McpServerSources = {
 };
 
 interface McpServersPanelProps {
+    workspaceId?: string;
     loading: boolean;
     error: string | null;
     saving: boolean;
@@ -34,47 +41,13 @@ interface McpServersPanelProps {
     isEnabled: (name: string) => boolean;
     onToggle: (serverName: string, checked: boolean) => void;
     onRefresh?: () => void;
+    /** Called after a server is added or deleted so the parent can refresh the list. */
+    onMutate?: () => void;
 }
 
 type FilterTab = 'all' | 'active' | 'auth' | 'disabled';
+
 type InspectorTab = 'overview' | 'tools' | 'configuration' | 'source' | 'activity';
-
-// Mock descriptions for servers that only have a name/type from the API
-const MOCK_DESCRIPTIONS: Record<string, string> = {
-    github: 'Repo, issues, PRs, and Actions tools from github.com',
-    filesystem: 'Read and search local files inside the repo working tree',
-    linear: 'Linear issues and projects',
-    sentry: 'Errors and performance data',
-    postgres: 'Read-only access to the staging analytics database',
-    slack: 'Post messages and read channels',
-    notion: 'Search and read pages from the team workspace',
-};
-
-const MOCK_TOOL_COUNTS: Record<string, number> = {
-    github: 38, filesystem: 6, linear: 14, sentry: 9, postgres: 4, slack: 7, notion: 11,
-};
-
-const MOCK_HEALTH: Record<string, { uptime: string; handshake: string; calls: string; errors: string }> = {
-    github: { uptime: '4h 12m', handshake: '142 ms', calls: '1,284', errors: '3 (0.2%)' },
-};
-
-const MOCK_TOOLS: { name: string; desc: string; scope: 'read' | 'write'; calls: number; enabled: boolean }[] = [
-    { name: 'search_repositories', desc: 'Search for GitHub repositories by name, owner, language, or topic.', scope: 'read', calls: 312, enabled: true },
-    { name: 'get_file_contents', desc: 'Read the contents of a file or directory from a repository at a specific ref.', scope: 'read', calls: 284, enabled: true },
-    { name: 'list_pull_requests', desc: 'List pull requests in a repository with filters for state, author, and base branch.', scope: 'read', calls: 196, enabled: true },
-    { name: 'create_or_update_file', desc: 'Create or update a file in a repository. Requires write access to the target branch.', scope: 'write', calls: 84, enabled: true },
-    { name: 'create_issue', desc: 'Open a new issue in a repository with title, body, labels, and assignees.', scope: 'write', calls: 42, enabled: true },
-    { name: 'merge_pull_request', desc: 'Merge a pull request using the repository\'s configured merge method.', scope: 'write', calls: 12, enabled: false },
-    { name: 'list_workflow_runs', desc: 'List GitHub Actions workflow runs filtered by status and branch.', scope: 'read', calls: 98, enabled: true },
-];
-
-const MOCK_ACTIVITY = [
-    { time: '3 min ago', event: 'Tool call from code-review agent', tool: 'get_file_contents', result: '200', resultClass: 'ok' },
-    { time: '8 min ago', event: 'Tool call from triage agent', tool: 'list_pull_requests', result: '200', resultClass: 'ok' },
-    { time: '14 min ago', event: 'Server restart — config changed', tool: '—', result: 'info', resultClass: 'muted' },
-    { time: '26 min ago', event: 'Tool call from code-review agent', tool: 'create_or_update_file', result: '201', resultClass: 'ok' },
-    { time: '38 min ago', event: 'Rate-limit warning from upstream', tool: '—', result: '429', resultClass: 'warn' },
-];
 
 function getServerStatus(server: McpServerEntry, isEnabled: boolean): 'ok' | 'auth' | 'off' | 'err' {
     if (!isEnabled) return 'off';
@@ -82,10 +55,9 @@ function getServerStatus(server: McpServerEntry, isEnabled: boolean): 'ok' | 'au
     return 'ok';
 }
 
-function getServerDescription(server: McpServerEntry, status: string, isEnabled: boolean): string {
-    const base = MOCK_DESCRIPTIONS[server.name] || server.url || server.command || '';
+function getServerDescription(server: McpServerEntry, isEnabled: boolean): string {
+    const base = server.description || server.url || server.command || '';
     if (!isEnabled) return `Disabled · ${base.toLowerCase()}`;
-    if (status === 'auth') return base;
     return base;
 }
 
@@ -201,168 +173,367 @@ function SourcePathsCard({ sources }: { sources?: McpServerSources }) {
     );
 }
 
-function InspectorOverviewPane({ server }: { server: McpServerEntry }) {
-    const health = MOCK_HEALTH[server.name];
-    const command = server.command || `npx -y @modelcontextprotocol/server-${server.name}`;
+function InspectorOverviewPane({ server, detail }: { server: McpServerEntry; detail: ClientMcpServerDetail | null | 'loading' }) {
+    const command = server.command || server.url || `npx -y @modelcontextprotocol/server-${server.name}`;
+    const description = (detail && detail !== 'loading') ? detail.description : (server.description ?? '—');
+    const source = (detail && detail !== 'loading') ? detail.source : (server.source ?? '—');
     return (
         <div className="mcp-overview-grid">
             <dl className="mcp-kv">
                 <dt>Server name</dt><dd><code>{server.name}</code></dd>
-                <dt>Description</dt><dd>{MOCK_DESCRIPTIONS[server.name] || '—'}</dd>
+                <dt>Description</dt><dd>{detail === 'loading' ? <span className="mcp-small">Loading…</span> : (description || '—')}</dd>
                 <dt>Transport</dt><dd>{server.type}</dd>
                 <dt>Command</dt><dd><code>{command}</code></dd>
-                <dt>Source</dt><dd>{server.source === 'workspace' ? 'Repo config' : 'Global config'}</dd>
-                <dt>Last started</dt><dd>3 minutes ago</dd>
+                <dt>Source</dt><dd>{source === 'workspace' ? 'Repo config' : source === 'global' ? 'Global config' : '—'}</dd>
             </dl>
             <div className="mcp-health">
                 <h4>Health</h4>
                 <div className="mcp-health-row">
                     <span className="mcp-label">Status</span>
-                    <span className="mcp-val"><span className="mcp-pill ok">● Connected</span></span>
+                    <span className="mcp-val">—</span>
                 </div>
                 <div className="mcp-health-row">
                     <span className="mcp-label">Uptime</span>
-                    <span className="mcp-val">{health?.uptime || '—'}</span>
+                    <span className="mcp-val">—</span>
                 </div>
                 <div className="mcp-health-row">
                     <span className="mcp-label">Avg. handshake</span>
-                    <span className="mcp-val">{health?.handshake || '—'}</span>
+                    <span className="mcp-val">—</span>
                 </div>
                 <div className="mcp-health-row">
                     <span className="mcp-label">Tool calls (24h)</span>
-                    <span className="mcp-val">{health?.calls || '—'}</span>
+                    <span className="mcp-val">—</span>
                 </div>
                 <div className="mcp-health-row">
                     <span className="mcp-label">Errors (24h)</span>
-                    <span className="mcp-val">{health?.errors || '—'}</span>
+                    <span className="mcp-val">—</span>
                 </div>
-                <svg className="mcp-sparkline" viewBox="0 0 200 32" preserveAspectRatio="none">
-                    <polyline fill="none" stroke="var(--mcp-success)" strokeWidth="1.5"
-                        points="0,22 10,18 20,20 30,12 40,16 50,8 60,14 70,10 80,16 90,12 100,20 110,14 120,8 130,12 140,6 150,10 160,14 170,8 180,12 190,6 200,10" />
-                    <polyline fill="rgba(31,136,61,0.08)" stroke="none"
-                        points="0,32 0,22 10,18 20,20 30,12 40,16 50,8 60,14 70,10 80,16 90,12 100,20 110,14 120,8 130,12 140,6 150,10 160,14 170,8 180,12 190,6 200,10 200,32" />
-                </svg>
-                <div className="mcp-small">Tool calls over the last 24 hours</div>
+                <div className="mcp-small">Health metrics coming soon</div>
             </div>
         </div>
     );
 }
 
-function InspectorToolsPane({ server }: { server: McpServerEntry }) {
-    const toolCount = MOCK_TOOL_COUNTS[server.name] || 0;
-    const remaining = Math.max(0, toolCount - MOCK_TOOLS.length);
+function InspectorToolsPane() {
     return (
-        <div>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
-                <div className="mcp-search-wrap" style={{ maxWidth: 280 }}>
-                    <SearchIcon14 />
-                    <input className="mcp-input" type="text" placeholder="Filter tools" readOnly />
-                </div>
-                <div className="mcp-seg">
-                    <button className="active">All {toolCount}</button>
-                    <button>Read {Math.round(toolCount * 0.63)}</button>
-                    <button>Write {Math.round(toolCount * 0.37)}</button>
-                </div>
-                <div className="mcp-spacer" />
-                <span className="mcp-small">All tools enabled · <button className="mcp-link" type="button">disable all</button></span>
-            </div>
-            <table className="mcp-tools-table">
-                <thead>
-                    <tr>
-                        <th style={{ width: '34%' }}>Tool</th>
-                        <th>Description</th>
-                        <th style={{ width: 90 }}>Scope</th>
-                        <th style={{ width: 100, textAlign: 'right' }}>Calls (24h)</th>
-                        <th style={{ width: 60 }}>Enabled</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {MOCK_TOOLS.map(tool => (
-                        <tr key={tool.name}>
-                            <td><div className="mcp-tool-name">{tool.name}</div></td>
-                            <td className="mcp-tool-desc">{tool.desc}</td>
-                            <td><span className={`mcp-scope-pill${tool.scope === 'write' ? ' write' : ''}`}>{tool.scope}</span></td>
-                            <td className="mcp-calls">{tool.calls}</td>
-                            <td><ToggleSwitch checked={tool.enabled} /></td>
-                        </tr>
-                    ))}
-                    {remaining > 0 && (
-                        <tr>
-                            <td colSpan={5} style={{ textAlign: 'center' }}>
-                                <button className="mcp-link mcp-small" type="button">Show {remaining} more tools</button>
-                            </td>
-                        </tr>
-                    )}
-                </tbody>
-            </table>
+        <div className="mcp-empty-state" style={{ padding: '32px 0' }}>
+            Connect to view tools
         </div>
     );
 }
 
-function InspectorConfigPane({ server }: { server: McpServerEntry }) {
+function InspectorConfigPane({ server, detail, workspaceId, onSaved, onDeleted }: {
+    server: McpServerEntry;
+    detail: ClientMcpServerDetail | null | 'loading';
+    workspaceId: string;
+    onSaved: () => void;
+    onDeleted: () => void;
+}) {
+    const loaded = detail && detail !== 'loading' ? detail : null;
+
+    // Args state
+    const [argsText, setArgsText] = useState('');
+    const [argsSaving, setArgsSaving] = useState(false);
+    const [argsError, setArgsError] = useState('');
+
+    // Env state
+    const [newEnvKey, setNewEnvKey] = useState('');
+    const [newEnvValue, setNewEnvValue] = useState('');
+    const [envSaving, setEnvSaving] = useState(false);
+    const [envError, setEnvError] = useState('');
+
+    // Tool scope state
+    const [toolScope, setToolScope] = useState<'all' | 'readonly' | 'allowlist'>('all');
+    const [scopeSaving, setScopeSaving] = useState(false);
+
+    // Config scope state
+    const [configScope, setConfigScope] = useState<McpServerSource>('workspace');
+    const [migrateSaving, setMigrateSaving] = useState(false);
+
+    // Delete confirmation
+    const [deleteConfirm, setDeleteConfirm] = useState(false);
+    const [deleteSaving, setDeleteSaving] = useState(false);
+
+    // Initialize from detail when loaded
+    useEffect(() => {
+        if (loaded) {
+            setArgsText(loaded.args.join('\n'));
+            setToolScope(loaded.toolScope);
+            setConfigScope(loaded.source as McpServerSource);
+        }
+    }, [loaded]);
+
+    const handleSaveArgs = async () => {
+        if (!workspaceId) return;
+        setArgsSaving(true);
+        setArgsError('');
+        try {
+            const args = argsText.split('\n').map(s => s.trim()).filter(Boolean);
+            await getSpaCocClient().workspaces.updateMcpServer(workspaceId, server.name, { args });
+            onSaved();
+        } catch (e) {
+            setArgsError(getSpaCocClientErrorMessage(e, 'Failed to save args'));
+        } finally {
+            setArgsSaving(false);
+        }
+    };
+
+    const handleSaveToolScope = async (scope: 'all' | 'readonly' | 'allowlist') => {
+        if (!workspaceId) return;
+        setToolScope(scope);
+        setScopeSaving(true);
+        try {
+            await getSpaCocClient().workspaces.updateMcpServer(workspaceId, server.name, { toolScope: scope });
+            onSaved();
+        } catch {
+            // revert
+            if (loaded) setToolScope(loaded.toolScope);
+        } finally {
+            setScopeSaving(false);
+        }
+    };
+
+    const handleMigrate = async (targetScope: 'global' | 'workspace') => {
+        if (!workspaceId) return;
+        const prevScope = configScope;
+        setConfigScope(targetScope);
+        setMigrateSaving(true);
+        try {
+            await getSpaCocClient().workspaces.migrateMcpServer(workspaceId, server.name, targetScope as McpConfigScope);
+            onSaved();
+        } catch {
+            setConfigScope(prevScope);
+        } finally {
+            setMigrateSaving(false);
+        }
+    };
+
+    const handleAddEnvVar = async () => {
+        if (!workspaceId || !newEnvKey.trim()) return;
+        setEnvSaving(true);
+        setEnvError('');
+        try {
+            await getSpaCocClient().workspaces.updateMcpServer(workspaceId, server.name, {
+                env: { [newEnvKey.trim()]: newEnvValue },
+            });
+            setNewEnvKey('');
+            setNewEnvValue('');
+            onSaved();
+        } catch (e) {
+            setEnvError(getSpaCocClientErrorMessage(e, 'Failed to add env var'));
+        } finally {
+            setEnvSaving(false);
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!workspaceId) return;
+        setDeleteSaving(true);
+        try {
+            await getSpaCocClient().workspaces.deleteMcpServer(workspaceId, server.name);
+            onDeleted();
+        } catch {
+            setDeleteConfirm(false);
+        } finally {
+            setDeleteSaving(false);
+        }
+    };
+
     return (
         <div>
             <div className="mcp-config-section">
                 <h4>Environment variables</h4>
-                <p className="mcp-help">Secrets are stored encrypted in the workspace keychain and never written to config files.</p>
-                <table className="mcp-env-table">
-                    <thead><tr><th style={{ width: '40%' }}>Key</th><th>Value</th><th style={{ width: 60 }} /></tr></thead>
-                    <tbody>
-                        <tr>
-                            <td><span className="mcp-env-key">GITHUB_TOKEN</span></td>
-                            <td><div className="mcp-env-val"><span className="mcp-secret">••••••••••••••••</span></div></td>
-                            <td><button className="mcp-icon-btn" title="Remove" type="button">×</button></td>
-                        </tr>
-                    </tbody>
-                </table>
-                <button className="mcp-btn sm" style={{ marginTop: 10 }} type="button"><PlusIcon size={12} /> Add variable</button>
+                <p className="mcp-help">Values are stored in the config file. Use secrets/env references for sensitive values.</p>
+                {detail === 'loading' ? (
+                    <div className="mcp-small">Loading…</div>
+                ) : (
+                    <>
+                        <table className="mcp-env-table">
+                            <thead><tr><th style={{ width: '40%' }}>Key</th><th>Value</th></tr></thead>
+                            <tbody>
+                                {(loaded?.envKeys ?? []).map(key => (
+                                    <tr key={key}>
+                                        <td><span className="mcp-env-key">{key}</span></td>
+                                        <td><div className="mcp-env-val"><span className="mcp-secret">••••••••</span></div></td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <input
+                                className="mcp-input"
+                                style={{ fontFamily: 'var(--mcp-font-mono)', width: 160 }}
+                                placeholder="KEY"
+                                value={newEnvKey}
+                                onChange={e => setNewEnvKey(e.target.value)}
+                            />
+                            <input
+                                className="mcp-input"
+                                style={{ fontFamily: 'var(--mcp-font-mono)', width: 180 }}
+                                type="password"
+                                placeholder="value"
+                                value={newEnvValue}
+                                onChange={e => setNewEnvValue(e.target.value)}
+                            />
+                            <button
+                                className="mcp-btn sm"
+                                type="button"
+                                disabled={!newEnvKey.trim() || envSaving}
+                                onClick={handleAddEnvVar}
+                            >
+                                <PlusIcon size={12} /> Add
+                            </button>
+                        </div>
+                        {envError && <div className="mcp-small" style={{ color: 'var(--mcp-danger)', marginTop: 4 }}>{envError}</div>}
+                    </>
+                )}
             </div>
 
             <div className="mcp-config-section">
                 <h4>Command arguments</h4>
                 <p className="mcp-help">Arguments passed to the server process. One per line.</p>
-                <textarea className="mcp-input" readOnly defaultValue={`-y\n@modelcontextprotocol/server-${server.name}\n--read-only=false`} />
+                {detail === 'loading' ? (
+                    <div className="mcp-small">Loading…</div>
+                ) : (
+                    <>
+                        <textarea
+                            className="mcp-input"
+                            value={argsText}
+                            onChange={e => setArgsText(e.target.value)}
+                            placeholder="One argument per line"
+                        />
+                        <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+                            <button
+                                className="mcp-btn sm"
+                                type="button"
+                                disabled={argsSaving}
+                                onClick={handleSaveArgs}
+                            >
+                                {argsSaving ? 'Saving…' : 'Save args'}
+                            </button>
+                            {argsError && <span className="mcp-small" style={{ color: 'var(--mcp-danger)' }}>{argsError}</span>}
+                        </div>
+                    </>
+                )}
             </div>
 
             <div className="mcp-config-section">
                 <h4>Allowed tools</h4>
                 <p className="mcp-help">Restrict which tools agents may call from this server.</p>
-                <div className="mcp-radio-group">
-                    <label><input type="radio" name={`scope-${server.name}`} defaultChecked /> <span><strong>All tools</strong> <span className="mcp-sub">— {MOCK_TOOL_COUNTS[server.name] || 0} tools available</span></span></label>
-                    <label><input type="radio" name={`scope-${server.name}`} /> <span><strong>Read-only</strong> <span className="mcp-sub">— hide tools tagged <code>write</code></span></span></label>
-                    <label><input type="radio" name={`scope-${server.name}`} /> <span><strong>Allow-list</strong> <span className="mcp-sub">— specify tools individually in the Tools tab</span></span></label>
-                </div>
+                {detail === 'loading' ? (
+                    <div className="mcp-small">Loading…</div>
+                ) : (
+                    <div className="mcp-radio-group">
+                        <label>
+                            <input
+                                type="radio"
+                                name={`scope-${server.name}`}
+                                checked={toolScope === 'all'}
+                                disabled={scopeSaving}
+                                onChange={() => handleSaveToolScope('all')}
+                            />
+                            {' '}<span><strong>All tools</strong></span>
+                        </label>
+                        <label>
+                            <input
+                                type="radio"
+                                name={`scope-${server.name}`}
+                                checked={toolScope === 'readonly'}
+                                disabled={scopeSaving}
+                                onChange={() => handleSaveToolScope('readonly')}
+                            />
+                            {' '}<span><strong>Read-only</strong> <span className="mcp-sub">— hide tools tagged <code>write</code></span></span>
+                        </label>
+                        <label>
+                            <input
+                                type="radio"
+                                name={`scope-${server.name}`}
+                                checked={toolScope === 'allowlist'}
+                                disabled={scopeSaving}
+                                onChange={() => handleSaveToolScope('allowlist')}
+                            />
+                            {' '}<span><strong>Allow-list</strong> <span className="mcp-sub">— specify tools individually</span></span>
+                        </label>
+                    </div>
+                )}
             </div>
 
             <div className="mcp-config-section">
                 <h4>Scope</h4>
                 <p className="mcp-help">Where this configuration applies.</p>
-                <div className="mcp-radio-group">
-                    <label><input type="radio" name={`loc-${server.name}`} defaultChecked /> <span><strong>Workspace</strong> <span className="mcp-sub">— shared with collaborators via config file</span></span></label>
-                    <label><input type="radio" name={`loc-${server.name}`} /> <span><strong>User</strong> <span className="mcp-sub">— only on this machine</span></span></label>
-                </div>
+                {detail === 'loading' ? (
+                    <div className="mcp-small">Loading…</div>
+                ) : (
+                    <div className="mcp-radio-group">
+                        <label>
+                            <input
+                                type="radio"
+                                name={`loc-${server.name}`}
+                                checked={configScope === 'workspace'}
+                                disabled={migrateSaving}
+                                onChange={() => handleMigrate('workspace')}
+                            />
+                            {' '}<span><strong>Workspace</strong> <span className="mcp-sub">— shared via config file</span></span>
+                        </label>
+                        <label>
+                            <input
+                                type="radio"
+                                name={`loc-${server.name}`}
+                                checked={configScope === 'global'}
+                                disabled={migrateSaving}
+                                onChange={() => handleMigrate('global')}
+                            />
+                            {' '}<span><strong>User</strong> <span className="mcp-sub">— only on this machine</span></span>
+                        </label>
+                    </div>
+                )}
             </div>
 
             <hr className="mcp-rule" />
 
             <div className="mcp-danger-zone">
                 <h4>Remove server</h4>
-                <p>Removing <code>{server.name}</code> will stop the process and delete its entry from the configuration. Stored secrets are deleted from the keychain.</p>
-                <button className="mcp-btn danger-outline" type="button">Remove this server</button>
+                <p>Removing <code>{server.name}</code> will delete its entry from the configuration file.</p>
+                {deleteConfirm ? (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <span className="mcp-small">Are you sure?</span>
+                        <button
+                            className="mcp-btn danger-outline"
+                            type="button"
+                            disabled={deleteSaving}
+                            onClick={handleDelete}
+                        >
+                            {deleteSaving ? 'Removing…' : 'Yes, remove'}
+                        </button>
+                        <button className="mcp-btn" type="button" onClick={() => setDeleteConfirm(false)}>Cancel</button>
+                    </div>
+                ) : (
+                    <button
+                        className="mcp-btn danger-outline"
+                        type="button"
+                        onClick={() => setDeleteConfirm(true)}
+                    >
+                        Remove this server
+                    </button>
+                )}
             </div>
         </div>
     );
 }
 
-function InspectorSourcePane({ server }: { server: McpServerEntry }) {
-    const json = JSON.stringify({
-        [server.name]: {
-            command: server.command || 'npx',
-            args: ['-y', `@modelcontextprotocol/server-${server.name}`, '--read-only=false'],
-            env: { [`${server.name.toUpperCase()}_TOKEN`]: '${secrets.TOKEN}' },
-            transport: server.type,
-        },
-    }, null, 2);
+function InspectorSourcePane({ server, detail }: { server: McpServerEntry; detail: ClientMcpServerDetail | null | 'loading' }) {
+    if (detail === 'loading') {
+        return <div className="mcp-small" style={{ marginTop: 8 }}>Loading…</div>;
+    }
+    const json = detail
+        ? JSON.stringify({ [server.name]: detail.rawJson }, null, 2)
+        : JSON.stringify({
+            [server.name]: {
+                command: server.command || 'npx',
+                type: server.type,
+                ...(server.url ? { url: server.url } : {}),
+            },
+        }, null, 2);
     return (
         <div>
             <p className="mcp-small" style={{ marginTop: 0 }}>This is the raw JSON as stored in the config file.</p>
@@ -373,38 +544,24 @@ function InspectorSourcePane({ server }: { server: McpServerEntry }) {
 
 function InspectorActivityPane() {
     return (
-        <table className="mcp-tools-table">
-            <thead>
-                <tr>
-                    <th style={{ width: 120 }}>Time</th>
-                    <th>Event</th>
-                    <th style={{ width: 120 }}>Tool</th>
-                    <th style={{ width: 80 }}>Result</th>
-                </tr>
-            </thead>
-            <tbody>
-                {MOCK_ACTIVITY.map((a, i) => (
-                    <tr key={i}>
-                        <td className="mcp-small">{a.time}</td>
-                        <td>{a.event}</td>
-                        <td><span className="mcp-env-key">{a.tool}</span></td>
-                        <td><span className={`mcp-pill ${a.resultClass}`}>{a.result}</span></td>
-                    </tr>
-                ))}
-            </tbody>
-        </table>
+        <div className="mcp-empty-state" style={{ padding: '32px 0' }}>
+            Activity logging coming soon
+        </div>
     );
 }
 
-function ServerInspector({ server, activeTab, onTabChange }: {
+function ServerInspector({ server, activeTab, onTabChange, detail, workspaceId, onSaved, onDeleted }: {
     server: McpServerEntry;
     activeTab: InspectorTab;
     onTabChange: (tab: InspectorTab) => void;
+    detail: ClientMcpServerDetail | null | 'loading';
+    workspaceId: string;
+    onSaved: () => void;
+    onDeleted: () => void;
 }) {
-    const toolCount = MOCK_TOOL_COUNTS[server.name] || 0;
-    const tabs: { id: InspectorTab; label: string; badge?: string }[] = [
+    const tabs: { id: InspectorTab; label: string }[] = [
         { id: 'overview', label: 'Overview' },
-        { id: 'tools', label: 'Tools', badge: String(toolCount) },
+        { id: 'tools', label: 'Tools' },
         { id: 'configuration', label: 'Configuration' },
         { id: 'source', label: 'Source' },
         { id: 'activity', label: 'Activity' },
@@ -421,22 +578,78 @@ function ServerInspector({ server, activeTab, onTabChange }: {
                         type="button"
                     >
                         {tab.label}
-                        {tab.badge && <span className="mcp-badge">{tab.badge}</span>}
                     </button>
                 ))}
             </div>
             <div className="mcp-inspector-body">
-                {activeTab === 'overview' && <InspectorOverviewPane server={server} />}
-                {activeTab === 'tools' && <InspectorToolsPane server={server} />}
-                {activeTab === 'configuration' && <InspectorConfigPane server={server} />}
-                {activeTab === 'source' && <InspectorSourcePane server={server} />}
+                {activeTab === 'overview' && <InspectorOverviewPane server={server} detail={detail} />}
+                {activeTab === 'tools' && <InspectorToolsPane />}
+                {activeTab === 'configuration' && (
+                    <InspectorConfigPane
+                        server={server}
+                        detail={detail}
+                        workspaceId={workspaceId}
+                        onSaved={onSaved}
+                        onDeleted={onDeleted}
+                    />
+                )}
+                {activeTab === 'source' && <InspectorSourcePane server={server} detail={detail} />}
                 {activeTab === 'activity' && <InspectorActivityPane />}
             </div>
         </div>
     );
 }
 
-function AddServerCard() {
+function AddServerCard({ workspaceId, onAdded }: { workspaceId?: string; onAdded?: () => void }) {
+    const [transport, setTransport] = useState<'stdio' | 'http' | 'sse'>('stdio');
+    const [name, setName] = useState('');
+    const [desc, setDesc] = useState('');
+    const [command, setCommand] = useState('npx');
+    const [argsText, setArgsText] = useState('');
+    const [url, setUrl] = useState('');
+    const [toolScope, setToolScope] = useState<'all' | 'readonly'>('all');
+    const [scope, setScope] = useState<'workspace' | 'global'>('workspace');
+    const [envRows, setEnvRows] = useState<{ key: string; value: string }[]>([{ key: '', value: '' }]);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState('');
+
+    const handleAddEnvRow = () => setEnvRows(prev => [...prev, { key: '', value: '' }]);
+    const handleEnvChange = (idx: number, field: 'key' | 'value', val: string) => {
+        setEnvRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: val } : r));
+    };
+    const handleRemoveEnvRow = (idx: number) => setEnvRows(prev => prev.filter((_, i) => i !== idx));
+
+    const handleAdd = async () => {
+        if (!workspaceId || !name.trim()) return;
+        setSaving(true);
+        setError('');
+        try {
+            const envObj: Record<string, string> = {};
+            for (const row of envRows) {
+                if (row.key.trim()) envObj[row.key.trim()] = row.value;
+            }
+            await getSpaCocClient().workspaces.addMcpServer(workspaceId, {
+                name: name.trim(),
+                type: transport,
+                command: transport === 'stdio' ? (command.trim() || undefined) : undefined,
+                url: (transport === 'http' || transport === 'sse') ? (url.trim() || undefined) : undefined,
+                args: transport === 'stdio' ? argsText.split('\n').map(s => s.trim()).filter(Boolean) : undefined,
+                env: Object.keys(envObj).length > 0 ? envObj : undefined,
+                description: desc.trim() || undefined,
+                toolScope: toolScope !== 'all' ? toolScope : undefined,
+                scope,
+            });
+            // Reset form
+            setName(''); setDesc(''); setCommand('npx'); setArgsText(''); setUrl('');
+            setEnvRows([{ key: '', value: '' }]); setToolScope('all'); setScope('workspace');
+            onAdded?.();
+        } catch (e) {
+            setError(getSpaCocClientErrorMessage(e, 'Failed to add server'));
+        } finally {
+            setSaving(false);
+        }
+    };
+
     return (
         <div className="mcp-add-card" id="add">
             <div className="mcp-add-head">
@@ -449,9 +662,16 @@ function AddServerCard() {
                     <label>Transport</label>
                     <span className="mcp-field-hint">How the agent talks to this server.</span>
                     <div className="mcp-seg">
-                        <button className="active">stdio (local process)</button>
-                        <button>http (URL)</button>
-                        <button>sse</button>
+                        {(['stdio', 'http', 'sse'] as const).map(t => (
+                            <button
+                                key={t}
+                                className={transport === t ? 'active' : ''}
+                                type="button"
+                                onClick={() => setTransport(t)}
+                            >
+                                {t === 'stdio' ? 'stdio (local process)' : t}
+                            </button>
+                        ))}
                     </div>
                 </div>
 
@@ -459,41 +679,108 @@ function AddServerCard() {
                     <div className="mcp-field">
                         <label htmlFor="srv-name">Server name</label>
                         <span className="mcp-field-hint">Lowercase, no spaces. Used as the key in the config.</span>
-                        <input id="srv-name" className="mcp-input full" placeholder="e.g. github, postgres, internal-docs" readOnly />
+                        <input
+                            id="srv-name"
+                            className="mcp-input full"
+                            placeholder="e.g. github, postgres, internal-docs"
+                            value={name}
+                            onChange={e => setName(e.target.value)}
+                        />
                     </div>
                     <div className="mcp-field">
                         <label htmlFor="srv-desc">Description <span className="mcp-small" style={{ fontWeight: 400 }}>(optional)</span></label>
                         <span className="mcp-field-hint">Shown in this list and in the agent picker.</span>
-                        <input id="srv-desc" className="mcp-input full" placeholder="e.g. Read access to the internal API docs site" readOnly />
+                        <input
+                            id="srv-desc"
+                            className="mcp-input full"
+                            placeholder="e.g. Read access to the internal API docs site"
+                            value={desc}
+                            onChange={e => setDesc(e.target.value)}
+                        />
                     </div>
                 </div>
 
-                <div className="mcp-field">
-                    <label htmlFor="srv-cmd">Command</label>
-                    <span className="mcp-field-hint">The executable to run. Use <code>npx -y &lt;package&gt;</code> for npm-published servers.</span>
-                    <input id="srv-cmd" className="mcp-input full" placeholder="npx" defaultValue="npx" readOnly />
-                </div>
-
-                <div className="mcp-field">
-                    <label htmlFor="srv-args">Arguments</label>
-                    <span className="mcp-field-hint">One per line. Will be passed to the command.</span>
-                    <textarea id="srv-args" className="mcp-input" placeholder={`-y\n@modelcontextprotocol/server-postgres\npostgres://readonly@db.example.com/app`} readOnly />
-                </div>
+                {transport === 'stdio' ? (
+                    <>
+                        <div className="mcp-field">
+                            <label htmlFor="srv-cmd">Command</label>
+                            <span className="mcp-field-hint">The executable to run.</span>
+                            <input
+                                id="srv-cmd"
+                                className="mcp-input full"
+                                placeholder="npx"
+                                value={command}
+                                onChange={e => setCommand(e.target.value)}
+                            />
+                        </div>
+                        <div className="mcp-field">
+                            <label htmlFor="srv-args">Arguments</label>
+                            <span className="mcp-field-hint">One per line.</span>
+                            <textarea
+                                id="srv-args"
+                                className="mcp-input"
+                                placeholder={`-y\n@modelcontextprotocol/server-postgres\npostgres://readonly@db.example.com/app`}
+                                value={argsText}
+                                onChange={e => setArgsText(e.target.value)}
+                            />
+                        </div>
+                    </>
+                ) : (
+                    <div className="mcp-field">
+                        <label htmlFor="srv-url">URL</label>
+                        <span className="mcp-field-hint">The endpoint URL for the MCP server.</span>
+                        <input
+                            id="srv-url"
+                            className="mcp-input full"
+                            placeholder="https://mcp.example.com/api"
+                            value={url}
+                            onChange={e => setUrl(e.target.value)}
+                        />
+                    </div>
+                )}
 
                 <div className="mcp-field">
                     <label>Environment variables</label>
-                    <span className="mcp-field-hint">Secrets are stored in the workspace keychain.</span>
+                    <span className="mcp-field-hint">Passed to the server process.</span>
                     <table className="mcp-env-table">
                         <thead><tr><th style={{ width: '40%' }}>Key</th><th>Value</th><th style={{ width: 60 }} /></tr></thead>
                         <tbody>
-                            <tr>
-                                <td><input className="mcp-input" style={{ width: '100%', fontFamily: 'var(--mcp-font-mono)' }} placeholder="API_TOKEN" readOnly /></td>
-                                <td><input className="mcp-input" style={{ width: '100%', fontFamily: 'var(--mcp-font-mono)' }} type="password" placeholder="paste secret" readOnly /></td>
-                                <td><button className="mcp-icon-btn" title="Remove" type="button">×</button></td>
-                            </tr>
+                            {envRows.map((row, i) => (
+                                <tr key={i}>
+                                    <td>
+                                        <input
+                                            className="mcp-input"
+                                            style={{ width: '100%', fontFamily: 'var(--mcp-font-mono)' }}
+                                            placeholder="API_TOKEN"
+                                            value={row.key}
+                                            onChange={e => handleEnvChange(i, 'key', e.target.value)}
+                                        />
+                                    </td>
+                                    <td>
+                                        <input
+                                            className="mcp-input"
+                                            style={{ width: '100%', fontFamily: 'var(--mcp-font-mono)' }}
+                                            type="password"
+                                            placeholder="paste secret"
+                                            value={row.value}
+                                            onChange={e => handleEnvChange(i, 'value', e.target.value)}
+                                        />
+                                    </td>
+                                    <td>
+                                        <button
+                                            className="mcp-icon-btn"
+                                            title="Remove"
+                                            type="button"
+                                            onClick={() => handleRemoveEnvRow(i)}
+                                        >×</button>
+                                    </td>
+                                </tr>
+                            ))}
                         </tbody>
                     </table>
-                    <button className="mcp-btn sm" style={{ marginTop: 10 }} type="button"><PlusIcon size={12} /> Add variable</button>
+                    <button className="mcp-btn sm" style={{ marginTop: 10 }} type="button" onClick={handleAddEnvRow}>
+                        <PlusIcon size={12} /> Add variable
+                    </button>
                 </div>
 
                 <div className="mcp-field-grid">
@@ -501,30 +788,69 @@ function AddServerCard() {
                         <label>Allowed tools</label>
                         <span className="mcp-field-hint">Restrict which tools this server can offer.</span>
                         <div className="mcp-radio-group">
-                            <label><input type="radio" name="scope-new" defaultChecked /> <span><strong>All tools</strong> <span className="mcp-sub">— allow every tool the server exposes</span></span></label>
-                            <label><input type="radio" name="scope-new" /> <span><strong>Read-only</strong> <span className="mcp-sub">— block tools tagged <code>write</code></span></span></label>
-                            <label><input type="radio" name="scope-new" /> <span><strong>Pick after connect</strong> <span className="mcp-sub">— connect first, then choose</span></span></label>
+                            <label>
+                                <input
+                                    type="radio"
+                                    name="scope-new"
+                                    checked={toolScope === 'all'}
+                                    onChange={() => setToolScope('all')}
+                                />
+                                {' '}<span><strong>All tools</strong></span>
+                            </label>
+                            <label>
+                                <input
+                                    type="radio"
+                                    name="scope-new"
+                                    checked={toolScope === 'readonly'}
+                                    onChange={() => setToolScope('readonly')}
+                                />
+                                {' '}<span><strong>Read-only</strong></span>
+                            </label>
                         </div>
                     </div>
                     <div className="mcp-field">
                         <label>Where should this be saved?</label>
                         <span className="mcp-field-hint">Workspace config is checked in and shared with collaborators.</span>
                         <div className="mcp-radio-group">
-                            <label><input type="radio" name="loc-new" defaultChecked /> <span><strong>Workspace</strong> <span className="mcp-sub">— writes to the repo config file</span></span></label>
-                            <label><input type="radio" name="loc-new" /> <span><strong>Just me</strong> <span className="mcp-sub">— writes to the user override file</span></span></label>
+                            <label>
+                                <input
+                                    type="radio"
+                                    name="loc-new"
+                                    checked={scope === 'workspace'}
+                                    onChange={() => setScope('workspace')}
+                                />
+                                {' '}<span><strong>Workspace</strong> <span className="mcp-sub">— writes to the repo config file</span></span>
+                            </label>
+                            <label>
+                                <input
+                                    type="radio"
+                                    name="loc-new"
+                                    checked={scope === 'global'}
+                                    onChange={() => setScope('global')}
+                                />
+                                {' '}<span><strong>Just me</strong> <span className="mcp-sub">— writes to the user override file</span></span>
+                            </label>
                         </div>
                     </div>
                 </div>
             </div>
+            {error && <div className="mcp-small" style={{ color: 'var(--mcp-danger)', padding: '0 16px 8px' }}>{error}</div>}
             <div className="mcp-form-actions">
-                <button className="mcp-btn" type="button">Test connection</button>
-                <button className="mcp-btn primary" type="button">Add server</button>
+                <button
+                    className="mcp-btn primary"
+                    type="button"
+                    disabled={!name.trim() || saving || !workspaceId}
+                    onClick={handleAdd}
+                >
+                    {saving ? 'Adding…' : 'Add server'}
+                </button>
             </div>
         </div>
     );
 }
 
 export function McpServersPanel({
+    workspaceId = '',
     loading,
     error,
     saving,
@@ -533,11 +859,24 @@ export function McpServersPanel({
     isEnabled,
     onToggle,
     onRefresh,
+    onMutate,
 }: McpServersPanelProps) {
     const [filterTab, setFilterTab] = useState<FilterTab>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [expandedServer, setExpandedServer] = useState<string | null>(null);
     const [inspectorTab, setInspectorTab] = useState<InspectorTab>('overview');
+    const [detailCache, setDetailCache] = useState<Record<string, ClientMcpServerDetail | null | 'loading'>>({});
+
+    const fetchDetail = useCallback(async (name: string) => {
+        if (!workspaceId || detailCache[name] !== undefined) return;
+        setDetailCache(prev => ({ ...prev, [name]: 'loading' }));
+        try {
+            const detail = await getSpaCocClient().workspaces.getMcpServerDetail(workspaceId, name);
+            setDetailCache(prev => ({ ...prev, [name]: detail }));
+        } catch {
+            setDetailCache(prev => ({ ...prev, [name]: null }));
+        }
+    }, [workspaceId, detailCache]);
 
     const legacySources: McpServerSources | undefined = sources ?? (availableServers.length > 0 ? {
         global: {
@@ -557,11 +896,8 @@ export function McpServersPanel({
     const allServers = availableServers;
 
     const counts = useMemo(() => {
-        const active = allServers.filter(s => isEnabled(s.name) && s.effective !== false).length;
-        const needsAuth = allServers.filter(s => {
-            const status = getServerStatus(s, isEnabled(s.name));
-            return status === 'auth';
-        }).length;
+        const active = allServers.filter(s => isEnabled(s.name) && s.effective !== false && getServerStatus(s, true) === 'ok').length;
+        const needsAuth = allServers.filter(s => getServerStatus(s, isEnabled(s.name)) === 'auth').length;
         const disabled = allServers.filter(s => !isEnabled(s.name) || s.effective === false).length;
         return { all: allServers.length, active, auth: needsAuth, disabled };
     }, [allServers, isEnabled]);
@@ -581,7 +917,7 @@ export function McpServersPanel({
         if (q) {
             list = list.filter(s =>
                 s.name.toLowerCase().includes(q) ||
-                (MOCK_DESCRIPTIONS[s.name] || '').toLowerCase().includes(q)
+                (s.description ?? '').toLowerCase().includes(q)
             );
         }
 
@@ -594,8 +930,24 @@ export function McpServersPanel({
         } else {
             setExpandedServer(name);
             setInspectorTab('overview');
+            fetchDetail(name);
         }
-    }, [expandedServer]);
+    }, [expandedServer, fetchDetail]);
+
+    // After a detail-mutating save, invalidate the cached detail so it re-fetches on next open
+    const handleDetailSaved = useCallback((serverName: string) => {
+        setDetailCache(prev => {
+            const next = { ...prev };
+            delete next[serverName];
+            return next;
+        });
+    }, []);
+
+    const handleServerDeleted = useCallback(() => {
+        setExpandedServer(null);
+        onMutate?.();
+        onRefresh?.();
+    }, [onMutate, onRefresh]);
 
     if (loading) {
         return (
@@ -680,10 +1032,9 @@ export function McpServersPanel({
                         const enabled = isEnabled(server.name);
                         const isOverridden = server.effective === false;
                         const status = getServerStatus(server, enabled);
-                        const description = getServerDescription(server, status, enabled);
+                        const description = getServerDescription(server, enabled);
                         const transportCls = getTransportPillClass(server.type);
                         const sourcePill = getSourcePillInfo(server);
-                        const toolCount = MOCK_TOOL_COUNTS[server.name] || 0;
                         const isExpanded = expandedServer === server.name;
 
                         return (
@@ -705,11 +1056,11 @@ export function McpServersPanel({
                                         <strong className="mcp-server-name" style={!enabled ? { color: 'var(--mcp-fg-muted)' } : undefined}>
                                             {server.name}
                                         </strong>
-                                        <span className="mcp-server-desc">— {description}</span>
+                                        {description && <span className="mcp-server-desc">— {description}</span>}
                                     </div>
                                     <div className="mcp-meta"><span className={`mcp-pill ${transportCls}`}>{server.type}</span></div>
                                     <div className="mcp-meta"><span className={`mcp-pill ${sourcePill.cls}`}>{sourcePill.label}</span></div>
-                                    <div className="mcp-tools-count">{toolCount} tools</div>
+                                    <div className="mcp-tools-count">—</div>
                                     <ToggleSwitch
                                         checked={!isOverridden && enabled}
                                         disabled={saving || isOverridden}
@@ -722,6 +1073,10 @@ export function McpServersPanel({
                                         server={server}
                                         activeTab={inspectorTab}
                                         onTabChange={setInspectorTab}
+                                        detail={detailCache[server.name] ?? null}
+                                        workspaceId={workspaceId}
+                                        onSaved={() => handleDetailSaved(server.name)}
+                                        onDeleted={handleServerDeleted}
                                     />
                                 )}
                             </React.Fragment>
@@ -731,7 +1086,13 @@ export function McpServersPanel({
             </div>
 
             {/* Add server card */}
-            <AddServerCard />
+            <AddServerCard
+                workspaceId={workspaceId}
+                onAdded={() => {
+                    onMutate?.();
+                    onRefresh?.();
+                }}
+            />
 
             {/* Footer */}
             <div className="mcp-footer">

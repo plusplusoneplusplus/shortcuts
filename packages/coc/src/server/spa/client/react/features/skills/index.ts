@@ -3,7 +3,7 @@ export type { Skill, SkillDetail } from './AgentSkillsPanel';
 export { CustomInstructionsPanel } from './CustomInstructionsPanel';
 export type { InstructionMode } from './CustomInstructionsPanel';
 export { McpServersPanel } from './McpServersPanel';
-export type { McpServerEntry } from './McpServersPanel';
+export type { McpServerEntry, McpServerSources, McpServerSourceSection } from './McpServersPanel';
 export { useRecentSkills } from './hooks/useRecentSkills';
 export { SkillsView } from './SkillsView';
 export { SkillsBundledPanel } from './SkillsBundledPanel';

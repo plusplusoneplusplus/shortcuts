@@ -6,6 +6,10 @@ import type {
   DiscoverWorkspacesResponse,
   GitInfoBatchResponse,
   GitInfoResponse,
+  McpConfigScope,
+  McpServerCreateRequest,
+  McpServerDetail,
+  McpServerUpdateRequest,
   MyLifeSummaryResponse,
   MyLifeSyncRequest,
   MyLifeSyncResponse,
@@ -127,6 +131,40 @@ export class WorkspacesClient {
       method: 'PUT',
       body: { enabledMcpServers: request.enabledMcpServers === null ? null : [...request.enabledMcpServers] },
     });
+  }
+
+  getMcpServerDetail(workspaceId: string, serverName: string): Promise<McpServerDetail> {
+    return this.transport.request<McpServerDetail>(
+      `/workspaces/${encodePathSegment(workspaceId)}/mcp-config/${encodePathSegment(serverName)}/detail`,
+    );
+  }
+
+  addMcpServer(workspaceId: string, request: McpServerCreateRequest): Promise<{ name: string; scope: string }> {
+    return this.transport.request<{ name: string; scope: string }>(
+      `/workspaces/${encodePathSegment(workspaceId)}/mcp-config`,
+      { method: 'POST', body: { ...request } },
+    );
+  }
+
+  updateMcpServer(workspaceId: string, serverName: string, request: McpServerUpdateRequest): Promise<{ name: string; updated: boolean }> {
+    return this.transport.request<{ name: string; updated: boolean }>(
+      `/workspaces/${encodePathSegment(workspaceId)}/mcp-config/${encodePathSegment(serverName)}`,
+      { method: 'PUT', body: { ...request } },
+    );
+  }
+
+  deleteMcpServer(workspaceId: string, serverName: string): Promise<{ name: string; deleted: boolean }> {
+    return this.transport.request<{ name: string; deleted: boolean }>(
+      `/workspaces/${encodePathSegment(workspaceId)}/mcp-config/${encodePathSegment(serverName)}`,
+      { method: 'DELETE' },
+    );
+  }
+
+  migrateMcpServer(workspaceId: string, serverName: string, targetScope: McpConfigScope): Promise<{ name: string; scope: string }> {
+    return this.transport.request<{ name: string; scope: string }>(
+      `/workspaces/${encodePathSegment(workspaceId)}/mcp-config/${encodePathSegment(serverName)}/migrate`,
+      { method: 'POST', body: { targetScope } },
+    );
   }
 
   getInstructions(workspaceId: string): Promise<WorkspaceInstructionsResponse> {

@@ -54,6 +54,19 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
             .finally(() => setLoading(false));
     }, [workspaceId]);
 
+    const handleRefreshMcp = useCallback(() => {
+        setLoading(true);
+        setError(null);
+        getSpaCocClient().workspaces.getMcpConfig(workspaceId, { forceReload: true })
+            .then((data) => {
+                setAvailableServers(data.availableServers ?? []);
+                setMcpSources(data.sources);
+                setEnabledMcpServers(data.enabledMcpServers ?? null);
+            })
+            .catch((e: unknown) => setError(getSpaCocClientErrorMessage(e, 'Failed to load MCP config')))
+            .finally(() => setLoading(false));
+    }, [workspaceId]);
+
     const isEnabled = (name: string) =>
         enabledMcpServers === null || enabledMcpServers.includes(name);
 
@@ -301,6 +314,7 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
             <div className="flex-1 overflow-y-auto p-4" data-testid="copilot-content-panel">
                 {activeSection === 'mcp' && (
                     <McpServersPanel
+                        workspaceId={workspaceId}
                         loading={loading}
                         error={error}
                         saving={saving}
@@ -308,6 +322,8 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
                         sources={mcpSources}
                         isEnabled={isEnabled}
                         onToggle={handleToggle}
+                        onRefresh={handleRefreshMcp}
+                        onMutate={handleRefreshMcp}
                     />
                 )}
                 {activeSection === 'skills' && (

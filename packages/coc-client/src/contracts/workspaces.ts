@@ -14,6 +14,8 @@ export interface WorkspaceInfo {
 }
 
 export type WorkspaceMcpServerSource = 'global' | 'workspace';
+export type McpConfigScope = 'global' | 'workspace';
+export type McpToolScope = 'all' | 'readonly' | 'allowlist';
 
 export interface WorkspaceMcpServerEntry {
   name: string;
@@ -23,6 +25,38 @@ export interface WorkspaceMcpServerEntry {
   source?: WorkspaceMcpServerSource;
   effective?: boolean;
   overriddenBy?: WorkspaceMcpServerSource;
+  /** Derived server status included in availableServers. */
+  status?: 'ok' | 'auth' | 'off' | 'err';
+  /** User-provided description from config file. */
+  description?: string;
+}
+
+export interface McpServerDetail {
+  description: string;
+  envKeys: string[];
+  args: string[];
+  toolScope: McpToolScope;
+  source: McpConfigScope;
+  rawJson: Record<string, unknown>;
+}
+
+export interface McpServerCreateRequest {
+  name: string;
+  type: 'stdio' | 'http' | 'sse';
+  command?: string;
+  url?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  description?: string;
+  toolScope?: McpToolScope;
+  scope: McpConfigScope;
+}
+
+export interface McpServerUpdateRequest {
+  description?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  toolScope?: McpToolScope;
 }
 
 export interface WorkspaceMcpSourceSection {
