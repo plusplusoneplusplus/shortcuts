@@ -216,10 +216,6 @@ export class CopilotSDKService implements ISDKService {
 // Convenience Functions
 // ============================================================================
 
-export function getCopilotSDKService(): CopilotSDKService {
-    return CopilotSDKService.getInstance();
-}
-
 export function resetCopilotSDKService(): void {
     CopilotSDKService.resetInstance();
 }

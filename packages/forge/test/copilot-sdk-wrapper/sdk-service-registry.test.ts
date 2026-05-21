@@ -2,11 +2,12 @@
  * Tests for SDKServiceRegistry and ISDKService interface.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
     SDKServiceRegistry,
     sdkServiceRegistry,
     COPILOT_PROVIDER,
+    SDK_PROVIDER_COPILOT,
 } from '../../src/copilot-sdk-wrapper/sdk-service-registry';
 import type { ISDKService } from '../../src/copilot-sdk-wrapper/sdk-service-interface';
 
@@ -138,6 +139,10 @@ describe('sdkServiceRegistry module singleton', () => {
     it('COPILOT_PROVIDER constant equals "copilot"', () => {
         expect(COPILOT_PROVIDER).toBe('copilot');
     });
+
+    it('SDK_PROVIDER_COPILOT is an alias for COPILOT_PROVIDER', () => {
+        expect(SDK_PROVIDER_COPILOT).toBe(COPILOT_PROVIDER);
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -180,5 +185,112 @@ describe('ISDKService structural contract', () => {
         const result = await svc.transform<number>('prompt', (raw) => raw.length);
         expect(typeof result).toBe('number');
         expect(result).toBeGreaterThan(0);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Integration: mock ISDKService provider via module-level sdkServiceRegistry
+// ---------------------------------------------------------------------------
+
+describe('sdkServiceRegistry integration — mock ISDKService provider', () => {
+    afterEach(() => {
+        // Clean up any provider registered under SDK_PROVIDER_COPILOT to avoid
+        // cross-test contamination of the module-level singleton.
+        sdkServiceRegistry.unregister(SDK_PROVIDER_COPILOT);
+    });
+
+    it('registers a mock provider and retrieves it via SDK_PROVIDER_COPILOT', () => {
+        const mock = makeMockProvider('integration');
+        sdkServiceRegistry.register(SDK_PROVIDER_COPILOT, mock);
+        expect(sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT)).toBe(mock);
+    });
+
+    it('sendMessage flows through the registry to the mock', async () => {
+        const calls: string[] = [];
+        const mock: ISDKService = {
+            ...makeMockProvider('flow'),
+            sendMessage: async (opts) => {
+                calls.push(opts.prompt ?? '');
+                return { success: true, response: `echo: ${opts.prompt}` };
+            },
+        };
+        sdkServiceRegistry.register(SDK_PROVIDER_COPILOT, mock);
+
+        const svc = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
+        const result = await svc.sendMessage({ prompt: 'hello from integration' });
+
+        expect(result.success).toBe(true);
+        expect(result.response).toBe('echo: hello from integration');
+        expect(calls).toEqual(['hello from integration']);
+    });
+
+    it('transform flows through the registry to the mock', async () => {
+        const mock: ISDKService = {
+            ...makeMockProvider('transform-flow'),
+            transform: async <T = string>(prompt: string, parse?: (raw: string) => T) => {
+                const raw = `mocked:${prompt}`;
+                return (parse ? parse(raw) : raw) as T;
+            },
+        };
+        sdkServiceRegistry.register(SDK_PROVIDER_COPILOT, mock);
+
+        const svc = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
+        const text = await svc.transform('ping');
+        expect(text).toBe('mocked:ping');
+
+        const parsed = await svc.transform<number>('ping', (raw) => raw.length);
+        expect(typeof parsed).toBe('number');
+    });
+
+    it('isAvailable flows through the registry to the mock', async () => {
+        const mock: ISDKService = {
+            ...makeMockProvider('avail'),
+            isAvailable: async () => ({ available: false, error: 'not ready' }),
+        };
+        sdkServiceRegistry.register(SDK_PROVIDER_COPILOT, mock);
+
+        const svc = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
+        const avail = await svc.isAvailable();
+        expect(avail.available).toBe(false);
+        expect(avail.error).toBe('not ready');
+    });
+
+    it('listModels flows through the registry to the mock', async () => {
+        const mock: ISDKService = {
+            ...makeMockProvider('models'),
+            listModels: async () => [
+                { id: 'mock-model-1', name: 'Mock Model 1' },
+                { id: 'mock-model-2', name: 'Mock Model 2' },
+            ],
+        };
+        sdkServiceRegistry.register(SDK_PROVIDER_COPILOT, mock);
+
+        const svc = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
+        const models = await svc.listModels();
+        expect(models).toHaveLength(2);
+        expect(models[0].id).toBe('mock-model-1');
+        expect(models[1].id).toBe('mock-model-2');
+    });
+
+    it('getOrThrow throws when provider is not registered', () => {
+        // Ensure no provider under the copilot key for this assertion.
+        expect(() => sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT)).toThrow(
+            `SDK service provider '${SDK_PROVIDER_COPILOT}' is not registered`,
+        );
+    });
+
+    it('replacing the provider swaps the implementation', async () => {
+        const first = makeMockProvider('first');
+        const second: ISDKService = {
+            ...makeMockProvider('second'),
+            sendMessage: async () => ({ success: true, response: 'from-second' }),
+        };
+
+        sdkServiceRegistry.register(SDK_PROVIDER_COPILOT, first);
+        sdkServiceRegistry.register(SDK_PROVIDER_COPILOT, second);
+
+        const svc = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
+        const result = await svc.sendMessage({ prompt: 'test' });
+        expect(result.response).toBe('from-second');
     });
 });
