@@ -694,35 +694,35 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                             </div>
                         )}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab key={ws.id} workspaceId={ws.id} />}
-                        {isGitRepo && wasVisited('git') && <div style={{ display: activeSubTab === 'git' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-                            <RepoGitTab key={ws.id} workspaceId={ws.id} />
+                        {isGitRepo && <div style={{ display: activeSubTab === 'git' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                            {wasVisited('git') && <RepoGitTab key={ws.id} workspaceId={ws.id} />}
                         </div>}
                         {activeSubTab === 'wiki' && <RepoWikiTab key={ws.id} workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}
-                        {wasVisited('explorer') && <div style={{ display: activeSubTab === 'explorer' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-                            <ExplorerPanel key={ws.id} workspaceId={ws.id} />
-                        </div>}
-                        {isGitRepo && wasVisited('pull-requests') && <div style={{ display: activeSubTab === 'pull-requests' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-                            <PullRequestsTab
+                        <div style={{ display: activeSubTab === 'explorer' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                            {wasVisited('explorer') && <ExplorerPanel key={ws.id} workspaceId={ws.id} />}
+                        </div>
+                        {isGitRepo && <div style={{ display: activeSubTab === 'pull-requests' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                            {wasVisited('pull-requests') && <PullRequestsTab
                                 repoId={ws.id}
                                 workspaceId={ws.id}
                                 remoteUrl={ws.remoteUrl ?? undefined}
-                            />
+                            />}
                         </div>}
-                        {terminalEnabled && wasVisited('terminal') && (
+                        {terminalEnabled && (
                             <div style={{ display: activeSubTab === 'terminal' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-                                <TerminalView key={ws.id} workspaceId={ws.id} />
+                                {wasVisited('terminal') && <TerminalView key={ws.id} workspaceId={ws.id} />}
                             </div>
                         )}
-                        {notesEnabled && wasVisited('notes') && (
+                        {notesEnabled && (
                             <div style={{ display: activeSubTab === 'notes' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-                                <NotesView
+                                {wasVisited('notes') && <NotesView
                                     key={ws.id}
                                     workspaceId={ws.id}
                                     initialNotePath={state.selectedNotePath}
                                     chatPanelOpen={notesChatPanelOpen}
                                     onToggleChatPanel={() => setNotesChatPanelOpen(v => !v)}
                                     defaultScope="per-note"
-                                />
+                                />}
                             </div>
                         )}
                         {activeSubTab === 'workflow' && state.selectedWorkflowProcessId && <WorkflowDetailView key={state.selectedWorkflowProcessId} processId={state.selectedWorkflowProcessId} />}
