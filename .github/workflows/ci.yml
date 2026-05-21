@@ -461,10 +461,19 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $proc = Start-Process -FilePath node -ArgumentList "packages/coc/dist/index.js","serve","--no-open","--port","4111" -PassThru -NoNewWindow -RedirectStandardOutput coc-stdout.log -RedirectStandardError coc-stderr.log
+          $nodeExe = (Get-Command node).Source
+          Write-Host "Using node: $nodeExe"
+          $scriptPath = Resolve-Path "packages/coc/dist/index.js"
+          Write-Host "Script: $scriptPath"
+          $proc = Start-Process -FilePath $nodeExe -ArgumentList $scriptPath,"serve","--no-open","--port","4111" -PassThru -RedirectStandardOutput coc-stdout.log -RedirectStandardError coc-stderr.log
+          Write-Host "Started PID: $($proc.Id)"
           $healthy = $false
-          for ($i = 1; $i -le 30; $i++) {
+          for ($i = 1; $i -le 60; $i++) {
             Start-Sleep -Seconds 1
+            if ($proc.HasExited) {
+              Write-Host "Process exited early with code $($proc.ExitCode)"
+              break
+            }
             try {
               $resp = Invoke-WebRequest -Uri http://127.0.0.1:4111/api/health -UseBasicParsing -ErrorAction Stop
               if ($resp.StatusCode -eq 200) {
@@ -475,10 +484,10 @@ jobs:
             } catch {}
           }
           if (-not $healthy) {
-            Write-Host "✗ Server failed to respond within 30s"
-            if (Test-Path coc-stdout.log) { Write-Host "--- stdout ---"; Get-Content coc-stdout.log }
-            if (Test-Path coc-stderr.log) { Write-Host "--- stderr ---"; Get-Content coc-stderr.log }
+            Write-Host "✗ Server failed to respond within 60s"
           }
+          if (Test-Path coc-stdout.log) { Write-Host "--- stdout ---"; Get-Content coc-stdout.log }
+          if (Test-Path coc-stderr.log) { Write-Host "--- stderr ---"; Get-Content coc-stderr.log }
           Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
           if (-not $healthy) { exit 1 }
 
