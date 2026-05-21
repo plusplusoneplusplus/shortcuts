@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 18;
 
 /**
  * Read the current schema version from the database.
@@ -383,6 +383,9 @@ export function initializeDatabase(db: Database.Database): void {
         if (versionBefore < 17) {
             migrateV16toV17(db);
         }
+        if (versionBefore < 18) {
+            migrateV17toV18(db);
+        }
 
         // Stamp the schema version
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -610,6 +613,21 @@ function migrateV16toV17(db: Database.Database): void {
             update.run(preview, r.pid);
         }
     }
+}
+
+/**
+ * V17 → V18: backfill `last_event_at` from `start_time` for any legacy rows
+ * where it is NULL, then create a composite index on
+ * (workspace_id, status, last_event_at DESC). After backfill the hot history
+ * sort can drop `COALESCE(last_event_at, start_time)` and rely on the column
+ * directly, so this index satisfies both the WHERE and the ORDER BY.
+ */
+function migrateV17toV18(db: Database.Database): void {
+    db.exec(`UPDATE processes SET last_event_at = start_time WHERE last_event_at IS NULL`);
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_processes_ws_status_activity
+            ON processes(workspace_id, status, last_event_at DESC)
+    `);
 }
 
 /**

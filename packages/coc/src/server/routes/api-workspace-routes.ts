@@ -316,28 +316,20 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
     });
 
     // GET /api/workspaces/:id/git-info — Git branch and status
+    // Routed through gitInfoCache to avoid blocking the request on a live
+    // `git status`+`git rev-list` subprocess pair on every repo switch.
     routes.push({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git-info$/,
         handler: async (_req, res, match) => {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
-
-            const dirty = await getBranchService().hasUncommittedChanges(ws.rootPath);
-            const branchStatus = await getBranchService().getBranchStatus(ws.rootPath, dirty);
-
-            if (!branchStatus) {
-                const remoteUrl = await syncRemoteUrl(ws, store);
-                sendJSON(res, 200, { branch: null, dirty: false, isGitRepo: false, remoteUrl: remoteUrl || null });
-                return;
+            try {
+                const data = await gitInfoCache.getOrFetch(ws.id);
+                sendJSON(res, 200, data);
+            } catch {
+                sendJSON(res, 200, { branch: null, dirty: false, isGitRepo: false, remoteUrl: null });
             }
-
-            const branch = branchStatus.name || 'HEAD';
-            const remoteUrl = await syncRemoteUrl(ws, store);
-            const ahead = branchStatus.ahead;
-            const behind = branchStatus.behind;
-
-            sendJSON(res, 200, { branch, dirty, ahead, behind, isGitRepo: true, remoteUrl: remoteUrl || null });
         },
     });
 
