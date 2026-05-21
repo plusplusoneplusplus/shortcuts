@@ -134,6 +134,197 @@ export async function acquireTokenWithDeviceCode(
 }
 
 /**
+ * Acquire a token via PKCE authorization code flow (browser-based).
+ * Opens the user's browser to the login page, starts a local HTTP server
+ * to receive the redirect, exchanges the auth code for tokens, and saves
+ * them to ~/.copilot/mcp-oauth-config/.
+ */
+export async function acquireTokenViaBrowser(
+    mcpServerUrl: string,
+    opts?: { clientId?: string; scope?: string; homeDir?: string },
+): Promise<string> {
+    const http = await import('http');
+    const crypto = await import('crypto');
+    const { exec } = await import('child_process');
+
+    const clientId = opts?.clientId ?? 'aebc6443-996d-45c2-90f0-388ff96faa56';
+    const tenantId = extractTenantId(mcpServerUrl) ?? 'organizations';
+    const scope = opts?.scope ?? `${mcpServerUrl}/.default offline_access`;
+    const authorizeUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize`;
+    const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
+
+    // Generate PKCE code verifier + challenge
+    const codeVerifier = crypto.randomBytes(32).toString('base64url');
+    const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
+
+    // Start local server on a random port
+    return new Promise<string>((resolve, reject) => {
+        const server = http.createServer();
+        server.listen(0, '127.0.0.1', () => {
+            const port = (server.address() as { port: number }).port;
+            const redirectUri = `http://127.0.0.1:${port}/`;
+
+            // Build authorization URL
+            const params = new URLSearchParams({
+                client_id: clientId,
+                response_type: 'code',
+                redirect_uri: redirectUri,
+                scope,
+                code_challenge: codeChallenge,
+                code_challenge_method: 'S256',
+                response_mode: 'query',
+            });
+            const authUrl = `${authorizeUrl}?${params.toString()}`;
+
+            // Open browser
+            const openCmd = process.platform === 'win32' ? `start "" "${authUrl}"`
+                : process.platform === 'darwin' ? `open "${authUrl}"`
+                : `xdg-open "${authUrl}"`;
+            exec(openCmd);
+            console.log(`[teams-auth] Opening browser for login...`);
+
+            // Set timeout
+            const timeout = setTimeout(() => {
+                server.close();
+                reject(new Error('OAuth login timed out (120s)'));
+            }, 120000);
+
+            server.on('request', async (req, res) => {
+                const url = new URL(req.url ?? '/', `http://127.0.0.1:${port}`);
+                const code = url.searchParams.get('code');
+                const error = url.searchParams.get('error');
+
+                if (error) {
+                    res.writeHead(200, { 'Content-Type': 'text/html' });
+                    res.end('<html><body><h2>Login failed</h2><p>You can close this window.</p></body></html>');
+                    clearTimeout(timeout);
+                    server.close();
+                    reject(new Error(`OAuth error: ${error} - ${url.searchParams.get('error_description') ?? ''}`));
+                    return;
+                }
+
+                if (!code) {
+                    res.writeHead(400);
+                    res.end('Missing code');
+                    return;
+                }
+
+                // Exchange code for tokens
+                try {
+                    const tokenRes = await fetch(tokenUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: new URLSearchParams({
+                            client_id: clientId,
+                            grant_type: 'authorization_code',
+                            code,
+                            redirect_uri: redirectUri,
+                            code_verifier: codeVerifier,
+                            scope,
+                        }),
+                    });
+
+                    if (!tokenRes.ok) {
+                        const errText = await tokenRes.text();
+                        throw new Error(`Token exchange failed: ${tokenRes.status} ${errText}`);
+                    }
+
+                    const tokenData = await tokenRes.json() as { access_token: string; refresh_token?: string; expires_in: number; scope?: string };
+
+                    // Save to ~/.copilot/mcp-oauth-config/
+                    saveMcpOAuthTokens(mcpServerUrl, {
+                        clientId,
+                        redirectUri,
+                        authorizationServerUrl: `https://login.microsoftonline.com/${tenantId}/v2.0`,
+                        resourceUrl: mcpServerUrl,
+                        accessToken: tokenData.access_token,
+                        refreshToken: tokenData.refresh_token,
+                        expiresIn: tokenData.expires_in,
+                        scope: tokenData.scope ?? scope,
+                    }, opts?.homeDir);
+
+                    res.writeHead(200, { 'Content-Type': 'text/html' });
+                    res.end('<html><body><h2>\u2713 Logged in successfully</h2><p>You can close this window and return to CoC.</p></body></html>');
+                    clearTimeout(timeout);
+                    server.close();
+                    resolve(tokenData.access_token);
+                } catch (err) {
+                    res.writeHead(200, { 'Content-Type': 'text/html' });
+                    res.end('<html><body><h2>Login failed</h2><p>Check server logs.</p></body></html>');
+                    clearTimeout(timeout);
+                    server.close();
+                    reject(err);
+                }
+            });
+        });
+    });
+}
+
+/** Save OAuth tokens to the Copilot CLI cache format. */
+function saveMcpOAuthTokens(
+    serverUrl: string,
+    data: {
+        clientId: string;
+        redirectUri: string;
+        authorizationServerUrl: string;
+        resourceUrl: string;
+        accessToken: string;
+        refreshToken?: string;
+        expiresIn: number;
+        scope: string;
+    },
+    homeDir?: string,
+): void {
+    const crypto = require('crypto') as typeof import('crypto');
+    const configDir = path.join(homeDir ?? os.homedir(), '.copilot', 'mcp-oauth-config');
+
+    if (!fs.existsSync(configDir)) {
+        fs.mkdirSync(configDir, { recursive: true });
+    }
+
+    // Find existing metadata file for this server, or create new hash
+    const files = fs.readdirSync(configDir).filter((f: string) => f.endsWith('.json') && !f.includes('.tokens.'));
+    let hash: string | undefined;
+
+    for (const file of files) {
+        try {
+            const meta = JSON.parse(fs.readFileSync(path.join(configDir, file), 'utf-8'));
+            if (meta.serverUrl === serverUrl) {
+                hash = file.replace('.json', '');
+                break;
+            }
+        } catch { /* skip */ }
+    }
+
+    if (!hash) {
+        hash = crypto.createHash('sha256').update(serverUrl + data.clientId).digest('hex');
+    }
+
+    // Write metadata
+    const metadata = {
+        serverUrl,
+        authorizationServerUrl: data.authorizationServerUrl,
+        clientId: data.clientId,
+        redirectUri: data.redirectUri,
+        resourceUrl: data.resourceUrl,
+        issuedAt: Math.floor(Date.now() / 1000),
+        isStatic: false,
+    };
+    fs.writeFileSync(path.join(configDir, `${hash}.json`), JSON.stringify(metadata, null, 2));
+
+    // Write tokens
+    const tokens = {
+        accessToken: data.accessToken,
+        expiresAt: Math.floor(Date.now() / 1000) + data.expiresIn,
+        scope: data.scope,
+        refreshToken: data.refreshToken,
+    };
+    fs.writeFileSync(path.join(configDir, `${hash}.tokens.json`), JSON.stringify(tokens));
+
+    console.log(`[teams-auth] Saved OAuth tokens to ${configDir}/${hash}.tokens.json`);
+}
+
+/**
  * Acquire a Graph API token using the Azure CLI (`az account get-access-token`).
  * Requires user to have previously run `az login`.
  * Returns the access token string.
