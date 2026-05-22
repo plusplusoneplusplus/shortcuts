@@ -336,7 +336,7 @@ export class TeamsBridge {
             return;
         }
 
-        console.log(`[teams-bridge] Process ${processId} status=${status} from=${msg.agentName}`);
+        console.log(`[teams-bridge] Process ${processId} status=${status} from=${msg.agentName}, target=${target}`);
 
         try {
             const workspaceId = (proc.workspaceId ?? proc.workspace) as string || '';
@@ -350,9 +350,14 @@ export class TeamsBridge {
             const body = await res.json() as Record<string, unknown>;
             const processData = (body.process ?? body) as Record<string, unknown>;
             const turns = (processData.conversationTurns ?? processData.conversation ?? processData.turns) as Array<{ role: string; content?: string; text?: string; streaming?: boolean }> | undefined;
-            if (!turns || turns.length === 0) { this._runningLocks.delete(processId); return; }
+            if (!turns || turns.length === 0) {
+                console.log(`[teams-bridge] Process ${processId}: no turns found`);
+                this._runningLocks.delete(processId);
+                return;
+            }
 
             const lastSeen = this.store!.getWatermark(processId);
+            console.log(`[teams-bridge] Process ${processId}: ${turns.length} turns, watermark=${lastSeen}`);
 
             // Skip streaming turns
             let sendableEnd = turns.length;
@@ -362,7 +367,13 @@ export class TeamsBridge {
             }
 
             const newTurns = turns.slice(lastSeen, sendableEnd);
-            if (newTurns.length === 0) { this._runningLocks.delete(processId); return; }
+            if (newTurns.length === 0) {
+                console.log(`[teams-bridge] Process ${processId}: no new turns to send (lastSeen=${lastSeen}, sendableEnd=${sendableEnd})`);
+                this._runningLocks.delete(processId);
+                return;
+            }
+
+            console.log(`[teams-bridge] Process ${processId}: sending ${newTurns.length} new turn(s) to target=${target}`);
 
             // Advance watermark BEFORE sending — prevents infinite retry on send failure
             if (sendableEnd > lastSeen) {
@@ -399,6 +410,7 @@ export class TeamsBridge {
                         ? [{ aadId: sender.senderAadId, displayName: sender.senderName }]
                         : undefined;
                     const messageId = await this.bot!.send(target, teamsText, { mentions });
+                    console.log(`[teams-bridge] Sent message ${messageId} for process ${processId} (role=${turn.role})`);
                     this.store!.bindMessage(messageId, processId, agentId, `${msg.agentName}:${repoName}`, workspaceId);
                 } catch (err) {
                     console.error('[teams-bridge] Failed to send outbound message:', err);

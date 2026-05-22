@@ -16,11 +16,13 @@ export class McpTransport implements TeamsTransport {
 
     async initialize(token: string, opts: { teamId?: string; channelId?: string; chatId?: string }): Promise<void> {
         this.teamId = opts.teamId ?? null;
+        console.log(`[mcp-transport] Initializing with teamId=${this.teamId}, serverUrl=${this.serverUrl}`);
         this.client = new McpClient({
             serverUrl: this.serverUrl,
             bearerToken: token,
         });
         await this.client.initialize();
+        console.log(`[mcp-transport] MCP session initialized successfully`);
     }
 
     async send(channelId: string, text: string, opts?: TransportSendOptions): Promise<string> {
@@ -49,8 +51,10 @@ export class McpTransport implements TeamsTransport {
             toolName = 'SendMessageToChannel';
         }
 
+        console.log(`[mcp-transport] Calling ${toolName} with teamId=${this.teamId}, channelId=${channelId}, content length=${text.length}`);
         const result = await this.client.callTool(toolName, args);
         const responseText = result.content?.[0]?.text ?? '';
+        console.log(`[mcp-transport] ${toolName} response: ${responseText.substring(0, 200)}`);
         try {
             const parsed = JSON.parse(responseText);
             return parsed.messageId ?? parsed.id ?? '';

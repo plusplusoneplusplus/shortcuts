@@ -56,6 +56,7 @@ export class TeamsBot {
     async start(): Promise<void> {
         this.setStatus('connecting');
         this._lastError = null;
+        console.log(`[teams-bot] Starting in ${this.mode} mode, teamId=${this.opts.teamId ?? 'none'}`);
 
         let token = this.opts.auth?.bearerToken;
 
@@ -101,17 +102,20 @@ export class TeamsBot {
         this.setStatus('disconnected');
     }
 
-    /** Send a text message to a Teams channel. Returns the message ID. */
+    /** Send a text message to a Teams channel/chat. Returns the message ID. */
     async send(channelId: string, text: string, opts?: { replyToId?: string; mentions?: Array<{ aadId: string; displayName: string }> }): Promise<string> {
         if (this._status !== 'connected') {
             throw new Error('TeamsBot is not connected');
         }
 
+        console.log(`[teams-bot] send() target=${channelId.substring(0, 20)}..., text length=${text.length}, mode=${this.mode}`);
         try {
             const messageId = await this.transport.send(channelId, text, opts);
             if (messageId) this._sentMessageIds.add(messageId);
+            console.log(`[teams-bot] send() success, messageId=${messageId}`);
             return messageId;
         } catch (err: any) {
+            console.error(`[teams-bot] send() failed: ${err.message}`);
             // On 401, refresh token and retry once
             if (err.message?.includes('401')) {
                 const refreshed = await this.refreshToken();
