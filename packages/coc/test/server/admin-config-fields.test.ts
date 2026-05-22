@@ -43,6 +43,8 @@ describe('ADMIN_EDITABLE_KEYS', () => {
             'ralph.enabled', 'vimNavigation.enabled', 'loops.enabled',
             'excalidraw.enabled',
             'mcpOauth.enabled',
+            'codex.enabled',
+            'activeProvider',
         ];
         for (const k of expected) {
             expect(ADMIN_EDITABLE_KEYS).toContain(k);
@@ -175,6 +177,21 @@ describe('validate()', () => {
         });
         it('rejects other strings', () => {
             expect(fieldFor('scratchpad.layout').validate('diagonal')).toMatch(/horizontal.*vertical/);
+        });
+    });
+
+    describe('activeProvider', () => {
+        it('accepts "copilot"', () => {
+            expect(fieldFor('activeProvider').validate('copilot')).toBeUndefined();
+        });
+        it('accepts "codex"', () => {
+            expect(fieldFor('activeProvider').validate('codex')).toBeUndefined();
+        });
+        it('rejects other strings', () => {
+            expect(fieldFor('activeProvider').validate('claude')).toMatch(/copilot.*codex/);
+        });
+        it('rejects non-string', () => {
+            expect(fieldFor('activeProvider').validate(true)).toMatch(/copilot.*codex/);
         });
     });
 
@@ -348,6 +365,19 @@ describe('apply()', () => {
         });
     });
 
+    describe('activeProvider', () => {
+        it('sets copilot', () => {
+            const cfg: CLIConfig = {};
+            fieldFor('activeProvider').apply(cfg, 'copilot');
+            expect(cfg.activeProvider).toBe('copilot');
+        });
+        it('sets codex', () => {
+            const cfg: CLIConfig = {};
+            fieldFor('activeProvider').apply(cfg, 'codex');
+            expect(cfg.activeProvider).toBe('codex');
+        });
+    });
+
 });
 
 // ── runtime classification ────────────────────────────────────────────────────
@@ -363,6 +393,14 @@ describe('runtime classification', () => {
 
     it('marks mcpOauth.enabled as restartRequired', () => {
         expect(fieldFor('mcpOauth.enabled').runtime).toBe('restartRequired');
+    });
+
+    it('marks codex.enabled as restartRequired', () => {
+        expect(fieldFor('codex.enabled').runtime).toBe('restartRequired');
+    });
+
+    it('marks activeProvider as restartRequired', () => {
+        expect(fieldFor('activeProvider').runtime).toBe('restartRequired');
     });
 
     const liveFeatures = [

@@ -168,6 +168,8 @@ export {
     sdkServiceRegistry,
     COPILOT_PROVIDER,
     SDK_PROVIDER_COPILOT,
+    CODEX_PROVIDER,
+    SDK_PROVIDER_CODEX,
     // Model Metadata Store
     modelMetadataStore,
     resolveReasoningEffort,
