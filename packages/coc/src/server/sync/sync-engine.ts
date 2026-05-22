@@ -11,8 +11,12 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { execFileSync } from 'child_process';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import { safeExistsAsync, safeReadDirAsync, safeReadFileAsync } from '@plusplusoneplusplus/forge';
 import type { AIInvoker } from '@plusplusoneplusplus/forge';
+
+const execFileAsync = promisify(execFile);
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -59,18 +63,19 @@ interface FolderMapping {
 
 // ── Git helpers ──────────────────────────────────────────────────────────────
 
-function git(args: string[], cwd: string): string {
-    return execFileSync('git', args, {
+async function git(args: string[], cwd: string): Promise<string> {
+    const { stdout } = await execFileAsync('git', args, {
         cwd,
         encoding: 'utf8',
         maxBuffer: 10 * 1024 * 1024,
         timeout: 120_000,
-    }).trim();
+    });
+    return stdout.trim();
 }
 
-function isGitRepo(dir: string): boolean {
+async function isGitRepo(dir: string): Promise<boolean> {
     try {
-        git(['rev-parse', '--is-inside-work-tree'], dir);
+        await git(['rev-parse', '--is-inside-work-tree'], dir);
         return true;
     } catch {
         return false;
@@ -79,18 +84,18 @@ function isGitRepo(dir: string): boolean {
 
 // ── Lock file helpers ────────────────────────────────────────────────────────
 
-function acquireLock(lockPath: string): boolean {
+async function acquireLock(lockPath: string): Promise<boolean> {
+    await fs.promises.mkdir(path.dirname(lockPath), { recursive: true });
     try {
-        fs.mkdirSync(path.dirname(lockPath), { recursive: true });
-        fs.writeFileSync(lockPath, String(process.pid), { flag: 'wx' });
+        await fs.promises.writeFile(lockPath, String(process.pid), { flag: 'wx' });
         return true;
     } catch {
         // Check for stale lock
         try {
-            const pid = parseInt(fs.readFileSync(lockPath, 'utf8'), 10);
+            const pid = parseInt(await fs.promises.readFile(lockPath, 'utf8'), 10);
             if (pid && !isProcessRunning(pid)) {
-                fs.unlinkSync(lockPath);
-                fs.writeFileSync(lockPath, String(process.pid), { flag: 'wx' });
+                await fs.promises.unlink(lockPath);
+                await fs.promises.writeFile(lockPath, String(process.pid), { flag: 'wx' });
                 return true;
             }
         } catch { /* lock held by active process */ }
@@ -98,8 +103,8 @@ function acquireLock(lockPath: string): boolean {
     }
 }
 
-function releaseLock(lockPath: string): void {
-    try { fs.unlinkSync(lockPath); } catch { /* ignore */ }
+async function releaseLock(lockPath: string): Promise<void> {
+    try { await fs.promises.unlink(lockPath); } catch { /* ignore */ }
 }
 
 function isProcessRunning(pid: number): boolean {
@@ -113,33 +118,35 @@ function isProcessRunning(pid: number): boolean {
 
 // ── File sync helpers ────────────────────────────────────────────────────────
 
-function copyDirContents(src: string, dest: string): void {
-    fs.mkdirSync(dest, { recursive: true });
+async function copyDirContents(src: string, dest: string): Promise<void> {
+    await fs.promises.mkdir(dest, { recursive: true });
 
     // Remove files in dest that don't exist in src
-    if (fs.existsSync(dest)) {
-        for (const entry of fs.readdirSync(dest, { withFileTypes: true })) {
+    const destEntries = await safeReadDirAsync(dest, true);
+    if (destEntries.success) {
+        for (const entry of destEntries.data!) {
             const destPath = path.join(dest, entry.name);
-            const srcPath = path.join(src, entry.name);
-            if (!fs.existsSync(srcPath)) {
+            if (!await safeExistsAsync(path.join(src, entry.name))) {
                 if (entry.isDirectory()) {
-                    fs.rmSync(destPath, { recursive: true, force: true });
+                    await fs.promises.rm(destPath, { recursive: true, force: true });
                 } else {
-                    fs.unlinkSync(destPath);
+                    await fs.promises.unlink(destPath);
                 }
             }
         }
     }
 
-    if (!fs.existsSync(src)) return;
+    if (!await safeExistsAsync(src)) return;
 
-    for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const srcEntries = await safeReadDirAsync(src, true);
+    if (!srcEntries.success) return;
+    for (const entry of srcEntries.data!) {
         const srcPath = path.join(src, entry.name);
         const destPath = path.join(dest, entry.name);
         if (entry.isDirectory()) {
-            copyDirContents(srcPath, destPath);
+            await copyDirContents(srcPath, destPath);
         } else {
-            fs.copyFileSync(srcPath, destPath);
+            await fs.promises.copyFile(srcPath, destPath);
         }
     }
 }
@@ -252,7 +259,7 @@ export class SyncEngine {
             return;
         }
 
-        if (!acquireLock(this.lockPath)) {
+        if (!await acquireLock(this.lockPath)) {
             this.logger.warn('Could not acquire sync lock, skipping');
             return;
         }
@@ -263,16 +270,16 @@ export class SyncEngine {
 
         try {
             // 1. Ensure the sync repo exists (clone or verify)
-            this.ensureSyncRepo(gitRemote);
+            await this.ensureSyncRepo(gitRemote);
 
             // 2. Copy local notes → sync repo
-            this.copyLocalToRepo();
+            await this.copyLocalToRepo();
 
             // 3. Stage + commit local changes
-            this.commitLocalChanges();
+            await this.commitLocalChanges();
 
             // 4. Pull remote changes (may produce conflicts)
-            const hasConflicts = this.pullRemote();
+            const hasConflicts = await this.pullRemote();
 
             // 5. If conflicts, resolve them
             if (hasConflicts) {
@@ -280,10 +287,10 @@ export class SyncEngine {
             }
 
             // 6. Push to remote
-            this.pushToRemote();
+            await this.pushToRemote();
 
             // 7. Copy sync repo → local notes
-            this.copyRepoToLocal();
+            await this.copyRepoToLocal();
 
             this.status.lastSyncTime = new Date().toISOString();
             this.status.lastError = null;
@@ -294,55 +301,55 @@ export class SyncEngine {
             this.logger.error(`Sync failed: ${message}`);
         } finally {
             this.status.inProgress = false;
-            releaseLock(this.lockPath);
+            await releaseLock(this.lockPath);
         }
     }
 
-    private ensureSyncRepo(gitRemote: string): void {
-        if (isGitRepo(this.syncRepoDir)) {
+    private async ensureSyncRepo(gitRemote: string): Promise<void> {
+        if (await isGitRepo(this.syncRepoDir)) {
             // Verify the remote matches
             try {
-                const currentRemote = git(['remote', 'get-url', 'origin'], this.syncRepoDir);
+                const currentRemote = await git(['remote', 'get-url', 'origin'], this.syncRepoDir);
                 if (currentRemote !== gitRemote) {
-                    git(['remote', 'set-url', 'origin', gitRemote], this.syncRepoDir);
+                    await git(['remote', 'set-url', 'origin', gitRemote], this.syncRepoDir);
                     this.logger.info('Updated sync repo remote URL');
                 }
             } catch {
-                git(['remote', 'add', 'origin', gitRemote], this.syncRepoDir);
+                await git(['remote', 'add', 'origin', gitRemote], this.syncRepoDir);
             }
             return;
         }
 
         // Clone fresh
-        fs.mkdirSync(this.syncRepoDir, { recursive: true });
+        await fs.promises.mkdir(this.syncRepoDir, { recursive: true });
         try {
-            git(['clone', gitRemote, '.'], this.syncRepoDir);
+            await git(['clone', gitRemote, '.'], this.syncRepoDir);
             this.logger.info('Cloned sync repo');
         } catch {
             // Remote might be empty — init locally and add remote
-            git(['init'], this.syncRepoDir);
-            git(['remote', 'add', 'origin', gitRemote], this.syncRepoDir);
+            await git(['init'], this.syncRepoDir);
+            await git(['remote', 'add', 'origin', gitRemote], this.syncRepoDir);
             this.logger.info('Initialized empty sync repo with remote');
         }
     }
 
-    private copyLocalToRepo(): void {
-        if (fs.existsSync(this.mapping.localDir)) {
-            copyDirContents(this.mapping.localDir, this.syncRepoDir);
+    private async copyLocalToRepo(): Promise<void> {
+        if (await safeExistsAsync(this.mapping.localDir)) {
+            await copyDirContents(this.mapping.localDir, this.syncRepoDir);
         }
     }
 
-    private commitLocalChanges(): void {
-        git(['add', '-A'], this.syncRepoDir);
+    private async commitLocalChanges(): Promise<void> {
+        await git(['add', '-A'], this.syncRepoDir);
 
         // Check if there's anything to commit
         try {
-            git(['diff', '--cached', '--quiet'], this.syncRepoDir);
+            await git(['diff', '--cached', '--quiet'], this.syncRepoDir);
             // No changes staged
         } catch {
             // Changes exist — commit them
             const hostname = require('os').hostname();
-            git(
+            await git(
                 ['commit', '-m', `sync from ${hostname} at ${new Date().toISOString()}`],
                 this.syncRepoDir,
             );
@@ -350,16 +357,16 @@ export class SyncEngine {
         }
     }
 
-    private pullRemote(): boolean {
+    private async pullRemote(): Promise<boolean> {
         try {
             // Check if remote has any commits first
             try {
-                git(['ls-remote', '--heads', 'origin'], this.syncRepoDir);
+                await git(['ls-remote', '--heads', 'origin'], this.syncRepoDir);
             } catch {
                 return false; // Can't reach remote or empty
             }
 
-            git(['pull', '--no-rebase', 'origin', 'HEAD'], this.syncRepoDir);
+            await git(['pull', '--no-rebase', 'origin', 'HEAD'], this.syncRepoDir);
             return false;
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : String(err);
@@ -377,7 +384,7 @@ export class SyncEngine {
 
     private async resolveConflicts(): Promise<void> {
         // Get list of conflicted files
-        const statusOutput = git(['status', '--porcelain'], this.syncRepoDir);
+        const statusOutput = await git(['status', '--porcelain'], this.syncRepoDir);
         const conflictedFiles = statusOutput
             .split('\n')
             .filter(line => line.startsWith('UU') || line.startsWith('AA') || line.startsWith('DU') || line.startsWith('UD'))
@@ -390,22 +397,23 @@ export class SyncEngine {
         for (const file of conflictedFiles) {
             const filePath = path.join(this.syncRepoDir, file);
             try {
-                const content = fs.readFileSync(filePath, 'utf8');
-                const resolved = await this.resolveFileConflict(file, content);
-                fs.writeFileSync(filePath, resolved, 'utf8');
-                git(['add', file], this.syncRepoDir);
+                const readResult = await safeReadFileAsync(filePath);
+                if (!readResult.success) throw readResult.error!;
+                const resolved = await this.resolveFileConflict(file, readResult.data!);
+                await fs.promises.writeFile(filePath, resolved, 'utf8');
+                await git(['add', file], this.syncRepoDir);
             } catch (err) {
                 this.logger.error(`Failed to resolve conflict in ${file}: ${err}`);
                 // Accept theirs as fallback
                 try {
-                    git(['checkout', '--theirs', file], this.syncRepoDir);
-                    git(['add', file], this.syncRepoDir);
+                    await git(['checkout', '--theirs', file], this.syncRepoDir);
+                    await git(['add', file], this.syncRepoDir);
                 } catch { /* last resort: skip */ }
             }
         }
 
         try {
-            git(['commit', '--no-edit'], this.syncRepoDir);
+            await git(['commit', '--no-edit'], this.syncRepoDir);
             this.logger.info('Committed conflict resolution');
         } catch {
             // May already be committed
@@ -431,9 +439,9 @@ export class SyncEngine {
         }
     }
 
-    private pushToRemote(): void {
+    private async pushToRemote(): Promise<void> {
         try {
-            git(['push', '-u', 'origin', 'HEAD'], this.syncRepoDir);
+            await git(['push', '-u', 'origin', 'HEAD'], this.syncRepoDir);
             this.logger.info('Pushed to remote');
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : String(err);
@@ -441,18 +449,20 @@ export class SyncEngine {
         }
     }
 
-    private copyRepoToLocal(): void {
-        if (fs.existsSync(this.syncRepoDir)) {
-            fs.mkdirSync(this.mapping.localDir, { recursive: true });
+    private async copyRepoToLocal(): Promise<void> {
+        if (await safeExistsAsync(this.syncRepoDir)) {
+            await fs.promises.mkdir(this.mapping.localDir, { recursive: true });
             // Copy everything except .git and .lock
-            for (const entry of fs.readdirSync(this.syncRepoDir, { withFileTypes: true })) {
+            const entries = await safeReadDirAsync(this.syncRepoDir, true);
+            if (!entries.success) return;
+            for (const entry of entries.data!) {
                 if (entry.name === '.git' || entry.name === '.lock') continue;
                 const src = path.join(this.syncRepoDir, entry.name);
                 const dest = path.join(this.mapping.localDir, entry.name);
                 if (entry.isDirectory()) {
-                    copyDirContents(src, dest);
+                    await copyDirContents(src, dest);
                 } else {
-                    fs.copyFileSync(src, dest);
+                    await fs.promises.copyFile(src, dest);
                 }
             }
         }
