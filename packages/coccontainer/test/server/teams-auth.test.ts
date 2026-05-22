@@ -96,16 +96,23 @@ describe('Teams Auth Endpoints', () => {
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
-    it('should return OAuth config for client-side PKCE', async () => {
-        const { status, body } = await httpRequest(`${containerUrl}/api/container/messaging/teams/auth/config`);
+    it('should start auth and return OAuth config with localhost redirect', async () => {
+        const { status, body } = await httpRequest(`${containerUrl}/api/container/messaging/teams/auth/start`, {
+            method: 'POST',
+        });
         expect(status).toBe(200);
         expect(body.ok).toBe(true);
         expect(body.clientId).toBe('test-client-id');
         expect(body.authorizeUrl).toContain('login.microsoftonline.com');
+        expect(body.redirectUri).toMatch(/^http:\/\/localhost:\d+\/$/);
     });
 
-    it('should serve callback HTML page', async () => {
-        const { status, raw } = await httpRequest(`${containerUrl}/api/container/messaging/teams/auth/callback?code=test-code`);
+    it('should serve callback HTML on temp server port', async () => {
+        // Start auth to get a temp server
+        const { body } = await httpRequest(`${containerUrl}/api/container/messaging/teams/auth/start`, { method: 'POST' });
+        const redirectUri = body.redirectUri as string;
+        // Hit the temp server callback
+        const { status, raw } = await httpRequest(`${redirectUri}?code=test-code`);
         expect(status).toBe(200);
         expect(raw).toContain('teams-auth-callback');
         expect(raw).toContain('postMessage');

@@ -68,10 +68,10 @@ async function postTeamsConfig(patch: { botName?: string; channelId?: string; en
 }
 
 async function postTeamsReconnect(): Promise<void> {
-    // 1. Fetch OAuth config from server
-    const configRes = await fetch(getRawApiBase() + '/container/messaging/teams/auth/config');
+    // 1. Start auth session — server creates temp callback server and returns OAuth config
+    const configRes = await fetch(getRawApiBase() + '/container/messaging/teams/auth/start', { method: 'POST' });
     if (!configRes.ok) throw new Error(`HTTP ${configRes.status}`);
-    const oauthConfig = await configRes.json() as { clientId: string; tenantId: string; scope: string; authorizeUrl: string };
+    const oauthConfig = await configRes.json() as { clientId: string; tenantId: string; scope: string; authorizeUrl: string; redirectUri: string };
 
     // 2. Generate PKCE code_verifier + code_challenge
     const codeVerifierBytes = new Uint8Array(32);
@@ -82,8 +82,8 @@ async function postTeamsReconnect(): Promise<void> {
     const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(challengeBuffer)))
         .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
-    // 3. Build redirect URI pointing to container's callback page (same origin)
-    const redirectUri = window.location.origin + '/api/container/messaging/teams/auth/callback';
+    // 3. Use the localhost redirect URI from server config
+    const redirectUri = oauthConfig.redirectUri;
 
     // 4. Build authorize URL and open popup
     const params = new URLSearchParams({

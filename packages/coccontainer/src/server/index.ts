@@ -365,8 +365,9 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
             }
 
             // ── Teams OAuth Auth Endpoints (client-side PKCE) ─────────────────────────
-            // GET /auth/config — returns OAuth params for client to build authorize URL
-            if (url.pathname === '/api/container/messaging/teams/auth/config' && req.method === 'GET') {
+            // POST /auth/start — starts a temporary callback server on a random port and returns OAuth params
+            // The redirect_uri is http://localhost:<random-port>/ (root path, Azure AD localhost exception)
+            if (url.pathname === '/api/container/messaging/teams/auth/start' && req.method === 'POST') {
                 const mcpServerUrl = config.messaging?.teams?.mcpServerUrl;
                 if (!mcpServerUrl) {
                     return sendJson(res, { ok: false, error: 'No mcpServerUrl configured' });
@@ -376,12 +377,9 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                     clientId: config.messaging?.teams?.clientId,
                     scope: config.messaging?.teams?.scope,
                 });
-                return sendJson(res, { ok: true, ...oauthConfig });
-            }
 
-            // GET /auth/callback — HTML page served as popup redirect target; extracts code and postMessages to opener
-            if (url.pathname === '/api/container/messaging/teams/auth/callback' && req.method === 'GET') {
-                const html = `<!DOCTYPE html><html><head><title>Teams Auth</title></head><body>
+                // Start temporary HTTP server on random port to receive the OAuth callback
+                const callbackHtml = `<!DOCTYPE html><html><head><title>Teams Auth</title></head><body>
 <h2>Processing login...</h2>
 <script>
 (function() {
@@ -399,8 +397,24 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
     }
 })();
 </script></body></html>`;
-                res.writeHead(200, { 'Content-Type': 'text/html' });
-                return res.end(html);
+
+                const tempServer = http.createServer((cbReq, cbRes) => {
+                    cbRes.writeHead(200, { 'Content-Type': 'text/html' });
+                    cbRes.end(callbackHtml);
+                    // Auto-close temp server after serving the callback
+                    setTimeout(() => tempServer.close(), 2000);
+                });
+
+                await new Promise<void>((resolve) => {
+                    tempServer.listen(0, '127.0.0.1', () => resolve());
+                });
+                const callbackPort = (tempServer.address() as { port: number }).port;
+                const redirectUri = `http://localhost:${callbackPort}/`;
+
+                // Auto-close after 2 minutes if no callback received
+                setTimeout(() => { try { tempServer.close(); } catch {} }, 120000);
+
+                return sendJson(res, { ok: true, ...oauthConfig, redirectUri });
             }
 
             // POST /auth/exchange — client sends { code, codeVerifier, redirectUri } and server exchanges for tokens
