@@ -107,6 +107,7 @@ export async function parseBody(req: http.IncomingMessage): Promise<any> {
 
 /** Valid exclude field values for the `exclude` query parameter. */
 const VALID_EXCLUDE_FIELDS: Set<string> = new Set(['conversation', 'toolCalls']);
+const VALID_INCLUDE_FIELDS: Set<string> = new Set(['children', 'fullPrompt', 'result']);
 
 /** Valid AIProcessStatus values for validation. */
 const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 'completed', 'failed', 'cancelled']);
@@ -180,6 +181,21 @@ export function parseQueryParams(reqUrl: string): ProcessFilter {
     }
 
     return filter;
+}
+
+/**
+ * Parse the `?include=...` query parameter into a set of opt-in field names.
+ * Used for fields that are *off* by default but the caller can request
+ * (e.g. `?include=children` on /api/processes/:id to embed children, which
+ * costs an extra SQL query and is unused by the chat detail panel).
+ */
+export function parseIncludeFields(reqUrl: string): Set<string> {
+    const parsed = url.parse(reqUrl, true);
+    const raw = parsed.query.include;
+    if (typeof raw !== 'string' || !raw) return new Set();
+    return new Set(
+        raw.split(',').map(s => s.trim()).filter(s => VALID_INCLUDE_FIELDS.has(s)),
+    );
 }
 
 /**

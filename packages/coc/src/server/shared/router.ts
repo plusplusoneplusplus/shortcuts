@@ -12,6 +12,7 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
+import * as zlib from 'zlib';
 import { getServerLogger } from '../logging/server-logger';
 
 // ============================================================================
@@ -305,11 +306,35 @@ export function readBody(req: http.IncomingMessage): Promise<string> {
 /** Send a JSON response. */
 export function sendJson(res: http.ServerResponse, data: unknown, statusCode = 200): void {
     const body = JSON.stringify(data);
+    const bodyBuf = Buffer.from(body);
+
+    // gzip large JSON payloads when the client advertised support. Chat detail
+    // responses can be many MB (large `timeline` / `tool_calls` blobs); raw JSON
+    // gzips to ~10% of the wire size, and the savings (network + browser parse)
+    // dwarf the compression cost on localhost.
+    const req = (res as any).req as http.IncomingMessage | undefined;
+    const acceptEnc = (req?.headers?.['accept-encoding'] || '') as string;
+    if (bodyBuf.length >= 1024 && /\bgzip\b/i.test(acceptEnc)) {
+        try {
+            const gzipped = zlib.gzipSync(bodyBuf);
+            res.writeHead(statusCode, {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Content-Encoding': 'gzip',
+                'Content-Length': gzipped.length,
+                'Vary': 'Accept-Encoding',
+            });
+            res.end(gzipped);
+            return;
+        } catch {
+            // Fall through to uncompressed on any gzip failure.
+        }
+    }
+
     res.writeHead(statusCode, {
         'Content-Type': 'application/json; charset=utf-8',
-        'Content-Length': Buffer.byteLength(body),
+        'Content-Length': bodyBuf.length,
     });
-    res.end(body);
+    res.end(bodyBuf);
 }
 
 /** Send a 404 Not Found response. */

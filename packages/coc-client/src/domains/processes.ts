@@ -33,6 +33,7 @@ function serializeListQuery(query?: ProcessListQuery): CocRequestOptions['query'
     ...query,
     status: Array.isArray(query.status) ? serializeArrayQuery(query.status) : query.status,
     exclude: Array.isArray(query.exclude) ? serializeArrayQuery(query.exclude) : query.exclude,
+    include: Array.isArray(query.include) ? serializeArrayQuery(query.include) : query.include,
   } as Record<string, QueryPrimitive>;
 }
 
@@ -74,7 +75,7 @@ export class ProcessesClient {
     return this.transport.request<AIProcess>('/processes', { method: 'POST', body: request });
   }
 
-  get(processId: string, query?: Pick<ProcessListQuery, 'workspace' | 'exclude'>): Promise<ProcessDetailResponse> {
+  get(processId: string, query?: Pick<ProcessListQuery, 'workspace' | 'exclude' | 'include'>): Promise<ProcessDetailResponse> {
     return this.transport.request<ProcessDetailResponse>(`/processes/${encodePathSegment(processId)}`, {
       query: serializeListQuery(query),
     });

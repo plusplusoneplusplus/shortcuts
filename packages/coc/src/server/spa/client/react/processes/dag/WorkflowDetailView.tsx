@@ -38,7 +38,7 @@ export function WorkflowDetailView({ processId, onNavigateToProcess }: WorkflowD
         setLoading(true);
         setError(null);
 
-        getSpaCocClient().processes.get(processId)
+        getSpaCocClient().processes.get(processId, { include: 'children' })
             .then((data) => {
                 if (cancelled) return;
                 setProcess(data.process ?? data);
