@@ -62,8 +62,10 @@ function getCopilotDir(): string {
     return path.join(os.homedir(), '.copilot');
 }
 
-function isAllowedPath(resolved: string, wsDataDir: string): boolean {
-    return isWithinDirectory(resolved, wsDataDir) || isWithinDirectory(resolved, getCopilotDir());
+function isAllowedPath(resolved: string, wsDataDir: string, wsRootPath?: string): boolean {
+    return isWithinDirectory(resolved, wsDataDir)
+        || isWithinDirectory(resolved, getCopilotDir())
+        || (!!wsRootPath && isWithinDirectory(resolved, wsRootPath));
 }
 
 async function ensureNotesRoot(notesRoot: string): Promise<void> {
@@ -271,7 +273,7 @@ export function registerNotesRoutes(
 
             // For non-default roots, allow paths within the resolved root directory
             const allowed = rootResult.isDefault
-                ? isAllowedPath(resolved, wsDataDir)
+                ? isAllowedPath(resolved, wsDataDir, ws.rootPath)
                 : isWithinDirectory(resolved, notesRoot);
             if (!allowed) {
                 return sendError(res, 403, 'Access denied: path is outside workspace data directory');
