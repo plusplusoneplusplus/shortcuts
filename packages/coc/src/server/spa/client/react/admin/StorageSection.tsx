@@ -609,7 +609,7 @@ export default function StorageSection() {
                     <div className="flex flex-col gap-1">
                         <span className={statusTextClass}>
                             Current: {status.backend === 'sqlite' ? 'SQLite' : 'JSON files'}
-                            {' '}({status.stats.processes} processes, {status.stats.workspaces} workspaces)
+                            {' '}({status.stats?.processes ?? 0} processes, {status.stats?.workspaces ?? 0} workspaces)
                         </span>
                         {status.backend === 'sqlite' && status.dbPath && (
                             <span className={statusTextClass}>Database: {status.dbPath}</span>
