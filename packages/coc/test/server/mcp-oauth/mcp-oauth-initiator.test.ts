@@ -181,4 +181,18 @@ describe('initiateMcpOAuth', () => {
             tools: ['*'],
         });
     });
+
+    it('always includes onPermissionRequest in createSession options (regression: SDK requires it)', async () => {
+        const { service } = makeFakeAiService({ loginResult: { authorizationUrl: 'https://u' } });
+        await initiateMcpOAuth({
+            serverName: 'remote',
+            serverConfig: { type: 'http', url: 'https://remote' } as any,
+            aiService: service,
+            manager,
+        });
+
+        const client = await service.createClient.mock.results[0].value;
+        const sessionOptions = client.createSession.mock.calls[0][0];
+        expect(typeof sessionOptions.onPermissionRequest).toBe('function');
+    });
 });

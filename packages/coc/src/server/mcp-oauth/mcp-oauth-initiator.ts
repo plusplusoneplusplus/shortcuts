@@ -20,7 +20,7 @@
  * the SDK and its registered OAuth metadata discovery.
  */
 
-import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
+import { getLogger, LogCategory, denyAllPermissions } from '@plusplusoneplusplus/forge';
 import type { ISDKService, MCPServerConfig } from '@plusplusoneplusplus/forge';
 import type { McpOauthManager } from './mcp-oauth-manager';
 import type { PendingMcpOAuth } from './mcp-oauth-types';
@@ -125,10 +125,14 @@ export async function initiateMcpOAuth(opts: InitiateMcpOAuthOptions): Promise<I
         // Pass exactly one server. `tools: ['*']` ensures the SDK actually
         // connects to it during session init (an empty `tools` list would
         // skip the connection and the OAuth probe wouldn't fire).
+        // `onPermissionRequest` is required by the SDK for any session; deny
+        // all since this session only calls the mcp.oauth.login RPC — no
+        // tools are ever invoked.
         const sessionOptions = {
             mcpServers: {
                 [serverName]: { ...serverConfig, tools: serverConfig.tools ?? ['*'] },
             },
+            onPermissionRequest: denyAllPermissions,
         } as unknown as Parameters<typeof client.createSession>[0];
 
         session = (await client.createSession(sessionOptions)) as unknown as SessionShape;
