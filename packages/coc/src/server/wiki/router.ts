@@ -18,6 +18,7 @@ import type { ContextBuilder } from './context-builder';
 import type { AskAIFunction } from './types';
 import type { ConversationSessionManager } from './conversation-session-manager';
 import type { WebSocketServer } from './websocket';
+import { applyCorsHeaders, getDefaultCorsPolicy } from '../shared/cors';
 
 // ============================================================================
 // Constants
@@ -92,9 +93,7 @@ export function createRequestHandler(
         const method = req.method?.toUpperCase() || 'GET';
 
         // CORS headers for API requests
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        applyCorsHeaders(req, res, getDefaultCorsPolicy());
 
         // Handle CORS preflight
         if (method === 'OPTIONS') {

@@ -20,6 +20,8 @@ import {
     sendJson,
     send404,
 } from './shared/router';
+import { applyCorsHeaders, getDefaultCorsPolicy } from './shared/cors';
+import type { CorsPolicy } from './shared/cors';
 
 // ============================================================================
 // Swagger UI HTML
@@ -69,6 +71,8 @@ export interface RouterOptions {
     spaETag?: string | (() => string | undefined);
     /** Optional factory for the /icon.svg favicon (hostname-derived colors). Called on each request. */
     getIconSvg?: () => string;
+    /** CORS policy forwarded to the shared router and used on error responses. Defaults to {@link getDefaultCorsPolicy}. */
+    corsPolicy?: CorsPolicy;
 }
 
 // ============================================================================
@@ -86,17 +90,11 @@ export interface RouterOptions {
  *   GET /wiki/:id/static/* → static files from wiki dir
  *   GET /*           → SPA fallback (client-side routing)
  */
-/** Set standard CORS headers on a response. */
-function setCorsHeaders(res: http.ServerResponse): void {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
-
 export function createRequestHandler(
     options: RouterOptions
 ): (req: http.IncomingMessage, res: http.ServerResponse) => void {
     const { spaHtml, staticDir, store, getWikiDir, spaETag, getIconSvg } = options;
+    const corsPolicy = options.corsPolicy ?? getDefaultCorsPolicy();
 
     // Prepend built-in routes (OpenAPI spec, Swagger UI, health)
     const routes: Route[] = [
@@ -158,6 +156,7 @@ export function createRequestHandler(
         spaHtml,
         staticHandlers,
         spaETag,
+        corsPolicy,
     });
 
     // Wrap with wiki static file handling (needs explicit 404 responses)
@@ -186,21 +185,21 @@ export function createRequestHandler(
             const fileSuffix = wikiStaticMatch[2];
             const wikiDir = getWikiDir?.(wikiId);
             if (!wikiDir) {
-                setCorsHeaders(res);
+                applyCorsHeaders(req, res, corsPolicy);
                 send404(res, `Wiki not found: ${wikiId}`);
                 return;
             }
             const resolved = path.resolve(wikiDir, fileSuffix);
             // Security: prevent directory traversal
             if (!isWithinDirectory(resolved, wikiDir)) {
-                setCorsHeaders(res);
+                applyCorsHeaders(req, res, corsPolicy);
                 send404(res, 'Invalid path');
                 return;
             }
             if (serveStaticFile(resolved, res)) {
                 return;
             }
-            setCorsHeaders(res);
+            applyCorsHeaders(req, res, corsPolicy);
             send404(res, `File not found: ${fileSuffix}`);
             return;
         }

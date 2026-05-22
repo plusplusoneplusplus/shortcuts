@@ -14,6 +14,9 @@ import * as path from 'path';
 import * as url from 'url';
 import * as zlib from 'zlib';
 import { getServerLogger } from '../logging/server-logger';
+import { applyCorsHeaders, getDefaultCorsPolicy } from './cors';
+export type { CorsPolicy } from './cors';
+export { getDefaultCorsPolicy } from './cors';
 
 // ============================================================================
 // Constants
@@ -89,6 +92,8 @@ export interface SharedRouterOptions {
     staticHandlers?: StaticFileHandler[];
     /** Optional ETag for the SPA HTML response. Enables conditional caching (304 Not Modified). */
     spaETag?: string | (() => string | undefined);
+    /** CORS policy. Defaults to {@link getDefaultCorsPolicy} when omitted. */
+    corsPolicy?: import('./cors').CorsPolicy;
 }
 
 // ============================================================================
@@ -105,6 +110,7 @@ export interface SharedRouterOptions {
  */
 export function createRouter(options: SharedRouterOptions): (req: http.IncomingMessage, res: http.ServerResponse) => void {
     const { routes, spaHtml, staticHandlers = [], spaETag } = options;
+    const corsPolicy = options.corsPolicy ?? getDefaultCorsPolicy();
 
     return (req: http.IncomingMessage, res: http.ServerResponse) => {
         const startTime = Date.now();
@@ -118,15 +124,7 @@ export function createRouter(options: SharedRouterOptions): (req: http.IncomingM
         const method = req.method?.toUpperCase() || 'GET';
 
         // CORS headers for every request
-        const origin = req.headers['origin'];
-        if (origin) {
-            res.setHeader('Access-Control-Allow-Origin', origin);
-            res.setHeader('Access-Control-Allow-Credentials', 'true');
-        } else {
-            res.setHeader('Access-Control-Allow-Origin', '*');
-        }
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        applyCorsHeaders(req, res, corsPolicy);
 
         res.on('finish', () => {
             const durationMs = Date.now() - startTime;
