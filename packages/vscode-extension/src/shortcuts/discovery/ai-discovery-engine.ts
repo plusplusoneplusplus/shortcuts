@@ -15,7 +15,7 @@
 
 import * as vscode from 'vscode';
 import { ChildProcess } from 'child_process';
-import { getCopilotSDKService } from '@plusplusoneplusplus/forge';
+import { sdkServiceRegistry, COPILOT_PROVIDER } from '@plusplusoneplusplus/forge';
 import { invokeAIWithFallback } from '../ai-service/ai-invoker-factory';
 import { getExtensionLogger, LogCategory } from '../shared/extension-logger';
 import {
@@ -500,7 +500,7 @@ export class AIDiscoveryEngine implements vscode.Disposable {
             const sessionId = this.sdkSessionIds.get(processId);
             if (sessionId) {
                 logger.debug(LogCategory.DISCOVERY, `AI Discovery: Aborting SDK session ${sessionId} for process ${processId}`);
-                const sdkService = getCopilotSDKService();
+                const sdkService = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
                 // Fire and forget - we don't need to wait for the abort to complete
                 sdkService.abortSession(sessionId).catch(error => {
                     logger.debug(LogCategory.DISCOVERY, `AI Discovery: Warning: Error aborting SDK session: ${error}`);
@@ -603,7 +603,7 @@ export class AIDiscoveryEngine implements vscode.Disposable {
         this.runningProcesses.clear();
 
         // Abort all SDK sessions
-        const sdkService = getCopilotSDKService();
+        const sdkService = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         for (const [processId, sessionId] of this.sdkSessionIds.entries()) {
             logger.debug(LogCategory.DISCOVERY, `AI Discovery: Aborting SDK session ${sessionId} (process ${processId}) during dispose`);
             sdkService.abortSession(sessionId).catch(() => {

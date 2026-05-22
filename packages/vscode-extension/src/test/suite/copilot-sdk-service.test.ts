@@ -15,8 +15,9 @@
 import * as assert from 'assert';
 import {
     CopilotSDKService,
-    getCopilotSDKService,
     resetCopilotSDKService,
+    sdkServiceRegistry,
+    COPILOT_PROVIDER,
     SDKAvailabilityResult,
     SDKInvocationResult,
     SendMessageOptions,
@@ -132,27 +133,19 @@ suite('CopilotSDKService - Singleton Pattern', () => {
         assert.strictEqual(instance1, instance2, 'Should return the same instance');
     });
 
-    test('getCopilotSDKService convenience function should return singleton', () => {
-        const instance1 = getCopilotSDKService();
+    test('sdkServiceRegistry should return singleton instance', () => {
+        const instance1 = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         const instance2 = CopilotSDKService.getInstance();
 
-        assert.strictEqual(instance1, instance2, 'Convenience function should return singleton');
-    });
-
-    test('resetInstance should create new instance', () => {
-        const instance1 = CopilotSDKService.getInstance();
-        resetCopilotSDKService();
-        const instance2 = CopilotSDKService.getInstance();
-
-        assert.notStrictEqual(instance1, instance2, 'Should create new instance after reset');
+        assert.strictEqual(instance1, instance2, 'Registry should return the same singleton');
     });
 
     test('resetCopilotSDKService convenience function should reset singleton', () => {
-        const instance1 = getCopilotSDKService();
+        const instance1 = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         resetCopilotSDKService();
-        const instance2 = getCopilotSDKService();
+        const instance2 = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
 
-        assert.notStrictEqual(instance1, instance2, 'Convenience function should reset singleton');
+        assert.notStrictEqual(instance1, instance2, 'Should return new instance after reset');
     });
 });
 
@@ -170,7 +163,7 @@ suite('CopilotSDKService - Availability Checks', () => {
     });
 
     test('isAvailable should return unavailable when SDK not found', async () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         const result = await service.isAvailable();
 
         // In test environment, SDK may or may not be available
@@ -182,7 +175,7 @@ suite('CopilotSDKService - Availability Checks', () => {
     });
 
     test('isAvailable should cache results', async () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
 
         const result1 = await service.isAvailable();
         const result2 = await service.isAvailable();
@@ -193,7 +186,7 @@ suite('CopilotSDKService - Availability Checks', () => {
     });
 
     test('clearAvailabilityCache should allow re-check', async () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
 
         await service.isAvailable();
         service.clearAvailabilityCache();
@@ -204,7 +197,7 @@ suite('CopilotSDKService - Availability Checks', () => {
     });
 
     test('isAvailable should return unavailable after dispose', async () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         service.dispose();
 
         const result = await service.isAvailable();
@@ -228,7 +221,7 @@ suite('CopilotSDKService - Client Initialization', () => {
     });
 
     test('createClient should throw when disposed', async () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER) as CopilotSDKService;
         service.dispose();
 
         try {
@@ -241,7 +234,7 @@ suite('CopilotSDKService - Client Initialization', () => {
     });
 
     test('createClient should throw when SDK not available', async () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER) as CopilotSDKService;
 
         // In test environment without SDK, this should fail
         // We test that it throws an appropriate error
@@ -268,7 +261,7 @@ suite('CopilotSDKService - Message Sending', () => {
     });
 
     test('sendMessage should return error when SDK unavailable', async () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
 
         // Force unavailability by disposing
         service.dispose();
@@ -325,14 +318,14 @@ suite('CopilotSDKService - Cleanup', () => {
     });
 
     test('cleanup should not throw when not initialized', async () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
 
         // Should not throw even when no client exists
         await service.cleanup();
     });
 
     test('dispose should mark service as disposed', async () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         service.dispose();
 
         const result = await service.isAvailable();
@@ -340,7 +333,7 @@ suite('CopilotSDKService - Cleanup', () => {
     });
 
     test('dispose should be idempotent', () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
 
         // Should not throw when called multiple times
         service.dispose();
@@ -453,7 +446,7 @@ suite('CopilotSDKService - Error Handling', () => {
     });
 
     test('should handle missing SDK gracefully', async () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
 
         // Clear any cached availability
         service.clearAvailabilityCache();
@@ -465,7 +458,7 @@ suite('CopilotSDKService - Error Handling', () => {
     });
 
     test('should handle concurrent isAvailable calls', async () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         service.clearAvailabilityCache();
 
         // Make multiple concurrent calls
@@ -481,7 +474,7 @@ suite('CopilotSDKService - Error Handling', () => {
     });
 
     test('should handle sendMessage when disposed', async () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         service.dispose();
 
         // Should return error immediately without timeout
@@ -507,13 +500,13 @@ suite('CopilotSDKService - Integration', () => {
 
     test('should check SDK availability without timeout', async function () {
         // This test verifies that availability check works without timeout
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         const availability = await service.isAvailable();
 
         // Should return a valid result (either available or not)
         assert.ok(typeof availability.available === 'boolean');
         if (availability.available) {
-            assert.ok(availability.sdkPath, 'Should have SDK path when available');
+            assert.ok((availability as import('@plusplusoneplusplus/forge').SDKAvailabilityResult).sdkPath, 'Should have SDK path when available');
         } else {
             assert.ok(availability.error, 'Should have error when unavailable');
         }
@@ -554,7 +547,7 @@ suite('CopilotSDKService - Cross-Platform', () => {
     });
 
     test('service should be platform-independent', () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
 
         // Service should be available on any platform
         assert.ok(service, 'Service should be instantiated');
@@ -598,7 +591,7 @@ suite('CopilotSDKService - Session Abort', () => {
     });
 
     test('abortSession should return false for non-existent session', async () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         
         const result = await service.abortSession('non-existent-session-id');
         
@@ -606,7 +599,7 @@ suite('CopilotSDKService - Session Abort', () => {
     });
 
     test('hasActiveSession should return false for non-existent session', () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         
         const result = service.hasActiveSession('non-existent-session-id');
         
@@ -614,7 +607,7 @@ suite('CopilotSDKService - Session Abort', () => {
     });
 
     test('getActiveSessionCount should return 0 initially', () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         
         const count = service.getActiveSessionCount();
         
@@ -622,7 +615,7 @@ suite('CopilotSDKService - Session Abort', () => {
     });
 
     test('getActiveSessionCount should return 0 after dispose', () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         service.dispose();
         
         const count = service.getActiveSessionCount();
@@ -631,7 +624,7 @@ suite('CopilotSDKService - Session Abort', () => {
     });
 
     test('abortSession should return false after dispose', async () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         service.dispose();
         
         // Try to abort a session after dispose
@@ -641,7 +634,7 @@ suite('CopilotSDKService - Session Abort', () => {
     });
 
     test('cleanup should clear all active sessions', async () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         
         // Cleanup should not throw and should clear any sessions
         await service.cleanup();
@@ -664,25 +657,25 @@ suite('CopilotSDKService - Session Tracking', () => {
     });
 
     test('hasActiveSession should be a function', () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         
         assert.ok(typeof service.hasActiveSession === 'function', 'Should have hasActiveSession method');
     });
 
     test('abortSession should be a function', () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         
         assert.ok(typeof service.abortSession === 'function', 'Should have abortSession method');
     });
 
     test('getActiveSessionCount should be a function', () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         
         assert.ok(typeof service.getActiveSessionCount === 'function', 'Should have getActiveSessionCount method');
     });
 
     test('abortSession should handle concurrent calls', async () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         
         // Multiple concurrent abort calls should all return false (no session exists)
         const results = await Promise.all([

@@ -5,7 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { getCopilotSDKService, approveAllPermissions } from '@plusplusoneplusplus/forge';
+import { sdkServiceRegistry, COPILOT_PROVIDER, approveAllPermissions } from '@plusplusoneplusplus/forge';
 import { DEFAULT_AI_TIMEOUT_MS } from '../shared/ai-timeouts';
 import {
     getAvailableModels,
@@ -539,7 +539,7 @@ export class EditorMessageRouter {
             includeLineNumbers: true
         });
 
-        const sdkService = getCopilotSDKService();
+        const sdkService = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         if (!sdkService.isAvailable()) {
             this.host.showError('Copilot SDK not available. Please ensure the SDK is configured.');
             return {};

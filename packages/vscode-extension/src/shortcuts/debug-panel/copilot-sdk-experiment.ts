@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { getCopilotSDKService } from '@plusplusoneplusplus/forge';
+import { sdkServiceRegistry, COPILOT_PROVIDER } from '@plusplusoneplusplus/forge';
 import { IAIProcessManager } from '../ai-service';
 import { getExtensionLogger, LogCategory } from '../shared/extension-logger';
 import { DEFAULT_AI_TIMEOUT_MS } from '../shared/ai-timeouts';
@@ -56,7 +56,7 @@ export async function testCopilotSDK(aiProcessManager?: IAIProcessManager): Prom
 
     try {
         // Get the CopilotSDKService singleton
-        const sdkService = getCopilotSDKService();
+        const sdkService = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         
         outputChannel.appendLine('Checking SDK availability...');
         const availability = await sdkService.isAvailable();
@@ -65,7 +65,7 @@ export async function testCopilotSDK(aiProcessManager?: IAIProcessManager): Prom
             throw new Error(availability.error || 'Copilot SDK is not available');
         }
         
-        outputChannel.appendLine(`✓ SDK available at: ${availability.sdkPath}`);
+        outputChannel.appendLine(`✓ SDK available at: ${(availability as import('@plusplusoneplusplus/forge').SDKAvailabilityResult).sdkPath}`);
         outputChannel.appendLine('');
         outputChannel.appendLine('Sending message to Copilot...');
         outputChannel.appendLine('');
