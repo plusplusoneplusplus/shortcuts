@@ -38,6 +38,7 @@ export interface ProcessListQuery {
   limit?: number;
   offset?: number;
   exclude?: 'conversation' | 'toolCalls' | Array<'conversation' | 'toolCalls'>;
+  include?: 'children' | Array<'children'>;
   sdkSessionId?: string;
   archived?: boolean;
   q?: string;

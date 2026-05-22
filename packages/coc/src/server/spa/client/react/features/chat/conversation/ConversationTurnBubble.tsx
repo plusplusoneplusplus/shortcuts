@@ -765,7 +765,12 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
     const { showReportIntent, toolCompactness, groupSingleLineMessages } = useDisplaySettings();
     const htmlEmbedEnabled = useHtmlEmbedPreference(wsId) && !turn.streaming;
     const excalidrawEmbedEnabled = SHOW_EXCALIDRAW_DIAGRAMS && isExcalidrawEnabled() && !turn.streaming;
-    const assistantRender = !isUser ? buildAssistantRender(turn, wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled }) : null;
+    const assistantRender = useMemo(
+        () => isUser ? null : buildAssistantRender(turn, wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled }),
+        // turn.timeline + turn.content drive the markdown HTML; embed flags toggle inline-HTML/excalidraw rendering.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [isUser, turn.timeline, turn.content, turn.streaming, wsId, htmlEmbedEnabled, excalidrawEmbedEnabled],
+    );
     const userContentText = isUser ? (turn.content || '') : '';
     const userContentHtml = useMemo(() => {
         if (!isUser || !userContentText.trim()) return '';

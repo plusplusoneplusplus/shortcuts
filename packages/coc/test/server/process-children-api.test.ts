@@ -138,12 +138,25 @@ describe('Child process API routes', () => {
     });
 
     // ========================================================================
-    // GET /api/processes/:id — embedded children
+    // GET /api/processes/:id — children embed is opt-in via ?include=children
     // ========================================================================
 
     describe('GET /api/processes/:id (embedded children)', () => {
-        it('returns process with embedded children array and total', async () => {
+        it('omits children by default (children embed is opt-in)', async () => {
             const resp = await request(`${baseUrl}/api/processes/parent-1`);
+            expect(resp.status).toBe(200);
+
+            const data = resp.json();
+            expect(data.process).toBeDefined();
+            expect(data.process.id).toBe('parent-1');
+            // Children query is skipped on the hot path to avoid an extra SQL
+            // round-trip; callers must opt back in with ?include=children.
+            expect(data.children).toEqual([]);
+            expect(data.total).toBe(0);
+        });
+
+        it('returns process with embedded children array and total when ?include=children is set', async () => {
+            const resp = await request(`${baseUrl}/api/processes/parent-1?include=children`);
             expect(resp.status).toBe(200);
 
             const data = resp.json();
@@ -156,8 +169,8 @@ describe('Child process API routes', () => {
             expect(ids).toEqual(['parent-1-m0', 'parent-1-m1']);
         });
 
-        it('returns empty children array for a process with no children', async () => {
-            const resp = await request(`${baseUrl}/api/processes/unrelated-1`);
+        it('returns empty children array for a process with no children even when ?include=children is set', async () => {
+            const resp = await request(`${baseUrl}/api/processes/unrelated-1?include=children`);
             expect(resp.status).toBe(200);
 
             const data = resp.json();
@@ -166,8 +179,8 @@ describe('Child process API routes', () => {
             expect(data.total).toBe(0);
         });
 
-        it('strips conversationTurns from children by default', async () => {
-            const resp = await request(`${baseUrl}/api/processes/parent-1`);
+        it('strips conversationTurns from children when ?include=children is set', async () => {
+            const resp = await request(`${baseUrl}/api/processes/parent-1?include=children`);
             expect(resp.status).toBe(200);
 
             const data = resp.json();

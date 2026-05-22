@@ -17,7 +17,7 @@ import type {
 import { deserializeProcess, PASTE_THRESHOLD, isQueueProcessId, toTaskId, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import {
-    sendJSON, parseBody, parseQueryParams, stripExcludedFields,
+    sendJSON, parseBody, parseQueryParams, parseIncludeFields, stripExcludedFields,
 } from '../core/api-handler';
 import type { QueueExecutorBridge } from '../core/api-handler';
 import { handleAPIError, missingFields, notFound, badRequest, internalError, APIError } from '../errors';
@@ -306,13 +306,17 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
         },
     });
 
-    // GET /api/processes/:id — Single process detail with embedded children
+    // GET /api/processes/:id — Single process detail
+    // By default, children are NOT embedded (saves an extra SQL query on a hot
+    // path that is overwhelmingly used for chat sessions without children).
+    // Opt back in with `?include=children`.
     routes.push({
         method: 'GET',
         pattern: /^\/api\/processes\/([^/]+)$/,
         handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
             const filter = parseQueryParams(req.url || '/');
+            const include = parseIncludeFields(req.url || '/');
             const proc = await resolveProcess(store, id, filter.workspaceId);
             if (!proc) {
                 // Synthesize a response for queued tasks that don't yet have a process record
@@ -329,6 +333,10 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, notFound('Process'));
             }
             const result = filter.exclude ? stripExcludedFields(proc, filter.exclude) : proc;
+
+            if (!include.has('children')) {
+                return sendJSON(res, 200, { process: result, children: [], total: 0 });
+            }
 
             // Embed children using the same logic the deleted /children route used
             const childFilter: ProcessFilter = {

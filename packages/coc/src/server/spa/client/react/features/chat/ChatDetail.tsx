@@ -685,6 +685,41 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 // try loading from /processes/ first.
                 if (isQueueProcessId(taskId)) {
                     const pid = taskId;
+
+                    // Cache check: if we have a recent snapshot for this session,
+                    // paint immediately from the cache and revalidate in the
+                    // background so re-visits feel instant. Most clicks land on
+                    // a session the user has already viewed in this tab.
+                    const cached = appState.conversationCache[taskId];
+                    const cacheHit = cached && (Date.now() - cached.cachedAt < CACHE_TTL_MS);
+                    if (cacheHit) {
+                        setTurnsAndRef(cached.turns);
+                        setLoading(false);
+                        // Fire-and-forget background revalidation. Bail out if
+                        // the user has navigated away or to another session.
+                        getSpaCocClient().processes.get(pid).then((processData: any) => {
+                            if (loadCounterRef.current !== loadId) return;
+                            const loadedProcess = processData?.process ?? null;
+                            if (!loadedProcess) return;
+                            setTask({
+                                id: taskId,
+                                processId: pid,
+                                status: loadedProcess.status,
+                                type: loadedProcess.type ?? 'chat',
+                                payload: loadedProcess.payload ?? {},
+                                metadata: loadedProcess.metadata ?? {},
+                                title: loadedProcess.title,
+                                customTitle: loadedProcess.customTitle,
+                                lastMessagePreview: loadedProcess.lastMessagePreview,
+                                displayName: loadedProcess.customTitle || loadedProcess.title,
+                            });
+                            const turns = getConversationTurns(processData);
+                            setTurnsAndRef(turns);
+                            setProcessDetails(loadedProcess);
+                        }).catch(() => { /* best-effort revalidation */ });
+                        return;
+                    }
+
                     const processData = await getSpaCocClient().processes.get(pid);
                     if (loadCounterRef.current !== loadId) return;
                     const loadedProcess = processData?.process ?? null;
