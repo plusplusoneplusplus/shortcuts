@@ -157,12 +157,12 @@ export async function acquireTokenViaBrowser(
     const codeVerifier = crypto.randomBytes(32).toString('base64url');
     const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
 
-    // Start local server on a random port
+    // Start local server on a random port (use 'localhost' for Azure AD redirect URI compatibility)
     return new Promise<string>((resolve, reject) => {
         const server = http.createServer();
         server.listen(0, '127.0.0.1', () => {
             const port = (server.address() as { port: number }).port;
-            const redirectUri = `http://127.0.0.1:${port}/`;
+            const redirectUri = `http://localhost:${port}/`;
 
             // Build authorization URL
             const params = new URLSearchParams({
