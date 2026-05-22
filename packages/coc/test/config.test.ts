@@ -807,6 +807,9 @@ timeout: 300
                 '  enabled: true',
                 'excalidraw:',
                 '  enabled: true',
+                'codex:',
+                '  enabled: true',
+                'activeProvider: codex',
                 'features:',
                 '  autoMemoryPromotion: true',
                 '  focusedDiff: true',
@@ -926,6 +929,7 @@ timeout: 300
             }).toMatchInlineSnapshot(`
               {
                 "resolved": {
+                  "activeProvider": "copilot",
                   "approvePermissions": true,
                   "chat": {
                     "askUser": {
@@ -935,6 +939,9 @@ timeout: 300
                       "count": 4,
                       "enabled": false,
                     },
+                  },
+                  "codex": {
+                    "enabled": false,
                   },
                   "excalidraw": {
                     "enabled": false,
@@ -1050,10 +1057,12 @@ timeout: 300
                   },
                 },
                 "sources": {
+                  "activeProvider": "default",
                   "approvePermissions": "file",
                   "chat.askUser.enabled": "file",
                   "chat.followUpSuggestions.count": "file",
                   "chat.followUpSuggestions.enabled": "file",
+                  "codex.enabled": "default",
                   "excalidraw.enabled": "default",
                   "features.autoMemoryPromotion": "file",
                   "features.focusedDiff": "file",
