@@ -8,7 +8,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { Route } from '../types';
-import type { ProcessStore, TaskQueueManager, CopilotSDKService, AIInvoker } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, TaskQueueManager, ISDKService, AIInvoker } from '@plusplusoneplusplus/forge';
 import { modelMetadataStore } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
@@ -122,7 +122,7 @@ export interface RegisterRoutesOptions {
     configPath: string | undefined;
     tokenTtlMs: number | undefined;
     globalWorkspaceRootPath: string;
-    resolvedAiService: CopilotSDKService;
+    resolvedAiService: ISDKService;
     getWsServer: () => ProcessWebSocketServer;
     queuePersistence: SqliteQueuePersistence;
     wikiOptions?: WikiServerOptions;

@@ -13,7 +13,7 @@
  * 5. Return result (flush is invisible to the user)
  */
 
-import type { ConversationTurn, CopilotSDKService } from '@plusplusoneplusplus/forge';
+import type { ConversationTurn, ISDKService } from '@plusplusoneplusplus/forge';
 import { BoundedMemoryStore, createMemoryTool, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import { countUserTurns, buildReviewSnapshot } from './background-review';
 
@@ -34,7 +34,7 @@ export interface FlushOptions {
     /** The bounded memory store to write to */
     memoryStore: BoundedMemoryStore;
     /** AI service for the flush call */
-    aiService: CopilotSDKService;
+    aiService: ISDKService;
     /** Minimum user turns required to trigger flush (default: 3) */
     minTurns?: number;
     /** Model override for the flush call */

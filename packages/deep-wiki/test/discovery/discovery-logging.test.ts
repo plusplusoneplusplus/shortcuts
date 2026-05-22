@@ -9,24 +9,28 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock pipeline-core SDK
+const mockGetOrThrow = vi.fn(() => ({
+    isAvailable: vi.fn().mockResolvedValue(true),
+    sendMessage: vi.fn().mockResolvedValue({
+        success: true,
+        response: JSON.stringify({
+            project: { name: 'test', description: '', language: 'TS', buildSystem: 'npm', entryPoints: [] },
+            components: [
+                { id: 'mod-a', name: 'ModA', path: 'src/a', purpose: 'A', keyFiles: ['a.ts'], dependencies: [], dependents: [], complexity: 'low', category: 'core' },
+            ],
+            categories: [{ name: 'core', description: 'Core modules' }],
+            architectureNotes: '',
+        }),
+    }),
+}));
+
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
-        getCopilotSDKService: vi.fn(() => ({
-            isAvailable: vi.fn().mockResolvedValue(true),
-            sendMessage: vi.fn().mockResolvedValue({
-                success: true,
-                response: JSON.stringify({
-                    project: { name: 'test', description: '', language: 'TS', buildSystem: 'npm', entryPoints: [] },
-                    components: [
-                        { id: 'mod-a', name: 'ModA', path: 'src/a', purpose: 'A', keyFiles: ['a.ts'], dependencies: [], dependents: [], complexity: 'low', category: 'core' },
-                    ],
-                    categories: [{ name: 'core', description: 'Core modules' }],
-                    architectureNotes: '',
-                }),
-            }),
-        })),
+        sdkServiceRegistry: {
+            getOrThrow: mockGetOrThrow,
+        },
     };
 });
 
@@ -110,8 +114,6 @@ describe('Discovery Phase Logging', () => {
         });
 
         it('should warn on parse failure before retry', async () => {
-            const { getCopilotSDKService } = await import('@plusplusoneplusplus/forge');
-
             // Override the mock to return invalid JSON first, then valid JSON
             const mockSendMessage = vi.fn()
                 .mockResolvedValueOnce({ success: true, response: 'not valid json here' })
@@ -125,7 +127,7 @@ describe('Discovery Phase Logging', () => {
                     }),
                 });
 
-            vi.mocked(getCopilotSDKService).mockReturnValue({
+            mockGetOrThrow.mockReturnValue({
                 isAvailable: vi.fn().mockResolvedValue(true),
                 sendMessage: mockSendMessage,
             } as any);
@@ -142,8 +144,7 @@ describe('Discovery Phase Logging', () => {
     describe('discoverComponentGraph', () => {
         it('should log standard-size repo detection', async () => {
             // estimateFileCount uses the SDK mock, returns a small number
-            const { getCopilotSDKService } = await import('@plusplusoneplusplus/forge');
-            const service = getCopilotSDKService();
+            const service = mockGetOrThrow();
             // File count response, then discovery response
             vi.mocked(service.sendMessage)
                 .mockResolvedValueOnce({ success: true, response: '100' })

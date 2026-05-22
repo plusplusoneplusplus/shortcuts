@@ -21,12 +21,12 @@ import type { PendingMcpOAuth, PendingMcpOAuthStatus } from './mcp-oauth-types';
 import {
     type ProcessStore,
     type ProcessOutputEvent,
-    type CopilotSDKService,
+    type ISDKService,
     type MCPServerConfig,
     loadDefaultMcpConfig,
     loadWorkspaceMcpConfig,
 } from '@plusplusoneplusplus/forge';
-import { initiateMcpOAuth } from './mcp-oauth-initiator';
+import { initiateMcpOAuth, type McpOauthSdkService } from './mcp-oauth-initiator';
 import { readMcpServerAuthInfo } from './mcp-oauth-token-cache';
 
 export interface McpOauthRouteContext {
@@ -40,7 +40,7 @@ export interface McpOauthRouteContext {
      * spawns a transient session and calls `mcp.oauth.login`. When omitted
      * the route is not registered.
      */
-    aiService?: CopilotSDKService;
+    aiService?: ISDKService;
     /** Resolve a workspace id to its root path. Required alongside `aiService`. */
     resolveWorkspaceRoot?: (workspaceId: string) => Promise<string | undefined>;
 }
@@ -87,6 +87,10 @@ function findServerConfig(serverName: string, workspaceRoot: string | undefined)
     }
     const global = loadDefaultMcpConfig();
     return global.mcpServers[serverName];
+}
+
+function supportsMcpOauthStart(service: ISDKService): service is McpOauthSdkService {
+    return typeof (service as { createClient?: unknown }).createClient === 'function';
 }
 
 export function registerMcpOauthRoutes(routes: Route[], ctx: McpOauthRouteContext): void {
@@ -169,7 +173,8 @@ export function registerMcpOauthRoutes(routes: Route[], ctx: McpOauthRouteContex
     //   3. If a valid cached token already exists, return { alreadyAuthenticated: true }.
     //   4. Otherwise spawn a transient SDK session and call mcp.oauth.login.
     //   5. Return the authorization URL so the dashboard can open it.
-    if (ctx.aiService) {
+    const oauthAiService = ctx.aiService && supportsMcpOauthStart(ctx.aiService) ? ctx.aiService : undefined;
+    if (oauthAiService) {
         routes.push({
             method: 'POST',
             pattern: START_FLOW,
@@ -224,7 +229,7 @@ export function registerMcpOauthRoutes(routes: Route[], ctx: McpOauthRouteContex
                         serverConfig,
                         workspaceId,
                         workingDirectory: workspaceRoot,
-                        aiService: ctx.aiService!,
+                        aiService: oauthAiService,
                         manager,
                     });
                     sendJson(res, {

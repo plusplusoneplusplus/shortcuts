@@ -8,7 +8,8 @@
  */
 
 import {
-    getCopilotSDKService,
+    sdkServiceRegistry,
+    SDK_PROVIDER_COPILOT,
     type SendMessageOptions,
 } from '@plusplusoneplusplus/forge';
 import type { ThemeRequest, ThemeOutline, ThemeArticlePlan, ThemeInvolvedComponent } from '../types';
@@ -59,7 +60,7 @@ export async function generateThemeOutline(
 ): Promise<ThemeOutline> {
     const { repoPath, theme, probeResult, depth, model, timeout } = options;
 
-    const service = getCopilotSDKService();
+    const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
     const availability = await service.isAvailable();
 
     if (!availability) {

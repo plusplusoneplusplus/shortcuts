@@ -1,5 +1,5 @@
 /**
- * Shared mock factories for CopilotSDKService (as exposed via getCopilotSDKService())
+ * Shared mock factories for CopilotSDKService (as exposed via sdkServiceRegistry.getOrThrow())
  * and QueueExecutorBridge.
  *
  * Consolidates duplicated mock setup from:
@@ -15,7 +15,7 @@ import type { QueueExecutorBridge } from '../../src/server/queue/queue-executor-
 // Interfaces
 // ---------------------------------------------------------------------------
 
-/** Shape of the mock SDK service returned by getCopilotSDKService() */
+/** Shape of the mock SDK service returned by sdkServiceRegistry.getOrThrow() */
 export interface MockCopilotSDKService {
     sendMessage: ReturnType<typeof vi.fn>;
     isAvailable: ReturnType<typeof vi.fn>;

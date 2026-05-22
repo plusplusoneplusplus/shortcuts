@@ -8,7 +8,8 @@
  */
 
 import {
-    getCopilotSDKService,
+    sdkServiceRegistry,
+    SDK_PROVIDER_COPILOT,
     type SendMessageOptions,
 } from '@plusplusoneplusplus/forge';
 import type { ThemeSeed } from '../../types';
@@ -51,7 +52,7 @@ export async function runThemeProbe(
         focus?: string;
     } = {}
 ): Promise<ThemeProbeResult> {
-    const service = getCopilotSDKService();
+    const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
 
     // Check SDK availability
     const availability = await service.isAvailable();

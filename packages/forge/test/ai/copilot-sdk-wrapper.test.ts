@@ -30,7 +30,6 @@ import {
     getModelsByTier,
     // SDK Service
     CopilotSDKService,
-    getCopilotSDKService,
     resetCopilotSDKService,
     // MCP Config Loader
     getHomeDirectory,
@@ -68,7 +67,6 @@ import {
     approveAllPermissions as aiApproveAll,
     denyAllPermissions as aiDenyAll,
     CopilotSDKService as AiCopilotSDKService,
-    getCopilotSDKService as aiGetService,
     resetCopilotSDKService as aiResetService,
     AIModel as AiAIModel,
     VALID_MODELS as AiVALID_MODELS,
@@ -103,7 +101,6 @@ describe('Copilot SDK Wrapper Module', () => {
 
         it('should export SDK service', () => {
             expect(CopilotSDKService).toBeDefined();
-            expect(typeof getCopilotSDKService).toBe('function');
             expect(typeof resetCopilotSDKService).toBe('function');
         });
 
@@ -313,7 +310,6 @@ describe('Copilot SDK Wrapper Module', () => {
         });
 
         it('should re-export the same convenience functions', () => {
-            expect(aiGetService).toBe(getCopilotSDKService);
             expect(aiResetService).toBe(resetCopilotSDKService);
         });
 

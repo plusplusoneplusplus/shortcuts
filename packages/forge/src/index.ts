@@ -159,6 +159,16 @@ export {
     getCopilotSDKService,
     resetCopilotSDKService,
     BackgroundTasksInfo,
+    // ISDKService interface and provider-agnostic types
+    ISDKService,
+    IModelInfo,
+    IAvailabilityResult,
+    IInvocationResult,
+    // SDK Service Registry
+    SDKServiceRegistry,
+    sdkServiceRegistry,
+    COPILOT_PROVIDER,
+    SDK_PROVIDER_COPILOT,
     // Model Metadata Store
     modelMetadataStore,
     resolveReasoningEffort,

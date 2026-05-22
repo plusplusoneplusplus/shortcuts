@@ -328,7 +328,7 @@ describe('PR review suggestions', () => {
         await waitFor(() => expect(screen.getByText('Suggested PR')).toBeInTheDocument());
     });
 
-    it('shows an inline recovery message when no review history exists', async () => {
+    it('shows an informational empty-state message when no review history exists', async () => {
         configMock.pullRequestsSuggestionsEnabled = true;
         const fetchMock = vi.fn()
             .mockResolvedValueOnce({
@@ -359,7 +359,8 @@ describe('PR review suggestions', () => {
             fireEvent.click(screen.getByTestId('generate-suggestions-empty-button'));
         });
 
-        await waitFor(() => expect(screen.getByTestId('suggestions-error')).toHaveTextContent('No past reviewed PRs found yet'));
+        await waitFor(() => expect(screen.getByTestId('suggestions-info')).toHaveTextContent('No past reviewed PRs found yet'));
+        expect(screen.queryByTestId('suggestions-error')).not.toBeInTheDocument();
         expect(fetchMock).toHaveBeenCalledTimes(4);
         expect(fetchMock.mock.calls.some(call => String(call[0]).includes('/suggestions/refresh'))).toBe(false);
     });

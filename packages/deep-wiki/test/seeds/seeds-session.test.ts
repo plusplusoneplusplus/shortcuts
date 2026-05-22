@@ -22,10 +22,13 @@ const STREAM_DESTROYED_PATTERNS = [
 ];
 
 vi.mock('@plusplusoneplusplus/forge', () => ({
-    getCopilotSDKService: () => ({
-        sendMessage: mockSendMessage,
-        isAvailable: mockIsAvailable,
-    }),
+    SDK_PROVIDER_COPILOT: 'copilot',
+    sdkServiceRegistry: {
+        getOrThrow: () => ({
+            sendMessage: mockSendMessage,
+            isAvailable: mockIsAvailable,
+        }),
+    },
     CopilotSDKService: {
         isStreamDestroyedError: (msg: string) => {
             const lower = msg.toLowerCase();

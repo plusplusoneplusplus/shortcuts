@@ -53,6 +53,9 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             executionStats: { totalItems: 0, successfulItems: 0, failedItems: 0, durationMs: 0 },
             output: { formattedOutput: '' },
         }),
+        sdkServiceRegistry: {
+            getOrThrow: () => ({ sendMessage: vi.fn(), isAvailable: vi.fn().mockResolvedValue({ available: false }) }),
+        },
     };
 });
 

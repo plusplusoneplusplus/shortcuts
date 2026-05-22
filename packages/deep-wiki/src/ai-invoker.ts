@@ -9,13 +9,15 @@
  */
 
 import {
-    getCopilotSDKService,
+    sdkServiceRegistry,
+    SDK_PROVIDER_COPILOT,
 } from '@plusplusoneplusplus/forge';
 import type {
     AIInvoker,
     AIInvokerOptions,
     AIInvokerResult,
     SendMessageOptions,
+    SDKInvocationResult,
 } from '@plusplusoneplusplus/forge';
 import { resolveWorkingDirectory } from './utils/resolve-working-directory';
 
@@ -76,7 +78,7 @@ const ANALYSIS_TOOLS = ['view', 'grep', 'glob'];
  */
 export async function checkAIAvailability(): Promise<AIAvailabilityResult> {
     try {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
         const result = await service.isAvailable();
         return {
             available: result.available,
@@ -102,7 +104,7 @@ export async function checkAIAvailability(): Promise<AIAvailabilityResult> {
  * Permissions: approve reads, deny everything else.
  */
 export function createAnalysisInvoker(options: AnalysisInvokerOptions): AIInvoker {
-    const service = getCopilotSDKService();
+    const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
 
     return async (prompt: string, invokerOptions?: AIInvokerOptions): Promise<AIInvokerResult> => {
         try {
@@ -121,7 +123,7 @@ export function createAnalysisInvoker(options: AnalysisInvokerOptions): AIInvoke
                 loadDefaultMcpConfig: false, // Don't load user's MCP config
             };
 
-            const result = await service.sendMessage(sendOptions);
+            const result = await service.sendMessage(sendOptions) as SDKInvocationResult;
 
             return {
                 success: result.success,
@@ -151,7 +153,7 @@ export function createAnalysisInvoker(options: AnalysisInvokerOptions): AIInvoke
  * is provided in the prompt.
  */
 export function createWritingInvoker(options: WritingInvokerOptions): AIInvoker {
-    const service = getCopilotSDKService();
+    const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
 
     return async (prompt: string, invokerOptions?: AIInvokerOptions): Promise<AIInvokerResult> => {
         try {
@@ -167,7 +169,7 @@ export function createWritingInvoker(options: WritingInvokerOptions): AIInvoker 
                 loadDefaultMcpConfig: false, // Writing doesn't need MCP; avoid user's global MCP config
             };
 
-            const result = await service.sendMessage(sendOptions);
+            const result = await service.sendMessage(sendOptions) as SDKInvocationResult;
 
             return {
                 success: result.success,
@@ -210,7 +212,7 @@ export interface ConsolidationInvokerOptions {
  * The AI only needs to analyze the component list and return clusters.
  */
 export function createConsolidationInvoker(options: ConsolidationInvokerOptions): AIInvoker {
-    const service = getCopilotSDKService();
+    const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
 
     return async (prompt: string, invokerOptions?: AIInvokerOptions): Promise<AIInvokerResult> => {
         try {
@@ -226,7 +228,7 @@ export function createConsolidationInvoker(options: ConsolidationInvokerOptions)
                 loadDefaultMcpConfig: false,
             };
 
-            const result = await service.sendMessage(sendOptions);
+            const result = await service.sendMessage(sendOptions) as SDKInvocationResult;
 
             return {
                 success: result.success,

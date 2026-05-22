@@ -1,5 +1,5 @@
 import { ModelInfo } from './model-info';
-import { getCopilotSDKService } from './copilot-sdk-service';
+import { sdkServiceRegistry, SDK_PROVIDER_COPILOT } from './sdk-service-registry';
 import { getModelContextWindow } from './model-registry';
 import { getLogger } from '../logger';
 
@@ -11,12 +11,12 @@ class ModelMetadataStore {
      * Fetch models from the SDK and populate the cache.
      * Safe to call multiple times; re-fetches on every call to allow refresh.
      * Never throws — SDK errors are caught and logged; the cache is left as-is.
-     * @param aiService Optional SDK service instance; falls back to getCopilotSDKService().
+     * @param aiService Optional SDK service instance; falls back to sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT).
      */
     async initialize(aiService?: { listModels(): Promise<ModelInfo[]> }): Promise<void> {
         try {
-            const service = aiService ?? getCopilotSDKService();
-            const models = await service.listModels();
+            const service = aiService ?? sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
+            const models = await service.listModels() as unknown as ModelInfo[];
             this.cache.clear();
             for (const model of models) {
                 this.cache.set(model.id, model);

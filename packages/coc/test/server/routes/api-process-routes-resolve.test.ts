@@ -22,9 +22,7 @@ vi.mock('@plusplusoneplusplus/forge', async () => {
     const actual = await vi.importActual('@plusplusoneplusplus/forge');
     return {
         ...actual as object,
-        getCopilotSDKService: () => ({
-            forkSession: vi.fn(),
-        }),
+        sdkServiceRegistry: { getOrThrow: () => ({ forkSession: vi.fn() }) },
     };
 });
 

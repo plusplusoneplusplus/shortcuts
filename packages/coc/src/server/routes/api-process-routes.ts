@@ -492,8 +492,8 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const newId = crypto.randomUUID();
             let newSdkSessionId: string;
             try {
-                const { getCopilotSDKService } = await import('@plusplusoneplusplus/forge');
-                const sdkService = getCopilotSDKService();
+                const { sdkServiceRegistry, SDK_PROVIDER_COPILOT } = await import('@plusplusoneplusplus/forge');
+                const sdkService = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
                 newSdkSessionId = await sdkService.forkSession(proc.sdkSessionId);
             } catch (err: any) {
                 return handleAPIError(res, internalError(`Failed to fork SDK session: ${err?.message || err}`));

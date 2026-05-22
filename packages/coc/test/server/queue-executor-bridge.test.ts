@@ -58,7 +58,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
-        getCopilotSDKService: () => sdkMocks.service,
+        sdkServiceRegistry: { getOrThrow: () => sdkMocks.service },
         executePipeline: (...args: any[]) => mockExecutePipeline(...args),
         executeWorkflow: (...args: any[]) => mockExecuteWorkflow(...args),
         compileToWorkflow: (...args: any[]) => mockCompileToWorkflow(...args),
@@ -5606,7 +5606,7 @@ describe('AI service injection', () => {
         expect((result.result as any).sessionId).toBe('injected-session-456');
     });
 
-    it('should fallback to getCopilotSDKService() when no aiService provided', async () => {
+    it('should fallback to sdkServiceRegistry.getOrThrow() when no aiService provided', async () => {
         mockIsAvailable.mockReset().mockResolvedValue({ available: true });
         mockSendMessage.mockReset().mockResolvedValue({
             success: true,
@@ -5629,7 +5629,7 @@ describe('AI service injection', () => {
 
         const result = await executor.execute(task);
 
-        // Verify the global mock from getCopilotSDKService() was called
+        // Verify the global mock from sdkServiceRegistry.getOrThrow() was called
         expect(mockIsAvailable).toHaveBeenCalledTimes(1);
         expect(mockSendMessage).toHaveBeenCalledTimes(1);
         expect(mockSendMessage).toHaveBeenCalledWith(

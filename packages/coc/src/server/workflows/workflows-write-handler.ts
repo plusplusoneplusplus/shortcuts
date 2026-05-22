@@ -8,7 +8,7 @@ import * as url from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
-import type { ProcessStore, CopilotSDKService, MCPServerConfig } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, ISDKService, MCPServerConfig } from '@plusplusoneplusplus/forge';
 import type { CreateTaskInput } from '@plusplusoneplusplus/forge';
 import type { RunWorkflowPayload } from '../tasks/task-types';
 import { TaskDefs } from '../tasks/task-types';
@@ -37,7 +37,7 @@ export function registerWorkflowWriteRoutes(
     store: ProcessStore,
     onPipelinesChanged?: (workspaceId: string) => void,
     bridge?: MultiRepoQueueRouter,
-    aiService?: CopilotSDKService,
+    aiService?: ISDKService,
 ): void {
 
     // ------------------------------------------------------------------

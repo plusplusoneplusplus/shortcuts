@@ -18,6 +18,7 @@ const mockAdoPr = {
     status: 1, // Active
     isDraft: false,
     creationDate: new Date('2024-01-01T00:00:00Z'),
+    closedDate: new Date('2024-01-05T00:00:00Z'),
     url: 'https://dev.azure.com/org/proj/_git/repo/pullrequest/42',
     reviewers: [
         { id: 'user-2', displayName: 'Bob', uniqueName: 'bob@example.com', vote: 10, isRequired: true },
@@ -85,6 +86,9 @@ function makeMockService(overrides: Partial<Record<string, ReturnType<typeof vi.
         getPullRequestCommits: vi.fn().mockResolvedValue([mockAdoCommit]),
         getPullRequestIterations: vi.fn().mockResolvedValue([]),
         getPullRequestIterationChanges: vi.fn().mockResolvedValue({ changeEntries: [] }),
+        listReviewedPullRequestCandidates: vi.fn().mockResolvedValue([
+            { pullRequest: mockAdoPr, reviewer: mockAdoReviewer },
+        ]),
         getFileContent: vi.fn().mockResolvedValue(''),
         getPullRequestStatuses: vi.fn().mockResolvedValue([]),
         getCommitStatuses: vi.fn().mockResolvedValue([]),
@@ -697,6 +701,84 @@ describe('AdoPullRequestsAdapter', () => {
             const a = new AdoPullRequestsAdapter(svc, 'my-project');
             const [check] = await a.getChecks('repo-id', 42);
             expect(check.name).toBe('status-7001');
+        });
+    });
+
+    // ── getReviewedPullRequests ────────────────────────────────
+
+    describe('getReviewedPullRequests', () => {
+        it('returns empty history when currentUserId is unavailable', async () => {
+            const svc = makeMockService();
+            const a = new AdoPullRequestsAdapter(svc, 'my-project');
+
+            const reviews = await a.getReviewedPullRequests('repo-id');
+
+            expect(reviews).toEqual([]);
+            expect(svc.listReviewedPullRequestCandidates).not.toHaveBeenCalled();
+        });
+
+        it('maps reviewed-history candidates and changed files from the latest iteration', async () => {
+            const svc = makeMockService({
+                listReviewedPullRequestCandidates: vi.fn().mockResolvedValue([
+                    { pullRequest: mockAdoPr, reviewer: mockAdoReviewer },
+                ]),
+                getPullRequestIterations: vi.fn().mockResolvedValue([{ id: 1 }, { id: 3 }, { id: 2 }]),
+                getPullRequestIterationChanges: vi.fn().mockResolvedValue({
+                    changeEntries: [
+                        { item: { path: '/src/foo.ts' } },
+                        { item: { path: '/src/foo.ts' } },
+                        { item: { path: '/src/bar.ts' } },
+                        { item: {} },
+                    ],
+                }),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project', undefined, 'user-2');
+
+            const reviews = await a.getReviewedPullRequests('repo-id', 25);
+
+            expect(svc.listReviewedPullRequestCandidates).toHaveBeenCalledWith('repo-id', 'user-2', 'my-project', 25);
+            expect(svc.getPullRequestIterationChanges).toHaveBeenCalledWith('repo-id', 42, 3, 'my-project');
+            expect(reviews).toEqual([{
+                number: 42,
+                title: 'Fix bug',
+                author: {
+                    id: 'user-1',
+                    displayName: 'Alice',
+                    email: 'alice@example.com',
+                    avatarUrl: 'https://avatar.example.com/alice',
+                },
+                filesChanged: ['/src/foo.ts', '/src/bar.ts'],
+                labels: ['bug'],
+                reviewedAt: new Date('2024-01-05T00:00:00Z'),
+                targetBranch: 'main',
+                url: 'https://dev.azure.com/org/proj/_git/repo/pullrequest/42',
+            }]);
+        });
+
+        it('uses the constructor repo override while preserving review mapping', async () => {
+            const svc = makeMockService({
+                getPullRequestIterations: vi.fn().mockResolvedValue([]),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project', 'ado-repo-name', 'user-2');
+
+            await a.getReviewedPullRequests('workspace-id', 5);
+
+            expect(svc.listReviewedPullRequestCandidates).toHaveBeenCalledWith('ado-repo-name', 'user-2', 'my-project', 5);
+            expect(svc.getPullRequestIterations).toHaveBeenCalledWith('ado-repo-name', 42, 'my-project');
+        });
+
+        it('still returns reviewed PRs when changed-file lookup fails', async () => {
+            const svc = makeMockService({
+                getPullRequestIterations: vi.fn().mockRejectedValue(new Error('iterations unavailable')),
+            });
+            const a = new AdoPullRequestsAdapter(svc, 'my-project', undefined, 'user-2');
+
+            const reviews = await a.getReviewedPullRequests('repo-id');
+
+            expect(reviews).toHaveLength(1);
+            expect(reviews[0].filesChanged).toEqual([]);
+            const warnCalls = (mockLogger.warn as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[1] as string);
+            expect(warnCalls.some(m => m.includes('changed-file fetch failed') && m.includes('iterations unavailable'))).toBe(true);
         });
     });
 

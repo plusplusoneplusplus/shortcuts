@@ -9,7 +9,8 @@
  */
 
 import {
-    getCopilotSDKService,
+    sdkServiceRegistry,
+    SDK_PROVIDER_COPILOT,
     type SendMessageOptions,
 } from '@plusplusoneplusplus/forge';
 import type {
@@ -205,7 +206,7 @@ export async function analyzeArticleScope(
     moduleContext: string,
     options: { model?: string; timeout?: number; depth: 'shallow' | 'normal' | 'deep' }
 ): Promise<ThemeArticleAnalysis> {
-    const service = getCopilotSDKService();
+    const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
 
     const prompt = buildArticleAnalysisPrompt(
         themeTitle,
@@ -251,7 +252,7 @@ export async function analyzeCrossCutting(
     articleAnalyses: ThemeArticleAnalysis[],
     options: { model?: string; timeout?: number }
 ): Promise<ThemeCrossCuttingAnalysis> {
-    const service = getCopilotSDKService();
+    const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
 
     const articleSummaries = articleAnalyses.map(a =>
         `### ${a.slug}\n` +

@@ -1,4 +1,4 @@
-import type { ConversationTurn, CopilotSDKService, FileToolCallCacheStore, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
+import type { ConversationTurn, ISDKService, FileToolCallCacheStore, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import { approveAllPermissions, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../tasks/task-types';
 import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext, hasCommitChatContext, hasNoteChatContext, hasNoteCreateContext, hasClassifyDiffContext, isBackgroundReviewPayload, isMemoryPromotePayload, isPrClassificationPayload } from '../tasks/task-types';
@@ -30,7 +30,7 @@ import type { MemoryPromoteConfig } from '../memory/memory-promote';
 export interface ExecutorRegistryOptions {
     approvePermissions: boolean;
     defaultWorkingDirectory?: string;
-    aiService: CopilotSDKService;
+    aiService: ISDKService;
     dataDir?: string;
     defaultTimeoutMs: number;
     followUpSuggestions: { enabled: boolean; count: number };
@@ -62,7 +62,7 @@ export class ExecutorRegistry {
     private readonly approvePermissions: boolean;
     private readonly defaultWorkingDirectory?: string;
     private readonly dataDir?: string;
-    private readonly aiService: CopilotSDKService;
+    private readonly aiService: ISDKService;
     private readonly resolveSkillConfigFn: ExecutorRegistryOptions['resolveSkillConfig'];
     private readonly workflowExecutor: WorkflowExecutor;
     private readonly chatExecutor: ChatExecutor;

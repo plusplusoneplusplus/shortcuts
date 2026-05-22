@@ -16,7 +16,7 @@ import * as url from 'url';
 import { sendJSON } from '../core/api-handler';
 import { readGlobalPreferences } from '../preferences-handler';
 import type { Route } from '../types';
-import type { CopilotSDKService, ProcessStore } from '@plusplusoneplusplus/forge';
+import type { ISDKService, ProcessStore } from '@plusplusoneplusplus/forge';
 import { PromptAutocompleteService, type PromptAutocompleteMode, type PromptAutocompleteSurface } from './prompt-autocomplete-service';
 
 // ============================================================================
@@ -39,7 +39,7 @@ export function registerPromptSuggestionRoutes(
     routes: Route[],
     store: ProcessStore | PromptCompletionStore,
     dataDir?: string,
-    aiService?: CopilotSDKService,
+    aiService?: ISDKService,
 ): void {
     const service = new PromptAutocompleteService({
         store: store as ProcessStore,

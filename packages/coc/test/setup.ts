@@ -1,7 +1,7 @@
 /**
  * Vitest global setup — Safety net that prevents real Copilot SDK calls in tests.
  *
- * Auto-mocks `getCopilotSDKService` from `@plusplusoneplusplus/forge`
+ * Auto-mocks `sdkServiceRegistry.getOrThrow` from `@plusplusoneplusplus/forge`
  * to return a stub that **throws** if any method is called. Tests that need AI
  * should inject a mock `aiService` via `createExecutionServer({ aiService })`.
  */
@@ -68,14 +68,17 @@ if (typeof window !== 'undefined') {
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const original = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
+    const throwingStub = {
+        sendMessage: () => { throw new Error('Real SDK call leaked in test — inject a mock aiService'); },
+        isAvailable: () => { throw new Error('Real SDK call leaked in test — inject a mock aiService'); },
+        sendFollowUp: () => { throw new Error('Real SDK call leaked in test — inject a mock aiService'); },
+        hasKeptAliveSession: () => { throw new Error('Real SDK call leaked in test — inject a mock aiService'); },
+        canResumeSession: () => { throw new Error('Real SDK call leaked in test — inject a mock aiService'); },
+    };
     return {
         ...original,
-        getCopilotSDKService: () => ({
-            sendMessage: () => { throw new Error('Real SDK call leaked in test — inject a mock aiService'); },
-            isAvailable: () => { throw new Error('Real SDK call leaked in test — inject a mock aiService'); },
-            sendFollowUp: () => { throw new Error('Real SDK call leaked in test — inject a mock aiService'); },
-            hasKeptAliveSession: () => { throw new Error('Real SDK call leaked in test — inject a mock aiService'); },
-            canResumeSession: () => { throw new Error('Real SDK call leaked in test — inject a mock aiService'); },
-        }),
+        sdkServiceRegistry: {
+            getOrThrow: (_name: string) => throwingStub,
+        },
     };
 });

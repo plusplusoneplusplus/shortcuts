@@ -60,7 +60,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
 
     return {
         ...actual,
-        getCopilotSDKService: () => sdkMocks.service,
+        sdkServiceRegistry: { getOrThrow: () => sdkMocks.service },
         resolveWorkspaceExecutionContext: ensureBareLinuxContext,
         normalizeExecutionPath: (pathLike: string) => {
             const ctx = ensureBareLinuxContext(pathLike);

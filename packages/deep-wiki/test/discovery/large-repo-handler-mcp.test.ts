@@ -13,10 +13,13 @@ const mockSendMessage = vi.fn();
 const mockIsAvailable = vi.fn();
 
 vi.mock('@plusplusoneplusplus/forge', () => ({
-    getCopilotSDKService: () => ({
-        sendMessage: mockSendMessage,
-        isAvailable: mockIsAvailable,
-    }),
+    SDK_PROVIDER_COPILOT: 'copilot',
+    sdkServiceRegistry: {
+        getOrThrow: () => ({
+            sendMessage: mockSendMessage,
+            isAvailable: mockIsAvailable,
+        }),
+    },
 }));
 
 vi.mock('../../src/logger', () => ({

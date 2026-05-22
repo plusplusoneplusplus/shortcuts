@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { execFileSync } from 'child_process';
 import { createRepoFixture, createTasksFixture } from '../e2e/fixtures/repo-fixtures';
 
 describe('repo-fixtures', () => {
@@ -38,6 +39,17 @@ describe('repo-fixtures', () => {
         it('initialises a git repository', () => {
             const repoDir = createRepoFixture(tmpDir);
             expect(fs.existsSync(path.join(repoDir, '.git'))).toBe(true);
+        });
+
+        it('sets the local origin HEAD to the fixture branch', () => {
+            createRepoFixture(tmpDir);
+            const originGitDir = path.join(tmpDir, 'origin.git');
+            const head = execFileSync('git', ['--git-dir', originGitDir, 'symbolic-ref', 'HEAD'], {
+                encoding: 'utf8',
+                stdio: ['ignore', 'pipe', 'ignore'],
+            }).trim();
+
+            expect(head).toMatch(/^refs\/heads\/(main|master)$/);
         });
 
         it('creates pipeline.yaml for pipeline discovery', () => {

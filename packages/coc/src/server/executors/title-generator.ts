@@ -8,7 +8,7 @@
  * Re-syncs the AI-generated title back to the task's displayName on every turn.
  */
 
-import type { ConversationTurn, CopilotSDKService, ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
+import type { ConversationTurn, ISDKService, ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { denyAllPermissions, getLogger, LogCategory, isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 
 const SCRIPT_TITLE_MAX_LEN = 60;
@@ -16,7 +16,7 @@ export const TITLE_GENERATION_TIMEOUT_MS = 30_000;
 
 export interface TitleGenerationServiceOptions {
     store: ProcessStore;
-    aiService: CopilotSDKService;
+    aiService: ISDKService;
     defaultWorkingDirectory?: string;
     queueManager?: TaskQueueManager;
     timeoutMs?: number;
@@ -58,7 +58,7 @@ export class TitleGenerationService {
     }
 
     async getOrCreateWarmClient(): Promise<unknown | null> {
-        const createClient = this.options.aiService.createClient?.bind(this.options.aiService);
+        const createClient = (this.options.aiService as { createClient?: (cwd?: string) => Promise<unknown> }).createClient?.bind(this.options.aiService);
         if (!createClient) return null;
         if (!this.warmClientPromise) {
             this.warmClientPromise = createClient(this.options.defaultWorkingDirectory).catch((err) => {
@@ -170,7 +170,7 @@ export function generateTitleIfNeeded(
     processId: string,
     turns: ConversationTurn[],
     store: ProcessStore,
-    aiService: CopilotSDKService,
+    aiService: ISDKService,
     defaultWorkingDirectory: string | undefined,
     queueManager: TaskQueueManager | undefined,
 ): void {

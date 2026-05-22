@@ -852,6 +852,18 @@ describe('POST /api/repos/:id/pull-requests/review-history/refresh', () => {
         expect(res.status).toBe(501);
     });
 
+    it('returns an informational empty cache when provider has review history support but no reviews', async () => {
+        mockSvc.getReviewedPullRequests = vi.fn().mockResolvedValue([]);
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/review-history/refresh`, { method: 'POST' });
+
+        expect(res.status).toBe(200);
+        const body = await res.json() as { reviews: unknown[]; fetchedAt: string };
+        expect(body.reviews).toEqual([]);
+        expect(body.fetchedAt).toBeTruthy();
+        expect(body).not.toHaveProperty('error');
+    });
+
     it('returns 404 when repo not found', async () => {
         mockResolveRepo.mockResolvedValueOnce(null);
         const res = await fetch(`${baseUrl}/api/repos/unknown/pull-requests/review-history/refresh`, { method: 'POST' });

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Readable } from 'node:stream';
-import { AdoPullRequestsService, AdoPullRequestError, AdoPullRequestNotFoundError, GitVersionType } from '../../src/ado/pull-requests-service';
+import { AdoPullRequestsService, AdoPullRequestError, AdoPullRequestNotFoundError, GitVersionType, PullRequestStatus } from '../../src/ado/pull-requests-service';
 import type { WebApi } from 'azure-devops-node-api';
 import { setLogger, nullLogger } from '../../src/logger';
 import type { Logger } from '../../src/logger';
@@ -70,6 +70,101 @@ describe('AdoPullRequestsService', () => {
     it('listPullRequests passes top and skip positionally', async () => {
         await service.listPullRequests('repo-id', {}, undefined, 10, 5);
         expect(gitApi.getPullRequests).toHaveBeenCalledWith('repo-id', {}, undefined, undefined, 5, 10);
+    });
+
+    // ── listReviewedPullRequestCandidates ─────────────────────
+
+    it('listReviewedPullRequestCandidates returns explicit non-neutral reviewer votes sorted recent-first', async () => {
+        const olderCompleted = {
+            pullRequestId: 1,
+            title: 'Older completed',
+            closedDate: new Date('2024-01-01T00:00:00Z'),
+            createdBy: { id: 'author-1' },
+            reviewers: [{ id: 'current-user', vote: 10 }],
+        };
+        const neutralVote = {
+            pullRequestId: 2,
+            title: 'Neutral vote',
+            closedDate: new Date('2024-01-03T00:00:00Z'),
+            reviewers: [{ id: 'current-user', vote: 0 }],
+        };
+        const authorOnly = {
+            pullRequestId: 3,
+            title: 'Authored only',
+            closedDate: new Date('2024-01-04T00:00:00Z'),
+            createdBy: { id: 'current-user' },
+            reviewers: [{ id: 'someone-else', vote: 10 }],
+        };
+        const newerAbandoned = {
+            pullRequestId: 4,
+            title: 'Newer abandoned',
+            closedDate: new Date('2024-01-05T00:00:00Z'),
+            reviewers: [{ id: 'CURRENT-USER', vote: -5 }],
+        };
+        gitApi.getPullRequests.mockImplementation((_repo, criteria: { status?: number }) => {
+            if (criteria.status === PullRequestStatus.Completed) {
+                return Promise.resolve([olderCompleted, neutralVote, authorOnly]);
+            }
+            if (criteria.status === PullRequestStatus.Abandoned) {
+                return Promise.resolve([newerAbandoned]);
+            }
+            return Promise.resolve([]);
+        });
+
+        const results = await service.listReviewedPullRequestCandidates('repo-id', 'current-user', 'proj', 10);
+
+        expect(gitApi.getPullRequests).toHaveBeenCalledWith(
+            'repo-id',
+            { status: PullRequestStatus.Completed, reviewerId: 'current-user' },
+            'proj',
+            undefined,
+            undefined,
+            40,
+        );
+        expect(gitApi.getPullRequests).toHaveBeenCalledWith(
+            'repo-id',
+            { status: PullRequestStatus.Abandoned, reviewerId: 'current-user' },
+            'proj',
+            undefined,
+            undefined,
+            40,
+        );
+        expect(results.map(result => result.pullRequest.pullRequestId)).toEqual([4, 1]);
+        expect(results[0].reviewer.vote).toBe(-5);
+    });
+
+    it('listReviewedPullRequestCandidates respects top after filtering and deduping', async () => {
+        const shared = {
+            pullRequestId: 5,
+            closedDate: new Date('2024-02-01T00:00:00Z'),
+            reviewers: [{ id: 'current-user', vote: 5 }],
+        };
+        const newer = {
+            pullRequestId: 6,
+            closedDate: new Date('2024-02-02T00:00:00Z'),
+            reviewers: [{ id: 'current-user', vote: -10 }],
+        };
+        gitApi.getPullRequests.mockImplementation((_repo, criteria: { status?: number }) => {
+            if (criteria.status === PullRequestStatus.Completed) {
+                return Promise.resolve([shared, newer]);
+            }
+            if (criteria.status === PullRequestStatus.Abandoned) {
+                return Promise.resolve([shared]);
+            }
+            return Promise.resolve([]);
+        });
+
+        const results = await service.listReviewedPullRequestCandidates('repo-id', 'current-user', 'proj', 1);
+
+        expect(results).toHaveLength(1);
+        expect(results[0].pullRequest.pullRequestId).toBe(6);
+    });
+
+    it('listReviewedPullRequestCandidates returns empty without a current user id', async () => {
+        const results = await service.listReviewedPullRequestCandidates('repo-id', undefined, 'proj', 10);
+
+        expect(results).toEqual([]);
+        expect(gitApi.getPullRequests).not.toHaveBeenCalled();
     });
 
     // ── getPullRequestById ───────────────────────────────────

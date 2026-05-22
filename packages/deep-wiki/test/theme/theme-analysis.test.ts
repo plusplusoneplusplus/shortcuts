@@ -16,9 +16,11 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
-        getCopilotSDKService: () => ({
-            sendMessage: mockSendMessage,
-        }),
+        sdkServiceRegistry: {
+            getOrThrow: () => ({
+                sendMessage: mockSendMessage,
+            }),
+        },
     };
 });
 

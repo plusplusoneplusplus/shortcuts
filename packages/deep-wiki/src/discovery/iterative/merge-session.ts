@@ -8,7 +8,8 @@
  */
 
 import {
-    getCopilotSDKService,
+    sdkServiceRegistry,
+    SDK_PROVIDER_COPILOT,
     type SendMessageOptions,
 } from '@plusplusoneplusplus/forge';
 import type { ComponentGraph, ComponentInfo, CategoryInfo } from '../../types';
@@ -53,7 +54,7 @@ export async function mergeProbeResults(
         timeout?: number;
     } = {}
 ): Promise<MergeResult> {
-    const service = getCopilotSDKService();
+    const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
 
     // Check SDK availability
     const availability = await service.isAvailable();

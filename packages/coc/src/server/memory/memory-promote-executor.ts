@@ -10,7 +10,7 @@
  */
 
 import * as path from 'path';
-import type { CopilotSDKService, QueuedTask, TaskExecutionResult } from '@plusplusoneplusplus/forge';
+import type { ISDKService, QueuedTask, TaskExecutionResult } from '@plusplusoneplusplus/forge';
 import {
     BoundedMemoryStore,
     MemoryCandidateStore,
@@ -67,7 +67,7 @@ interface CandidateNormalizationResult {
 
 export class MemoryPromoteExecutor {
     constructor(
-        private readonly aiService: CopilotSDKService,
+        private readonly aiService: ISDKService,
         private readonly dataDir: string,
         private readonly config: MemoryPromoteConfig = DEFAULT_PROMOTE_CONFIG,
         private readonly getWsServer?: () => ProcessWebSocketServer | undefined,
@@ -393,7 +393,7 @@ function planCandidateFinalization(
 
 async function normalizeSelectedCandidates(
     selected: RankedMemoryCandidate[],
-    aiService: CopilotSDKService,
+    aiService: ISDKService,
     config: MemoryPromoteConfig,
     taskModel: string | undefined,
     logger: ReturnType<typeof getLogger>,

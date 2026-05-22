@@ -25,7 +25,7 @@ import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { readReviewHistoryCache, fetchAndCacheReviewHistory, readSuggestionsCache, rankAndCacheSuggestions, toPrMetadata } from './pr-suggestions';
-import type { CopilotSDKService } from '@plusplusoneplusplus/forge';
+import type { ISDKService } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Helpers
@@ -128,7 +128,7 @@ export function clearPrDetailCache(): void {
  * @param dataDir - CoC data directory (e.g. ~/.coc)
  * @param service - Shared RepoTreeService instance (singleton)
  */
-export function registerPrRoutes(routes: Route[], dataDir: string, service?: RepoTreeService, store?: ProcessStore, aiService?: CopilotSDKService): void {
+export function registerPrRoutes(routes: Route[], dataDir: string, service?: RepoTreeService, store?: ProcessStore, aiService?: ISDKService): void {
     const svc = service ?? new RepoTreeService(dataDir, undefined, store);
 
     // -- List PRs -------------------------------------------------------------

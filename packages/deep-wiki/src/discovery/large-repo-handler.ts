@@ -8,7 +8,8 @@
  */
 
 import {
-    getCopilotSDKService,
+    sdkServiceRegistry,
+    SDK_PROVIDER_COPILOT,
     type SendMessageOptions,
 } from '@plusplusoneplusplus/forge';
 import type {
@@ -63,7 +64,7 @@ const DISCOVERY_TOOLS = ['view', 'grep', 'glob'];
  * @returns Estimated file count, or -1 if estimation fails
  */
 export async function estimateFileCount(repoPath: string): Promise<number> {
-    const service = getCopilotSDKService();
+    const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
 
     printInfo('Estimating repository file count...');
     const result = await service.sendMessage({
@@ -215,7 +216,7 @@ export async function discoverLargeRepo(options: DiscoveryOptions): Promise<Comp
  * Perform the structural scan (first pass).
  */
 async function performStructuralScan(options: DiscoveryOptions): Promise<StructuralScanResult> {
-    const service = getCopilotSDKService();
+    const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
     const prompt = buildStructuralScanPrompt(options.repoPath);
 
     const sendOptions: SendMessageOptions = {
@@ -252,7 +253,7 @@ async function discoverDomain(
     domain: TopLevelDomain,
     projectName: string
 ): Promise<ComponentGraph> {
-    const service = getCopilotSDKService();
+    const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
     const prompt = buildFocusedDiscoveryPrompt(
         options.repoPath,
         domain.path,
