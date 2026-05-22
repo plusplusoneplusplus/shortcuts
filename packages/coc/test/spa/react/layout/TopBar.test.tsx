@@ -3,9 +3,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { mockViewport } from '../../helpers/viewport-mock';
-import { SHOW_MEMORY_TAB, TopBar } from '../../../../src/server/spa/client/react/layout/TopBar';
+import { TopBar } from '../../../../src/server/spa/client/react/layout/TopBar';
 
 // ── Mock AppContext ────────────────────────────────────────────────────
 
@@ -126,52 +126,19 @@ describe('TopBar responsive behavior', () => {
         expect(document.getElementById('theme-toggle')).toBeTruthy();
     });
 
-    it('inactive Tools dropdown items do not show the active accent', () => {
+    it('does not render the legacy Tools dropdown trigger or items', () => {
         viewportCleanup = mockViewport(1024);
         render(<TopBar />);
-        // Open the Tools dropdown so menu items mount in the DOM.
-        fireEvent.click(document.getElementById('tools-toggle')!);
-        const btn = document.getElementById('skills-toggle')!;
-        expect(btn.className).not.toContain('bg-[#ddf4ff]');
-    });
-
-    it('Tools button has hidden md:inline-flex container (mobile uses BottomNav)', () => {
-        viewportCleanup = mockViewport(375);
-        render(<TopBar />);
-        const btn = document.getElementById('tools-toggle')!;
-        // The Tools popover container is the element that hides on mobile.
-        const container = btn.parentElement!;
-        expect(container.className).toContain('hidden');
-        expect(container.className).toContain('md:inline-flex');
-    });
-
-    it('Skills/Logs are reachable via Tools dropdown (not as standalone buttons)', () => {
-        viewportCleanup = mockViewport(1024);
-        render(<TopBar />);
-        // Closed dropdown: items are not in the DOM.
+        expect(document.getElementById('tools-toggle')).toBeNull();
+        expect(document.getElementById('tools-popover')).toBeNull();
+        // Tools were migrated to the Admin page sidebar; the topbar no longer
+        // surfaces Skills/Logs/Stats/Models/Servers buttons directly.
         expect(document.getElementById('skills-toggle')).toBeNull();
         expect(document.getElementById('logs-toggle')).toBeNull();
-        // Open the dropdown and the items appear.
-        fireEvent.click(document.getElementById('tools-toggle')!);
-        expect(document.getElementById('skills-toggle')).toBeTruthy();
-        expect(document.getElementById('logs-toggle')).toBeTruthy();
-    });
-
-    it('does not render the memory button while SHOW_MEMORY_TAB is false', () => {
-        expect(SHOW_MEMORY_TAB).toBe(false);
-        viewportCleanup = mockViewport(1024);
-        render(<TopBar />);
-        // Even with the Tools dropdown opened, no memory entry is rendered.
-        fireEvent.click(document.getElementById('tools-toggle')!);
+        expect(document.getElementById('stats-toggle')).toBeNull();
+        expect(document.getElementById('models-toggle')).toBeNull();
+        expect(document.getElementById('servers-toggle')).toBeNull();
         expect(document.getElementById('memory-toggle')).toBeNull();
-        expect(document.querySelector('[data-tab="memory"]')).toBeNull();
-    });
-
-    it('models entry renders atom symbol icon inside Tools dropdown', () => {
-        render(<TopBar />);
-        fireEvent.click(document.getElementById('tools-toggle')!);
-        const btn = document.getElementById('models-toggle')!;
-        expect(btn.textContent).toContain('⚛');
     });
 
     it('admin button does NOT have hidden class (always visible)', () => {

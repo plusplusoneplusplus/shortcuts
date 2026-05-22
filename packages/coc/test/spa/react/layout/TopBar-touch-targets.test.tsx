@@ -78,10 +78,9 @@ describe('TopBar touch targets', () => {
         expect(link.className).toContain('touch-target');
     });
 
-    it('tools dropdown trigger has touch-target class', () => {
+    it('does not render the legacy tools dropdown trigger', () => {
         viewportCleanup = mockViewport(1024);
         render(<TopBar />);
-        const btn = document.getElementById('tools-toggle')!;
-        expect(btn.className).toContain('touch-target');
+        expect(document.getElementById('tools-toggle')).toBeNull();
     });
 });

@@ -6,7 +6,6 @@ import { TopBar } from '../../../../src/server/spa/client/react/layout/TopBar';
 const mockDispatch = vi.fn();
 const mockToggleTheme = vi.fn();
 const mockOnAdminOpen = vi.fn();
-const mockOnLogsOpen = vi.fn();
 let mockActiveTab = 'repos';
 let mockIsMobile = false;
 
@@ -63,7 +62,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useMyLifeEn
 }));
 
 function renderTopBar() {
-    return render(<TopBar onAdminOpen={mockOnAdminOpen} onLogsOpen={mockOnLogsOpen} />);
+    return render(<TopBar onAdminOpen={mockOnAdminOpen} />);
 }
 
 function actionLabels(): string[] {
@@ -80,18 +79,17 @@ describe('TopBar fixed action order', () => {
         mockDispatch.mockClear();
         mockToggleTheme.mockClear();
         mockOnAdminOpen.mockClear();
-        mockOnLogsOpen.mockClear();
         delete (window as any).__DASHBOARD_CONFIG__;
     });
 
     it('renders top-bar actions in the fixed code-defined order', () => {
         renderTopBar();
 
-        // Skills/Logs/Usage/Models live inside the Tools dropdown; the top-level
-        // action row exposes only the high-level buttons.
+        // Skills/Logs/Usage/Models/Servers live inside the Admin page's left
+        // sidebar "Tools" group; the top-level action row exposes only the
+        // high-level buttons.
         expect(actionLabels()).toEqual([
             'Notifications',
-            'Tools',
             'Admin',
             'Toggle theme',
         ]);
@@ -108,13 +106,13 @@ describe('TopBar fixed action order', () => {
     it('keeps long press and drag gestures from changing action order', () => {
         renderTopBar();
         const before = actionLabels();
-        const tools = screen.getByLabelText('Tools');
+        const notifications = screen.getByLabelText('Notifications');
         const admin = screen.getByLabelText('Admin');
 
-        fireEvent.pointerDown(tools, { pointerId: 1, clientX: 1, clientY: 1 });
-        fireEvent.pointerMove(tools, { pointerId: 1, clientX: 20, clientY: 1 });
-        fireEvent.pointerUp(tools, { pointerId: 1, clientX: 20, clientY: 1 });
-        fireEvent.dragStart(tools);
+        fireEvent.pointerDown(notifications, { pointerId: 1, clientX: 1, clientY: 1 });
+        fireEvent.pointerMove(notifications, { pointerId: 1, clientX: 20, clientY: 1 });
+        fireEvent.pointerUp(notifications, { pointerId: 1, clientX: 20, clientY: 1 });
+        fireEvent.dragStart(notifications);
         fireEvent.drop(admin);
 
         expect(actionLabels()).toEqual(before);
@@ -124,13 +122,15 @@ describe('TopBar fixed action order', () => {
     it('still activates the fixed action buttons', () => {
         renderTopBar();
 
-        // Logs lives inside the Tools dropdown — open it before clicking.
-        fireEvent.click(screen.getByLabelText('Tools'));
-        fireEvent.click(screen.getByLabelText('Logs'));
+        // The legacy "Tools" trigger and "Logs" entry have been migrated to
+        // the Admin page sidebar; the topbar surfaces only Notifications,
+        // Admin, and the theme toggle.
+        expect(screen.queryByLabelText('Tools')).toBeNull();
+        expect(screen.queryByLabelText('Logs')).toBeNull();
+
         fireEvent.click(screen.getByLabelText('Admin'));
         fireEvent.click(screen.getByLabelText('Toggle theme'));
 
-        expect(mockOnLogsOpen).toHaveBeenCalledTimes(1);
         expect(mockOnAdminOpen).toHaveBeenCalledTimes(1);
         expect(mockToggleTheme).toHaveBeenCalledTimes(1);
     });

@@ -83,9 +83,15 @@ Focus indicator propagates mode-colored ring from contenteditable to parent card
 
 ## Top Bar
 
-Right-hand action cluster: `[Connected pill | NotificationBell | Tools ▾ | Admin | Theme]`
+Right-hand action cluster: `[Connected pill | NotificationBell | Admin | Theme]`
 
-Tools popover contains: Skills, Logs, Usage, Models, Servers (when enabled).
+The legacy "Tools" popover has been migrated to the Admin page's left
+sidebar. The Admin sidebar exposes a "Tools" nav group containing Skills,
+Logs, Usage, Models, and Servers (Servers only when `isServersEnabled()` is
+true). Each row dispatches `SET_ACTIVE_TAB` and updates `location.hash` to
+the corresponding top-level route (`#skills`, `#logs`, `#stats`, `#models`,
+`#servers`). Row ids match the legacy dropdown (`skills-toggle`,
+`logs-toggle`, `stats-toggle`, `models-toggle`, `servers-toggle`).
 
 ## Onboarding
 

@@ -22,11 +22,11 @@ import { FeatureTip } from '../welcome/FeatureTip';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
 import { useLinkHandlers } from '../hooks/useLinkHandlers';
 import { getLinkHandlersMeta } from '../utils/link-handler';
-import type { AdminSubTab } from '../types/dashboard';
+import type { AdminSubTab, DashboardTab } from '../types/dashboard';
 import { useOnboardingPreferences } from '../hooks/useOnboardingPreferences';
 import { patchGlobalPreferences } from '../utils/preferencesApi';
 
-import { isContainerMode } from '../utils/config';
+import { isContainerMode, isServersEnabled } from '../utils/config';
 
 const StorageSection = lazy(() => import('./StorageSection'));
 const AgentManagementPanel = lazy(() => import('../repos/AgentManagementPanel').then(m => ({ default: m.AgentManagementPanel })));
@@ -93,6 +93,25 @@ function parseSettingsSubTabFromHash(hash: string): SettingsSubTab | null {
 }
 
 const WELCOME_RESET_PROGRESS = { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false, settingsVisited: false, dismissed: false, hasCompletedTour: false };
+
+// ── Tools nav group (migrated from the topbar Tools dropdown). Each entry
+// is a top-level dashboard route; clicking the row exits the admin page
+// and lands on the corresponding view. Ids and `data-tab` attributes
+// match the legacy dropdown so existing tests and deep-link selectors
+// keep working.
+interface ToolNavItem {
+    id: string;
+    tab: DashboardTab;
+    label: string;
+    icon: string;
+}
+const ALL_TOOL_NAV_ITEMS: ToolNavItem[] = [
+    { id: 'skills-toggle',  tab: 'skills',  label: 'Skills',  icon: '⚡' },
+    { id: 'logs-toggle',    tab: 'logs',    label: 'Logs',    icon: '📋' },
+    { id: 'stats-toggle',   tab: 'stats',   label: 'Usage',   icon: '📊' },
+    { id: 'models-toggle',  tab: 'models',  label: 'Models',  icon: '⚛' },
+    { id: 'servers-toggle', tab: 'servers', label: 'Servers', icon: '🖥' },
+];
 
 export function AdminPanel() {
     const { toasts, addToast, removeToast } = useToast();
@@ -791,6 +810,18 @@ export function AdminPanel() {
     const baseTabs: AdminSubTab[] = ['settings', 'providers', 'data', 'server', 'prompts', 'database'];
     const tabs: AdminSubTab[] = isContainerMode() ? [...baseTabs, 'agents', 'messaging'] : baseTabs;
 
+    // Servers row is gated by the dashboard runtime config, same source the
+    // legacy topbar dropdown consulted. It is independent of the editable
+    // `serversEnabled` Features form state above.
+    const toolNavItems: ToolNavItem[] = isServersEnabled()
+        ? ALL_TOOL_NAV_ITEMS
+        : ALL_TOOL_NAV_ITEMS.filter(item => item.tab !== 'servers');
+
+    const handleToolNavClick = useCallback((tab: DashboardTab) => {
+        dispatch({ type: 'SET_ACTIVE_TAB', tab });
+        window.location.hash = '#' + tab;
+    }, [dispatch]);
+
     const activeTabLabel = TAB_LABELS[activeTab];
 
     return (
@@ -819,6 +850,26 @@ export function AdminPanel() {
                             >
                                 <span className="ar-nav-icon" aria-hidden="true">{TAB_ICONS[tab]}</span>
                                 <span className="ar-nav-label">{TAB_LABELS[tab]}</span>
+                            </button>
+                        ))}
+                    </nav>
+
+                    <nav className="ar-nav-group" aria-label="Tools">
+                        <div className="ar-nav-group-label">Tools</div>
+                        {toolNavItems.map(item => (
+                            <button
+                                key={item.id}
+                                id={item.id}
+                                type="button"
+                                className="ar-nav-item"
+                                onClick={() => handleToolNavClick(item.tab)}
+                                data-testid={item.id}
+                                data-tab={item.tab}
+                                aria-label={item.label}
+                                title={item.label}
+                            >
+                                <span className="ar-nav-icon" aria-hidden="true">{item.icon}</span>
+                                <span className="ar-nav-label">{item.label}</span>
                             </button>
                         ))}
                     </nav>
