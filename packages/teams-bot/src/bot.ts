@@ -189,45 +189,10 @@ export class TeamsBot {
             const since = this.mode === 'graph' ? this._lastSeenTimestamp ?? undefined : this._lastPolledId ?? undefined;
             const { messages, nextSince } = await this.transport.poll(this._channelId, since);
 
-            if (messages.length === 0) {
-                // For MCP mode, still set the initial watermark
-                if (this.mode === 'mcp' && !this._lastPolledId && nextSince) {
-                    this._lastPolledId = nextSince;
-                }
-                return;
-            }
-
-            // First poll for MCP mode: just set watermark
-            if (this.mode === 'mcp' && !this._lastPolledId) {
-                this._lastPolledId = nextSince;
-                return;
-            }
-
-            // MCP mode: skip if no new messages since watermark
-            if (this.mode === 'mcp' && nextSince === this._lastPolledId) return;
-
-            for (const msg of messages) {
-                // Skip messages sent by this bot
-                if (this._sentMessageIds.has(msg.messageId)) {
-                    this._sentMessageIds.delete(msg.messageId);
-                    continue;
-                }
-
-                if (!msg.text.trim()) continue;
-
-                // Skip bot-formatted messages
-                if (this.isBotFormattedMessage(msg.text)) continue;
-
-                await this.opts.onMessage(msg).catch((err) => {
-                    console.error('[teams-bot] Error handling message:', err);
-                });
-            }
-
-            // Update watermarks
-            if (this.mode === 'graph') {
-                this._lastSeenTimestamp = nextSince;
+            if (this.mode === 'mcp') {
+                await this.handleMcpPoll(messages, nextSince);
             } else {
-                this._lastPolledId = nextSince;
+                await this.handleGraphPoll(messages, nextSince);
             }
         } catch (err: any) {
             // On 401, attempt token refresh
@@ -237,6 +202,63 @@ export class TeamsBot {
                 console.error(`[teams-bot] ${this.mode} poll error:`, err.message);
             }
         }
+    }
+
+    /**
+     * MCP poll logic: only process the LAST message if its ID differs from watermark.
+     * First poll just sets the watermark without processing.
+     */
+    private async handleMcpPoll(messages: InboundTeamsMessage[], nextSince: string): Promise<void> {
+        if (messages.length === 0) {
+            if (!this._lastPolledId && nextSince) this._lastPolledId = nextSince;
+            return;
+        }
+
+        const lastMsg = messages[messages.length - 1];
+
+        // First poll: just set watermark, don't process
+        if (!this._lastPolledId) {
+            this._lastPolledId = lastMsg.messageId;
+            return;
+        }
+
+        // No new message since last poll
+        if (lastMsg.messageId === this._lastPolledId) return;
+
+        // Update watermark
+        this._lastPolledId = lastMsg.messageId;
+
+        // Skip messages sent by this bot
+        if (this._sentMessageIds.has(lastMsg.messageId)) {
+            this._sentMessageIds.delete(lastMsg.messageId);
+            return;
+        }
+
+        if (!lastMsg.text.trim()) return;
+
+        // Skip bot-formatted messages (CoC outbound format)
+        if (this.isBotFormattedMessage(lastMsg.text)) return;
+
+        await this.opts.onMessage(lastMsg).catch((err) => {
+            console.error('[teams-bot] Error handling message:', err);
+        });
+    }
+
+    /** Graph poll logic: process all new messages since last timestamp. */
+    private async handleGraphPoll(messages: InboundTeamsMessage[], nextSince: string): Promise<void> {
+        for (const msg of messages) {
+            if (this._sentMessageIds.has(msg.messageId)) {
+                this._sentMessageIds.delete(msg.messageId);
+                continue;
+            }
+            if (!msg.text.trim()) continue;
+            if (this.isBotFormattedMessage(msg.text)) continue;
+
+            await this.opts.onMessage(msg).catch((err) => {
+                console.error('[teams-bot] Error handling message:', err);
+            });
+        }
+        if (nextSince) this._lastSeenTimestamp = nextSince;
     }
 
     /** Attempt to refresh the bearer token via the configured callback. */
