@@ -292,12 +292,31 @@ export class McpTransport implements TeamsTransport {
             teams = parsed.teams ?? parsed.value ?? (Array.isArray(parsed) ? parsed : []);
         } catch { /* empty */ }
 
-        const team = teams.find(t => t.displayName.toLowerCase() === teamName.toLowerCase());
-        if (!team) throw new Error(`Team "${teamName}" not found via MCP`);
-        this.teamId = team.id;
+        let team = teams.find(t => t.displayName.toLowerCase() === teamName.toLowerCase());
+        if (!team) {
+            console.log(`[mcp-transport] Team "${teamName}" not found, creating...`);
+            const createResult = await this.client.callTool('CreateTeam', {
+                displayName: teamName,
+                description: `CoC bridge team — ${teamName}`,
+            });
+            const createText = createResult.content?.[0]?.text ?? '';
+            console.log(`[mcp-transport] CreateTeam response: ${createText.substring(0, 200)}`);
+            if (createText.startsWith('Error:')) {
+                throw new Error(`Failed to create team "${teamName}": ${createText}`);
+            }
+            try {
+                const created = JSON.parse(createText);
+                team = { id: created.id ?? created.teamId, displayName: teamName };
+            } catch {
+                throw new Error(`Failed to parse CreateTeam response: ${createText}`);
+            }
+            // Wait for team provisioning
+            await new Promise(r => setTimeout(r, 3000));
+        }
+        this.teamId = team!.id;
 
         // Resolve channel
-        const channelsResult = await this.client.callTool('ListChannels', { teamId: team.id });
+        const channelsResult = await this.client.callTool('ListChannels', { teamId: team!.id });
         const channelsText = channelsResult.content?.[0]?.text ?? '{}';
         let channels: Array<{ id: string; displayName: string }> = [];
         try {
@@ -305,10 +324,28 @@ export class McpTransport implements TeamsTransport {
             channels = parsed.channels ?? parsed.value ?? (Array.isArray(parsed) ? parsed : []);
         } catch { /* empty */ }
 
-        const channel = channels.find(c => c.displayName.toLowerCase() === channelName.toLowerCase());
-        if (!channel) throw new Error(`Channel "${channelName}" not found via MCP`);
+        let channel = channels.find(c => c.displayName.toLowerCase() === channelName.toLowerCase());
+        if (!channel) {
+            console.log(`[mcp-transport] Channel "${channelName}" not found in team "${teamName}", creating...`);
+            const createResult = await this.client.callTool('CreateChannel', {
+                teamId: team!.id,
+                displayName: channelName,
+                description: `CoC bridge channel — ${channelName}`,
+            });
+            const createText = createResult.content?.[0]?.text ?? '';
+            console.log(`[mcp-transport] CreateChannel response: ${createText.substring(0, 200)}`);
+            if (createText.startsWith('Error:')) {
+                throw new Error(`Failed to create channel "${channelName}": ${createText}`);
+            }
+            try {
+                const created = JSON.parse(createText);
+                channel = { id: created.id ?? created.channelId, displayName: channelName };
+            } catch {
+                throw new Error(`Failed to parse CreateChannel response: ${createText}`);
+            }
+        }
 
-        return { teamId: team.id, channelId: channel.id };
+        return { teamId: team!.id, channelId: channel!.id };
     }
 
     setToken(token: string): void {

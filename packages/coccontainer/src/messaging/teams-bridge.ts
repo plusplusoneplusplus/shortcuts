@@ -262,8 +262,15 @@ export class TeamsBridge {
                     this.opts.config.channelId = channel.id;
                     console.log(`[teams-bridge] Resolved channel "${channelName}" → ${channel.id}`);
                     await this.persistTeamsConfig({ channelId: channel.id });
+                } else if (teamName) {
+                    // Channel not found — use resolveTeamAndChannel which creates if missing
+                    console.log(`[teams-bridge] Channel "${channelName}" not found, creating...`);
+                    const result = await this.transport.resolveTeamAndChannel(teamName, channelName);
+                    this.opts.config.channelId = result.channelId;
+                    console.log(`[teams-bridge] Created channel "${channelName}" → ${result.channelId}`);
+                    await this.persistTeamsConfig({ channelId: result.channelId });
                 } else {
-                    console.warn(`[teams-bridge] Channel "${channelName}" not found`);
+                    console.warn(`[teams-bridge] Channel "${channelName}" not found and no teamName to create it`);
                 }
             }
         } catch (err: any) {

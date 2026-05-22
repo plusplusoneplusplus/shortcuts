@@ -302,4 +302,88 @@ describe('McpTransport', () => {
         // After stop, operations should throw
         await expect(transport.send('ch-1', 'test')).rejects.toThrow('not initialized');
     });
+
+    it('should resolve team and channel (existing)', async () => {
+        // Initialize
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            headers: new Map([['mcp-session-id', 'session-1']]),
+            json: async () => ({ jsonrpc: '2.0', id: 1, result: {} }),
+        } as any);
+        await transport.initialize('token', { teamId: 'team-1' });
+
+        // ListTeams tool call
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            headers: new Map(),
+            json: async () => ({
+                jsonrpc: '2.0', id: 3,
+                result: { content: [{ type: 'text', text: JSON.stringify({ value: [{ id: 'tid-1', displayName: 'MyTeam' }] }) }] },
+            }),
+        } as any);
+        // ListChannels tool call
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            headers: new Map(),
+            json: async () => ({
+                jsonrpc: '2.0', id: 4,
+                result: { content: [{ type: 'text', text: JSON.stringify({ value: [{ id: 'cid-1', displayName: 'General' }] }) }] },
+            }),
+        } as any);
+
+        const result = await transport.resolveTeamAndChannel('MyTeam', 'General');
+        expect(result.teamId).toBe('tid-1');
+        expect(result.channelId).toBe('cid-1');
+    });
+
+    it('should create team and channel when not found', async () => {
+        // Initialize
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            headers: new Map([['mcp-session-id', 'session-1']]),
+            json: async () => ({ jsonrpc: '2.0', id: 1, result: {} }),
+        } as any);
+        await transport.initialize('token', { teamId: 'team-1' });
+
+        // ListTeams — empty
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            headers: new Map(),
+            json: async () => ({
+                jsonrpc: '2.0', id: 3,
+                result: { content: [{ type: 'text', text: JSON.stringify({ value: [] }) }] },
+            }),
+        } as any);
+        // CreateTeam
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            headers: new Map(),
+            json: async () => ({
+                jsonrpc: '2.0', id: 4,
+                result: { content: [{ type: 'text', text: JSON.stringify({ id: 'new-team-id' }) }] },
+            }),
+        } as any);
+        // ListChannels — empty
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            headers: new Map(),
+            json: async () => ({
+                jsonrpc: '2.0', id: 5,
+                result: { content: [{ type: 'text', text: JSON.stringify({ value: [] }) }] },
+            }),
+        } as any);
+        // CreateChannel
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            headers: new Map(),
+            json: async () => ({
+                jsonrpc: '2.0', id: 6,
+                result: { content: [{ type: 'text', text: JSON.stringify({ id: 'new-ch-id' }) }] },
+            }),
+        } as any);
+
+        const result = await transport.resolveTeamAndChannel('NewTeam', 'NewChannel');
+        expect(result.teamId).toBe('new-team-id');
+        expect(result.channelId).toBe('new-ch-id');
+    });
 });
