@@ -215,9 +215,6 @@ export class TeamsBridge {
             return;
         }
 
-        // Already have explicit IDs — no resolution needed
-        if (this.opts.config.teamId && this.opts.config.channelId) return;
-
         // In graph mode without team config, we use direct message (chat) mode
         if (this.opts.config.mode === 'graph' && !this.opts.config.teamName && !this.opts.config.teamId) {
             console.log('[teams-bridge] No team configured — using direct message (chat) mode');
@@ -333,7 +330,7 @@ export class TeamsBridge {
         if (this._runningLocks.has(processId)) return;
         this._runningLocks.add(processId);
 
-        const target = this.bot.getChannelId() ?? this.opts.config.channelId;
+        let target = this.bot.getChannelId() ?? this.opts.config.channelId;
         if (!target) {
             console.warn('[teams-bridge] No target (chatId/channelId) available — skipping outbound');
             this._runningLocks.delete(processId);
@@ -430,8 +427,32 @@ export class TeamsBridge {
                     const messageId = await this.bot!.send(target, teamsText, { mentions });
                     console.log(`[teams-bridge] Sent message ${messageId} for process ${processId} (role=${turn.role})`);
                     this.store!.bindMessage(messageId, processId, agentId, `${msg.agentName}:${repoName}`, workspaceId);
-                } catch (err) {
-                    console.error('[teams-bridge] Failed to send outbound message:', err);
+                } catch (err: any) {
+                    // If NotFound, channel may be stale — re-resolve and retry once
+                    if (err?.message?.includes('NotFound') && this.opts.config.teamName) {
+                        console.warn(`[teams-bridge] Channel NotFound — re-resolving team/channel...`);
+                        this.opts.config.channelId = undefined;
+                        this.opts.config.teamId = undefined;
+                        await this.resolveTeamAndChannel();
+                        const newTarget = this.bot!.getChannelId();
+                        if (newTarget && newTarget !== target) {
+                            target = newTarget;
+                            try {
+                                const mentions = sender
+                                    ? [{ aadId: sender.senderAadId, displayName: sender.senderName }]
+                                    : undefined;
+                                const messageId = await this.bot!.send(target, teamsText, { mentions });
+                                console.log(`[teams-bridge] Sent message ${messageId} (after re-resolve) for process ${processId}`);
+                                this.store!.bindMessage(messageId, processId, agentId, `${msg.agentName}:${repoName}`, workspaceId);
+                            } catch (retryErr) {
+                                console.error('[teams-bridge] Retry after re-resolve also failed:', retryErr);
+                            }
+                        } else {
+                            console.error('[teams-bridge] Re-resolve did not produce a new channelId');
+                        }
+                    } else {
+                        console.error('[teams-bridge] Failed to send outbound message:', err);
+                    }
                 }
             }
         } catch (err) {
