@@ -179,16 +179,20 @@ async function notifyLoopTickComplete(
 export class ProcessLifecycleRunner extends BaseExecutor {
     private readonly onGenerateTitle: (processId: string, turns: ConversationTurn[]) => void;
     private readonly onBackgroundReview?: (processId: string, workspaceId: string, turns: ConversationTurn[]) => void;
+    /** Active AI provider recorded on new processes for attribution ('copilot' | 'codex'). */
+    private readonly provider: 'copilot' | 'codex';
 
     constructor(
         store: ProcessStore,
         dataDir: string | undefined,
         onGenerateTitle: (processId: string, turns: ConversationTurn[]) => void,
         onBackgroundReview?: (processId: string, workspaceId: string, turns: ConversationTurn[]) => void,
+        provider?: 'copilot' | 'codex',
     ) {
         super(store, dataDir);
         this.onGenerateTitle = onGenerateTitle;
         this.onBackgroundReview = onBackgroundReview;
+        this.provider = provider ?? 'copilot';
     }
 
     /**
@@ -320,6 +324,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 model: task.config.model,
                 mode: payload?.mode,
                 workspaceId: payload?.workspaceId || task.repoId,
+                provider: this.provider,
                 workflowName: isRunWorkflowPayload(task.payload)
                     ? path.basename(task.payload.workflowPath)
                     : undefined,

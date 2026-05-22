@@ -244,6 +244,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             };
         },
         () => mcpOauthInfra?.manager,
+        (resolvedConfig.activeProvider === 'codex' ? 'codex' : 'copilot'),
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
