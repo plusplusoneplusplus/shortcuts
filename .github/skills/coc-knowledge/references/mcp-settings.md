@@ -71,6 +71,10 @@ Response: `{ success, message, protocolVersion?, serverName? }` with HTTP 200 on
 
 Moves a server between global and workspace config. Body: `{ targetScope: "global"|"workspace" }`.
 
+## OAuth Routes
+
+`POST /api/mcp-oauth/start` is registered only when the active AI SDK service exposes SDK client creation (`createClient`). It starts an OAuth flow for configured HTTP/SSE MCP servers by resolving workspace config first, then global config. Pending OAuth lifecycle endpoints (`/api/mcp-oauth/pending...`) are always registered when the MCP OAuth manager is present.
+
 ## Invariants
 
 - Never expose secrets (`env`, headers, full `args`) through the list endpoint. Only the detail endpoint exposes env keys (masked) and full args.

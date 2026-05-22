@@ -220,11 +220,24 @@ describe('MCP OAuth REST routes', () => {
             expect(found).toBeUndefined();
         });
 
+        it('is not registered when aiService cannot create SDK clients', async () => {
+            const r: Route[] = [];
+            registerMcpOauthRoutes(r, {
+                manager,
+                aiService: { isAvailable: async () => ({ available: true }) } as any,
+                resolveWorkspaceRoot: async () => undefined,
+            });
+
+            const path = '/api/mcp-oauth/start';
+            const found = r.find(route => route.method === 'POST' && (route.pattern as RegExp).test(path));
+            expect(found).toBeUndefined();
+        });
+
         it('returns 400 when serverName is missing', async () => {
             const r: Route[] = [];
             registerMcpOauthRoutes(r, {
                 manager,
-                aiService: {} as any,
+                aiService: { createClient: async () => ({ createSession: async () => ({}) }) } as any,
                 resolveWorkspaceRoot: async () => undefined,
             });
             const res = await dispatch(r, 'POST', '/api/mcp-oauth/start', {});
@@ -242,7 +255,7 @@ describe('MCP OAuth REST routes', () => {
             const r: Route[] = [];
             registerMcpOauthRoutes(r, {
                 manager,
-                aiService: {} as any,
+                aiService: { createClient: async () => ({ createSession: async () => ({}) }) } as any,
                 resolveWorkspaceRoot: async () => undefined,
             });
             const res = await dispatch(r, 'POST', '/api/mcp-oauth/start', {

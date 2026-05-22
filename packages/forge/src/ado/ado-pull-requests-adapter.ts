@@ -19,6 +19,7 @@ import type {
     PullRequestCommit,
     PullRequestStatus,
     Reviewer,
+    ReviewedPullRequest,
     ReviewVote,
     SearchCriteria,
     UpdatePullRequestInput,
@@ -96,6 +97,12 @@ function stripBranchPrefix(ref: string | undefined): string {
 
 function firstLine(message: string | undefined): string {
     return (message ?? '').split(/\r?\n/, 1)[0] ?? '';
+}
+
+function reviewedAtFromAdoPullRequest(pr: GitPullRequest): Date {
+    // ADO reviewer list payloads do not include per-vote timestamps; closedDate
+    // is the closest stable approximation for historical completed/abandoned PRs.
+    return pr.closedDate ? new Date(pr.closedDate) : pr.creationDate ? new Date(pr.creationDate) : new Date(0);
 }
 
 function mapAdoPullRequest(pr: GitPullRequest, repositoryId: string): PullRequest {
@@ -256,6 +263,15 @@ function dedupeChecks(checks: PullRequestCheck[]): PullRequestCheck[] {
         if (b >= a) byKey.set(key, check);
     }
     return Array.from(byKey.values());
+}
+
+function uniqueChangedFilePaths(entries: Array<{ item?: { path?: string } | null }>): string[] {
+    const paths = new Set<string>();
+    for (const entry of entries) {
+        const filePath = entry.item?.path;
+        if (filePath) paths.add(filePath);
+    }
+    return [...paths];
 }
 
 function mapAdoThread(t: GitPullRequestCommentThread): CommentThread {
@@ -498,6 +514,74 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
         }
 
         return dedupeChecks(out);
+    }
+
+    async getReviewedPullRequests(repositoryId: string, top: number = 50): Promise<ReviewedPullRequest[]> {
+        if (!this.currentUserId) {
+            return [];
+        }
+
+        const logger = getLogger();
+        const effectiveRepo = this.repo ?? repositoryId;
+        logger.info(
+            LogCategory.ADO,
+            `getReviewedPullRequests: repo=${effectiveRepo} project=${this.project ?? '(default)'} top=${top}`,
+        );
+
+        const candidates = await this.service.listReviewedPullRequestCandidates(
+            effectiveRepo,
+            this.currentUserId,
+            this.project,
+            top,
+        );
+
+        const reviews = await Promise.all(candidates.map(async ({ pullRequest }) => {
+            const pullRequestId = pullRequest.pullRequestId ?? 0;
+            return {
+                number: pullRequestId,
+                title: pullRequest.title ?? '',
+                author: mapAdoIdentity(pullRequest.createdBy),
+                filesChanged: await this.getChangedFilesForReviewHistory(effectiveRepo, pullRequestId),
+                labels: (pullRequest.labels ?? []).map((l: { name?: string }) => l.name ?? '').filter(Boolean),
+                reviewedAt: reviewedAtFromAdoPullRequest(pullRequest),
+                targetBranch: stripBranchPrefix(pullRequest.targetRefName),
+                url: resolveWebUrl(pullRequest),
+            };
+        }));
+
+        logger.info(LogCategory.ADO, `getReviewedPullRequests: mapped ${reviews.length} reviewed PR(s) for repo=${effectiveRepo}`);
+        return reviews;
+    }
+
+    private async getChangedFilesForReviewHistory(repositoryId: string, pullRequestId: number): Promise<string[]> {
+        const logger = getLogger();
+        try {
+            const iterations = await this.service.getPullRequestIterations(
+                repositoryId,
+                pullRequestId,
+                this.project,
+            );
+            const latestIteration = [...iterations]
+                .filter(iteration => iteration.id != null)
+                .sort((a, b) => (b.id ?? 0) - (a.id ?? 0))[0];
+            if (!latestIteration?.id) {
+                return [];
+            }
+
+            const changes = await this.service.getPullRequestIterationChanges(
+                repositoryId,
+                pullRequestId,
+                latestIteration.id,
+                this.project,
+            );
+            return uniqueChangedFilePaths(changes.changeEntries ?? []);
+        } catch (err) {
+            logger.warn(
+                LogCategory.ADO,
+                `getReviewedPullRequests: changed-file fetch failed for PR #${pullRequestId}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            return [];
+        }
     }
 
     async getDiff(repositoryId: string, pullRequestId: number | string): Promise<string> {

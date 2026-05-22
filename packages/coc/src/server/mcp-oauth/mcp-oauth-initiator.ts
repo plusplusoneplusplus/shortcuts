@@ -21,7 +21,7 @@
  */
 
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
-import type { CopilotSDKService, MCPServerConfig } from '@plusplusoneplusplus/forge';
+import type { ISDKService, MCPServerConfig } from '@plusplusoneplusplus/forge';
 import type { McpOauthManager } from './mcp-oauth-manager';
 import type { PendingMcpOAuth } from './mcp-oauth-types';
 
@@ -45,7 +45,7 @@ export interface InitiateMcpOAuthOptions {
     /** Working directory passed to the transient SDK session. */
     workingDirectory?: string;
     /** The SDK facade used to spawn the session. */
-    aiService: CopilotSDKService;
+    aiService: McpOauthSdkService;
     /** Manager that records the pending OAuth entry. */
     manager: McpOauthManager;
 }
@@ -70,6 +70,14 @@ interface SessionShape {
     sessionId: string;
     on?: (event: string, handler: (event: unknown) => void) => void;
     destroy?: () => Promise<void>;
+}
+
+interface ClientShape {
+    createSession(options: unknown): Promise<unknown>;
+}
+
+export interface McpOauthSdkService extends ISDKService {
+    createClient(workingDirectory?: string): Promise<ClientShape>;
 }
 
 /**

@@ -134,6 +134,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     const [suggestions, setSuggestions] = useState<PrSuggestion[]>([]);
     const [suggestionsLoading, setSuggestionsLoading] = useState(false);
     const [suggestionsStatus, setSuggestionsStatus] = useState<string | null>(null);
+    const [suggestionsInfo, setSuggestionsInfo] = useState<string | null>(null);
     const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
     const [suggestionsRankedAt, setSuggestionsRankedAt] = useState<string | null>(null);
 
@@ -271,6 +272,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     const handleRefreshSuggestions = useCallback(() => {
         if (suggestionsLoading) return;
         setSuggestionsLoading(true);
+        setSuggestionsInfo(null);
         setSuggestionsError(null);
         setSuggestionsStatus('Fetching review history...');
         const client = getSpaCocClient().pullRequests;
@@ -280,7 +282,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                     setSuggestions([]);
                     setSuggestionsRankedAt(null);
                     setSuggestionsStatus(null);
-                    setSuggestionsError('No past reviewed PRs found yet. Suggestions need review history to learn from.');
+                    setSuggestionsInfo('No past reviewed PRs found yet. Suggestions need review history to learn from.');
                     return null;
                 }
                 setSuggestionsStatus('Ranking open PRs...');
@@ -294,6 +296,7 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
             })
             .catch(err => {
                 setSuggestionsStatus(null);
+                setSuggestionsInfo(null);
                 setSuggestionsError(getSpaCocClientErrorMessage(err, 'Failed to generate PR suggestions.'));
             })
             .finally(() => setSuggestionsLoading(false));
@@ -576,6 +579,12 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
                 {!queueCollapsed && suggestionsEnabled && activeFilter === 'foryou' && suggestionsError && (
                     <div className="border-b border-red-100 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300" data-testid="suggestions-error">
                         {suggestionsError}
+                    </div>
+                )}
+
+                {!queueCollapsed && suggestionsEnabled && activeFilter === 'foryou' && suggestionsInfo && (
+                    <div className="border-b border-yellow-100 bg-yellow-50 px-3 py-2 text-xs text-yellow-800 dark:border-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200" data-testid="suggestions-info">
+                        {suggestionsInfo}
                     </div>
                 )}
 

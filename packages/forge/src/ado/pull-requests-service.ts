@@ -16,6 +16,7 @@ import {
     GitStatusState,
     VersionControlChangeType,
     GitVersionType,
+    PullRequestStatus,
 } from 'azure-devops-node-api/interfaces/GitInterfaces';
 import type { WebApi } from 'azure-devops-node-api';
 import { getLogger, LogCategory } from '../logger';
@@ -24,8 +25,25 @@ export type { GitPullRequest, GitPullRequestSearchCriteria, GitPullRequestCommen
 export type { IdentityRefWithVote };
 export type { GitPullRequestIteration, GitPullRequestIterationChanges, GitPullRequestChange, GitCommitRef };
 export type { GitPullRequestStatus, GitStatus };
-export { GitStatusState, VersionControlChangeType, GitVersionType };
-export { PullRequestStatus } from 'azure-devops-node-api/interfaces/GitInterfaces';
+export { GitStatusState, VersionControlChangeType, GitVersionType, PullRequestStatus };
+
+export interface AdoReviewedPullRequestCandidate {
+    pullRequest: GitPullRequest;
+    reviewer: IdentityRefWithVote;
+}
+
+const MEANINGFUL_REVIEW_VOTES = new Set([10, 5, -10, -5]);
+
+function sameAdoIdentity(left: string | undefined, right: string): boolean {
+    return (left ?? '').toLowerCase() === right.toLowerCase();
+}
+
+function getReviewHistoryTimestamp(pr: GitPullRequest): number {
+    const closedDate = pr.closedDate ? new Date(pr.closedDate).getTime() : Number.NaN;
+    if (Number.isFinite(closedDate)) return closedDate;
+    const createdDate = pr.creationDate ? new Date(pr.creationDate).getTime() : Number.NaN;
+    return Number.isFinite(createdDate) ? createdDate : 0;
+}
 
 /** Error class for pull-request operations. */
 export class AdoPullRequestError extends Error {
@@ -234,6 +252,48 @@ export class AdoPullRequestsService {
             logger.error(LogCategory.ADO, `getReviewers failed: repo=${repositoryId} PR #${pullRequestId}: ${errMsg}`);
             throw new AdoPullRequestError(`Failed to get reviewers for PR ${pullRequestId}`, err);
         }
+    }
+
+    async listReviewedPullRequestCandidates(
+        repositoryId: string,
+        currentUserId: string | undefined,
+        project?: string,
+        top: number = 50,
+    ): Promise<AdoReviewedPullRequestCandidate[]> {
+        if (!currentUserId || top <= 0) {
+            return [];
+        }
+
+        const candidateTop = Math.min(Math.max(top * 4, top), 200);
+        const statuses = [PullRequestStatus.Completed, PullRequestStatus.Abandoned];
+        const candidates = (
+            await Promise.all(statuses.map(status => this.listPullRequests(
+                repositoryId,
+                { status, reviewerId: currentUserId },
+                project,
+                candidateTop,
+            )))
+        ).flat();
+
+        const byId = new Map<number, AdoReviewedPullRequestCandidate>();
+        for (const pullRequest of candidates) {
+            const pullRequestId = pullRequest.pullRequestId;
+            if (pullRequestId == null || byId.has(pullRequestId)) {
+                continue;
+            }
+            const reviewer = (pullRequest.reviewers ?? []).find(candidate =>
+                sameAdoIdentity(candidate.id, currentUserId)
+                && MEANINGFUL_REVIEW_VOTES.has(candidate.vote ?? 0),
+            );
+            if (!reviewer) {
+                continue;
+            }
+            byId.set(pullRequestId, { pullRequest, reviewer });
+        }
+
+        return [...byId.values()]
+            .sort((a, b) => getReviewHistoryTimestamp(b.pullRequest) - getReviewHistoryTimestamp(a.pullRequest))
+            .slice(0, top);
     }
 
     // ── iterations & file content ───────────────────────────
