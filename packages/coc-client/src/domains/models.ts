@@ -1,4 +1,4 @@
-import type { EnabledModelsResponse, ModelInfo } from '../contracts';
+import type { EnabledModelsResponse, ModelInfo, ReasoningEffortsResponse } from '../contracts';
 import type { RequestAdapter } from '../types';
 
 export class ModelsClient {
@@ -16,6 +16,17 @@ export class ModelsClient {
     return this.transport.request<EnabledModelsResponse>('/models/enabled', {
       method: 'PUT',
       body: { enabledModels: [...enabledModels] },
+    });
+  }
+
+  getReasoningEfforts(): Promise<ReasoningEffortsResponse> {
+    return this.transport.request<ReasoningEffortsResponse>('/models/reasoning-efforts');
+  }
+
+  setReasoningEffort(modelId: string, effort: string): Promise<ReasoningEffortsResponse> {
+    return this.transport.request<ReasoningEffortsResponse>('/models/reasoning-efforts', {
+      method: 'PUT',
+      body: { modelId, effort },
     });
   }
 }

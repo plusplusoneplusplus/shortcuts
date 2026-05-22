@@ -50,6 +50,7 @@ import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from '
 import type { BroadcastWorkItemFn } from '../llm-tools/create-work-item-tool';
 import { BaseExecutor } from './base-executor';
 import { resolveDefaultModel } from '../preferences-handler';
+import { loadConfigFile } from '../../config';
 import {
     assertNoAskUserConflict,
     buildBoundedMemoryAddon,
@@ -496,9 +497,16 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 effectiveModel = resolveDefaultModel(this.dataDir, payload.workspaceId, defaultModelMode);
             }
 
+            // Resolve reasoning effort: explicit task config > persisted per-model preference > SDK default
+            let requestedEffort: Parameters<typeof resolveReasoningSelection>[0]['requestedEffort'] = task.config.reasoningEffort;
+            if (!requestedEffort && effectiveModel) {
+                const cfg = loadConfigFile();
+                const persisted = cfg?.models?.reasoningEfforts?.[effectiveModel];
+                if (persisted) requestedEffort = persisted as NonNullable<typeof requestedEffort>;
+            }
             const reasoningSelection = resolveReasoningSelection({
                 modelId: effectiveModel,
-                requestedEffort: task.config.reasoningEffort,
+                requestedEffort,
                 model: await this.getModelMetadataForReasoning(effectiveModel),
             });
 

@@ -131,6 +131,63 @@ describe('validateAndParseTask – chat kind injection (existing behavior)', () 
 });
 
 // ============================================================================
+// payload.model → config.model promotion
+// ============================================================================
+
+describe('validateAndParseTask – payload.model promotion to config.model', () => {
+    it('promotes payload.model to config.model when config.model is absent', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello', model: 'claude-sonnet-4.6' },
+        });
+
+        expect(result.valid).toBe(true);
+        expect(result.input!.config.model).toBe('claude-sonnet-4.6');
+    });
+
+    it('config.model takes precedence over payload.model', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello', model: 'claude-sonnet-4.6' },
+            config: { model: 'gpt-4.1' },
+        });
+
+        expect(result.valid).toBe(true);
+        expect(result.input!.config.model).toBe('gpt-4.1');
+    });
+
+    it('config.model is undefined when neither config nor payload supply a model', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello' },
+        });
+
+        expect(result.valid).toBe(true);
+        expect(result.input!.config.model).toBeUndefined();
+    });
+
+    it('ignores non-string payload.model values', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello', model: 42 },
+        });
+
+        expect(result.valid).toBe(true);
+        expect(result.input!.config.model).toBeUndefined();
+    });
+
+    it('works for non-chat task types with payload.model', () => {
+        const result = validateAndParseTask({
+            type: 'run-script',
+            payload: { script: 'echo hi', workingDirectory: '/ws', model: 'claude-sonnet-4.6' },
+        });
+
+        expect(result.valid).toBe(true);
+        expect(result.input!.config.model).toBe('claude-sonnet-4.6');
+    });
+});
+
+// ============================================================================
 // Dispatch correctness end-to-end guard check
 // ============================================================================
 

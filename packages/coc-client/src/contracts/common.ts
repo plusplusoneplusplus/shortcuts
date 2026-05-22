@@ -20,9 +20,17 @@ export interface ModelInfo {
   label?: string;
   enabled?: boolean;
   capabilities?: JsonObject;
+  /** Reasoning efforts the model accepts (e.g. ['low','medium','high','xhigh']). Empty/undefined when unknown. */
+  supportedReasoningEfforts?: string[];
+  /** Default reasoning effort the model picks when none is requested. */
+  defaultReasoningEffort?: string;
   [key: string]: unknown;
 }
 
 export interface EnabledModelsResponse {
   enabledModels: string[];
+}
+
+export interface ReasoningEffortsResponse {
+  reasoningEfforts: Record<string, string>;
 }

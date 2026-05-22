@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
     models: {
         list: vi.fn(),
         setEnabled: vi.fn(),
+        getReasoningEfforts: vi.fn(),
+        setReasoningEffort: vi.fn(),
     },
 }));
 
@@ -61,6 +63,8 @@ describe('useModels', () => {
                 supports: { vision: false, reasoningEffort: false },
                 limits: { max_context_window_tokens: 8192, max_prompt_tokens: undefined },
             },
+            supportedReasoningEfforts: [],
+            defaultReasoningEffort: undefined,
         });
     });
 
@@ -124,10 +128,124 @@ describe('useModels', () => {
         expect(result.current.models[0].capabilities?.supports?.vision).toBe(true);
         expect(result.current.models[0].capabilities?.supports?.reasoningEffort).toBe(true);
     });
+
+    it('exposes supportedReasoningEfforts from raw CAPI capability metadata', async () => {
+        mocks.models.list.mockResolvedValue([{
+            id: 'reasoning-model',
+            name: 'Reasoning',
+            capabilities: {
+                supports: {
+                    vision: false,
+                    reasoningEffort: true,
+                    reasoning_effort: ['low', 'medium', 'high'],
+                },
+                limits: { max_context_window_tokens: 200000 },
+            },
+            defaultReasoningEffort: 'high',
+        }]);
+        const { result } = renderHook(() => useModels());
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.models[0].supportedReasoningEfforts).toEqual(['low', 'medium', 'high']);
+        expect(result.current.models[0].defaultReasoningEffort).toBe('high');
+    });
+
+    it('falls back to top-level supportedReasoningEfforts when raw metadata is absent', async () => {
+        mocks.models.list.mockResolvedValue([{
+            id: 'reasoning-model',
+            name: 'Reasoning',
+            capabilities: {
+                supports: { vision: false, reasoningEffort: true },
+                limits: { max_context_window_tokens: 200000 },
+            },
+            supportedReasoningEfforts: ['medium', 'high', 'xhigh'],
+            defaultReasoningEffort: 'medium',
+        }]);
+        const { result } = renderHook(() => useModels());
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.models[0].supportedReasoningEfforts).toEqual(['medium', 'high', 'xhigh']);
+        expect(result.current.models[0].defaultReasoningEffort).toBe('medium');
+    });
+
+    it('canonicalizes reasoning effort order, dedupes, and ignores unknown values', async () => {
+        mocks.models.list.mockResolvedValue([{
+            id: 'noisy-model',
+            name: 'Noisy',
+            capabilities: {
+                supports: {
+                    vision: false,
+                    reasoningEffort: true,
+                    reasoning_effort: ['high', 'low', 'bogus', 'medium', 'high', 42],
+                },
+                limits: { max_context_window_tokens: 200000 },
+            },
+        }]);
+        const { result } = renderHook(() => useModels());
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.models[0].supportedReasoningEfforts).toEqual(['low', 'medium', 'high']);
+    });
+
+    it('infers reasoningEffort=true when the supported list is non-empty', async () => {
+        mocks.models.list.mockResolvedValue([{
+            id: 'implicit-reasoning',
+            name: 'Implicit',
+            capabilities: {
+                supports: {
+                    vision: false,
+                    reasoningEffort: false,
+                    reasoning_effort: ['low', 'high'],
+                },
+                limits: { max_context_window_tokens: 128000 },
+            },
+        }]);
+        const { result } = renderHook(() => useModels());
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.models[0].capabilities?.supports?.reasoningEffort).toBe(true);
+        expect(result.current.models[0].supportedReasoningEfforts).toEqual(['low', 'high']);
+    });
+
+    it('drops defaultReasoningEffort when it is not in the supported list', async () => {
+        mocks.models.list.mockResolvedValue([{
+            id: 'misconfigured',
+            name: 'Misconfigured',
+            capabilities: {
+                supports: {
+                    vision: false,
+                    reasoningEffort: true,
+                    reasoning_effort: ['low', 'medium'],
+                },
+                limits: { max_context_window_tokens: 128000 },
+            },
+            defaultReasoningEffort: 'xhigh',
+        }]);
+        const { result } = renderHook(() => useModels());
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.models[0].defaultReasoningEffort).toBeUndefined();
+    });
+
+    it('returns empty supportedReasoningEfforts when no reasoning metadata is present', async () => {
+        mocks.models.list.mockResolvedValue([{
+            id: 'plain',
+            name: 'Plain',
+            capabilities: {
+                supports: { vision: false, reasoningEffort: false },
+                limits: { max_context_window_tokens: 8192 },
+            },
+        }]);
+        const { result } = renderHook(() => useModels());
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.models[0].supportedReasoningEfforts).toEqual([]);
+        expect(result.current.models[0].defaultReasoningEffort).toBeUndefined();
+    });
 });
 
 describe('useModelConfig', () => {
-    beforeEach(() => { mocks.models.list.mockReset(); mocks.models.setEnabled.mockReset(); });
+    beforeEach(() => {
+        mocks.models.list.mockReset();
+        mocks.models.setEnabled.mockReset();
+        mocks.models.getReasoningEfforts.mockReset();
+        mocks.models.setReasoningEffort.mockReset();
+        mocks.models.getReasoningEfforts.mockResolvedValue({ reasoningEfforts: {} });
+    });
     afterEach(() => { vi.clearAllMocks(); });
 
     it('toggleModel calls models.setEnabled with PUT semantics', async () => {
@@ -147,5 +265,72 @@ describe('useModelConfig', () => {
         expect(mocks.models.setEnabled).toHaveBeenCalledWith(
             expect.arrayContaining(['a', 'b'])
         );
+    });
+
+    it('loads persisted reasoning efforts on mount', async () => {
+        mocks.models.list.mockResolvedValue([]);
+        mocks.models.getReasoningEfforts.mockResolvedValue({ reasoningEfforts: { 'model-a': 'high' } });
+
+        const { result } = renderHook(() => useModelConfig());
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        await waitFor(() => expect(result.current.reasoningEfforts).toEqual({ 'model-a': 'high' }));
+    });
+
+    it('setReasoningEffort calls models.setReasoningEffort and updates local state', async () => {
+        mocks.models.list.mockResolvedValue([
+            { id: 'model-a', name: 'A', enabled: true },
+        ]);
+        mocks.models.setReasoningEffort.mockResolvedValue({ reasoningEfforts: { 'model-a': 'xhigh' } });
+
+        const { result } = renderHook(() => useModelConfig());
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        await act(async () => {
+            await result.current.setReasoningEffort('model-a', 'xhigh');
+        });
+
+        expect(mocks.models.setReasoningEffort).toHaveBeenCalledWith('model-a', 'xhigh');
+        expect(result.current.reasoningEfforts['model-a']).toBe('xhigh');
+    });
+
+    it('setReasoningEffort with empty string removes the override', async () => {
+        mocks.models.list.mockResolvedValue([]);
+        mocks.models.getReasoningEfforts.mockResolvedValue({ reasoningEfforts: { 'model-a': 'high' } });
+        mocks.models.setReasoningEffort.mockResolvedValue({ reasoningEfforts: {} });
+
+        const { result } = renderHook(() => useModelConfig());
+        await waitFor(() => expect(result.current.reasoningEfforts).toEqual({ 'model-a': 'high' }));
+
+        await act(async () => {
+            await result.current.setReasoningEffort('model-a', '');
+        });
+
+        expect(mocks.models.setReasoningEffort).toHaveBeenCalledWith('model-a', '');
+        expect(result.current.reasoningEfforts['model-a']).toBeUndefined();
+    });
+
+    it('reverts optimistic update on setReasoningEffort failure', async () => {
+        mocks.models.list.mockResolvedValue([]);
+        mocks.models.getReasoningEfforts.mockResolvedValue({ reasoningEfforts: {} });
+        mocks.models.setReasoningEffort.mockRejectedValue(new Error('fail'));
+
+        const { result } = renderHook(() => useModelConfig());
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        await act(async () => {
+            await result.current.setReasoningEffort('model-a', 'high');
+        });
+
+        // Should revert to empty since that was the state before the call
+        expect(result.current.reasoningEfforts['model-a']).toBeUndefined();
+    });
+
+    it('returns empty reasoningEfforts when getReasoningEfforts fails', async () => {
+        mocks.models.list.mockResolvedValue([]);
+        mocks.models.getReasoningEfforts.mockRejectedValue(new Error('fail'));
+
+        const { result } = renderHook(() => useModelConfig());
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.reasoningEfforts).toEqual({});
     });
 });

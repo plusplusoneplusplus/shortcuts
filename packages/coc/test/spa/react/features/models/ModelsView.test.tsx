@@ -24,6 +24,8 @@ function makeModels() {
                 supports: { vision: true, reasoningEffort: true },
                 limits: { max_context_window_tokens: 200000 },
             },
+            supportedReasoningEfforts: ['low', 'medium', 'high'],
+            defaultReasoningEffort: 'medium',
         },
         {
             id: 'claude-haiku-4.5',
@@ -34,6 +36,7 @@ function makeModels() {
                 supports: { vision: true, reasoningEffort: false },
                 limits: { max_context_window_tokens: 200000 },
             },
+            supportedReasoningEfforts: [],
         },
         {
             id: 'gpt-5.1',
@@ -44,6 +47,7 @@ function makeModels() {
                 supports: { vision: false, reasoningEffort: false },
                 limits: { max_context_window_tokens: 128000 },
             },
+            supportedReasoningEfforts: [],
         },
     ];
 }
@@ -56,6 +60,8 @@ function makeDefaultReturn(overrides: Partial<ReturnType<typeof mockUseModelConf
         saving: false,
         reload: vi.fn(),
         toggleModel: vi.fn(),
+        reasoningEfforts: {} as Record<string, string>,
+        setReasoningEffort: vi.fn(),
         ...overrides,
     };
 }
@@ -65,14 +71,14 @@ describe('ModelsView', () => {
     afterEach(() => { vi.clearAllMocks(); });
 
     it('shows loading state', () => {
-        mockUseModelConfig.mockReturnValue({ models: [], loading: true, error: null, saving: false, reload: vi.fn(), toggleModel: vi.fn() });
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn({ models: [], loading: true }));
         render(<ModelsView />);
         expect(screen.getByTestId('models-loading')).toBeTruthy();
     });
 
     it('shows error state with retry button', () => {
         const reload = vi.fn();
-        mockUseModelConfig.mockReturnValue({ models: [], loading: false, error: 'HTTP 500', saving: false, reload, toggleModel: vi.fn() });
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn({ models: [], loading: false, error: 'HTTP 500', reload }));
         render(<ModelsView />);
         expect(screen.getByTestId('models-error')).toBeTruthy();
         fireEvent.click(screen.getByTestId('models-retry'));
@@ -133,6 +139,53 @@ describe('ModelsView', () => {
         const reasoningBadges = screen.getAllByTestId('badge-reasoning');
         expect(visionBadges).toHaveLength(2); // sonnet + haiku
         expect(reasoningBadges).toHaveLength(1); // sonnet only
+    });
+
+    it('shows supported reasoning effort badges for models that expose them', () => {
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn());
+        render(<ModelsView />);
+        const effortContainers = screen.getAllByTestId('reasoning-efforts');
+        // Only sonnet has supported efforts
+        expect(effortContainers).toHaveLength(1);
+        expect(screen.getByTestId('effort-low')).toBeTruthy();
+        expect(screen.getByTestId('effort-medium')).toBeTruthy();
+        expect(screen.getByTestId('effort-high')).toBeTruthy();
+    });
+
+    it('marks the default reasoning effort with data-default="true"', () => {
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn());
+        render(<ModelsView />);
+        expect(screen.getByTestId('effort-medium').getAttribute('data-default')).toBe('true');
+        expect(screen.getByTestId('effort-low').getAttribute('data-default')).toBe('false');
+        expect(screen.getByTestId('effort-high').getAttribute('data-default')).toBe('false');
+    });
+
+    it('renders no reasoning-efforts container when the supported list is empty', () => {
+        const models = makeModels();
+        // Strip reasoning info from all models
+        for (const m of models) {
+            m.supportedReasoningEfforts = [];
+            m.defaultReasoningEffort = undefined as unknown as string;
+            m.capabilities.supports.reasoningEffort = false;
+        }
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn({ models }));
+        render(<ModelsView />);
+        expect(screen.queryByTestId('reasoning-efforts')).toBeNull();
+    });
+
+    it('renders all four known reasoning efforts in canonical order', () => {
+        const models = makeModels();
+        models[0].supportedReasoningEfforts = ['xhigh', 'low', 'high', 'medium'];
+        models[0].defaultReasoningEffort = 'high';
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn({ models }));
+        render(<ModelsView />);
+        const efforts = screen.getAllByTestId(/^effort-/);
+        // Order is the order the model exposes them (which is preserved by the hook,
+        // but here we are passing them through ModelsView directly so the order
+        // is whatever the test fixture provides).
+        const ids = efforts.map(el => el.getAttribute('data-testid'));
+        expect(ids).toEqual(['effort-xhigh', 'effort-low', 'effort-high', 'effort-medium']);
+        expect(screen.getByTestId('effort-high').getAttribute('data-default')).toBe('true');
     });
 
     it('copies model id to clipboard on card click', async () => {
@@ -196,5 +249,64 @@ describe('ModelsView', () => {
         render(<ModelsView />);
         fireEvent.click(screen.getByTestId('models-refresh-btn'));
         expect(reload).toHaveBeenCalled();
+    });
+
+    it('highlights the default effort as active when no persisted override', () => {
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn());
+        render(<ModelsView />);
+        expect(screen.getByTestId('effort-medium').getAttribute('data-active')).toBe('true');
+        expect(screen.getByTestId('effort-low').getAttribute('data-active')).toBe('false');
+        expect(screen.getByTestId('effort-high').getAttribute('data-active')).toBe('false');
+    });
+
+    it('highlights persisted effort override instead of default', () => {
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn({
+            reasoningEfforts: { 'claude-sonnet-4.6': 'high' },
+        }));
+        render(<ModelsView />);
+        expect(screen.getByTestId('effort-high').getAttribute('data-active')).toBe('true');
+        expect(screen.getByTestId('effort-medium').getAttribute('data-active')).toBe('false');
+        expect(screen.getByTestId('effort-low').getAttribute('data-active')).toBe('false');
+    });
+
+    it('shows override indicator when effort is persisted', () => {
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn({
+            reasoningEfforts: { 'claude-sonnet-4.6': 'high' },
+        }));
+        render(<ModelsView />);
+        expect(screen.getByTestId('effort-override-indicator')).toBeTruthy();
+    });
+
+    it('does not show override indicator when no effort is persisted', () => {
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn());
+        render(<ModelsView />);
+        expect(screen.queryByTestId('effort-override-indicator')).toBeNull();
+    });
+
+    it('calls setReasoningEffort when an effort badge is clicked', () => {
+        const setReasoningEffort = vi.fn();
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn({ setReasoningEffort }));
+        render(<ModelsView />);
+        fireEvent.click(screen.getByTestId('effort-high'));
+        expect(setReasoningEffort).toHaveBeenCalledWith('claude-sonnet-4.6', 'high');
+    });
+
+    it('calls setReasoningEffort with empty string to reset when clicking already-selected effort', () => {
+        const setReasoningEffort = vi.fn();
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn({
+            setReasoningEffort,
+            reasoningEfforts: { 'claude-sonnet-4.6': 'high' },
+        }));
+        render(<ModelsView />);
+        fireEvent.click(screen.getByTestId('effort-high'));
+        expect(setReasoningEffort).toHaveBeenCalledWith('claude-sonnet-4.6', '');
+    });
+
+    it('does not call setReasoningEffort when clicking the default effort with no override', () => {
+        const setReasoningEffort = vi.fn();
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn({ setReasoningEffort }));
+        render(<ModelsView />);
+        fireEvent.click(screen.getByTestId('effort-medium'));
+        expect(setReasoningEffort).not.toHaveBeenCalled();
     });
 });

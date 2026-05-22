@@ -13,7 +13,15 @@ function fmt(n: number): string {
     return String(n);
 }
 
-function ModelCard({ model, onToggle, saving }: { model: ModelInfo; onToggle: (id: string, enabled: boolean) => void; saving: boolean }) {
+interface ModelCardProps {
+    model: ModelInfo;
+    onToggle: (id: string, enabled: boolean) => void;
+    saving: boolean;
+    selectedEffort?: string;
+    onSelectEffort: (modelId: string, effort: string) => void;
+}
+
+function ModelCard({ model, onToggle, saving, selectedEffort, onSelectEffort }: ModelCardProps) {
     const [copied, setCopied] = useState(false);
 
     const handleClick = () => {
@@ -34,6 +42,10 @@ function ModelCard({ model, onToggle, saving }: { model: ModelInfo; onToggle: (i
     const vision = model.capabilities?.supports?.vision;
     const reasoning = model.capabilities?.supports?.reasoningEffort;
     const ctx = model.capabilities?.limits?.max_context_window_tokens ?? model.tokenLimit;
+    const supportedEfforts = model.supportedReasoningEfforts ?? [];
+    const defaultEffort = model.defaultReasoningEffort;
+    // The active effort is the user's persisted override, falling back to the model's default
+    const activeEffort = selectedEffort ?? defaultEffort;
 
     const borderClass = model.enabled
         ? 'border-[#4caf50] dark:border-[#388e3c]'
@@ -79,12 +91,64 @@ function ModelCard({ model, onToggle, saving }: { model: ModelInfo; onToggle: (i
                 {vision && <span className="text-xs bg-[#e8f5e9] dark:bg-[#1b3a26] text-[#2e7d32] dark:text-[#81c784] px-1.5 py-0.5 rounded" data-testid="badge-vision">👁 Vision</span>}
                 {reasoning && <span className="text-xs bg-[#e3f2fd] dark:bg-[#1a2e45] text-[#1565c0] dark:text-[#64b5f6] px-1.5 py-0.5 rounded" data-testid="badge-reasoning">🧠 Reasoning</span>}
             </div>
+            {supportedEfforts.length > 0 && (
+                <div
+                    className="flex gap-1 mt-1.5 flex-wrap items-center"
+                    data-testid="reasoning-efforts"
+                >
+                    <span className="text-xs text-[#666] dark:text-[#999]">Effort:</span>
+                    {supportedEfforts.map(effort => {
+                        const isActive = effort === activeEffort;
+                        const isDefault = effort === defaultEffort;
+                        const badgeClass = isActive
+                            ? 'bg-[#1565c0] dark:bg-[#1976d2] text-white'
+                            : 'bg-[#e3f2fd] dark:bg-[#1a2e45] text-[#1565c0] dark:text-[#64b5f6]';
+                        const handleEffortClick = (e: React.MouseEvent) => {
+                            e.stopPropagation();
+                            if (effort === defaultEffort && !selectedEffort) return;
+                            if (effort === selectedEffort) {
+                                // Clicking the already-selected effort resets to default
+                                onSelectEffort(model.id, '');
+                            } else {
+                                onSelectEffort(model.id, effort);
+                            }
+                        };
+                        let title = effort;
+                        if (isDefault) title += ' (default)';
+                        if (selectedEffort === effort) title += ' (selected — click to reset)';
+                        return (
+                            <span
+                                key={effort}
+                                role="button"
+                                tabIndex={0}
+                                className={`text-[10px] px-1.5 py-0.5 rounded font-mono cursor-pointer hover:opacity-80 transition-opacity ${badgeClass}`}
+                                data-testid={`effort-${effort}`}
+                                data-active={isActive ? 'true' : 'false'}
+                                data-default={isDefault ? 'true' : 'false'}
+                                title={title}
+                                onClick={handleEffortClick}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleEffortClick(e as unknown as React.MouseEvent); }}
+                            >
+                                {effort}{isActive ? '★' : ''}
+                            </span>
+                        );
+                    })}
+                    {selectedEffort && (
+                        <span
+                            className="text-[10px] text-[#888] italic ml-0.5"
+                            data-testid="effort-override-indicator"
+                        >
+                            (custom)
+                        </span>
+                    )}
+                </div>
+            )}
         </button>
     );
 }
 
 export function ModelsView() {
-    const { models, loading, error, saving, reload, toggleModel } = useModelConfig();
+    const { models, loading, error, saving, reload, toggleModel, reasoningEfforts, setReasoningEffort } = useModelConfig();
     const [search, setSearch] = useState('');
     const [capFilter, setCapFilter] = useState<CapFilter>('all');
 
@@ -159,7 +223,16 @@ export function ModelsView() {
                 </div>
             ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" data-testid="models-grid">
-                    {filtered.map(m => <ModelCard key={m.id} model={m} onToggle={toggleModel} saving={saving} />)}
+                    {filtered.map(m => (
+                        <ModelCard
+                            key={m.id}
+                            model={m}
+                            onToggle={toggleModel}
+                            saving={saving}
+                            selectedEffort={reasoningEfforts[m.id]}
+                            onSelectEffort={setReasoningEffort}
+                        />
+                    ))}
                 </div>
             )}
         </div>

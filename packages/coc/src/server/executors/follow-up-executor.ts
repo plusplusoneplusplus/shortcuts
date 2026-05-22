@@ -329,8 +329,17 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 const { resolveDefaultModel } = await import('../preferences-handler');
                 reasoningModel = resolveDefaultModel(this.dataDir, wsId, 'followUp');
             }
+            // Resolve reasoning effort: persisted per-model preference > SDK default
+            let requestedEffort: Parameters<typeof resolveReasoningSelection>[0]['requestedEffort'];
+            if (reasoningModel) {
+                const { loadConfigFile } = await import('../../config');
+                const cfg = loadConfigFile();
+                const persisted = cfg?.models?.reasoningEfforts?.[reasoningModel];
+                if (persisted) requestedEffort = persisted as typeof requestedEffort;
+            }
             const reasoningSelection = resolveReasoningSelection({
                 modelId: reasoningModel,
+                requestedEffort,
                 model: await this.getModelMetadataForReasoning(reasoningModel),
             });
 

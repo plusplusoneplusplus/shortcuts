@@ -77,6 +77,8 @@ export interface CLIConfig {
     /** Models whitelist configuration */
     models?: {
         enabled?: string[];
+        /** Per-model reasoning effort overrides (modelId → effort). */
+        reasoningEfforts?: Record<string, string>;
     };
     /** Logging configuration */
     logging?: LoggingConfig;
@@ -248,6 +250,8 @@ export interface ResolvedCLIConfig {
     /** Models whitelist — list of enabled model IDs */
     models?: {
         enabled?: string[];
+        /** Per-model reasoning effort overrides (modelId → effort). */
+        reasoningEfforts?: Record<string, string>;
     };
     /** Logging config passed through from file (not fully resolved — use resolveLoggingConfig) */
     logging?: LoggingConfig;

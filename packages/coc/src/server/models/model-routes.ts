@@ -105,4 +105,57 @@ export function registerModelRoutes(routes: Route[], store: ModelStore, options?
             });
         },
     });
+
+    // -- GET /api/models/reasoning-efforts ------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: '/api/models/reasoning-efforts',
+        handler: (_req: http.IncomingMessage, res: http.ServerResponse) => {
+            try {
+                const cfg = options.loadConfigFile(options.configPath);
+                sendJson(res, { reasoningEfforts: cfg?.models?.reasoningEfforts ?? {} });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : 'Failed to retrieve reasoning efforts');
+            }
+        },
+    });
+
+    // -- PUT /api/models/reasoning-efforts ------------------------------------
+    routes.push({
+        method: 'PUT',
+        pattern: '/api/models/reasoning-efforts',
+        handler: (req: http.IncomingMessage, res: http.ServerResponse) => {
+            let body = '';
+            req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+            req.on('end', () => {
+                try {
+                    const parsed = JSON.parse(body || '{}');
+                    if (typeof parsed.modelId !== 'string' || !parsed.modelId) {
+                        res.writeHead(400);
+                        res.end(JSON.stringify({ error: 'modelId is required' }));
+                        return;
+                    }
+                    if (typeof parsed.effort !== 'string') {
+                        res.writeHead(400);
+                        res.end(JSON.stringify({ error: 'effort must be a string (or empty string to clear)' }));
+                        return;
+                    }
+                    const { modelId, effort } = parsed as { modelId: string; effort: string };
+                    const filePath = options.getConfigFilePath();
+                    const cfg = options.loadConfigFile(options.configPath) ?? {};
+                    const existing = { ...(cfg.models?.reasoningEfforts ?? {}) };
+                    if (effort === '') {
+                        delete existing[modelId];
+                    } else {
+                        existing[modelId] = effort;
+                    }
+                    const updated: CLIConfig = { ...cfg, models: { ...cfg.models, reasoningEfforts: existing } };
+                    options.writeConfigFile(filePath, updated);
+                    sendJson(res, { reasoningEfforts: existing });
+                } catch (err) {
+                    send500(res, err instanceof Error ? err.message : 'Failed to update reasoning effort');
+                }
+            });
+        },
+    });
 }
