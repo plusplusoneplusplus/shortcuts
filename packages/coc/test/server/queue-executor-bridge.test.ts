@@ -2453,7 +2453,14 @@ describe('CLITaskExecutor', () => {
                 priority: 'high',
                 model: undefined,
                 mode: 'ask',
+                workspaceId: undefined,
+                provider: 'copilot',
                 workflowName: undefined,
+                planFilePath: undefined,
+                workItemId: undefined,
+                notePath: undefined,
+                noteTitle: undefined,
+                ralph: undefined,
             });
         });
 
