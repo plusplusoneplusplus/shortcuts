@@ -68,8 +68,10 @@ async function postTeamsConfig(patch: { botName?: string; channelId?: string; en
 }
 
 async function postTeamsReconnect(): Promise<void> {
-    const res = await fetch(getRawApiBase() + '/container/messaging/teams/reconnect', {
+    const res = await fetch(getRawApiBase() + '/container/messaging/teams/auth/login', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }

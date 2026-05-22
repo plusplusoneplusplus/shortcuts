@@ -2,12 +2,14 @@
  * TeamsBridge — glue between WS relay / agent proxy and TeamsBot.
  *
  * Only imported via dynamic import when messaging.teams.enabled is true.
- * Uses the Teams MCP server for all communication (send, poll, resolve).
- * On startup, resolves team/channel names to IDs via MCP tools.
+ * Uses Graph API (default) or MCP server for communication.
+ * On startup, resolves team/channel names to IDs.
+ * Auth tokens are acquired via browser OAuth (acquireTokenViaBrowser) and
+ * cached/refreshed via acquireMcpOAuthToken.
  */
 
 import type { InboundTeamsMessage, BotStatus } from '@plusplusoneplusplus/teams-bot';
-import { TeamsBot, GraphClient, McpClient, acquireTokenViaAzCli, acquireMcpOAuthToken } from '@plusplusoneplusplus/teams-bot';
+import { TeamsBot, GraphClient, McpClient, acquireMcpOAuthToken } from '@plusplusoneplusplus/teams-bot';
 import type { WebSocketRelay, WSRelayMessage } from '../proxy/ws-relay';
 import type { AgentStore } from '../store/agent-store';
 import type { TunnelBridge } from '../proxy/tunnel-bridge';
@@ -50,7 +52,7 @@ export class TeamsBridge {
         await this.resolveTeamAndChannel();
 
         // Ensure we have a token even if resolution was skipped (IDs pre-configured)
-        if (!this._azToken && this.opts.config.mode === 'mcp') {
+        if (!this._azToken) {
             try {
                 this._azToken = await acquireMcpOAuthToken(this.opts.config.mcpServerUrl);
             } catch { /* will be handled by bot start */ }
@@ -100,15 +102,14 @@ export class TeamsBridge {
         this.store = null;
     }
 
-    /** Refresh MCP OAuth token (called by bot on 401). */
+    /** Refresh OAuth token (called by bot on 401). */
     private async refreshMcpToken(): Promise<string | null> {
-        if (this.opts.config.mode !== 'mcp') return null;
         try {
             this._azToken = await acquireMcpOAuthToken(this.opts.config.mcpServerUrl);
-            console.log('[teams-bridge] MCP token refreshed');
+            console.log('[teams-bridge] OAuth token refreshed');
             return this._azToken;
         } catch (err: any) {
-            console.error(`[teams-bridge] MCP token refresh failed: ${err.message}`);
+            console.error(`[teams-bridge] OAuth token refresh failed: ${err.message}`);
             return null;
         }
     }
@@ -150,13 +151,9 @@ export class TeamsBridge {
     async reconnect(): Promise<void> {
         await this.bot?.stop();
 
-        // Re-acquire token from cached MCP OAuth tokens (refreshes if needed)
+        // Re-acquire token from cached OAuth tokens (refreshes if needed)
         try {
-            if (this.opts.config.mode === 'mcp') {
-                this._azToken = await acquireMcpOAuthToken(this.opts.config.mcpServerUrl);
-            } else {
-                this._azToken = await acquireTokenViaAzCli();
-            }
+            this._azToken = await acquireMcpOAuthToken(this.opts.config.mcpServerUrl);
         } catch (err: any) {
             console.error(`[teams-bridge] Failed to acquire token on reconnect: ${err.message}`);
         }
@@ -277,17 +274,17 @@ export class TeamsBridge {
         }
     }
 
-    /** Resolve team/channel IDs using Graph API (legacy). */
+    /** Resolve team/channel IDs using Graph API. */
     private async resolveViaGraph(teamName?: string, channelName?: string): Promise<void> {
 
         try {
-            this._azToken = await acquireTokenViaAzCli();
+            this._azToken = await acquireMcpOAuthToken(this.opts.config.mcpServerUrl);
         } catch (err: any) {
-            console.error(`[teams-bridge] Failed to acquire az token: ${err.message}`);
+            console.error(`[teams-bridge] Failed to acquire token for Graph resolution: ${err.message}`);
             return;
         }
 
-        const graph = new GraphClient({ bearerToken: this._azToken });
+        const graph = new GraphClient({ bearerToken: this._azToken! });
 
         try {
             if (teamName && !this.opts.config.teamId) {

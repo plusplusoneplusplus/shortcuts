@@ -407,7 +407,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                             const resolvedTeamsConfig = {
                                 ...(config.messaging?.teams ?? {}),
                                 enabled: true,
-                                mode: (config.messaging?.teams?.mode ?? 'mcp') as 'graph' | 'mcp',
+                                mode: (config.messaging?.teams?.mode ?? 'graph') as 'graph' | 'mcp',
                                 mcpServerUrl,
                                 botName: config.messaging?.teams?.botName ?? 'CoC',
                                 pollIntervalMs: config.messaging?.teams?.pollIntervalMs ?? 3000,
