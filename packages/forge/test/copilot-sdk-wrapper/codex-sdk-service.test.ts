@@ -192,9 +192,44 @@ describe('CodexSDKService — SDK mocked', () => {
         expect(result.sessionId).toBeTruthy();
     });
 
-    it('sendMessage with explicit sessionId includes it in result', async () => {
-        const result = await svc.sendMessage({ prompt: 'test', sessionId: 'my-session' });
-        expect(result.sessionId).toBe('my-session');
+    it('sendMessage returns thread.id as sessionId (not a synthetic id)', async () => {
+        const result = await svc.sendMessage({ prompt: 'test' });
+        // thread IDs from the mock are of the form "thread-N"
+        expect(result.sessionId).toMatch(/^thread-\d+$/);
+    });
+
+    it('sendMessage with explicit sessionId resumes the thread and returns that threadId', async () => {
+        // First call to get a thread ID
+        const first = await svc.sendMessage({ prompt: 'first' });
+        const threadId = first.sessionId!;
+        // Follow-up: pass the thread ID back
+        const result = await svc.sendMessage({ prompt: 'follow-up', sessionId: threadId });
+        expect(result.success).toBe(true);
+        // resumeThread is called → mock returns 'resumed: <prompt>'
+        expect(result.response).toContain('resumed: follow-up');
+        // sessionId should still be the same thread
+        expect(result.sessionId).toBe(threadId);
+    });
+
+    it('sendMessage calls onSessionCreated with the thread ID', async () => {
+        const createdIds: string[] = [];
+        await svc.sendMessage({
+            prompt: 'test session notification',
+            onSessionCreated: (id) => { createdIds.push(id); },
+        });
+        expect(createdIds).toHaveLength(1);
+        expect(createdIds[0]).toMatch(/^thread-\d+$/);
+    });
+
+    it('sendMessage calls onSessionCreated before streaming chunks arrive', async () => {
+        const order: string[] = [];
+        await svc.sendMessage({
+            prompt: 'order test',
+            onSessionCreated: () => { order.push('created'); },
+            onStreamingChunk: (chunk) => { if (chunk) order.push(`chunk:${chunk}`); },
+        });
+        // onSessionCreated must fire before any chunk
+        expect(order[0]).toBe('created');
     });
 
     it('sendMessage calls onStreamingChunk for each chunk', async () => {
@@ -217,6 +252,14 @@ describe('CodexSDKService — SDK mocked', () => {
         expect(chunks[chunks.length - 1]).toBe('');
     });
 
+    it('sendMessage returns early when AbortSignal is already aborted', async () => {
+        const ctrl = new AbortController();
+        ctrl.abort();
+        const result = await svc.sendMessage({ prompt: 'aborted', signal: ctrl.signal });
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('aborted');
+    });
+
     it('transform returns the raw response when no parse function given', async () => {
         const result = await svc.transform('hello codex');
         expect(typeof result).toBe('string');
@@ -229,10 +272,24 @@ describe('CodexSDKService — SDK mocked', () => {
         expect(length).toBeGreaterThan(0);
     });
 
-    it('forkSession creates a new session ID', async () => {
-        const newId = await svc.forkSession('original-session');
+    it('forkSession creates a new session ID different from the input', async () => {
+        const newId = await svc.forkSession('thread-42');
         expect(typeof newId).toBe('string');
-        expect(newId).not.toBe('original-session');
+        expect(newId).not.toBe('thread-42');
+    });
+
+    it('forkSession passes sessionId as forkFromThreadId to startThread', async () => {
+        const codexMock = svc['sdk'] as ReturnType<typeof makeCodexSdkMock>;
+        await svc.forkSession('thread-from-persist');
+        expect(codexMock.startThread).toHaveBeenCalledWith(
+            expect.objectContaining({ forkFromThreadId: 'thread-from-persist' }),
+        );
+    });
+
+    it('forkSession registers the forked thread in sessions map for abort', async () => {
+        const newId = await svc.forkSession('thread-42');
+        expect(svc.getActiveSessionCount()).toBeGreaterThan(0);
+        expect(svc.hasActiveSession(newId)).toBe(true);
     });
 
     it('abortSession returns false for unknown session', async () => {

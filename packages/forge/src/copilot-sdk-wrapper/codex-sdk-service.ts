@@ -191,47 +191,67 @@ export class CodexSDKService implements ISDKService {
             }
         }
 
+        if (options.signal?.aborted) {
+            return { success: false, error: 'Request aborted', sessionId: options.sessionId };
+        }
+
         const avail = await this.isAvailable();
         if (!avail.available) {
             return { success: false, error: avail.error };
         }
 
         const sdk = this.sdk!;
-        const sessionId = options.sessionId ?? `codex-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        const existing = this.sessions.get(sessionId);
         const abortController = new AbortController();
+
+        // Propagate caller's AbortSignal into our internal controller so
+        // abortSession() and the caller's signal both terminate the thread.
+        let signalCleanup: (() => void) | undefined;
+        if (options.signal) {
+            const onAbort = () => abortController.abort();
+            options.signal.addEventListener('abort', onAbort);
+            signalCleanup = () => options.signal!.removeEventListener('abort', onAbort);
+        }
+
+        let threadId: string | undefined;
 
         try {
             let thread: CodexThread;
-            if (existing) {
-                thread = await sdk.resumeThread(existing.threadId);
+            if (options.sessionId) {
+                // options.sessionId is the Codex thread ID persisted from the previous
+                // request via onSessionCreated — resume the existing conversation.
+                thread = await sdk.resumeThread(options.sessionId);
             } else {
                 thread = await sdk.startThread({ model: options.model });
             }
 
-            // Store/update active session record
-            this.sessions.set(sessionId, { threadId: thread.id, abortController });
+            threadId = thread.id;
 
-            const chunks: string[] = [];
+            // Track active request for abort support (keyed by thread ID).
+            this.sessions.set(threadId, { threadId, abortController });
+
+            // Notify the executor so it can persist the thread ID as sdkSessionId.
+            // This enables future follow-ups to resume the correct Codex thread and
+            // allows the queue bridge to abort the session by its thread ID.
+            options.onSessionCreated?.(threadId);
+
             const result = await thread.run({
                 prompt: options.prompt ?? '',
                 signal: abortController.signal,
                 onChunk: (chunk) => {
-                    chunks.push(chunk);
                     options.onStreamingChunk?.(chunk);
                 },
             });
 
-            // Signal end of streaming (empty chunk signals completion — callers that care
-            // about done-signalling should check for empty string + resolve settling)
+            // Empty chunk signals end-of-stream to the executor's streaming consumer.
             options.onStreamingChunk?.('');
 
-            return { success: true, response: result.text, sessionId };
+            return { success: true, response: result.text, sessionId: threadId };
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            return { success: false, error: message, sessionId };
+            return { success: false, error: message, sessionId: options.sessionId ?? threadId };
         } finally {
-            this.sessions.delete(sessionId);
+            signalCleanup?.();
+            if (threadId) this.sessions.delete(threadId);
         }
     }
 
@@ -254,17 +274,18 @@ export class CodexSDKService implements ISDKService {
         const avail = await this.isAvailable();
         if (!avail.available) throw new Error(avail.error ?? 'Codex SDK is not available');
 
-        const existing = this.sessions.get(sessionId);
         const sdk = this.sdk!;
+        // sessionId IS the Codex thread ID (persisted from a previous sendMessage
+        // via onSessionCreated).  Pass it directly as forkFromThreadId.
         const forkedThread = await sdk.startThread({
-            forkFromThreadId: existing?.threadId,
+            forkFromThreadId: sessionId,
         });
-        const newSessionId = `codex-fork-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        this.sessions.set(newSessionId, {
-            threadId: forkedThread.id,
+        const newThreadId = forkedThread.id;
+        this.sessions.set(newThreadId, {
+            threadId: newThreadId,
             abortController: new AbortController(),
         });
-        return newSessionId;
+        return newThreadId;
     }
 
     public async abortSession(sessionId: string): Promise<boolean> {
