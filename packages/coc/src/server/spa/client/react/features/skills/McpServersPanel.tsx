@@ -1013,21 +1013,25 @@ export function McpServersPanel({
         const tick = async () => {
             try {
                 const r = await fetch(url);
-                if (!r.ok) return;
-                const entry = await r.json() as { status?: string; error?: string };
-                if (entry.status === 'completed') {
-                    clearInterval(authPollersRef.current[serverName]);
-                    delete authPollersRef.current[serverName];
-                    setFlow(serverName, { phase: 'completed', requestId });
-                    onRefresh?.();
-                } else if (entry.status === 'failed') {
-                    clearInterval(authPollersRef.current[serverName]);
-                    delete authPollersRef.current[serverName];
-                    setFlow(serverName, { phase: 'failed', requestId, error: entry.error ?? 'Authorization failed' });
+                if (r.ok) {
+                    const entry = await r.json() as { status?: string; error?: string };
+                    if (entry.status === 'completed') {
+                        clearInterval(authPollersRef.current[serverName]);
+                        delete authPollersRef.current[serverName];
+                        setFlow(serverName, { phase: 'completed', requestId });
+                        onRefresh?.();
+                        return;
+                    } else if (entry.status === 'failed') {
+                        clearInterval(authPollersRef.current[serverName]);
+                        delete authPollersRef.current[serverName];
+                        setFlow(serverName, { phase: 'failed', requestId, error: entry.error ?? 'Authorization failed' });
+                        return;
+                    }
                 }
             } catch {
                 // transient network error — keep polling
             }
+            // Always check timeout so a stuck/gone entry doesn't poll forever.
             if (Date.now() - startedAt > AUTH_POLL_TIMEOUT_MS) {
                 clearInterval(authPollersRef.current[serverName]);
                 delete authPollersRef.current[serverName];

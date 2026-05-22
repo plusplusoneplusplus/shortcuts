@@ -15,6 +15,13 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { McpOauthManager } from '../../../src/server/mcp-oauth/mcp-oauth-manager';
 import { initiateMcpOAuth } from '../../../src/server/mcp-oauth/mcp-oauth-initiator';
 
+// Mock the token cache so scheduleSessionRelease can be tested without
+// touching the filesystem.
+const mockReadMcpServerAuthInfo = vi.hoisted(() => vi.fn());
+vi.mock('../../../src/server/mcp-oauth/mcp-oauth-token-cache', () => ({
+    readMcpServerAuthInfo: mockReadMcpServerAuthInfo,
+}));
+
 interface FakeSession {
     sessionId: string;
     rpc: {
@@ -72,6 +79,8 @@ describe('initiateMcpOAuth', () => {
 
     beforeEach(() => {
         manager = new McpOauthManager();
+        // Default: no cached token (auth required).
+        mockReadMcpServerAuthInfo.mockReturnValue({ status: 'required' });
     });
 
     it('rejects stdio transports', async () => {
@@ -194,5 +203,54 @@ describe('initiateMcpOAuth', () => {
         const client = await service.createClient.mock.results[0].value;
         const sessionOptions = client.createSession.mock.calls[0][0];
         expect(typeof sessionOptions.onPermissionRequest).toBe('function');
+    });
+
+    describe('scheduleSessionRelease auto-resolution', () => {
+        it('auto-resolves the pending entry to completed when the token cache becomes authenticated', async () => {
+            vi.useFakeTimers();
+            // Token cache starts as 'required' (set in beforeEach).
+            const { service, session } = makeFakeAiService({ loginResult: { authorizationUrl: 'https://auth.example.com' } });
+
+            const result = await initiateMcpOAuth({
+                serverName: 'remote',
+                serverConfig: { type: 'http', url: 'https://remote' } as any,
+                aiService: service,
+                manager,
+            });
+
+            expect(manager.getPending(result.requestId)?.status).toBe('pending');
+
+            // Simulate SDK writing the token to its cache.
+            mockReadMcpServerAuthInfo.mockReturnValue({ status: 'authenticated' });
+
+            // Advance past the poll interval so the session-release watcher fires.
+            await vi.advanceTimersByTimeAsync(2_000);
+
+            // Entry should now be resolved and the session destroyed.
+            expect(manager.getPending(result.requestId)?.status).toBe('completed');
+            expect(session.destroy).toHaveBeenCalled();
+
+            vi.useRealTimers();
+        });
+
+        it('does not resolve before the token cache is authenticated', async () => {
+            vi.useFakeTimers();
+            const { service, session } = makeFakeAiService({ loginResult: { authorizationUrl: 'https://auth.example.com' } });
+
+            const result = await initiateMcpOAuth({
+                serverName: 'remote',
+                serverConfig: { type: 'http', url: 'https://remote' } as any,
+                aiService: service,
+                manager,
+            });
+
+            // Token still 'required' — advance a couple of intervals.
+            await vi.advanceTimersByTimeAsync(4_000);
+
+            expect(manager.getPending(result.requestId)?.status).toBe('pending');
+            expect(session.destroy).not.toHaveBeenCalled();
+
+            vi.useRealTimers();
+        });
     });
 });
