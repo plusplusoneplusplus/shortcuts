@@ -123,15 +123,31 @@ export function useModelConfig(): {
     saving: boolean;
     reload: () => void;
     toggleModel: (modelId: string, enabled: boolean) => Promise<void>;
+    /** Per-model persisted reasoning effort overrides (modelId → effort). */
+    reasoningEfforts: Record<string, string>;
+    /** Persist a reasoning effort override for a model. Empty string clears it. */
+    setReasoningEffort: (modelId: string, effort: string) => Promise<void>;
 } {
     const { models, loading, error, reload } = useModels();
     const [localModels, setLocalModels] = useState<ModelInfo[]>([]);
     const [saving, setSaving] = useState(false);
+    const [reasoningEfforts, setReasoningEfforts] = useState<Record<string, string>>({});
 
     // Keep localModels in sync with fetched models
     useEffect(() => {
         setLocalModels(models);
     }, [models]);
+
+    // Load persisted reasoning efforts on mount
+    useEffect(() => {
+        getSpaCocClient().models.getReasoningEfforts()
+            .then((data: { reasoningEfforts: Record<string, string> }) => {
+                if (data?.reasoningEfforts && typeof data.reasoningEfforts === 'object') {
+                    setReasoningEfforts(data.reasoningEfforts);
+                }
+            })
+            .catch(() => { /* reasoning efforts are optional */ });
+    }, []);
 
     const toggleModel = useCallback(async (modelId: string, enabled: boolean) => {
         // Optimistic update
@@ -149,5 +165,22 @@ export function useModelConfig(): {
         }
     }, [localModels, models]);
 
-    return { models: localModels, loading, error, saving, reload, toggleModel };
+    const setReasoningEffortFn = useCallback(async (modelId: string, effort: string) => {
+        const prev = { ...reasoningEfforts };
+        // Optimistic update
+        if (effort === '') {
+            const next = { ...reasoningEfforts };
+            delete next[modelId];
+            setReasoningEfforts(next);
+        } else {
+            setReasoningEfforts({ ...reasoningEfforts, [modelId]: effort });
+        }
+        try {
+            await getSpaCocClient().models.setReasoningEffort(modelId, effort);
+        } catch {
+            setReasoningEfforts(prev);
+        }
+    }, [reasoningEfforts]);
+
+    return { models: localModels, loading, error, saving, reload, toggleModel, reasoningEfforts, setReasoningEffort: setReasoningEffortFn };
 }

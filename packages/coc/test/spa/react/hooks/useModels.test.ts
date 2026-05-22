@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
     models: {
         list: vi.fn(),
         setEnabled: vi.fn(),
+        getReasoningEfforts: vi.fn(),
+        setReasoningEffort: vi.fn(),
     },
 }));
 
@@ -237,7 +239,13 @@ describe('useModels', () => {
 });
 
 describe('useModelConfig', () => {
-    beforeEach(() => { mocks.models.list.mockReset(); mocks.models.setEnabled.mockReset(); });
+    beforeEach(() => {
+        mocks.models.list.mockReset();
+        mocks.models.setEnabled.mockReset();
+        mocks.models.getReasoningEfforts.mockReset();
+        mocks.models.setReasoningEffort.mockReset();
+        mocks.models.getReasoningEfforts.mockResolvedValue({ reasoningEfforts: {} });
+    });
     afterEach(() => { vi.clearAllMocks(); });
 
     it('toggleModel calls models.setEnabled with PUT semantics', async () => {
@@ -257,5 +265,72 @@ describe('useModelConfig', () => {
         expect(mocks.models.setEnabled).toHaveBeenCalledWith(
             expect.arrayContaining(['a', 'b'])
         );
+    });
+
+    it('loads persisted reasoning efforts on mount', async () => {
+        mocks.models.list.mockResolvedValue([]);
+        mocks.models.getReasoningEfforts.mockResolvedValue({ reasoningEfforts: { 'model-a': 'high' } });
+
+        const { result } = renderHook(() => useModelConfig());
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        await waitFor(() => expect(result.current.reasoningEfforts).toEqual({ 'model-a': 'high' }));
+    });
+
+    it('setReasoningEffort calls models.setReasoningEffort and updates local state', async () => {
+        mocks.models.list.mockResolvedValue([
+            { id: 'model-a', name: 'A', enabled: true },
+        ]);
+        mocks.models.setReasoningEffort.mockResolvedValue({ reasoningEfforts: { 'model-a': 'xhigh' } });
+
+        const { result } = renderHook(() => useModelConfig());
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        await act(async () => {
+            await result.current.setReasoningEffort('model-a', 'xhigh');
+        });
+
+        expect(mocks.models.setReasoningEffort).toHaveBeenCalledWith('model-a', 'xhigh');
+        expect(result.current.reasoningEfforts['model-a']).toBe('xhigh');
+    });
+
+    it('setReasoningEffort with empty string removes the override', async () => {
+        mocks.models.list.mockResolvedValue([]);
+        mocks.models.getReasoningEfforts.mockResolvedValue({ reasoningEfforts: { 'model-a': 'high' } });
+        mocks.models.setReasoningEffort.mockResolvedValue({ reasoningEfforts: {} });
+
+        const { result } = renderHook(() => useModelConfig());
+        await waitFor(() => expect(result.current.reasoningEfforts).toEqual({ 'model-a': 'high' }));
+
+        await act(async () => {
+            await result.current.setReasoningEffort('model-a', '');
+        });
+
+        expect(mocks.models.setReasoningEffort).toHaveBeenCalledWith('model-a', '');
+        expect(result.current.reasoningEfforts['model-a']).toBeUndefined();
+    });
+
+    it('reverts optimistic update on setReasoningEffort failure', async () => {
+        mocks.models.list.mockResolvedValue([]);
+        mocks.models.getReasoningEfforts.mockResolvedValue({ reasoningEfforts: {} });
+        mocks.models.setReasoningEffort.mockRejectedValue(new Error('fail'));
+
+        const { result } = renderHook(() => useModelConfig());
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        await act(async () => {
+            await result.current.setReasoningEffort('model-a', 'high');
+        });
+
+        // Should revert to empty since that was the state before the call
+        expect(result.current.reasoningEfforts['model-a']).toBeUndefined();
+    });
+
+    it('returns empty reasoningEfforts when getReasoningEfforts fails', async () => {
+        mocks.models.list.mockResolvedValue([]);
+        mocks.models.getReasoningEfforts.mockRejectedValue(new Error('fail'));
+
+        const { result } = renderHook(() => useModelConfig());
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.reasoningEfforts).toEqual({});
     });
 });

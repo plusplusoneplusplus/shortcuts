@@ -60,6 +60,8 @@ function makeDefaultReturn(overrides: Partial<ReturnType<typeof mockUseModelConf
         saving: false,
         reload: vi.fn(),
         toggleModel: vi.fn(),
+        reasoningEfforts: {} as Record<string, string>,
+        setReasoningEffort: vi.fn(),
         ...overrides,
     };
 }
@@ -69,14 +71,14 @@ describe('ModelsView', () => {
     afterEach(() => { vi.clearAllMocks(); });
 
     it('shows loading state', () => {
-        mockUseModelConfig.mockReturnValue({ models: [], loading: true, error: null, saving: false, reload: vi.fn(), toggleModel: vi.fn() });
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn({ models: [], loading: true }));
         render(<ModelsView />);
         expect(screen.getByTestId('models-loading')).toBeTruthy();
     });
 
     it('shows error state with retry button', () => {
         const reload = vi.fn();
-        mockUseModelConfig.mockReturnValue({ models: [], loading: false, error: 'HTTP 500', saving: false, reload, toggleModel: vi.fn() });
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn({ models: [], loading: false, error: 'HTTP 500', reload }));
         render(<ModelsView />);
         expect(screen.getByTestId('models-error')).toBeTruthy();
         fireEvent.click(screen.getByTestId('models-retry'));
@@ -247,5 +249,64 @@ describe('ModelsView', () => {
         render(<ModelsView />);
         fireEvent.click(screen.getByTestId('models-refresh-btn'));
         expect(reload).toHaveBeenCalled();
+    });
+
+    it('highlights the default effort as active when no persisted override', () => {
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn());
+        render(<ModelsView />);
+        expect(screen.getByTestId('effort-medium').getAttribute('data-active')).toBe('true');
+        expect(screen.getByTestId('effort-low').getAttribute('data-active')).toBe('false');
+        expect(screen.getByTestId('effort-high').getAttribute('data-active')).toBe('false');
+    });
+
+    it('highlights persisted effort override instead of default', () => {
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn({
+            reasoningEfforts: { 'claude-sonnet-4.6': 'high' },
+        }));
+        render(<ModelsView />);
+        expect(screen.getByTestId('effort-high').getAttribute('data-active')).toBe('true');
+        expect(screen.getByTestId('effort-medium').getAttribute('data-active')).toBe('false');
+        expect(screen.getByTestId('effort-low').getAttribute('data-active')).toBe('false');
+    });
+
+    it('shows override indicator when effort is persisted', () => {
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn({
+            reasoningEfforts: { 'claude-sonnet-4.6': 'high' },
+        }));
+        render(<ModelsView />);
+        expect(screen.getByTestId('effort-override-indicator')).toBeTruthy();
+    });
+
+    it('does not show override indicator when no effort is persisted', () => {
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn());
+        render(<ModelsView />);
+        expect(screen.queryByTestId('effort-override-indicator')).toBeNull();
+    });
+
+    it('calls setReasoningEffort when an effort badge is clicked', () => {
+        const setReasoningEffort = vi.fn();
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn({ setReasoningEffort }));
+        render(<ModelsView />);
+        fireEvent.click(screen.getByTestId('effort-high'));
+        expect(setReasoningEffort).toHaveBeenCalledWith('claude-sonnet-4.6', 'high');
+    });
+
+    it('calls setReasoningEffort with empty string to reset when clicking already-selected effort', () => {
+        const setReasoningEffort = vi.fn();
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn({
+            setReasoningEffort,
+            reasoningEfforts: { 'claude-sonnet-4.6': 'high' },
+        }));
+        render(<ModelsView />);
+        fireEvent.click(screen.getByTestId('effort-high'));
+        expect(setReasoningEffort).toHaveBeenCalledWith('claude-sonnet-4.6', '');
+    });
+
+    it('does not call setReasoningEffort when clicking the default effort with no override', () => {
+        const setReasoningEffort = vi.fn();
+        mockUseModelConfig.mockReturnValue(makeDefaultReturn({ setReasoningEffort }));
+        render(<ModelsView />);
+        fireEvent.click(screen.getByTestId('effort-medium'));
+        expect(setReasoningEffort).not.toHaveBeenCalled();
     });
 });

@@ -298,3 +298,114 @@ describe('PUT /api/models/enabled', () => {
         expect(res.status).toBe(404);
     });
 });
+
+describe('GET /api/models/reasoning-efforts', () => {
+    afterEach(async () => {
+        await stopServer();
+    });
+
+    it('returns empty map when no config exists', async () => {
+        const opts = makeOptions(undefined);
+        const store: ModelStore = { getAll: () => THREE_MODELS };
+        server = makeServer(store, opts);
+        await startServer();
+
+        const { status, body } = await apiGet('/api/models/reasoning-efforts');
+        expect(status).toBe(200);
+        expect((body as { reasoningEfforts: Record<string, string> }).reasoningEfforts).toEqual({});
+    });
+
+    it('returns persisted reasoning efforts', async () => {
+        const opts = makeOptions({ models: { reasoningEfforts: { 'model-a': 'high', 'model-b': 'low' } } });
+        const store: ModelStore = { getAll: () => THREE_MODELS };
+        server = makeServer(store, opts);
+        await startServer();
+
+        const { status, body } = await apiGet('/api/models/reasoning-efforts');
+        expect(status).toBe(200);
+        expect((body as { reasoningEfforts: Record<string, string> }).reasoningEfforts).toEqual({ 'model-a': 'high', 'model-b': 'low' });
+    });
+
+    it('not registered when no options provided', async () => {
+        const store: ModelStore = { getAll: () => THREE_MODELS };
+        server = makeServer(store);
+        await startServer();
+
+        const res = await fetch(`${baseUrl}/api/models/reasoning-efforts`);
+        expect(res.status).toBe(404);
+    });
+});
+
+describe('PUT /api/models/reasoning-efforts', () => {
+    afterEach(async () => {
+        await stopServer();
+    });
+
+    it('sets a reasoning effort for a model', async () => {
+        const opts = makeOptions(undefined);
+        const store: ModelStore = { getAll: () => THREE_MODELS };
+        server = makeServer(store, opts);
+        await startServer();
+
+        const { status, body } = await apiPut('/api/models/reasoning-efforts', { modelId: 'model-a', effort: 'high' });
+        expect(status).toBe(200);
+        expect((body as { reasoningEfforts: Record<string, string> }).reasoningEfforts).toEqual({ 'model-a': 'high' });
+        expect(opts.writtenConfig?.models?.reasoningEfforts).toEqual({ 'model-a': 'high' });
+    });
+
+    it('clears a reasoning effort when effort is empty string', async () => {
+        const opts = makeOptions({ models: { reasoningEfforts: { 'model-a': 'high', 'model-b': 'low' } } });
+        const store: ModelStore = { getAll: () => THREE_MODELS };
+        server = makeServer(store, opts);
+        await startServer();
+
+        const { status, body } = await apiPut('/api/models/reasoning-efforts', { modelId: 'model-a', effort: '' });
+        expect(status).toBe(200);
+        expect((body as { reasoningEfforts: Record<string, string> }).reasoningEfforts).toEqual({ 'model-b': 'low' });
+        expect(opts.writtenConfig?.models?.reasoningEfforts).toEqual({ 'model-b': 'low' });
+    });
+
+    it('merges with existing reasoning efforts', async () => {
+        const opts = makeOptions({ models: { reasoningEfforts: { 'model-a': 'high' } } });
+        const store: ModelStore = { getAll: () => THREE_MODELS };
+        server = makeServer(store, opts);
+        await startServer();
+
+        const { status, body } = await apiPut('/api/models/reasoning-efforts', { modelId: 'model-b', effort: 'xhigh' });
+        expect(status).toBe(200);
+        const efforts = (body as { reasoningEfforts: Record<string, string> }).reasoningEfforts;
+        expect(efforts).toEqual({ 'model-a': 'high', 'model-b': 'xhigh' });
+    });
+
+    it('preserves other config fields when writing', async () => {
+        const opts = makeOptions({ model: 'gpt-4', models: { enabled: ['model-a'] } });
+        const store: ModelStore = { getAll: () => THREE_MODELS };
+        server = makeServer(store, opts);
+        await startServer();
+
+        await apiPut('/api/models/reasoning-efforts', { modelId: 'model-a', effort: 'low' });
+        expect(opts.writtenConfig?.model).toBe('gpt-4');
+        expect(opts.writtenConfig?.models?.enabled).toEqual(['model-a']);
+        expect(opts.writtenConfig?.models?.reasoningEfforts).toEqual({ 'model-a': 'low' });
+    });
+
+    it('returns 400 when modelId is missing', async () => {
+        const opts = makeOptions(undefined);
+        const store: ModelStore = { getAll: () => THREE_MODELS };
+        server = makeServer(store, opts);
+        await startServer();
+
+        const { status } = await apiPut('/api/models/reasoning-efforts', { effort: 'high' });
+        expect(status).toBe(400);
+    });
+
+    it('returns 400 when effort is missing', async () => {
+        const opts = makeOptions(undefined);
+        const store: ModelStore = { getAll: () => THREE_MODELS };
+        server = makeServer(store, opts);
+        await startServer();
+
+        const { status } = await apiPut('/api/models/reasoning-efforts', { modelId: 'model-a' });
+        expect(status).toBe(400);
+    });
+});

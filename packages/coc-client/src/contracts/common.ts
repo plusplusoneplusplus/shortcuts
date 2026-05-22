@@ -30,3 +30,7 @@ export interface ModelInfo {
 export interface EnabledModelsResponse {
   enabledModels: string[];
 }
+
+export interface ReasoningEffortsResponse {
+  reasoningEfforts: Record<string, string>;
+}
