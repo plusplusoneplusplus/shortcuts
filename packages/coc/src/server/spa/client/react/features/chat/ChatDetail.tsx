@@ -957,17 +957,17 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         }
     }, [turns, loading]);
 
-    // Register all .md files from created files into the scratchpad tab list.
-    // The plan file is excluded — it has its own dedicated display in the header.
+    // Register all .md files from created files into the scratchpad tab list,
+    // including the plan file so it appears as a scratchpad tab (AC-01, AC-03).
     useEffect(() => {
         if (!scratchpadEnabled) return;
         const mdPaths = createdFiles
             .map(f => f.filePath)
-            .filter(p => p.endsWith('.md') && p !== effectivePlanPath);
+            .filter(p => p.endsWith('.md'));
         if (mdPaths.length > 0) {
             scratchpad.registerFiles(mdPaths);
         }
-    }, [createdFiles, effectivePlanPath, scratchpadEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [createdFiles, scratchpadEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Track scroll position
     useEffect(() => {
