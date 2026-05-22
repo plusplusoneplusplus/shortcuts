@@ -327,14 +327,19 @@ function saveMcpOAuthTokens(
 /**
  * Get OAuth configuration for client-side PKCE flow.
  * Returns the parameters needed to build an authorize URL in the browser.
+ * For 'graph' mode, scope targets Microsoft Graph API.
+ * For 'mcp' mode, scope targets the MCP server resource.
  */
 export function getOAuthConfig(
     mcpServerUrl: string,
-    opts?: { clientId?: string; scope?: string },
+    opts?: { clientId?: string; scope?: string; mode?: 'graph' | 'mcp' },
 ): { clientId: string; tenantId: string; scope: string; authorizeUrl: string; tokenUrl: string } {
     const clientId = opts?.clientId ?? 'aebc6443-996d-45c2-90f0-388ff96faa56';
     const tenantId = extractTenantId(mcpServerUrl) ?? 'organizations';
-    const scope = opts?.scope ?? `${mcpServerUrl}/.default offline_access`;
+    const defaultScope = opts?.mode === 'graph'
+        ? 'https://graph.microsoft.com/.default offline_access'
+        : `${mcpServerUrl}/.default offline_access`;
+    const scope = opts?.scope ?? defaultScope;
     return {
         clientId,
         tenantId,
@@ -350,10 +355,10 @@ export function getOAuthConfig(
  */
 export async function exchangeCodeForToken(
     mcpServerUrl: string,
-    params: { code: string; codeVerifier: string; redirectUri: string; clientId?: string; scope?: string },
+    params: { code: string; codeVerifier: string; redirectUri: string; clientId?: string; scope?: string; mode?: 'graph' | 'mcp' },
     homeDir?: string,
 ): Promise<string> {
-    const config = getOAuthConfig(mcpServerUrl, { clientId: params.clientId, scope: params.scope });
+    const config = getOAuthConfig(mcpServerUrl, { clientId: params.clientId, scope: params.scope, mode: params.mode });
     const clientId = params.clientId ?? config.clientId;
     const scope = params.scope ?? config.scope;
 
@@ -377,12 +382,15 @@ export async function exchangeCodeForToken(
 
     const tokenData = await tokenRes.json() as { access_token: string; refresh_token?: string; expires_in: number; scope?: string };
 
+    // resourceUrl determines the scope used during token refresh
+    const resourceUrl = params.mode === 'graph' ? 'https://graph.microsoft.com' : mcpServerUrl;
+
     // Save to ~/.copilot/mcp-oauth-config/
     saveMcpOAuthTokens(mcpServerUrl, {
         clientId,
         redirectUri: params.redirectUri,
         authorizationServerUrl: `https://login.microsoftonline.com/${config.tenantId}/v2.0`,
-        resourceUrl: mcpServerUrl,
+        resourceUrl,
         accessToken: tokenData.access_token,
         refreshToken: tokenData.refresh_token,
         expiresIn: tokenData.expires_in,

@@ -376,6 +376,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 const oauthConfig = getOAuthConfig(mcpServerUrl, {
                     clientId: config.messaging?.teams?.clientId,
                     scope: config.messaging?.teams?.scope,
+                    mode: config.messaging?.teams?.mode ?? 'graph',
                 });
 
                 // Start temporary HTTP server on random port to receive the OAuth callback
@@ -436,6 +437,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                         redirectUri,
                         clientId: config.messaging?.teams?.clientId,
                         scope: config.messaging?.teams?.scope,
+                        mode: config.messaging?.teams?.mode ?? 'graph',
                     });
                     console.log('[container] Teams OAuth code exchange succeeded');
                     // Auto-start or reconnect the bridge
