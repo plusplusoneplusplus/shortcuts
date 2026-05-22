@@ -6,10 +6,10 @@ import { describe, it, expect } from 'vitest';
 import { getBuiltInPrompts } from '../../src/server/admin/admin-handler';
 
 describe('getBuiltInPrompts', () => {
-    it('returns all 9 built-in prompts', () => {
+    it('returns all 13 built-in prompts', () => {
         const prompts = getBuiltInPrompts();
         const ids = Object.keys(prompts);
-        expect(ids).toHaveLength(9);
+        expect(ids).toHaveLength(13);
         expect(ids).toContain('read-only-mode');
         expect(ids).toContain('task-creation');
         expect(ids).toContain('plan-generation');
@@ -19,6 +19,10 @@ describe('getBuiltInPrompts', () => {
         expect(ids).toContain('memory-security-patterns');
         expect(ids).toContain('tool-call-cache');
         expect(ids).toContain('follow-up-suggestions');
+        expect(ids).toContain('ralph-grill-suffix');
+        expect(ids).toContain('ralph-synthesis');
+        expect(ids).toContain('ralph-execution-system');
+        expect(ids).toContain('ralph-iteration-user');
     });
 
     it('each prompt has all required fields', () => {
@@ -35,9 +39,9 @@ describe('getBuiltInPrompts', () => {
         }
     });
 
-    it('groups are Pipeline, Memory, or UI', () => {
+    it('groups are Pipeline, Memory, UI, or Ralph', () => {
         const prompts = getBuiltInPrompts();
-        const validGroups = new Set(['Pipeline', 'Memory', 'UI']);
+        const validGroups = new Set(['Pipeline', 'Memory', 'UI', 'Ralph']);
         for (const p of Object.values(prompts)) {
             expect(validGroups.has(p.group)).toBe(true);
         }
@@ -59,6 +63,24 @@ describe('getBuiltInPrompts', () => {
         const prompts = getBuiltInPrompts();
         const uiPrompts = Object.values(prompts).filter(p => p.group === 'UI');
         expect(uiPrompts).toHaveLength(1);
+    });
+
+    it('Ralph group contains 4 editable prompts', () => {
+        const prompts = getBuiltInPrompts();
+        const ralphPrompts = Object.values(prompts).filter(p => p.group === 'Ralph');
+        expect(ralphPrompts).toHaveLength(4);
+        for (const p of ralphPrompts) {
+            expect(p.editable).toBe(true);
+            expect(Array.isArray(p.templateVars)).toBe(true);
+        }
+    });
+
+    it('non-Ralph prompts are not editable', () => {
+        const prompts = getBuiltInPrompts();
+        const nonRalph = Object.values(prompts).filter(p => p.group !== 'Ralph');
+        for (const p of nonRalph) {
+            expect(p.editable).toBeFalsy();
+        }
     });
 
     it('read-only-mode prompt contains key phrases', () => {

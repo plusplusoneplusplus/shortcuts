@@ -178,6 +178,7 @@ export function registerRalphContinueRoutes(routes: Route[], ctx: RalphContinueR
                 originalGoal: record.originalGoal,
                 iteration: nextIteration,
                 maxIterations: newMax,
+                dataDir,
             });
 
             let taskId: string;

@@ -1,5 +1,6 @@
 /**
- * PromptsPanel — read-only viewer for built-in AI prompt templates.
+ * PromptsPanel — viewer for built-in AI prompt templates.
+ * Ralph prompts support admin overrides via Edit/Save/Reset.
  * Fetches from GET /api/admin/prompts and renders grouped PromptCards.
  */
 
@@ -15,13 +16,17 @@ interface BuiltInPrompt {
     source: string;
     description: string;
     text: string;
+    editable?: boolean;
+    templateVars?: string[];
+    hasOverride?: boolean;
+    overrideText?: string;
 }
 
 interface PromptsPanelProps {
     onError: (msg: string) => void;
 }
 
-const GROUP_ORDER = ['Pipeline', 'Memory', 'UI'];
+const GROUP_ORDER = ['Pipeline', 'Memory', 'UI', 'Ralph'];
 
 export function PromptsPanel({ onError }: PromptsPanelProps) {
     const [prompts, setPrompts] = useState<BuiltInPrompt[]>([]);
@@ -42,6 +47,20 @@ export function PromptsPanel({ onError }: PromptsPanelProps) {
     useEffect(() => {
         load();
     }, [load]);
+
+    const handleSave = useCallback(async (id: string, text: string) => {
+        await getSpaCocClient().admin.updatePrompt(id, { text });
+        setPrompts(prev => prev.map(p =>
+            p.id === id ? { ...p, overrideText: text, hasOverride: true } : p
+        ));
+    }, []);
+
+    const handleReset = useCallback(async (id: string) => {
+        await getSpaCocClient().admin.resetPromptOverride(id);
+        setPrompts(prev => prev.map(p =>
+            p.id === id ? { ...p, overrideText: undefined, hasOverride: false } : p
+        ));
+    }, []);
 
     if (loading) {
         return (
@@ -69,7 +88,7 @@ export function PromptsPanel({ onError }: PromptsPanelProps) {
             <div>
                 <h2 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1">Prompt Templates</h2>
                 <p className="text-xs text-[#616161] dark:text-[#9d9d9d]">
-                    These are the AI instructions used internally by CoC. They are read-only in this view.
+                    Built-in AI instructions used by CoC. Ralph prompts are editable; others are read-only.
                 </p>
             </div>
 
@@ -81,10 +100,17 @@ export function PromptsPanel({ onError }: PromptsPanelProps) {
                     {items.map(p => (
                         <PromptCard
                             key={p.id}
+                            id={p.id}
                             title={p.title}
                             source={p.source}
                             description={p.description}
                             text={p.text}
+                            editable={p.editable}
+                            templateVars={p.templateVars}
+                            hasOverride={p.hasOverride}
+                            overrideText={p.overrideText}
+                            onSave={p.editable ? handleSave : undefined}
+                            onReset={p.editable ? handleReset : undefined}
                         />
                     ))}
                 </div>

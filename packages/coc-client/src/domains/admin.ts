@@ -6,6 +6,9 @@ import type {
   AdminImportMode,
   AdminImportPreviewResponse,
   AdminImportResponse,
+  AdminPromptDeleteResponse,
+  AdminPromptUpdateRequest,
+  AdminPromptUpdateResponse,
   AdminPromptsResponse,
   AdminRestartResponse,
   AdminStorageCancelMigrationResponse,
@@ -38,6 +41,19 @@ export class AdminClient {
 
   getPrompts(): Promise<AdminPromptsResponse> {
     return this.transport.request<AdminPromptsResponse>('/admin/prompts');
+  }
+
+  updatePrompt(id: string, update: AdminPromptUpdateRequest): Promise<AdminPromptUpdateResponse> {
+    return this.transport.request<AdminPromptUpdateResponse>(`/admin/prompts/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: update,
+    });
+  }
+
+  resetPromptOverride(id: string): Promise<AdminPromptDeleteResponse> {
+    return this.transport.request<AdminPromptDeleteResponse>(`/admin/prompts/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
   }
 
   getDataStats(query?: AdminDataStatsQuery, options: Pick<CocRequestOptions, 'signal' | 'timeoutMs'> = {}): Promise<AdminDataStatsResponse> {
