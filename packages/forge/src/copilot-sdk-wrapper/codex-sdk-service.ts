@@ -22,6 +22,24 @@ import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult } 
 import { sdkServiceRegistry, CODEX_PROVIDER } from './sdk-service-registry';
 
 // ============================================================================
+// Auth checker injection (AC-08)
+// ============================================================================
+
+/**
+ * Result returned by the injected auth checker.
+ * When `authenticated` is false, `sendMessage` immediately returns an error
+ * that includes `authUrl` so the caller can surface a sign-in link.
+ */
+export interface CodexAuthCheckResult {
+    authenticated: boolean;
+    /** URL the user should open to authenticate (populated when not authenticated). */
+    authUrl?: string;
+}
+
+/** Injectable callback used by `CodexSDKService.sendMessage` to gate requests. */
+export type CodexAuthChecker = () => CodexAuthCheckResult;
+
+// ============================================================================
 // @openai/codex-sdk type stubs
 // These mirror the thread-based agent API described in the integration spec.
 // They are kept here rather than imported so the file compiles without the
@@ -90,9 +108,27 @@ export class CodexSDKService implements ISDKService {
     private availabilityCache: IAvailabilityResult | null = null;
     private sdk: CodexSDKModule | null = null;
     private disposed = false;
+    private authChecker: CodexAuthChecker | null = null;
 
     /** sessionId → active session metadata */
     private readonly sessions = new Map<string, ActiveCodexSession>();
+
+    // ── Auth checker injection (AC-08) ────────────────────────────────────────
+
+    /**
+     * Inject an auth checker. When set, `sendMessage` calls it before each
+     * request and returns an auth-required error when not authenticated.
+     *
+     * Called once during server startup by the codex-auth infrastructure
+     * when `codex.enabled` is true.
+     */
+    public setAuthChecker(checker: CodexAuthChecker): void {
+        this.authChecker = checker;
+    }
+
+    public clearAuthChecker(): void {
+        this.authChecker = null;
+    }
 
     // ── Availability ─────────────────────────────────────────────────────────
 
@@ -137,6 +173,23 @@ export class CodexSDKService implements ISDKService {
 
     public async sendMessage(options: SendMessageOptions): Promise<IInvocationResult> {
         if (this.disposed) return { success: false, error: 'CodexSDKService has been disposed' };
+
+        // AC-08: Check authentication before proceeding. When the auth checker
+        // reports unauthenticated, return a structured error with an authUrl so
+        // the caller can surface a sign-in link — no silent fallback to Copilot.
+        if (this.authChecker) {
+            const authResult = this.authChecker();
+            if (!authResult.authenticated) {
+                const authMsg = authResult.authUrl
+                    ? `Codex (ChatGPT) authentication required. Sign in at: ${authResult.authUrl}`
+                    : 'Codex (ChatGPT) authentication required. Use POST /api/codex-auth/start to sign in.';
+                return {
+                    success: false,
+                    error: authMsg,
+                    sessionId: options.sessionId,
+                };
+            }
+        }
 
         const avail = await this.isAvailable();
         if (!avail.available) {
@@ -266,10 +319,13 @@ export class CodexSDKService implements ISDKService {
  * level `sdkServiceRegistry`. Call this once during server startup when the
  * `codex.enabled` feature flag is true.
  *
+ * @param authChecker Optional auth checker injected by the codex-auth
+ *   infrastructure (AC-08). When provided, sendMessage gates on auth status.
  * @returns The newly created service instance.
  */
-export function registerCodexSDKService(): CodexSDKService {
+export function registerCodexSDKService(authChecker?: CodexAuthChecker): CodexSDKService {
     const svc = new CodexSDKService();
+    if (authChecker) svc.setAuthChecker(authChecker);
     sdkServiceRegistry.register(CODEX_PROVIDER, svc);
     return svc;
 }

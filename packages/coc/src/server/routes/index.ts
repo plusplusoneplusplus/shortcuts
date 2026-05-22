@@ -86,6 +86,8 @@ import type { LoopStore } from '../loops/loop-store';
 import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
 import { registerMcpOauthRoutes } from '../mcp-oauth';
 import type { McpOauthManager } from '../mcp-oauth';
+import { registerCodexAuthRoutes } from '../codex-auth';
+import type { CodexAuthManager } from '../codex-auth';
 import { registerDiagramRoutes } from '../diagrams/diagrams-handler';
 import { registerRuntimeConfigRoutes } from '../config/runtime-config-handler';
 import { registerSyncRoutes } from '../sync/sync-handler';
@@ -135,6 +137,7 @@ export interface RegisterRoutesOptions {
     loopStore?: LoopStore;
     loopExecutor?: LoopExecutor;
     mcpOauthManager?: McpOauthManager;
+    codexAuthManager?: CodexAuthManager;
     loopEmit?: LoopEventEmit;
     hostname?: string;
     bindAddress?: string;
@@ -286,6 +289,14 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                 const workspaces = await store.getWorkspaces();
                 return workspaces.find(w => w.id === workspaceId)?.rootPath;
             },
+        });
+    }
+
+    // Codex Auth routes (feature-flagged via codex.enabled)
+    if (opts.codexAuthManager) {
+        registerCodexAuthRoutes(routes, {
+            manager: opts.codexAuthManager,
+            autoOpenBrowser: true,
         });
     }
 

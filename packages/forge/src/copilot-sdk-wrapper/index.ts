@@ -119,6 +119,11 @@ export {
     registerCodexSDKService,
 } from './codex-sdk-service';
 
+export type {
+    CodexAuthCheckResult,
+    CodexAuthChecker,
+} from './codex-sdk-service';
+
 // Session Manager
 export {
     SessionManager,

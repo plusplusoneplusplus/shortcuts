@@ -92,6 +92,11 @@ export {
     SDK_PROVIDER_COPILOT,
     CODEX_PROVIDER,
     SDK_PROVIDER_CODEX,
+    // Codex SDK Service and auth
+    registerCodexSDKService,
+    CodexSDKService,
+    type CodexAuthCheckResult,
+    type CodexAuthChecker,
     // Model Metadata Store
     modelMetadataStore,
     resolveReasoningEffort,

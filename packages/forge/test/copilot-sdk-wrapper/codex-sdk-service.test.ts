@@ -300,4 +300,85 @@ describe('registerCodexSDKService', () => {
         first.dispose();
         second.dispose();
     });
+
+    it('injects auth checker when provided', () => {
+        const checker = vi.fn(() => ({ authenticated: true }));
+        const svc = registerCodexSDKService(checker);
+        // @ts-expect-error — private
+        expect(svc['authChecker']).toBe(checker);
+        svc.dispose();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Auth checker (AC-08) tests
+// ---------------------------------------------------------------------------
+
+describe('CodexSDKService — auth checker (AC-08)', () => {
+    let svc: CodexSDKService;
+
+    beforeEach(() => {
+        svc = new CodexSDKService();
+    });
+
+    afterEach(() => {
+        svc.dispose();
+    });
+
+    it('sendMessage succeeds when no auth checker is set', async () => {
+        // No checker → unauthenticated path still falls through to SDK availability check
+        const result = await svc.sendMessage({ prompt: 'test' });
+        // The SDK is not installed, so this returns an SDK-unavailable error — not an auth error
+        expect(result.success).toBe(false);
+        expect(result.error).not.toContain('authentication required');
+    });
+
+    it('sendMessage returns auth error when checker returns not authenticated', async () => {
+        svc.setAuthChecker(() => ({ authenticated: false, authUrl: 'http://localhost:4000/api/codex-auth/start' }));
+        const result = await svc.sendMessage({ prompt: 'hello' });
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('authentication required');
+        expect(result.error).toContain('http://localhost:4000/api/codex-auth/start');
+    });
+
+    it('sendMessage returns auth error without URL when no authUrl provided', async () => {
+        svc.setAuthChecker(() => ({ authenticated: false }));
+        const result = await svc.sendMessage({ prompt: 'hello' });
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('authentication required');
+        expect(result.error).toContain('/api/codex-auth/start');
+    });
+
+    it('sendMessage does not call auth checker when disposed', async () => {
+        const checker = vi.fn(() => ({ authenticated: false }));
+        svc.setAuthChecker(checker);
+        svc.dispose();
+        const result = await svc.sendMessage({ prompt: 'test' });
+        expect(checker).not.toHaveBeenCalled();
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('disposed');
+    });
+
+    it('sendMessage passes through to SDK when auth checker returns authenticated', async () => {
+        // When authenticated, falls through to SDK unavailable (since SDK not installed)
+        svc.setAuthChecker(() => ({ authenticated: true }));
+        const result = await svc.sendMessage({ prompt: 'test' });
+        // Should fail on SDK unavailability, NOT on auth
+        expect(result.error).not.toContain('authentication required');
+    });
+
+    it('clearAuthChecker removes the auth check', async () => {
+        svc.setAuthChecker(() => ({ authenticated: false }));
+        svc.clearAuthChecker();
+        const result = await svc.sendMessage({ prompt: 'test' });
+        // Should now fail on SDK unavailability, not auth
+        expect(result.error).not.toContain('authentication required');
+    });
+
+    it('preserves sessionId in auth error result', async () => {
+        svc.setAuthChecker(() => ({ authenticated: false }));
+        const result = await svc.sendMessage({ prompt: 'test', sessionId: 'sess-123' });
+        expect(result.success).toBe(false);
+        expect(result.sessionId).toBe('sess-123');
+    });
 });

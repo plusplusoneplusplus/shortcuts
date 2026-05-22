@@ -36,6 +36,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => 'http://localhost:4000/api',
     isRalphEnabled: () => false,
     isLoopsEnabled: () => false,
+    isCodexEnabled: () => false,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
