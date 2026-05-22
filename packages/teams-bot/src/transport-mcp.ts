@@ -39,59 +39,16 @@ export class McpTransport implements TeamsTransport {
         // If no teamId configured, use chat mode for DM
         if (!this.teamId) {
             this._useChat = true;
-            console.log(`[mcp-transport] No teamId — using chat (DM) mode`);
-
-            // Try to discover user's self-chat
-            await this.discoverSelfChat();
+            console.log(`[mcp-transport] No teamId — using direct message (self) mode`);
+            console.log(`[mcp-transport] Will use SendMessageToSelf tool to send messages to the authenticated user`);
         }
 
-        console.log(`[mcp-transport] MCP session initialized successfully (mode=${this._useChat ? 'chat' : 'channel'}, chatId=${this._chatId ?? 'none'})`);
+        console.log(`[mcp-transport] MCP session initialized successfully (mode=${this._useChat ? 'self-dm' : 'channel'})`);
     }
 
     /** Get discovered chat ID for DM mode. */
     getChatId(): string | null {
         return this._chatId;
-    }
-
-    /** Try to discover the user's self-chat via MCP tools. */
-    private async discoverSelfChat(): Promise<void> {
-        if (!this.client) return;
-
-        // Try known tool names for listing chats
-        const listChatTools = ['ListChats', 'GetMyChats', 'list_chats', 'GetChats'];
-        const toolName = listChatTools.find(t => this._availableTools.includes(t));
-
-        if (!toolName) {
-            console.warn(`[mcp-transport] No chat list tool found. Available: ${this._availableTools.join(', ')}`);
-            console.warn(`[mcp-transport] Please set a chatId manually or ensure MCP server supports chat tools`);
-            return;
-        }
-
-        try {
-            const result = await this.client.callTool(toolName, {});
-            const responseText = result.content?.[0]?.text ?? '[]';
-            console.log(`[mcp-transport] ${toolName} response: ${responseText.substring(0, 300)}`);
-
-            const parsed = JSON.parse(responseText);
-            const chats = Array.isArray(parsed) ? parsed : (parsed.value ?? parsed.chats ?? []);
-
-            // Find self-chat (oneOnOne with same user as all members, or first available)
-            for (const chat of chats) {
-                if (chat.chatType === 'oneOnOne' || chat.type === 'oneOnOne') {
-                    this._chatId = chat.id;
-                    console.log(`[mcp-transport] Found chat: ${chat.id} (${chat.topic ?? chat.displayName ?? 'oneOnOne'})`);
-                    return;
-                }
-            }
-
-            // Fallback: use first chat
-            if (chats.length > 0) {
-                this._chatId = chats[0].id;
-                console.log(`[mcp-transport] Using first available chat: ${this._chatId}`);
-            }
-        } catch (err: any) {
-            console.warn(`[mcp-transport] Failed to discover self-chat: ${err.message}`);
-        }
     }
 
     async send(channelId: string, text: string, opts?: TransportSendOptions): Promise<string> {
@@ -142,22 +99,31 @@ export class McpTransport implements TeamsTransport {
         }
     }
 
-    /** Send a direct message via MCP chat tools. */
-    private async sendChat(chatId: string, text: string): Promise<string> {
+    /** Send a direct message to the authenticated user via SendMessageToSelf. */
+    private async sendChat(_chatId: string, text: string): Promise<string> {
         if (!this.client) throw new Error('McpTransport not initialized');
 
-        // Try known tool names for sending chat messages
-        const chatSendTools = ['SendChatMessage', 'SendMessageToChat', 'send_chat_message'];
-        const toolName = chatSendTools.find(t => this._availableTools.includes(t))
-            ?? 'SendChatMessage'; // default guess
+        // SendMessageToSelf sends to the logged-in user — no chatId needed
+        const toolName = this._availableTools.includes('SendMessageToSelf')
+            ? 'SendMessageToSelf'
+            : (this._availableTools.includes('SendMessageToChat') ? 'SendMessageToChat' : 'SendMessageToSelf');
 
         const args: Record<string, unknown> = {
-            chatId,
             content: text,
             contentType: 'html',
         };
 
-        console.log(`[mcp-transport] Calling ${toolName} with chatId=${chatId}, content length=${text.length}`);
+        // If using SendMessageToChat, include chatId
+        if (toolName === 'SendMessageToChat' && _chatId) {
+            args['chatId'] = _chatId;
+        }
+
+        console.log(`[mcp-transport] *** SENDING DM TO SELF ***`);
+        console.log(`[mcp-transport]   Tool: ${toolName}`);
+        console.log(`[mcp-transport]   Recipient: authenticated user (self — the account used to login to Teams MCP)`);
+        console.log(`[mcp-transport]   Content length: ${text.length}`);
+        console.log(`[mcp-transport]   Content preview: ${text.substring(0, 100)}...`);
+
         const result = await this.client.callTool(toolName, args);
         const responseText = result.content?.[0]?.text ?? '';
         console.log(`[mcp-transport] ${toolName} response: ${responseText.substring(0, 200)}`);
@@ -168,7 +134,9 @@ export class McpTransport implements TeamsTransport {
 
         try {
             const parsed = JSON.parse(responseText);
-            return parsed.messageId ?? parsed.id ?? '';
+            const messageId = parsed.messageId ?? parsed.id ?? '';
+            console.log(`[mcp-transport] *** DM SENT SUCCESSFULLY *** messageId=${messageId}`);
+            return messageId;
         } catch {
             return responseText;
         }

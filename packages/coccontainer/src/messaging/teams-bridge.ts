@@ -65,7 +65,14 @@ export class TeamsBridge {
 
         // When target is 'chat', don't pass teamId — triggers chat/DM mode in transport
         const useChat = this.opts.config.target === 'chat';
-        console.log(`[teams-bridge] Creating bot: mode=${this.opts.config.mode}, target=${this.opts.config.target}, teamId=${useChat ? 'omitted (chat mode)' : this.opts.config.teamId}`);
+        if (useChat) {
+            console.log(`[teams-bridge] ╔══════════════════════════════════════════════╗`);
+            console.log(`[teams-bridge] ║  DIRECT MESSAGE MODE (SendMessageToSelf)     ║`);
+            console.log(`[teams-bridge] ║  Messages will be sent to the authenticated  ║`);
+            console.log(`[teams-bridge] ║  user's own Teams account.                   ║`);
+            console.log(`[teams-bridge] ╚══════════════════════════════════════════════╝`);
+        }
+        console.log(`[teams-bridge] Creating bot: mode=${this.opts.config.mode}, target=${this.opts.config.target}, teamId=${useChat ? 'omitted (DM self)' : this.opts.config.teamId}`);
 
         this.bot = new TeamsBot({
             mode: this.opts.config.mode,
