@@ -20,7 +20,8 @@ import {
 } from '../../shortcuts/shared/ai-clarification-handler-base';
 import {
     AIInvocationResult,
-    getCopilotSDKService,
+    sdkServiceRegistry,
+    COPILOT_PROVIDER,
     resetCopilotSDKService
 } from '@plusplusoneplusplus/forge';
 import {
@@ -292,15 +293,15 @@ suite('AI Clarification Handler Base - SDK Service', () => {
         resetCopilotSDKService();
     });
 
-    test('getCopilotSDKService should return singleton instance', () => {
-        const instance1 = getCopilotSDKService();
-        const instance2 = getCopilotSDKService();
+    test('sdkServiceRegistry should return singleton instance', () => {
+        const instance1 = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
+        const instance2 = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
 
         assert.strictEqual(instance1, instance2, 'Should return same instance');
     });
 
     test('SDK service should have isAvailable method', async () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
 
         assert.ok(typeof service.isAvailable === 'function');
 
@@ -309,12 +310,12 @@ suite('AI Clarification Handler Base - SDK Service', () => {
     });
 
     test('SDK service should have sendMessage method', () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         assert.ok(typeof service.sendMessage === 'function');
     });
 
     test('SDK service should return error after dispose', async () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         service.dispose();
 
         const availability = await service.isAvailable();
@@ -323,7 +324,7 @@ suite('AI Clarification Handler Base - SDK Service', () => {
     });
 
     test('SDK service sendMessage should return error when disposed', async () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         service.dispose();
 
         const result = await service.sendMessage({ prompt: 'Test' });

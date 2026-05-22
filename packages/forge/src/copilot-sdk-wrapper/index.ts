@@ -89,7 +89,6 @@ export {
 // Copilot SDK Service
 export {
     CopilotSDKService,
-    getCopilotSDKService,
     resetCopilotSDKService,
     tryConvertImageFileToDataUrl,
 } from './copilot-sdk-service';

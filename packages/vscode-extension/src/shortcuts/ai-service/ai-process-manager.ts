@@ -13,7 +13,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { getExtensionLogger, LogCategory } from './ai-service-logger';
-import { getCopilotSDKService } from '@plusplusoneplusplus/forge';
+import { sdkServiceRegistry, COPILOT_PROVIDER } from '@plusplusoneplusplus/forge';
 import { ServerClient } from './server-client';
 import { getWorkspaceInfo } from './workspace-identity';
 import {
@@ -1003,7 +1003,7 @@ export class AIProcessManager implements IAIProcessManager, vscode.Disposable {
     private abortSdkSession(sessionId: string): void {
         const logger = getExtensionLogger();
         try {
-            const sdkService = getCopilotSDKService();
+            const sdkService = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
             sdkService.abortSession(sessionId).catch(error => {
                 logger.debug(LogCategory.AI, `AIProcessManager: Warning: Error aborting SDK session ${sessionId}: ${error}`);
             });

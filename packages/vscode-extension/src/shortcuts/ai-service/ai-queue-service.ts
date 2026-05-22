@@ -24,7 +24,8 @@ import {
     TaskExecutor,
     TaskExecutionResult,
     QueueChangeEvent,
-    getCopilotSDKService,
+    sdkServiceRegistry,
+    COPILOT_PROVIDER,
     approveAllPermissions,
     AgentMode,
 } from '@plusplusoneplusplus/forge';
@@ -228,7 +229,7 @@ class AITaskExecutor implements TaskExecutor {
         const logger = getExtensionLogger();
         logger.info(LogCategory.AI, `Executing follow-prompt task: ${task.id}`);
 
-        const sdkService = getCopilotSDKService();
+        const sdkService = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
 
         // Check if SDK is available
         const availability = await sdkService.isAvailable();
@@ -269,7 +270,7 @@ class AITaskExecutor implements TaskExecutor {
         const logger = getExtensionLogger();
         logger.info(LogCategory.AI, `Executing AI clarification task: ${task.id}`);
 
-        const sdkService = getCopilotSDKService();
+        const sdkService = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
 
         // Check if SDK is available
         const availability = await sdkService.isAvailable();

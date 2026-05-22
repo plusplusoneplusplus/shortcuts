@@ -97,6 +97,10 @@ export class CopilotSDKService implements ISDKService {
             CopilotSDKService.instance = null;
             sdkServiceRegistry.unregister(COPILOT_PROVIDER);
         }
+        // Re-register a fresh instance immediately so callers can always resolve
+        // the provider via sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER) after
+        // a reset without needing to call getInstance() first.
+        CopilotSDKService.getInstance();
     }
 
     public async isAvailable(): Promise<SDKAvailabilityResult> {
@@ -217,11 +221,6 @@ export class CopilotSDKService implements ISDKService {
 // ============================================================================
 // Convenience Functions
 // ============================================================================
-
-/** @deprecated Use sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER) instead. */
-export function getCopilotSDKService(): CopilotSDKService {
-    return CopilotSDKService.getInstance();
-}
 
 export function resetCopilotSDKService(): void {
     CopilotSDKService.resetInstance();

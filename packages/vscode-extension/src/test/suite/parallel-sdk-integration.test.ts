@@ -15,7 +15,8 @@
 import * as assert from 'assert';
 import {
     CopilotSDKService,
-    getCopilotSDKService,
+    sdkServiceRegistry,
+    COPILOT_PROVIDER,
     resetCopilotSDKService,
     SendMessageOptions,
     SDKInvocationResult,
@@ -33,7 +34,7 @@ import {
  * Helper to check if SDK is available in test environment
  */
 async function isSDKAvailable(): Promise<boolean> {
-    const service = getCopilotSDKService();
+    const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
     const result = await service.isAvailable();
     return result.available;
 }
@@ -79,7 +80,7 @@ suite('Parallel SDK Integration - Error Handling', () => {
     });
 
     test('sendMessage returns error when disposed', async () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         service.dispose();
 
         const result = await service.sendMessage({ prompt: 'Test' });
@@ -128,7 +129,7 @@ suite('Parallel SDK Integration - Request Patterns', () => {
     });
 
     test('multiple sendMessage calls should not throw when disposed', async () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         
         // Dispose the service first to ensure immediate failure (no SDK lookup timeout)
         service.dispose();
@@ -151,7 +152,7 @@ suite('Parallel SDK Integration - Request Patterns', () => {
     });
 
     test('concurrent availability checks should not cause issues', async () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         
         const promises = [
             service.isAvailable(),
@@ -239,7 +240,7 @@ suite('Parallel SDK Integration - Pipeline Pattern', () => {
     });
 
     test('pipeline-style invocation pattern returns errors when disposed', async () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         
         // Dispose the service first to ensure immediate failure
         service.dispose();
@@ -292,7 +293,7 @@ suite('Parallel SDK Integration - Cross-Platform', () => {
     });
 
     test('service works on any platform', () => {
-        const service = getCopilotSDKService();
+        const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
 
         assert.ok(service, 'Service should be instantiated');
         assert.ok(typeof service.sendMessage === 'function');
@@ -314,17 +315,17 @@ suite('Parallel SDK Integration - Singleton', () => {
     });
 
     test('getInstance returns same instance for parallel consumers', () => {
-        const codeReviewService = getCopilotSDKService();
-        const pipelineService = getCopilotSDKService();
+        const codeReviewService = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
+        const pipelineService = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
 
         assert.strictEqual(codeReviewService, pipelineService);
     });
 
     test('parallel calls share the same service instance', async () => {
-        const instances: CopilotSDKService[] = [];
+        const instances: import('@plusplusoneplusplus/forge').ISDKService[] = [];
 
         const promises = Array(5).fill(null).map(async () => {
-            const service = getCopilotSDKService();
+            const service = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
             instances.push(service);
             await service.isAvailable();
             return service;
@@ -344,9 +345,9 @@ suite('Parallel SDK Integration - Singleton', () => {
     });
 
     test('reset creates new instance for all consumers', () => {
-        const before = getCopilotSDKService();
+        const before = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
         resetCopilotSDKService();
-        const after = getCopilotSDKService();
+        const after = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
 
         assert.notStrictEqual(before, after);
     });

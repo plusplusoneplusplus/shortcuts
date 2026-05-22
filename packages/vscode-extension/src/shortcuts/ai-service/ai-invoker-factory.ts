@@ -15,7 +15,7 @@
 
 import * as vscode from 'vscode';
 import { copyToClipboard, invokeCopilotCLI } from './copilot-cli-invoker';
-import { getCopilotSDKService, AIInvocationResult, approveAllPermissions, Attachment } from '@plusplusoneplusplus/forge';
+import { sdkServiceRegistry, COPILOT_PROVIDER, AIInvocationResult, approveAllPermissions, Attachment } from '@plusplusoneplusplus/forge';
 import { getAIBackendSetting, getSDKLoadMcpConfigSetting, getSDKRequestTimeoutSetting } from './ai-config-helpers';
 import { getExtensionLogger, LogCategory } from './ai-service-logger';
 import { IAIProcessManager } from './types';
@@ -161,7 +161,7 @@ export function createAIInvoker(options: AIInvokerFactoryOptions): AIInvoker {
 
         // Try SDK if configured
         if (backend === 'copilot-sdk') {
-            const sdkService = getCopilotSDKService();
+            const sdkService = sdkServiceRegistry.getOrThrow(COPILOT_PROVIDER);
             const availability = await sdkService.isAvailable();
 
             if (availability.available) {

@@ -77,7 +77,6 @@ export {
     defineTool,
     // Copilot SDK Service
     CopilotSDKService,
-    getCopilotSDKService,
     resetCopilotSDKService,
     // Background Tasks Info
     BackgroundTasksInfo,
