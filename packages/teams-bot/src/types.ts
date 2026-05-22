@@ -112,11 +112,11 @@ export interface TransportSendOptions {
  */
 export interface TeamsTransport {
     /** Connect/initialize the transport with a bearer token. */
-    initialize(token: string, opts: { teamId?: string; channelId?: string }): Promise<void>;
-    /** Send a message to a channel. Returns the message ID. */
-    send(channelId: string, text: string, opts?: TransportSendOptions): Promise<string>;
+    initialize(token: string, opts: { teamId?: string; channelId?: string; chatId?: string }): Promise<void>;
+    /** Send a message to a target (channelId or chatId). Returns the message ID. */
+    send(target: string, text: string, opts?: TransportSendOptions): Promise<string>;
     /** Poll for new messages since a timestamp or watermark. */
-    poll(channelId: string, since?: string): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }>;
+    poll(target: string, since?: string): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }>;
     /** List channels in the team. */
     listChannels(teamId: string): Promise<TeamsChannel[]>;
     /** Resolve team/channel names to IDs (create if missing). */

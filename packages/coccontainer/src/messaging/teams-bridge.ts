@@ -193,10 +193,17 @@ export class TeamsBridge {
 
     /**
      * Resolve team/channel names to IDs using the configured transport.
+     * In graph mode with no teamName/teamId, skip — bot will use DM chat.
      */
     private async resolveTeamAndChannel(): Promise<void> {
         // Already have explicit IDs — no resolution needed
         if (this.opts.config.teamId && this.opts.config.channelId) return;
+
+        // In graph mode without team config, we use direct message (chat) mode
+        if (this.opts.config.mode === 'graph' && !this.opts.config.teamName && !this.opts.config.teamId) {
+            console.log('[teams-bridge] No team configured — using direct message (chat) mode');
+            return;
+        }
 
         // Need team/channel names to resolve
         const teamName = this.opts.config.teamName;
@@ -300,7 +307,7 @@ export class TeamsBridge {
         if (this._runningLocks.has(processId)) return;
         this._runningLocks.add(processId);
 
-        const target = this.opts.config.channelId;
+        const target = this.bot.getChannelId() ?? this.opts.config.channelId;
         if (!target) { this._runningLocks.delete(processId); return; }
 
         // Skip if Teams bot is not connected

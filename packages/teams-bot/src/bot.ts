@@ -72,20 +72,20 @@ export class TeamsBot {
             }
         }
 
-        if (this.mode === 'graph' && !this.opts.teamId) {
-            this._lastError = 'teamId is required for Graph mode';
-            this.setStatus('error');
-            this.opts.onError?.(this._lastError);
-            return;
-        }
-
         try {
             await this.transport.initialize(token, {
                 teamId: this.opts.teamId,
                 channelId: this._channelId ?? undefined,
             });
+
+            // In chat mode (no teamId), use auto-discovered chatId as poll target
+            if (this.mode === 'graph' && !this.opts.teamId && this.transport instanceof GraphTransport) {
+                const chatId = (this.transport as GraphTransport).getChatId();
+                if (chatId) this._channelId = chatId;
+            }
+
             this.setStatus('connected');
-            console.log(`[teams-bot] Connected via ${this.mode} transport`);
+            console.log(`[teams-bot] Connected via ${this.mode} transport${this._channelId ? ` (target: ${this._channelId.substring(0, 12)}...)` : ''}`);
             this.startPolling();
         } catch (err: any) {
             this._lastError = err.message ?? `Failed to connect via ${this.mode}`;

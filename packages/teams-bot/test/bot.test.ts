@@ -66,13 +66,29 @@ describe('TeamsBot', () => {
                 await bot.stop();
             });
 
-            it('should report error when teamId is missing', async () => {
+            it('should use chat (DM) mode when teamId is missing', async () => {
+                // Mock /me call
+                mockFetch.mockResolvedValueOnce({
+                    ok: true,
+                    json: async () => ({ id: 'user-aad-id', displayName: 'Test User' }),
+                } as any);
+                // Mock GET /me/chats (empty — no existing chats)
+                mockFetch.mockResolvedValueOnce({
+                    ok: true,
+                    json: async () => ({ value: [] }),
+                } as any);
+                // Mock POST /chats (create new chat)
+                mockFetch.mockResolvedValueOnce({
+                    ok: true,
+                    json: async () => ({ id: 'chat-id-456' }),
+                } as any);
+
                 const bot = createGraphBot({ teamId: undefined });
                 await bot.start();
 
-                expect(bot.getStatus()).toBe('error');
-                expect(bot.getLastError()).toContain('teamId is required');
-                expect(onError).toHaveBeenCalled();
+                expect(bot.getStatus()).toBe('connected');
+                expect(bot.getChannelId()).toBe('chat-id-456');
+                await bot.stop();
             });
 
             it('should report error on Graph connection failure', async () => {

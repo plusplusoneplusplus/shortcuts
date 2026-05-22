@@ -14,7 +14,7 @@ export class McpTransport implements TeamsTransport {
         this.serverUrl = serverUrl;
     }
 
-    async initialize(token: string, opts: { teamId?: string; channelId?: string }): Promise<void> {
+    async initialize(token: string, opts: { teamId?: string; channelId?: string; chatId?: string }): Promise<void> {
         this.teamId = opts.teamId ?? null;
         this.client = new McpClient({
             serverUrl: this.serverUrl,

@@ -93,6 +93,65 @@ export class GraphClient {
         return this.channelId;
     }
 
+    /** Get current chat ID. */
+    getChatId(): string | null {
+        return this.chatId;
+    }
+
+    // ── Chat (1:1 / self) discovery & creation ───────────────────
+
+    /** Get the authenticated user's ID and display name. */
+    async getMe(): Promise<{ id: string; displayName: string }> {
+        return this.get<{ id: string; displayName: string }>(`${this.graphBase}/me`);
+    }
+
+    /**
+     * Find or create a 1:1 chat between the authenticated user and another user.
+     * If targetUserId is the same as the current user, this creates a "self-chat".
+     */
+    async getOrCreateChat(targetUserId: string): Promise<string> {
+        // Try to find existing 1:1 chat
+        const chats = await this.get<{ value: Array<{ id: string; chatType: string; members: Array<{ userId?: string }> }> }>(
+            `${this.graphBase}/me/chats?$filter=chatType eq 'oneOnOne'&$expand=members&$top=50`
+        );
+
+        for (const chat of chats.value ?? []) {
+            const memberIds = chat.members?.map((m: any) => m.userId).filter(Boolean) ?? [];
+            if (memberIds.includes(targetUserId)) {
+                this.chatId = chat.id;
+                return chat.id;
+            }
+        }
+
+        // Create a new 1:1 chat
+        const res = await fetch(`${this.graphBase}/chats`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${this.bearerToken}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                chatType: 'oneOnOne',
+                members: [
+                    {
+                        '@odata.type': '#microsoft.graph.aadUserConversationMember',
+                        roles: ['owner'],
+                        'user@odata.bind': `${this.graphBase}/users('${targetUserId}')`,
+                    },
+                ],
+            }),
+        });
+
+        if (!res.ok) {
+            const text = await res.text().catch(() => '');
+            throw new Error(`Graph API create chat ${res.status}: ${text}`);
+        }
+
+        const data = await res.json() as { id: string };
+        this.chatId = data.id;
+        return data.id;
+    }
+
     // ── Team/Channel discovery & creation ─────────────────────
 
     /** List teams the authenticated user has joined. */
