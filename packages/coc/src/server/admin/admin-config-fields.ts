@@ -211,6 +211,10 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         if (!cfg.mcpOauth) { cfg.mcpOauth = {}; }
         cfg.mcpOauth.enabled = v;
     }, 'restartRequired'),
+    bool('codex.enabled', (cfg, v) => {
+        if (!cfg.codex) { cfg.codex = {}; }
+        cfg.codex.enabled = v;
+    }, 'restartRequired'),
 
     bool('features.focusedDiff', (cfg, v) => {
         if (!cfg.features) { cfg.features = {}; }

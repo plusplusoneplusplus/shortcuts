@@ -137,6 +137,10 @@ export interface CLIConfig {
     excalidraw?: {
         enabled?: boolean;
     };
+    /** Codex SDK provider support. Disabled by default. */
+    codex?: {
+        enabled?: boolean;
+    };
     /** Development feature flags. */
     features?: {
         autoMemoryPromotion?: boolean;
@@ -309,6 +313,10 @@ export interface ResolvedCLIConfig {
     excalidraw: {
         enabled: boolean;
     };
+    /** Codex SDK provider support. Disabled by default. */
+    codex: {
+        enabled: boolean;
+    };
     /** Development feature flags. */
     features: {
         autoMemoryPromotion: boolean;
@@ -437,6 +445,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
     },
     excalidraw: {
+        enabled: false,
+    },
+    codex: {
         enabled: false,
     },
     features: {
