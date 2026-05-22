@@ -94,6 +94,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
 
     // ── Teams bridge (only when enabled) ─────────────
     let teamsBridge: { stop(): Promise<void>; getTeamsStatus(): { enabled: boolean; status: string; error: string | null; teamName?: string; channelName?: string; teamId?: string; channelId?: string; botName: string }; updateConfig(patch: { botName?: string; channelId?: string; enabled?: boolean; teamName?: string; channelName?: string }): Promise<void>; reconnect(): Promise<void>; listChannels(): Promise<Array<{ id: string; displayName: string }>> } | undefined;
+    let teamsAuthPending = false;
     const teamsConfig = config.messaging?.teams;
     if (teamsConfig?.enabled) {
         const { TeamsBridge } = await import('../messaging/teams-bridge');
@@ -362,6 +363,126 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                     }
                 }
                 return sendJson(res, { channels: [], error: 'Teams not enabled' });
+            }
+
+            // ── Teams OAuth Auth Endpoints ─────────────────────────
+            if (url.pathname === '/api/container/messaging/teams/auth/login' && req.method === 'POST') {
+                if (teamsAuthPending) {
+                    return sendJson(res, { ok: false, error: 'Login already in progress' });
+                }
+                const body = await readBody(req);
+                const { mcpServerUrl: bodyMcpUrl } = body as { mcpServerUrl?: string };
+                const mcpServerUrl = bodyMcpUrl || config.messaging?.teams?.mcpServerUrl;
+                if (!mcpServerUrl) {
+                    return sendJson(res, { ok: false, error: 'No mcpServerUrl configured — set it in Teams config first' });
+                }
+                teamsAuthPending = true;
+                // Fire-and-forget: opens browser and resolves when user completes login
+                const { acquireTokenViaBrowser } = await import('@plusplusoneplusplus/teams-bot');
+                acquireTokenViaBrowser(mcpServerUrl, {
+                    clientId: config.messaging?.teams?.clientId,
+                    scope: config.messaging?.teams?.scope,
+                }).then(async (_token) => {
+                    console.log('[container] Teams OAuth login succeeded');
+                    teamsAuthPending = false;
+                    // Auto-start or reconnect the bridge
+                    if (teamsBridge) {
+                        await teamsBridge.reconnect();
+                    } else {
+                        // Enable Teams and start bridge
+                        try {
+                            const jsYaml = await import('js-yaml');
+                            const configPath = path.join(config.serve.dataDir, 'config.yaml');
+                            let doc: Record<string, any> = {};
+                            try { const raw = fs.readFileSync(configPath, 'utf8'); doc = (jsYaml.load(raw) as Record<string, any>) ?? {}; } catch {}
+                            if (!doc.messaging) doc.messaging = {};
+                            if (!doc.messaging.teams) doc.messaging.teams = {};
+                            doc.messaging.teams.enabled = true;
+                            doc.messaging.teams.mcpServerUrl = mcpServerUrl;
+                            fs.writeFileSync(configPath, jsYaml.dump(doc), 'utf8');
+                        } catch { /* best effort */ }
+                        // Start the bridge dynamically
+                        try {
+                            const { TeamsBridge } = await import('../messaging/teams-bridge');
+                            const resolvedTeamsConfig = {
+                                ...(config.messaging?.teams ?? {}),
+                                enabled: true,
+                                mode: (config.messaging?.teams?.mode ?? 'mcp') as 'graph' | 'mcp',
+                                mcpServerUrl,
+                                botName: config.messaging?.teams?.botName ?? 'CoC',
+                                pollIntervalMs: config.messaging?.teams?.pollIntervalMs ?? 3000,
+                            };
+                            const bridge = new TeamsBridge({
+                                config: resolvedTeamsConfig,
+                                dataDir: config.serve.dataDir,
+                                wsRelay,
+                                agentStore,
+                                tunnelBridge,
+                            });
+                            await bridge.start();
+                            teamsBridge = bridge;
+                        } catch (err: any) {
+                            console.error('[container] Failed to start Teams bridge after login:', err.message);
+                        }
+                    }
+                }).catch((err: Error) => {
+                    console.error('[container] Teams OAuth login failed:', err.message);
+                    teamsAuthPending = false;
+                });
+                return sendJson(res, { ok: true, status: 'pending', message: 'Opening browser for Microsoft login...' });
+            }
+
+            if (url.pathname === '/api/container/messaging/teams/auth/status' && req.method === 'GET') {
+                if (teamsAuthPending) {
+                    return sendJson(res, { authenticated: false, pending: true });
+                }
+                // Check if valid tokens exist
+                try {
+                    const mcpServerUrl = config.messaging?.teams?.mcpServerUrl;
+                    if (!mcpServerUrl) {
+                        return sendJson(res, { authenticated: false, pending: false, error: 'No mcpServerUrl configured' });
+                    }
+                    const { acquireMcpOAuthToken } = await import('@plusplusoneplusplus/teams-bot');
+                    await acquireMcpOAuthToken(mcpServerUrl);
+                    return sendJson(res, { authenticated: true, pending: false });
+                } catch {
+                    return sendJson(res, { authenticated: false, pending: false });
+                }
+            }
+
+            if (url.pathname === '/api/container/messaging/teams/auth/logout' && req.method === 'POST') {
+                // Clear cached OAuth tokens for the configured MCP server
+                try {
+                    const mcpServerUrl = config.messaging?.teams?.mcpServerUrl;
+                    if (mcpServerUrl) {
+                        const crypto = await import('crypto');
+                        const os = await import('os');
+                        const configDir = path.join(os.homedir(), '.copilot', 'mcp-oauth-config');
+                        if (fs.existsSync(configDir)) {
+                            const files = fs.readdirSync(configDir).filter(f => f.endsWith('.json') && !f.includes('.tokens.'));
+                            for (const file of files) {
+                                try {
+                                    const meta = JSON.parse(fs.readFileSync(path.join(configDir, file), 'utf-8'));
+                                    if (meta.serverUrl === mcpServerUrl) {
+                                        const hash = file.replace('.json', '');
+                                        fs.unlinkSync(path.join(configDir, file));
+                                        const tokensFile = path.join(configDir, `${hash}.tokens.json`);
+                                        if (fs.existsSync(tokensFile)) fs.unlinkSync(tokensFile);
+                                        break;
+                                    }
+                                } catch { /* skip */ }
+                            }
+                        }
+                    }
+                    // Stop bridge
+                    if (teamsBridge) {
+                        await teamsBridge.stop();
+                        teamsBridge = undefined;
+                    }
+                    return sendJson(res, { ok: true, message: 'Logged out and tokens cleared' });
+                } catch (err: any) {
+                    return sendJson(res, { ok: false, error: err.message });
+                }
             }
 
             // ── Agent-scoped proxy ──────────────────────────────
