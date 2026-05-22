@@ -325,6 +325,74 @@ function saveMcpOAuthTokens(
 }
 
 /**
+ * Get OAuth configuration for client-side PKCE flow.
+ * Returns the parameters needed to build an authorize URL in the browser.
+ */
+export function getOAuthConfig(
+    mcpServerUrl: string,
+    opts?: { clientId?: string; scope?: string },
+): { clientId: string; tenantId: string; scope: string; authorizeUrl: string; tokenUrl: string } {
+    const clientId = opts?.clientId ?? 'aebc6443-996d-45c2-90f0-388ff96faa56';
+    const tenantId = extractTenantId(mcpServerUrl) ?? 'organizations';
+    const scope = opts?.scope ?? `${mcpServerUrl}/.default offline_access`;
+    return {
+        clientId,
+        tenantId,
+        scope,
+        authorizeUrl: `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize`,
+        tokenUrl: `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
+    };
+}
+
+/**
+ * Exchange an authorization code for tokens (server-side step of client-initiated PKCE flow).
+ * The client generates PKCE, opens the browser, receives the auth code, then sends it here.
+ */
+export async function exchangeCodeForToken(
+    mcpServerUrl: string,
+    params: { code: string; codeVerifier: string; redirectUri: string; clientId?: string; scope?: string },
+    homeDir?: string,
+): Promise<string> {
+    const config = getOAuthConfig(mcpServerUrl, { clientId: params.clientId, scope: params.scope });
+    const clientId = params.clientId ?? config.clientId;
+    const scope = params.scope ?? config.scope;
+
+    const tokenRes = await fetch(config.tokenUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+            client_id: clientId,
+            grant_type: 'authorization_code',
+            code: params.code,
+            redirect_uri: params.redirectUri,
+            code_verifier: params.codeVerifier,
+            scope,
+        }),
+    });
+
+    if (!tokenRes.ok) {
+        const errText = await tokenRes.text();
+        throw new Error(`Token exchange failed: ${tokenRes.status} ${errText}`);
+    }
+
+    const tokenData = await tokenRes.json() as { access_token: string; refresh_token?: string; expires_in: number; scope?: string };
+
+    // Save to ~/.copilot/mcp-oauth-config/
+    saveMcpOAuthTokens(mcpServerUrl, {
+        clientId,
+        redirectUri: params.redirectUri,
+        authorizationServerUrl: `https://login.microsoftonline.com/${config.tenantId}/v2.0`,
+        resourceUrl: mcpServerUrl,
+        accessToken: tokenData.access_token,
+        refreshToken: tokenData.refresh_token,
+        expiresIn: tokenData.expires_in,
+        scope: tokenData.scope ?? scope,
+    }, homeDir);
+
+    return tokenData.access_token;
+}
+
+/**
  * Acquire a Graph API token using the Azure CLI (`az account get-access-token`).
  * Requires user to have previously run `az login`.
  * Returns the access token string.

@@ -68,12 +68,76 @@ async function postTeamsConfig(patch: { botName?: string; channelId?: string; en
 }
 
 async function postTeamsReconnect(): Promise<void> {
-    const res = await fetch(getRawApiBase() + '/container/messaging/teams/auth/login', {
+    // 1. Fetch OAuth config from server
+    const configRes = await fetch(getRawApiBase() + '/container/messaging/teams/auth/config');
+    if (!configRes.ok) throw new Error(`HTTP ${configRes.status}`);
+    const oauthConfig = await configRes.json() as { clientId: string; tenantId: string; scope: string; authorizeUrl: string };
+
+    // 2. Generate PKCE code_verifier + code_challenge
+    const codeVerifierBytes = new Uint8Array(32);
+    crypto.getRandomValues(codeVerifierBytes);
+    const codeVerifier = btoa(String.fromCharCode(...codeVerifierBytes))
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const challengeBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(codeVerifier));
+    const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(challengeBuffer)))
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+    // 3. Build redirect URI pointing to container's callback page (same origin)
+    const redirectUri = window.location.origin + '/api/container/messaging/teams/auth/callback';
+
+    // 4. Build authorize URL and open popup
+    const params = new URLSearchParams({
+        client_id: oauthConfig.clientId,
+        response_type: 'code',
+        redirect_uri: redirectUri,
+        scope: oauthConfig.scope,
+        code_challenge: codeChallenge,
+        code_challenge_method: 'S256',
+        response_mode: 'query',
+    });
+    const authUrl = `${oauthConfig.authorizeUrl}?${params.toString()}`;
+    const popup = window.open(authUrl, 'teams-auth', 'width=600,height=700');
+
+    // 5. Listen for postMessage from popup with the auth code
+    const code = await new Promise<string>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+            window.removeEventListener('message', handler);
+            reject(new Error('OAuth login timed out (120s)'));
+        }, 120000);
+        function handler(event: MessageEvent) {
+            if (event.data?.type !== 'teams-auth-callback') return;
+            clearTimeout(timeout);
+            window.removeEventListener('message', handler);
+            if (event.data.error) {
+                reject(new Error(`OAuth error: ${event.data.error} - ${event.data.errorDescription ?? ''}`));
+            } else if (event.data.code) {
+                resolve(event.data.code);
+            } else {
+                reject(new Error('No auth code received'));
+            }
+        }
+        window.addEventListener('message', handler);
+        // Also check if popup was closed without completing
+        const pollClosed = setInterval(() => {
+            if (popup && popup.closed) {
+                clearInterval(pollClosed);
+                clearTimeout(timeout);
+                window.removeEventListener('message', handler);
+                reject(new Error('Login window was closed'));
+            }
+        }, 1000);
+    });
+
+    // 6. Exchange code for tokens on server
+    const exchangeRes = await fetch(getRawApiBase() + '/container/messaging/teams/auth/exchange', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ code, codeVerifier, redirectUri }),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!exchangeRes.ok) {
+        const err = await exchangeRes.json().catch(() => ({ error: 'Exchange failed' }));
+        throw new Error((err as { error?: string }).error ?? `HTTP ${exchangeRes.status}`);
+    }
 }
 
 // ── QR Code Display ─────────────────────────────────────────

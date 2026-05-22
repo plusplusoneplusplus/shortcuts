@@ -94,7 +94,6 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
 
     // ── Teams bridge (only when enabled) ─────────────
     let teamsBridge: { stop(): Promise<void>; getTeamsStatus(): { enabled: boolean; status: string; error: string | null; teamName?: string; channelName?: string; teamId?: string; channelId?: string; botName: string }; updateConfig(patch: { botName?: string; channelId?: string; enabled?: boolean; teamName?: string; channelName?: string }): Promise<void>; reconnect(): Promise<void>; listChannels(): Promise<Array<{ id: string; displayName: string }>> } | undefined;
-    let teamsAuthPending = false;
     const teamsConfig = config.messaging?.teams;
     if (teamsConfig?.enabled) {
         const { TeamsBridge } = await import('../messaging/teams-bridge');
@@ -365,31 +364,70 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 return sendJson(res, { channels: [], error: 'Teams not enabled' });
             }
 
-            // ── Teams OAuth Auth Endpoints ─────────────────────────
-            if (url.pathname === '/api/container/messaging/teams/auth/login' && req.method === 'POST') {
-                if (teamsAuthPending) {
-                    return sendJson(res, { ok: false, error: 'Login already in progress' });
-                }
-                const body = await readBody(req);
-                const { mcpServerUrl: bodyMcpUrl } = body as { mcpServerUrl?: string };
-                const mcpServerUrl = bodyMcpUrl || config.messaging?.teams?.mcpServerUrl;
+            // ── Teams OAuth Auth Endpoints (client-side PKCE) ─────────────────────────
+            // GET /auth/config — returns OAuth params for client to build authorize URL
+            if (url.pathname === '/api/container/messaging/teams/auth/config' && req.method === 'GET') {
+                const mcpServerUrl = config.messaging?.teams?.mcpServerUrl;
                 if (!mcpServerUrl) {
-                    return sendJson(res, { ok: false, error: 'No mcpServerUrl configured — set it in Teams config first' });
+                    return sendJson(res, { ok: false, error: 'No mcpServerUrl configured' });
                 }
-                teamsAuthPending = true;
-                // Fire-and-forget: opens browser and resolves when user completes login
-                const { acquireTokenViaBrowser } = await import('@plusplusoneplusplus/teams-bot');
-                acquireTokenViaBrowser(mcpServerUrl, {
+                const { getOAuthConfig } = await import('@plusplusoneplusplus/teams-bot');
+                const oauthConfig = getOAuthConfig(mcpServerUrl, {
                     clientId: config.messaging?.teams?.clientId,
                     scope: config.messaging?.teams?.scope,
-                }).then(async (_token) => {
-                    console.log('[container] Teams OAuth login succeeded');
-                    teamsAuthPending = false;
+                });
+                return sendJson(res, { ok: true, ...oauthConfig });
+            }
+
+            // GET /auth/callback — HTML page served as popup redirect target; extracts code and postMessages to opener
+            if (url.pathname === '/api/container/messaging/teams/auth/callback' && req.method === 'GET') {
+                const html = `<!DOCTYPE html><html><head><title>Teams Auth</title></head><body>
+<h2>Processing login...</h2>
+<script>
+(function() {
+    var params = new URLSearchParams(window.location.search);
+    var code = params.get('code');
+    var error = params.get('error');
+    var errorDesc = params.get('error_description');
+    if (window.opener) {
+        window.opener.postMessage({ type: 'teams-auth-callback', code: code, error: error, errorDescription: errorDesc }, '*');
+        document.querySelector('h2').textContent = code ? '\\u2713 Login successful' : '\\u2717 Login failed';
+        document.body.innerHTML += '<p>You can close this window.</p>';
+        setTimeout(function() { window.close(); }, 2000);
+    } else {
+        document.querySelector('h2').textContent = 'Error: no opener window';
+    }
+})();
+</script></body></html>`;
+                res.writeHead(200, { 'Content-Type': 'text/html' });
+                return res.end(html);
+            }
+
+            // POST /auth/exchange — client sends { code, codeVerifier, redirectUri } and server exchanges for tokens
+            if (url.pathname === '/api/container/messaging/teams/auth/exchange' && req.method === 'POST') {
+                const body = await readBody(req);
+                const { code, codeVerifier, redirectUri } = body as { code?: string; codeVerifier?: string; redirectUri?: string };
+                if (!code || !codeVerifier || !redirectUri) {
+                    return sendJson(res, { ok: false, error: 'Missing required fields: code, codeVerifier, redirectUri' });
+                }
+                const mcpServerUrl = config.messaging?.teams?.mcpServerUrl;
+                if (!mcpServerUrl) {
+                    return sendJson(res, { ok: false, error: 'No mcpServerUrl configured' });
+                }
+                try {
+                    const { exchangeCodeForToken } = await import('@plusplusoneplusplus/teams-bot');
+                    await exchangeCodeForToken(mcpServerUrl, {
+                        code,
+                        codeVerifier,
+                        redirectUri,
+                        clientId: config.messaging?.teams?.clientId,
+                        scope: config.messaging?.teams?.scope,
+                    });
+                    console.log('[container] Teams OAuth code exchange succeeded');
                     // Auto-start or reconnect the bridge
                     if (teamsBridge) {
                         await teamsBridge.reconnect();
                     } else {
-                        // Enable Teams and start bridge
                         try {
                             const jsYaml = await import('js-yaml');
                             const configPath = path.join(config.serve.dataDir, 'config.yaml');
@@ -401,7 +439,6 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                             doc.messaging.teams.mcpServerUrl = mcpServerUrl;
                             fs.writeFileSync(configPath, jsYaml.dump(doc), 'utf8');
                         } catch { /* best effort */ }
-                        // Start the bridge dynamically
                         try {
                             const { TeamsBridge } = await import('../messaging/teams-bridge');
                             const resolvedTeamsConfig = {
@@ -425,28 +462,25 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                             console.error('[container] Failed to start Teams bridge after login:', err.message);
                         }
                     }
-                }).catch((err: Error) => {
-                    console.error('[container] Teams OAuth login failed:', err.message);
-                    teamsAuthPending = false;
-                });
-                return sendJson(res, { ok: true, status: 'pending', message: 'Opening browser for Microsoft login...' });
+                    return sendJson(res, { ok: true, message: 'Token exchange successful, bridge started' });
+                } catch (err: any) {
+                    console.error('[container] Teams OAuth exchange failed:', err.message);
+                    return sendJson(res, { ok: false, error: err.message });
+                }
             }
 
             if (url.pathname === '/api/container/messaging/teams/auth/status' && req.method === 'GET') {
-                if (teamsAuthPending) {
-                    return sendJson(res, { authenticated: false, pending: true });
-                }
                 // Check if valid tokens exist
                 try {
                     const mcpServerUrl = config.messaging?.teams?.mcpServerUrl;
                     if (!mcpServerUrl) {
-                        return sendJson(res, { authenticated: false, pending: false, error: 'No mcpServerUrl configured' });
+                        return sendJson(res, { authenticated: false, error: 'No mcpServerUrl configured' });
                     }
                     const { acquireMcpOAuthToken } = await import('@plusplusoneplusplus/teams-bot');
                     await acquireMcpOAuthToken(mcpServerUrl);
-                    return sendJson(res, { authenticated: true, pending: false });
+                    return sendJson(res, { authenticated: true });
                 } catch {
-                    return sendJson(res, { authenticated: false, pending: false });
+                    return sendJson(res, { authenticated: false });
                 }
             }
 
