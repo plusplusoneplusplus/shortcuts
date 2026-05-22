@@ -41,14 +41,66 @@ export class McpTransport implements TeamsTransport {
             this._useChat = true;
             console.log(`[mcp-transport] No teamId — using direct message (self) mode`);
             console.log(`[mcp-transport] Will use SendMessageToSelf tool to send messages to the authenticated user`);
+
+            // Discover self-chatId for polling (sends still use SendMessageToSelf)
+            await this.discoverSelfChatForPolling();
         }
 
-        console.log(`[mcp-transport] MCP session initialized successfully (mode=${this._useChat ? 'self-dm' : 'channel'})`);
+        console.log(`[mcp-transport] MCP session initialized successfully (mode=${this._useChat ? 'self-dm' : 'channel'}, pollTarget=${this._chatId ?? 'pending'})`);
     }
 
-    /** Get discovered chat ID for DM mode. */
+    /** Get discovered chat ID for DM mode (used as poll target). */
     getChatId(): string | null {
         return this._chatId;
+    }
+
+    /**
+     * Discover the self-chat ID for polling purposes.
+     * Sends a brief init message via SendMessageToSelf to get the chatId from the response.
+     */
+    private async discoverSelfChatForPolling(): Promise<void> {
+        if (!this.client) return;
+
+        // Send a brief init message to discover the chatId
+        if (this._availableTools.includes('SendMessageToSelf')) {
+            try {
+                const result = await this.client.callTool('SendMessageToSelf', {
+                    content: '🤖 CoC bridge connected',
+                    contentType: 'text',
+                });
+                const responseText = result.content?.[0]?.text ?? '';
+                console.log(`[mcp-transport] SendMessageToSelf init response: ${responseText.substring(0, 200)}`);
+
+                if (!responseText.startsWith('Error:')) {
+                    const parsed = JSON.parse(responseText);
+                    if (parsed.chatId) {
+                        this._chatId = parsed.chatId;
+                        console.log(`[mcp-transport] Discovered self-chat for polling: ${this._chatId}`);
+                        return;
+                    }
+                }
+            } catch (err: any) {
+                console.warn(`[mcp-transport] SendMessageToSelf init failed: ${err.message}`);
+            }
+        }
+
+        // Fallback: use ListChats to find a chat
+        if (this._availableTools.includes('ListChats')) {
+            try {
+                const result = await this.client.callTool('ListChats', {});
+                const responseText = result.content?.[0]?.text ?? '[]';
+                const parsed = JSON.parse(responseText);
+                const chats = Array.isArray(parsed) ? parsed : (parsed.value ?? parsed.chats ?? []);
+                if (chats.length > 0) {
+                    // Use first oneOnOne chat (likely the self-chat since we just sent a message there)
+                    const selfChat = chats.find((c: any) => c.chatType === 'oneOnOne' || c.type === 'oneOnOne');
+                    this._chatId = selfChat?.id ?? chats[0].id;
+                    console.log(`[mcp-transport] Using chat for polling: ${this._chatId}`);
+                }
+            } catch (err: any) {
+                console.warn(`[mcp-transport] ListChats fallback failed: ${err.message}`);
+            }
+        }
     }
 
     async send(channelId: string, text: string, opts?: TransportSendOptions): Promise<string> {
@@ -135,6 +187,11 @@ export class McpTransport implements TeamsTransport {
         try {
             const parsed = JSON.parse(responseText);
             const messageId = parsed.messageId ?? parsed.id ?? '';
+            // Capture chatId from response for polling if not yet known
+            if (!this._chatId && parsed.chatId) {
+                this._chatId = parsed.chatId;
+                console.log(`[mcp-transport] Captured chatId from send response: ${this._chatId}`);
+            }
             console.log(`[mcp-transport] *** DM SENT SUCCESSFULLY *** messageId=${messageId}`);
             return messageId;
         } catch {
