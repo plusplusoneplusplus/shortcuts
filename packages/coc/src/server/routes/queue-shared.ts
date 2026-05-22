@@ -324,7 +324,7 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         priority,
         payload,
         config: {
-            model: taskSpec.config?.model,
+            model: taskSpec.config?.model ?? (typeof payload.model === 'string' ? payload.model : undefined),
             timeoutMs: taskSpec.config?.timeoutMs,
             retryOnFailure: taskSpec.config?.retryOnFailure ?? false,
             retryAttempts: taskSpec.config?.retryAttempts,
