@@ -39,6 +39,7 @@ import {
     type McpConfigScope,
 } from './mcp-config-writer';
 import { testMcpConnection } from './mcp-connection-tester';
+import { readMcpServerAuthInfo, type McpServerAuthStatus } from '../mcp-oauth';
 
 // Lazy singleton service
 let _branchService: BranchService | undefined;
@@ -78,6 +79,10 @@ interface WorkspaceMcpServerEntry {
     overriddenBy?: WorkspaceMcpServerSource;
     /** Derived server status (added to availableServers only). */
     status?: 'ok' | 'auth' | 'off' | 'err';
+    /** Auth state for remote servers (added to availableServers only). */
+    authStatus?: McpServerAuthStatus;
+    /** Token expiry (epoch seconds), when known (added to availableServers only). */
+    authExpiresAt?: number;
     /** User-provided description from config file (added to availableServers only). */
     description?: string;
 }
@@ -120,10 +125,22 @@ function toMcpSourceSection(
     };
 }
 
-/** Derive server status for the list view: ok | auth | off | err. */
-function deriveServerStatus(type: string, isEnabled: boolean): 'ok' | 'auth' | 'off' | 'err' {
+/**
+ * Derive server status for the list view: ok | auth | off | err.
+ *
+ * `auth` is reserved for remote servers whose OAuth token is missing or
+ * expired — a stale token still shows `ok` because the SDK will refresh it
+ * silently on first use. Stdio servers are always `ok` when enabled.
+ */
+function deriveServerStatus(
+    type: string,
+    isEnabled: boolean,
+    authStatus: McpServerAuthStatus,
+): 'ok' | 'auth' | 'off' | 'err' {
     if (!isEnabled) return 'off';
-    if (type === 'http' || type === 'sse') return 'auth';
+    if (type === 'http' || type === 'sse') {
+        if (authStatus === 'required' || authStatus === 'expired') return 'auth';
+    }
     return 'ok';
 }
 
@@ -151,7 +168,11 @@ function buildMcpConfigResponse(ws: WorkspaceInfo, forceReload = false) {
         const isEnabled = enabledSet === null || enabledSet === undefined || enabledSet.includes(name);
         const type = config.type ?? 'stdio';
         const entry = toMcpServerEntry(name, config, workspaceNames.has(name) ? 'workspace' : 'global', true);
-        entry.status = deriveServerStatus(type, isEnabled);
+        const url = 'url' in config ? config.url : undefined;
+        const auth = readMcpServerAuthInfo(url, type);
+        entry.authStatus = auth.status;
+        if (auth.expiresAt !== undefined) entry.authExpiresAt = auth.expiresAt;
+        entry.status = deriveServerStatus(type, isEnabled, auth.status);
         const desc = descriptions[name];
         if (desc) entry.description = desc;
         return entry;
