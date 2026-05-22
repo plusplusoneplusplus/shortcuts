@@ -91,75 +91,7 @@ export interface SkillTemplateEntry {
     skills: string[];
 }
 
-/** Global (cross-repo) UI preferences. */
-export interface GlobalPreferences {
-    /** Persisted dashboard theme ('light' | 'dark' | 'auto'). */
-    theme?: 'light' | 'dark' | 'auto';
-    /** Whether the repos sidebar (left panel) is collapsed. */
-    reposSidebarCollapsed?: boolean;
-    /** User-defined display order of repository groups. Each entry is a normalizedUrl (for grouped repos) or 'workspace:{id}' (for ungrouped repos). */
-    gitGroupOrder?: string[];
-    /** User-defined display order of individual repository tabs by workspace ID. */
-    repoTabOrder?: string[];
-    /** Whether the user has dismissed the welcome modal. */
-    hasSeenWelcome?: boolean;
-
-    /** Tracks progress through the onboarding checklist steps. */
-    onboardingProgress?: {
-        hasUsedChat?: boolean;
-        hasRunWorkflow?: boolean;
-        hasOpenedWiki?: boolean;
-        settingsVisited?: boolean;
-        dismissed?: boolean;
-        hasCompletedTour?: boolean;
-    };
-
-    /** IDs of contextual tips the user has permanently dismissed. */
-    dismissedTips?: string[];
-
-    /** Persisted activity page filter selections (workspace selection and My Work exclusions).
-     * statusFilter and typeFilter have moved to PerRepoPreferences.activityFilters. */
-    activityFilters?: {
-        workspace?: string;
-        /** Persisted My Work Activity exclusion set (e.g. ['run-workflow', 'ask']). */
-        myWorkExcludedTypes?: string[];
-    };
-
-    /** Persisted UI layout mode ('classic' | 'dev-workflow'). */
-    uiLayoutMode?: 'classic' | 'dev-workflow';
-
-    /**
-     * Per-handler enabled/disabled overrides for the link-handler feature.
-     * Keys are handler names (e.g. 'teams', 'vscode', 'onenote').
-     * `true` or absent = handler is enabled (default); `false` = disabled.
-     */
-    linkHandlers?: Record<string, boolean>;
-    /** Sandboxed inline previews for local .html/.htm links whose title is "embed". */
-    htmlEmbed?: {
-        enabled: boolean;
-    };
-
-    /** VS Code-style inline ghost-text autocomplete for the Queue Task and follow-up inputs. */
-    promptAutocomplete?: {
-        /** Enabled by default. Set to false to disable client-side suggestions. */
-        enabled: boolean;
-        /** AI-generated ghost-text settings. Disabled by default when absent. */
-        ai?: {
-            enabled?: boolean;
-            /**
-             * AI model id used for ghost-text generation.
-             * Defaults to a fast/cheap model — override here to use a different one.
-             * Examples: 'gpt-5-mini', 'gpt-5.4-mini', 'claude-haiku-4.5', 'gpt-4.1'.
-             */
-            model?: string;
-            debounceMs?: number;
-            timeoutMs?: number;
-            maxHistoryItems?: number;
-            maxCompletionChars?: number;
-            includeGlobalHistory?: boolean;
-        };
-    };
-}
+// GlobalPreferences type is derived from GlobalPreferencesSchema below (see "Global Preferences Zod Schema" section).
 
 // ============================================================================
 // Constants (must precede schema declarations that reference them)
@@ -367,6 +299,115 @@ export const PerRepoPreferencesSchema = z.object({
 /** Per-repository UI preferences — derived from PerRepoPreferencesSchema. */
 export type PerRepoPreferences = z.infer<typeof PerRepoPreferencesSchema>;
 
+// ============================================================================
+// Global Preferences Zod Schema
+// ============================================================================
+
+const OnboardingProgressSchema = z.object({
+    hasUsedChat: z.boolean().optional().catch(undefined),
+    hasRunWorkflow: z.boolean().optional().catch(undefined),
+    hasOpenedWiki: z.boolean().optional().catch(undefined),
+    settingsVisited: z.boolean().optional().catch(undefined),
+    dismissed: z.boolean().optional().catch(undefined),
+    hasCompletedTour: z.boolean().optional().catch(undefined),
+}).strip().transform(dropIfEmpty);
+
+const GlobalActivityFiltersSchema = z.object({
+    workspace: z.string().optional().catch(undefined),
+    myWorkExcludedTypes: z.array(z.unknown())
+        .transform(arr => arr.filter((v): v is string => typeof v === 'string' && v.length > 0))
+        .optional()
+        .catch(undefined),
+}).strip().transform(dropIfEmpty);
+
+/** Boolean-valued record; filters empty-string keys and non-boolean values. */
+const LinkHandlersSchema = z.record(z.string(), z.unknown()).transform(rec => {
+    const out: Record<string, boolean> = {};
+    for (const [k, v] of Object.entries(rec)) {
+        if (k.length > 0 && typeof v === 'boolean') out[k] = v;
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
+});
+
+const HtmlEmbedSchema = z.object({
+    enabled: z.boolean(),
+}).strip();
+
+const PromptAutocompleteAiSchema = z.object({
+    enabled: z.boolean().optional().catch(undefined),
+    model: z.string().min(1).max(100).optional().catch(undefined),
+    debounceMs: z.number().int().min(100).max(5000).optional().catch(undefined),
+    timeoutMs: z.number().int().min(100).max(10000).optional().catch(undefined),
+    maxHistoryItems: z.number().int().min(1).max(50).optional().catch(undefined),
+    maxCompletionChars: z.number().int().min(20).max(500).optional().catch(undefined),
+    includeGlobalHistory: z.boolean().optional().catch(undefined),
+}).strip().transform(dropIfEmpty);
+
+const PromptAutocompleteSchema = z.object({
+    enabled: z.boolean(),
+    ai: PromptAutocompleteAiSchema.optional().catch(undefined),
+}).strip();
+
+/**
+ * Zod schema for global (cross-repo) UI preferences.
+ * Source of truth — the GlobalPreferences type is derived via z.infer<>.
+ * Uses .strip() at parse time so unknown keys are silently dropped.
+ */
+export const GlobalPreferencesSchema = z.object({
+    /** Persisted dashboard theme ('light' | 'dark' | 'auto'). */
+    theme: z.enum(['light', 'dark', 'auto']).optional().catch(undefined),
+    /** Whether the repos sidebar (left panel) is collapsed. */
+    reposSidebarCollapsed: z.boolean().optional().catch(undefined),
+    /** User-defined display order of repository groups. Each entry is a normalizedUrl (for grouped repos) or 'workspace:{id}' (for ungrouped repos). */
+    gitGroupOrder: z.array(z.unknown())
+        .transform(arr => {
+            const filtered = arr.filter((k): k is string => typeof k === 'string' && k.length > 0);
+            return filtered.length > 0 ? filtered : undefined;
+        })
+        .optional()
+        .catch(undefined),
+    /** User-defined display order of individual repository tabs by workspace ID. */
+    repoTabOrder: z.array(z.unknown())
+        .transform(arr => {
+            const filtered = arr.filter((k): k is string => typeof k === 'string' && k.length > 0);
+            return filtered.length > 0 ? filtered : undefined;
+        })
+        .optional()
+        .catch(undefined),
+    /** Whether the user has dismissed the welcome modal. */
+    hasSeenWelcome: z.boolean().optional().catch(undefined),
+    /** Tracks progress through the onboarding checklist steps. */
+    onboardingProgress: OnboardingProgressSchema.optional().catch(undefined),
+    /** IDs of contextual tips the user has permanently dismissed. */
+    dismissedTips: z.array(z.unknown())
+        .transform(arr => {
+            const filtered = arr.filter((t): t is string => typeof t === 'string' && t.length > 0);
+            return filtered.length > 0 ? filtered : undefined;
+        })
+        .optional()
+        .catch(undefined),
+    /**
+     * Persisted activity page filter selections (workspace selection and My Work exclusions).
+     * statusFilter and typeFilter have moved to PerRepoPreferences.activityFilters.
+     */
+    activityFilters: GlobalActivityFiltersSchema.optional().catch(undefined),
+    /** Persisted UI layout mode ('classic' | 'dev-workflow'). */
+    uiLayoutMode: z.enum(['classic', 'dev-workflow']).optional().catch(undefined),
+    /**
+     * Per-handler enabled/disabled overrides for the link-handler feature.
+     * Keys are handler names (e.g. 'teams', 'vscode', 'onenote').
+     * `true` or absent = handler is enabled (default); `false` = disabled.
+     */
+    linkHandlers: LinkHandlersSchema.optional().catch(undefined),
+    /** Sandboxed inline previews for local .html/.htm links whose title is "embed". */
+    htmlEmbed: HtmlEmbedSchema.optional().catch(undefined),
+    /** VS Code-style inline ghost-text autocomplete for the Queue Task and follow-up inputs. */
+    promptAutocomplete: PromptAutocompleteSchema.optional().catch(undefined),
+}).strip();
+
+/** Global (cross-repo) UI preferences — derived from GlobalPreferencesSchema. */
+export type GlobalPreferences = z.infer<typeof GlobalPreferencesSchema>;
+
 export interface SkillUsageEntry {
     skillName: string;
     timestamp: string;
@@ -416,129 +457,17 @@ export function validateGlobalPreferences(raw: unknown): GlobalPreferences {
     if (typeof raw !== 'object' || raw === null) {
         return {};
     }
-    const obj = raw as Record<string, unknown>;
-    const result: GlobalPreferences = {};
-
-    if (obj.theme === 'light' || obj.theme === 'dark' || obj.theme === 'auto') {
-        result.theme = obj.theme;
+    const result = GlobalPreferencesSchema.safeParse(raw);
+    if (!result.success) {
+        return {};
     }
-
-    if (typeof obj.reposSidebarCollapsed === 'boolean') {
-        result.reposSidebarCollapsed = obj.reposSidebarCollapsed;
-    }
-
-    if (Array.isArray(obj.gitGroupOrder)) {
-        const order = (obj.gitGroupOrder as unknown[]).filter(
-            (k): k is string => typeof k === 'string' && k.length > 0
-        );
-        if (order.length > 0) {
-            result.gitGroupOrder = order;
+    const data = result.data;
+    for (const key of Object.keys(data) as (keyof GlobalPreferences)[]) {
+        if (data[key] === undefined) {
+            delete data[key];
         }
     }
-
-    if (Array.isArray(obj.repoTabOrder)) {
-        const order = (obj.repoTabOrder as unknown[]).filter(
-            (k): k is string => typeof k === 'string' && k.length > 0
-        );
-        if (order.length > 0) {
-            result.repoTabOrder = order;
-        }
-    }
-
-    if (typeof obj.hasSeenWelcome === 'boolean') {
-        result.hasSeenWelcome = obj.hasSeenWelcome;
-    }
-
-    if (typeof obj.onboardingProgress === 'object' && obj.onboardingProgress !== null && !Array.isArray(obj.onboardingProgress)) {
-        const raw = obj.onboardingProgress as Record<string, unknown>;
-        const validated: NonNullable<GlobalPreferences['onboardingProgress']> = {};
-        for (const key of ['hasUsedChat', 'hasRunWorkflow', 'hasOpenedWiki', 'settingsVisited', 'dismissed', 'hasCompletedTour'] as const) {
-            if (typeof raw[key] === 'boolean') {
-                validated[key] = raw[key] as boolean;
-            }
-        }
-        if (Object.keys(validated).length > 0) {
-            result.onboardingProgress = validated;
-        }
-    }
-
-    if (Array.isArray(obj.dismissedTips)) {
-        const tips = (obj.dismissedTips as unknown[]).filter(
-            (t): t is string => typeof t === 'string' && t.length > 0
-        );
-        if (tips.length > 0) {
-            result.dismissedTips = tips;
-        }
-    }
-
-    if (typeof obj.activityFilters === 'object' && obj.activityFilters !== null && !Array.isArray(obj.activityFilters)) {
-        const raw = obj.activityFilters as Record<string, unknown>;
-        const validated: NonNullable<GlobalPreferences['activityFilters']> = {};
-        if (typeof raw.workspace === 'string') validated.workspace = raw.workspace;
-        if (Array.isArray(raw.myWorkExcludedTypes)) {
-            const arr = (raw.myWorkExcludedTypes as unknown[]).filter((v): v is string => typeof v === 'string' && v.length > 0);
-            validated.myWorkExcludedTypes = arr;
-        }
-        if (Object.keys(validated).length > 0) {
-            result.activityFilters = validated;
-        }
-    }
-
-    if (obj.uiLayoutMode === 'classic' || obj.uiLayoutMode === 'dev-workflow') {
-        result.uiLayoutMode = obj.uiLayoutMode;
-    }
-
-    if (typeof obj.linkHandlers === 'object' && obj.linkHandlers !== null && !Array.isArray(obj.linkHandlers)) {
-        const validated: Record<string, boolean> = {};
-        for (const [key, value] of Object.entries(obj.linkHandlers as Record<string, unknown>)) {
-            if (typeof key === 'string' && key.length > 0 && typeof value === 'boolean') {
-                validated[key] = value;
-            }
-        }
-        if (Object.keys(validated).length > 0) {
-            result.linkHandlers = validated;
-        }
-    }
-
-    if (typeof obj.htmlEmbed === 'object' && obj.htmlEmbed !== null) {
-        const he = obj.htmlEmbed as Record<string, unknown>;
-        if (typeof he.enabled === 'boolean') {
-            result.htmlEmbed = { enabled: he.enabled };
-        }
-    }
-
-    if (typeof obj.promptAutocomplete === 'object' && obj.promptAutocomplete !== null) {
-        const pa = obj.promptAutocomplete as Record<string, unknown>;
-        if (typeof pa.enabled === 'boolean') {
-            result.promptAutocomplete = { enabled: pa.enabled };
-            if (typeof pa.ai === 'object' && pa.ai !== null && !Array.isArray(pa.ai)) {
-                const ai = pa.ai as Record<string, unknown>;
-                const validatedAi: NonNullable<NonNullable<GlobalPreferences['promptAutocomplete']>['ai']> = {};
-                if (typeof ai.enabled === 'boolean') validatedAi.enabled = ai.enabled;
-                if (typeof ai.model === 'string' && ai.model.length > 0 && ai.model.length <= 100) {
-                    validatedAi.model = ai.model;
-                }
-                if (typeof ai.debounceMs === 'number' && Number.isInteger(ai.debounceMs) && ai.debounceMs >= 100 && ai.debounceMs <= 5000) {
-                    validatedAi.debounceMs = ai.debounceMs;
-                }
-                if (typeof ai.timeoutMs === 'number' && Number.isInteger(ai.timeoutMs) && ai.timeoutMs >= 100 && ai.timeoutMs <= 10000) {
-                    validatedAi.timeoutMs = ai.timeoutMs;
-                }
-                if (typeof ai.maxHistoryItems === 'number' && Number.isInteger(ai.maxHistoryItems) && ai.maxHistoryItems >= 1 && ai.maxHistoryItems <= 50) {
-                    validatedAi.maxHistoryItems = ai.maxHistoryItems;
-                }
-                if (typeof ai.maxCompletionChars === 'number' && Number.isInteger(ai.maxCompletionChars) && ai.maxCompletionChars >= 20 && ai.maxCompletionChars <= 500) {
-                    validatedAi.maxCompletionChars = ai.maxCompletionChars;
-                }
-                if (typeof ai.includeGlobalHistory === 'boolean') validatedAi.includeGlobalHistory = ai.includeGlobalHistory;
-                if (Object.keys(validatedAi).length > 0) {
-                    result.promptAutocomplete.ai = validatedAi;
-                }
-            }
-        }
-    }
-
-    return result;
+    return data;
 }
 
 export function normalizeGlobalPreferencesForRead(global: GlobalPreferences): GlobalPreferences {
