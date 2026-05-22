@@ -3799,7 +3799,7 @@
     "build:packages": "npm run build -w packages/forge && npm run build -w packages/coc-client && npm run build -w packages/teams-bot && npm run build -w packages/coc && npm run build -w packages/deep-wiki",
     "coc:link": "cd packages/forge && npm run build && npm link && cd ../coc-client && npm run build && cd ../teams-bot && npm run build && cd ../coc && npm run build && npm link && node -e \"require('fs').rmSync('node_modules/@plusplusoneplusplus/forge', {recursive:true,force:true})\"",
     "deep-wiki:link": "cd packages/deep-wiki && npm run build && npm link",
-    "vsce:package": "vsce package",
+    "vsce:package": "vsce package --no-dependencies",
     "vsce:publish": "vsce publish",
     "changeset": "changeset",
     "version-packages": "changeset version",
