@@ -67,6 +67,23 @@ function makeModelInfo(id: string, name: string, contextWindow = 128_000): Model
     };
 }
 
+function makeReasoningModelInfo(id: string, supportedReasoningEfforts: string[], defaultReasoningEffort: string): ModelInfo {
+    return {
+        id,
+        name: id,
+        capabilities: {
+            supports: {
+                vision: false,
+                reasoningEffort: true,
+                reasoning_effort: supportedReasoningEfforts,
+            },
+            limits: { max_context_window_tokens: 128_000 },
+        },
+        supportedReasoningEfforts,
+        defaultReasoningEffort,
+    };
+}
+
 const THREE_MODELS: ModelInfo[] = [
     makeModelInfo('model-a', 'Model A'),
     makeModelInfo('model-b', 'Model B'),
@@ -156,6 +173,29 @@ describe('GET /api/models', () => {
         const models = body as Array<ModelInfo & { enabled: boolean }>;
         expect(models).toHaveLength(3);
         expect(models.every(m => m.enabled === false)).toBe(true);
+    });
+
+    it('passes supportedReasoningEfforts and defaultReasoningEffort from the SDK store through verbatim', async () => {
+        const store: ModelStore = {
+            getAll: () => [
+                makeReasoningModelInfo('reasoning-a', ['low', 'medium', 'high'], 'medium'),
+                makeReasoningModelInfo('reasoning-b', ['high', 'xhigh'], 'high'),
+            ],
+        };
+        server = makeServer(store);
+        await startServer();
+
+        const { status, body } = await apiGet('/api/models');
+
+        expect(status).toBe(200);
+        const models = body as Array<ModelInfo & { id: string }>;
+        expect(models).toHaveLength(2);
+        const byId = Object.fromEntries(models.map(m => [m.id, m]));
+        expect(byId['reasoning-a'].supportedReasoningEfforts).toEqual(['low', 'medium', 'high']);
+        expect(byId['reasoning-a'].defaultReasoningEffort).toBe('medium');
+        expect(byId['reasoning-a'].capabilities.supports.reasoning_effort).toEqual(['low', 'medium', 'high']);
+        expect(byId['reasoning-b'].supportedReasoningEfforts).toEqual(['high', 'xhigh']);
+        expect(byId['reasoning-b'].defaultReasoningEffort).toBe('high');
     });
 
     it('marks only whitelisted models as enabled', async () => {

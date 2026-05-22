@@ -34,6 +34,8 @@ function ModelCard({ model, onToggle, saving }: { model: ModelInfo; onToggle: (i
     const vision = model.capabilities?.supports?.vision;
     const reasoning = model.capabilities?.supports?.reasoningEffort;
     const ctx = model.capabilities?.limits?.max_context_window_tokens ?? model.tokenLimit;
+    const supportedEfforts = model.supportedReasoningEfforts ?? [];
+    const defaultEffort = model.defaultReasoningEffort;
 
     const borderClass = model.enabled
         ? 'border-[#4caf50] dark:border-[#388e3c]'
@@ -79,6 +81,31 @@ function ModelCard({ model, onToggle, saving }: { model: ModelInfo; onToggle: (i
                 {vision && <span className="text-xs bg-[#e8f5e9] dark:bg-[#1b3a26] text-[#2e7d32] dark:text-[#81c784] px-1.5 py-0.5 rounded" data-testid="badge-vision">👁 Vision</span>}
                 {reasoning && <span className="text-xs bg-[#e3f2fd] dark:bg-[#1a2e45] text-[#1565c0] dark:text-[#64b5f6] px-1.5 py-0.5 rounded" data-testid="badge-reasoning">🧠 Reasoning</span>}
             </div>
+            {supportedEfforts.length > 0 && (
+                <div
+                    className="flex gap-1 mt-1.5 flex-wrap items-center"
+                    data-testid="reasoning-efforts"
+                >
+                    <span className="text-xs text-[#666] dark:text-[#999]">Effort:</span>
+                    {supportedEfforts.map(effort => {
+                        const isDefault = effort === defaultEffort;
+                        const badgeClass = isDefault
+                            ? 'bg-[#1565c0] dark:bg-[#1976d2] text-white'
+                            : 'bg-[#e3f2fd] dark:bg-[#1a2e45] text-[#1565c0] dark:text-[#64b5f6]';
+                        return (
+                            <span
+                                key={effort}
+                                className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${badgeClass}`}
+                                data-testid={`effort-${effort}`}
+                                data-default={isDefault ? 'true' : 'false'}
+                                title={isDefault ? `${effort} (default)` : effort}
+                            >
+                                {effort}{isDefault ? '★' : ''}
+                            </span>
+                        );
+                    })}
+                </div>
+            )}
         </button>
     );
 }
