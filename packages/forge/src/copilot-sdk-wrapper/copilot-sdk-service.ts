@@ -84,6 +84,8 @@ export class CopilotSDKService implements ISDKService {
     public static getInstance(): CopilotSDKService {
         if (!CopilotSDKService.instance) {
             CopilotSDKService.instance = new CopilotSDKService();
+        }
+        if (!sdkServiceRegistry.has(COPILOT_PROVIDER)) {
             sdkServiceRegistry.register(COPILOT_PROVIDER, CopilotSDKService.instance);
         }
         return CopilotSDKService.instance;
@@ -219,3 +221,7 @@ export class CopilotSDKService implements ISDKService {
 export function resetCopilotSDKService(): void {
     CopilotSDKService.resetInstance();
 }
+
+// Make the default provider available to fresh CLI processes that import Forge
+// and then resolve providers through sdkServiceRegistry.
+CopilotSDKService.getInstance();

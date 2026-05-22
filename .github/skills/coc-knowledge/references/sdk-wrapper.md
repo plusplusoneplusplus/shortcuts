@@ -46,6 +46,7 @@ Location: `packages/forge/src/copilot-sdk-wrapper/`
 ### Singleton + Per-Session Client Isolation
 
 Each `sendMessage()` call creates its **own `CopilotClient`** child process — no shared client. Concurrent tasks with different working directories cannot interfere.
+The public Forge entrypoint registers the default `copilot` SDK provider when loaded, and `CopilotSDKService.getInstance()` idempotently re-registers the singleton if its registry entry was removed.
 
 ## RequestRunner — sendMessage() Flow
 

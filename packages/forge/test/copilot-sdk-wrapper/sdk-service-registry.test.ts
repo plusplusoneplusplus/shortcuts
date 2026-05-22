@@ -274,6 +274,7 @@ describe('sdkServiceRegistry integration — mock ISDKService provider', () => {
 
     it('getOrThrow throws when provider is not registered', () => {
         // Ensure no provider under the copilot key for this assertion.
+        sdkServiceRegistry.unregister(SDK_PROVIDER_COPILOT);
         expect(() => sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT)).toThrow(
             `SDK service provider '${SDK_PROVIDER_COPILOT}' is not registered`,
         );

@@ -13,6 +13,10 @@ function runGit(repoDir: string, ...args: string[]): void {
     execFileSync('git', args, { cwd: repoDir, stdio: 'ignore' });
 }
 
+function runBareGit(gitDir: string, ...args: string[]): void {
+    execFileSync('git', ['--git-dir', gitDir, ...args], { stdio: 'ignore' });
+}
+
 function addLocalOrigin(tmpDir: string, repoDir: string): void {
     const remoteDir = path.join(tmpDir, 'origin.git');
     fs.mkdirSync(remoteDir, { recursive: true });
@@ -25,7 +29,7 @@ function addLocalOrigin(tmpDir: string, repoDir: string): void {
     runGit(repoDir, 'remote', 'add', 'origin', remoteDir);
     runGit(repoDir, 'push', '-u', 'origin', 'HEAD');
     if (currentBranch) {
-        runGit(remoteDir, 'symbolic-ref', 'HEAD', `refs/heads/${currentBranch}`);
+        runBareGit(remoteDir, 'symbolic-ref', 'HEAD', `refs/heads/${currentBranch}`);
     }
 }
 
