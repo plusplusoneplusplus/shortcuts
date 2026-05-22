@@ -156,6 +156,7 @@ export {
     BuildCliCommandOptions,
     // Copilot SDK Service
     CopilotSDKService,
+    getCopilotSDKService,
     resetCopilotSDKService,
     BackgroundTasksInfo,
     // ISDKService interface and provider-agnostic types
