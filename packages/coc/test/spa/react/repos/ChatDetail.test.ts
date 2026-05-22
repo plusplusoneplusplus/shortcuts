@@ -1235,6 +1235,18 @@ describe('ChatDetail', () => {
             expect(SCRATCHPAD_STATE_SOURCE).toContain('setKnownFiles(prev => prev.filter');
             expect(SCRATCHPAD_STATE_SOURCE).toContain('writeLinkedNotePath(taskId, null)');
         });
+
+        it('registers .plan.md files into the scratchpad tab list (AC-01, AC-03)', () => {
+            // The registration effect must NOT filter out the plan file so that
+            // .plan.md appears as a scratchpad tab alongside other .md files.
+            const registerBlock = source.substring(
+                source.indexOf('Register all .md files from created files into the scratchpad tab list'),
+                source.indexOf('// Track scroll position'),
+            );
+            expect(registerBlock).toContain("filter(p => p.endsWith('.md'))");
+            // Must NOT exclude the plan file any more
+            expect(registerBlock).not.toContain('effectivePlanPath');
+        });
     });
 
     describe('mobile responsiveness', () => {
