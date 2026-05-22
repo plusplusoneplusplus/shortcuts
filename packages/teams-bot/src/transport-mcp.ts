@@ -1,5 +1,6 @@
 /**
  * McpTransport — TeamsTransport implementation using the Teams MCP server.
+ * Supports both channel messaging and direct chat messaging.
  */
 
 import type { TeamsTransport, InboundTeamsMessage, TeamsChannel, TransportSendOptions } from './types';
@@ -9,6 +10,9 @@ export class McpTransport implements TeamsTransport {
     private client: McpClient | null = null;
     private serverUrl: string;
     private teamId: string | null = null;
+    private _availableTools: string[] = [];
+    private _useChat = false;
+    private _chatId: string | null = null;
 
     constructor(serverUrl: string) {
         this.serverUrl = serverUrl;
@@ -22,11 +26,81 @@ export class McpTransport implements TeamsTransport {
             bearerToken: token,
         });
         await this.client.initialize();
-        console.log(`[mcp-transport] MCP session initialized successfully`);
+
+        // Discover available tools
+        try {
+            const toolsResult = await this.client.listTools();
+            this._availableTools = (toolsResult.tools ?? []).map((t: any) => t.name);
+            console.log(`[mcp-transport] Available tools: ${this._availableTools.join(', ')}`);
+        } catch (err: any) {
+            console.warn(`[mcp-transport] Failed to list tools: ${err.message}`);
+        }
+
+        // If no teamId configured, use chat mode for DM
+        if (!this.teamId) {
+            this._useChat = true;
+            console.log(`[mcp-transport] No teamId — using chat (DM) mode`);
+
+            // Try to discover user's self-chat
+            await this.discoverSelfChat();
+        }
+
+        console.log(`[mcp-transport] MCP session initialized successfully (mode=${this._useChat ? 'chat' : 'channel'}, chatId=${this._chatId ?? 'none'})`);
+    }
+
+    /** Get discovered chat ID for DM mode. */
+    getChatId(): string | null {
+        return this._chatId;
+    }
+
+    /** Try to discover the user's self-chat via MCP tools. */
+    private async discoverSelfChat(): Promise<void> {
+        if (!this.client) return;
+
+        // Try known tool names for listing chats
+        const listChatTools = ['ListChats', 'GetMyChats', 'list_chats', 'GetChats'];
+        const toolName = listChatTools.find(t => this._availableTools.includes(t));
+
+        if (!toolName) {
+            console.warn(`[mcp-transport] No chat list tool found. Available: ${this._availableTools.join(', ')}`);
+            console.warn(`[mcp-transport] Please set a chatId manually or ensure MCP server supports chat tools`);
+            return;
+        }
+
+        try {
+            const result = await this.client.callTool(toolName, {});
+            const responseText = result.content?.[0]?.text ?? '[]';
+            console.log(`[mcp-transport] ${toolName} response: ${responseText.substring(0, 300)}`);
+
+            const parsed = JSON.parse(responseText);
+            const chats = Array.isArray(parsed) ? parsed : (parsed.value ?? parsed.chats ?? []);
+
+            // Find self-chat (oneOnOne with same user as all members, or first available)
+            for (const chat of chats) {
+                if (chat.chatType === 'oneOnOne' || chat.type === 'oneOnOne') {
+                    this._chatId = chat.id;
+                    console.log(`[mcp-transport] Found chat: ${chat.id} (${chat.topic ?? chat.displayName ?? 'oneOnOne'})`);
+                    return;
+                }
+            }
+
+            // Fallback: use first chat
+            if (chats.length > 0) {
+                this._chatId = chats[0].id;
+                console.log(`[mcp-transport] Using first available chat: ${this._chatId}`);
+            }
+        } catch (err: any) {
+            console.warn(`[mcp-transport] Failed to discover self-chat: ${err.message}`);
+        }
     }
 
     async send(channelId: string, text: string, opts?: TransportSendOptions): Promise<string> {
         if (!this.client) throw new Error('McpTransport not initialized');
+
+        // In chat mode, use SendChatMessage or SendMessageToChat
+        if (this._useChat) {
+            return this.sendChat(channelId, text);
+        }
 
         const args: Record<string, unknown> = {
             teamId: this.teamId,
@@ -55,6 +129,43 @@ export class McpTransport implements TeamsTransport {
         const result = await this.client.callTool(toolName, args);
         const responseText = result.content?.[0]?.text ?? '';
         console.log(`[mcp-transport] ${toolName} response: ${responseText.substring(0, 200)}`);
+
+        if (responseText.startsWith('Error:')) {
+            throw new Error(responseText);
+        }
+
+        try {
+            const parsed = JSON.parse(responseText);
+            return parsed.messageId ?? parsed.id ?? '';
+        } catch {
+            return responseText;
+        }
+    }
+
+    /** Send a direct message via MCP chat tools. */
+    private async sendChat(chatId: string, text: string): Promise<string> {
+        if (!this.client) throw new Error('McpTransport not initialized');
+
+        // Try known tool names for sending chat messages
+        const chatSendTools = ['SendChatMessage', 'SendMessageToChat', 'send_chat_message'];
+        const toolName = chatSendTools.find(t => this._availableTools.includes(t))
+            ?? 'SendChatMessage'; // default guess
+
+        const args: Record<string, unknown> = {
+            chatId,
+            content: text,
+            contentType: 'html',
+        };
+
+        console.log(`[mcp-transport] Calling ${toolName} with chatId=${chatId}, content length=${text.length}`);
+        const result = await this.client.callTool(toolName, args);
+        const responseText = result.content?.[0]?.text ?? '';
+        console.log(`[mcp-transport] ${toolName} response: ${responseText.substring(0, 200)}`);
+
+        if (responseText.startsWith('Error:')) {
+            throw new Error(responseText);
+        }
+
         try {
             const parsed = JSON.parse(responseText);
             return parsed.messageId ?? parsed.id ?? '';
@@ -66,6 +177,10 @@ export class McpTransport implements TeamsTransport {
     async poll(channelId: string, _since?: string): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }> {
         if (!this.client) throw new Error('McpTransport not initialized');
 
+        if (this._useChat) {
+            return this.pollChat(channelId, _since);
+        }
+
         const args: Record<string, unknown> = {
             teamId: this.teamId,
             channelId,
@@ -74,6 +189,32 @@ export class McpTransport implements TeamsTransport {
 
         const result = await this.client.callTool('ListChannelMessages', args);
         const responseText = result.content?.[0]?.text ?? '[]';
+
+        return this.parseMessages(responseText, channelId);
+    }
+
+    /** Poll chat messages via MCP. */
+    private async pollChat(chatId: string, _since?: string): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }> {
+        if (!this.client) throw new Error('McpTransport not initialized');
+
+        // Try known tool names for listing chat messages
+        const chatListTools = ['ListChatMessages', 'GetChatMessages', 'list_chat_messages'];
+        const toolName = chatListTools.find(t => this._availableTools.includes(t))
+            ?? 'ListChatMessages'; // default guess
+
+        const args: Record<string, unknown> = {
+            chatId,
+            top: 5,
+        };
+
+        const result = await this.client.callTool(toolName, args);
+        const responseText = result.content?.[0]?.text ?? '[]';
+
+        return this.parseMessages(responseText, chatId);
+    }
+
+    /** Parse raw MCP message response into InboundTeamsMessage array. */
+    private parseMessages(responseText: string, targetId: string): { messages: InboundTeamsMessage[]; nextSince: string } {
 
         let rawMessages: Array<{
             id: string;
@@ -110,7 +251,7 @@ export class McpTransport implements TeamsTransport {
                 .replace(/<[^>]*>/g, '')
                 .trim();
             return {
-                channelId,
+                channelId: targetId,
                 messageId: msg.id,
                 text,
                 senderName: msg.from?.user?.displayName ?? msg.from?.displayName ?? msg.senderName,

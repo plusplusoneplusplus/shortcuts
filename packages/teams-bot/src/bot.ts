@@ -83,6 +83,9 @@ export class TeamsBot {
             if (this.mode === 'graph' && !this.opts.teamId && this.transport instanceof GraphTransport) {
                 const chatId = (this.transport as GraphTransport).getChatId();
                 if (chatId) this._channelId = chatId;
+            } else if (this.mode === 'mcp' && !this.opts.teamId && this.transport instanceof McpTransport) {
+                const chatId = (this.transport as McpTransport).getChatId();
+                if (chatId) this._channelId = chatId;
             }
 
             this.setStatus('connected');

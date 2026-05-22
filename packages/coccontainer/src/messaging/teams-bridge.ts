@@ -63,9 +63,13 @@ export class TeamsBridge {
             } catch { /* will be handled by bot start */ }
         }
 
+        // When target is 'chat', don't pass teamId — triggers chat/DM mode in transport
+        const useChat = this.opts.config.target === 'chat';
+        console.log(`[teams-bridge] Creating bot: mode=${this.opts.config.mode}, target=${this.opts.config.target}, teamId=${useChat ? 'omitted (chat mode)' : this.opts.config.teamId}`);
+
         this.bot = new TeamsBot({
             mode: this.opts.config.mode,
-            teamId: this.opts.config.teamId,
+            teamId: useChat ? undefined : this.opts.config.teamId,
             mcpServerUrl: this.opts.config.mcpServerUrl,
             botName: this.opts.config.botName,
             pollIntervalMs: this.opts.config.pollIntervalMs,
@@ -169,9 +173,10 @@ export class TeamsBridge {
             console.error(`[teams-bridge] Failed to acquire token on reconnect: ${err.message}`);
         }
 
+        const useChat = this.opts.config.target === 'chat';
         this.bot = new TeamsBot({
             mode: this.opts.config.mode,
-            teamId: this.opts.config.teamId,
+            teamId: useChat ? undefined : this.opts.config.teamId,
             mcpServerUrl: this.opts.config.mcpServerUrl,
             botName: this.opts.config.botName,
             pollIntervalMs: this.opts.config.pollIntervalMs,
@@ -201,9 +206,15 @@ export class TeamsBridge {
 
     /**
      * Resolve team/channel names to IDs using the configured transport.
-     * In graph mode with no teamName/teamId, skip — bot will use DM chat.
+     * Skipped when target is 'chat' (DM mode).
      */
     private async resolveTeamAndChannel(): Promise<void> {
+        // In chat (DM) mode, no team/channel resolution needed
+        if (this.opts.config.target === 'chat') {
+            console.log('[teams-bridge] target=chat — skipping team/channel resolution');
+            return;
+        }
+
         // Already have explicit IDs — no resolution needed
         if (this.opts.config.teamId && this.opts.config.channelId) return;
 
