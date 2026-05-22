@@ -84,11 +84,15 @@ export class TeamsBridge {
             },
         });
 
-        // Start in background
-        this.bot.start().catch(err => console.error('[teams-bridge] Start failed:', err));
+        // Start and wait for connection (needed so chatId is resolved in DM mode)
+        try {
+            await this.bot.start();
+        } catch (err) {
+            console.error('[teams-bridge] Start failed:', err);
+        }
 
-        // Set the configured channel for polling
-        if (this.opts.config.channelId) {
+        // Set the configured channel for polling (if not already set by DM mode)
+        if (this.opts.config.channelId && !this.bot.getChannelId()) {
             this.bot.setChannelId(this.opts.config.channelId);
         }
 
@@ -129,7 +133,7 @@ export class TeamsBridge {
             teamName: this.opts.config.teamName,
             channelName: this.opts.config.channelName,
             teamId: this.opts.config.teamId,
-            channelId: this.opts.config.channelId,
+            channelId: this.bot?.getChannelId() ?? this.opts.config.channelId,
             botName: this.opts.config.botName,
         };
     }
@@ -185,8 +189,12 @@ export class TeamsBridge {
                 console.error(`[teams-bridge] Error: ${error}`);
             },
         });
-        this.bot.start().catch(err => console.error('[teams-bridge] Reconnect start failed:', err));
-        if (this.opts.config.channelId) {
+        try {
+            await this.bot.start();
+        } catch (err) {
+            console.error('[teams-bridge] Reconnect start failed:', err);
+        }
+        if (this.opts.config.channelId && !this.bot.getChannelId()) {
             this.bot.setChannelId(this.opts.config.channelId);
         }
     }
@@ -308,7 +316,11 @@ export class TeamsBridge {
         this._runningLocks.add(processId);
 
         const target = this.bot.getChannelId() ?? this.opts.config.channelId;
-        if (!target) { this._runningLocks.delete(processId); return; }
+        if (!target) {
+            console.warn('[teams-bridge] No target (chatId/channelId) available — skipping outbound');
+            this._runningLocks.delete(processId);
+            return;
+        }
 
         // Skip if Teams bot is not connected
         if (!this.bot || this.bot.getStatus() !== 'connected') {

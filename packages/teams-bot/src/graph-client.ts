@@ -54,6 +54,7 @@ export class GraphClient {
     private teamId: string | null;
     private channelId: string | null;
     private chatId: string | null;
+    private _meCache: { id: string; displayName: string } | null = null;
 
     constructor(opts: GraphClientOptions) {
         this.graphBase = opts.graphBaseUrl?.replace(/\/$/, '') ?? 'https://graph.microsoft.com/v1.0';
@@ -100,30 +101,58 @@ export class GraphClient {
 
     // ── Chat (1:1 / self) discovery & creation ───────────────────
 
-    /** Get the authenticated user's ID and display name. */
+    /** Get the authenticated user's ID and display name (cached). */
     async getMe(): Promise<{ id: string; displayName: string }> {
-        return this.get<{ id: string; displayName: string }>(`${this.graphBase}/me`);
+        if (this._meCache) return this._meCache;
+        this._meCache = await this.get<{ id: string; displayName: string }>(`${this.graphBase}/me`);
+        return this._meCache;
     }
 
     /**
-     * Find or create a 1:1 chat between the authenticated user and another user.
-     * If targetUserId is the same as the current user, this creates a "self-chat".
+     * Find or create a 1:1 chat between the authenticated user and a target user.
+     * For a "self-chat" (messaging yourself), pass the current user's ID.
      */
     async getOrCreateChat(targetUserId: string): Promise<string> {
-        // Try to find existing 1:1 chat
+        const me = await this.getMe();
+
+        // List existing chats once
         const chats = await this.get<{ value: Array<{ id: string; chatType: string; members: Array<{ userId?: string }> }> }>(
             `${this.graphBase}/me/chats?$filter=chatType eq 'oneOnOne'&$expand=members&$top=50`
         );
 
         for (const chat of chats.value ?? []) {
             const memberIds = chat.members?.map((m: any) => m.userId).filter(Boolean) ?? [];
+
+            if (targetUserId === me.id) {
+                // Self-chat: all members are the current user
+                const allSelf = memberIds.length > 0 && memberIds.every(id => id === me.id);
+                if (allSelf) {
+                    this.chatId = chat.id;
+                    return chat.id;
+                }
+            }
+
+            // Regular 1:1 with target user
             if (memberIds.includes(targetUserId)) {
                 this.chatId = chat.id;
                 return chat.id;
             }
         }
 
-        // Create a new 1:1 chat
+        // Create a new 1:1 chat — must include both members
+        const members: any[] = [
+            {
+                '@odata.type': '#microsoft.graph.aadUserConversationMember',
+                roles: ['owner'],
+                'user@odata.bind': `https://graph.microsoft.com/v1.0/users('${me.id}')`,
+            },
+            {
+                '@odata.type': '#microsoft.graph.aadUserConversationMember',
+                roles: ['owner'],
+                'user@odata.bind': `https://graph.microsoft.com/v1.0/users('${targetUserId}')`,
+            },
+        ];
+
         const res = await fetch(`${this.graphBase}/chats`, {
             method: 'POST',
             headers: {
@@ -132,13 +161,7 @@ export class GraphClient {
             },
             body: JSON.stringify({
                 chatType: 'oneOnOne',
-                members: [
-                    {
-                        '@odata.type': '#microsoft.graph.aadUserConversationMember',
-                        roles: ['owner'],
-                        'user@odata.bind': `${this.graphBase}/users('${targetUserId}')`,
-                    },
-                ],
+                members,
             }),
         });
 
@@ -324,7 +347,7 @@ export class GraphClient {
         const target = chatId ?? this.chatId;
         if (!target) throw new Error('No chatId configured');
         const url = `${this.graphBase}/chats/${target}/messages`;
-        const res = await this.post(url, { body: { content } });
+        const res = await this.post(url, { body: { content, contentType: 'html' } });
         return res.id;
     }
 
