@@ -11,11 +11,11 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { z } from 'zod';
 import { sendJSON, sendError } from './core/api-handler';
 import { parseBodyOrReject } from './shared/handler-utils';
 import { getRepoDataPath } from './paths';
 import type { Route } from './types';
-import type { NotesGitConfig } from './notes/git/notes-git-types';
 import { getEffectiveDefaultDisabledTools } from './llm-tools/llm-tool-registry';
 import { MAX_ADDITIONAL_NOTES_ROOTS } from './notes/notes-root-resolver';
 
@@ -161,105 +161,211 @@ export interface GlobalPreferences {
     };
 }
 
-/** Per-repository UI preferences. */
-export interface PerRepoPreferences {
-    /** @deprecated Use lastModels instead. Kept for backward compatibility on read. */
-    lastModel?: string;
-    /** Per-mode last-used AI model names (task / ask / plan). */
-    lastModels?: LastModelsByMode;
-    /** Last-selected generation depth in the SPA ('deep' | 'normal'). */
-    lastDepth?: 'deep' | 'normal';
-    /** Last-selected effort level in the Generate Task dialog. */
-    lastEffort?: 'low' | 'medium' | 'high';
-    /** Per-mode last-used skill names (task / ask / plan). */
-    lastSkills?: LastSkillsByMode;
-    /** Skill usage timestamps for ordering skill dropdowns (skillName → ISO timestamp). */
-    skillUsageMap?: Record<string, string>;
-    /** Skill usage timestamps for the Git tab commit/range "Use Skill"
-     *  context menu (skillName → ISO timestamp). Scoped to the Git tab so
-     *  ordering reflects only commit-based runs, not Enqueue / Work-Item /
-     *  other surfaces. */
-    commitSkillUsageMap?: Record<string, string>;
-    /** IDs of workspaces whose skill folders are linked via "Extra Skill Folders". */
-    linkedRepoIds?: string[];
-    /** Saved run-script templates from the Run Script dialog. */
-    scriptTemplates?: ScriptTemplateEntry[];
-    /** Saved skill/model templates from the Run Skill dialog. */
-    skillTemplates?: SkillTemplateEntry[];
-    /** Preferred file-list display mode across all git views (commits, branch changes, working tree). */
-    filesViewMode?: 'flat' | 'tree';
-    /** Bounded memory settings. */
-    boundedMemory?: {
-        enabled: boolean;
-        /** Max characters for MEMORY.md content. Default: 16384. */
-        charLimit?: number;
-        /** Controls how aggressively the AI writes memory entries. Default: 'medium'. */
-        writeFrequency?: 'low' | 'medium' | 'high';
-        /** Ranked recall settings for prompt injection. Enabled by default when memory is enabled. */
-        recall?: {
-            enabled?: boolean;
-            /** Maximum ranked repo/system entries to inject, excluding protected entries. */
-            maxEntries?: number;
-            /** Maximum serialized characters for recalled entries. Protected entries are always included. */
-            charBudget?: number;
-            /** Optional FTS5 BM25 upper bound. Lower scores are better. */
-            maxBm25Score?: number;
-        };
-        /** Opt-in repo memory read tools. Disabled by default. */
-        readTools?: {
-            enabled?: boolean;
-            /** Maximum search results returned by memory_search. */
-            maxResults?: number;
-            /** Maximum characters returned per memory entry. */
-            maxEntryChars?: number;
-        };
-        /** Opt-in automatic candidate promotion. Defaults to off. */
-        autoPromote?: BoundedMemoryAutoPromoteConfig;
-    };
-    /** Notes directory git tracking settings. */
-    notesGit?: NotesGitConfig;
-    /** Per-repo activity filter selections (status and type filters). */
-    activityFilters?: {
-        statusFilter?: string;
-        typeFilter?: string;
-    };
-    /**
-     * Per-workspace LLM tool deny-list.
-     * - `undefined` — use mode-aware defaults.
-     * - `string[]` — tools whose name matches an entry are disabled.
-     */
-    disabledLlmTools?: string[];
-    /** Repo-wide default model used when no explicit model is provided. */
-    defaultModel?: string;
-    /** Per-mode default model overrides. Take precedence over defaultModel. */
-    defaultModels?: DefaultModelsByMode;
-    /**
-     * Maximum number of iterations a Ralph loop runs before stopping.
-     * Range: 1..200. When unset, server falls back to {@link RALPH_DEFAULT_MAX_ITERATIONS} (20).
-     */
-    maxRalphIterations?: number;
-    /** Additional notes root folders (relative paths from workspace git root). Max 10. */
-    additionalNotesRoots?: string[];
-    /** Git-based notes sync settings (only for my_work / my_life virtual workspaces). */
-    sync?: {
-        /** Git remote URL. Sync is disabled when empty/absent. */
-        gitRemote?: string;
-        /** Sync interval in minutes (default: 5). */
-        intervalMinutes?: number;
-    };
-    /**
-     * Per-server tool allow-list.
-     * - `undefined` — all tools for every server are enabled (default).
-     * - Keys are MCP server names; values are arrays of tool names that are
-     *   allowed. Only effective when the server itself is also enabled.
-     */
-    enabledMcpTools?: Record<string, string[]>;
-}
+// ============================================================================
+// Constants (must precede schema declarations that reference them)
+// ============================================================================
 
 /** Hardcoded fallback for Ralph max iterations when no preference is set. */
 export const RALPH_DEFAULT_MAX_ITERATIONS = 20;
 /** Inclusive upper bound for the per-repo `maxRalphIterations` setting. */
 export const RALPH_MAX_ITERATIONS_LIMIT = 200;
+
+// ============================================================================
+// Per-Repo Preferences Zod Schema
+// ============================================================================
+
+/** Helper: drop the key when the validated sub-object is empty. */
+function dropIfEmpty<T extends Record<string, unknown>>(obj: T): T | undefined {
+    const cleaned = { ...obj };
+    for (const key of Object.keys(cleaned)) {
+        if (cleaned[key] === undefined) delete cleaned[key];
+    }
+    return Object.keys(cleaned).length > 0 ? cleaned as T : undefined;
+}
+
+/** Zod sub-schema for per-mode last-used skill names with backward-compat coercion. */
+const lastSkillsMode = z.union([
+    z.string().min(1).transform(s => [s]),
+    z.array(z.unknown()).transform(arr => arr.filter((s): s is string => typeof s === 'string' && s.length > 0)),
+]).catch(undefined as unknown as string[]);
+
+const LastSkillsByModeSchema = z.object({
+    task: lastSkillsMode.optional(),
+    ask: lastSkillsMode.optional(),
+    plan: lastSkillsMode.optional(),
+}).strip().transform(dropIfEmpty);
+
+const optionalModelString = z.string().optional().catch(undefined);
+
+const LastModelsByModeSchema = z.object({
+    task: optionalModelString,
+    ask: optionalModelString,
+    plan: optionalModelString,
+    note: optionalModelString,
+}).strip().transform(dropIfEmpty);
+
+const optionalModelStringMax100 = z.string().max(100).optional().catch(undefined);
+
+const DefaultModelsByModeSchema = z.object({
+    task: optionalModelStringMax100,
+    ask: optionalModelStringMax100,
+    plan: optionalModelStringMax100,
+    note: optionalModelStringMax100,
+    schedule: optionalModelStringMax100,
+    followUp: optionalModelStringMax100,
+    memory: optionalModelStringMax100,
+}).strip().transform(dropIfEmpty);
+
+/** String-keyed record where only string values survive. */
+const stringRecordSchema = z.record(z.string(), z.unknown()).transform(rec => {
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(rec)) {
+        if (k.length > 0 && typeof v === 'string') out[k] = v;
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
+});
+
+const AutoPromoteGatesSchema = z.object({
+    minScore: z.number().min(0).max(1).optional().catch(undefined),
+    minRecallCount: z.number().int().min(1).optional().catch(undefined),
+    minUniqueQueries: z.number().int().min(1).optional().catch(undefined),
+}).strip().transform(dropIfEmpty);
+
+const AutoPromoteConfigSchema = z.object({
+    mode: z.enum(['off', 'threshold', 'cron', 'cron+threshold']).catch('off' as const),
+    cron: z.string().transform(s => s.trim() || undefined).optional().catch(undefined),
+    timezone: z.string().transform(s => s.trim() || undefined).optional().catch(undefined),
+    thresholdCount: z.number().int().min(1).optional().catch(undefined),
+    minIntervalMs: z.number().int().min(0).optional().catch(undefined),
+    gates: AutoPromoteGatesSchema.optional().catch(undefined),
+}).strip();
+
+const BoundedMemoryRecallSchema = z.object({
+    enabled: z.boolean().optional().catch(undefined),
+    maxEntries: z.number().int().min(1).optional().catch(undefined),
+    charBudget: z.number().int().min(1).optional().catch(undefined),
+    maxBm25Score: z.number().finite().optional().catch(undefined),
+}).strip().transform(dropIfEmpty);
+
+const BoundedMemoryReadToolsSchema = z.object({
+    enabled: z.boolean().optional().catch(undefined),
+    maxResults: z.number().int().min(1).optional().catch(undefined),
+    maxEntryChars: z.number().int().min(1).optional().catch(undefined),
+}).strip().transform(dropIfEmpty);
+
+const BoundedMemorySchema = z.object({
+    enabled: z.boolean(),
+    charLimit: z.number().int().min(1).optional().catch(undefined),
+    writeFrequency: z.enum(['low', 'medium', 'high']).optional().catch(undefined),
+    recall: BoundedMemoryRecallSchema.optional().catch(undefined),
+    readTools: BoundedMemoryReadToolsSchema.optional().catch(undefined),
+    autoPromote: AutoPromoteConfigSchema.optional().catch(undefined),
+}).strip();
+
+const NotesGitAutoCommitSchema = z.object({
+    enabled: z.boolean(),
+    intervalMs: z.number().int().min(1).optional().catch(undefined),
+}).strip();
+
+const NotesGitSchema = z.object({
+    enabled: z.boolean(),
+    autoCommit: NotesGitAutoCommitSchema.optional().catch(undefined),
+}).strip();
+
+const ActivityFiltersSchema = z.object({
+    statusFilter: z.string().optional().catch(undefined),
+    typeFilter: z.string().optional().catch(undefined),
+}).strip().transform(dropIfEmpty);
+
+const SyncSchema = z.object({
+    gitRemote: z.string().optional().catch(undefined),
+    intervalMinutes: z.number().int().min(1).optional().catch(undefined),
+}).strip();
+
+const ScriptTemplateSchema = z.object({
+    id: z.string().min(1),
+    name: z.string(),
+    scriptPath: z.string(),
+    args: z.string().optional(),
+    workingDirectory: z.string().optional(),
+    model: z.string().optional(),
+    pauseOnFailure: z.boolean().optional(),
+}).strip();
+
+const SkillTemplateSchema = z.object({
+    id: z.string().min(1),
+    name: z.string().optional(),
+    model: z.string(),
+    mode: z.enum(['ask', 'task']),
+    skills: z.array(z.unknown()).transform(arr => arr.filter((s): s is string => typeof s === 'string')),
+}).strip();
+
+const EnabledMcpToolsSchema = z.record(z.string(), z.unknown()).transform(rec => {
+    const out: Record<string, string[]> = {};
+    for (const [serverName, tools] of Object.entries(rec)) {
+        if (serverName.length > 0 && Array.isArray(tools)) {
+            out[serverName] = tools.filter((t): t is string => typeof t === 'string' && t.length > 0);
+        }
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
+});
+
+/**
+ * Zod schema for per-repository UI preferences.
+ * Source of truth — the PerRepoPreferences type is derived via z.infer<>.
+ * Uses .strip() at parse time so unknown keys are silently dropped.
+ */
+export const PerRepoPreferencesSchema = z.object({
+    /** @deprecated Use lastModels instead. Kept for backward compatibility on read. */
+    lastModel: z.string().optional(),
+    lastModels: LastModelsByModeSchema.optional(),
+    lastDepth: z.enum(['deep', 'normal']).optional(),
+    lastEffort: z.enum(['low', 'medium', 'high']).optional(),
+    lastSkills: LastSkillsByModeSchema.optional(),
+    skillUsageMap: stringRecordSchema.optional(),
+    commitSkillUsageMap: stringRecordSchema.optional(),
+    linkedRepoIds: z.array(z.unknown())
+        .transform(arr => arr.filter((id): id is string => typeof id === 'string' && id.length > 0))
+        .optional(),
+    scriptTemplates: z.array(z.unknown())
+        .transform(arr => arr
+            .map(entry => ScriptTemplateSchema.safeParse(entry))
+            .filter(r => r.success)
+            .map(r => (r as z.SafeParseSuccess<z.infer<typeof ScriptTemplateSchema>>).data)
+        )
+        .optional(),
+    skillTemplates: z.array(z.unknown())
+        .transform(arr => arr
+            .map(entry => SkillTemplateSchema.safeParse(entry))
+            .filter(r => r.success)
+            .map(r => (r as z.SafeParseSuccess<z.infer<typeof SkillTemplateSchema>>).data)
+        )
+        .optional(),
+    filesViewMode: z.enum(['flat', 'tree']).optional(),
+    boundedMemory: BoundedMemorySchema.optional(),
+    notesGit: NotesGitSchema.optional(),
+    activityFilters: ActivityFiltersSchema.optional(),
+    disabledLlmTools: z.array(z.unknown())
+        .transform(arr => arr.filter((t): t is string => typeof t === 'string' && t.length > 0))
+        .optional(),
+    defaultModel: z.string().max(100).optional(),
+    defaultModels: DefaultModelsByModeSchema.optional(),
+    maxRalphIterations: z.number().int().min(1).max(RALPH_MAX_ITERATIONS_LIMIT).optional(),
+    additionalNotesRoots: z.array(z.unknown())
+        .transform(arr => {
+            const roots = (arr as unknown[])
+                .filter((r): r is string => typeof r === 'string' && r.length > 0 && r.length <= 500)
+                .map(r => r.replace(/\\/g, '/').replace(/\/+$/, ''))
+                .filter(r => r.length > 0 && !r.startsWith('/') && !r.startsWith('..') && !r.includes('/../'));
+            return [...new Set(roots)].slice(0, MAX_ADDITIONAL_NOTES_ROOTS);
+        })
+        .optional(),
+    sync: SyncSchema.optional(),
+    enabledMcpTools: EnabledMcpToolsSchema.optional(),
+}).strip();
+
+/** Per-repository UI preferences — derived from PerRepoPreferencesSchema. */
+export type PerRepoPreferences = z.infer<typeof PerRepoPreferencesSchema>;
 
 export interface SkillUsageEntry {
     skillName: string;
@@ -453,325 +559,23 @@ export function normalizeGlobalPreferencesForRead(global: GlobalPreferences): Gl
     return global;
 }
 
-function validateAutoPromoteConfig(raw: unknown): BoundedMemoryAutoPromoteConfig {
-    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-        return { mode: 'off' };
-    }
-    const obj = raw as Record<string, unknown>;
-    const mode = (
-        obj.mode === 'threshold'
-        || obj.mode === 'cron'
-        || obj.mode === 'cron+threshold'
-        || obj.mode === 'off'
-    ) ? obj.mode : 'off';
-    const validated: BoundedMemoryAutoPromoteConfig = { mode };
-    if (typeof obj.cron === 'string' && obj.cron.trim()) {
-        validated.cron = obj.cron.trim();
-    }
-    if (typeof obj.timezone === 'string' && obj.timezone.trim()) {
-        validated.timezone = obj.timezone.trim();
-    }
-    if (typeof obj.thresholdCount === 'number' && Number.isInteger(obj.thresholdCount) && obj.thresholdCount > 0) {
-        validated.thresholdCount = obj.thresholdCount;
-    }
-    if (typeof obj.minIntervalMs === 'number' && Number.isInteger(obj.minIntervalMs) && obj.minIntervalMs >= 0) {
-        validated.minIntervalMs = obj.minIntervalMs;
-    }
-    if (typeof obj.gates === 'object' && obj.gates !== null && !Array.isArray(obj.gates)) {
-        const rawGates = obj.gates as Record<string, unknown>;
-        const gates: NonNullable<BoundedMemoryAutoPromoteConfig['gates']> = {};
-        if (typeof rawGates.minScore === 'number' && Number.isFinite(rawGates.minScore) && rawGates.minScore >= 0 && rawGates.minScore <= 1) {
-            gates.minScore = rawGates.minScore;
-        }
-        if (typeof rawGates.minRecallCount === 'number' && Number.isInteger(rawGates.minRecallCount) && rawGates.minRecallCount > 0) {
-            gates.minRecallCount = rawGates.minRecallCount;
-        }
-        if (typeof rawGates.minUniqueQueries === 'number' && Number.isInteger(rawGates.minUniqueQueries) && rawGates.minUniqueQueries > 0) {
-            gates.minUniqueQueries = rawGates.minUniqueQueries;
-        }
-        if (Object.keys(gates).length > 0) {
-            validated.gates = gates;
-        }
-    }
-    return validated;
-}
-
 /** Validate and sanitize per-repo preferences. Unknown keys are silently dropped. */
 export function validatePerRepoPreferences(raw: unknown): PerRepoPreferences {
     if (typeof raw !== 'object' || raw === null) {
         return {};
     }
-    const obj = raw as Record<string, unknown>;
-    const result: PerRepoPreferences = {};
-
-    if (typeof obj.lastModel === 'string') {
-        result.lastModel = obj.lastModel;
+    const result = PerRepoPreferencesSchema.safeParse(raw);
+    if (!result.success) {
+        return {};
     }
-
-    if (typeof obj.lastModels === 'object' && obj.lastModels !== null && !Array.isArray(obj.lastModels)) {
-        const raw = obj.lastModels as Record<string, unknown>;
-        const validated: LastModelsByMode = {};
-        for (const mode of ['task', 'ask', 'plan', 'note'] as const) {
-            if (typeof raw[mode] === 'string') {
-                validated[mode] = raw[mode] as string;
-            }
-        }
-        if (Object.keys(validated).length > 0) {
-            result.lastModels = validated;
+    // Strip keys whose value is undefined (Zod sets them for failed optional sub-schemas)
+    const data = result.data;
+    for (const key of Object.keys(data) as (keyof PerRepoPreferences)[]) {
+        if (data[key] === undefined) {
+            delete data[key];
         }
     }
-
-    if (obj.lastDepth === 'deep' || obj.lastDepth === 'normal') {
-        result.lastDepth = obj.lastDepth;
-    }
-
-    if (obj.lastEffort === 'low' || obj.lastEffort === 'medium' || obj.lastEffort === 'high') {
-        result.lastEffort = obj.lastEffort;
-    }
-
-    if (typeof obj.lastSkills === 'object' && obj.lastSkills !== null && !Array.isArray(obj.lastSkills)) {
-        const raw = obj.lastSkills as Record<string, unknown>;
-        const validated: LastSkillsByMode = {};
-        for (const mode of ['task', 'ask', 'plan'] as const) {
-            const val = raw[mode];
-            if (typeof val === 'string' && val.length > 0) {
-                // Backwards compat: coerce legacy single string to array
-                validated[mode] = [val];
-            } else if (Array.isArray(val)) {
-                const arr = val.filter((s: unknown): s is string => typeof s === 'string' && s.length > 0);
-                validated[mode] = arr; // keep empty arrays as explicit "cleared" signal
-            }
-        }
-        if (Object.keys(validated).length > 0) {
-            result.lastSkills = validated;
-        }
-    }
-
-    if (typeof obj.skillUsageMap === 'object' && obj.skillUsageMap !== null && !Array.isArray(obj.skillUsageMap)) {
-        const validated: Record<string, string> = {};
-        for (const [key, value] of Object.entries(obj.skillUsageMap as Record<string, unknown>)) {
-            if (typeof key === 'string' && key.length > 0 && typeof value === 'string') {
-                validated[key] = value;
-            }
-        }
-        if (Object.keys(validated).length > 0) {
-            result.skillUsageMap = validated;
-        }
-    }
-
-    if (typeof obj.commitSkillUsageMap === 'object' && obj.commitSkillUsageMap !== null && !Array.isArray(obj.commitSkillUsageMap)) {
-        const validated: Record<string, string> = {};
-        for (const [key, value] of Object.entries(obj.commitSkillUsageMap as Record<string, unknown>)) {
-            if (typeof key === 'string' && key.length > 0 && typeof value === 'string') {
-                validated[key] = value;
-            }
-        }
-        if (Object.keys(validated).length > 0) {
-            result.commitSkillUsageMap = validated;
-        }
-    }
-
-    if (Array.isArray(obj.linkedRepoIds)) {
-        const ids = (obj.linkedRepoIds as unknown[]).filter(
-            (id): id is string => typeof id === 'string' && id.length > 0
-        );
-        // Preserve array even when empty so callers can detect an explicit clear
-        result.linkedRepoIds = ids;
-    }
-
-    if (Array.isArray(obj.scriptTemplates)) {
-        const validated: ScriptTemplateEntry[] = [];
-        for (const entry of obj.scriptTemplates as unknown[]) {
-            if (
-                typeof entry === 'object' && entry !== null &&
-                typeof (entry as any).id === 'string' && (entry as any).id.length > 0 &&
-                typeof (entry as any).name === 'string' &&
-                typeof (entry as any).scriptPath === 'string'
-            ) {
-                const clean: ScriptTemplateEntry = {
-                    id: (entry as any).id,
-                    name: (entry as any).name,
-                    scriptPath: (entry as any).scriptPath,
-                };
-                if (typeof (entry as any).args === 'string') clean.args = (entry as any).args;
-                if (typeof (entry as any).workingDirectory === 'string') clean.workingDirectory = (entry as any).workingDirectory;
-                if (typeof (entry as any).model === 'string') clean.model = (entry as any).model;
-                if (typeof (entry as any).pauseOnFailure === 'boolean') clean.pauseOnFailure = (entry as any).pauseOnFailure;
-                validated.push(clean);
-            }
-        }
-        // Keep empty array as explicit "delete all"
-        result.scriptTemplates = validated;
-    }
-
-    if (Array.isArray(obj.skillTemplates)) {
-        const validated: SkillTemplateEntry[] = [];
-        for (const entry of obj.skillTemplates as unknown[]) {
-            if (
-                typeof entry === 'object' && entry !== null &&
-                typeof (entry as any).id === 'string' && (entry as any).id.length > 0 &&
-                typeof (entry as any).model === 'string' &&
-                ((entry as any).mode === 'ask' || (entry as any).mode === 'task') &&
-                Array.isArray((entry as any).skills)
-            ) {
-                const skills = ((entry as any).skills as unknown[]).filter(
-                    (s): s is string => typeof s === 'string'
-                );
-                const clean: SkillTemplateEntry = {
-                    id: (entry as any).id,
-                    model: (entry as any).model,
-                    mode: (entry as any).mode,
-                    skills,
-                };
-                if (typeof (entry as any).name === 'string') clean.name = (entry as any).name;
-                validated.push(clean);
-            }
-        }
-        // Keep empty array as explicit "delete all"
-        result.skillTemplates = validated;
-    }
-
-    if (obj.filesViewMode === 'flat' || obj.filesViewMode === 'tree') {
-        result.filesViewMode = obj.filesViewMode;
-    }
-
-    if (typeof obj.boundedMemory === 'object' && obj.boundedMemory !== null) {
-        const bm = obj.boundedMemory as Record<string, unknown>;
-        if (typeof bm.enabled === 'boolean') {
-            const validated: NonNullable<PerRepoPreferences['boundedMemory']> = { enabled: bm.enabled };
-            if (typeof bm.charLimit === 'number' && bm.charLimit > 0) {
-                validated.charLimit = bm.charLimit;
-            }
-            if (bm.writeFrequency === 'low' || bm.writeFrequency === 'medium' || bm.writeFrequency === 'high') {
-                validated.writeFrequency = bm.writeFrequency;
-            }
-            if (typeof bm.recall === 'object' && bm.recall !== null) {
-                const recall = bm.recall as Record<string, unknown>;
-                const validatedRecall: NonNullable<NonNullable<PerRepoPreferences['boundedMemory']>['recall']> = {};
-                if (typeof recall.enabled === 'boolean') {
-                    validatedRecall.enabled = recall.enabled;
-                }
-                if (typeof recall.maxEntries === 'number' && recall.maxEntries > 0) {
-                    validatedRecall.maxEntries = recall.maxEntries;
-                }
-                if (typeof recall.charBudget === 'number' && recall.charBudget > 0) {
-                    validatedRecall.charBudget = recall.charBudget;
-                }
-                if (typeof recall.maxBm25Score === 'number' && Number.isFinite(recall.maxBm25Score)) {
-                    validatedRecall.maxBm25Score = recall.maxBm25Score;
-                }
-                if (Object.keys(validatedRecall).length > 0) {
-                    validated.recall = validatedRecall;
-                }
-            }
-            if (typeof bm.readTools === 'object' && bm.readTools !== null) {
-                const readTools = bm.readTools as Record<string, unknown>;
-                const validatedReadTools: NonNullable<NonNullable<PerRepoPreferences['boundedMemory']>['readTools']> = {};
-                if (typeof readTools.enabled === 'boolean') {
-                    validatedReadTools.enabled = readTools.enabled;
-                }
-                if (typeof readTools.maxResults === 'number' && readTools.maxResults > 0) {
-                    validatedReadTools.maxResults = readTools.maxResults;
-                }
-                if (typeof readTools.maxEntryChars === 'number' && readTools.maxEntryChars > 0) {
-                    validatedReadTools.maxEntryChars = readTools.maxEntryChars;
-                }
-                if (Object.keys(validatedReadTools).length > 0) {
-                    validated.readTools = validatedReadTools;
-                }
-            }
-            if (typeof bm.autoPromote === 'object' && bm.autoPromote !== null) {
-                validated.autoPromote = validateAutoPromoteConfig(bm.autoPromote);
-            }
-            result.boundedMemory = validated;
-        }
-    }
-
-    if (typeof obj.notesGit === 'object' && obj.notesGit !== null) {
-        const ng = obj.notesGit as Record<string, unknown>;
-        if (typeof ng.enabled === 'boolean') {
-            const validated: NotesGitConfig = { enabled: ng.enabled };
-            if (typeof ng.autoCommit === 'object' && ng.autoCommit !== null) {
-                const ac = ng.autoCommit as Record<string, unknown>;
-                if (typeof ac.enabled === 'boolean') {
-                    validated.autoCommit = { enabled: ac.enabled };
-                    if (typeof ac.intervalMs === 'number' && ac.intervalMs > 0) {
-                        validated.autoCommit.intervalMs = ac.intervalMs;
-                    }
-                }
-            }
-            result.notesGit = validated;
-        }
-    }
-
-    if (typeof obj.activityFilters === 'object' && obj.activityFilters !== null && !Array.isArray(obj.activityFilters)) {
-        const raw = obj.activityFilters as Record<string, unknown>;
-        const validated: NonNullable<PerRepoPreferences['activityFilters']> = {};
-        if (typeof raw.statusFilter === 'string') validated.statusFilter = raw.statusFilter;
-        if (typeof raw.typeFilter === 'string') validated.typeFilter = raw.typeFilter;
-        if (Object.keys(validated).length > 0) {
-            result.activityFilters = validated;
-        }
-    }
-
-    if (Array.isArray(obj.disabledLlmTools)) {
-        const tools = (obj.disabledLlmTools as unknown[]).filter(
-            (t): t is string => typeof t === 'string' && t.length > 0
-        );
-        result.disabledLlmTools = tools;
-    }
-
-    if (typeof obj.defaultModel === 'string' && obj.defaultModel.length <= 100) {
-        result.defaultModel = obj.defaultModel;
-    }
-
-    if (typeof obj.maxRalphIterations === 'number'
-        && Number.isFinite(obj.maxRalphIterations)
-        && Number.isInteger(obj.maxRalphIterations)
-        && obj.maxRalphIterations >= 1
-        && obj.maxRalphIterations <= RALPH_MAX_ITERATIONS_LIMIT) {
-        result.maxRalphIterations = obj.maxRalphIterations;
-    }
-
-    if (typeof obj.defaultModels === 'object' && obj.defaultModels !== null && !Array.isArray(obj.defaultModels)) {
-        const raw = obj.defaultModels as Record<string, unknown>;
-        const validated: DefaultModelsByMode = {};
-        for (const mode of ['task', 'ask', 'plan', 'note', 'schedule', 'followUp', 'memory'] as const) {
-            if (typeof raw[mode] === 'string' && (raw[mode] as string).length <= 100) {
-                validated[mode] = raw[mode] as string;
-            }
-        }
-        if (Object.keys(validated).length > 0) {
-            result.defaultModels = validated;
-        }
-    }
-
-    if (Array.isArray(obj.additionalNotesRoots)) {
-        const roots = (obj.additionalNotesRoots as unknown[])
-            .filter((r): r is string => typeof r === 'string' && r.length > 0 && r.length <= 500)
-            .map(r => r.replace(/\\/g, '/').replace(/\/+$/, ''))  // normalize
-            .filter(r => r.length > 0 && !r.startsWith('/') && !r.startsWith('..') && !r.includes('/../'));
-        // Deduplicate
-        const unique = [...new Set(roots)];
-        result.additionalNotesRoots = unique.slice(0, MAX_ADDITIONAL_NOTES_ROOTS);
-    }
-
-    if (typeof obj.enabledMcpTools === 'object' && obj.enabledMcpTools !== null && !Array.isArray(obj.enabledMcpTools)) {
-        const validated: Record<string, string[]> = {};
-        for (const [serverName, tools] of Object.entries(obj.enabledMcpTools as Record<string, unknown>)) {
-            if (typeof serverName === 'string' && serverName.length > 0 && Array.isArray(tools)) {
-                const toolNames = (tools as unknown[]).filter(
-                    (t): t is string => typeof t === 'string' && t.length > 0
-                );
-                validated[serverName] = toolNames;
-            }
-        }
-        if (Object.keys(validated).length > 0) {
-            result.enabledMcpTools = validated;
-        }
-    }
-
-    return result;
+    return data;
 }
 
 /** backward-compat alias for validatePerRepoPreferences */

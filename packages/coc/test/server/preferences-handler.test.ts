@@ -527,6 +527,13 @@ describe('readPreferences / writePreferences', () => {
         expect(result.defaultModels).toBeUndefined();
     });
 
+    it('sync round-trips through write and read', () => {
+        const prefs = { sync: { gitRemote: 'https://github.com/user/repo.git', intervalMinutes: 15 } };
+        writeRepoPreferences(tmpDir, 'ws-sync-test', prefs);
+        const read = readRepoPreferences(tmpDir, 'ws-sync-test');
+        expect(read.sync).toEqual(prefs.sync);
+    });
+
     it('strips unknown mode keys from defaultModels', () => {
         const result = validatePerRepoPreferences({ defaultModels: { task: 'gpt-4', unknownMode: 'val' } } as any);
         expect(result.defaultModels).toEqual({ task: 'gpt-4' });
@@ -815,6 +822,45 @@ describe('validatePreferences', () => {
         const result = validatePerRepoPreferences({ lastDepth: 'deep', activityFilters: { statusFilter: 'running' } });
         expect(result.lastDepth).toBe('deep');
         expect(result.activityFilters).toEqual({ statusFilter: 'running' });
+    });
+
+    // -- sync field --
+
+    it('accepts valid sync with gitRemote and intervalMinutes', () => {
+        const result = validatePerRepoPreferences({ sync: { gitRemote: 'https://github.com/user/repo.git', intervalMinutes: 10 } });
+        expect(result.sync).toEqual({ gitRemote: 'https://github.com/user/repo.git', intervalMinutes: 10 });
+    });
+
+    it('accepts sync with only gitRemote', () => {
+        const result = validatePerRepoPreferences({ sync: { gitRemote: 'https://github.com/user/repo.git' } });
+        expect(result.sync).toEqual({ gitRemote: 'https://github.com/user/repo.git' });
+    });
+
+    it('accepts sync with only intervalMinutes', () => {
+        const result = validatePerRepoPreferences({ sync: { intervalMinutes: 5 } });
+        expect(result.sync).toEqual({ intervalMinutes: 5 });
+    });
+
+    it('accepts empty sync object', () => {
+        const result = validatePerRepoPreferences({ sync: {} });
+        expect(result.sync).toEqual({});
+    });
+
+    it('rejects non-object sync', () => {
+        expect(validatePerRepoPreferences({ sync: 'bad' }).sync).toBeUndefined();
+        expect(validatePerRepoPreferences({ sync: 42 }).sync).toBeUndefined();
+        expect(validatePerRepoPreferences({ sync: null }).sync).toBeUndefined();
+    });
+
+    it('drops invalid intervalMinutes but keeps gitRemote', () => {
+        const result = validatePerRepoPreferences({ sync: { gitRemote: 'https://x.git', intervalMinutes: -1 } });
+        expect(result.sync).toEqual({ gitRemote: 'https://x.git' });
+    });
+
+    it('sync coexists with other per-repo fields', () => {
+        const result = validatePerRepoPreferences({ lastDepth: 'deep', sync: { gitRemote: 'https://x.git' } });
+        expect(result.lastDepth).toBe('deep');
+        expect(result.sync).toEqual({ gitRemote: 'https://x.git' });
     });
 });
 
