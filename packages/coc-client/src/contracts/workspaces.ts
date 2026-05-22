@@ -17,6 +17,20 @@ export type WorkspaceMcpServerSource = 'global' | 'workspace';
 export type McpConfigScope = 'global' | 'workspace';
 export type McpToolScope = 'all' | 'readonly' | 'allowlist';
 
+/**
+ * Authentication state for an MCP server.
+ *
+ * Set on `WorkspaceMcpServerEntry.authStatus` for HTTP/SSE servers; stdio
+ * servers always report `not-required`. Drives the green/amber/red dot in the
+ * MCP servers panel and decides whether the "Authenticate" button is shown.
+ */
+export type McpServerAuthStatus =
+  | 'authenticated'
+  | 'expired'
+  | 'required'
+  | 'not-required'
+  | 'unknown';
+
 export interface WorkspaceMcpServerEntry {
   name: string;
   type: string;
@@ -27,6 +41,10 @@ export interface WorkspaceMcpServerEntry {
   overriddenBy?: WorkspaceMcpServerSource;
   /** Derived server status included in availableServers. */
   status?: 'ok' | 'auth' | 'off' | 'err';
+  /** Auth state for remote servers; absent on stdio servers. */
+  authStatus?: McpServerAuthStatus;
+  /** Wall-clock seconds at which the cached access token expires, if known. */
+  authExpiresAt?: number;
   /** User-provided description from config file. */
   description?: string;
 }

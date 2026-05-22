@@ -281,6 +281,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             manager: opts.mcpOauthManager,
             store,
             executeFollowUp: (processId, message) => bridge.executeFollowUp(processId, message),
+            aiService: resolvedAiService,
+            resolveWorkspaceRoot: async (workspaceId) => {
+                const workspaces = await store.getWorkspaces();
+                return workspaces.find(w => w.id === workspaceId)?.rootPath;
+            },
         });
     }
 

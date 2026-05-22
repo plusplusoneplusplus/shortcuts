@@ -1,7 +1,8 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import './mcp-servers-redesign.css';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
-import type { McpServerDetail as ClientMcpServerDetail, McpConfigScope } from '@plusplusoneplusplus/coc-client';
+import { getApiBase } from '../../utils/config';
+import type { McpServerDetail as ClientMcpServerDetail, McpConfigScope, McpServerAuthStatus } from '@plusplusoneplusplus/coc-client';
 
 export type McpServerSource = 'global' | 'workspace';
 export type McpServerEntry = {
@@ -14,6 +15,10 @@ export type McpServerEntry = {
     overriddenBy?: McpServerSource;
     /** Derived status from the server response. */
     status?: 'ok' | 'auth' | 'off' | 'err';
+    /** Auth state for remote servers (absent on stdio). */
+    authStatus?: McpServerAuthStatus;
+    /** Token expiry (epoch seconds), when known. */
+    authExpiresAt?: number;
     /** User-provided description from config file. */
     description?: string;
 };
@@ -49,10 +54,42 @@ type FilterTab = 'all' | 'active' | 'auth' | 'disabled';
 
 type InspectorTab = 'overview' | 'tools' | 'configuration' | 'source' | 'activity';
 
+/**
+ * Local state for a server's OAuth flow. `starting` → `authorizing` → `completed`
+ * (or `failed`). Stored only in the panel — server-side state lives in the
+ * McpOauthManager and is fetched via `/api/mcp-oauth/pending/:id`.
+ */
+type McpAuthFlowState =
+    | { phase: 'starting' }
+    | { phase: 'authorizing'; requestId: string; authorizationUrl?: string }
+    | { phase: 'completed'; requestId: string }
+    | { phase: 'failed'; requestId: string; error: string };
+
+const AUTH_POLL_INTERVAL_MS = 2_000;
+const AUTH_POLL_TIMEOUT_MS = 10 * 60 * 1_000;
+
+/**
+ * Resolve the dot color for a row.
+ *
+ * Trust the server-derived `status` field when present — it already accounts
+ * for cached OAuth tokens. The legacy fallback (treat any HTTP/SSE server as
+ * "auth") is kept for older responses that pre-date authStatus.
+ */
 function getServerStatus(server: McpServerEntry, isEnabled: boolean): 'ok' | 'auth' | 'off' | 'err' {
     if (!isEnabled) return 'off';
+    if (server.status) return server.status;
     if (server.type === 'http' || server.type === 'sse') return 'auth';
     return 'ok';
+}
+
+function needsAuth(server: McpServerEntry): boolean {
+    if (server.type !== 'http' && server.type !== 'sse') return false;
+    if (!server.authStatus) return true; // legacy response — assume needs auth
+    return server.authStatus === 'required' || server.authStatus === 'expired';
+}
+
+function isRemote(server: McpServerEntry): boolean {
+    return server.type === 'http' || server.type === 'sse';
 }
 
 function getServerDescription(server: McpServerEntry, isEnabled: boolean): string {
@@ -849,6 +886,82 @@ function AddServerCard({ workspaceId, onAdded }: { workspaceId?: string; onAdded
     );
 }
 
+/**
+ * Inline pill button next to a server name. Shows the auth call-to-action and
+ * tracks the in-flight OAuth flow without needing a modal or extra navigation.
+ *
+ *   - No flow + needs auth   → "Authenticate"
+ *   - starting               → "Starting…" (disabled)
+ *   - authorizing            → "Authorizing…" with a re-open link
+ *   - failed                 → "Try again" + error tooltip
+ *   - completed (token good) → button collapses; status dot turns green on next refresh
+ */
+function AuthenticateButton({
+    serverName,
+    flow,
+    authStatus,
+    onClick,
+}: {
+    serverName: string;
+    flow: McpAuthFlowState | undefined;
+    authStatus: McpServerAuthStatus | undefined;
+    onClick: () => void;
+}) {
+    const label = (() => {
+        if (!flow) return authStatus === 'expired' ? 'Re-authenticate' : 'Authenticate';
+        switch (flow.phase) {
+            case 'starting': return 'Starting…';
+            case 'authorizing': return 'Authorizing…';
+            case 'completed': return 'Authorized';
+            case 'failed': return 'Try again';
+        }
+    })();
+    const disabled = !!flow && (flow.phase === 'starting' || flow.phase === 'authorizing' || flow.phase === 'completed');
+    const className = `mcp-auth-btn${flow?.phase === 'failed' ? ' error' : ''}${flow?.phase === 'authorizing' ? ' busy' : ''}`;
+    const error = flow?.phase === 'failed' ? flow.error : undefined;
+
+    return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 10 }}>
+            <button
+                type="button"
+                className={className}
+                onClick={onClick}
+                disabled={disabled}
+                title={error}
+                data-testid={`mcp-auth-${serverName}`}
+                style={{
+                    padding: '2px 10px',
+                    fontSize: 11,
+                    fontWeight: 500,
+                    borderRadius: 999,
+                    border: '1px solid var(--mcp-border, #d0d7de)',
+                    background: flow?.phase === 'failed' ? 'var(--mcp-danger-bg, #ffebe9)' : 'var(--mcp-accent-bg, rgba(0, 120, 212, 0.08))',
+                    color: flow?.phase === 'failed' ? 'var(--mcp-danger, #cf222e)' : 'var(--mcp-accent, #0078d4)',
+                    cursor: disabled ? 'default' : 'pointer',
+                    opacity: disabled && flow?.phase !== 'authorizing' ? 0.7 : 1,
+                }}
+            >
+                {label}
+            </button>
+            {flow?.phase === 'authorizing' && flow.authorizationUrl && (
+                <a
+                    href={flow.authorizationUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontSize: 11, color: 'var(--mcp-accent, #0078d4)' }}
+                >
+                    Open again ↗
+                </a>
+            )}
+            {error && (
+                <span className="mcp-small" style={{ color: 'var(--mcp-danger, #cf222e)' }}>
+                    {error}
+                </span>
+            )}
+        </span>
+    );
+}
+
 export function McpServersPanel({
     workspaceId = '',
     loading,
@@ -866,6 +979,109 @@ export function McpServersPanel({
     const [expandedServer, setExpandedServer] = useState<string | null>(null);
     const [inspectorTab, setInspectorTab] = useState<InspectorTab>('overview');
     const [detailCache, setDetailCache] = useState<Record<string, ClientMcpServerDetail | null | 'loading'>>({});
+    /** Per-server OAuth flow state — drives the Authenticate button label and spinner. */
+    const [authFlow, setAuthFlow] = useState<Record<string, McpAuthFlowState>>({});
+    const authPollersRef = useRef<Record<string, ReturnType<typeof setInterval>>>({});
+
+    // Tear down any open pollers when the panel unmounts to avoid stray fetches.
+    useEffect(() => () => {
+        for (const t of Object.values(authPollersRef.current)) clearInterval(t);
+        authPollersRef.current = {};
+    }, []);
+
+    const setFlow = useCallback((serverName: string, next: McpAuthFlowState | null) => {
+        setAuthFlow(prev => {
+            if (next === null) {
+                if (!(serverName in prev)) return prev;
+                const copy = { ...prev };
+                delete copy[serverName];
+                return copy;
+            }
+            return { ...prev, [serverName]: next };
+        });
+    }, []);
+
+    const startPolling = useCallback((serverName: string, requestId: string) => {
+        // Replace any existing poller for this server
+        const existing = authPollersRef.current[serverName];
+        if (existing) clearInterval(existing);
+
+        const apiBase = getApiBase();
+        const url = `${apiBase}/mcp-oauth/pending/${encodeURIComponent(requestId)}`;
+        const startedAt = Date.now();
+
+        const tick = async () => {
+            try {
+                const r = await fetch(url);
+                if (!r.ok) return;
+                const entry = await r.json() as { status?: string; error?: string };
+                if (entry.status === 'completed') {
+                    clearInterval(authPollersRef.current[serverName]);
+                    delete authPollersRef.current[serverName];
+                    setFlow(serverName, { phase: 'completed', requestId });
+                    onRefresh?.();
+                } else if (entry.status === 'failed') {
+                    clearInterval(authPollersRef.current[serverName]);
+                    delete authPollersRef.current[serverName];
+                    setFlow(serverName, { phase: 'failed', requestId, error: entry.error ?? 'Authorization failed' });
+                }
+            } catch {
+                // transient network error — keep polling
+            }
+            if (Date.now() - startedAt > AUTH_POLL_TIMEOUT_MS) {
+                clearInterval(authPollersRef.current[serverName]);
+                delete authPollersRef.current[serverName];
+                setFlow(serverName, { phase: 'failed', requestId, error: 'Authorization timed out' });
+            }
+        };
+
+        authPollersRef.current[serverName] = setInterval(tick, AUTH_POLL_INTERVAL_MS);
+    }, [onRefresh, setFlow]);
+
+    const handleAuthenticate = useCallback(async (serverName: string) => {
+        setFlow(serverName, { phase: 'starting' });
+        try {
+            const r = await fetch(`${getApiBase()}/mcp-oauth/start`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ serverName, workspaceId: workspaceId || undefined }),
+            });
+            if (!r.ok) {
+                const text = await r.text().catch(() => '');
+                throw new Error(text || `Failed to start OAuth flow (${r.status})`);
+            }
+            const result = await r.json() as {
+                requestId?: string;
+                authorizationUrl?: string;
+                alreadyAuthenticated?: boolean;
+            };
+
+            if (result.alreadyAuthenticated) {
+                setFlow(serverName, { phase: 'completed', requestId: '' });
+                onRefresh?.();
+                return;
+            }
+            if (!result.requestId) {
+                throw new Error('Server did not return a request id');
+            }
+
+            if (result.authorizationUrl) {
+                window.open(result.authorizationUrl, '_blank', 'noopener,noreferrer');
+            }
+            setFlow(serverName, {
+                phase: 'authorizing',
+                requestId: result.requestId,
+                authorizationUrl: result.authorizationUrl,
+            });
+            startPolling(serverName, result.requestId);
+        } catch (err) {
+            setFlow(serverName, {
+                phase: 'failed',
+                requestId: '',
+                error: err instanceof Error ? err.message : String(err),
+            });
+        }
+    }, [onRefresh, setFlow, startPolling, workspaceId]);
 
     const fetchDetail = useCallback(async (name: string) => {
         if (!workspaceId || detailCache[name] !== undefined) return;
@@ -897,9 +1113,9 @@ export function McpServersPanel({
 
     const counts = useMemo(() => {
         const active = allServers.filter(s => isEnabled(s.name) && s.effective !== false && getServerStatus(s, true) === 'ok').length;
-        const needsAuth = allServers.filter(s => getServerStatus(s, isEnabled(s.name)) === 'auth').length;
+        const authCount = allServers.filter(s => getServerStatus(s, isEnabled(s.name)) === 'auth').length;
         const disabled = allServers.filter(s => !isEnabled(s.name) || s.effective === false).length;
-        return { all: allServers.length, active, auth: needsAuth, disabled };
+        return { all: allServers.length, active, auth: authCount, disabled };
     }, [allServers, isEnabled]);
 
     const filteredServers = useMemo(() => {
@@ -1036,6 +1252,8 @@ export function McpServersPanel({
                         const transportCls = getTransportPillClass(server.type);
                         const sourcePill = getSourcePillInfo(server);
                         const isExpanded = expandedServer === server.name;
+                        const flow = authFlow[server.name];
+                        const showAuthBtn = isRemote(server) && enabled && (needsAuth(server) || (flow && flow.phase !== 'completed'));
 
                         return (
                             <React.Fragment key={server.name}>
@@ -1057,6 +1275,14 @@ export function McpServersPanel({
                                             {server.name}
                                         </strong>
                                         {description && <span className="mcp-server-desc">— {description}</span>}
+                                        {showAuthBtn && (
+                                            <AuthenticateButton
+                                                serverName={server.name}
+                                                flow={flow}
+                                                authStatus={server.authStatus}
+                                                onClick={() => handleAuthenticate(server.name)}
+                                            />
+                                        )}
                                     </div>
                                     <div className="mcp-meta"><span className={`mcp-pill ${transportCls}`}>{server.type}</span></div>
                                     <div className="mcp-meta"><span className={`mcp-pill ${sourcePill.cls}`}>{sourcePill.label}</span></div>
