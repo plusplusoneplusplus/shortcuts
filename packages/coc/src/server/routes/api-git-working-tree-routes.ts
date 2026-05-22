@@ -5,13 +5,12 @@
  * batch stage/unstage, deleting untracked files, and per-file working-tree diffs.
  */
 
-import * as url from 'url';
 import { WorkingTreeService, BranchService } from '@plusplusoneplusplus/forge';
-import { sendJSON } from '../core/api-handler';
 import { handleAPIError, missingFields } from '../errors';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
 import { truncateDiffIfNeeded } from './api-shared';
+import { createRoute, asBool } from './route-utils';
 
 export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
     const { routes, store, getWsServer } = ctx;
@@ -31,152 +30,149 @@ export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
     }
 
     // GET /api/workspaces/:id/git/changes — All working-tree changes + repo state
-    routes.push({
+    routes.push(createRoute({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ res, match }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
 
             const changes = await workingTreeService.getAllChanges(ws.rootPath);
             const repoState = branchService.getRepoState(ws.rootPath);
-            sendJSON(res, 200, { changes: normalizeChanges(changes), repoState });
+            return { changes: normalizeChanges(changes), repoState };
         },
-    });
+    }));
 
     // POST /api/workspaces/:id/git/changes/stage — Stage a file
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/stage$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ req, res, match }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
             const id = ws.id;
 
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
-            if (typeof body.filePath !== 'string') return handleAPIError(res, missingFields(['filePath']));
+            if (typeof body.filePath !== 'string') return void handleAPIError(res, missingFields(['filePath']));
 
             const result = await workingTreeService.stageFile(ws.rootPath, body.filePath);
             getWsServer?.()?.broadcastGitChanged(id, 'stage');
-            sendJSON(res, 200, result);
+            return result;
         },
-    });
+    }));
 
     // POST /api/workspaces/:id/git/changes/unstage — Unstage a file
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/unstage$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ req, res, match }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
             const id = ws.id;
 
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
-            if (typeof body.filePath !== 'string') return handleAPIError(res, missingFields(['filePath']));
+            if (typeof body.filePath !== 'string') return void handleAPIError(res, missingFields(['filePath']));
 
             const result = await workingTreeService.unstageFile(ws.rootPath, body.filePath);
             getWsServer?.()?.broadcastGitChanged(id, 'unstage');
-            sendJSON(res, 200, result);
+            return result;
         },
-    });
+    }));
 
     // POST /api/workspaces/:id/git/changes/discard — Discard unstaged changes
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/discard$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ req, res, match }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
             const id = ws.id;
 
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
-            if (typeof body.filePath !== 'string') return handleAPIError(res, missingFields(['filePath']));
+            if (typeof body.filePath !== 'string') return void handleAPIError(res, missingFields(['filePath']));
 
             const result = await workingTreeService.discardChanges(ws.rootPath, body.filePath);
             getWsServer?.()?.broadcastGitChanged(id, 'discard');
-            sendJSON(res, 200, result);
+            return result;
         },
-    });
+    }));
 
     // POST /api/workspaces/:id/git/changes/stage-batch — Stage multiple files at once
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/stage-batch$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ req, res, match }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
             const id = ws.id;
 
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
-            if (!Array.isArray(body.filePaths)) return handleAPIError(res, missingFields(['filePaths']));
+            if (!Array.isArray(body.filePaths)) return void handleAPIError(res, missingFields(['filePaths']));
 
             const result = await workingTreeService.stageFiles(ws.rootPath, body.filePaths);
             getWsServer?.()?.broadcastGitChanged(id, 'stage-batch');
-            sendJSON(res, 200, result);
+            return result;
         },
-    });
+    }));
 
     // POST /api/workspaces/:id/git/changes/unstage-batch — Unstage multiple files at once
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/unstage-batch$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ req, res, match }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
             const id = ws.id;
 
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
-            if (!Array.isArray(body.filePaths)) return handleAPIError(res, missingFields(['filePaths']));
+            if (!Array.isArray(body.filePaths)) return void handleAPIError(res, missingFields(['filePaths']));
 
             const result = await workingTreeService.unstageFiles(ws.rootPath, body.filePaths);
             getWsServer?.()?.broadcastGitChanged(id, 'unstage-batch');
-            sendJSON(res, 200, result);
+            return result;
         },
-    });
+    }));
 
     // DELETE /api/workspaces/:id/git/changes/untracked — Delete an untracked file
-    routes.push({
+    routes.push(createRoute({
         method: 'DELETE',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/untracked$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ req, res, match }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
 
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
-            if (typeof body.filePath !== 'string') return handleAPIError(res, missingFields(['filePath']));
+            if (typeof body.filePath !== 'string') return void handleAPIError(res, missingFields(['filePath']));
 
-            const result = await workingTreeService.deleteUntrackedFile(ws.rootPath, body.filePath);
-            sendJSON(res, 200, result);
+            return await workingTreeService.deleteUntrackedFile(ws.rootPath, body.filePath);
         },
-    });
+    }));
 
     // GET /api/workspaces/:id/git/changes/files/*/diff — Per-file working-tree diff
-    routes.push({
+    routes.push(createRoute({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/files\/(.+)\/diff$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        parseQuery: (q) => ({ stage: q.stage as string | undefined, full: asBool(q.full) }),
+        handler: async ({ res, match, query }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
-            const filePath = decodeURIComponent(match![2]);
+            const filePath = decodeURIComponent(match[2]);
 
-            const parsed = url.parse(req.url!, true).query;
-            const stage = parsed.stage as string | undefined;
-            const staged = stage === 'staged';
-            const full = parsed.full === 'true';
+            const staged = query.stage === 'staged';
+            const full = query.full;
 
             try {
                 const diff = await workingTreeService.getFileDiff(ws.rootPath, filePath, staged);
-                const result = { ...truncateDiffIfNeeded(diff, full), path: filePath };
-                sendJSON(res, 200, result);
+                return { ...truncateDiffIfNeeded(diff, full), path: filePath };
             } catch {
-                sendJSON(res, 200, { diff: '', path: filePath });
+                return { diff: '', path: filePath };
             }
         },
-    });
+    }));
 }

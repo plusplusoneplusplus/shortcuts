@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Git Branch Management REST API Routes
  *
  * Endpoints for listing, creating, switching, renaming, deleting branches,
@@ -6,7 +6,6 @@
  * cherry-pick, git-ops tracking, and amending commit messages.
  */
 
-import * as url from 'url';
 import { BranchService } from '@plusplusoneplusplus/forge';
 import type { GitOpJob } from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody, execGitArgsSync } from '../core/api-handler';
@@ -14,529 +13,394 @@ import { handleAPIError, missingFields, notFound, badRequest, conflict } from '.
 import { gitCache } from '../git/git-cache';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
+import { createRoute, asString, asInt, asBool } from './route-utils';
 
 export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
     const { routes, store, getWsServer, gitOpsStore, bridge } = ctx;
     const branchService = new BranchService();
 
     // GET /api/workspaces/:id/git/branches — List branches with pagination
-    routes.push({
+    routes.push(createRoute({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branches$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        parseQuery: (q) => ({
+            type: asString(q.type, 'all'),
+            limit: asInt(q.limit, 100, 500),
+            offset: asInt(q.offset, 0),
+            search: asString(q.search),
+        }),
+        handler: async ({ query, match, res }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
-
-            try {
-                const parsed = url.parse(req.url!, true).query;
-                const type = (parsed.type as string) || 'all';
-                const limit = Math.min(parseInt(parsed.limit as string) || 100, 500);
-                const offset = parseInt(parsed.offset as string) || 0;
-                const searchPattern = (parsed.search as string) || undefined;
-                const options = { limit, offset, searchPattern };
-
-                let result: Record<string, unknown> = {};
-                if (type === 'local') {
-                    result = { local: branchService.getLocalBranchesPaginated(ws.rootPath, options) };
-                } else if (type === 'remote') {
-                    result = { remote: branchService.getRemoteBranchesPaginated(ws.rootPath, options) };
-                } else {
-                    result = {
-                        local: branchService.getLocalBranchesPaginated(ws.rootPath, options),
-                        remote: branchService.getRemoteBranchesPaginated(ws.rootPath, options),
-                    };
-                }
-                sendJSON(res, 200, result);
-            } catch (err) {
-                return handleAPIError(res, err);
+            const { type, limit, offset, search: searchPattern } = query;
+            const options = { limit, offset, searchPattern };
+            if (type === 'local') {
+                return { local: branchService.getLocalBranchesPaginated(ws.rootPath, options) };
+            } else if (type === 'remote') {
+                return { remote: branchService.getRemoteBranchesPaginated(ws.rootPath, options) };
+            } else {
+                return {
+                    local: branchService.getLocalBranchesPaginated(ws.rootPath, options),
+                    remote: branchService.getRemoteBranchesPaginated(ws.rootPath, options),
+                };
             }
         },
-    });
+    }));
 
     // GET /api/workspaces/:id/git/branch-status — Current branch status
-    routes.push({
+    routes.push(createRoute({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branch-status$/,
-        handler: async (_req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ match, res }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
-
-            try {
-                const uncommitted = await branchService.hasUncommittedChanges(ws.rootPath);
-                const status = await branchService.getBranchStatus(ws.rootPath, uncommitted);
-                sendJSON(res, 200, status);
-            } catch (err) {
-                return handleAPIError(res, err);
-            }
+            const uncommitted = await branchService.hasUncommittedChanges(ws.rootPath);
+            return branchService.getBranchStatus(ws.rootPath, uncommitted);
         },
-    });
+    }));
 
     // POST /api/workspaces/:id/git/branches — Create a new branch
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branches$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ match, res, req }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
-
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
-
-            if (!body.name) {
-                return handleAPIError(res, missingFields(['name']));
-            }
-
+            if (!body.name) return void handleAPIError(res, missingFields(['name']));
             const checkout = body.checkout ?? false;
-            const result = await branchService.createBranch(ws.rootPath, body.name, checkout);
-            sendJSON(res, 200, result);
+            return branchService.createBranch(ws.rootPath, body.name, checkout);
         },
-    });
+    }));
 
     // POST /api/workspaces/:id/git/branches/switch — Switch to a branch
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branches\/switch$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ match, res, req }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
-            const id = ws.id;
-
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
-
-            if (!body.name) {
-                return handleAPIError(res, missingFields(['name']));
-            }
-
+            if (!body.name) return void handleAPIError(res, missingFields(['name']));
             const result = await branchService.switchBranch(ws.rootPath, body.name, { force: body.force ?? false });
-            getWsServer?.()?.broadcastGitChanged(id, 'branch-switch');
-            sendJSON(res, 200, result);
+            getWsServer?.()?.broadcastGitChanged(ws.id, 'branch-switch');
+            return result;
         },
-    });
+    }));
 
     // POST /api/workspaces/:id/git/branches/rename — Rename a branch
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branches\/rename$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ match, res, req }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
-
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
-
-            if (!body.oldName || !body.newName) {
-                return handleAPIError(res, missingFields(['oldName', 'newName']));
-            }
-
-            const result = await branchService.renameBranch(ws.rootPath, body.oldName, body.newName);
-            sendJSON(res, 200, result);
+            if (!body.oldName || !body.newName) return void handleAPIError(res, missingFields(['oldName', 'newName']));
+            return branchService.renameBranch(ws.rootPath, body.oldName, body.newName);
         },
-    });
+    }));
 
     // DELETE /api/workspaces/:id/git/branches/:name — Delete a branch
-    routes.push({
+    routes.push(createRoute({
         method: 'DELETE',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branches\/(.+)$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        parseQuery: (q) => ({ force: asBool(q.force) }),
+        handler: async ({ query, match, res }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
-
-            const branchName = decodeURIComponent(match![2]);
-            const parsed = url.parse(req.url!, true).query;
-            const force = parsed.force === 'true';
-            const result = await branchService.deleteBranch(ws.rootPath, branchName, force);
-            sendJSON(res, 200, result);
+            const branchName = decodeURIComponent(match[2]);
+            return branchService.deleteBranch(ws.rootPath, branchName, query.force);
         },
-    });
+    }));
 
     // POST /api/workspaces/:id/git/push — Push to remote
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/push$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ match, res, req }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
-            const id = ws.id;
-
             let body: any = {};
-            try {
-                body = await parseBody(req);
-            } catch {
-                body = {};
-            }
-
-            const setUpstream = body.setUpstream === true;
-            const result = await branchService.push(ws.rootPath, setUpstream);
-            getWsServer?.()?.broadcastGitChanged(id, 'push');
-            sendJSON(res, 200, result);
+            try { body = await parseBody(req); } catch { body = {}; }
+            const result = await branchService.push(ws.rootPath, body.setUpstream === true);
+            getWsServer?.()?.broadcastGitChanged(ws.id, 'push');
+            return result;
         },
-    });
+    }));
 
     // POST /api/workspaces/:id/git/push-to — Push up to a specific commit
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/push-to$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ match, res, req }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
-            const id = ws.id;
-
             let body: any = {};
-            try {
-                body = await parseBody(req);
-            } catch {
-                body = {};
-            }
-
-            const commitHash = body.commitHash;
+            try { body = await parseBody(req); } catch { body = {}; }
+            const { commitHash } = body;
             if (!commitHash || typeof commitHash !== 'string') {
-                sendJSON(res, 400, { success: false, error: 'Missing or invalid commitHash' });
-                return;
+                return void handleAPIError(res, badRequest('Missing or invalid commitHash'));
             }
-
             const result = await branchService.pushUpTo(ws.rootPath, commitHash);
-            getWsServer?.()?.broadcastGitChanged(id, 'push');
-            sendJSON(res, 200, result);
+            getWsServer?.()?.broadcastGitChanged(ws.id, 'push');
+            return result;
         },
-    });
+    }));
 
     // POST /api/workspaces/:id/git/pull — Pull from remote (async background job)
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/pull$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        statusCode: 202,
+        handler: async ({ match, res, req }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
             const id = ws.id;
-
             const running = await gitOpsStore.getRunning(id, 'pull');
-            if (running.length > 0) {
-                return handleAPIError(res, conflict('A pull operation is already running'));
-            }
-
+            if (running.length > 0) return void handleAPIError(res, conflict('A pull operation is already running'));
             let body: any = {};
-            try {
-                body = await parseBody(req);
-            } catch {
-                body = {};
-            }
-
+            try { body = await parseBody(req); } catch { body = {}; }
             const rebase = body.rebase === true;
             const jobId = `pull-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
             const job: GitOpJob = {
-                id: jobId,
-                workspaceId: id,
-                op: 'pull',
-                status: 'running',
-                startedAt: new Date().toISOString(),
-                pid: process.pid,
+                id: jobId, workspaceId: id, op: 'pull',
+                status: 'running', startedAt: new Date().toISOString(), pid: process.pid,
             };
             await gitOpsStore.create(job);
-            sendJSON(res, 202, { jobId });
-
-            branchService.pull(ws.rootPath, rebase).then(async (result) => {
+            void branchService.pull(ws.rootPath, rebase).then(async (result) => {
                 await gitOpsStore.update(id, jobId, {
                     status: result.success ? 'success' : 'failed',
-                    finishedAt: new Date().toISOString(),
-                    error: result.error,
+                    finishedAt: new Date().toISOString(), error: result.error,
                 });
                 getWsServer?.()?.broadcastGitChanged(id, 'pull');
             }).catch(async (err) => {
                 await gitOpsStore.update(id, jobId, {
-                    status: 'failed',
-                    finishedAt: new Date().toISOString(),
+                    status: 'failed', finishedAt: new Date().toISOString(),
                     error: err instanceof Error ? err.message : 'Unknown error',
                 });
                 getWsServer?.()?.broadcastGitChanged(id, 'pull');
             });
+            return { jobId };
         },
-    });
+    }));
 
     // POST /api/workspaces/:id/git/rebase-autosquash — Non-interactive rebase --autosquash (async background job)
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/rebase-autosquash$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        statusCode: 202,
+        handler: async ({ match, res }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
             const id = ws.id;
-
             const running = await gitOpsStore.getRunning(id, 'rebase-autosquash');
-            if (running.length > 0) {
-                return handleAPIError(res, conflict('A rebase-autosquash operation is already running'));
-            }
-
+            if (running.length > 0) return void handleAPIError(res, conflict('A rebase-autosquash operation is already running'));
             const jobId = `rebase-autosquash-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
             const job: GitOpJob = {
-                id: jobId,
-                workspaceId: id,
-                op: 'rebase-autosquash',
-                status: 'running',
-                startedAt: new Date().toISOString(),
-                pid: process.pid,
+                id: jobId, workspaceId: id, op: 'rebase-autosquash',
+                status: 'running', startedAt: new Date().toISOString(), pid: process.pid,
             };
             await gitOpsStore.create(job);
-            sendJSON(res, 202, { jobId });
-
-            branchService.rebaseAutosquash(ws.rootPath).then(async (result) => {
+            void branchService.rebaseAutosquash(ws.rootPath).then(async (result) => {
                 await gitOpsStore.update(id, jobId, {
                     status: result.success ? 'success' : 'failed',
-                    finishedAt: new Date().toISOString(),
-                    error: result.error,
+                    finishedAt: new Date().toISOString(), error: result.error,
                 });
                 getWsServer?.()?.broadcastGitChanged(id, 'rebase-autosquash');
             }).catch(async (err) => {
                 await gitOpsStore.update(id, jobId, {
-                    status: 'failed',
-                    finishedAt: new Date().toISOString(),
+                    status: 'failed', finishedAt: new Date().toISOString(),
                     error: err instanceof Error ? err.message : 'Unknown error',
                 });
                 getWsServer?.()?.broadcastGitChanged(id, 'rebase-autosquash');
             });
+            return { jobId };
         },
-    });
+    }));
 
     // GET /api/workspaces/:id/git/ops/latest — Most recent git op job (supports ?op=pull)
-    routes.push({
+    routes.push(createRoute({
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/ops\/latest$/,
-        handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const parsed = url.parse(req.url || '', true);
-            const opFilter = typeof parsed.query.op === 'string' ? parsed.query.op as any : undefined;
-            const job = await gitOpsStore.getLatest(id, opFilter);
-            if (!job) {
-                return sendJSON(res, 200, null);
-            }
-            sendJSON(res, 200, job);
+        parseQuery: (q) => ({ op: asString(q.op) as any }),
+        handler: async ({ query, match, res }) => {
+            const id = decodeURIComponent(match[1]);
+            const job = await gitOpsStore.getLatest(id, query.op);
+            if (!job) { sendJSON(res, 200, null); return; }
+            return job;
         },
-    });
+    }));
 
     // GET /api/workspaces/:id/git/ops/:jobId — Specific git op job by ID
-    routes.push({
+    routes.push(createRoute({
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/ops\/([^/]+)$/,
-        handler: async (req, res, match) => {
-            const wsId = decodeURIComponent(match![1]);
-            const jobId = decodeURIComponent(match![2]);
+        handler: async ({ match, res }) => {
+            const wsId = decodeURIComponent(match[1]);
+            const jobId = decodeURIComponent(match[2]);
             const job = await gitOpsStore.getById(wsId, jobId);
-            if (!job) {
-                return handleAPIError(res, notFound('Git operation'));
-            }
-            sendJSON(res, 200, job);
+            if (!job) return void handleAPIError(res, notFound('Git operation'));
+            return job;
         },
-    });
+    }));
 
     // POST /api/workspaces/:id/git/fetch — Fetch from remote(s)
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/fetch$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ match, res, req }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
-            const id = ws.id;
-
             let body: any = {};
-            try {
-                body = await parseBody(req);
-            } catch {
-                body = {};
-            }
-
+            try { body = await parseBody(req); } catch { body = {}; }
             const remote: string | undefined = typeof body.remote === 'string' ? body.remote : undefined;
             const result = await branchService.fetch(ws.rootPath, remote);
-            getWsServer?.()?.broadcastGitChanged(id, 'fetch');
-            sendJSON(res, 200, result);
+            getWsServer?.()?.broadcastGitChanged(ws.id, 'fetch');
+            return result;
         },
-    });
+    }));
 
     // POST /api/workspaces/:id/git/merge — Merge a branch
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/merge$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ match, res, req }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
-            const id = ws.id;
-
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
-
-            if (!body.branch || typeof body.branch !== 'string') {
-                return handleAPIError(res, missingFields(['branch']));
-            }
-
+            if (!body.branch || typeof body.branch !== 'string') return void handleAPIError(res, missingFields(['branch']));
             const result = await branchService.mergeBranch(ws.rootPath, body.branch);
-            getWsServer?.()?.broadcastGitChanged(id, 'merge');
-            sendJSON(res, 200, result);
+            getWsServer?.()?.broadcastGitChanged(ws.id, 'merge');
+            return result;
         },
-    });
+    }));
 
     // POST /api/workspaces/:id/git/stash — Stash changes
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/stash$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ match, res, req }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
-            const id = ws.id;
-
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
-
             const message: string | undefined = typeof body.message === 'string' ? body.message : undefined;
             const result = await branchService.stashChanges(ws.rootPath, message);
-            getWsServer?.()?.broadcastGitChanged(id, 'stash');
-            sendJSON(res, 200, result);
+            getWsServer?.()?.broadcastGitChanged(ws.id, 'stash');
+            return result;
         },
-    });
+    }));
 
     // POST /api/workspaces/:id/git/stash/pop — Pop stash
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/stash\/pop$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ match, res }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
-            const id = ws.id;
-
             const result = await branchService.popStash(ws.rootPath);
-            getWsServer?.()?.broadcastGitChanged(id, 'stash-pop');
-            sendJSON(res, 200, result);
+            getWsServer?.()?.broadcastGitChanged(ws.id, 'stash-pop');
+            return result;
         },
-    });
+    }));
 
     // POST /api/workspaces/:id/git/reset — Reset HEAD to a commit
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/reset$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ match, res, req }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
-            const id = ws.id;
-
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
-
-            if (!body.hash || typeof body.hash !== 'string') {
-                return handleAPIError(res, missingFields(['hash']));
-            }
-
+            if (!body.hash || typeof body.hash !== 'string') return void handleAPIError(res, missingFields(['hash']));
             const allowedModes = ['hard', 'soft', 'mixed'];
-            const mode: string = typeof body.mode === 'string' && allowedModes.includes(body.mode)
-                ? body.mode
-                : 'hard';
-
+            const mode = typeof body.mode === 'string' && allowedModes.includes(body.mode) ? body.mode : 'hard';
             try {
                 execGitArgsSync(['reset', `--${mode}`, body.hash], ws.rootPath);
-                gitCache.invalidateMutable(id);
-                getWsServer?.()?.broadcastGitChanged(id, 'reset');
-                sendJSON(res, 200, { success: true });
             } catch (err: any) {
-                return handleAPIError(res, badRequest('Failed to reset: ' + (err.message || 'unknown error')));
+                throw badRequest('Failed to reset: ' + (err.message || 'unknown error'));
             }
+            gitCache.invalidateMutable(ws.id);
+            getWsServer?.()?.broadcastGitChanged(ws.id, 'reset');
+            return { success: true };
         },
-    });
+    }));
 
     // POST /api/workspaces/:id/git/cherry-pick — Cherry-pick a commit onto the current branch
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/cherry-pick$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ match, res, req }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
-            const id = ws.id;
-
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
-
-            if (!body.hash || typeof body.hash !== 'string') {
-                return handleAPIError(res, missingFields(['hash']));
-            }
-
+            if (!body.hash || typeof body.hash !== 'string') return void handleAPIError(res, missingFields(['hash']));
             const result = await branchService.cherryPick(ws.rootPath, body.hash);
             if (result.success) {
-                gitCache.invalidateMutable(id);
-                getWsServer?.()?.broadcastGitChanged(id, 'cherry-pick');
-                return sendJSON(res, 200, { success: true });
+                gitCache.invalidateMutable(ws.id);
+                getWsServer?.()?.broadcastGitChanged(ws.id, 'cherry-pick');
+                return { success: true };
             }
             if (result.conflicts) {
-                return sendJSON(res, 409, { error: result.message, conflicts: true });
+                sendJSON(res, 409, { error: result.message, conflicts: true });
+                return;
             }
-            return handleAPIError(res, badRequest('Cherry-pick failed: ' + result.message));
+            throw badRequest('Cherry-pick failed: ' + result.message);
         },
-    });
-
-    // ------------------------------------------------------------------
-    // Amend commit message
-    // ------------------------------------------------------------------
+    }));
 
     // POST /api/workspaces/:id/git/amend — Amend the HEAD commit message
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/amend$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ match, res, req }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
-            const id = ws.id;
-
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
-
-            if (!body.title || typeof body.title !== 'string' || !body.title.trim()) {
-                return handleAPIError(res, missingFields(['title']));
-            }
-
+            if (!body.title || typeof body.title !== 'string' || !body.title.trim()) return void handleAPIError(res, missingFields(['title']));
             const result = await branchService.amendCommitMessage(
-                ws.rootPath,
-                body.title,
-                typeof body.body === 'string' ? body.body : undefined
+                ws.rootPath, body.title,
+                typeof body.body === 'string' ? body.body : undefined,
             );
-            if (!result.success) {
-                return handleAPIError(res, badRequest(result.error || 'Failed to amend commit message'));
-            }
-            gitCache.invalidateMutable(id);
-            getWsServer?.()?.broadcastGitChanged(id, 'amend');
-            sendJSON(res, 200, { hash: result.hash });
+            if (!result.success) throw badRequest(result.error || 'Failed to amend commit message');
+            gitCache.invalidateMutable(ws.id);
+            getWsServer?.()?.broadcastGitChanged(ws.id, 'amend');
+            return { hash: result.hash };
         },
-    });
-
-    // ------------------------------------------------------------------
-    // Repo state (merge/rebase/cherry-pick detection)
-    // ------------------------------------------------------------------
+    }));
 
     // GET /api/workspaces/:id/git/repo-state — Detect in-progress operations
-    routes.push({
+    routes.push(createRoute({
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/repo-state$/,
-        handler: async (_req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ match, res }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
-            const repoState = branchService.getRepoState(ws.rootPath);
-            sendJSON(res, 200, repoState);
+            return branchService.getRepoState(ws.rootPath);
         },
-    });
-
-    // ------------------------------------------------------------------
-    // Rebase continue / abort
-    // ------------------------------------------------------------------
+    }));
 
     // POST /api/workspaces/:id/git/rebase-continue
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/rebase-continue$/,
-        handler: async (_req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        statusCode: 202,
+        handler: async ({ match, res }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
             const id = ws.id;
-
             const jobId = `rebase-continue-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
             const job: GitOpJob = {
                 id: jobId, workspaceId: id, op: 'rebase-continue',
                 status: 'running', startedAt: new Date().toISOString(), pid: process.pid,
             };
             await gitOpsStore.create(job);
-            sendJSON(res, 202, { jobId });
-
-            branchService.rebaseContinue(ws.rootPath).then(async (result) => {
+            void branchService.rebaseContinue(ws.rootPath).then(async (result) => {
                 await gitOpsStore.update(id, jobId, {
                     status: result.success ? 'success' : 'failed',
                     finishedAt: new Date().toISOString(), error: result.error,
@@ -550,49 +414,41 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
                 });
                 getWsServer?.()?.broadcastGitChanged(id, 'rebase-continue');
             });
+            return { jobId };
         },
-    });
+    }));
 
     // POST /api/workspaces/:id/git/rebase-abort
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/rebase-abort$/,
-        handler: async (_req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ match, res }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
-            const id = ws.id;
             const result = await branchService.rebaseAbort(ws.rootPath);
-            if (!result.success) {
-                return handleAPIError(res, badRequest(result.error || 'Failed to abort rebase'));
-            }
-            gitCache.invalidateMutable(id);
-            getWsServer?.()?.broadcastGitChanged(id, 'rebase-abort');
-            sendJSON(res, 200, { success: true });
+            if (!result.success) throw badRequest(result.error || 'Failed to abort rebase');
+            gitCache.invalidateMutable(ws.id);
+            getWsServer?.()?.broadcastGitChanged(ws.id, 'rebase-abort');
+            return { success: true };
         },
-    });
-
-    // ------------------------------------------------------------------
-    // Merge continue / abort
-    // ------------------------------------------------------------------
+    }));
 
     // POST /api/workspaces/:id/git/merge-continue
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/merge-continue$/,
-        handler: async (_req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        statusCode: 202,
+        handler: async ({ match, res }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
             const id = ws.id;
-
             const jobId = `merge-continue-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
             const job: GitOpJob = {
                 id: jobId, workspaceId: id, op: 'merge-continue',
                 status: 'running', startedAt: new Date().toISOString(), pid: process.pid,
             };
             await gitOpsStore.create(job);
-            sendJSON(res, 202, { jobId });
-
-            branchService.mergeContinue(ws.rootPath).then(async (result) => {
+            void branchService.mergeContinue(ws.rootPath).then(async (result) => {
                 await gitOpsStore.update(id, jobId, {
                     status: result.success ? 'success' : 'failed',
                     finishedAt: new Date().toISOString(), error: result.error,
@@ -606,64 +462,47 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
                 });
                 getWsServer?.()?.broadcastGitChanged(id, 'merge-continue');
             });
+            return { jobId };
         },
-    });
+    }));
 
     // POST /api/workspaces/:id/git/merge-abort
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/merge-abort$/,
-        handler: async (_req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ match, res }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
-            const id = ws.id;
             const result = await branchService.mergeAbort(ws.rootPath);
-            if (!result.success) {
-                return handleAPIError(res, badRequest(result.error || 'Failed to abort merge'));
-            }
-            gitCache.invalidateMutable(id);
-            getWsServer?.()?.broadcastGitChanged(id, 'merge-abort');
-            sendJSON(res, 200, { success: true });
+            if (!result.success) throw badRequest(result.error || 'Failed to abort merge');
+            gitCache.invalidateMutable(ws.id);
+            getWsServer?.()?.broadcastGitChanged(ws.id, 'merge-abort');
+            return { success: true };
         },
-    });
-
-    // ------------------------------------------------------------------
-    // Reword commit title (non-HEAD commits via interactive rebase)
-    // ------------------------------------------------------------------
+    }));
 
     // POST /api/workspaces/:id/git/reword — Reword a non-HEAD commit's title
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/reword$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        statusCode: 202,
+        handler: async ({ match, res, req }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
             const id = ws.id;
-
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
-
-            if (!body.hash || typeof body.hash !== 'string') {
-                return handleAPIError(res, missingFields(['hash']));
-            }
-            if (!body.title || typeof body.title !== 'string' || !body.title.trim()) {
-                return handleAPIError(res, missingFields(['title']));
-            }
-
+            if (!body.hash || typeof body.hash !== 'string') return void handleAPIError(res, missingFields(['hash']));
+            if (!body.title || typeof body.title !== 'string' || !body.title.trim()) return void handleAPIError(res, missingFields(['title']));
             const running = await gitOpsStore.getRunning(id, 'reword');
-            if (running.length > 0) {
-                return handleAPIError(res, conflict('A reword operation is already running'));
-            }
-
+            if (running.length > 0) return void handleAPIError(res, conflict('A reword operation is already running'));
             const jobId = `reword-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
             const job: GitOpJob = {
                 id: jobId, workspaceId: id, op: 'reword',
                 status: 'running', startedAt: new Date().toISOString(), pid: process.pid,
             };
             await gitOpsStore.create(job);
-            sendJSON(res, 202, { jobId });
-
-            branchService.rewordCommit(ws.rootPath, body.hash, body.title).then(async (result) => {
+            void branchService.rewordCommit(ws.rootPath, body.hash, body.title).then(async (result) => {
                 await gitOpsStore.update(id, jobId, {
                     status: result.success ? 'success' : 'failed',
                     finishedAt: new Date().toISOString(), error: result.error,
@@ -677,47 +516,33 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
                 });
                 getWsServer?.()?.broadcastGitChanged(id, 'reword');
             });
+            return { jobId };
         },
-    });
-
-    // ------------------------------------------------------------------
-    // Rebase reorder (drag-and-drop commit reorder)
-    // ------------------------------------------------------------------
+    }));
 
     // POST /api/workspaces/:id/git/rebase-reorder
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/rebase-reorder$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        statusCode: 202,
+        handler: async ({ match, res, req }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
             const id = ws.id;
-
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
-            if (!Array.isArray(body.commits) || body.commits.length === 0) {
-                return handleAPIError(res, missingFields(['commits']));
-            }
-
-            if (!bridge?.enqueue) {
-                return handleAPIError(res, conflict('Queue bridge is not available for rebase-reorder'));
-            }
-
+            if (!Array.isArray(body.commits) || body.commits.length === 0) return void handleAPIError(res, missingFields(['commits']));
+            if (!bridge?.enqueue) return void handleAPIError(res, conflict('Queue bridge is not available for rebase-reorder'));
             const running = await gitOpsStore.getRunning(id, 'rebase-reorder');
-            if (running.length > 0) {
-                return handleAPIError(res, conflict('A rebase-reorder operation is already running'));
-            }
-
+            if (running.length > 0) return void handleAPIError(res, conflict('A rebase-reorder operation is already running'));
             const commits: string[] = body.commits;
             const displayName = `Reorder ${commits.length} commit${commits.length !== 1 ? 's' : ''}`;
-
             const jobId = `rebase-reorder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
             const job: GitOpJob = {
                 id: jobId, workspaceId: id, op: 'rebase-reorder',
                 status: 'running', startedAt: new Date().toISOString(), pid: process.pid,
             };
             await gitOpsStore.create(job);
-
             const taskId = await bridge.enqueue({
                 type: 'chat',
                 priority: 'normal',
@@ -731,14 +556,12 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
                 },
                 config: { retryOnFailure: false },
             });
-
             const onQueueChange = (event: Record<string, unknown>) => {
                 const eventTaskId = (event.taskId ?? (event.task as any)?.id) as string | undefined;
                 if (eventTaskId !== taskId) return;
                 if (event.type !== 'updated') return;
                 const status = (event.task as any)?.status as string | undefined;
                 if (status !== 'completed' && status !== 'failed') return;
-
                 bridge.off?.('queueChange', onQueueChange);
                 gitOpsStore.update(id, jobId, {
                     status: status === 'completed' ? 'success' : 'failed',
@@ -748,17 +571,11 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
                 getWsServer?.()?.broadcastGitChanged(id, 'rebase-reorder');
             };
             bridge.on?.('queueChange', onQueueChange);
-
-            sendJSON(res, 202, { taskId, jobId });
+            return { taskId, jobId };
         },
-    });
+    }));
 }
 
-/**
- * Build the AI prompt for an interactive rebase-reorder operation.
- * The prompt instructs the AI to run git rebase -i, detect merge conflicts,
- * resolve trivial ones automatically, or abort cleanly on non-trivial conflicts.
- */
 function buildRebaseReorderPrompt(repoRoot: string, commits: string[]): string {
     const firstCommit = commits[0];
     const pickLines = commits.map(h => `pick ${h}`).join('\n');
