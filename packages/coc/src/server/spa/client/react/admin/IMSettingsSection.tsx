@@ -22,6 +22,7 @@ interface WhatsAppStatus {
 interface TeamsStatus {
     enabled: boolean;
     status: 'disconnected' | 'connecting' | 'authenticating' | 'connected' | 'error';
+    mode: 'graph' | 'mcp';
     error: string | null;
     teamName?: string;
     channelName?: string;
@@ -58,7 +59,7 @@ async function fetchTeamsStatus(): Promise<TeamsStatus> {
     return res.json();
 }
 
-async function postTeamsConfig(patch: { botName?: string; channelId?: string; enabled?: boolean; teamName?: string; channelName?: string }): Promise<void> {
+async function postTeamsConfig(patch: { botName?: string; channelId?: string; enabled?: boolean; teamName?: string; channelName?: string; mode?: 'graph' | 'mcp' }): Promise<void> {
     const res = await fetch(getRawApiBase() + '/container/messaging/teams/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -556,7 +557,7 @@ function TeamsSettingsCard() {
     return (
         <SettingsCard
             title="Microsoft Teams"
-            description="Connect MS Teams to bridge CoC conversations to a Teams channel via Graph API."
+            description="Connect MS Teams to bridge CoC conversations to a Teams channel."
             badge="Container"
             data-testid="im-settings-teams"
         >
@@ -596,6 +597,27 @@ function TeamsSettingsCard() {
                 </p>
             ) : (
                 <div className="space-y-3">
+                    {/* Mode selector */}
+                    <div className="flex items-center justify-between pb-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                        <label className="text-xs text-[#616161] dark:text-[#999]">Transport mode</label>
+                        <select
+                            value={status.mode ?? 'graph'}
+                            onChange={async (e) => {
+                                const mode = e.target.value as 'graph' | 'mcp';
+                                try {
+                                    await postTeamsConfig({ mode });
+                                    setTimeout(() => void loadStatus(), 1000);
+                                } catch (err: any) {
+                                    setError(err.message);
+                                }
+                            }}
+                            className="text-xs px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-blue-500"
+                        >
+                            <option value="graph">Graph API</option>
+                            <option value="mcp">MCP Server</option>
+                        </select>
+                    </div>
+
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <TeamsStatusDot status={status.status} />

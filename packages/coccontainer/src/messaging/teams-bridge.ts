@@ -2,14 +2,15 @@
  * TeamsBridge — glue between WS relay / agent proxy and TeamsBot.
  *
  * Only imported via dynamic import when messaging.teams.enabled is true.
- * Uses Graph API (default) or MCP server for communication.
- * On startup, resolves team/channel names to IDs.
+ * Uses Graph API (default) or MCP server for communication, selected via config.mode.
+ * The transport is abstracted behind the TeamsTransport interface.
+ * On startup, resolves team/channel names to IDs via the transport.
  * Auth tokens are acquired via browser OAuth (acquireTokenViaBrowser) and
  * cached/refreshed via acquireMcpOAuthToken.
  */
 
-import type { InboundTeamsMessage, BotStatus } from '@plusplusoneplusplus/teams-bot';
-import { TeamsBot, GraphClient, McpClient, acquireMcpOAuthToken } from '@plusplusoneplusplus/teams-bot';
+import type { InboundTeamsMessage, BotStatus, TeamsTransport } from '@plusplusoneplusplus/teams-bot';
+import { TeamsBot, createTransport, acquireMcpOAuthToken } from '@plusplusoneplusplus/teams-bot';
 import type { WebSocketRelay, WSRelayMessage } from '../proxy/ws-relay';
 import type { AgentStore } from '../store/agent-store';
 import type { TunnelBridge } from '../proxy/tunnel-bridge';
@@ -27,6 +28,7 @@ export interface TeamsBridgeOptions {
 export interface TeamsStatus {
     enabled: boolean;
     status: BotStatus;
+    mode: 'graph' | 'mcp';
     error: string | null;
     teamName?: string;
     channelName?: string;
@@ -38,12 +40,15 @@ export interface TeamsStatus {
 export class TeamsBridge {
     private store: MessagingStore | null = null;
     private bot: TeamsBot | null = null;
+    private transport: TeamsTransport;
     private wsHandler: ((msg: WSRelayMessage) => void) | null = null;
     private _runningLocks: Set<string> | undefined;
     private _workspaceNameCache = new Map<string, string>();
     private _azToken: string | null = null;
 
-    constructor(private opts: TeamsBridgeOptions) {}
+    constructor(private opts: TeamsBridgeOptions) {
+        this.transport = createTransport(opts.config.mode, { mcpServerUrl: opts.config.mcpServerUrl });
+    }
 
     async start(): Promise<void> {
         this.store = new MessagingStore(this.opts.dataDir);
@@ -119,6 +124,7 @@ export class TeamsBridge {
         return {
             enabled: true,
             status: this.bot?.getStatus() ?? 'disconnected',
+            mode: this.opts.config.mode,
             error: this.bot?.getLastError() ?? null,
             teamName: this.opts.config.teamName,
             channelName: this.opts.config.channelName,
@@ -135,7 +141,7 @@ export class TeamsBridge {
     }
 
     /** Update mutable config fields and persist to config.yaml. */
-    async updateConfig(patch: { botName?: string; channelId?: string; enabled?: boolean; teamName?: string; channelName?: string }): Promise<void> {
+    async updateConfig(patch: { botName?: string; channelId?: string; enabled?: boolean; teamName?: string; channelName?: string; mode?: 'graph' | 'mcp' }): Promise<void> {
         if (patch.botName !== undefined) this.opts.config.botName = patch.botName;
         if (patch.channelId !== undefined) {
             this.opts.config.channelId = patch.channelId;
@@ -144,6 +150,7 @@ export class TeamsBridge {
         if (patch.teamName !== undefined) this.opts.config.teamName = patch.teamName;
         if (patch.channelName !== undefined) this.opts.config.channelName = patch.channelName;
         if (patch.enabled !== undefined) this.opts.config.enabled = patch.enabled;
+        if (patch.mode !== undefined) this.opts.config.mode = patch.mode;
         await this.persistTeamsConfig(patch as Record<string, string | boolean | undefined>);
     }
 
@@ -185,9 +192,7 @@ export class TeamsBridge {
     }
 
     /**
-     * Resolve team/channel names to IDs.
-     * In MCP mode: uses MCP tools (ListTeams/ListChannels).
-     * In Graph mode: uses Graph API (legacy, requires ChannelMessage.Read.All).
+     * Resolve team/channel names to IDs using the configured transport.
      */
     private async resolveTeamAndChannel(): Promise<void> {
         // Already have explicit IDs — no resolution needed
@@ -201,117 +206,44 @@ export class TeamsBridge {
             return;
         }
 
-        if (this.opts.config.mode === 'mcp') {
-            await this.resolveViaMcp(teamName, channelName);
-        } else {
-            await this.resolveViaGraph(teamName, channelName);
-        }
-    }
-
-    /** Resolve team/channel IDs using MCP tools. */
-    private async resolveViaMcp(teamName?: string, channelName?: string): Promise<void> {
+        // Acquire token for resolution
         try {
             this._azToken = await acquireMcpOAuthToken(this.opts.config.mcpServerUrl);
         } catch (err: any) {
-            console.error(`[teams-bridge] Failed to acquire MCP OAuth token: ${err.message}`);
+            console.error(`[teams-bridge] Failed to acquire token for resolution: ${err.message}`);
             return;
         }
 
-        const mcpClient = new McpClient({
-            serverUrl: this.opts.config.mcpServerUrl,
-            bearerToken: this._azToken!,
-        });
-
         try {
-            await mcpClient.initialize();
+            await this.transport.initialize(this._azToken!, {
+                teamId: this.opts.config.teamId,
+                channelId: this.opts.config.channelId,
+            });
 
             if (teamName && !this.opts.config.teamId) {
-                const teamsResult = await mcpClient.callTool('ListTeams', {});
-                const teamsText = teamsResult.content?.[0]?.text ?? '{}';
-                let teams: Array<{ id: string; displayName: string }> = [];
-                try {
-                    const parsed = JSON.parse(teamsText);
-                    teams = parsed.teams ?? parsed.value ?? (Array.isArray(parsed) ? parsed : []);
-                } catch { /* empty */ }
-
-                const team = teams.find(t => t.displayName.toLowerCase() === teamName.toLowerCase());
-                if (team) {
-                    this.opts.config.teamId = team.id;
-                    console.log(`[teams-bridge] Resolved team "${teamName}" → ${team.id}`);
-                } else {
-                    console.warn(`[teams-bridge] Team "${teamName}" not found via MCP`);
-                    return;
-                }
-            }
-
-            if (this.opts.config.teamId && channelName && !this.opts.config.channelId) {
-                const channelsResult = await mcpClient.callTool('ListChannels', {
-                    teamId: this.opts.config.teamId,
-                });
-                const channelsText = channelsResult.content?.[0]?.text ?? '{}';
-                let channels: Array<{ id: string; displayName: string }> = [];
-                try {
-                    const parsed = JSON.parse(channelsText);
-                    channels = parsed.channels ?? parsed.value ?? (Array.isArray(parsed) ? parsed : []);
-                } catch { /* empty */ }
-
+                const result = await this.transport.resolveTeamAndChannel(
+                    teamName,
+                    channelName ?? 'General',
+                );
+                this.opts.config.teamId = result.teamId;
+                this.opts.config.channelId = result.channelId;
+                console.log(`[teams-bridge] Resolved team "${teamName}" → ${result.teamId}, channel "${channelName}" → ${result.channelId}`);
+                await this.persistTeamsConfig({ teamId: result.teamId, channelId: result.channelId });
+            } else if (this.opts.config.teamId && channelName && !this.opts.config.channelId) {
+                const channels = await this.transport.listChannels(this.opts.config.teamId);
                 const channel = channels.find(c => c.displayName.toLowerCase() === channelName.toLowerCase());
                 if (channel) {
                     this.opts.config.channelId = channel.id;
                     console.log(`[teams-bridge] Resolved channel "${channelName}" → ${channel.id}`);
+                    await this.persistTeamsConfig({ channelId: channel.id });
                 } else {
-                    console.warn(`[teams-bridge] Channel "${channelName}" not found via MCP`);
-                    return;
+                    console.warn(`[teams-bridge] Channel "${channelName}" not found`);
                 }
-            }
-
-            await this.persistTeamsConfig({
-                teamId: this.opts.config.teamId,
-                channelId: this.opts.config.channelId,
-            });
-        } catch (err: any) {
-            console.error(`[teams-bridge] Failed to resolve team/channel via MCP: ${err.message}`);
-        }
-    }
-
-    /** Resolve team/channel IDs using Graph API. */
-    private async resolveViaGraph(teamName?: string, channelName?: string): Promise<void> {
-
-        try {
-            this._azToken = await acquireMcpOAuthToken(this.opts.config.mcpServerUrl);
-        } catch (err: any) {
-            console.error(`[teams-bridge] Failed to acquire token for Graph resolution: ${err.message}`);
-            return;
-        }
-
-        const graph = new GraphClient({ bearerToken: this._azToken! });
-
-        try {
-            if (teamName && !this.opts.config.teamId) {
-                const { teamId, channelId } = await graph.resolveOrCreateTeamAndChannel(
-                    teamName,
-                    channelName ?? 'General',
-                );
-                this.opts.config.teamId = teamId;
-                this.opts.config.channelId = channelId;
-                console.log(`[teams-bridge] Resolved team "${teamName}" → ${teamId}, channel "${channelName}" → ${channelId}`);
-                // Persist resolved IDs
-                await this.persistTeamsConfig({ teamId, channelId });
-            } else if (this.opts.config.teamId && channelName && !this.opts.config.channelId) {
-                graph.setTeamId(this.opts.config.teamId);
-                let channel = await graph.findChannelByName(channelName);
-                if (!channel) {
-                    console.log(`[teams-bridge] Channel "${channelName}" not found, creating...`);
-                    const channelId = await graph.createChannel(channelName);
-                    this.opts.config.channelId = channelId;
-                } else {
-                    this.opts.config.channelId = channel.id;
-                }
-                console.log(`[teams-bridge] Resolved channel "${channelName}" → ${this.opts.config.channelId}`);
-                await this.persistTeamsConfig({ channelId: this.opts.config.channelId });
             }
         } catch (err: any) {
             console.error(`[teams-bridge] Failed to resolve team/channel: ${err.message}`);
+        } finally {
+            this.transport.stop();
         }
     }
 

@@ -23,6 +23,16 @@ let botInstances: Array<{
 }> = [];
 
 vi.mock('@plusplusoneplusplus/teams-bot', () => {
+    const mockTransport = {
+        initialize: vi.fn().mockResolvedValue(undefined),
+        send: vi.fn().mockResolvedValue('transport-msg-001'),
+        poll: vi.fn().mockResolvedValue({ messages: [], nextSince: '' }),
+        listChannels: vi.fn().mockResolvedValue([]),
+        resolveTeamAndChannel: vi.fn().mockResolvedValue({ teamId: 'team-123', channelId: 'channel-456' }),
+        setToken: vi.fn(),
+        setChannelId: vi.fn(),
+        stop: vi.fn(),
+    };
     return {
         TeamsBot: class MockTeamsBot {
             opts: any;
@@ -39,6 +49,7 @@ vi.mock('@plusplusoneplusplus/teams-bot', () => {
                 botInstances.push(this as any);
             }
         },
+        createTransport: vi.fn().mockReturnValue(mockTransport),
         GraphClient: class MockGraphClient {
             constructor(_opts: any) {}
             resolveOrCreateTeamAndChannel = vi.fn().mockResolvedValue({ teamId: 'team-123', channelId: 'channel-456' });
@@ -47,6 +58,7 @@ vi.mock('@plusplusoneplusplus/teams-bot', () => {
             createChannel = vi.fn().mockResolvedValue('channel-new');
         },
         acquireTokenViaAzCli: vi.fn().mockResolvedValue('mock-az-token'),
+        acquireMcpOAuthToken: vi.fn().mockResolvedValue('mock-oauth-token'),
     };
 });
 
@@ -124,8 +136,10 @@ describe('TeamsBridge', () => {
         return new TeamsBridge({
             config: {
                 enabled: true,
+                mode: 'graph',
                 mcpServerUrl: 'https://test.teams.mcp/server',
                 channelId: 'channel-test',
+                teamId: 'team-test',
                 botName: 'TestBot',
                 pollIntervalMs: 3000,
                 ...configOverrides,
