@@ -61,6 +61,15 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-settings/RepoPref
     ),
 }));
 
+// Capture props passed to McpServersPanel for regression tests.
+const capturedMcpPanelProps: Record<string, unknown>[] = [];
+vi.mock('../../../../src/server/spa/client/react/features/skills/McpServersPanel', () => ({
+    McpServersPanel: (props: Record<string, unknown>) => {
+        capturedMcpPanelProps.push(props);
+        return <div data-testid="mcp-servers-panel" data-workspace-id={props.workspaceId as string} />;
+    },
+}));
+
 const repo = {
     workspace: { id: 'ws-1', rootPath: 'C:\\repo', color: '#ccc', description: '' },
     gitInfo: { branch: 'main', dirty: false, ahead: 0, behind: 0 },
@@ -192,6 +201,7 @@ describe('RepoSettingsTab skill expansion', () => {
 describe('RepoSettingsTab redesigned sidebar', () => {
     beforeEach(() => {
         vi.resetAllMocks();
+        capturedMcpPanelProps.length = 0;
         location.hash = '';
         mockFetchApi.mockImplementation((url: string) => {
             if (url.includes('/mcp-config')) return Promise.resolve({ availableServers: [], enabledMcpServers: null });
@@ -308,5 +318,20 @@ describe('RepoSettingsTab redesigned sidebar', () => {
         });
         expect(screen.queryByTestId('settings-header-refresh')).toBeNull();
         expect(screen.queryByTestId('settings-header-copy')).toBeNull();
+    });
+
+    it('passes workspaceId to McpServersPanel (regression: OAuth "not found in config")', async () => {
+        await act(async () => { await renderSettingsTab({ workspaceId: 'ws-42' }); });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('nav-item-mcp'));
+        });
+
+        await waitFor(() => expect(screen.getByTestId('mcp-servers-panel')).toBeTruthy());
+        const panel = screen.getByTestId('mcp-servers-panel');
+        expect(panel.getAttribute('data-workspace-id')).toBe('ws-42');
+        // Ensure the prop was explicitly forwarded in the last render of the panel.
+        const lastProps = capturedMcpPanelProps[capturedMcpPanelProps.length - 1];
+        expect(lastProps.workspaceId).toBe('ws-42');
     });
 });
