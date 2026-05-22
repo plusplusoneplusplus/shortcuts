@@ -897,6 +897,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                     )}
                     {activeSection === 'mcp' && (
                         <McpServersPanel
+                            workspaceId={workspaceId}
                             loading={loading}
                             error={error}
                             saving={saving}
