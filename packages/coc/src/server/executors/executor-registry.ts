@@ -99,6 +99,7 @@ export class ExecutorRegistry {
             resolveWorkspaceIdForPath: options.resolveWorkspaceIdForPath,
             getLoopInfra: options.getLoopInfra,
             getMcpOauthManager: options.getMcpOauthManager,
+            provider: options.provider,
         };
 
         this.strategyRegistry = new TaskStrategyRegistry();

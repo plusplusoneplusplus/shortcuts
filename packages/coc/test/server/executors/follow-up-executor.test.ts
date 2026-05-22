@@ -890,4 +890,84 @@ describe('FollowUpExecutor', () => {
         expect(errorTurn).toBeDefined();
         expect(errorTurn!.turnSource).toEqual({ source: 'wakeup', wakeupId: 'w_123' });
     });
+
+    // -------------------------------------------------------------------------
+    // AC-10 — Provider mismatch on resume
+    // -------------------------------------------------------------------------
+
+    it('throws provider mismatch error when process was created with Copilot but active provider is Codex', async () => {
+        const proc = makeProcess({
+            id: 'proc-copilot',
+            metadata: { type: 'chat', provider: 'copilot' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, { provider: 'codex' });
+        await expect(executor.executeFollowUp('proc-copilot', 'follow-up')).rejects.toThrow(
+            /Provider mismatch.*Copilot.*Codex/,
+        );
+    });
+
+    it('throws provider mismatch error when process was created with Codex but active provider is Copilot', async () => {
+        const proc = makeProcess({
+            id: 'proc-codex',
+            metadata: { type: 'chat', provider: 'codex' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, { provider: 'copilot' });
+        await expect(executor.executeFollowUp('proc-codex', 'follow-up')).rejects.toThrow(
+            /Provider mismatch.*Codex.*Copilot/,
+        );
+    });
+
+    it('does not throw when process provider matches active provider (Copilot)', async () => {
+        const proc = makeProcess({
+            id: 'proc-match-copilot',
+            metadata: { type: 'chat', provider: 'copilot' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, { provider: 'copilot' });
+        await expect(executor.executeFollowUp('proc-match-copilot', 'follow-up')).resolves.toBeUndefined();
+    });
+
+    it('does not throw when process has no provider metadata (defaults to copilot) and active provider is copilot', async () => {
+        const proc = makeProcess({
+            id: 'proc-no-provider',
+            metadata: { type: 'chat' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, { provider: 'copilot' });
+        await expect(executor.executeFollowUp('proc-no-provider', 'follow-up')).resolves.toBeUndefined();
+    });
+
+    it('does not call sendMessage when provider mismatch is detected', async () => {
+        const proc = makeProcess({
+            id: 'proc-mismatch-no-send',
+            metadata: { type: 'chat', provider: 'copilot' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, { provider: 'codex' });
+        try {
+            await executor.executeFollowUp('proc-mismatch-no-send', 'follow-up');
+        } catch { /* expected */ }
+
+        expect(sdkMocks.mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('mismatch error message includes instructions to switch provider', async () => {
+        const proc = makeProcess({
+            id: 'proc-mismatch-msg',
+            metadata: { type: 'chat', provider: 'copilot' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, { provider: 'codex' });
+        await expect(executor.executeFollowUp('proc-mismatch-msg', 'follow-up')).rejects.toThrow(
+            /Switch the active provider/,
+        );
+    });
 });
