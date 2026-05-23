@@ -225,6 +225,24 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         effectiveProvider === 'codex' ? SDK_PROVIDER_CODEX : SDK_PROVIDER_COPILOT,
     );
 
+    // Per-chat provider resolver: checks runtime enablement, then looks up the
+    // SDK service. Returns the Copilot service unconditionally; blocks Codex
+    // when codex.enabled is false in the live admin config.
+    const resolveAiServiceForProvider = (provider: import('./tasks/task-types').ChatProvider): import('@plusplusoneplusplus/forge').ISDKService => {
+        if (provider === 'codex') {
+            const liveConfig = runtimeConfigService.config;
+            if (!liveConfig.codex?.enabled) {
+                throw new Error('Codex provider is currently disabled. Enable Codex in Admin settings to use it.');
+            }
+            const svc = sdkServiceRegistry.get(SDK_PROVIDER_CODEX);
+            if (!svc) {
+                throw new Error('Codex SDK service is not available. Codex may not be installed on this server.');
+            }
+            return svc;
+        }
+        return options.aiService ?? sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
+    };
+
     const { registry, bridge, queuePersistence, queueFacade } = createQueueInfrastructure(
         store, dataDir, { ...options, aiService: resolvedAiService }, defaultTimeoutMs,
         resolvedConfig.chat.followUpSuggestions, resolvedConfig.chat.askUser, () => wsServer,
@@ -275,6 +293,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         },
         () => mcpOauthInfra?.manager,
         effectiveProvider,
+        resolveAiServiceForProvider,
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by

@@ -24,6 +24,12 @@ export interface CLITaskExecutorOptions {
     memoryPromotion?: MemoryPromoteConfig;
     /** Active AI provider name recorded on each process for attribution. Defaults to 'copilot'. */
     provider?: 'copilot' | 'codex';
+    /**
+     * Resolve an ISDKService for a given provider, checking enablement.
+     * Supplied by the server so executors can perform per-chat routing without
+     * holding a direct reference to RuntimeConfigService.
+     */
+    resolveAiServiceForProvider?: (provider: import('../tasks/task-types').ChatProvider) => ISDKService;
     getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
     getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined;
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
@@ -99,6 +105,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             askUser: options.askUser,
             memoryPromotion: options.memoryPromotion,
             provider: options.provider,
+            resolveAiServiceForProvider: options.resolveAiServiceForProvider,
             toolCallCacheStore: cacheStore,
             resolveSkillConfig: skillCfg,
             resolveWorkspaceIdForPath: (p: string) => this.resolveWorkspaceIdForPath(p),

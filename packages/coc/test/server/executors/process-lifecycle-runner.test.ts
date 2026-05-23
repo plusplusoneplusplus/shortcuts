@@ -1258,4 +1258,54 @@ describe('ProcessLifecycleRunner — provider attribution', () => {
         const proc = await store.getProcess(`queue_${task.id}`);
         expect(proc?.metadata?.provider).toBe('codex');
     });
+
+    it('uses payload.provider over runner-level provider when payload.provider is set', async () => {
+        // Runner is constructed with copilot but payload explicitly requests codex.
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), undefined, 'copilot');
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Hello from codex',
+                workspaceId: 'ws-abc',
+                provider: 'codex',
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        expect(proc?.metadata?.provider).toBe('codex');
+    });
+
+    it('falls back to runner-level provider when payload.provider is absent', async () => {
+        // Runner is codex; payload omits provider — should use codex.
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), undefined, 'codex');
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'No explicit provider',
+                workspaceId: 'ws-abc',
+                // provider omitted
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        expect(proc?.metadata?.provider).toBe('codex');
+    });
+
+    it('payload.provider copilot wins over runner-level codex', async () => {
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), undefined, 'codex');
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Use copilot explicitly',
+                workspaceId: 'ws-abc',
+                provider: 'copilot',
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        expect(proc?.metadata?.provider).toBe('copilot');
+    });
 });

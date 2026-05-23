@@ -132,6 +132,9 @@ function makeExecutor(
         toolCallCacheStore: { options: {} } as any,
         resolveWorkspaceIdForPath: vi.fn().mockResolvedValue('ws-id'),
         resolveSkillConfig: vi.fn().mockResolvedValue({ skillDirectories: undefined, disabledSkills: undefined }),
+        // Default: always resolve to the mock service (any provider).
+        // Tests needing provider-level errors can override this.
+        resolveAiServiceForProvider: (_provider) => sdkMocks.service as any,
         ...overrides,
     }, dataDir);
 }
@@ -891,83 +894,86 @@ describe('FollowUpExecutor', () => {
         expect(errorTurn!.turnSource).toEqual({ source: 'wakeup', wakeupId: 'w_123' });
     });
 
+
     // -------------------------------------------------------------------------
-    // AC-10 — Provider mismatch on resume
+    // AC-04 — Follow-ups use the original chat's provider
     // -------------------------------------------------------------------------
 
-    it('throws provider mismatch error when process was created with Copilot but active provider is Codex', async () => {
+    it('uses copilot service when process was created with copilot provider', async () => {
+        sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'Copilot reply', sessionId: 'sess-c' });
+        const resolveAiServiceForProvider = vi.fn().mockReturnValue(sdkMocks.service as any);
         const proc = makeProcess({
-            id: 'proc-copilot',
+            id: 'proc-ac04-copilot',
             metadata: { type: 'chat', provider: 'copilot' },
         });
         await store.addProcess(proc);
 
-        const executor = makeExecutor(store, { provider: 'codex' });
-        await expect(executor.executeFollowUp('proc-copilot', 'follow-up')).rejects.toThrow(
-            /Provider mismatch.*Copilot.*Codex/,
-        );
+        const executor = makeExecutor(store, { resolveAiServiceForProvider });
+        await executor.executeFollowUp('proc-ac04-copilot', 'follow-up');
+
+        expect(resolveAiServiceForProvider).toHaveBeenCalledWith('copilot');
     });
 
-    it('throws provider mismatch error when process was created with Codex but active provider is Copilot', async () => {
+    it('uses codex service when process was created with codex provider', async () => {
+        sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'Codex reply', sessionId: 'sess-d' });
+        const resolveAiServiceForProvider = vi.fn().mockReturnValue(sdkMocks.service as any);
         const proc = makeProcess({
-            id: 'proc-codex',
+            id: 'proc-ac04-codex',
             metadata: { type: 'chat', provider: 'codex' },
         });
         await store.addProcess(proc);
 
-        const executor = makeExecutor(store, { provider: 'copilot' });
-        await expect(executor.executeFollowUp('proc-codex', 'follow-up')).rejects.toThrow(
-            /Provider mismatch.*Codex.*Copilot/,
+        const executor = makeExecutor(store, { resolveAiServiceForProvider });
+        await executor.executeFollowUp('proc-ac04-codex', 'follow-up');
+
+        expect(resolveAiServiceForProvider).toHaveBeenCalledWith('codex');
+    });
+
+    it('defaults to copilot when process has no provider metadata (legacy processes)', async () => {
+        const resolveAiServiceForProvider = vi.fn().mockReturnValue(sdkMocks.service as any);
+        const proc = makeProcess({
+            id: 'proc-ac04-no-provider',
+            metadata: { type: 'chat' }, // no provider field
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, { resolveAiServiceForProvider });
+        await executor.executeFollowUp('proc-ac04-no-provider', 'follow-up');
+
+        expect(resolveAiServiceForProvider).toHaveBeenCalledWith('copilot');
+    });
+
+    it('blocks follow-up when resolveAiServiceForProvider throws (disabled provider)', async () => {
+        const resolveAiServiceForProvider = vi.fn().mockImplementation(() => {
+            throw new Error('Codex is disabled. Enable it in Admin settings.');
+        });
+        const proc = makeProcess({
+            id: 'proc-ac04-disabled',
+            metadata: { type: 'chat', provider: 'codex' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, { resolveAiServiceForProvider });
+        await expect(executor.executeFollowUp('proc-ac04-disabled', 'follow-up')).rejects.toThrow(
+            /Codex is disabled/,
         );
     });
 
-    it('does not throw when process provider matches active provider (Copilot)', async () => {
+    it('does not call sendMessage when resolveAiServiceForProvider throws', async () => {
+        const resolveAiServiceForProvider = vi.fn().mockImplementation(() => {
+            throw new Error('Codex is disabled');
+        });
         const proc = makeProcess({
-            id: 'proc-match-copilot',
-            metadata: { type: 'chat', provider: 'copilot' },
+            id: 'proc-ac04-no-send',
+            metadata: { type: 'chat', provider: 'codex' },
         });
         await store.addProcess(proc);
 
-        const executor = makeExecutor(store, { provider: 'copilot' });
-        await expect(executor.executeFollowUp('proc-match-copilot', 'follow-up')).resolves.toBeUndefined();
-    });
-
-    it('does not throw when process has no provider metadata (defaults to copilot) and active provider is copilot', async () => {
-        const proc = makeProcess({
-            id: 'proc-no-provider',
-            metadata: { type: 'chat' },
-        });
-        await store.addProcess(proc);
-
-        const executor = makeExecutor(store, { provider: 'copilot' });
-        await expect(executor.executeFollowUp('proc-no-provider', 'follow-up')).resolves.toBeUndefined();
-    });
-
-    it('does not call sendMessage when provider mismatch is detected', async () => {
-        const proc = makeProcess({
-            id: 'proc-mismatch-no-send',
-            metadata: { type: 'chat', provider: 'copilot' },
-        });
-        await store.addProcess(proc);
-
-        const executor = makeExecutor(store, { provider: 'codex' });
+        const executor = makeExecutor(store, { resolveAiServiceForProvider });
         try {
-            await executor.executeFollowUp('proc-mismatch-no-send', 'follow-up');
+            await executor.executeFollowUp('proc-ac04-no-send', 'follow-up');
         } catch { /* expected */ }
 
         expect(sdkMocks.mockSendMessage).not.toHaveBeenCalled();
-    });
-
-    it('mismatch error message includes instructions to switch provider', async () => {
-        const proc = makeProcess({
-            id: 'proc-mismatch-msg',
-            metadata: { type: 'chat', provider: 'copilot' },
-        });
-        await store.addProcess(proc);
-
-        const executor = makeExecutor(store, { provider: 'codex' });
-        await expect(executor.executeFollowUp('proc-mismatch-msg', 'follow-up')).rejects.toThrow(
-            /Switch the active provider/,
-        );
     });
 });

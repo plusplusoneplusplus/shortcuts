@@ -16,7 +16,7 @@ import type {
     PauseMarker,
 } from '@plusplusoneplusplus/forge';
 import { truncateDisplayName } from '../shared/queue-utils';
-import { TaskDefs, VALID_ENQUEUE_TYPES, VISIBLE_TASK_TYPE_LABELS } from '../tasks/task-types';
+import { TaskDefs, VALID_ENQUEUE_TYPES, VISIBLE_TASK_TYPE_LABELS, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import * as path from 'path';
 import type { ParsedUrlQuery } from 'querystring';
@@ -289,6 +289,13 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         // unset on a follow-up is treated as a bug and surfaced as a warning
         // in FollowUpExecutor.
         if (!payload.mode && !payload.processId) payload.mode = 'autopilot';
+        // Validate provider field if present.
+        if (payload.provider !== undefined && !VALID_CHAT_PROVIDERS.has(payload.provider)) {
+            return {
+                valid: false,
+                error: `Invalid provider: '${payload.provider}'. Valid providers: ${[...VALID_CHAT_PROVIDERS].join(', ')}`,
+            };
+        }
     }
     if (taskSpec.type === TaskDefs.runScript.kind && !payload.kind) payload.kind = TaskDefs.runScript.kind;
     if (taskSpec.type === TaskDefs.runWorkflow.kind && !payload.kind) payload.kind = TaskDefs.runWorkflow.kind;

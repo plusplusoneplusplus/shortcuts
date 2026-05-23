@@ -324,7 +324,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 model: task.config.model,
                 mode: payload?.mode,
                 workspaceId: payload?.workspaceId || task.repoId,
-                provider: this.provider,
+                // Use per-task provider from payload when available; fall back to
+                // the server-level default (this.provider) set at startup.
+                provider: (isChatPayload(task.payload) ? (task.payload as ChatPayload).provider : undefined) ?? this.provider,
                 workflowName: isRunWorkflowPayload(task.payload)
                     ? path.basename(task.payload.workflowPath)
                     : undefined,

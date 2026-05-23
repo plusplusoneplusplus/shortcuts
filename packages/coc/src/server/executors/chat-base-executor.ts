@@ -45,7 +45,7 @@ import {
     rewriteLargePrompt,
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
-import type { ChatPayload } from '../tasks/task-types';
+import type { ChatPayload, ChatProvider } from '../tasks/task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
 import type { BroadcastWorkItemFn } from '../llm-tools/create-work-item-tool';
 import { BaseExecutor } from './base-executor';
@@ -143,6 +143,12 @@ export interface ChatModeExecutorOptions {
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     /** Active AI provider. Used to detect provider mismatches on follow-up resume. */
     provider?: 'copilot' | 'codex';
+    /**
+     * Resolve an ISDKService for a given provider name, checking enablement and
+     * availability. Throws with a user-facing message if the provider is disabled
+     * or unavailable. Falls back to sdkServiceRegistry lookup when omitted.
+     */
+    resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
 }
 
 /** Return type for the AI call result. */
@@ -185,6 +191,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     /** Active AI provider — used to guard against provider mismatches on follow-up resume. */
     protected readonly provider: 'copilot' | 'codex';
+    /** Resolves per-task SDK service by provider, checking enablement. Optional — falls back to sdkServiceRegistry. */
+    protected readonly resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
 
     constructor(store: ProcessStore, options: ChatModeExecutorOptions, dataDir?: string) {
         super(store, dataDir);
@@ -200,6 +208,25 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.getLoopInfra = options.getLoopInfra;
         this.getMcpOauthManager = options.getMcpOauthManager;
         this.provider = options.provider ?? 'copilot';
+        this.resolveAiServiceForProvider = options.resolveAiServiceForProvider;
+    }
+
+    /**
+     * Resolve the ISDKService to use for a given provider.
+     * Uses the injected resolveAiServiceForProvider callback when present;
+     * otherwise falls back to this.aiService (backward-compatible test path).
+     * In production, resolveAiServiceForProvider is always provided by the server
+     * and performs live enablement + registry lookup.
+     */
+    protected getAiServiceForProvider(provider: ChatProvider): ISDKService {
+        if (this.resolveAiServiceForProvider) {
+            return this.resolveAiServiceForProvider(provider);
+        }
+        // Fallback: use the default aiService injected at construction time.
+        // This preserves backward compatibility for tests that inject aiService
+        // directly without the resolveAiServiceForProvider callback.
+        // In production, resolveAiServiceForProvider is always injected.
+        return this.aiService;
     }
 
     /**
@@ -471,9 +498,15 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 }
             }
 
-            const availability = await this.aiService.isAvailable();
+            // Resolve the AI service for this specific chat task's provider.
+            // Falls back to this.aiService when no resolveAiServiceForProvider callback is set.
+            const taskProvider: ChatProvider = payload.provider ?? 'copilot';
+            const effectiveAiService: ISDKService = this.getAiServiceForProvider(taskProvider);
+
+            const availability = await effectiveAiService.isAvailable();
             if (!availability.available) {
-                throw new Error(`Copilot SDK not available: ${availability.error || 'unknown reason'}`);
+                const label = taskProvider === 'codex' ? 'Codex' : 'Copilot';
+                throw new Error(`${label} SDK not available: ${availability.error || 'unknown reason'}`);
             }
 
             const timeoutMs = task.config.timeoutMs || this.defaultTimeoutMs;
@@ -612,7 +645,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             };
 
             let result: SDKInvocationResult;
-            result = await this.aiService.sendMessage(sendOptions) as SDKInvocationResult;
+            result = await effectiveAiService.sendMessage(sendOptions) as SDKInvocationResult;
 
             if (!result.success) {
                 throw new Error(result.error || 'AI execution failed');
