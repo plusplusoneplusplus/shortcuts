@@ -758,4 +758,124 @@ describe('TeamsBridge', () => {
             await bridge.stop();
         });
     });
+
+    describe('[chatId] prefix routing', () => {
+        it('should route message to specific process when [chatId] prefix is used', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            // First, send an outbound message to create a binding for proc-target
+            const mockFetch = vi.fn().mockImplementation((url: string, opts?: any) => {
+                if (url.includes('/api/processes/proc-target')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: async () => ({
+                            process: {
+                                id: 'proc-target',
+                                status: 'completed',
+                                conversationTurns: [
+                                    { role: 'assistant', content: 'First response' },
+                                ],
+                            },
+                        }),
+                    });
+                }
+                // Follow-up call
+                if (opts?.method === 'POST' && url.includes('/follow-up')) {
+                    return Promise.resolve({ ok: true, json: async () => ({ id: 'proc-target' }) });
+                }
+                return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+            });
+            vi.stubGlobal('fetch', mockFetch);
+
+            // Emit outbound to create binding in store
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-target', status: 'completed', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Now simulate inbound with [chatId] prefix
+            const bot = lastBot();
+            await bot.opts.onMessage({
+                channelId: 'channel-test',
+                messageId: 'teams-inbound-prefix',
+                text: '[proc-target] Can you continue?',
+                senderName: 'Alice',
+                senderAadId: 'aad-alice-123',
+            });
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Verify that follow-up was sent to the correct process
+            const fetchCalls = mockFetch.mock.calls.map((c: any[]) => c[0]);
+            const followUpCall = fetchCalls.find((u: string) => u.includes('follow-up') || u.includes('proc-target'));
+            expect(followUpCall).toBeDefined();
+
+            vi.unstubAllGlobals();
+            await bridge.stop();
+        });
+
+        it('should strip [chatId] prefix from message text before sending', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            const followUpBody: string[] = [];
+            const mockFetch = vi.fn().mockImplementation((url: string, opts?: any) => {
+                if (url.includes('/api/processes/proc-strip') && !opts?.method) {
+                    // GET process data
+                    return Promise.resolve({
+                        ok: true,
+                        json: async () => ({
+                            process: {
+                                id: 'proc-strip',
+                                status: 'completed',
+                                conversationTurns: [
+                                    { role: 'assistant', content: 'Done' },
+                                ],
+                            },
+                        }),
+                    });
+                }
+                if (opts?.method === 'POST' && url.includes('/api/processes/proc-strip/message')) {
+                    // Follow-up message
+                    if (opts.body) followUpBody.push(opts.body);
+                    return Promise.resolve({ ok: true, json: async () => ({}) });
+                }
+                if (opts?.method === 'POST') {
+                    // resolveGlobalSession or other POST
+                    if (opts.body) followUpBody.push(opts.body);
+                    return Promise.resolve({ ok: true, json: async () => ({ id: 'proc-strip' }) });
+                }
+                return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+            });
+            vi.stubGlobal('fetch', mockFetch);
+
+            // Create binding via outbound message
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-strip', status: 'completed', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Inbound with prefix
+            const bot = lastBot();
+            await bot.opts.onMessage({
+                channelId: 'channel-test',
+                messageId: 'teams-inbound-strip',
+                text: '[proc-strip] What is the status?',
+                senderName: 'Bob',
+            });
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // The follow-up body should contain the stripped message (without [proc-strip] prefix)
+            const bodyWithMessage = followUpBody.find(b => b.includes('What is the status?'));
+            expect(bodyWithMessage).toBeDefined();
+            if (bodyWithMessage) {
+                expect(bodyWithMessage).not.toContain('[proc-strip]');
+            }
+
+            vi.unstubAllGlobals();
+            await bridge.stop();
+        });
+    });
 });

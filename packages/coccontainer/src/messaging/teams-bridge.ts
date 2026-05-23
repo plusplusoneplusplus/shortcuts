@@ -558,6 +558,35 @@ export class TeamsBridge {
             }
         }
 
+        // [chatId] prefix → route to specific chat session (workaround for MCP not providing replyToId)
+        const chatIdPrefix = /^\[([^\]]+)\]\s*/;
+        if (!isFollowUp && chatIdPrefix.test(text)) {
+            const match = text.match(chatIdPrefix)!;
+            const targetProcessId = match[1];
+            const stripped = text.replace(chatIdPrefix, '');
+            console.log(`[teams-bridge] [chatId] prefix detected: processId="${targetProcessId}", message="${stripped.substring(0, 60)}"`);
+            // Look up agent/workspace from an existing message binding for this process
+            const lastMsgId = this.store.getLastMessageId(targetProcessId);
+            if (lastMsgId) {
+                const entry = this.store.lookupMessage(lastMsgId);
+                if (entry) {
+                    processId = entry.processId;
+                    agentId = entry.agentId;
+                    workspaceId = entry.workspaceId;
+                    isFollowUp = true;
+                    msg = { ...msg, text: stripped };
+                    console.log(`[teams-bridge] ✓ Routed to processId=${processId}, agentId=${agentId}`);
+                }
+            }
+            if (!isFollowUp) {
+                // Process ID given but no stored binding — use it directly with default agent
+                processId = targetProcessId;
+                isFollowUp = true;
+                msg = { ...msg, text: stripped };
+                console.log(`[teams-bridge] ✓ Using processId=${processId} directly (no stored binding)`);
+            }
+        }
+
         // [global] prefix → switch to global session
         const globalPrefix = /^\[global\]\s*/i;
         if (!isFollowUp && globalPrefix.test(text)) {
