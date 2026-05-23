@@ -88,6 +88,8 @@ import { registerMcpOauthRoutes } from '../mcp-oauth';
 import type { McpOauthManager } from '../mcp-oauth';
 import { registerCodexAuthRoutes } from '../codex-auth';
 import type { CodexAuthManager } from '../codex-auth';
+import type { CodexAuthStore } from '../codex-auth';
+import { registerAgentProvidersRoutes } from '../agent-providers/agent-providers-routes';
 import { registerDiagramRoutes } from '../diagrams/diagrams-handler';
 import { registerRuntimeConfigRoutes } from '../config/runtime-config-handler';
 import { registerSyncRoutes } from '../sync/sync-handler';
@@ -138,6 +140,10 @@ export interface RegisterRoutesOptions {
     loopExecutor?: LoopExecutor;
     mcpOauthManager?: McpOauthManager;
     codexAuthManager?: CodexAuthManager;
+    /** Codex auth store used for provider status without requiring auth manager. */
+    codexAuthStore?: CodexAuthStore;
+    /** HTTP port the server is listening on (used for authUrl in agent-providers). */
+    serverPort?: number;
     loopEmit?: LoopEventEmit;
     hostname?: string;
     bindAddress?: string;
@@ -299,11 +305,23 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         });
     }
 
-    // Codex Auth routes (feature-flagged via codex.enabled)
+    // Codex Auth routes — always registered so auth flow works regardless of current
+    // codex.enabled state (user may need to authenticate before enabling).
     if (opts.codexAuthManager) {
         registerCodexAuthRoutes(routes, {
             manager: opts.codexAuthManager,
             autoOpenBrowser: true,
+        });
+    }
+
+    // Agent providers route — always registered, reads live config + auth state.
+    if (opts.runtimeConfigService) {
+        registerAgentProvidersRoutes(routes, {
+            runtimeConfigService: opts.runtimeConfigService,
+            getCodexAuthInfo: () => opts.codexAuthStore
+                ? opts.codexAuthStore.readInfo()
+                : { status: 'unauthenticated' },
+            serverBaseUrl: `http://localhost:${opts.serverPort ?? 4000}`,
         });
     }
 

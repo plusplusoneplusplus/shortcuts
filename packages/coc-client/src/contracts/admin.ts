@@ -268,6 +268,34 @@ export interface AdminStorageCancelMigrationResponse {
   success: boolean;
 }
 
+// ── Agent Providers types ──────────────────────────────────────────
+
+/** Wire-format identifier for an AI agent provider. */
+export type AgentProviderId = 'copilot' | 'codex';
+
+/** Status of a single agent provider as returned by GET /api/agent-providers. */
+export interface AgentProviderStatus {
+  /** Provider identifier. */
+  id: AgentProviderId;
+  /** Human-readable name shown in the UI. */
+  label: string;
+  /** Whether the provider is enabled by admin config. Copilot is always true. */
+  enabled: boolean;
+  /** Whether the provider is actually usable right now (enabled + auth OK). */
+  available: boolean;
+  /** When true the provider cannot be disabled by the admin. Copilot only. */
+  locked?: boolean;
+  /** Human-readable reason when enabled but not available (e.g. auth required). */
+  reason?: string;
+  /** URL to start the auth flow when auth is required or expired. */
+  authUrl?: string;
+}
+
+/** Response from GET /api/agent-providers. */
+export interface AgentProvidersResponse {
+  providers: AgentProviderStatus[];
+}
+
 // ── Built-in Prompts types ──────────────────────────────────────────
 
 export interface BuiltInPrompt {

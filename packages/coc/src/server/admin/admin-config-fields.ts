@@ -214,10 +214,10 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
     bool('codex.enabled', (cfg, v) => {
         if (!cfg.codex) { cfg.codex = {}; }
         cfg.codex.enabled = v;
-    }, 'restartRequired'),
+    }),
     {
         key: 'activeProvider',
-        runtime: 'restartRequired',
+        runtime: 'live',
         validate: (v) => v === 'copilot' || v === 'codex'
             ? undefined
             : 'activeProvider must be "copilot" or "codex"',
