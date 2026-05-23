@@ -425,6 +425,7 @@ export class TeamsBridge {
                     content,
                     botName: this.opts.config.botName,
                     mentionName: sender?.senderName,
+                    chatId: target,
                 });
 
                 try {
@@ -471,7 +472,7 @@ export class TeamsBridge {
     }
 
     /** Format a structured Teams message for desktop display. */
-    formatOutboundMessage(opts: { role: string; agent: string; repo: string; title: string; content: string; botName?: string; mentionName?: string }): string {
+    formatOutboundMessage(opts: { role: string; agent: string; repo: string; title: string; content: string; botName?: string; mentionName?: string; chatId?: string }): string {
         const sender = opts.role === 'user'
             ? (opts.botName || 'User')
             : 'CoC Agent';
@@ -485,6 +486,9 @@ export class TeamsBridge {
         ];
         if (opts.title) {
             lines.push(`Title: ${opts.title}`);
+        }
+        if (opts.chatId) {
+            lines.push(`ChatId: ${opts.chatId}`);
         }
         // Replace \n in content with <br> as well
         lines.push('Message:', opts.content.trimStart().replace(/\n/g, '<br>'));
