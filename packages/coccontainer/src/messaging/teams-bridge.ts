@@ -544,9 +544,12 @@ export class TeamsBridge {
         let isFollowUp = false;
         const text = msg.text.trim();
 
+        console.log(`[teams-bridge] onInboundMessage: id=${msg.messageId}, replyToMessageId=${msg.replyToMessageId ?? '(none)'}, sender=${msg.senderName}, text="${text.substring(0, 60)}"`);
+
         // Check if replying to a specific bot message → continue that session
         if (msg.replyToMessageId) {
             const entry = this.store.lookupMessage(msg.replyToMessageId);
+            console.log(`[teams-bridge] lookupMessage(${msg.replyToMessageId}) → ${entry ? `processId=${entry.processId}, agentId=${entry.agentId}` : 'NOT FOUND'}`);
             if (entry) {
                 processId = entry.processId;
                 agentId = entry.agentId;

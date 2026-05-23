@@ -228,9 +228,17 @@ export class TeamsBot {
 
         const lastMsg = messages[messages.length - 1];
 
+        // Log all polled messages for debugging
+        console.log(`[teams-bot] Poll returned ${messages.length} message(s):`);
+        for (const m of messages) {
+            const preview = m.text.substring(0, 80).replace(/\n/g, '\\n');
+            console.log(`[teams-bot]   id=${m.messageId}, sender=${m.senderName}, replyToId=${m.replyToMessageId ?? '(none)'}, text="${preview}"`);
+        }
+
         // First poll: just set watermark, don't process
         if (!this._lastPolledId) {
             this._lastPolledId = lastMsg.messageId;
+            console.log(`[teams-bot] First poll — setting watermark to ${lastMsg.messageId}`);
             return;
         }
 
@@ -242,6 +250,7 @@ export class TeamsBot {
 
         // Skip messages sent by this bot
         if (this._sentMessageIds.has(lastMsg.messageId)) {
+            console.log(`[teams-bot] Skipping own sent message: ${lastMsg.messageId}`);
             this._sentMessageIds.delete(lastMsg.messageId);
             return;
         }
@@ -249,18 +258,24 @@ export class TeamsBot {
         if (!lastMsg.text.trim()) return;
 
         // Skip bot-formatted messages (CoC outbound format)
-        if (this.isBotFormattedMessage(lastMsg.text)) return;
+        if (this.isBotFormattedMessage(lastMsg.text)) {
+            console.log(`[teams-bot] Skipping bot-formatted message: ${lastMsg.messageId}`);
+            return;
+        }
 
         // In DM mode: if user message has no replyToMessageId, infer it from
         // the preceding bot message. This ensures replies route to the correct
         // chat session even when Teams DM doesn't provide replyToId.
         if (!lastMsg.replyToMessageId && messages.length >= 2) {
             const preceding = messages[messages.length - 2];
+            console.log(`[teams-bot] No replyToId on last msg. Preceding: id=${preceding.messageId}, isSent=${this._sentMessageIds.has(preceding.messageId)}, isBotFormatted=${this.isBotFormattedMessage(preceding.text)}`);
             if (preceding && (this._sentMessageIds.has(preceding.messageId) || this.isBotFormattedMessage(preceding.text))) {
                 lastMsg.replyToMessageId = preceding.messageId;
+                console.log(`[teams-bot] ✓ Inferred replyToMessageId=${preceding.messageId} from preceding bot message`);
             }
         }
 
+        console.log(`[teams-bot] Delivering inbound message: id=${lastMsg.messageId}, replyToMessageId=${lastMsg.replyToMessageId ?? '(none)'}, text="${lastMsg.text.substring(0, 60)}"`);
         await this.opts.onMessage(lastMsg).catch((err) => {
             console.error('[teams-bot] Error handling message:', err);
         });
