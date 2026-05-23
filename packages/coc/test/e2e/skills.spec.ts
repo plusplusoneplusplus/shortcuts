@@ -25,17 +25,14 @@ import type { Page } from '@playwright/test';
 /**
  * Navigate to the Skills tab and wait for the view to render.
  *
- * Skills lives inside the Tools dropdown — open it before clicking the
- * underlying menu row.
+ * Skills lives inside the Admin page's left-panel "Tools" group — open the
+ * admin page first and click the Skills row in the sidebar.
  */
 async function gotoSkills(page: Page, serverUrl: string): Promise<void> {
     await page.goto(serverUrl);
-    const trigger = page.locator('#tools-toggle');
-    if ((await trigger.getAttribute('aria-expanded')) !== 'true') {
-        await trigger.click();
-    }
-    await expect(page.locator('#tools-popover')).toBeVisible();
-    await page.click('[data-tab="skills"]');
+    await page.click('#admin-toggle');
+    await expect(page.locator('#view-admin')).toBeVisible({ timeout: 10_000 });
+    await page.click('#skills-toggle');
     await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10_000 });
 }
 

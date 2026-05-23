@@ -1,17 +1,15 @@
 /**
  * TopBar — top navigation bar with tab switching and theme toggle.
  *
- * Right-side layout matches the v2 topbar refinement design:
- *   [Connected pill] [NotificationBell] [Tools ▾] [Admin] [Theme]
+ * Right-side layout:
+ *   [Connected pill] [NotificationBell] [Admin] [Theme]
  *
- * The Skills / Logs / Usage / Models / Servers nav targets are grouped
- * inside the Tools dropdown menu rather than rendered as individual icon
- * buttons. Each menu row keeps its original DOM id, aria-label, title and
- * navigation behavior for backward compatibility with existing callers and
- * tests.
+ * The Skills / Logs / Usage / Models / Servers nav targets now live in
+ * the Admin page's left-panel "Tools" group — see `AdminPanel.tsx`. They
+ * are no longer rendered as a topbar dropdown.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useQueue } from '../contexts/QueueContext';
 import { useRepos } from '../contexts/ReposContext';
@@ -25,7 +23,7 @@ import { useMyWorkEnabled } from '../hooks/feature-flags/useMyWorkEnabled';
 import { useMyLifeEnabled } from '../hooks/feature-flags/useMyLifeEnabled';
 import { RepoManagementPopover } from '../repos/RepoManagementPopover';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
-import { getHostname, isServersEnabled } from '../utils/config';
+import { getHostname } from '../utils/config';
 import type { DashboardTab } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 
@@ -58,19 +56,9 @@ const wsStatusConfig: Record<WsStatus, { color: string; label: string; pulse: bo
 
 export interface TopBarProps {
     onAdminOpen?: () => void;
-    onLogsOpen?: () => void;
 }
 
-interface ToolMenuItem {
-    id: string;
-    tab: DashboardTab | null;
-    label: string;
-    description: string;
-    icon: string;
-    onClick: () => void;
-}
-
-export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
+export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     const { state, dispatch } = useApp();
     const { state: queueState } = useQueue();
     const { repos, unseenCounts, fetchRepos } = useRepos();
@@ -78,15 +66,11 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
     const { breakpoint } = useBreakpoint();
     const isMobile = breakpoint === 'mobile';
     const [popoverOpen, setPopoverOpen] = useState(false);
-    const [toolsOpen, setToolsOpen] = useState(false);
-    const toolsContainerRef = useRef<HTMLDivElement>(null);
-    const toolsButtonRef = useRef<HTMLButtonElement>(null);
     const hostname = getHostname();
     const brandLabel = hostname ? `CoC @ ${hostname}` : 'CoC';
     const brandTooltip = hostname ? `Copilot of Copilot @ ${hostname}` : 'Copilot of Copilot';
     const myWorkEnabled = useMyWorkEnabled();
     const myLifeEnabled = useMyLifeEnabled();
-    const serversEnabled = isServersEnabled();
 
     const switchTab= useCallback((tab: DashboardTab) => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab });
@@ -138,96 +122,8 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
 
     const isOnReposTab = state.activeTab === 'repos';
 
-    // ── Tools dropdown ─────────────────────────────────────────────
-    const closeTools = useCallback(() => setToolsOpen(false), []);
-    const toggleTools = useCallback(() => setToolsOpen(prev => !prev), []);
-
-    // Close tools popover on outside click / Escape
-    useEffect(() => {
-        if (!toolsOpen) return;
-        const onPointerDown = (e: MouseEvent) => {
-            if (toolsContainerRef.current && !toolsContainerRef.current.contains(e.target as Node)) {
-                closeTools();
-            }
-        };
-        const onKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') closeTools();
-        };
-        document.addEventListener('mousedown', onPointerDown);
-        document.addEventListener('keydown', onKeyDown);
-        return () => {
-            document.removeEventListener('mousedown', onPointerDown);
-            document.removeEventListener('keydown', onKeyDown);
-        };
-    }, [toolsOpen, closeTools]);
-
-    const toolItems: ToolMenuItem[] = useMemo(() => {
-        const items: ToolMenuItem[] = [
-            {
-                id: 'skills-toggle',
-                tab: 'skills',
-                label: 'Skills',
-                description: 'Installed capabilities',
-                icon: '⚡',
-                onClick: () => switchTab('skills'),
-            },
-            {
-                id: 'logs-toggle',
-                // 'logs' is a routable tab; the parent's onLogsOpen handler
-                // navigates to #logs which Router resolves to the Logs view.
-                // Tagging the menu row with `tab: 'logs'` keeps the active
-                // accent and `[data-tab="logs"]` selector working.
-                tab: 'logs',
-                label: 'Logs',
-                description: 'Runtime events',
-                icon: '📋',
-                onClick: () => { onLogsOpen?.(); },
-            },
-        ];
-        if (SHOW_MEMORY_TAB) {
-            items.push({
-                id: 'memory-toggle',
-                tab: 'memory',
-                label: 'Memory',
-                description: 'Bounded recall',
-                icon: '🧠',
-                onClick: () => switchTab('memory'),
-            });
-        }
-        items.push(
-            {
-                id: 'stats-toggle',
-                tab: 'stats',
-                label: 'Usage',
-                description: 'Model and task stats',
-                icon: '📊',
-                onClick: () => switchTab('stats'),
-            },
-            {
-                id: 'models-toggle',
-                tab: 'models',
-                label: 'Models',
-                description: 'Model selection and limits',
-                icon: '⚛',
-                onClick: () => switchTab('models'),
-            },
-        );
-        if (serversEnabled) {
-            items.push({
-                id: 'servers-toggle',
-                tab: 'servers',
-                label: 'Servers',
-                description: 'Connected tools',
-                icon: '🖥',
-                onClick: () => switchTab('servers'),
-            });
-        }
-        return items;
-    }, [serversEnabled, onLogsOpen, switchTab]);
-
     const wsStatus = state.wsStatus ?? 'closed';
     const wsConfig = wsStatusConfig[wsStatus];
-    const toolsActive = toolItems.some(item => item.tab !== null && state.activeTab === item.tab);
 
     return (
         <>
@@ -347,87 +243,21 @@ export function TopBar({ onAdminOpen, onLogsOpen }: TopBarProps = {}) {
                     />
                 </span>
                 <NotificationBell />
-                <div ref={toolsContainerRef} className="relative hidden md:inline-flex">
-                    <button
-                        ref={toolsButtonRef}
-                        id="tools-toggle"
-                        type="button"
-                        aria-label="Tools"
-                        title="Tools"
-                        aria-haspopup="menu"
-                        aria-expanded={toolsOpen}
-                        data-testid="tools-toggle"
-                        data-tools-active={toolsActive ? 'true' : 'false'}
-                        onClick={toggleTools}
-                        className={
-                            `inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border text-[13px] font-semibold leading-none touch-target transition-colors ` +
-                            (toolsOpen || toolsActive
-                                ? 'bg-[#ddf4ff] dark:bg-[#3794ff]/20 border-[#0969da]/40 dark:border-[#3794ff]/50 text-[#0969da] dark:text-[#79c0ff]'
-                                : 'bg-white dark:bg-[#1e1e1e] border-[#d0d7de] dark:border-[#3c3c3c] hover:bg-black/[0.04] dark:hover:bg-white/[0.06]')
-                        }
-                    >
-                        <span aria-hidden="true" className="text-[14px] leading-none">&#9776;</span>
-                        <span>Tools</span>
-                    </button>
-                    {toolsOpen && (
-                        <div
-                            id="tools-popover"
-                            role="menu"
-                            aria-label="Tools"
-                            data-testid="tools-popover"
-                            className="absolute right-0 top-full mt-1.5 z-[10001] min-w-[260px] rounded-lg border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] shadow-lg overflow-hidden"
-                        >
-                            <div className="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[#656d76] dark:text-[#999]">
-                                Global tools
-                            </div>
-                            <div className="p-1.5">
-                                {toolItems.map(item => {
-                                    const isActive = item.tab !== null && state.activeTab === item.tab;
-                                    return (
-                                        <button
-                                            key={item.id}
-                                            id={item.id}
-                                            data-tab={item.tab ?? undefined}
-                                            data-testid={item.id}
-                                            type="button"
-                                            role="menuitem"
-                                            aria-label={item.label}
-                                            title={item.label}
-                                            onClick={() => { item.onClick(); closeTools(); }}
-                                            className={
-                                                `w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-left transition-colors touch-target ` +
-                                                (isActive
-                                                    ? 'bg-[#ddf4ff] dark:bg-[#3794ff]/20 text-[#0969da] dark:text-[#79c0ff]'
-                                                    : 'text-[#1f2328] dark:text-[#cccccc] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2a2a]')
-                                            }
-                                        >
-                                            <span
-                                                aria-hidden="true"
-                                                className="inline-flex items-center justify-center w-6 h-6 text-base leading-none flex-shrink-0"
-                                            >
-                                                {item.icon}
-                                            </span>
-                                            <span className="flex-1 min-w-0 flex flex-col leading-tight">
-                                                <span className="text-[13px] font-semibold truncate">
-                                                    {item.label}
-                                                </span>
-                                                <span className="text-[12px] text-[#656d76] dark:text-[#999] truncate">
-                                                    {item.description}
-                                                </span>
-                                            </span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-                </div>
                 <button
                     id="admin-toggle"
                     data-tab="admin"
                     className={
                         `h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded touch-target text-base leading-none ` +
+                        // The admin shell hosts both `admin` itself and the
+                        // five embedded tool routes (skills/logs/stats/models/
+                        // servers). Reflect "user is in the admin shell" in
+                        // the highlight for any of those tabs.
                         (state.activeTab === 'admin'
+                         || state.activeTab === 'skills'
+                         || state.activeTab === 'logs'
+                         || state.activeTab === 'stats'
+                         || state.activeTab === 'models'
+                         || state.activeTab === 'servers'
                             ? 'bg-[#0078d4] text-white'
                             : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
                     }

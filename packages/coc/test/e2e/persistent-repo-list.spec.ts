@@ -46,13 +46,13 @@ test.describe('PRL.1 — No persistent mini sidebar on any tab', () => {
     });
 
     test('PRL.1.3 mini-sidebar-layout is not present on skills tab', async ({ page, serverUrl }) => {
-        // The standalone Processes tab was removed; use Skills (via the Tools
-        // dropdown) as a non-Repos top-level view to verify the persistent
-        // mini-sidebar stays absent.
+        // The standalone Processes tab was removed; use Skills (reached via the
+        // Admin Tools sidebar) as a non-Repos top-level view to verify the
+        // persistent mini-sidebar stays absent.
         await page.goto(serverUrl);
-        await page.click('#tools-toggle');
-        await expect(page.locator('#tools-popover')).toBeVisible();
-        await page.click('[data-tab="skills"]');
+        await page.click('#admin-toggle');
+        await expect(page.locator('#view-admin')).toBeVisible({ timeout: 10_000 });
+        await page.click('#skills-toggle');
         await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10_000 });
 
         await expect(page.locator('[data-testid="mini-sidebar-layout"]')).toHaveCount(0);
@@ -83,11 +83,12 @@ test.describe('PRL.2 — RepoTabStrip always visible in TopBar (desktop)', () =>
 
     test('PRL.2.2 repo-tab-strip is visible on skills tab', async ({ page, serverUrl }) => {
         // Standalone Processes tab was removed; verify rail stays mounted on
-        // another non-Repos top-level view (Skills, opened via Tools dropdown).
+        // another non-Repos top-level view (Skills, opened via the Admin
+        // Tools sidebar).
         await page.goto(serverUrl);
-        await page.click('#tools-toggle');
-        await expect(page.locator('#tools-popover')).toBeVisible();
-        await page.click('[data-tab="skills"]');
+        await page.click('#admin-toggle');
+        await expect(page.locator('#view-admin')).toBeVisible({ timeout: 10_000 });
+        await page.click('#skills-toggle');
         await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10_000 });
 
         await expect(page.locator('[data-testid="repo-tab-strip"]')).toBeVisible({ timeout: 5_000 });

@@ -306,14 +306,9 @@ function AppInner() {
         bootstrap();
     }, [connect, loadGlobalPreferences]);
 
-    // Admin and Logs are now full-page routes handled by Router.tsx via #admin and #logs hashes.
-    // handleAdminOpen and handleLogsOpen just navigate to the respective hash.
+    // Admin is a full-page route handled by Router.tsx via the #admin hash.
     const handleAdminOpen = useCallback(() => {
         location.hash = '#admin';
-    }, []);
-
-    const handleLogsOpen = useCallback(() => {
-        location.hash = '#logs';
     }, []);
 
     useEffect(() => {
@@ -431,7 +426,7 @@ function AppInner() {
             <ReposProvider>
                 <div className="flex flex-col h-full">
                     <SecurityBanner />
-                    <TopBar onAdminOpen={handleAdminOpen} onLogsOpen={handleLogsOpen} />
+                    <TopBar onAdminOpen={handleAdminOpen} />
                     <main className="flex-1 overflow-hidden min-h-0 pt-[var(--bottom-nav-height,0px)] md:pt-0">
                         <Router />
                     </main>

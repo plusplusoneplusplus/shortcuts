@@ -37,13 +37,13 @@ function createTempRepo(tmpDir: string, name: string): string {
 test.describe('MiniReposSidebar – Absent from persistent rail', () => {
     // The standalone Processes tab and `[data-tab="processes"]` button were
     // removed; tests that previously exercised the Processes view now navigate
-    // to the Skills tab (via the Tools dropdown) to verify the mini sidebar /
-    // tab-strip behaviour on a non-Repos top-level page.
+    // to the Skills tab (via the Admin Tools sidebar) to verify the mini
+    // sidebar / tab-strip behaviour on a non-Repos top-level page.
     test('MRS.1 mini-repos-sidebar is not rendered on a non-repos tab', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
-        await page.click('#tools-toggle');
-        await expect(page.locator('#tools-popover')).toBeVisible();
-        await page.click('[data-tab="skills"]');
+        await page.click('#admin-toggle');
+        await expect(page.locator('#view-admin')).toBeVisible({ timeout: 10_000 });
+        await page.click('#skills-toggle');
         await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10_000 });
 
         await expect(page.locator('[data-testid="mini-repos-sidebar"]')).toHaveCount(0);
@@ -52,9 +52,9 @@ test.describe('MiniReposSidebar – Absent from persistent rail', () => {
 
     test('MRS.2 repo-tab-strip add button is visible on a non-repos tab', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
-        await page.click('#tools-toggle');
-        await expect(page.locator('#tools-popover')).toBeVisible();
-        await page.click('[data-tab="skills"]');
+        await page.click('#admin-toggle');
+        await expect(page.locator('#view-admin')).toBeVisible({ timeout: 10_000 });
+        await page.click('#skills-toggle');
         await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10_000 });
 
         await expect(page.locator('[data-testid="repo-tab-add-btn"]')).toBeVisible({ timeout: 5_000 });
@@ -88,9 +88,9 @@ test.describe('MiniReposSidebar – Repos in RepoTabStrip', () => {
             await seedWorkspace(serverUrl, 'ws-mrs-alpha', 'repo-a', repoA);
 
             await page.goto(serverUrl);
-            await page.click('#tools-toggle');
-            await expect(page.locator('#tools-popover')).toBeVisible();
-            await page.click('[data-tab="skills"]');
+            await page.click('#admin-toggle');
+            await expect(page.locator('#view-admin')).toBeVisible({ timeout: 10_000 });
+            await page.click('#skills-toggle');
             await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10_000 });
 
             // Repo should appear in the tab strip, not in a mini sidebar

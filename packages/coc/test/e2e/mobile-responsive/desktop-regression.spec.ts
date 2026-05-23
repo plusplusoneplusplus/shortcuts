@@ -81,10 +81,10 @@ test.describe('Desktop Regression', () => {
 
         // Memory remains directly routable, but its topbar icon is hidden by default.
         await expect(page.locator('[data-tab="memory"]')).toHaveCount(0);
-        // Skills lives inside the Tools dropdown — open it first.
-        await page.click('#tools-toggle');
-        await expect(page.locator('#tools-popover')).toBeVisible();
-        await expect(page.locator('[data-tab="skills"]')).toBeVisible();
+        // Skills lives inside the Admin Tools sidebar — open admin first.
+        await page.click('#admin-toggle');
+        await expect(page.locator('#view-admin')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('#skills-toggle')).toBeVisible();
 
         // repos tab link is visible as the brand name
         await expect(page.locator('[data-tab="repos"]')).toBeVisible();
@@ -138,10 +138,10 @@ test.describe('Desktop Regression', () => {
         await page.goto(`${serverUrl}/#memory`);
         await expect(page.locator('#view-memory')).toBeVisible();
 
-        // Skills lives inside the Tools dropdown.
-        await page.click('#tools-toggle');
-        await expect(page.locator('#tools-popover')).toBeVisible();
-        await page.click('[data-tab="skills"]');
+        // Skills lives inside the Admin Tools sidebar.
+        await page.click('#admin-toggle');
+        await expect(page.locator('#view-admin')).toBeVisible({ timeout: 10000 });
+        await page.click('#skills-toggle');
         await expect(page.locator('#view-skills')).toBeVisible();
     });
 
