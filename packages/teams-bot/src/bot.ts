@@ -113,7 +113,7 @@ export class TeamsBot {
         if (this._status !== 'connected') {
             throw new Error('TeamsBot is not connected');
         }
-        this._lastActivityTime = Date.now();
+        this.resetPollInterval();
 
         console.log(`[teams-bot] send() target=${channelId.substring(0, 20)}..., text length=${text.length}, mode=${this.mode}`);
         try {
@@ -212,6 +212,16 @@ export class TeamsBot {
         if (this._pollTimer) {
             clearTimeout(this._pollTimer);
             this._pollTimer = null;
+        }
+    }
+
+    /** Cancel any pending slow poll and reschedule at fast interval. */
+    private resetPollInterval(): void {
+        this._lastActivityTime = Date.now();
+        if (this._pollTimer) {
+            clearTimeout(this._pollTimer);
+            this._pollTimer = null;
+            this.schedulePoll();
         }
     }
 
