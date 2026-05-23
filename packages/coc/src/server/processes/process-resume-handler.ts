@@ -232,26 +232,32 @@ export async function launchResumeCommandInTerminal(input: LaunchResumeInput): P
 
 export interface LaunchFreshChatInput {
     workingDirectory: string;
+    provider?: 'copilot' | 'codex';
 }
 
 export type FreshChatTerminalLauncher = (input: LaunchFreshChatInput) => Promise<LaunchResumeResult>;
 
 function buildFreshChatCommand(
     workingDirectory: string,
-    platform: NodeJS.Platform = process.platform
+    platform: NodeJS.Platform = process.platform,
+    provider: 'copilot' | 'codex' = 'copilot'
 ): string {
+    const cliCommand = provider === 'codex'
+        ? 'codex --dangerously-bypass-approvals-and-sandbox'
+        : 'copilot --yolo';
     if (platform === 'win32') {
-        return `cd /d ${quoteWindows(workingDirectory)} && copilot --yolo`;
+        return `cd /d ${quoteWindows(workingDirectory)} && ${cliCommand}`;
     }
-    return `cd ${quotePosix(workingDirectory)} && copilot --yolo`;
+    return `cd ${quotePosix(workingDirectory)} && ${cliCommand}`;
 }
 
 export async function launchFreshChatInTerminal(input: LaunchFreshChatInput): Promise<LaunchResumeResult> {
     const platform = process.platform;
+    const provider = input.provider === 'codex' ? 'codex' : 'copilot';
     const terminalWorkingDirectory = platform === 'win32'
         ? translatePathForHostFilesystem(input.workingDirectory)
         : input.workingDirectory;
-    const command = buildFreshChatCommand(terminalWorkingDirectory, platform);
+    const command = buildFreshChatCommand(terminalWorkingDirectory, platform, provider);
 
     if (platform === 'darwin') {
         const scriptBody = escapeAppleScriptString(command);
@@ -265,14 +271,16 @@ export async function launchFreshChatInTerminal(input: LaunchFreshChatInput): Pr
     }
 
     if (platform === 'win32') {
-        const freshCmd = `copilot --yolo`;
+        const freshCmd = provider === 'codex'
+            ? 'codex --dangerously-bypass-approvals-and-sandbox'
+            : 'copilot --yolo';
         const startLine = `/c start "" /D ${quoteWindows(terminalWorkingDirectory)} powershell.exe -NoExit -Command ${freshCmd}`;
         await spawnDetached('cmd.exe', [startLine], { windowsVerbatimArguments: true });
         return { launched: true, command, terminal: 'powershell' };
     }
 
     // Linux / Unix-like environments.
-    const posixCommand = buildFreshChatCommand(input.workingDirectory, 'linux');
+    const posixCommand = buildFreshChatCommand(input.workingDirectory, 'linux', provider);
     return tryLinuxTerminalLaunchers(posixCommand);
 }
 
@@ -283,7 +291,8 @@ export async function launchFreshChatInTerminal(input: LaunchFreshChatInput): Pr
  */
 export function registerFreshChatTerminalRoutes(
     routes: Route[],
-    launcher: FreshChatTerminalLauncher = launchFreshChatInTerminal
+    launcher: FreshChatTerminalLauncher = launchFreshChatInTerminal,
+    options?: { getProvider?: () => 'copilot' | 'codex' }
 ): void {
     routes.push({
         method: 'POST',
@@ -296,11 +305,13 @@ export function registerFreshChatTerminalRoutes(
                 // Empty body is fine — workingDirectory falls back to cwd
             }
             const workingDirectory = toNonEmptyString(body?.workingDirectory) ?? process.cwd();
+            const provider = options?.getProvider?.() === 'codex' ? 'codex' : 'copilot';
             try {
-                const result = await launcher({ workingDirectory });
-                process.stderr.write(`[Chat] launch-terminal workingDirectory=${workingDirectory} launched=${result.launched}\n`);
+                const result = await launcher({ workingDirectory, provider });
+                process.stderr.write(`[Chat] launch-terminal workingDirectory=${workingDirectory} provider=${provider} launched=${result.launched}\n`);
                 return sendJSON(res, 200, {
                     workingDirectory,
+                    provider,
                     launched: result.launched,
                     terminal: result.terminal,
                     reason: result.reason,

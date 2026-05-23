@@ -184,7 +184,13 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     registerProviderRoutes(routes, dataDir);
     registerProcessResumeRoutes(routes, store);
-    registerFreshChatTerminalRoutes(routes);
+    registerFreshChatTerminalRoutes(routes, undefined, {
+        getProvider: () => {
+            const activeProvider = opts.runtimeConfigService?.config.activeProvider
+                ?? opts.resolvedConfig?.activeProvider;
+            return activeProvider === 'codex' ? 'codex' : 'copilot';
+        },
+    });
     registerTerminalRoutes(routes, store, opts.getTerminalSessionManager ?? (() => undefined), opts.resolvedConfig, opts.runtimeConfigService);
 
     // Queue routes receive the bridge directly for per-repo routing

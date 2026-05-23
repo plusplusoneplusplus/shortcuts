@@ -20,6 +20,7 @@
 import type { SendMessageOptions } from './types';
 import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult } from './sdk-service-interface';
 import { sdkServiceRegistry, CODEX_PROVIDER } from './sdk-service-registry';
+import { dynamicImportModule } from './sdk-esm-loader';
 
 // ============================================================================
 // Auth checker injection (AC-08)
@@ -48,40 +49,69 @@ export type CodexAuthChecker = () => CodexAuthCheckResult;
 
 /** A running Codex thread that can be used to send messages and stream output. */
 interface CodexThread {
-    /** Unique ID assigned by the Codex service. */
-    readonly id: string;
+    /** Unique ID assigned by the Codex service after the first turn starts. */
+    readonly id: string | null;
     /**
-     * Run the thread with a prompt, streaming chunks via `onChunk`.
-     * Resolves with the full response text when complete.
+     * Run the thread with a prompt, resolving with the completed turn.
      */
-    run(options: CodexThreadRunOptions): Promise<CodexThreadResult>;
-    /** Terminate the thread immediately. */
-    abort(): void;
+    run(input: string, options?: CodexTurnOptions): Promise<CodexThreadResult>;
+    /**
+     * Run the thread with a prompt and stream structured events.
+     */
+    runStreamed(input: string, options?: CodexTurnOptions): Promise<{ events: AsyncGenerator<CodexThreadEvent> }>;
 }
 
-interface CodexThreadRunOptions {
-    prompt: string;
-    onChunk?: (chunk: string) => void;
+interface CodexTurnOptions {
     signal?: AbortSignal;
 }
 
 interface CodexThreadResult {
-    text: string;
+    finalResponse: string;
+}
+
+interface CodexThreadStartedEvent {
+    type: 'thread.started';
+    thread_id: string;
+}
+
+interface CodexTurnFailedEvent {
+    type: 'turn.failed';
+    error?: { message?: string };
+}
+
+interface CodexErrorEvent {
+    type: 'error';
+    message?: string;
+}
+
+interface CodexItemEvent {
+    type: 'item.started' | 'item.updated' | 'item.completed';
+    item?: {
+        type?: string;
+        text?: string;
+    };
+}
+
+type CodexThreadEvent = CodexThreadStartedEvent | CodexTurnFailedEvent | CodexErrorEvent | CodexItemEvent;
+
+interface CodexClient {
+    startThread(options?: CodexStartThreadOptions): CodexThread;
+    resumeThread(threadId: string, options?: CodexStartThreadOptions): CodexThread;
 }
 
 /** Subset of the @openai/codex-sdk API used by this adapter. */
 interface CodexSDKModule {
-    /** Start a new conversation thread. */
-    startThread(options?: CodexStartThreadOptions): Promise<CodexThread>;
-    /** Resume an existing thread by its ID. */
-    resumeThread(threadId: string): Promise<CodexThread>;
+    Codex?: new () => CodexClient;
+    default?: { Codex?: new () => CodexClient } | (new () => CodexClient);
 }
 
 interface CodexStartThreadOptions {
-    systemPrompt?: string;
     model?: string;
-    /** Fork from an existing thread — the new thread inherits its history. */
-    forkFromThreadId?: string;
+    workingDirectory?: string;
+    skipGitRepoCheck?: boolean;
+    sandboxMode?: 'read-only' | 'workspace-write' | 'danger-full-access';
+    approvalPolicy?: 'never' | 'on-request' | 'on-failure' | 'untrusted';
+    networkAccessEnabled?: boolean;
 }
 
 // ============================================================================
@@ -106,7 +136,7 @@ interface ActiveCodexSession {
  */
 export class CodexSDKService implements ISDKService {
     private availabilityCache: IAvailabilityResult | null = null;
-    private sdk: CodexSDKModule | null = null;
+    private sdk: CodexClient | null = null;
     private disposed = false;
     private authChecker: CodexAuthChecker | null = null;
 
@@ -136,9 +166,14 @@ export class CodexSDKService implements ISDKService {
         if (this.disposed) return { available: false, error: 'CodexSDKService has been disposed' };
         if (this.availabilityCache) return this.availabilityCache;
         try {
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            const mod = await import('@openai/codex-sdk' as string);
-            this.sdk = (mod.default ?? mod) as CodexSDKModule;
+            const mod = await dynamicImportModule('@openai/codex-sdk');
+            const sdkModule = mod as CodexSDKModule;
+            const CodexCtor = sdkModule.Codex
+                ?? (typeof sdkModule.default === 'function' ? sdkModule.default : sdkModule.default?.Codex);
+            if (!CodexCtor) {
+                throw new Error('Codex SDK did not export Codex');
+            }
+            this.sdk = new CodexCtor();
             this.availabilityCache = { available: true };
         } catch {
             this.availabilityCache = {
@@ -213,39 +248,55 @@ export class CodexSDKService implements ISDKService {
         }
 
         let threadId: string | undefined;
+        let sessionCreatedNotified = false;
 
         try {
             let thread: CodexThread;
+            const threadOptions = this.buildThreadOptions(options);
             if (options.sessionId) {
                 // options.sessionId is the Codex thread ID persisted from the previous
                 // request via onSessionCreated — resume the existing conversation.
-                thread = await sdk.resumeThread(options.sessionId);
+                thread = sdk.resumeThread(options.sessionId, threadOptions);
             } else {
-                thread = await sdk.startThread({ model: options.model });
+                thread = sdk.startThread(threadOptions);
             }
 
-            threadId = thread.id;
+            const notifySessionCreated = (id: string) => {
+                if (sessionCreatedNotified) return;
+                threadId = id;
+                this.sessions.set(id, { threadId: id, abortController });
+                options.onSessionCreated?.(id);
+                sessionCreatedNotified = true;
+            };
 
-            // Track active request for abort support (keyed by thread ID).
-            this.sessions.set(threadId, { threadId, abortController });
+            if (thread.id) notifySessionCreated(thread.id);
 
-            // Notify the executor so it can persist the thread ID as sdkSessionId.
-            // This enables future follow-ups to resume the correct Codex thread and
-            // allows the queue bridge to abort the session by its thread ID.
-            options.onSessionCreated?.(threadId);
+            const chunks: string[] = [];
+            const streamed = await thread.runStreamed(options.prompt ?? '', { signal: abortController.signal });
 
-            const result = await thread.run({
-                prompt: options.prompt ?? '',
-                signal: abortController.signal,
-                onChunk: (chunk) => {
-                    options.onStreamingChunk?.(chunk);
-                },
-            });
+            for await (const event of streamed.events) {
+                if (event.type === 'thread.started') {
+                    notifySessionCreated(event.thread_id);
+                    continue;
+                }
+                if (event.type === 'turn.failed') {
+                    throw new Error(event.error?.message ?? 'Codex turn failed');
+                }
+                if (event.type === 'error') {
+                    throw new Error(event.message ?? 'Codex stream error');
+                }
+                if (event.type === 'item.completed' && event.item?.type === 'agent_message' && event.item.text) {
+                    chunks.push(event.item.text);
+                    options.onStreamingChunk?.(event.item.text);
+                }
+            }
+
+            if (!sessionCreatedNotified && thread.id) notifySessionCreated(thread.id);
 
             // Empty chunk signals end-of-stream to the executor's streaming consumer.
             options.onStreamingChunk?.('');
 
-            return { success: true, response: result.text, sessionId: threadId };
+            return { success: true, response: chunks.join(''), sessionId: threadId };
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             return { success: false, error: message, sessionId: options.sessionId ?? threadId };
@@ -253,6 +304,30 @@ export class CodexSDKService implements ISDKService {
             signalCleanup?.();
             if (threadId) this.sessions.delete(threadId);
         }
+    }
+
+    private buildThreadOptions(options: SendMessageOptions): CodexStartThreadOptions {
+        const model = this.normalizeCodexModel(options.model);
+        return {
+            ...(model ? { model } : {}),
+            ...(options.workingDirectory ? { workingDirectory: options.workingDirectory } : {}),
+            skipGitRepoCheck: true,
+            approvalPolicy: 'never',
+            sandboxMode: options.mode === 'autopilot' ? 'danger-full-access' : 'read-only',
+            networkAccessEnabled: true,
+        };
+    }
+
+    private normalizeCodexModel(model: string | undefined): string | undefined {
+        if (!model) return undefined;
+        const normalized = model.toLowerCase();
+        // CoC per-repo defaults are shared with Copilot. Do not pass provider-
+        // specific Copilot model IDs through to Codex, because ChatGPT-backed
+        // Codex accounts reject them before the turn starts.
+        if (normalized.startsWith('claude') || normalized.startsWith('gemini')) {
+            return undefined;
+        }
+        return model;
     }
 
     public async transform<T = string>(
@@ -276,11 +351,10 @@ export class CodexSDKService implements ISDKService {
 
         const sdk = this.sdk!;
         // sessionId IS the Codex thread ID (persisted from a previous sendMessage
-        // via onSessionCreated).  Pass it directly as forkFromThreadId.
-        const forkedThread = await sdk.startThread({
-            forkFromThreadId: sessionId,
-        });
-        const newThreadId = forkedThread.id;
+        // via onSessionCreated). The Codex SDK does not expose fork semantics,
+        // so return a resumable thread handle for the same persisted thread.
+        const forkedThread = sdk.resumeThread(sessionId, { skipGitRepoCheck: true });
+        const newThreadId = forkedThread.id ?? sessionId;
         this.sessions.set(newThreadId, {
             threadId: newThreadId,
             abortController: new AbortController(),

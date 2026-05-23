@@ -31,20 +31,40 @@ function makeCodexSdkMock(overrides?: {
         threads.set(id, record);
         return {
             id,
-            run: vi.fn(async (opts: { prompt: string; onChunk?: (c: string) => void }) => {
-                record.runCalls.push(opts.prompt);
+            run: vi.fn(async (prompt: string) => {
+                record.runCalls.push(prompt);
                 if (overrides?.runError) throw overrides.runError;
-                const text = overrides?.runResult?.text ?? `response to: ${opts.prompt}`;
-                opts.onChunk?.(text);
-                return { text };
+                const text = overrides?.runResult?.text ?? `response to: ${prompt}`;
+                return { finalResponse: text };
             }),
-            abort: vi.fn(),
+            runStreamed: vi.fn(async (prompt: string) => {
+                record.runCalls.push(prompt);
+                if (overrides?.runError) throw overrides.runError;
+                const text = overrides?.runResult?.text ?? `response to: ${prompt}`;
+                async function* events() {
+                    yield { type: 'thread.started' as const, thread_id: id };
+                    yield {
+                        type: 'item.completed' as const,
+                        item: { id: 'item-1', type: 'agent_message', text },
+                    };
+                    yield {
+                        type: 'turn.completed' as const,
+                        usage: {
+                            input_tokens: 1,
+                            cached_input_tokens: 0,
+                            output_tokens: 1,
+                            reasoning_output_tokens: 0,
+                        },
+                    };
+                }
+                return { events: events() };
+            }),
         };
     }
 
     return {
-        startThread: vi.fn(async () => makeThread(`thread-${++threadCounter}`)),
-        resumeThread: vi.fn(async (id: string) => {
+        startThread: vi.fn(() => makeThread(`thread-${++threadCounter}`)),
+        resumeThread: vi.fn((id: string) => {
             // Return existing or create new for resumed id
             if (!threads.has(id)) {
                 return makeThread(id);
@@ -52,13 +72,23 @@ function makeCodexSdkMock(overrides?: {
             const existing = threads.get(id)!;
             return {
                 id: existing.id,
-                run: vi.fn(async (opts: { prompt: string; onChunk?: (c: string) => void }) => {
-                    existing.runCalls.push(opts.prompt);
-                    const text = `resumed: ${opts.prompt}`;
-                    opts.onChunk?.(text);
-                    return { text };
+                run: vi.fn(async (prompt: string) => {
+                    existing.runCalls.push(prompt);
+                    const text = `resumed: ${prompt}`;
+                    return { finalResponse: text };
                 }),
-                abort: vi.fn(),
+                runStreamed: vi.fn(async (prompt: string) => {
+                    existing.runCalls.push(prompt);
+                    const text = `resumed: ${prompt}`;
+                    async function* events() {
+                        yield { type: 'thread.started' as const, thread_id: existing.id };
+                        yield {
+                            type: 'item.completed' as const,
+                            item: { id: 'item-1', type: 'agent_message', text },
+                        };
+                    }
+                    return { events: events() };
+                }),
             };
         }),
         _threads: threads,
@@ -272,17 +302,18 @@ describe('CodexSDKService — SDK mocked', () => {
         expect(length).toBeGreaterThan(0);
     });
 
-    it('forkSession creates a new session ID different from the input', async () => {
+    it('forkSession returns a resumable session ID', async () => {
         const newId = await svc.forkSession('thread-42');
         expect(typeof newId).toBe('string');
-        expect(newId).not.toBe('thread-42');
+        expect(newId).toBe('thread-42');
     });
 
-    it('forkSession passes sessionId as forkFromThreadId to startThread', async () => {
+    it('forkSession resumes the requested persisted thread', async () => {
         const codexMock = svc['sdk'] as ReturnType<typeof makeCodexSdkMock>;
         await svc.forkSession('thread-from-persist');
-        expect(codexMock.startThread).toHaveBeenCalledWith(
-            expect.objectContaining({ forkFromThreadId: 'thread-from-persist' }),
+        expect(codexMock.resumeThread).toHaveBeenCalledWith(
+            'thread-from-persist',
+            expect.objectContaining({ skipGitRepoCheck: true }),
         );
     });
 
@@ -311,6 +342,14 @@ describe('CodexSDKService — SDK mocked', () => {
         const result = await svc.sendMessage({ prompt: 'will fail' });
         expect(result.success).toBe(false);
         expect(result.error).toContain('network failure');
+    });
+
+    it('sendMessage omits Copilot-only model IDs when starting Codex threads', async () => {
+        const codexMock = svc['sdk'] as ReturnType<typeof makeCodexSdkMock>;
+        await svc.sendMessage({ prompt: 'test', model: 'claude-sonnet-4.6' });
+        expect(codexMock.startThread).toHaveBeenCalledWith(
+            expect.not.objectContaining({ model: 'claude-sonnet-4.6' }),
+        );
     });
 });
 

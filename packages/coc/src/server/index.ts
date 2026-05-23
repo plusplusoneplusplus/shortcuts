@@ -215,8 +215,19 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         });
     }
 
+    const requestedProvider = resolvedConfig.activeProvider === 'codex' ? 'codex' : 'copilot';
+    const effectiveProvider = requestedProvider === 'codex' && sdkServiceRegistry.has(SDK_PROVIDER_CODEX)
+        ? 'codex'
+        : 'copilot';
+    if (requestedProvider === 'codex' && effectiveProvider !== 'codex') {
+        process.stderr.write('[ExecutionServer] activeProvider=codex requested, but Codex provider is not registered; falling back to Copilot\n');
+    }
+    const resolvedAiService = options.aiService ?? sdkServiceRegistry.getOrThrow(
+        effectiveProvider === 'codex' ? SDK_PROVIDER_CODEX : SDK_PROVIDER_COPILOT,
+    );
+
     const { registry, bridge, queuePersistence, queueFacade } = createQueueInfrastructure(
-        store, dataDir, options, defaultTimeoutMs,
+        store, dataDir, { ...options, aiService: resolvedAiService }, defaultTimeoutMs,
         resolvedConfig.chat.followUpSuggestions, resolvedConfig.chat.askUser, () => wsServer,
         resolvedConfig.memoryPromotion,
         () => {
@@ -264,7 +275,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             };
         },
         () => mcpOauthInfra?.manager,
-        (resolvedConfig.activeProvider === 'codex' ? 'codex' : 'copilot'),
+        effectiveProvider,
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
@@ -389,13 +400,6 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         scheduleManager.registerWorkspacePath(ws.id, ws.rootPath);
     }
 
-    const resolvedAiService = options.aiService ?? (() => {
-        const provider = resolvedConfig.activeProvider ?? 'copilot';
-        if (provider === 'codex' && sdkServiceRegistry.has(SDK_PROVIDER_CODEX)) {
-            return sdkServiceRegistry.getOrThrow(SDK_PROVIDER_CODEX);
-        }
-        return sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
-    })();
     const aiInvoker = createCLIAIInvoker({ approvePermissions: true, aiService: resolvedAiService });
     cleanupInfra = createCleanupInfrastructure(store, dataDir, queueFacade);
     const { outputPruner, staleDetector } = cleanupInfra;
