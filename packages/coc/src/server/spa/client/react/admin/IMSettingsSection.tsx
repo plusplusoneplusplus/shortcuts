@@ -618,6 +618,13 @@ function TeamsSettingsCard() {
                         </select>
                     </div>
 
+                    {/* Container-node requirement notice */}
+                    {status.status !== 'connected' && (
+                        <div className="text-xs bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded px-3 py-2 text-blue-700 dark:text-blue-300">
+                            ℹ️ Connection must be initiated from the <strong>container node</strong> (where CoC server runs). The Connect button triggers authentication on that machine.
+                        </div>
+                    )}
+
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <TeamsStatusDot status={status.status} />
@@ -649,6 +656,11 @@ function TeamsSettingsCard() {
                     {status.error && (
                         <div className="text-xs text-red-600 dark:text-red-400">
                             Error: {status.error}
+                            {status.error.includes('Chat.Read') && (
+                                <p className="mt-1 text-[#616161] dark:text-[#999]">
+                                    💡 Graph API mode requires Chat.ReadWrite and ChatMessage.Send permissions. Use <strong>MCP Server</strong> mode instead, or grant these permissions to your Azure AD app.
+                                </p>
+                            )}
                         </div>
                     )}
 
