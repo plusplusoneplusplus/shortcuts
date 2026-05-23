@@ -178,6 +178,11 @@ export class TeamsBot {
     }
 
     private startPolling(): void {
+        // Graph mode is send-only — do not poll for messages
+        if (this.mode === 'graph') {
+            console.log('[teams-bot] Graph mode is send-only — polling disabled');
+            return;
+        }
         if (this._pollTimer) return;
         this._pollTimer = setInterval(() => void this.pollMessages(), this.opts.pollIntervalMs);
     }

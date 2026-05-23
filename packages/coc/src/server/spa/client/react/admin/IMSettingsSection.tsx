@@ -613,10 +613,15 @@ function TeamsSettingsCard() {
                             }}
                             className="text-xs px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-blue-500"
                         >
-                            <option value="graph">Graph API</option>
+                            <option value="graph">Graph API (send only)</option>
                             <option value="mcp">MCP Server</option>
                         </select>
                     </div>
+                    {(status.mode ?? 'graph') === 'graph' && (
+                        <div className="text-xs text-amber-600 dark:text-amber-400">
+                            ⚠️ Graph API mode is <strong>send-only</strong> — reading user messages from Teams is not supported. Use MCP Server mode for bidirectional messaging.
+                        </div>
+                    )}
 
                     {/* Container-node requirement notice */}
                     {status.status !== 'connected' && (

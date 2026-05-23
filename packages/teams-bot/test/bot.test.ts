@@ -194,83 +194,18 @@ describe('TeamsBot', () => {
         });
 
         describe('polling', () => {
-            it('should poll for messages via Graph API', async () => {
+            it('should NOT poll in graph mode (send-only)', async () => {
                 mockGraphTeamResponse();
 
                 const bot = createGraphBot();
                 await bot.start();
                 bot.setChannelId('19:channel@thread.tacv2');
 
-                // Mock poll response
-                mockFetch.mockResolvedValueOnce({
-                    ok: true,
-                    json: async () => ({
-                        value: [{
-                            id: 'msg-100',
-                            body: { content: 'Hello from Teams' },
-                            from: { user: { displayName: 'Alice', id: 'user-aad-1' } },
-                            createdDateTime: '2026-05-19T22:00:00Z',
-                        }],
-                    }),
-                } as any);
-
                 await vi.advanceTimersByTimeAsync(1000);
 
-                expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({
-                    channelId: '19:channel@thread.tacv2',
-                    messageId: 'msg-100',
-                    text: 'Hello from Teams',
-                    senderName: 'Alice',
-                    senderAadId: 'user-aad-1',
-                }));
-
-                await bot.stop();
-            });
-
-            it('should skip messages sent by the bot itself', async () => {
-                mockGraphTeamResponse();
-
-                const bot = createGraphBot();
-                await bot.start();
-                bot.setChannelId('19:channel@thread.tacv2');
-
-                // Send a message first
-                mockFetch.mockResolvedValueOnce({
-                    ok: true,
-                    json: async () => ({ id: 'msg-sent', body: { content: 'Bot msg' } }),
-                } as any);
-                await bot.send('19:channel@thread.tacv2', 'Bot msg');
-
-                // Poll returns the bot's own message
-                mockFetch.mockResolvedValueOnce({
-                    ok: true,
-                    json: async () => ({
-                        value: [{
-                            id: 'msg-sent',
-                            body: { content: 'Bot msg' },
-                            from: { user: { displayName: 'CoC' } },
-                            createdDateTime: '2026-05-19T22:01:00Z',
-                        }],
-                    }),
-                } as any);
-
-                await vi.advanceTimersByTimeAsync(1000);
-
-                expect(onMessage).not.toHaveBeenCalled();
-                await bot.stop();
-            });
-
-            it('should not poll when no channelId is set', async () => {
-                mockGraphTeamResponse();
-
-                const bot = createGraphBot();
-                await bot.start();
-                // No setChannelId
-
-                await vi.advanceTimersByTimeAsync(1000);
-
-                // verifyConnection call only (no poll)
+                // Only verifyConnection call — no poll
                 expect(mockFetch).toHaveBeenCalledTimes(1);
+                expect(onMessage).not.toHaveBeenCalled();
                 await bot.stop();
             });
         });
