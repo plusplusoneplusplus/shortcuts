@@ -59,6 +59,8 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getConfig: () => ({ apiBasePath: '/api' }),
     isRalphEnabled: () => false,
     isLoopsEnabled: () => false,
+    isCodexEnabled: () => false,
+    getActiveProvider: () => 'copilot',
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({

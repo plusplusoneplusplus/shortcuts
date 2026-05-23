@@ -367,9 +367,16 @@ export function ProcessesSidebar() {
                                     <Badge status={p.status}>
                                         {statusIcon(p.status)} {statusLabel(p.status, p.type)}
                                     </Badge>
-                                    {duration && (
-                                        <span className="text-[11px] text-[#848484] whitespace-nowrap">{duration}</span>
-                                    )}
+                                    <div className="flex items-center gap-1.5">
+                                        {p.metadata?.provider === 'codex' && (
+                                            <span className="text-[10px] font-medium px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 shrink-0">
+                                                CODEX
+                                            </span>
+                                        )}
+                                        {duration && (
+                                            <span className="text-[11px] text-[#848484] whitespace-nowrap">{duration}</span>
+                                        )}
+                                    </div>
                                 </div>
                                 {wsName && wsId && (
                                     <div className="mb-1">
@@ -529,6 +536,11 @@ function QueueTaskCard({ task, now, selected, onClick, compact = false }: {
                     )}
                     <span className="shrink-0 text-[#848484]">{typeLabel(task.type)}</span>
                     <span className="min-w-0 truncate text-[#1e1e1e] dark:text-[#cccccc]">{preview}</span>
+                    {task.provider === 'codex' && (
+                        <span className="shrink-0 text-[10px] font-medium px-1 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
+                            CODEX
+                        </span>
+                    )}
                     {elapsed && <span className="shrink-0 text-[10px] text-[#848484]">{elapsed}</span>}
                 </div>
             ) : (
@@ -537,9 +549,16 @@ function QueueTaskCard({ task, now, selected, onClick, compact = false }: {
                         <Badge status={task.frozen ? 'cancelled' : task.status}>
                             {task.frozen ? '❄️' : statusIcon(task.status)} {task.frozen ? 'Frozen' : statusLabel(task.status, task.type)}
                         </Badge>
-                        <span className="text-[10px] text-[#848484]">
-                            {typeLabel(task.type)}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                            {task.provider === 'codex' && (
+                                <span className="text-[10px] font-medium px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 shrink-0">
+                                    CODEX
+                                </span>
+                            )}
+                            <span className="text-[10px] text-[#848484]">
+                                {typeLabel(task.type)}
+                            </span>
+                        </div>
                     </div>
                     <div className="text-[11px] text-[#1e1e1e] dark:text-[#cccccc] line-clamp-1 break-words">
                         {preview}

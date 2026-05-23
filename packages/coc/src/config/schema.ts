@@ -101,6 +101,10 @@ export const CLIConfigSchema = z.object({
     excalidraw: z.object({
         enabled: z.boolean().optional(),
     }).passthrough().optional(),
+    codex: z.object({
+        enabled: z.boolean().optional(),
+    }).passthrough().optional(),
+    activeProvider: z.enum(['copilot', 'codex']).optional(),
     loops: z.object({
         enabled: z.boolean().optional(),
     }).passthrough().optional(),

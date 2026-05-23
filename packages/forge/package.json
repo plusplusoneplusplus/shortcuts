@@ -81,6 +81,14 @@
     "access": "public"
   },
   "license": "MIT",
+  "peerDependencies": {
+    "@openai/codex-sdk": ">=0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@openai/codex-sdk": {
+      "optional": true
+    }
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest",

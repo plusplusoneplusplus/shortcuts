@@ -406,8 +406,46 @@ describe('POST /api/chat/launch-terminal', () => {
         const body = JSON.parse(res.body);
         expect(body.launched).toBe(true);
         expect(body.workingDirectory).toBe('/some/path');
+        expect(body.provider).toBe('copilot');
         expect(body.terminal).toBe('Terminal');
-        expect(mockFreshLauncher).toHaveBeenCalledWith({ workingDirectory: '/some/path' });
+        expect(mockFreshLauncher).toHaveBeenCalledWith({ workingDirectory: '/some/path', provider: 'copilot' });
+    });
+
+    it('passes the active codex provider to the fresh chat launcher', async () => {
+        const routes: Route[] = [];
+        registerFreshChatTerminalRoutes(routes, mockFreshLauncher, { getProvider: () => 'codex' });
+
+        const codexServer = http.createServer(createRequestHandler({
+            routes,
+            spaHtml: generateDashboardHtml(),
+            store: undefined as any,
+        }));
+        await new Promise<void>((resolve, reject) => {
+            codexServer.on('error', reject);
+            codexServer.listen(0, 'localhost', () => resolve());
+        });
+
+        try {
+            const address = codexServer.address() as { port: number };
+            mockFreshLauncher.mockResolvedValue({
+                launched: true,
+                command: "cd '/some/path' && codex --dangerously-bypass-approvals-and-sandbox",
+                terminal: 'Terminal',
+            });
+
+            const res = await request(`http://localhost:${address.port}/api/chat/launch-terminal`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workingDirectory: '/some/path' }),
+            });
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.provider).toBe('codex');
+            expect(mockFreshLauncher).toHaveBeenCalledWith({ workingDirectory: '/some/path', provider: 'codex' });
+        } finally {
+            await new Promise<void>((resolve) => codexServer.close(() => resolve()));
+        }
     });
 
     it('falls back to process.cwd() when workingDirectory is missing', async () => {
@@ -426,7 +464,7 @@ describe('POST /api/chat/launch-terminal', () => {
         expect(res.status).toBe(200);
         const body = JSON.parse(res.body);
         expect(body.launched).toBe(true);
-        expect(mockFreshLauncher).toHaveBeenCalledWith({ workingDirectory: process.cwd() });
+        expect(mockFreshLauncher).toHaveBeenCalledWith({ workingDirectory: process.cwd(), provider: 'copilot' });
     });
 
     it('returns launched:false when launcher reports failure', async () => {
@@ -525,6 +563,20 @@ describe('launchFreshChatInTerminal – Windows spawn arguments', () => {
 
         const startLine = (spawnMock.mock.calls[0][1] as string[])[0];
         expect(startLine).not.toContain('--resume');
+    });
+
+    it('launches Codex CLI when provider is codex', async () => {
+        const result = await launchFreshChatInTerminal({
+            workingDirectory: 'C:\\Users\\test\\project',
+            provider: 'codex',
+        });
+
+        expect(result.launched).toBe(true);
+        expect(result.command).toContain('codex --dangerously-bypass-approvals-and-sandbox');
+
+        const startLine = (spawnMock.mock.calls[0][1] as string[])[0];
+        expect(startLine).toContain('powershell.exe -NoExit -Command codex --dangerously-bypass-approvals-and-sandbox');
+        expect(startLine).not.toContain('copilot --yolo');
     });
 });
 

@@ -108,8 +108,21 @@ export {
     SDKServiceRegistry,
     sdkServiceRegistry,
     COPILOT_PROVIDER,
+    CODEX_PROVIDER,
     SDK_PROVIDER_COPILOT,
+    SDK_PROVIDER_CODEX,
 } from './sdk-service-registry';
+
+// Codex SDK Service
+export {
+    CodexSDKService,
+    registerCodexSDKService,
+} from './codex-sdk-service';
+
+export type {
+    CodexAuthCheckResult,
+    CodexAuthChecker,
+} from './codex-sdk-service';
 
 // Session Manager
 export {

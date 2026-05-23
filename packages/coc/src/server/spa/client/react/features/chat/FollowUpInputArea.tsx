@@ -103,6 +103,8 @@ export interface FollowUpInputAreaProps {
     sessionTokenLimit?: number;
     /** Tokens currently occupying the context. Drives the ctx fuel gauge fill + percent. */
     sessionCurrentTokens?: number;
+    /** Active AI provider — shown as a read-only badge in the toolbar when set to 'codex'. */
+    activeProvider?: 'copilot' | 'codex';
 }
 
 export function FollowUpInputArea({
@@ -140,6 +142,7 @@ export function FollowUpInputArea({
     workingDirectory,
     sessionTokenLimit,
     sessionCurrentTokens,
+    activeProvider,
 }: FollowUpInputAreaProps) {
     const inputWrapperRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -682,6 +685,7 @@ export function FollowUpInputArea({
                                 sessionTokenLimit={sessionTokenLimit}
                                 sessionCurrentTokens={sessionCurrentTokens}
                                 sessionModel={sessionModel}
+                                activeProvider={activeProvider}
                             />
                             {isActiveGeneration ? stopButton : (
                                 <QueueFollowUpButton

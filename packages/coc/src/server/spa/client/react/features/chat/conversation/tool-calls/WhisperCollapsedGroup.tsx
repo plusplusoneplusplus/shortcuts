@@ -18,6 +18,7 @@ import type { DetectedPullRequest } from '../pullRequestDetection';
 import { CommitStrip } from '../CommitStrip';
 import { buildGitReviewPopOutUrl } from '../../../../layout/Router';
 import { useGitReviewPopOut, gitReviewPopOutKey } from '../../../../contexts/GitReviewPopOutContext';
+import { normalizeToolName } from './toolNormalization';
 
 interface ToolLike {
     toolName: string;
@@ -1072,7 +1073,7 @@ export function WhisperCollapsedGroup({
                                 if (toolNode !== null) {
                                     flushContent();
                                     const tool = toolById.get(chunk.toolId);
-                                    const toolName = tool?.toolName ?? '';
+                                    const toolName = normalizeToolName(tool?.toolName ?? '');
                                     if ((toolName === 'powershell' || toolName === 'shell') && tool?.result) {
                                         const commits = detectCommitsInToolGroup([{
                                             id: chunk.toolId,

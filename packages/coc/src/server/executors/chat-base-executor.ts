@@ -141,6 +141,8 @@ export interface ChatModeExecutorOptions {
     getLoopInfra?: () => LoopInfraDeps | undefined;
     /** Late-bound MCP OAuth manager (getter to allow optional/feature-flagged wiring). */
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
+    /** Active AI provider. Used to detect provider mismatches on follow-up resume. */
+    provider?: 'copilot' | 'codex';
 }
 
 /** Return type for the AI call result. */
@@ -181,6 +183,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly resolveWorkspaceIdForPathFn: (rootPath: string) => Promise<string>;
     protected readonly getLoopInfra?: () => LoopInfraDeps | undefined;
     protected readonly getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
+    /** Active AI provider — used to guard against provider mismatches on follow-up resume. */
+    protected readonly provider: 'copilot' | 'codex';
 
     constructor(store: ProcessStore, options: ChatModeExecutorOptions, dataDir?: string) {
         super(store, dataDir);
@@ -195,6 +199,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.resolveWorkspaceIdForPathFn = options.resolveWorkspaceIdForPath;
         this.getLoopInfra = options.getLoopInfra;
         this.getMcpOauthManager = options.getMcpOauthManager;
+        this.provider = options.provider ?? 'copilot';
     }
 
     /**

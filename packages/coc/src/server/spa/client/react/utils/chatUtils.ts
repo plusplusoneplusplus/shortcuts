@@ -15,6 +15,7 @@ export function buildMetadataProcess(task: any, processDetails: any, processId: 
             queueTaskId: task.id,
             model: task.config?.model,
             mode: (task as any)?.payload?.mode,
+            provider: task.provider,
             ...task.metadata,
             ...(processDetails?.metadata || {}),
         },

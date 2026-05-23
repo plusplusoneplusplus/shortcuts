@@ -29,6 +29,10 @@ interface DashboardConfig {
     mcpOauthEnabled?: boolean;
     focusedDiffEnabled?: boolean;
     bindAddress?: string;
+    /** Whether the Codex SDK provider is enabled (feature flag). */
+    codexEnabled?: boolean;
+    /** Active AI provider ('copilot' | 'codex'). */
+    activeProvider?: 'copilot' | 'codex';
 }
 
 /** Cached runtime config loaded from the API. */
@@ -86,6 +90,8 @@ async function _doLoadRuntimeConfig(): Promise<void> {
             excalidrawEnabled: data.features.excalidrawEnabled,
             mcpOauthEnabled: data.features.mcpOauthEnabled,
             focusedDiffEnabled: data.features.focusedDiffEnabled,
+            codexEnabled: data.features.codexEnabled,
+            activeProvider: data.features.activeProvider,
             hostname: data.hostname ?? bootstrap.hostname,
             bindAddress: data.bindAddress ?? bootstrap.bindAddress,
         };
@@ -207,6 +213,16 @@ export function isMcpOauthEnabled(): boolean {
 
 export function isFocusedDiffEnabled(): boolean {
     return getConfig().focusedDiffEnabled === true;
+}
+
+/** Returns true when the Codex SDK provider feature flag is enabled. */
+export function isCodexEnabled(): boolean {
+    return getConfig().codexEnabled === true;
+}
+
+/** Returns the currently configured active AI provider ('copilot' by default). */
+export function getActiveProvider(): 'copilot' | 'codex' {
+    return getConfig().activeProvider ?? 'copilot';
 }
 
 /** Returns the raw bind address the server is listening on (e.g., '0.0.0.0'), if known. */

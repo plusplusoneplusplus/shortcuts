@@ -8,7 +8,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, TaskQueueManager, SDKServiceRegistry } from '@plusplusoneplusplus/forge';
 import { MEMORY_GUIDANCE, MEMORY_SCHEMA, READ_ONLY_SYSTEM_MESSAGE, SECURITY_PATTERNS_DESCRIPTION } from '@plusplusoneplusplus/forge';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
@@ -147,6 +147,8 @@ export interface AdminRouteOptions {
     runtimeConfigService?: RuntimeConfigService;
     /** Exit code to use for restart (injected to avoid circular import). Defaults to 75. */
     restartExitCode?: number;
+    /** SDK service registry for per-provider availability checks. */
+    sdkServiceRegistry?: SDKServiceRegistry;
     /** Override token TTL in ms (for testing). Defaults to TOKEN_EXPIRY_MS (5 min). */
     tokenTtlMs?: number;
 }
@@ -883,10 +885,34 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
         },
     });
-}
 
-// ============================================================================
-// Built-in Prompt Defaults
+    // ------------------------------------------------------------------
+    // GET /api/admin/providers/availability — per-provider SDK install check
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: '/api/admin/providers/availability',
+        handler: async (_req, res) => {
+            const registry = options.sdkServiceRegistry;
+            if (!registry || registry.size === 0) {
+                sendJSON(res, 200, {});
+                return;
+            }
+            const result: Record<string, { available: boolean; error?: string }> = {};
+            await Promise.all(
+                registry.getProviderNames().map(async (name) => {
+                    try {
+                        const avail = await registry.get(name)!.isAvailable();
+                        result[name] = { available: avail.available, ...(avail.error ? { error: avail.error } : {}) };
+                    } catch (err) {
+                        result[name] = { available: false, error: err instanceof Error ? err.message : String(err) };
+                    }
+                }),
+            );
+            sendJSON(res, 200, result);
+        },
+    });
+}
 // ============================================================================
 
 export interface BuiltInPrompt {

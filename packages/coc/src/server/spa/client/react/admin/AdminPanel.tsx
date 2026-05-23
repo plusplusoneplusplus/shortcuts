@@ -217,6 +217,9 @@ export function AdminPanel() {
     const [excalidrawEnabled, setExcalidrawEnabled] = useState(false);
     const [mcpOauthEnabled, setMcpOauthEnabled] = useState(false);
     const [focusedDiffEnabled, setFocusedDiffEnabled] = useState(false);
+    const [codexEnabled, setCodexEnabled] = useState(false);
+    const [activeProvider, setActiveProvider] = useState<'copilot' | 'codex'>('copilot');
+    const [providerAvailability, setProviderAvailability] = useState<Record<string, { available: boolean; error?: string }>>({});
 
     // Preferences(theme, reposSidebarCollapsed, uiLayoutMode) — for Appearance card
     const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('auto');
@@ -234,9 +237,11 @@ export function AdminPanel() {
     const [chatSaving, setChatSaving] = useState(false);
     const [appearanceSaving, setAppearanceSaving] = useState(false);
     const [featuresSaving, setFeaturesSaving] = useState(false);
+    const [activeProviderSaving, setActiveProviderSaving] = useState(false);
 
     // Snapshots for per-card dirty tracking (set when config/prefs loads)
     const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
+    const [activeProviderSnapshot, setActiveProviderSnapshot] = useState<'copilot' | 'codex'>('copilot');
     const [chatSnapshot, setChatSnapshot] = useState({ followUpEnabled: true, followUpCount: '3', askUserEnabled: false, showReportIntent: false, toolCompactness: 3 as 0 | 1 | 2 | 3 });
     const [appearanceSnapshot, setAppearanceSnapshot] = useState({
         theme: 'auto' as string,
@@ -248,7 +253,7 @@ export function AdminPanel() {
         taskCardDensity: 'compact' as 'compact' | 'dense',
         historyGrouping: true,
     });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false, codexEnabled: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -310,7 +315,6 @@ export function AdminPanel() {
                 output: resolved.output ?? 'table',
             };
             setConfigForm(form);
-            setAiExecSnapshot({ ...form });
             const sri = resolved.showReportIntent ?? false;
             const tc = (resolved.toolCompactness ?? 1) as 0 | 1 | 2 | 3;
             const fue = resolved.chat?.followUpSuggestions?.enabled ?? true;
@@ -360,7 +364,13 @@ export function AdminPanel() {
             setMcpOauthEnabled(moae);
             const fde = resolved.features?.focusedDiff ?? false;
             setFocusedDiffEnabled(fde);
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde });
+            const cxe = resolved.codex?.enabled ?? false;
+            setCodexEnabled(cxe);
+            const ap = (resolved.activeProvider === 'codex' ? 'codex' : 'copilot') as 'copilot' | 'codex';
+            setActiveProvider(ap);
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde, codexEnabled: cxe });
+            setAiExecSnapshot({ model: form.model, parallel: form.parallel, timeout: form.timeout, output: form.output });
+            setActiveProviderSnapshot(ap);
             const sgr = resolved.sync?.gitRemote ?? '';
             const sim = String(resolved.sync?.intervalMinutes ?? 5);
             setSyncGitRemote(sgr);
@@ -408,6 +418,10 @@ export function AdminPanel() {
         getSpaCocClient().admin.getVersion()
             .then(data => { if (data) setVersionInfo(data); })
             .catch(() => {});
+        fetch('/api/admin/providers/availability')
+            .then(r => r.json())
+            .then((data: Record<string, { available: boolean; error?: string }>) => setProviderAvailability(data))
+            .catch(() => {});
     }, [loadStats, loadConfig, loadPreferences]);
 
     // ── Per-card dirty state ──
@@ -415,6 +429,8 @@ export function AdminPanel() {
         configForm.parallel !== aiExecSnapshot.parallel ||
         configForm.timeout !== aiExecSnapshot.timeout ||
         configForm.output !== aiExecSnapshot.output;
+
+    const activeProviderDirty = activeProvider !== activeProviderSnapshot;
 
     const chatDirty = chatFollowUpEnabled !== chatSnapshot.followUpEnabled ||
         chatFollowUpCount !== chatSnapshot.followUpCount ||
@@ -446,7 +462,8 @@ export function AdminPanel() {
         loopsEnabled !== featuresSnapshot.loops ||
         excalidrawEnabled !== featuresSnapshot.excalidraw ||
         mcpOauthEnabled !== featuresSnapshot.mcpOauth ||
-        focusedDiffEnabled !== featuresSnapshot.focusedDiff;
+        focusedDiffEnabled !== featuresSnapshot.focusedDiff ||
+        codexEnabled !== featuresSnapshot.codexEnabled;
 
     // ── AI & Execution card ──
     const handleSaveAiExec = useCallback(async () => {
@@ -485,6 +502,24 @@ export function AdminPanel() {
     const handleCancelAiExec = useCallback(() => {
         setConfigForm({ ...aiExecSnapshot });
     }, [aiExecSnapshot]);
+
+    // ── Active Provider card (Agents tab) ──
+    const handleSaveActiveProvider = useCallback(async () => {
+        setActiveProviderSaving(true);
+        try {
+            await getSpaCocClient().admin.updateConfig({ activeProvider });
+            addToast('Active provider saved — restart required to apply change', 'success');
+            setActiveProviderSnapshot(activeProvider);
+        } catch (err: unknown) {
+            addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
+        } finally {
+            setActiveProviderSaving(false);
+        }
+    }, [activeProvider, addToast]);
+
+    const handleCancelActiveProvider = useCallback(() => {
+        setActiveProvider(activeProviderSnapshot);
+    }, [activeProviderSnapshot]);
 
     // ── Chat Experience card ──
     const handleSaveChat = useCallback(async () => {
@@ -602,16 +637,17 @@ export function AdminPanel() {
                 'excalidraw.enabled': excalidrawEnabled,
                 'mcpOauth.enabled': mcpOauthEnabled,
                 'features.focusedDiff': focusedDiffEnabled,
+                'codex.enabled': codexEnabled,
             });
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled });
+            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled, codexEnabled: codexEnabled });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, codexEnabled, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setTerminalEnabled(featuresSnapshot.terminal);
@@ -630,6 +666,7 @@ export function AdminPanel() {
         setExcalidrawEnabled(featuresSnapshot.excalidraw);
         setMcpOauthEnabled(featuresSnapshot.mcpOauth);
         setFocusedDiffEnabled(featuresSnapshot.focusedDiff);
+        setCodexEnabled(featuresSnapshot.codexEnabled);
     }, [featuresSnapshot]);
 
     const handleSaveServerName = useCallback(async () => {
@@ -830,7 +867,7 @@ export function AdminPanel() {
     const resolved = config?.resolved ?? {};
 
     const baseTabs: AdminSubTab[] = ['settings', 'providers', 'data', 'server', 'prompts', 'database'];
-    const tabs: AdminSubTab[] = isContainerMode() ? [...baseTabs, 'agents', 'messaging'] : baseTabs;
+    const tabs: AdminSubTab[] = isContainerMode() ? [...baseTabs, 'agents', 'messaging'] : [...baseTabs, 'agents'];
 
     // Servers row is gated by the dashboard runtime config, same source the
     // legacy topbar dropdown consulted. It is independent of the editable
@@ -1385,6 +1422,13 @@ export function AdminPanel() {
                                         <AdminToggle checked={mcpOauthEnabled} onChange={setMcpOauthEnabled} data-testid="toggle-mcp-oauth-enabled" />
                                     </AdminRow>
                                     <AdminRow
+                                        name={<>Codex Provider <span className="ar-badge ar-badge-accent">Experimental</span> <span className="ar-badge ar-badge-warning">Restart</span></>}
+                                        hint="Enable the optional @openai/codex-sdk provider. Once enabled, switch the active provider in the AI & Execution tab. Requires a server restart."
+                                    >
+                                        <SourceBadge source={sources['codex.enabled']} />
+                                        <AdminToggle checked={codexEnabled} onChange={setCodexEnabled} data-testid="toggle-codex-enabled" />
+                                    </AdminRow>
+                                    <AdminRow
                                         name="Focused Diff"
                                         hint="AI-powered hunk classification for PR diffs. Highlights logic changes and dims mechanical edits."
                                     >
@@ -1689,10 +1733,59 @@ export function AdminPanel() {
                     </section>
                 )}
 
-                        {activeTab === 'agents' && isContainerMode() && (
-                            <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
-                                <AgentManagementPanel />
-                            </Suspense>
+                        {activeTab === 'agents' && (
+                            <>
+                                <SettingsCard
+                                    title="Active Provider"
+                                    description="AI provider used for all chat and task requests."
+                                    dirty={activeProviderDirty}
+                                    saving={activeProviderSaving}
+                                    onSave={handleSaveActiveProvider}
+                                    onCancel={handleCancelActiveProvider}
+                                    data-testid="settings-active-provider"
+                                >
+                                    <AdminRow
+                                        name={<>Active Provider <span className="ar-badge ar-badge-warning">Restart</span></>}
+                                        hint="Switch to 'Codex' only after enabling the Codex feature flag in Settings → Features and completing ChatGPT sign-in. Requires a server restart."
+                                    >
+                                        <select
+                                            id="admin-config-active-provider"
+                                            className="ar-select ar-med"
+                                            value={activeProvider}
+                                            onChange={e => setActiveProvider(e.target.value as 'copilot' | 'codex')}
+                                            data-testid="select-active-provider"
+                                        >
+                                            <option value="copilot">Copilot</option>
+                                            <option value="codex">Codex</option>
+                                        </select>
+                                        <SourceBadge source={sources['activeProvider']} />
+                                    </AdminRow>
+                                    {activeProvider === 'codex' && providerAvailability['codex'] && !providerAvailability['codex'].available && (
+                                        <div
+                                            data-testid="codex-sdk-unavailable-banner"
+                                            style={{
+                                                margin: '8px 0 4px',
+                                                padding: '8px 12px',
+                                                borderRadius: 4,
+                                                background: 'var(--ar-warn-bg, #fffbe6)',
+                                                border: '1px solid var(--ar-warn-border, #ffe58f)',
+                                                color: 'var(--ar-warn-text, #7c5200)',
+                                                fontSize: 12,
+                                                lineHeight: 1.5,
+                                                whiteSpace: 'pre-wrap',
+                                                fontFamily: 'inherit',
+                                            }}
+                                        >
+                                            ⚠ {providerAvailability['codex'].error}
+                                        </div>
+                                    )}
+                                </SettingsCard>
+                                {isContainerMode() && (
+                                    <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
+                                        <AgentManagementPanel />
+                                    </Suspense>
+                                )}
+                            </>
                         )}
 
                         {activeTab === 'messaging' && isContainerMode() && (

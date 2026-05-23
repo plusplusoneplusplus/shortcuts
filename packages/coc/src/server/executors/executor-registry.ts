@@ -36,6 +36,8 @@ export interface ExecutorRegistryOptions {
     followUpSuggestions: { enabled: boolean; count: number };
     askUser?: { enabled: boolean };
     memoryPromotion?: MemoryPromoteConfig;
+    /** Active AI provider name recorded on each process for attribution. Defaults to 'copilot'. */
+    provider?: 'copilot' | 'codex';
     toolCallCacheStore: FileToolCallCacheStore;
     resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
@@ -97,6 +99,7 @@ export class ExecutorRegistry {
             resolveWorkspaceIdForPath: options.resolveWorkspaceIdForPath,
             getLoopInfra: options.getLoopInfra,
             getMcpOauthManager: options.getMcpOauthManager,
+            provider: options.provider,
         };
 
         this.strategyRegistry = new TaskStrategyRegistry();
@@ -121,7 +124,7 @@ export class ExecutorRegistry {
         this.memoryPromoteExecutor = options.dataDir
             ? new MemoryPromoteExecutor(options.aiService, options.dataDir, options.memoryPromotion, options.getWsServer)
             : undefined;
-        this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded, options.onBackgroundReview);
+        this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded, options.onBackgroundReview, options.provider);
     }
 
     /** Dispatch a task to the appropriate executor based on its type and payload. */

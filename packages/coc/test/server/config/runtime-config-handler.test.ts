@@ -75,6 +75,8 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.excalidrawEnabled).toBe(false);
         expect(result.features.mcpOauthEnabled).toBe(false);
         expect(result.features.focusedDiffEnabled).toBe(false);
+        expect(result.features.codexEnabled).toBe(false);
+        expect(result.features.activeProvider).toBe('copilot');
     });
 
     it('reflects ralph.enabled = true from config', () => {

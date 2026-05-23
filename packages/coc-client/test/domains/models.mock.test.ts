@@ -51,6 +51,31 @@ describe('ModelsClient mock server contract', () => {
     expectPutRequest(mock.requests[0], { enabledModels: ['gpt-5.4', 'claude-sonnet-4.6'] });
   });
 
+  it('queries a model with a JSON POST body', async () => {
+    mock = await startMockServer();
+    const response = {
+      success: true,
+      response: 'pong',
+      model: 'model-a',
+      sessionId: 'sess-1',
+      durationMs: 42,
+    };
+    mock.on('POST', '/api/models/query', { body: response });
+    const client = createClient(mock);
+
+    await expect(client.models.query({ prompt: 'ping', model: 'model-a', timeoutMs: 5000 })).resolves.toEqual(response);
+
+    expect(mock.requests).toHaveLength(1);
+    expect(mock.requests[0]).toMatchObject({
+      method: 'POST',
+      path: '/api/models/query',
+      query: {},
+      rawBody: JSON.stringify({ prompt: 'ping', model: 'model-a', timeoutMs: 5000 }),
+      body: { prompt: 'ping', model: 'model-a', timeoutMs: 5000 },
+    });
+    expect(mock.requests[0].headers['content-type']).toBe('application/json');
+  });
+
   it('sends an empty enabled models array without suppressing the request', async () => {
     mock = await startMockServer();
     mock.on('PUT', '/api/models/enabled', { body: { enabledModels: [] } });

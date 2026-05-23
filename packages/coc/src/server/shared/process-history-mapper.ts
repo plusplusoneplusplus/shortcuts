@@ -27,6 +27,8 @@ export interface HistorySummary {
     lastMessagePreview?: string;
     /** AI-generated title (separate from customTitle). */
     title?: string;
+    /** AI provider that handled this process ('copilot' | 'codex'). */
+    provider?: 'copilot' | 'codex';
 }
 
 export function processToHistorySummary(proc: AIProcess): HistorySummary {
@@ -58,6 +60,7 @@ export function processToHistorySummary(proc: AIProcess): HistorySummary {
         customTitle: proc.customTitle,
         lastMessagePreview: proc.lastMessagePreview,
         title: proc.title,
+        provider: (proc.metadata?.provider === 'codex' ? 'codex' : 'copilot') as 'copilot' | 'codex',
     };
 }
 

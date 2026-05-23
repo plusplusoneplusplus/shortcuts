@@ -137,6 +137,15 @@ export interface CLIConfig {
     excalidraw?: {
         enabled?: boolean;
     };
+    /** Codex SDK provider support. Disabled by default. */
+    codex?: {
+        enabled?: boolean;
+    };
+    /**
+     * Active AI provider: 'copilot' (default) or 'codex'.
+     * Switching to 'codex' requires codex.enabled = true.
+     */
+    activeProvider?: 'copilot' | 'codex';
     /** Development feature flags. */
     features?: {
         autoMemoryPromotion?: boolean;
@@ -309,6 +318,15 @@ export interface ResolvedCLIConfig {
     excalidraw: {
         enabled: boolean;
     };
+    /** Codex SDK provider support. Disabled by default. */
+    codex: {
+        enabled: boolean;
+    };
+    /**
+     * Active AI provider: 'copilot' (default) or 'codex'.
+     * Switching to 'codex' requires codex.enabled = true.
+     */
+    activeProvider: 'copilot' | 'codex';
     /** Development feature flags. */
     features: {
         autoMemoryPromotion: boolean;
@@ -439,6 +457,10 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     excalidraw: {
         enabled: false,
     },
+    codex: {
+        enabled: false,
+    },
+    activeProvider: 'copilot',
     features: {
         autoMemoryPromotion: false,
         focusedDiff: false,
@@ -478,6 +500,7 @@ export type ConfigFieldSource = 'default' | 'file';
 const TOP_LEVEL_CONFIG_SOURCE_KEYS = [
     'model', 'parallel', 'output', 'approvePermissions', 'mcpConfig',
     'timeout', 'persist', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages',
+    'activeProvider',
 ] as const;
 
 /**
@@ -598,6 +621,7 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         toolCompactness: (override.toolCompactness ?? base.toolCompactness) as 0 | 1 | 2 | 3,
         taskCardDensity: (override.taskCardDensity ?? base.taskCardDensity) as 'compact' | 'dense',
         groupSingleLineMessages: override.groupSingleLineMessages ?? base.groupSingleLineMessages,
+        activeProvider: (override.activeProvider ?? base.activeProvider) as 'copilot' | 'codex',
         ...mergeConfigNamespaces(base, override, DEFAULT_BUNDLED_SKILLS),
     };
 }

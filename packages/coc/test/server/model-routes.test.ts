@@ -9,6 +9,7 @@ import { registerModelRoutes } from '../../src/server/models/model-routes';
 import type { ModelStore, ModelRouteOptions } from '../../src/server/models/model-routes';
 import type { Route } from '../../src/server/types';
 import type { ModelInfo } from '@plusplusoneplusplus/forge';
+import type { ISDKService } from '@plusplusoneplusplus/forge';
 import type { CLIConfig } from '../../src/config';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -102,6 +103,24 @@ function makeOptions(initialConfig?: CLIConfig): ModelRouteOptions & { writtenCo
         getConfigFilePath: () => '/fake/config.yaml',
     };
     return result;
+}
+
+function makeAiService(sendMessage: ISDKService['sendMessage']): ISDKService {
+    return {
+        isAvailable: async () => ({ available: true }),
+        clearAvailabilityCache: () => undefined,
+        listModels: async () => [],
+        sendMessage,
+        transform: async () => '',
+        forkSession: async () => 'forked',
+        abortSession: async () => false,
+        softAbortSession: async () => false,
+        steerSession: async () => false,
+        hasActiveSession: () => false,
+        getActiveSessionCount: () => 0,
+        cleanup: async () => undefined,
+        dispose: () => undefined,
+    };
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -248,6 +267,69 @@ describe('GET /api/models/enabled', () => {
 
         const res = await fetch(`${baseUrl}/api/models/enabled`);
         expect(res.status).toBe(404);
+    });
+});
+
+describe('POST /api/models/query', () => {
+    afterEach(async () => {
+        await stopServer();
+    });
+
+    it('queries the active AI service with prompt and model', async () => {
+        let received: unknown;
+        const opts = makeOptions(undefined);
+        opts.aiService = makeAiService(async (options) => {
+            received = options;
+            return { success: true, response: 'pong', sessionId: 'sess-1' };
+        });
+        const store: ModelStore = { getAll: () => THREE_MODELS };
+        server = makeServer(store, opts);
+        await startServer();
+
+        const res = await fetch(`${baseUrl}/api/models/query`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: 'ping', model: 'model-a', timeoutMs: 5000 }),
+        });
+        const body = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(body).toMatchObject({ success: true, response: 'pong', model: 'model-a', sessionId: 'sess-1' });
+        expect(body.durationMs).toEqual(expect.any(Number));
+        expect(received).toMatchObject({ prompt: 'ping', model: 'model-a', timeoutMs: 5000, mode: 'interactive' });
+    });
+
+    it('returns 400 when prompt is missing', async () => {
+        const opts = makeOptions(undefined);
+        opts.aiService = makeAiService(async () => ({ success: true, response: 'unused' }));
+        server = makeServer({ getAll: () => THREE_MODELS }, opts);
+        await startServer();
+
+        const res = await fetch(`${baseUrl}/api/models/query`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: 'model-a' }),
+        });
+
+        expect(res.status).toBe(400);
+        expect(await res.json()).toEqual({ error: 'prompt is required' });
+    });
+
+    it('returns 502 when the AI service fails', async () => {
+        const opts = makeOptions(undefined);
+        opts.aiService = makeAiService(async () => ({ success: false, error: 'model rejected request', sessionId: 'sess-2' }));
+        server = makeServer({ getAll: () => THREE_MODELS }, opts);
+        await startServer();
+
+        const res = await fetch(`${baseUrl}/api/models/query`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: 'ping', model: 'model-a' }),
+        });
+        const body = await res.json();
+
+        expect(res.status).toBe(502);
+        expect(body).toMatchObject({ success: false, error: 'model rejected request', model: 'model-a', sessionId: 'sess-2' });
     });
 });
 
