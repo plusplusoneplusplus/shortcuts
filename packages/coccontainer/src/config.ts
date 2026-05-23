@@ -125,7 +125,9 @@ const DEFAULTS: ResolvedContainerConfig = {
         },
         teams: {
             enabled: true,
-            mode: 'graph',
+            // Graph mode disabled: az CLI tokens lack ChatMessage.Send/Chat.ReadWrite scopes.
+            // MCP mode uses SendMessageToSelf which works with first-party app tokens.
+            mode: 'mcp',
             target: 'chat',
             teamName: 'Coc',
             channelName: 'Coc-General',

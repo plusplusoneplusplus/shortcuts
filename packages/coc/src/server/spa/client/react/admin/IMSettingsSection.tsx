@@ -597,31 +597,10 @@ function TeamsSettingsCard() {
                 </p>
             ) : (
                 <div className="space-y-3">
-                    {/* Mode selector */}
-                    <div className="flex items-center justify-between pb-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                        <label className="text-xs text-[#616161] dark:text-[#999]">Transport mode</label>
-                        <select
-                            value={status.mode ?? 'graph'}
-                            onChange={async (e) => {
-                                const mode = e.target.value as 'graph' | 'mcp';
-                                try {
-                                    await postTeamsConfig({ mode });
-                                    setTimeout(() => void loadStatus(), 1000);
-                                } catch (err: any) {
-                                    setError(err.message);
-                                }
-                            }}
-                            className="text-xs px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-blue-500"
-                        >
-                            <option value="graph">Graph API (send only)</option>
-                            <option value="mcp">MCP Server</option>
-                        </select>
-                    </div>
-                    {(status.mode ?? 'graph') === 'graph' && (
-                        <div className="text-xs text-amber-600 dark:text-amber-400">
-                            ⚠️ Graph API mode is <strong>send-only</strong> (channel) — reading user messages is not supported. Use <strong>MCP Server</strong> mode for bidirectional messaging.
-                        </div>
-                    )}
+                    {/* Mode selector — hidden for now: Graph API mode is effectively broken
+                       because az CLI tokens lack ChatMessage.Send and Chat.ReadWrite scopes.
+                       Only MCP mode works reliably. Keeping Graph code in codebase for future
+                       use if proper app registration with Chat permissions is set up. */}
 
                     {/* Container-node requirement notice */}
                     {status.status !== 'connected' && (
@@ -661,11 +640,6 @@ function TeamsSettingsCard() {
                     {status.error && (
                         <div className="text-xs text-red-600 dark:text-red-400">
                             Error: {status.error}
-                            {status.error.includes('Chat.Read') && (
-                                <p className="mt-1 text-[#616161] dark:text-[#999]">
-                                    💡 Graph API mode requires Chat.ReadWrite and ChatMessage.Send permissions. Use <strong>MCP Server</strong> mode instead, or grant these permissions to your Azure AD app.
-                                </p>
-                            )}
                         </div>
                     )}
 
