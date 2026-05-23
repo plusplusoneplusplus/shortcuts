@@ -46,6 +46,7 @@ export function buildRuntimeDashboardConfig(
             excalidrawEnabled: config.excalidraw?.enabled ?? false,
             mcpOauthEnabled: config.mcpOauth?.enabled ?? false,
             focusedDiffEnabled: config.features?.focusedDiff ?? false,
+            containerDefaultAgentEnabled: config.containerDefaultAgent?.enabled ?? false,
         },
         hostname: config.serve?.serverName || shortenHostname(hostname),
         bindAddress,

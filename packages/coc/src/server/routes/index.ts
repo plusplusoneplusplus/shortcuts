@@ -91,6 +91,9 @@ import { registerRuntimeConfigRoutes } from '../config/runtime-config-handler';
 import { registerSyncRoutes } from '../sync/sync-handler';
 import type { SyncEngine } from '../sync/sync-engine';
 import { registerTeamsMessagingRoutes } from '../messaging/teams-messaging-handler';
+import { registerContainerSessionRoutes } from '../container-sessions/container-session-handler';
+import { ContainerSessionStore } from '../container-sessions/container-session-store';
+import type { ContainerAgentInfo } from '../container-sessions/container-session-types';
 
 /** Collect git commits made between headBefore and current HEAD. Non-fatal — returns [] on error. */
 function collectWorkItemCommits(
@@ -310,6 +313,48 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerHeapRoutes(routes);
     registerMyWorkRoutes(routes, store, dataDir);
     registerMyLifeRoutes(routes, store, dataDir);
+
+    // Container default agent session routes (feature-flagged)
+    if (opts.resolvedConfig?.containerDefaultAgent?.enabled) {
+        const Database = require('better-sqlite3');
+        fs.mkdirSync(path.join(dataDir, 'container-sessions'), { recursive: true });
+        const containerDb = new Database(path.join(dataDir, 'container-sessions', 'sessions.db'));
+        const containerSessionStore = new ContainerSessionStore(containerDb);
+        registerContainerSessionRoutes(routes, {
+            store: containerSessionStore,
+            classifierDeps: {
+                invokeClassifier: async (systemPrompt: string, userPrompt: string) => {
+                    const combinedPrompt = `${systemPrompt}\n\n${userPrompt}`;
+                    const result = await aiInvoker(combinedPrompt);
+                    return result.response ?? '';
+                },
+            },
+            getAgents: async (): Promise<ContainerAgentInfo[]> => {
+                const workspaces = await store.getWorkspaces();
+                // Group workspaces by name or treat each as its own "agent"
+                return workspaces.map(w => ({
+                    id: w.id,
+                    name: w.name ?? w.id,
+                    workspaces: [{
+                        id: w.id,
+                        name: w.name ?? w.id,
+                        rootPath: w.rootPath ?? '',
+                        description: w.rootPath ?? '',
+                    }],
+                }));
+            },
+            forwardMessage: async (_agentId, workspaceId, message, _existingProcessId) => {
+                const taskId = await bridge.enqueue({
+                    type: 'chat',
+                    repoId: workspaceId,
+                    payload: { message, workspaceId },
+                    config: {},
+                    priority: 'normal' as const,
+                });
+                return taskId;
+            },
+        });
+    }
 
     // Teams messaging routes (container-mode)
     registerTeamsMessagingRoutes(routes, { dataDir });

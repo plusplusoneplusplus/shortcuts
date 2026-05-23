@@ -936,6 +936,9 @@ timeout: 300
                       "enabled": false,
                     },
                   },
+                  "containerDefaultAgent": {
+                    "enabled": false,
+                  },
                   "excalidraw": {
                     "enabled": false,
                   },

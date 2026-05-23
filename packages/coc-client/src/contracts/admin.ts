@@ -145,6 +145,7 @@ export interface RuntimeDashboardConfig {
     excalidrawEnabled: boolean;
     mcpOauthEnabled: boolean;
     focusedDiffEnabled: boolean;
+    containerDefaultAgentEnabled: boolean;
   };
   hostname?: string;
   bindAddress?: string;

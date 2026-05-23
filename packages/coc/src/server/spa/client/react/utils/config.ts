@@ -28,6 +28,7 @@ interface DashboardConfig {
     excalidrawEnabled?: boolean;
     mcpOauthEnabled?: boolean;
     focusedDiffEnabled?: boolean;
+    containerDefaultAgentEnabled?: boolean;
     bindAddress?: string;
 }
 
@@ -86,6 +87,7 @@ async function _doLoadRuntimeConfig(): Promise<void> {
             excalidrawEnabled: data.features.excalidrawEnabled,
             mcpOauthEnabled: data.features.mcpOauthEnabled,
             focusedDiffEnabled: data.features.focusedDiffEnabled,
+            containerDefaultAgentEnabled: data.features.containerDefaultAgentEnabled,
             hostname: data.hostname ?? bootstrap.hostname,
             bindAddress: data.bindAddress ?? bootstrap.bindAddress,
         };
@@ -207,6 +209,10 @@ export function isMcpOauthEnabled(): boolean {
 
 export function isFocusedDiffEnabled(): boolean {
     return getConfig().focusedDiffEnabled === true;
+}
+
+export function isContainerDefaultAgentEnabled(): boolean {
+    return getConfig().containerDefaultAgentEnabled === true;
 }
 
 /** Returns the raw bind address the server is listening on (e.g., '0.0.0.0'), if known. */
