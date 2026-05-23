@@ -22,6 +22,7 @@ function makeCodexSdkMock(overrides?: {
     runResult?: { text: string };
     runError?: Error;
     abortOnRun?: boolean;
+    streamedEvents?: Array<Record<string, unknown>>;
 }) {
     const threads = new Map<string, { id: string; runCalls: string[] }>();
     let threadCounter = 0;
@@ -43,6 +44,11 @@ function makeCodexSdkMock(overrides?: {
                 const text = overrides?.runResult?.text ?? `response to: ${prompt}`;
                 async function* events() {
                     yield { type: 'thread.started' as const, thread_id: id };
+                    if (overrides?.streamedEvents) {
+                        for (const event of overrides.streamedEvents) {
+                            yield event;
+                        }
+                    }
                     yield {
                         type: 'item.completed' as const,
                         item: { id: 'item-1', type: 'agent_message', text },
@@ -326,6 +332,115 @@ describe('CodexSDKService — SDK mocked', () => {
         });
         // Last chunk should be empty string (end-of-stream sentinel)
         expect(chunks[chunks.length - 1]).toBe('');
+    });
+
+    it('sendMessage maps Codex command_execution items to tool events and captured toolCalls', async () => {
+        const codexMock = makeCodexSdkMock({
+            streamedEvents: [
+                {
+                    type: 'item.started',
+                    item: {
+                        id: 'cmd-1',
+                        type: 'command_execution',
+                        command: 'git status --short',
+                        aggregated_output: '',
+                        status: 'in_progress',
+                    },
+                },
+                {
+                    type: 'item.completed',
+                    item: {
+                        id: 'cmd-1',
+                        type: 'command_execution',
+                        command: 'git status --short',
+                        aggregated_output: ' M file.ts\n',
+                        status: 'completed',
+                        exit_code: 0,
+                    },
+                },
+            ],
+        });
+        // @ts-expect-error — private
+        svc['sdk'] = codexMock;
+        const toolEvents: any[] = [];
+
+        const result = await svc.sendMessage({
+            prompt: 'inspect',
+            onToolEvent: event => toolEvents.push(event),
+        }) as any;
+
+        expect(toolEvents).toEqual([
+            {
+                type: 'tool-start',
+                toolCallId: 'cmd-1',
+                toolName: 'shell',
+                parameters: { command: 'git status --short' },
+            },
+            {
+                type: 'tool-complete',
+                toolCallId: 'cmd-1',
+                toolName: 'shell',
+                result: ' M file.ts\n',
+            },
+        ]);
+        expect(result.toolCalls).toMatchObject([
+            {
+                id: 'cmd-1',
+                name: 'shell',
+                status: 'completed',
+                args: { command: 'git status --short' },
+                result: ' M file.ts\n',
+            },
+        ]);
+    });
+
+    it('sendMessage maps Codex MCP tool failures to failed tool events', async () => {
+        const codexMock = makeCodexSdkMock({
+            streamedEvents: [
+                {
+                    type: 'item.completed',
+                    item: {
+                        id: 'mcp-1',
+                        type: 'mcp_tool_call',
+                        server: 'github',
+                        tool: 'fetch_pr',
+                        arguments: { pr_number: 123 },
+                        error: { message: 'not found' },
+                        status: 'failed',
+                    },
+                },
+            ],
+        });
+        // @ts-expect-error — private
+        svc['sdk'] = codexMock;
+        const toolEvents: any[] = [];
+
+        const result = await svc.sendMessage({
+            prompt: 'inspect',
+            onToolEvent: event => toolEvents.push(event),
+        }) as any;
+
+        expect(toolEvents).toEqual([
+            {
+                type: 'tool-start',
+                toolCallId: 'mcp-1',
+                toolName: 'fetch_pr',
+                parameters: { server: 'github', arguments: { pr_number: 123 } },
+            },
+            {
+                type: 'tool-failed',
+                toolCallId: 'mcp-1',
+                toolName: 'fetch_pr',
+                error: 'not found',
+            },
+        ]);
+        expect(result.toolCalls[0]).toMatchObject({
+            id: 'mcp-1',
+            name: 'fetch_pr',
+            status: 'failed',
+            args: { server: 'github', arguments: { pr_number: 123 } },
+            error: 'not found',
+        });
     });
 
     it('sendMessage returns early when AbortSignal is already aborted', async () => {

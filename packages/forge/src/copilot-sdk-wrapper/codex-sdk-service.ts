@@ -18,7 +18,9 @@
  */
 
 import type { SendMessageOptions } from './types';
+import type { ToolEvent } from './types';
 import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult } from './sdk-service-interface';
+import type { ToolCall } from '../ai/process-types';
 import { sdkServiceRegistry, CODEX_PROVIDER } from './sdk-service-registry';
 import { dynamicImportModule } from './sdk-esm-loader';
 import { execFileAsync } from '../utils/exec-utils';
@@ -89,8 +91,20 @@ interface CodexErrorEvent {
 interface CodexItemEvent {
     type: 'item.started' | 'item.updated' | 'item.completed';
     item?: {
+        id?: string;
         type?: string;
         text?: string;
+        command?: string;
+        aggregated_output?: string;
+        exit_code?: number;
+        status?: string;
+        changes?: Array<{ path?: string; kind?: string }>;
+        server?: string;
+        tool?: string;
+        arguments?: unknown;
+        result?: unknown;
+        error?: { message?: string };
+        query?: string;
     };
 }
 
@@ -310,6 +324,8 @@ export class CodexSDKService implements ISDKService {
 
         let threadId: string | undefined;
         let sessionCreatedNotified = false;
+        const toolCalls = new Map<string, ToolCall>();
+        const startedToolCalls = new Set<string>();
 
         try {
             let thread: CodexThread;
@@ -346,9 +362,18 @@ export class CodexSDKService implements ISDKService {
                 if (event.type === 'error') {
                     throw new Error(event.message ?? 'Codex stream error');
                 }
-                if (event.type === 'item.completed' && event.item?.type === 'agent_message' && event.item.text) {
-                    chunks.push(event.item.text);
-                    options.onStreamingChunk?.(event.item.text);
+                if (event.type === 'item.started') {
+                    this.handleCodexToolItem(event.item, 'started', options, toolCalls, startedToolCalls);
+                    continue;
+                }
+                if (event.type === 'item.completed') {
+                    if (event.item?.type === 'agent_message' && event.item.text) {
+                        chunks.push(event.item.text);
+                        options.onStreamingChunk?.(event.item.text);
+                        continue;
+                    }
+                    this.handleCodexToolItem(event.item, 'completed', options, toolCalls, startedToolCalls);
+                    continue;
                 }
             }
 
@@ -357,13 +382,176 @@ export class CodexSDKService implements ISDKService {
             // Empty chunk signals end-of-stream to the executor's streaming consumer.
             options.onStreamingChunk?.('');
 
-            return { success: true, response: chunks.join(''), sessionId: threadId };
+            return {
+                success: true,
+                response: chunks.join(''),
+                sessionId: threadId,
+                ...(toolCalls.size > 0 ? { toolCalls: Array.from(toolCalls.values()) } : {}),
+            } as IInvocationResult;
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             return { success: false, error: message, sessionId: options.sessionId ?? threadId };
         } finally {
             signalCleanup?.();
             if (threadId) this.sessions.delete(threadId);
+        }
+    }
+
+    private handleCodexToolItem(
+        item: CodexItemEvent['item'] | undefined,
+        phase: 'started' | 'completed',
+        options: SendMessageOptions,
+        toolCalls: Map<string, ToolCall>,
+        startedToolCalls: Set<string>,
+    ): void {
+        const normalized = this.normalizeCodexToolItem(item);
+        if (!normalized) return;
+
+        if (phase === 'started') {
+            if (startedToolCalls.has(normalized.id)) return;
+            startedToolCalls.add(normalized.id);
+            const now = new Date();
+            toolCalls.set(normalized.id, {
+                id: normalized.id,
+                name: normalized.toolName,
+                status: 'running',
+                startTime: now,
+                args: normalized.parameters,
+            });
+            this.emitToolEvent(options, {
+                type: 'tool-start',
+                toolCallId: normalized.id,
+                toolName: normalized.toolName,
+                parameters: normalized.parameters,
+            });
+            return;
+        }
+
+        if (!startedToolCalls.has(normalized.id)) {
+            this.handleCodexToolItem(item, 'started', options, toolCalls, startedToolCalls);
+        }
+
+        const existing = toolCalls.get(normalized.id);
+        const endTime = new Date();
+        if (existing) {
+            existing.status = normalized.error ? 'failed' : 'completed';
+            existing.endTime = endTime;
+            existing.args = normalized.parameters;
+            if (normalized.error) {
+                existing.error = normalized.error;
+            } else {
+                existing.result = normalized.result;
+            }
+        }
+
+        this.emitToolEvent(options, normalized.error
+            ? {
+                type: 'tool-failed',
+                toolCallId: normalized.id,
+                toolName: normalized.toolName,
+                error: normalized.error,
+            }
+            : {
+                type: 'tool-complete',
+                toolCallId: normalized.id,
+                toolName: normalized.toolName,
+                result: normalized.result,
+            });
+    }
+
+    private emitToolEvent(options: SendMessageOptions, event: ToolEvent): void {
+        try {
+            options.onToolEvent?.(event);
+        } catch {
+            // Tool events are observational; never fail the Codex turn because
+            // a caller-side renderer/cache handler threw.
+        }
+    }
+
+    private normalizeCodexToolItem(item: CodexItemEvent['item'] | undefined): {
+        id: string;
+        toolName: string;
+        parameters: Record<string, unknown>;
+        result?: string;
+        error?: string;
+    } | undefined {
+        if (!item?.type || !item.id) return undefined;
+        switch (item.type) {
+            case 'command_execution': {
+                const command = typeof item.command === 'string' ? item.command : '';
+                const output = typeof item.aggregated_output === 'string' ? item.aggregated_output : '';
+                const failed = item.status === 'failed';
+                return {
+                    id: item.id,
+                    toolName: 'shell',
+                    parameters: { command },
+                    ...(failed ? { error: output || `Command failed${typeof item.exit_code === 'number' ? ` with exit code ${item.exit_code}` : ''}` } : { result: output }),
+                };
+            }
+            case 'file_change': {
+                const changes = Array.isArray(item.changes) ? item.changes : [];
+                const failed = item.status === 'failed';
+                return {
+                    id: item.id,
+                    toolName: 'apply_patch',
+                    parameters: { changes },
+                    ...(failed ? { error: 'File change failed' } : { result: this.summarizeFileChanges(changes) }),
+                };
+            }
+            case 'mcp_tool_call': {
+                const tool = typeof item.tool === 'string' && item.tool ? item.tool : 'mcp_tool';
+                const server = typeof item.server === 'string' ? item.server : undefined;
+                const error = item.error?.message;
+                return {
+                    id: item.id,
+                    toolName: tool,
+                    parameters: {
+                        ...(server ? { server } : {}),
+                        arguments: item.arguments ?? {},
+                    },
+                    ...(error ? { error } : { result: this.stringifyCodexResult(item.result) }),
+                };
+            }
+            case 'web_search': {
+                const query = typeof item.query === 'string' ? item.query : '';
+                return {
+                    id: item.id,
+                    toolName: 'web_search',
+                    parameters: { query },
+                    result: query ? `Searched: ${query}` : 'Search completed',
+                };
+            }
+            default:
+                return undefined;
+        }
+    }
+
+    private summarizeFileChanges(changes: Array<{ path?: string; kind?: string }>): string {
+        if (changes.length === 0) return 'File changes applied';
+        const byKind = new Map<string, string[]>();
+        for (const change of changes) {
+            const kind = typeof change.kind === 'string' ? change.kind : 'update';
+            const filePath = typeof change.path === 'string' ? change.path : '(unknown)';
+            byKind.set(kind, [...(byKind.get(kind) ?? []), filePath]);
+        }
+        return Array.from(byKind.entries())
+            .map(([kind, paths]) => `${kind}: ${paths.join(', ')}`)
+            .join('\n');
+    }
+
+    private stringifyCodexResult(result: unknown): string | undefined {
+        if (result == null) return undefined;
+        if (typeof result === 'string') return result;
+        if (typeof result === 'object' && Array.isArray((result as { content?: unknown }).content)) {
+            const parts = ((result as { content: Array<{ type?: string; text?: string }> }).content)
+                .map(block => typeof block.text === 'string' ? block.text : undefined)
+                .filter((text): text is string => !!text);
+            if (parts.length > 0) return parts.join('\n');
+        }
+        try {
+            return JSON.stringify(result);
+        } catch {
+            return String(result);
         }
     }
 
