@@ -63,8 +63,9 @@ export class TeamsBridge {
             } catch { /* will be handled by bot start */ }
         }
 
-        // When target is 'chat', don't pass teamId — triggers chat/DM mode in transport
-        const useChat = this.opts.config.target === 'chat';
+        // When target is 'chat' AND mode is 'mcp', don't pass teamId — triggers DM mode in transport.
+        // For graph mode, always use channel mode (az CLI tokens lack ChatMessage.Send for chat API).
+        const useChat = this.opts.config.target === 'chat' && this.opts.config.mode === 'mcp';
         if (useChat) {
             console.log(`[teams-bridge] ╔══════════════════════════════════════════════╗`);
             console.log(`[teams-bridge] ║  DIRECT MESSAGE MODE (SendMessageToSelf)     ║`);
@@ -180,7 +181,7 @@ export class TeamsBridge {
             console.error(`[teams-bridge] Failed to acquire token on reconnect: ${err.message}`);
         }
 
-        const useChat = this.opts.config.target === 'chat';
+        const useChat = this.opts.config.target === 'chat' && this.opts.config.mode === 'mcp';
         this.bot = new TeamsBot({
             mode: this.opts.config.mode,
             teamId: useChat ? undefined : this.opts.config.teamId,
@@ -459,7 +460,13 @@ export class TeamsBridge {
                             console.error('[teams-bridge] Re-resolve did not produce a new channelId');
                         }
                     } else {
-                        console.error('[teams-bridge] Failed to send outbound message:', err);
+                        // Detect Graph API scope permission errors and suggest MCP mode
+                        if (err?.message?.includes('403') && err?.message?.includes('Missing scope permissions')) {
+                            console.error('[teams-bridge] ❌ Graph API 403: Token lacks ChatMessage.Send or Chat.ReadWrite scope.');
+                            console.error('[teams-bridge] 💡 Switch to MCP Server mode in Teams settings — az CLI tokens do not have Teams chat permissions.');
+                        } else {
+                            console.error('[teams-bridge] Failed to send outbound message:', err);
+                        }
                     }
                 }
             }

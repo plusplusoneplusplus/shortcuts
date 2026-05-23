@@ -619,7 +619,7 @@ function TeamsSettingsCard() {
                     </div>
                     {(status.mode ?? 'graph') === 'graph' && (
                         <div className="text-xs text-amber-600 dark:text-amber-400">
-                            ⚠️ Graph API mode is <strong>send-only</strong> — reading user messages from Teams is not supported. Use MCP Server mode for bidirectional messaging.
+                            ⚠️ Graph API mode is <strong>send-only</strong> (channel) — reading user messages is not supported. Use <strong>MCP Server</strong> mode for bidirectional messaging.
                         </div>
                     )}
 
