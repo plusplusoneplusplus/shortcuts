@@ -236,9 +236,11 @@ export function AdminPanel() {
     const [chatSaving, setChatSaving] = useState(false);
     const [appearanceSaving, setAppearanceSaving] = useState(false);
     const [featuresSaving, setFeaturesSaving] = useState(false);
+    const [activeProviderSaving, setActiveProviderSaving] = useState(false);
 
     // Snapshots for per-card dirty tracking (set when config/prefs loads)
-    const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table', activeProvider: 'copilot' as 'copilot' | 'codex' });
+    const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
+    const [activeProviderSnapshot, setActiveProviderSnapshot] = useState<'copilot' | 'codex'>('copilot');
     const [chatSnapshot, setChatSnapshot] = useState({ followUpEnabled: true, followUpCount: '3', askUserEnabled: false, showReportIntent: false, toolCompactness: 3 as 0 | 1 | 2 | 3 });
     const [appearanceSnapshot, setAppearanceSnapshot] = useState({
         theme: 'auto' as string,
@@ -366,7 +368,8 @@ export function AdminPanel() {
             const ap = (resolved.activeProvider === 'codex' ? 'codex' : 'copilot') as 'copilot' | 'codex';
             setActiveProvider(ap);
             setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde, codexEnabled: cxe });
-            setAiExecSnapshot({ model: form.model, parallel: form.parallel, timeout: form.timeout, output: form.output, activeProvider: ap });
+            setAiExecSnapshot({ model: form.model, parallel: form.parallel, timeout: form.timeout, output: form.output });
+            setActiveProviderSnapshot(ap);
             const sgr = resolved.sync?.gitRemote ?? '';
             const sim = String(resolved.sync?.intervalMinutes ?? 5);
             setSyncGitRemote(sgr);
@@ -420,8 +423,9 @@ export function AdminPanel() {
     const aiExecDirty = configForm.model !== aiExecSnapshot.model ||
         configForm.parallel !== aiExecSnapshot.parallel ||
         configForm.timeout !== aiExecSnapshot.timeout ||
-        configForm.output !== aiExecSnapshot.output ||
-        activeProvider !== aiExecSnapshot.activeProvider;
+        configForm.output !== aiExecSnapshot.output;
+
+    const activeProviderDirty = activeProvider !== activeProviderSnapshot;
 
     const chatDirty = chatFollowUpEnabled !== chatSnapshot.followUpEnabled ||
         chatFollowUpCount !== chatSnapshot.followUpCount ||
@@ -480,21 +484,37 @@ export function AdminPanel() {
             const payload: Record<string, unknown> = { parallel, output: configForm.output };
             if (configForm.model?.trim()) payload.model = configForm.model.trim();
             payload.timeout = timeoutValue;
-            payload.activeProvider = activeProvider;
             await getSpaCocClient().admin.updateConfig(payload);
-            addToast('Settings saved — restart required to apply provider change', 'success');
-            setAiExecSnapshot({ ...configForm, activeProvider });
+            addToast('Settings saved', 'success');
+            setAiExecSnapshot({ ...configForm });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setAiExecSaving(false);
         }
-    }, [configForm, activeProvider, addToast]);
+    }, [configForm, addToast]);
 
     const handleCancelAiExec = useCallback(() => {
         setConfigForm({ ...aiExecSnapshot });
-        setActiveProvider(aiExecSnapshot.activeProvider);
     }, [aiExecSnapshot]);
+
+    // ── Active Provider card (Agents tab) ──
+    const handleSaveActiveProvider = useCallback(async () => {
+        setActiveProviderSaving(true);
+        try {
+            await getSpaCocClient().admin.updateConfig({ activeProvider });
+            addToast('Active provider saved — restart required to apply change', 'success');
+            setActiveProviderSnapshot(activeProvider);
+        } catch (err: unknown) {
+            addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
+        } finally {
+            setActiveProviderSaving(false);
+        }
+    }, [activeProvider, addToast]);
+
+    const handleCancelActiveProvider = useCallback(() => {
+        setActiveProvider(activeProviderSnapshot);
+    }, [activeProviderSnapshot]);
 
     // ── Chat Experience card ──
     const handleSaveChat = useCallback(async () => {
@@ -842,7 +862,7 @@ export function AdminPanel() {
     const resolved = config?.resolved ?? {};
 
     const baseTabs: AdminSubTab[] = ['settings', 'providers', 'data', 'server', 'prompts', 'database'];
-    const tabs: AdminSubTab[] = isContainerMode() ? [...baseTabs, 'agents', 'messaging'] : baseTabs;
+    const tabs: AdminSubTab[] = isContainerMode() ? [...baseTabs, 'agents', 'messaging'] : [...baseTabs, 'agents'];
 
     // Servers row is gated by the dashboard runtime config, same source the
     // legacy topbar dropdown consulted. It is independent of the editable
@@ -1110,22 +1130,6 @@ export function AdminPanel() {
                                             {VALID_OUTPUT_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
                                         </select>
                                         <SourceBadge source={sources['output']} />
-                                    </AdminRow>
-                                    <AdminRow
-                                        name={<>Active Provider <span className="ar-badge ar-badge-warning">Restart</span></>}
-                                        hint="AI provider used for all chat and task requests. Switch to 'Codex' only after enabling the Codex feature flag below and completing ChatGPT sign-in. Requires a server restart."
-                                    >
-                                        <select
-                                            id="admin-config-active-provider"
-                                            className="ar-select ar-med"
-                                            value={activeProvider}
-                                            onChange={e => setActiveProvider(e.target.value as 'copilot' | 'codex')}
-                                            data-testid="select-active-provider"
-                                        >
-                                            <option value="copilot">Copilot</option>
-                                            <option value="codex">Codex</option>
-                                        </select>
-                                        <SourceBadge source={sources['activeProvider']} />
                                     </AdminRow>
                                 </SettingsCard>
                                 )}
@@ -1724,10 +1728,40 @@ export function AdminPanel() {
                     </section>
                 )}
 
-                        {activeTab === 'agents' && isContainerMode() && (
-                            <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
-                                <AgentManagementPanel />
-                            </Suspense>
+                        {activeTab === 'agents' && (
+                            <>
+                                <SettingsCard
+                                    title="Active Provider"
+                                    description="AI provider used for all chat and task requests."
+                                    dirty={activeProviderDirty}
+                                    saving={activeProviderSaving}
+                                    onSave={handleSaveActiveProvider}
+                                    onCancel={handleCancelActiveProvider}
+                                    data-testid="settings-active-provider"
+                                >
+                                    <AdminRow
+                                        name={<>Active Provider <span className="ar-badge ar-badge-warning">Restart</span></>}
+                                        hint="Switch to 'Codex' only after enabling the Codex feature flag in Settings → Features and completing ChatGPT sign-in. Requires a server restart."
+                                    >
+                                        <select
+                                            id="admin-config-active-provider"
+                                            className="ar-select ar-med"
+                                            value={activeProvider}
+                                            onChange={e => setActiveProvider(e.target.value as 'copilot' | 'codex')}
+                                            data-testid="select-active-provider"
+                                        >
+                                            <option value="copilot">Copilot</option>
+                                            <option value="codex">Codex</option>
+                                        </select>
+                                        <SourceBadge source={sources['activeProvider']} />
+                                    </AdminRow>
+                                </SettingsCard>
+                                {isContainerMode() && (
+                                    <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
+                                        <AgentManagementPanel />
+                                    </Suspense>
+                                )}
+                            </>
                         )}
 
                         {activeTab === 'messaging' && isContainerMode() && (
