@@ -30,8 +30,11 @@ import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
 import { useChatPromptHistory } from '../../hooks/useChatPromptHistory';
-import { isRalphEnabled, isLoopsEnabled, isCodexEnabled, getActiveProvider } from '../../utils/config';
+import { isRalphEnabled, isLoopsEnabled } from '../../utils/config';
 import { getDraft, setDraft, clearDraft, newChatDraftKey } from './hooks/useDraftStore';
+import { useAgentProviders } from '../../hooks/useAgentProviders';
+import { AgentSelectorChip } from './AgentSelectorChip';
+import type { ChatProvider } from './AgentSelectorChip';
 
 export interface NewChatAreaProps {
     workspaceId?: string;
@@ -45,6 +48,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [skills, setSkills] = useState<SkillItem[]>([]);
+    const [selectedProvider, setSelectedProvider] = useState<ChatProvider>('copilot');
     const richTextRef = useRef<RichTextInputHandle>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -54,6 +58,9 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const { dispatch: queueDispatch } = useQueue();
     const { state: appState } = useApp();
     const { updateOnboarding } = useOnboardingPreferences();
+
+    // Agent providers for the agent selector chip
+    const { providers: agentProviders, loading: providersLoading } = useAgentProviders();
 
     // Model command support
     const { models: availableModels } = useModels();
@@ -110,6 +117,52 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             })
             .catch(() => { /* ignore */ });
     }, [workspaceId]);
+
+    // Load last-used provider preference for this workspace on mount / workspace switch.
+    // Falls back to Copilot when unset, disabled, or unavailable.
+    useEffect(() => {
+        if (!workspaceId) {
+            setSelectedProvider('copilot');
+            return;
+        }
+        getSpaCocClient().preferences.getRepo(workspaceId)
+            .then((prefs: any) => {
+                const last = prefs?.lastChatProvider;
+                if (last === 'codex' || last === 'copilot') {
+                    // Validate against live provider state: only accept codex if enabled+available
+                    if (last === 'codex') {
+                        const codexStatus = agentProviders.find(p => p.id === 'codex');
+                        if (codexStatus?.enabled && codexStatus?.available) {
+                            setSelectedProvider('codex');
+                            return;
+                        }
+                    }
+                    if (last === 'copilot') {
+                        setSelectedProvider('copilot');
+                        return;
+                    }
+                }
+                setSelectedProvider('copilot');
+            })
+            .catch(() => { setSelectedProvider('copilot'); });
+    }, [workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // When agentProviders load and codex becomes unavailable, fall back to copilot
+    useEffect(() => {
+        if (selectedProvider !== 'codex') return;
+        const codexStatus = agentProviders.find(p => p.id === 'codex');
+        if (codexStatus && (!codexStatus.enabled || !codexStatus.available)) {
+            setSelectedProvider('copilot');
+        }
+    }, [agentProviders, selectedProvider]);
+
+    function handleProviderChange(provider: ChatProvider) {
+        setSelectedProvider(provider);
+        if (workspaceId) {
+            getSpaCocClient().preferences.patchRepo(workspaceId, { lastChatProvider: provider })
+                .catch(() => { /* non-fatal */ });
+        }
+    }
 
     // Inline ghost-text autocomplete (matches FollowUpInputArea + EnqueueDialog).
     const promptAutocompleteEnabled = usePromptAutocompleteEnabled();
@@ -188,7 +241,8 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                     ...(contextOverride ? { context: contextOverride } : {}),
                     ...(attachmentPayload.length > 0 ? { attachments: attachmentPayload } : {}),
                     ...(modelCommand.modelOverride ? { model: modelCommand.modelOverride } : {}),
-                },
+                    provider: selectedProvider,
+                } as any,
             });
 
             const rawId = result.task?.id ?? (result as any).id;
@@ -479,19 +533,14 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                             </svg>
                         </button>
                         <div className="flex-1 min-w-0" />
-                        {/* Provider badge — visible only when Codex provider is active */}
-                        {isCodexEnabled() && getActiveProvider() === 'codex' && (
-                            <span
-                                title="Active AI provider: Codex"
-                                data-testid="new-chat-provider-badge"
-                                className="inline-flex items-center gap-1 h-[22px] px-2 rounded-sm border border-[#0078d4]/30 dark:border-[#3794ff]/30 bg-[#0078d4]/8 dark:bg-[#3794ff]/8 text-[11px] text-[#0078d4] dark:text-[#3794ff] flex-shrink-0 mr-1"
-                            >
-                                <svg width="9" height="9" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="flex-shrink-0">
-                                    <polygon points="8,1 14,4.5 14,11.5 8,15 2,11.5 2,4.5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-                                </svg>
-                                <span className="font-mono text-[10px] font-medium uppercase tracking-wider">Codex</span>
-                            </span>
-                        )}
+                        {/* Agent provider selector */}
+                        <AgentSelectorChip
+                            providers={agentProviders}
+                            loading={providersLoading}
+                            selected={selectedProvider}
+                            onChange={handleProviderChange}
+                            disabled={sending}
+                        />
                         {sending ? (
                             <button
                                 type="button"

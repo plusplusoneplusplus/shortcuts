@@ -36,15 +36,21 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => 'http://localhost:4000/api',
     isRalphEnabled: () => false,
     isLoopsEnabled: () => false,
-    isCodexEnabled: () => false,
-    getActiveProvider: () => 'copilot',
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         queue: { enqueue: mockEnqueueTask },
-        preferences: { patchGlobal: vi.fn().mockResolvedValue({}) },
+        preferences: {
+            patchGlobal: vi.fn().mockResolvedValue({}),
+            getRepo: vi.fn().mockResolvedValue({}),
+            patchRepo: vi.fn().mockResolvedValue({}),
+        },
         skills: { listAllWorkspace: vi.fn().mockResolvedValue({ merged: [] }) },
+        agentProviders: { list: vi.fn().mockResolvedValue({ providers: [
+            { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+            { id: 'codex', label: 'Codex', enabled: false, available: false },
+        ] }) },
     }),
     getSpaCocClientErrorMessage: (err: any, fallback: string) =>
         (err instanceof Error ? err.message : undefined) || fallback,
@@ -250,5 +256,28 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
             expect(screen.getByTestId('new-chat-error')).toBeTruthy();
         });
         expect(mockQueueDispatch).not.toHaveBeenCalled();
+    });
+
+    it('includes provider=copilot in enqueue payload by default', async () => {
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'queue_123' } });
+
+        renderNewChatArea();
+        typeInInput('Hello');
+        await clickSend();
+
+        await waitFor(() => {
+            expect(mockEnqueueTask).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    payload: expect.objectContaining({ provider: 'copilot' }),
+                })
+            );
+        });
+    });
+
+    it('renders agent selector chip in the toolbar', async () => {
+        renderNewChatArea();
+        await waitFor(() => {
+            expect(screen.getByTestId('agent-selector-chip-btn')).toBeTruthy();
+        });
     });
 });
