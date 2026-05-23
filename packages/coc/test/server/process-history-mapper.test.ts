@@ -133,6 +133,23 @@ describe('processToHistorySummary', () => {
         expect(summary.id).toBe('proc-no-prefix');
         expect(summary.processId).toBe('proc-no-prefix');
     });
+
+    it('defaults provider to "copilot" when metadata.provider is absent', () => {
+        const summary = processToHistorySummary(baseProcess);
+        expect(summary.provider).toBe('copilot');
+    });
+
+    it('returns "copilot" when metadata.provider is "copilot"', () => {
+        const proc = { ...baseProcess, metadata: { ...baseProcess.metadata, provider: 'copilot' } };
+        const summary = processToHistorySummary(proc as AIProcess);
+        expect(summary.provider).toBe('copilot');
+    });
+
+    it('returns "codex" when metadata.provider is "codex"', () => {
+        const proc = { ...baseProcess, metadata: { ...baseProcess.metadata, provider: 'codex' } };
+        const summary = processToHistorySummary(proc as AIProcess);
+        expect(summary.provider).toBe('codex');
+    });
 });
 
 // ============================================================================

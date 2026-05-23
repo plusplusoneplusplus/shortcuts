@@ -61,6 +61,41 @@ import type { BoundedMemoryAddon } from './bounded-memory-addon';
 import { resolveAutoFolderContext } from './auto-folder-utils';
 import { systemMessageBuilder } from './system-message-builder';
 import { buildChatToolBundle } from './chat-tool-builder';
+import { getPromptOverride } from '../admin/ralph-prompt-overrides';
+
+// ============================================================================
+// Ralph grilling-phase system message suffix
+// ============================================================================
+
+/** Default system-prompt suffix appended when `payload.context.ralph.phase === 'grilling'`. */
+export const RALPH_GRILL_SUFFIX = [
+    '## Ralph Grilling Phase — Clarification Protocol',
+    '',
+    'You are in the Ralph grilling phase. Your job right now is to interactively interview the user to nail down a precise goal spec before any coding begins.',
+    '',
+    'Rules for this phase (these OVERRIDE any earlier guidance about ask_user):',
+    '- Use the `ask_user` tool for EVERY clarification, confirmation, or choice question. Do NOT write clarification questions as plain assistant text.',
+    '- Batch related questions into a SINGLE `ask_user` call by passing multiple entries in `questions[]`. Do not call the tool repeatedly for one round of clarification.',
+    '- Yes/no clarifications ARE in scope here — ignore the earlier "Do NOT use ask_user for simple yes/no" guidance during grilling. In this phase, simple yes/no clarifications MUST also go through `ask_user`.',
+    '- Keep questions concrete and answerable. Prefer choice questions with explicit options when there are a few obvious paths.',
+    '- Only after the user explicitly signals they are done (e.g. "enough", "go", "that\'s it") OR you have gathered enough answers to write a precise spec, emit the final goal-spec block as plain assistant text using the template below. Do not emit the goal spec while still asking questions.',
+    '',
+    'Final goal-spec template (emit ONLY at the end, as plain assistant text — not via ask_user):',
+    '',
+    '## Goal',
+    '<one-sentence goal>',
+    '',
+    '## Acceptance Criteria',
+    '<bullet list>',
+    '',
+    '## Constraints / Tech Context',
+    '<bullet list>',
+    '',
+    '## Out of Scope',
+    '<bullet list>',
+    '',
+    'This spec will be used to drive an automated coding loop. Be precise and concrete.',
+].join('\n');
 
 // ============================================================================
 // Types
@@ -106,6 +141,8 @@ export interface ChatModeExecutorOptions {
     getLoopInfra?: () => LoopInfraDeps | undefined;
     /** Late-bound MCP OAuth manager (getter to allow optional/feature-flagged wiring). */
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
+    /** Active AI provider. Used to detect provider mismatches on follow-up resume. */
+    provider?: 'copilot' | 'codex';
 }
 
 /** Return type for the AI call result. */
@@ -146,6 +183,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly resolveWorkspaceIdForPathFn: (rootPath: string) => Promise<string>;
     protected readonly getLoopInfra?: () => LoopInfraDeps | undefined;
     protected readonly getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
+    /** Active AI provider — used to guard against provider mismatches on follow-up resume. */
+    protected readonly provider: 'copilot' | 'codex';
 
     constructor(store: ProcessStore, options: ChatModeExecutorOptions, dataDir?: string) {
         super(store, dataDir);
@@ -160,6 +199,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.resolveWorkspaceIdForPathFn = options.resolveWorkspaceIdForPath;
         this.getLoopInfra = options.getLoopInfra;
         this.getMcpOauthManager = options.getMcpOauthManager;
+        this.provider = options.provider ?? 'copilot';
     }
 
     /**
@@ -331,34 +371,9 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
 
         // When this is a Ralph grilling session, append the goal-spec instruction.
         if (payload.context?.ralph?.phase === 'grilling' && systemMessage) {
-            const ralphGrillSuffix = [
-                '## Ralph Grilling Phase — Clarification Protocol',
-                '',
-                'You are in the Ralph grilling phase. Your job right now is to interactively interview the user to nail down a precise goal spec before any coding begins.',
-                '',
-                'Rules for this phase (these OVERRIDE any earlier guidance about ask_user):',
-                '- Use the `ask_user` tool for EVERY clarification, confirmation, or choice question. Do NOT write clarification questions as plain assistant text.',
-                '- Batch related questions into a SINGLE `ask_user` call by passing multiple entries in `questions[]`. Do not call the tool repeatedly for one round of clarification.',
-                '- Yes/no clarifications ARE in scope here — ignore the earlier "Do NOT use ask_user for simple yes/no" guidance during grilling. In this phase, simple yes/no clarifications MUST also go through `ask_user`.',
-                '- Keep questions concrete and answerable. Prefer choice questions with explicit options when there are a few obvious paths.',
-                '- Only after the user explicitly signals they are done (e.g. "enough", "go", "that\'s it") OR you have gathered enough answers to write a precise spec, emit the final goal-spec block as plain assistant text using the template below. Do not emit the goal spec while still asking questions.',
-                '',
-                'Final goal-spec template (emit ONLY at the end, as plain assistant text — not via ask_user):',
-                '',
-                '## Goal',
-                '<one-sentence goal>',
-                '',
-                '## Acceptance Criteria',
-                '<bullet list>',
-                '',
-                '## Constraints / Tech Context',
-                '<bullet list>',
-                '',
-                '## Out of Scope',
-                '<bullet list>',
-                '',
-                'This spec will be used to drive an automated coding loop. Be precise and concrete.',
-            ].join('\n');
+            const ralphGrillSuffix = (this.dataDir
+                ? (getPromptOverride('ralph-grill-suffix', this.dataDir) ?? RALPH_GRILL_SUFFIX)
+                : RALPH_GRILL_SUFFIX);
             systemMessage.content = systemMessage.content
                 ? systemMessage.content + '\n\n' + ralphGrillSuffix
                 : ralphGrillSuffix;

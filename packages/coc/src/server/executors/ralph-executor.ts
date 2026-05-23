@@ -34,12 +34,13 @@ import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-exe
 import { ChatBaseExecutor } from './chat-base-executor';
 import { buildChatToolBundle } from './chat-tool-builder';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
+import { getPromptOverride } from '../admin/ralph-prompt-overrides';
 
 // ============================================================================
 // System prompt template
 // ============================================================================
 
-const RALPH_BASE_INSTRUCTIONS = `\
+export const RALPH_BASE_INSTRUCTIONS = `\
 You are a focused AI coding agent running in Ralph mode.
 
 Your task each iteration:
@@ -82,8 +83,8 @@ export interface BuildRalphSystemMessageInput {
     maxIterations?: number;
 }
 
-function buildRalphSystemMessage(ralph: BuildRalphSystemMessageInput): string {
-    const parts: string[] = [RALPH_BASE_INSTRUCTIONS];
+function buildRalphSystemMessage(ralph: BuildRalphSystemMessageInput, baseInstructions?: string): string {
+    const parts: string[] = [baseInstructions ?? RALPH_BASE_INSTRUCTIONS];
 
     if (ralph.originalGoal) {
         parts.push(`## Goal Spec\n${ralph.originalGoal}`);
@@ -128,12 +129,16 @@ export class RalphExecutor extends ChatBaseExecutor {
 
         const progressPath = this.resolveProgressPath(payload.workspaceId, ralphCtx?.sessionId);
 
+        const resolvedBaseInstructions = this.dataDir
+            ? (getPromptOverride('ralph-execution-system', this.dataDir) ?? RALPH_BASE_INSTRUCTIONS)
+            : RALPH_BASE_INSTRUCTIONS;
+
         const ralphSystemPrompt = buildRalphSystemMessage({
             originalGoal: ralphCtx?.originalGoal,
             progressPath,
             currentIteration: ralphCtx?.currentIteration,
             maxIterations: ralphCtx?.maxIterations,
-        });
+        }, resolvedBaseInstructions);
 
         const boundedMemory = await this.buildMemoryAddon(payload.workspaceId, this.buildCaptureContext(task), prompt);
 

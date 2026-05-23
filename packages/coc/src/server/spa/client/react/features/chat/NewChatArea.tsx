@@ -30,7 +30,7 @@ import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
 import { useChatPromptHistory } from '../../hooks/useChatPromptHistory';
-import { isRalphEnabled, isLoopsEnabled } from '../../utils/config';
+import { isRalphEnabled, isLoopsEnabled, isCodexEnabled, getActiveProvider } from '../../utils/config';
 import { getDraft, setDraft, clearDraft, newChatDraftKey } from './hooks/useDraftStore';
 
 export interface NewChatAreaProps {
@@ -479,6 +479,19 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                             </svg>
                         </button>
                         <div className="flex-1 min-w-0" />
+                        {/* Provider badge — visible only when Codex provider is active */}
+                        {isCodexEnabled() && getActiveProvider() === 'codex' && (
+                            <span
+                                title="Active AI provider: Codex"
+                                data-testid="new-chat-provider-badge"
+                                className="inline-flex items-center gap-1 h-[22px] px-2 rounded-sm border border-[#0078d4]/30 dark:border-[#3794ff]/30 bg-[#0078d4]/8 dark:bg-[#3794ff]/8 text-[11px] text-[#0078d4] dark:text-[#3794ff] flex-shrink-0 mr-1"
+                            >
+                                <svg width="9" height="9" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="flex-shrink-0">
+                                    <polygon points="8,1 14,4.5 14,11.5 8,15 2,11.5 2,4.5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                                </svg>
+                                <span className="font-mono text-[10px] font-medium uppercase tracking-wider">Codex</span>
+                            </span>
+                        )}
                         {sending ? (
                             <button
                                 type="button"

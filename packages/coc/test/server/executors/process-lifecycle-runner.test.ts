@@ -1206,3 +1206,56 @@ describe('ProcessLifecycleRunner — follow-up lifecycle status ordering', () =>
         expect(executeFollowUpFn).not.toHaveBeenCalled();
     });
 });
+
+// ============================================================================
+// Provider attribution (AC-09)
+// ============================================================================
+
+describe('ProcessLifecycleRunner — provider attribution', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        store = createMockProcessStore();
+    });
+
+    it('defaults metadata.provider to "copilot" when no provider is specified', async () => {
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn());
+        const task = makeTask();
+        await runner.run(task, makeOpts());
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        expect(proc?.metadata?.provider).toBe('copilot');
+    });
+
+    it('sets metadata.provider to "copilot" when explicitly constructed with copilot', async () => {
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), undefined, 'copilot');
+        const task = makeTask();
+        await runner.run(task, makeOpts());
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        expect(proc?.metadata?.provider).toBe('copilot');
+    });
+
+    it('sets metadata.provider to "codex" when constructed with codex provider', async () => {
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), undefined, 'codex');
+        const task = makeTask();
+        await runner.run(task, makeOpts());
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        expect(proc?.metadata?.provider).toBe('codex');
+    });
+
+    it('records codex provider for run-script tasks too', async () => {
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), undefined, 'codex');
+        const task = makeTask({
+            type: 'run-script',
+            displayName: 'npm test',
+            payload: { kind: 'run-script', script: 'npm test' } as any,
+        });
+        await runner.run(task, makeOpts());
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        expect(proc?.metadata?.provider).toBe('codex');
+    });
+});

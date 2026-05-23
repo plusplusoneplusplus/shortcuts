@@ -14,6 +14,11 @@ import { createExecutionServer } from '../../src/server/index';
 import { resetWipeToken, resetImportToken } from '@plusplusoneplusplus/coc-server';
 import { FileProcessStore, SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
+import { registerAdminRoutes } from '../../src/server/admin/admin-handler';
+import { createRouter } from '../../src/server/shared/router';
+import type { Route } from '../../src/server/types';
+import type { ISDKService, IAvailabilityResult } from '@plusplusoneplusplus/forge';
+import { SDKServiceRegistry } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Helpers
@@ -390,7 +395,7 @@ describe('Admin Handler', () => {
 
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            expect(Object.keys(body)).toHaveLength(9);
+            expect(Object.keys(body)).toHaveLength(13);
             expect(body['read-only-mode']).toBeDefined();
             expect(body['read-only-mode'].title).toBe('Read-only Mode');
             expect(body['read-only-mode'].group).toBe('Pipeline');
@@ -1908,6 +1913,101 @@ describe('Admin Handler', () => {
             expect(body.valid).toBe(false);
             expect(body.error).toBeDefined();
         });
+
+// ============================================================================
+// GET /api/admin/codex/availability — unit tests (direct route registration)
+// ============================================================================
+
+function makeMockSdkService(result: IAvailabilityResult): ISDKService {
+    return {
+        isAvailable: async () => result,
+    } as unknown as ISDKService;
+}
+
+function makeRegistryWith(services: Record<string, IAvailabilityResult>): SDKServiceRegistry {
+    const registry = new SDKServiceRegistry();
+    for (const [name, avail] of Object.entries(services)) {
+        registry.register(name, makeMockSdkService(avail));
+    }
+    return registry;
+}
+
+function makeAvailabilityServer(sdkServiceRegistry?: SDKServiceRegistry): http.Server {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-avail-test-'));
+    const routes: Route[] = [];
+    registerAdminRoutes(routes, {
+        store: new FileProcessStore({ dataDir: tmpDir }),
+        dataDir: tmpDir,
+        sdkServiceRegistry,
+    });
+    const handler = createRouter({ routes, spaHtml: '' });
+    return http.createServer(handler);
+}
+
+async function startHttpServer(srv: http.Server): Promise<string> {
+    return new Promise((resolve, reject) => {
+        srv.on('error', reject);
+        srv.listen(0, '127.0.0.1', () => {
+            const addr = srv.address() as { port: number };
+            resolve(`http://127.0.0.1:${addr.port}`);
+        });
+    });
+}
+
+describe('GET /api/admin/providers/availability', () => {
+    let srv: http.Server;
+    let baseUrl: string;
+
+    afterEach(async () => {
+        await new Promise<void>(r => srv.close(() => r()));
+    });
+
+    it('returns empty object when no registry is injected', async () => {
+        srv = makeAvailabilityServer(undefined);
+        baseUrl = await startHttpServer(srv);
+        const res = await fetch(`${baseUrl}/api/admin/providers/availability`);
+        expect(res.status).toBe(200);
+        const body = await res.json();
+        expect(body).toEqual({});
+    });
+
+    it('returns available:true for a registered available provider', async () => {
+        srv = makeAvailabilityServer(makeRegistryWith({ copilot: { available: true } }));
+        baseUrl = await startHttpServer(srv);
+        const res = await fetch(`${baseUrl}/api/admin/providers/availability`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as Record<string, { available: boolean; error?: string }>;
+        expect(body.copilot.available).toBe(true);
+        expect(body.copilot.error).toBeUndefined();
+    });
+
+    it('returns available:false with install hint for unavailable codex provider', async () => {
+        const error = 'Codex SDK not installed (~239 MB). To enable Codex, run:\n  npm install -g @openai/codex-sdk\nThen restart CoC.';
+        srv = makeAvailabilityServer(makeRegistryWith({ codex: { available: false, error } }));
+        baseUrl = await startHttpServer(srv);
+        const res = await fetch(`${baseUrl}/api/admin/providers/availability`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as Record<string, { available: boolean; error?: string }>;
+        expect(body.codex.available).toBe(false);
+        expect(body.codex.error).toContain('Codex SDK not installed');
+        expect(body.codex.error).toContain('npm install');
+    });
+
+    it('returns multiple providers in a single response', async () => {
+        const registry = makeRegistryWith({
+            copilot: { available: true },
+            codex: { available: false, error: 'not installed' },
+        });
+        srv = makeAvailabilityServer(registry);
+        baseUrl = await startHttpServer(srv);
+        const res = await fetch(`${baseUrl}/api/admin/providers/availability`);
+        const body = await res.json() as Record<string, { available: boolean; error?: string }>;
+        expect(body.copilot.available).toBe(true);
+        expect(body.codex.available).toBe(false);
+        expect(body.codex.error).toBe('not installed');
+    });
+});
+
 
         it('should return 400 for invalid JSON body', async () => {
             const srv = await startServer();

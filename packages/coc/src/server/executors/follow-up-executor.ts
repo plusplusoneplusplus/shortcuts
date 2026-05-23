@@ -143,6 +143,19 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         if (!process) {
             throw new Error(`Process not found: ${processId}`);
         }
+
+        // AC-10 — Provider mismatch guard: reject follow-up if the session was
+        // created by a different provider than the one currently active.
+        const sessionProvider = (process.metadata?.provider as string | undefined) ?? 'copilot';
+        if (sessionProvider !== this.provider) {
+            const sessionProviderLabel = sessionProvider === 'codex' ? 'Codex' : 'Copilot';
+            const activeProviderLabel = this.provider === 'codex' ? 'Codex' : 'Copilot';
+            throw new Error(
+                `Provider mismatch: this session was created with ${sessionProviderLabel} but the active provider is ${activeProviderLabel}. ` +
+                `Switch the active provider back to ${sessionProviderLabel} in admin settings, or start a new session.`,
+            );
+        }
+
         const workingDirectory = process.workingDirectory || this.defaultWorkingDirectory;
 
         const previousMode = process.metadata?.mode as ChatMode | undefined;

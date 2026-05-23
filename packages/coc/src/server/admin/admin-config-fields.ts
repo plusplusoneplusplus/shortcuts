@@ -215,6 +215,18 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         if (!cfg.containerDefaultAgent) { cfg.containerDefaultAgent = {}; }
         cfg.containerDefaultAgent.enabled = v;
     }),
+    bool('codex.enabled', (cfg, v) => {
+        if (!cfg.codex) { cfg.codex = {}; }
+        cfg.codex.enabled = v;
+    }, 'restartRequired'),
+    {
+        key: 'activeProvider',
+        runtime: 'restartRequired',
+        validate: (v) => v === 'copilot' || v === 'codex'
+            ? undefined
+            : 'activeProvider must be "copilot" or "codex"',
+        apply: (cfg, v) => { cfg.activeProvider = v as 'copilot' | 'codex'; },
+    },
 
     bool('features.focusedDiff', (cfg, v) => {
         if (!cfg.features) { cfg.features = {}; }

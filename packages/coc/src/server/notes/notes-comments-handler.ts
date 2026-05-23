@@ -50,8 +50,10 @@ function getCopilotDir(): string {
     return path.join(os.homedir(), '.copilot');
 }
 
-function isAllowedPath(resolved: string, wsDataDir: string): boolean {
-    return isWithinDirectory(resolved, wsDataDir) || isWithinDirectory(resolved, getCopilotDir());
+function isAllowedPath(resolved: string, wsDataDir: string, wsRootPath?: string): boolean {
+    return isWithinDirectory(resolved, wsDataDir)
+        || isWithinDirectory(resolved, getCopilotDir())
+        || (!!wsRootPath && isWithinDirectory(resolved, wsRootPath));
 }
 
 /**

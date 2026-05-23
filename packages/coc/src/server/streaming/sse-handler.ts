@@ -92,7 +92,7 @@ export function emitPendingMessageAdded(store: ProcessStore, processId: string, 
  *   event: chunk              → { content: string }
  *   event: tool-start         → { turnIndex, toolCallId, parentToolCallId?, toolName, parameters }
  *   event: tool-complete      → { turnIndex, toolCallId, parentToolCallId?, toolName?, parameters?, result }
- *   event: tool-failed        → { turnIndex, toolCallId, parentToolCallId?, error }
+ *   event: tool-failed        → { turnIndex, toolCallId, parentToolCallId?, toolName?, parameters?, error }
  *   event: permission-request → { turnIndex, permissionId, kind, description }
  *   event: workflow-phase    → { phase, status, timestamp, durationMs?, error?, itemCount? }
  *   event: workflow-progress → { phase, totalItems, completedItems, failedItems, percentage, message? }
@@ -205,6 +205,8 @@ export async function handleProcessStream(
                 turnIndex: event.turnIndex,
                 toolCallId: event.toolCallId,
                 parentToolCallId: event.parentToolCallId,
+                toolName: event.toolName,
+                parameters: event.parameters,
                 error: event.error,
             });
         } else if (event.type === 'permission-request') {

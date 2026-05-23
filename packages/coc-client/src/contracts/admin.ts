@@ -66,6 +66,8 @@ export interface AdminResolvedConfig {
   pullRequests?: { enabled?: boolean; suggestions?: boolean };
   servers?: { enabled?: boolean };
   excalidraw?: { enabled?: boolean };
+  codex?: { enabled?: boolean };
+  activeProvider?: 'copilot' | 'codex';
   mcpOauth?: { enabled?: boolean };
   [key: string]: unknown;
 }
@@ -118,6 +120,8 @@ export interface AdminConfigUpdate {
   'servers.enabled'?: boolean;
   'excalidraw.enabled'?: boolean;
   'mcpOauth.enabled'?: boolean;
+  'codex.enabled'?: boolean;
+  activeProvider?: 'copilot' | 'codex';
   [key: string]: unknown;
 }
 
@@ -146,6 +150,8 @@ export interface RuntimeDashboardConfig {
     mcpOauthEnabled: boolean;
     focusedDiffEnabled: boolean;
     containerDefaultAgentEnabled: boolean;
+    codexEnabled: boolean;
+    activeProvider: 'copilot' | 'codex';
   };
   hostname?: string;
   bindAddress?: string;
@@ -271,7 +277,29 @@ export interface BuiltInPrompt {
   group: string;
   source: string;
   description: string;
+  /** Built-in default text. */
   text: string;
+  /** Whether this prompt supports admin overrides. */
+  editable?: boolean;
+  /** Required template variable names that must appear in any override (e.g. "${hint}"). */
+  templateVars?: string[];
+  /** Active override text, if set. */
+  overrideText?: string;
+  /** True when an override is currently active. */
+  hasOverride?: boolean;
 }
 
 export type AdminPromptsResponse = Record<string, BuiltInPrompt>;
+
+export interface AdminPromptUpdateRequest {
+  text: string;
+}
+
+export interface AdminPromptUpdateResponse extends BuiltInPrompt {
+  saved: true;
+}
+
+export interface AdminPromptDeleteResponse {
+  id: string;
+  reset: true;
+}

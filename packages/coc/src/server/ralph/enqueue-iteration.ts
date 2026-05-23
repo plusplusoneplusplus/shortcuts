@@ -8,6 +8,7 @@
  */
 
 import { buildRalphIterationPrompt } from './iteration-prompt';
+import { getPromptOverride } from '../admin/ralph-prompt-overrides';
 
 export interface BuildRalphIterationTaskInput {
     workspaceId?: string;
@@ -19,6 +20,8 @@ export interface BuildRalphIterationTaskInput {
     maxIterations: number;
     /** Optional pre-built prompt; when omitted, uses {@link buildRalphIterationPrompt}. */
     prompt?: string;
+    /** Repo-scoped data root; used to resolve admin prompt overrides. */
+    dataDir?: string;
     /** Optional carry-over context (e.g. previous attachments, additional ralph fields). */
     extraContext?: Record<string, unknown>;
     /** Display name for the queued task. Defaults to "Ralph iteration N (sessionId)". */
@@ -28,7 +31,13 @@ export interface BuildRalphIterationTaskInput {
 }
 
 export function buildRalphIterationTask(input: BuildRalphIterationTaskInput) {
-    const prompt = input.prompt ?? buildRalphIterationPrompt({ originalGoal: input.originalGoal });
+    const promptOverride = input.dataDir
+        ? (getPromptOverride('ralph-iteration-user', input.dataDir) ?? undefined)
+        : undefined;
+    const prompt = input.prompt ?? buildRalphIterationPrompt({
+        originalGoal: input.originalGoal,
+        promptOverride,
+    });
     const displayName = input.displayName
         ?? `Ralph iteration ${input.iteration} (${input.sessionId})`;
     return {

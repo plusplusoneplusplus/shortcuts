@@ -47,6 +47,8 @@ export function buildRuntimeDashboardConfig(
             mcpOauthEnabled: config.mcpOauth?.enabled ?? false,
             focusedDiffEnabled: config.features?.focusedDiff ?? false,
             containerDefaultAgentEnabled: config.containerDefaultAgent?.enabled ?? false,
+            codexEnabled: config.codex?.enabled ?? false,
+            activeProvider: config.activeProvider ?? 'copilot',
         },
         hostname: config.serve?.serverName || shortenHostname(hostname),
         bindAddress,

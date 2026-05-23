@@ -26,6 +26,7 @@ interface ToolCallLike {
 }
 
 const SHELL_TOOL_NAMES = new Set(['powershell', 'shell', 'bash']);
+const AGENT_TOOL_NAMES = new Set(['task', 'general-purpose']);
 
 /**
  * Standard git commit output pattern:
@@ -89,8 +90,10 @@ function isReadOnlyGitCommand(command: string): boolean {
  * Scans tool calls in a tool group for git commit output and returns
  * structured commit metadata for each detected commit.
  *
- * Only inspects shell-category tool calls whose command string matches
- * a commit-creating pattern. Ignores read-only git commands.
+ * Inspects shell-category tool calls whose command string matches a
+ * commit-creating pattern, and also scans agent tool results (task,
+ * general-purpose) directly — since those have no inspectable command,
+ * only the result text is used as evidence.
  */
 export function detectCommitsInToolGroup(toolCalls: ToolCallLike[]): DetectedCommit[] {
     const results: DetectedCommit[] = [];
@@ -98,17 +101,24 @@ export function detectCommitsInToolGroup(toolCalls: ToolCallLike[]): DetectedCom
 
     for (const tc of toolCalls) {
         const toolName = tc.toolName || (tc as any).name || '';
-        if (!SHELL_TOOL_NAMES.has(toolName)) continue;
         if (!tc.result) continue;
 
-        const command = getCommandString(tc.args);
+        const isShell = SHELL_TOOL_NAMES.has(toolName);
+        const isAgent = AGENT_TOOL_NAMES.has(toolName);
 
-        // Skip read-only git commands even if their output happens to match
-        if (isReadOnlyGitCommand(command)) continue;
+        if (!isShell && !isAgent) continue;
 
-        // Only scan results from commit-creating commands, or when
-        // we can't determine the command (e.g. missing args)
-        if (command && !isCommitCreatingCommand(command)) continue;
+        if (isShell) {
+            const command = getCommandString(tc.args);
+
+            // Skip read-only git commands even if their output happens to match
+            if (isReadOnlyGitCommand(command)) continue;
+
+            // Only scan results from commit-creating commands, or when
+            // we can't determine the command (e.g. missing args)
+            if (command && !isCommitCreatingCommand(command)) continue;
+        }
+        // Agent tools: scan result directly — no command to inspect
 
         const lines = tc.result.split(/\r?\n/);
         for (let i = 0; i < lines.length; i++) {

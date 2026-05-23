@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { Route } from '../types';
 import type { ProcessStore, TaskQueueManager, ISDKService, AIInvoker } from '@plusplusoneplusplus/forge';
-import { modelMetadataStore } from '@plusplusoneplusplus/forge';
+import { modelMetadataStore, sdkServiceRegistry } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import type { SqliteQueuePersistence } from '../queue/sqlite-queue-persistence';
@@ -86,6 +86,8 @@ import type { LoopStore } from '../loops/loop-store';
 import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
 import { registerMcpOauthRoutes } from '../mcp-oauth';
 import type { McpOauthManager } from '../mcp-oauth';
+import { registerCodexAuthRoutes } from '../codex-auth';
+import type { CodexAuthManager } from '../codex-auth';
 import { registerDiagramRoutes } from '../diagrams/diagrams-handler';
 import { registerRuntimeConfigRoutes } from '../config/runtime-config-handler';
 import { registerSyncRoutes } from '../sync/sync-handler';
@@ -138,6 +140,7 @@ export interface RegisterRoutesOptions {
     loopStore?: LoopStore;
     loopExecutor?: LoopExecutor;
     mcpOauthManager?: McpOauthManager;
+    codexAuthManager?: CodexAuthManager;
     loopEmit?: LoopEventEmit;
     hostname?: string;
     bindAddress?: string;
@@ -184,7 +187,13 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     registerProviderRoutes(routes, dataDir);
     registerProcessResumeRoutes(routes, store);
-    registerFreshChatTerminalRoutes(routes);
+    registerFreshChatTerminalRoutes(routes, undefined, {
+        getProvider: () => {
+            const activeProvider = opts.runtimeConfigService?.config.activeProvider
+                ?? opts.resolvedConfig?.activeProvider;
+            return activeProvider === 'codex' ? 'codex' : 'copilot';
+        },
+    });
     registerTerminalRoutes(routes, store, opts.getTerminalSessionManager ?? (() => undefined), opts.resolvedConfig, opts.runtimeConfigService);
 
     // Queue routes receive the bridge directly for per-repo routing
@@ -253,6 +262,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         configFunctions: { getConfigFilePath, getResolvedConfigWithSource, loadConfigFile, writeConfigFile },
         runtimeConfigService: opts.runtimeConfigService,
         tokenTtlMs,
+        sdkServiceRegistry: sdkServiceRegistry,
     });
 
     // Runtime config endpoint for SPA feature flag freshness
@@ -292,6 +302,14 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         });
     }
 
+    // Codex Auth routes (feature-flagged via codex.enabled)
+    if (opts.codexAuthManager) {
+        registerCodexAuthRoutes(routes, {
+            manager: opts.codexAuthManager,
+            autoOpenBrowser: true,
+        });
+    }
+
     registerMemoryRoutes(routes, dataDir);
 
     registerRepoMemoryRoutes(routes, dataDir, {
@@ -305,6 +323,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         loadConfigFile,
         writeConfigFile,
         getConfigFilePath,
+        aiService: resolvedAiService,
     });
     registerLogsRoutes(routes);
     registerInstructionRoutes(routes, store);

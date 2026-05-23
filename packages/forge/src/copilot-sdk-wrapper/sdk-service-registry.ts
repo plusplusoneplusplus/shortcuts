@@ -14,6 +14,9 @@ import type { ISDKService } from './sdk-service-interface';
 // Well-known provider name for the Copilot SDK implementation.
 export const COPILOT_PROVIDER = 'copilot';
 
+// Well-known provider name for the Codex SDK implementation.
+export const CODEX_PROVIDER = 'codex';
+
 /**
  * Alias for `COPILOT_PROVIDER` — use this constant at call sites so the
  * name clearly communicates its role as the registry key for the Copilot
@@ -22,6 +25,15 @@ export const COPILOT_PROVIDER = 'copilot';
  * Usage: `sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT)`
  */
 export const SDK_PROVIDER_COPILOT = COPILOT_PROVIDER;
+
+/**
+ * Alias for `CODEX_PROVIDER` — use this constant at call sites so the
+ * name clearly communicates its role as the registry key for the Codex
+ * SDK provider.
+ *
+ * Usage: `sdkServiceRegistry.getOrThrow(SDK_PROVIDER_CODEX)`
+ */
+export const SDK_PROVIDER_CODEX = CODEX_PROVIDER;
 
 /**
  * Registry that maps provider names to `ISDKService` instances.

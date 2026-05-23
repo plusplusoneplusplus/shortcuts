@@ -22,6 +22,8 @@ export interface CLITaskExecutorOptions {
     followUpSuggestions?: { enabled: boolean; count: number };
     askUser?: { enabled: boolean };
     memoryPromotion?: MemoryPromoteConfig;
+    /** Active AI provider name recorded on each process for attribution. Defaults to 'copilot'. */
+    provider?: 'copilot' | 'codex';
     getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
     getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined;
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
@@ -96,6 +98,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             followUpSuggestions: options.followUpSuggestions ?? DEFAULT_FOLLOW_UP_SUGGESTIONS,
             askUser: options.askUser,
             memoryPromotion: options.memoryPromotion,
+            provider: options.provider,
             toolCallCacheStore: cacheStore,
             resolveSkillConfig: skillCfg,
             resolveWorkspaceIdForPath: (p: string) => this.resolveWorkspaceIdForPath(p),

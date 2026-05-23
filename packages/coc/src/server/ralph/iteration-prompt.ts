@@ -40,9 +40,19 @@ Honor the decision-tagging convention used by the grill-me skill:
 A slice is done only when its Definition of Done is satisfied. Record evidence (test command output, demo transcript, code-search results) in progress.md before marking the iteration complete. Do not declare the overall Ralph session complete until every functional AC's Definition of Done is satisfied.
 </spec_contract>`;
 
+/** The built-in default instruction head (prefix + work_intent + spec_contract). */
+export const RALPH_ITERATION_PROMPT_DEFAULT_HEAD =
+    `${PROMPT_PREFIX}\n\n${RALPH_WORK_INTENT_PROMPT}\n\n${RALPH_SPEC_CONTRACT_PROMPT}`;
+
 export interface BuildRalphIterationPromptInput {
     /** The user's original goal text from the grilling phase. */
     originalGoal?: string;
+    /**
+     * Override text from admin prompts; replaces the default instruction head
+     * (prefix + work_intent + spec_contract) when provided. The `<goal>` block
+     * is still appended after the override.
+     */
+    promptOverride?: string;
 }
 
 /**
@@ -54,7 +64,7 @@ export function buildRalphIterationPrompt(
     input: BuildRalphIterationPromptInput,
 ): string {
     const goal = (input.originalGoal ?? '').trim();
-    const head = `${PROMPT_PREFIX}\n\n${RALPH_WORK_INTENT_PROMPT}\n\n${RALPH_SPEC_CONTRACT_PROMPT}`;
+    const head = input.promptOverride ?? RALPH_ITERATION_PROMPT_DEFAULT_HEAD;
     if (!goal) {
         return head;
     }

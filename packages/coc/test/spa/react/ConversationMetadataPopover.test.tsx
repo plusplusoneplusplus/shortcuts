@@ -19,7 +19,7 @@ const BASE_PROCESS = {
     workingDirectory: '/home/user/project',
     workspaceName: 'my-workspace',
     sdkSessionId: 'sdk-sess-789',
-    metadata: { queueTaskId: 'qt-456', model: 'gpt-4', backend: 'copilot-sdk', mode: 'autopilot' },
+    metadata: { queueTaskId: 'qt-456', model: 'gpt-4', backend: 'copilot-sdk', mode: 'autopilot', provider: 'codex' },
 };
 
 function renderPopover(process: any = BASE_PROCESS, turnsCount?: number) {
@@ -71,6 +71,8 @@ describe('ConversationMetadataPopover', () => {
         expect(screen.getByText('gpt-4')).toBeDefined();
         expect(screen.getByText('Mode')).toBeDefined();
         expect(screen.getByText('autopilot')).toBeDefined();
+        expect(screen.getByText('Agent Provider')).toBeDefined();
+        expect(screen.getByText('codex')).toBeDefined();
         expect(screen.getByText('Session ID')).toBeDefined();
         expect(screen.getByText('sdk-sess-789')).toBeDefined();
         expect(screen.getByText('Backend')).toBeDefined();
@@ -328,6 +330,29 @@ describe('buildRows – model default fallback', () => {
         const modelRow = rows.find(r => r.label === 'Model');
         expect(modelRow).toBeDefined();
         expect(modelRow!.value).toBe('claude-sonnet');
+    });
+});
+
+describe('buildRows – agent name', () => {
+    it('shows provider attribution as Agent Provider when present in metadata', () => {
+        const rows = buildRows({ id: 'p-agent-1', metadata: { provider: 'copilot' } });
+        const agentRow = rows.find(r => r.label === 'Agent Provider');
+        expect(agentRow).toBeDefined();
+        expect(agentRow!.value).toBe('copilot');
+    });
+
+    it('prefers explicit agentName over provider', () => {
+        const rows = buildRows({ id: 'p-agent-2', metadata: { agentName: 'codex', provider: 'copilot' } });
+        const agentRow = rows.find(r => r.label === 'Agent Provider');
+        expect(agentRow).toBeDefined();
+        expect(agentRow!.value).toBe('codex');
+    });
+
+    it('falls back to top-level provider for projected task rows', () => {
+        const rows = buildRows({ id: 'p-agent-3', provider: 'codex' });
+        const agentRow = rows.find(r => r.label === 'Agent Provider');
+        expect(agentRow).toBeDefined();
+        expect(agentRow!.value).toBe('codex');
     });
 });
 

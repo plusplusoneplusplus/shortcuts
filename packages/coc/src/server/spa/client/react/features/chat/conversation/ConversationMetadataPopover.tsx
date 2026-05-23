@@ -59,6 +59,14 @@ export function getSessionIdFromProcess(process: any): string | null {
         || parseSessionIdFromResult(process.result);
 }
 
+function getAgentNameFromProcess(process: any): string | null {
+    return toStringValue(process?.metadata?.agentName)
+        || toStringValue(process?.metadata?.agent)
+        || toStringValue(process?.metadata?.provider)
+        || toStringValue(process?.agentName)
+        || toStringValue(process?.provider);
+}
+
 export function buildRows(process: any, turnsCount?: number): MetaRow[] {
     if (!process) return [];
 
@@ -88,6 +96,7 @@ export function buildRows(process: any, turnsCount?: number): MetaRow[] {
     push('Status', process.status);
     push('Model', process?.metadata?.model || process?.config?.model || process?.model || 'default');
     push('Mode', process?.metadata?.mode || process?.mode);
+    push('Agent Provider', getAgentNameFromProcess(process));
     push('Session ID', sessionId, { breakAll: true, mono: true, link: sessionId ? `#logs?sessionId=${encodeURIComponent(sessionId)}` : undefined });
     push('Backend', process?.metadata?.backend);
     push('Started', formatTimestamp(startedAt));

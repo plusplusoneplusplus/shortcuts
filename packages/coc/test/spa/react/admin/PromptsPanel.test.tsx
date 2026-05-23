@@ -100,7 +100,7 @@ describe('PromptsPanel', () => {
 
         await waitFor(() => {
             expect(screen.getByText('Prompt Templates')).toBeDefined();
-            expect(screen.getByText(/read-only in this view/)).toBeDefined();
+            expect(screen.getByText(/Ralph prompts are editable/)).toBeDefined();
         });
     });
 

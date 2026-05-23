@@ -28,6 +28,7 @@ import { parseBodyOrReject } from '../shared/handler-utils';
 import { truncateDisplayName } from '../shared/queue-utils';
 import { prependSelectedSkillsDirective } from '../executors/prompt-builder';
 import type { ApiRouteContext } from './api-shared';
+import { createRoute, asString } from './route-utils';
 
 /** Valid AIProcessStatus values for validation. */
 const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 'completed', 'failed', 'cancelled']);
@@ -94,27 +95,27 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
     const { routes, store, bridge, dataDir, getWsServer } = ctx;
 
     // GET /api/processes/summaries — Lightweight index-only process list (no file I/O per process)
-    routes.push({
+    routes.push(createRoute({
         method: 'GET',
         pattern: '/api/processes/summaries',
-        handler: async (req, res) => {
+        handler: async ({ req, res }) => {
             if (!store.getProcessSummaries) {
-                return handleAPIError(res, badRequest('Summaries not supported by this store'));
+                return void handleAPIError(res, badRequest('Summaries not supported by this store'));
             }
             const filter = parseQueryParams(req.url || '/');
             const limit = filter.limit ?? 100;
             const offset = filter.offset ?? 0;
             const paginatedFilter: ProcessFilter = { ...filter, limit, offset };
             const { entries, total } = await store.getProcessSummaries(paginatedFilter);
-            sendJSON(res, 200, { summaries: entries, total, limit, offset });
+            return { summaries: entries, total, limit, offset };
         },
-    });
+    }));
 
     // GET /api/processes — List processes with filtering + pagination
-    routes.push({
+    routes.push(createRoute({
         method: 'GET',
         pattern: '/api/processes',
-        handler: async (req, res) => {
+        handler: async ({ req, res }) => {
             const parsed = url.parse(req.url || '/', true);
             const sdkSessionId = typeof parsed.query.sdkSessionId === 'string' ? parsed.query.sdkSessionId : '';
 
@@ -123,13 +124,12 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                     ? (store as any).getProcessBySdkSessionId(sdkSessionId) as AIProcess | undefined
                     : (await store.getAllProcesses()).find(p => p.sdkSessionId === sdkSessionId);
                 if (!match) {
-                    return handleAPIError(res, notFound('Process with sdkSessionId: ' + sdkSessionId));
+                    return void handleAPIError(res, notFound('Process with sdkSessionId: ' + sdkSessionId));
                 }
-                return sendJSON(res, 200, { process: match });
+                return { process: match };
             }
 
             const filter = parseQueryParams(req.url || '/');
-
             const countFilter: ProcessFilter = { ...filter };
             delete countFilter.limit;
             delete countFilter.offset;
@@ -141,25 +141,23 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const offset = filter.offset ?? 0;
             const paginatedFilter: ProcessFilter = { ...filter, limit, offset };
             const processes = await store.getAllProcesses(paginatedFilter);
-
             const responseProcesses = filter.exclude
                 ? processes.map(p => stripExcludedFields(p, filter.exclude))
                 : processes;
-
-            sendJSON(res, 200, { processes: responseProcesses, total, limit, offset });
+            return { processes: responseProcesses, total, limit, offset };
         },
-    });
+    }));
 
     // DELETE /api/processes — Bulk-clear processes by status
-    routes.push({
+    routes.push(createRoute({
         method: 'DELETE',
         pattern: '/api/processes',
-        handler: async (req, res) => {
+        handler: async ({ req, res }) => {
             const parsed = url.parse(req.url || '/', true);
             const statusParam = parsed.query.status;
 
             if (typeof statusParam !== 'string' || !statusParam) {
-                return handleAPIError(res, badRequest('Query parameter "status" is required for bulk delete'));
+                return void handleAPIError(res, badRequest('Query parameter "status" is required for bulk delete'));
             }
 
             const statuses = statusParam
@@ -168,24 +166,25 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 .filter(s => VALID_STATUSES.has(s)) as AIProcessStatus[];
 
             if (statuses.length === 0) {
-                return handleAPIError(res, badRequest('No valid status values provided'));
+                return void handleAPIError(res, badRequest('No valid status values provided'));
             }
 
             const removed = await store.clearProcesses({ status: statuses });
-            sendJSON(res, 200, { removed });
+            return { removed };
         },
-    });
+    }));
 
     // POST /api/processes — Create a new process
-    routes.push({
+    routes.push(createRoute({
+        statusCode: 201,
         method: 'POST',
         pattern: '/api/processes',
-        handler: async (req, res) => {
+        handler: async ({ req, res }) => {
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
             if (!body.id || !body.promptPreview || !body.status || !body.startTime) {
-                return handleAPIError(res, missingFields(['id', 'promptPreview', 'status', 'startTime']));
+                return void handleAPIError(res, missingFields(['id', 'promptPreview', 'status', 'startTime']));
             }
 
             const proc: AIProcess = deserializeProcess({
@@ -218,25 +217,25 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             }
 
             await store.addProcess(proc);
-            sendJSON(res, 201, proc);
+            return proc;
         },
-    });
+    }));
 
     // GET /api/processes/search — Full-text search across conversations
     // Registered before :id regex patterns to avoid "search" matching as a process ID.
-    routes.push({
+    routes.push(createRoute({
         method: 'GET',
         pattern: '/api/processes/search',
-        handler: async (req, res) => {
+        handler: async ({ req, res }) => {
             const parsed = url.parse(req.url || '/', true);
             const q = typeof parsed.query.q === 'string' ? parsed.query.q.trim() : '';
 
             if (!q) {
-                return sendJSON(res, 200, { results: [], total: 0, query: '' });
+                return { results: [], total: 0, query: '' };
             }
 
             if (!store.searchConversations) {
-                return handleAPIError(res, badRequest('Full-text search not supported by this store backend'));
+                return void handleAPIError(res, badRequest('Full-text search not supported by this store backend'));
             }
 
             const filter = parseQueryParams(req.url || '/');
@@ -251,9 +250,9 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             };
 
             const { results, total } = await store.searchConversations(q, searchFilter);
-            sendJSON(res, 200, { results, total, query: q, limit: searchFilter.limit, offset: searchFilter.offset });
+            return { results, total, query: q, limit: searchFilter.limit, offset: searchFilter.offset };
         },
-    });
+    }));
 
     // GET /api/processes/:id/stream — SSE stream for real-time output
     routes.push({
@@ -269,11 +268,11 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
     });
 
     // GET /api/processes/:id/output — Persisted conversation output
-    routes.push({
+    routes.push(createRoute({
         method: 'GET',
         pattern: /^\/api\/processes\/([^/]+)\/output$/,
-        handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
+        handler: async ({ req, res, match }) => {
+            const id = decodeURIComponent(match[1]);
             const wsId = parseQueryParams(req.url || '/').workspaceId;
             const proc = await resolveProcess(store, id, wsId);
             if (!proc) {
@@ -283,38 +282,38 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                     try {
                         const task = bridge.getTask?.(toTaskId(id));
                         if (task) {
-                            return sendJSON(res, 200, { content: '', format: 'markdown' });
+                            return { content: '', format: 'markdown' };
                         }
                     } catch { /* toTaskId may throw if prefix is wrong — fall through */ }
                 }
-                return handleAPIError(res, notFound('Process'));
+                return void handleAPIError(res, notFound('Process'));
             }
             const filePath = proc.rawStdoutFilePath;
             if (!filePath) {
-                return handleAPIError(res, notFound('Conversation output'));
+                return void handleAPIError(res, notFound('Conversation output'));
             }
             try {
                 await fs.promises.access(filePath);
                 const content = await fs.promises.readFile(filePath, 'utf-8');
-                sendJSON(res, 200, { content, format: 'markdown' });
+                return { content, format: 'markdown' };
             } catch (err: any) {
                 if (err.code === 'ENOENT') {
-                    return handleAPIError(res, notFound('Conversation output'));
+                    return void handleAPIError(res, notFound('Conversation output'));
                 }
-                return handleAPIError(res, internalError('Failed to read conversation output'));
+                return void handleAPIError(res, internalError('Failed to read conversation output'));
             }
         },
-    });
+    }));
 
     // GET /api/processes/:id — Single process detail
     // By default, children are NOT embedded (saves an extra SQL query on a hot
     // path that is overwhelmingly used for chat sessions without children).
     // Opt back in with `?include=children`.
-    routes.push({
+    routes.push(createRoute({
         method: 'GET',
         pattern: /^\/api\/processes\/([^/]+)$/,
-        handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
+        handler: async ({ req, res, match }) => {
+            const id = decodeURIComponent(match[1]);
             const filter = parseQueryParams(req.url || '/');
             const include = parseIncludeFields(req.url || '/');
             const proc = await resolveProcess(store, id, filter.workspaceId);
@@ -326,16 +325,16 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                         if (task) {
                             const synthetic = queuedTaskToProcess(task);
                             const result = filter.exclude ? stripExcludedFields(synthetic, filter.exclude) : synthetic;
-                            return sendJSON(res, 200, { process: result, children: [], total: 0 });
+                            return { process: result, children: [], total: 0 };
                         }
                     } catch { /* toTaskId may throw if prefix is wrong — fall through */ }
                 }
-                return handleAPIError(res, notFound('Process'));
+                return void handleAPIError(res, notFound('Process'));
             }
             const result = filter.exclude ? stripExcludedFields(proc, filter.exclude) : proc;
 
             if (!include.has('children')) {
-                return sendJSON(res, 200, { process: result, children: [], total: 0 });
+                return { process: result, children: [], total: 0 };
             }
 
             // Embed children using the same logic the deleted /children route used
@@ -351,20 +350,20 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 ? children.map(p => stripExcludedFields(p, childFilter.exclude))
                 : children;
 
-            sendJSON(res, 200, { process: result, children: responseChildren, total: children.length });
+            return { process: result, children: responseChildren, total: children.length };
         },
-    });
+    }));
 
     // PATCH /api/processes/:id — Partial update
-    routes.push({
+    routes.push(createRoute({
         method: 'PATCH',
         pattern: /^\/api\/processes\/([^/]+)$/,
-        handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
+        handler: async ({ req, res, match }) => {
+            const id = decodeURIComponent(match[1]);
             const wsId = parseQueryParams(req.url || '/').workspaceId;
             const existing = await resolveProcess(store, id, wsId);
             if (!existing) {
-                return handleAPIError(res, notFound('Process'));
+                return void handleAPIError(res, notFound('Process'));
             }
 
             const body = await parseBodyOrReject(req, res);
@@ -382,11 +381,11 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             if (body.customTitle !== undefined) {
                 const raw = body.customTitle;
                 if (raw !== null && typeof raw !== 'string') {
-                    return handleAPIError(res, badRequest('customTitle must be a string or null'));
+                    return void handleAPIError(res, badRequest('customTitle must be a string or null'));
                 }
                 const trimmed = typeof raw === 'string' ? raw.trim() : '';
                 if (trimmed.length > 80) {
-                    return handleAPIError(res, badRequest('customTitle exceeds 80 characters'));
+                    return void handleAPIError(res, badRequest('customTitle exceeds 80 characters'));
                 }
                 updates.customTitle = trimmed;
             }
@@ -400,43 +399,43 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             }
 
             const updated = await store.getProcess(existing.id, wsId);
-            sendJSON(res, 200, { process: updated });
+            return { process: updated };
         },
-    });
+    }));
 
     // DELETE /api/processes/:id — Remove a single process
     // @deprecated — does not clean up in-memory queue state or child processes.
     // Prefer DELETE /api/workspaces/:id/history/:processId instead.
-    routes.push({
+    routes.push(createRoute({
         method: 'DELETE',
         pattern: /^\/api\/processes\/([^/]+)$/,
-        handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
+        handler: async ({ req, res, match }) => {
+            const id = decodeURIComponent(match[1]);
             const wsId = parseQueryParams(req.url || '/').workspaceId;
             const existing = await resolveProcess(store, id, wsId);
             if (!existing) {
-                return handleAPIError(res, notFound('Process'));
+                return void handleAPIError(res, notFound('Process'));
             }
             await store.removeProcess(existing.id);
             res.writeHead(204);
             res.end();
         },
-    });
+    }));
 
     // POST /api/processes/:id/cancel — Cancel a running process
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/processes\/([^/]+)\/cancel$/,
-        handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
+        handler: async ({ req, res, match }) => {
+            const id = decodeURIComponent(match[1]);
             const wsId = parseQueryParams(req.url || '/').workspaceId;
             const existing = await resolveProcess(store, id, wsId);
             if (!existing) {
-                return handleAPIError(res, notFound('Process'));
+                return void handleAPIError(res, notFound('Process'));
             }
 
             if (TERMINAL_STATUSES.has(existing.status)) {
-                return handleAPIError(res, new APIError(409, `Process is already in terminal state: ${existing.status}`, 'CONFLICT'));
+                return void handleAPIError(res, new APIError(409, `Process is already in terminal state: ${existing.status}`, 'CONFLICT'));
             }
 
             await store.updateProcess(existing.id, {
@@ -467,26 +466,27 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             }
 
             const updated = await store.getProcess(existing.id, wsId);
-            sendJSON(res, 200, { process: updated });
+            return { process: updated };
         },
-    });
+    }));
 
     // POST /api/processes/:id/fork — Fork a completed process
-    routes.push({
+    routes.push(createRoute({
+        statusCode: 201,
         method: 'POST',
         pattern: /^\/api\/processes\/([^/]+)\/fork$/,
-        handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
+        handler: async ({ req, res, match }) => {
+            const id = decodeURIComponent(match[1]);
             const wsId = parseQueryParams(req.url || '/').workspaceId;
             const proc = await resolveProcess(store, id, wsId);
             if (!proc) {
-                return handleAPIError(res, notFound('Process'));
+                return void handleAPIError(res, notFound('Process'));
             }
             if (!proc.sdkSessionId) {
-                return handleAPIError(res, badRequest('Process has no SDK session to fork'));
+                return void handleAPIError(res, badRequest('Process has no SDK session to fork'));
             }
             if (!store.forkProcess) {
-                return handleAPIError(res, badRequest('Fork not supported by this store'));
+                return void handleAPIError(res, badRequest('Fork not supported by this store'));
             }
 
             const newId = crypto.randomUUID();
@@ -496,7 +496,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 const sdkService = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
                 newSdkSessionId = await sdkService.forkSession(proc.sdkSessionId);
             } catch (err: any) {
-                return handleAPIError(res, internalError(`Failed to fork SDK session: ${err?.message || err}`));
+                return void handleAPIError(res, internalError(`Failed to fork SDK session: ${err?.message || err}`));
             }
 
             try {
@@ -517,12 +517,12 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                         },
                     });
                 }
-                sendJSON(res, 201, { process: forked });
+                return { process: forked };
             } catch (err: any) {
-                return handleAPIError(res, internalError(`Failed to fork process: ${err?.message || err}`));
+                return void handleAPIError(res, internalError(`Failed to fork process: ${err?.message || err}`));
             }
         },
-    });
+    }));
 
     // POST /api/processes/:id/message — Send a follow-up message
     routes.push({
@@ -744,33 +744,33 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
     // ------------------------------------------------------------------
 
     // POST /api/processes/:id/ask-user-response — Answer or skip a pending ask-user question batch
-    routes.push({
+    routes.push(createRoute({
         method: 'POST',
         pattern: /^\/api\/processes\/([^/]+)\/ask-user-response$/,
-        handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
+        handler: async ({ req, res, match }) => {
+            const id = decodeURIComponent(match[1]);
 
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
             if (!body.batchId || typeof body.batchId !== 'string') {
-                return handleAPIError(res, missingFields(['batchId']));
+                return void handleAPIError(res, missingFields(['batchId']));
             }
             if (!Array.isArray(body.answers) || body.answers.length === 0) {
-                return handleAPIError(res, missingFields(['answers']));
+                return void handleAPIError(res, missingFields(['answers']));
             }
             const answers = body.answers as Array<{ questionId?: unknown; answer?: unknown; skipped?: unknown }>;
             for (const answer of answers) {
                 if (!answer.questionId || typeof answer.questionId !== 'string') {
-                    return handleAPIError(res, missingFields(['answers[].questionId']));
+                    return void handleAPIError(res, missingFields(['answers[].questionId']));
                 }
                 if (answer.skipped !== true && answer.answer === undefined) {
-                    return handleAPIError(res, missingFields(['answers[].answer']));
+                    return void handleAPIError(res, missingFields(['answers[].answer']));
                 }
             }
 
             if (!bridge) {
-                return handleAPIError(res, notFound('Bridge not available'));
+                return void handleAPIError(res, notFound('Bridge not available'));
             }
 
             const resolved = await bridge.answerAskUserQuestions?.(id, body.batchId as string, answers.map(answer => ({
@@ -780,34 +780,35 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             }))) ?? false;
 
             if (!resolved) {
-                return handleAPIError(res, notFound('Question batch not found or already answered'));
+                return void handleAPIError(res, notFound('Question batch not found or already answered'));
             }
 
-            sendJSON(res, 200, { ok: true });
+            return { ok: true };
         },
-    });
+    }));
 
     // ------------------------------------------------------------------
     // Pending messages endpoints
     // ------------------------------------------------------------------
 
     // POST /api/processes/:id/pending-messages — Queue a message while AI is busy
-    routes.push({
+    routes.push(createRoute({
+        statusCode: 201,
         method: 'POST',
         pattern: /^\/api\/processes\/([^/]+)\/pending-messages$/,
-        handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
+        handler: async ({ req, res, match }) => {
+            const id = decodeURIComponent(match[1]);
             const wsId = parseQueryParams(req.url || '/').workspaceId;
             const proc = await resolveProcess(store, id, wsId);
             if (!proc) {
-                return handleAPIError(res, notFound('Process'));
+                return void handleAPIError(res, notFound('Process'));
             }
 
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
             if (!body.content || typeof body.content !== 'string') {
-                return handleAPIError(res, missingFields(['content']));
+                return void handleAPIError(res, missingFields(['content']));
             }
 
             const pendingMsg = {
@@ -824,21 +825,21 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
 
             emitPendingMessageAdded(store, id, pendingMsg);
 
-            sendJSON(res, 201, { message: pendingMsg });
+            return { message: pendingMsg };
         },
-    });
+    }));
 
     // DELETE /api/processes/:id/pending-messages/:msgId — Remove a consumed pending message
-    routes.push({
+    routes.push(createRoute({
         method: 'DELETE',
         pattern: /^\/api\/processes\/([^/]+)\/pending-messages\/([^/]+)$/,
-        handler: async (req, res, match) => {
-            const id = decodeURIComponent(match![1]);
-            const msgId = decodeURIComponent(match![2]);
+        handler: async ({ req, res, match }) => {
+            const id = decodeURIComponent(match[1]);
+            const msgId = decodeURIComponent(match[2]);
             const wsId = parseQueryParams(req.url || '/').workspaceId;
             const proc = await resolveProcess(store, id, wsId);
             if (!proc) {
-                return handleAPIError(res, notFound('Process'));
+                return void handleAPIError(res, notFound('Process'));
             }
 
             const existing = proc.pendingMessages ?? [];
@@ -848,17 +849,17 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             res.writeHead(204);
             res.end();
         },
-    });
+    }));
 
     // ------------------------------------------------------------------
     // Stats endpoint
     // ------------------------------------------------------------------
 
     // GET /api/stats — Aggregate statistics
-    routes.push({
+    routes.push(createRoute({
         method: 'GET',
         pattern: '/api/stats',
-        handler: async (_req, res) => {
+        handler: async () => {
             const allProcesses = store.getProcessSummaries
                 ? (await store.getProcessSummaries()).entries
                 : await store.getAllProcesses();
@@ -885,11 +886,11 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 count: workspaceCounts[ws.id] || 0,
             }));
 
-            sendJSON(res, 200, {
+            return {
                 totalProcesses: allProcesses.length,
                 byStatus,
                 byWorkspace,
-            });
+            };
         },
-    });
+    }));
 }

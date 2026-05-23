@@ -20,10 +20,11 @@
  * the SDK and its registered OAuth metadata discovery.
  */
 
-import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
+import { getLogger, LogCategory, denyAllPermissions } from '@plusplusoneplusplus/forge';
 import type { ISDKService, MCPServerConfig } from '@plusplusoneplusplus/forge';
 import type { McpOauthManager } from './mcp-oauth-manager';
 import type { PendingMcpOAuth } from './mcp-oauth-types';
+import { readMcpServerAuthInfo } from './mcp-oauth-token-cache';
 
 /**
  * Maximum lifetime of the holder session. The SDK redirect listener should
@@ -125,10 +126,14 @@ export async function initiateMcpOAuth(opts: InitiateMcpOAuthOptions): Promise<I
         // Pass exactly one server. `tools: ['*']` ensures the SDK actually
         // connects to it during session init (an empty `tools` list would
         // skip the connection and the OAuth probe wouldn't fire).
+        // `onPermissionRequest` is required by the SDK for any session; deny
+        // all since this session only calls the mcp.oauth.login RPC — no
+        // tools are ever invoked.
         const sessionOptions = {
             mcpServers: {
                 [serverName]: { ...serverConfig, tools: serverConfig.tools ?? ['*'] },
             },
+            onPermissionRequest: denyAllPermissions,
         } as unknown as Parameters<typeof client.createSession>[0];
 
         session = (await client.createSession(sessionOptions)) as unknown as SessionShape;
@@ -190,7 +195,7 @@ export async function initiateMcpOAuth(opts: InitiateMcpOAuthOptions): Promise<I
 
         // Hold the session until the manager resolves the entry, so the SDK's
         // redirect listener stays alive long enough to complete the exchange.
-        scheduleSessionRelease(session, entry.id, manager);
+        scheduleSessionRelease(session, entry.id, manager, remoteUrl);
 
         log.info(
             LogCategory.MCP,
@@ -209,6 +214,7 @@ function scheduleSessionRelease(
     session: SessionShape,
     requestId: string,
     manager: McpOauthManager,
+    remoteUrl: string,
 ): void {
     const log = getLogger();
     const startedAt = Date.now();
@@ -216,6 +222,24 @@ function scheduleSessionRelease(
     const interval = setInterval(() => {
         const entry = manager.getPending(requestId);
         const elapsed = Date.now() - startedAt;
+
+        // Auto-resolve: if the SDK has written a valid token to its cache the
+        // flow completed successfully. Mark it done immediately so the dashboard
+        // poll can pick up 'completed' without waiting for a manual resolve call.
+        if (entry && entry.status === 'pending') {
+            const auth = readMcpServerAuthInfo(remoteUrl);
+            if (auth.status === 'authenticated') {
+                log.info(
+                    LogCategory.MCP,
+                    `[McpOAuthInitiator] Token cache authenticated — auto-resolving requestId=${requestId} server=${entry.serverName}`,
+                );
+                manager.resolve(requestId, 'completed');
+                clearInterval(interval);
+                void safeDestroy(session);
+                return;
+            }
+        }
+
         const resolved = entry?.status === 'completed' || entry?.status === 'failed';
         const missing = !entry; // swept out by TTL
         const timedOut = elapsed >= SESSION_HOLD_TIMEOUT_MS;

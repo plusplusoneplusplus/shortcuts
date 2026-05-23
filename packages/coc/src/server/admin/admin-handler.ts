@@ -8,7 +8,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, TaskQueueManager, SDKServiceRegistry } from '@plusplusoneplusplus/forge';
 import { MEMORY_GUIDANCE, MEMORY_SCHEMA, READ_ONLY_SYSTEM_MESSAGE, SECURITY_PATTERNS_DESCRIPTION } from '@plusplusoneplusplus/forge';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
@@ -16,7 +16,7 @@ import * as path from 'path';
 import * as url from 'url';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
 import { parseBody, sendJSON } from '../core/api-handler';
-import { badRequest, forbidden, handleAPIError, invalidJSON } from '../errors';
+import { badRequest, forbidden, handleAPIError, invalidJSON, notFound } from '../errors';
 import { exportAllData } from '../storage/data-exporter';
 import { importData } from '../storage/data-importer';
 import { DataWiper } from '../storage/data-wiper';
@@ -30,6 +30,16 @@ import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { Route } from '../types';
 import { sendSSE } from '../wiki/ask-handler';
 import { ADMIN_CONFIG_FIELDS, ADMIN_EDITABLE_KEYS, getAdminFieldMetadata } from './admin-config-fields';
+import { RALPH_GRILL_SUFFIX } from '../executors/chat-base-executor';
+import { RALPH_BASE_INSTRUCTIONS } from '../executors/ralph-executor';
+import { RALPH_SYNTHESIS_PROMPT_BASE } from '../ralph/synthesis-prompt';
+import { RALPH_ITERATION_PROMPT_DEFAULT_HEAD } from '../ralph/iteration-prompt';
+import {
+    getAllPromptOverrides,
+    savePromptOverride as writeSavedPromptOverride,
+    deletePromptOverride as removePromptOverride,
+    RALPH_PROMPT_IDS,
+} from './ralph-prompt-overrides';
 
 // ============================================================================
 // Token Management
@@ -137,6 +147,8 @@ export interface AdminRouteOptions {
     runtimeConfigService?: RuntimeConfigService;
     /** Exit code to use for restart (injected to avoid circular import). Defaults to 75. */
     restartExitCode?: number;
+    /** SDK service registry for per-provider availability checks. */
+    sdkServiceRegistry?: SDKServiceRegistry;
     /** Override token TTL in ms (for testing). Defaults to TOKEN_EXPIRY_MS (5 min). */
     tokenTtlMs?: number;
 }
@@ -448,12 +460,83 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
 
     // ------------------------------------------------------------------
     // GET /api/admin/prompts — Return built-in prompt default texts
+    // (annotated with active overrides when dataDir is available)
     // ------------------------------------------------------------------
     routes.push({
         method: 'GET',
         pattern: '/api/admin/prompts',
         handler: async (_req, res) => {
-            sendJSON(res, 200, getBuiltInPrompts());
+            sendJSON(res, 200, dataDir ? getPromptsWithOverrides(dataDir) : getBuiltInPrompts());
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // PUT /api/admin/prompts/:id — Save an admin override for a prompt
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'PUT',
+        pattern: /^\/api\/admin\/prompts\/([^/]+)$/,
+        handler: async (req, res, match) => {
+            const promptId = match?.[1] ? decodeURIComponent(match[1]) : undefined;
+            if (!promptId) return handleAPIError(res, badRequest('Missing prompt ID'));
+            if (!dataDir) return handleAPIError(res, badRequest('dataDir not configured'));
+
+            const builtins = getBuiltInPrompts();
+            const prompt = builtins[promptId];
+            if (!prompt) return handleAPIError(res, notFound(`prompt '${promptId}'`));
+            if (!prompt.editable) return handleAPIError(res, forbidden(`Prompt '${promptId}' is not editable`));
+
+            let body: { text?: unknown };
+            try {
+                body = await parseBody(req);
+            } catch {
+                return handleAPIError(res, invalidJSON());
+            }
+            if (typeof body.text !== 'string' || !body.text.trim()) {
+                return handleAPIError(res, badRequest('Body must contain a non-empty "text" string'));
+            }
+
+            const validationError = validatePromptOverride(prompt, body.text);
+            if (validationError) return handleAPIError(res, badRequest(validationError));
+
+            try {
+                writeSavedPromptOverride(promptId, body.text, dataDir);
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
+
+            sendJSON(res, 200, {
+                ...prompt,
+                overrideText: body.text,
+                hasOverride: true,
+                saved: true,
+            });
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // DELETE /api/admin/prompts/:id — Reset a prompt to its built-in default
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'DELETE',
+        pattern: /^\/api\/admin\/prompts\/([^/]+)$/,
+        handler: async (_req, res, match) => {
+            const promptId = match?.[1] ? decodeURIComponent(match[1]) : undefined;
+            if (!promptId) return handleAPIError(res, badRequest('Missing prompt ID'));
+            if (!dataDir) return handleAPIError(res, badRequest('dataDir not configured'));
+
+            const builtins = getBuiltInPrompts();
+            const prompt = builtins[promptId];
+            if (!prompt) return handleAPIError(res, notFound(`prompt '${promptId}'`));
+            if (!prompt.editable) return handleAPIError(res, forbidden(`Prompt '${promptId}' is not editable`));
+
+            try {
+                removePromptOverride(promptId, dataDir);
+            } catch (err) {
+                return handleAPIError(res, err);
+            }
+
+            sendJSON(res, 200, { id: promptId, reset: true });
         },
     });
 
@@ -802,10 +885,34 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
             }
         },
     });
-}
 
-// ============================================================================
-// Built-in Prompt Defaults
+    // ------------------------------------------------------------------
+    // GET /api/admin/providers/availability — per-provider SDK install check
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: '/api/admin/providers/availability',
+        handler: async (_req, res) => {
+            const registry = options.sdkServiceRegistry;
+            if (!registry || registry.size === 0) {
+                sendJSON(res, 200, {});
+                return;
+            }
+            const result: Record<string, { available: boolean; error?: string }> = {};
+            await Promise.all(
+                registry.getProviderNames().map(async (name) => {
+                    try {
+                        const avail = await registry.get(name)!.isAvailable();
+                        result[name] = { available: avail.available, ...(avail.error ? { error: avail.error } : {}) };
+                    } catch (err) {
+                        result[name] = { available: false, error: err instanceof Error ? err.message : String(err) };
+                    }
+                }),
+            );
+            sendJSON(res, 200, result);
+        },
+    });
+}
 // ============================================================================
 
 export interface BuiltInPrompt {
@@ -814,7 +921,16 @@ export interface BuiltInPrompt {
     group: string;
     source: string;
     description: string;
+    /** Built-in default text. */
     text: string;
+    /** Whether this prompt supports admin overrides. */
+    editable?: boolean;
+    /** Required template variable names that must appear in any override. */
+    templateVars?: string[];
+    /** Active override text, if set. */
+    overrideText?: string;
+    /** True when an override is currently active. */
+    hasOverride?: boolean;
 }
 
 /** Return all built-in prompts as a record keyed by prompt id. */
@@ -948,5 +1064,75 @@ Each entry must have this exact shape:
             description: 'Tool description controlling when/how AI calls suggest_follow_ups',
             text: 'After completing your response, call this tool to suggest 2-3 brief follow-up actions the user might want to take next. Each suggestion should be a short, direct action phrase (imperative, not a question) that continues the conversation — e.g., "Show an example", "Explain the config options", "Generate the fix". IMPORTANT: Never list follow-up suggestions in your response text. Always call this tool instead.',
         },
+        'ralph-grill-suffix': {
+            id: 'ralph-grill-suffix',
+            title: 'Ralph — Grilling Phase Suffix',
+            group: 'Ralph',
+            source: 'coc/server/executors/chat-base-executor.ts',
+            description: 'System-prompt suffix appended during the Ralph grilling phase; guides the model to interview the user via ask_user',
+            text: RALPH_GRILL_SUFFIX,
+            editable: true,
+            templateVars: [],
+        },
+        'ralph-synthesis': {
+            id: 'ralph-synthesis',
+            title: 'Ralph — Synthesis Prompt',
+            group: 'Ralph',
+            source: 'coc/server/ralph/synthesis-prompt.ts',
+            description: 'User prompt sent to synthesise the grilling conversation into a ## Goal block',
+            text: RALPH_SYNTHESIS_PROMPT_BASE,
+            editable: true,
+            templateVars: [],
+        },
+        'ralph-execution-system': {
+            id: 'ralph-execution-system',
+            title: 'Ralph — Execution System Prompt',
+            group: 'Ralph',
+            source: 'coc/server/executors/ralph-executor.ts',
+            description: 'Base system-prompt block injected at the start of every Ralph execution iteration',
+            text: RALPH_BASE_INSTRUCTIONS,
+            editable: true,
+            templateVars: [],
+        },
+        'ralph-iteration-user': {
+            id: 'ralph-iteration-user',
+            title: 'Ralph — Iteration User Prompt',
+            group: 'Ralph',
+            source: 'coc/server/ralph/iteration-prompt.ts',
+            description: 'User-turn prompt (prefix + work_intent + spec_contract) sent each iteration; the <goal> block is appended dynamically',
+            text: RALPH_ITERATION_PROMPT_DEFAULT_HEAD,
+            editable: true,
+            templateVars: [],
+        },
     };
+}
+
+/**
+ * Return all built-in prompts annotated with any active admin overrides.
+ * Called by GET /api/admin/prompts so the UI sees override state without a
+ * separate request.
+ */
+export function getPromptsWithOverrides(dataDir: string): Record<string, BuiltInPrompt> {
+    const builtins = getBuiltInPrompts();
+    const overrides = getAllPromptOverrides(dataDir);
+    for (const [id, overrideText] of Object.entries(overrides)) {
+        if (builtins[id]) {
+            builtins[id].overrideText = overrideText;
+            builtins[id].hasOverride = true;
+        }
+    }
+    return builtins;
+}
+
+/**
+ * Validate a prompt override.  Returns an error message, or undefined if valid.
+ * Currently only checks required template variables.
+ */
+export function validatePromptOverride(prompt: BuiltInPrompt, text: string): string | undefined {
+    const vars = prompt.templateVars ?? [];
+    const missing = vars.filter(v => !text.includes(v));
+    if (missing.length > 0) {
+        return `Override must contain required template variable(s): ${missing.join(', ')}`;
+    }
+    return undefined;
 }

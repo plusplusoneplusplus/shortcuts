@@ -22,7 +22,7 @@ import type { ExecutionServerOptions, ExecutionServer, ServerCloseOptions } from
 import type { Route } from './types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ModelInfo } from '@plusplusoneplusplus/forge';
-import { sdkServiceRegistry, SDK_PROVIDER_COPILOT, modelMetadataStore } from '@plusplusoneplusplus/forge';
+import { sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, modelMetadataStore, registerCodexSDKService } from '@plusplusoneplusplus/forge';
 import { cleanupAllStalePasteFiles } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueRouter } from './queue/multi-repo-queue-router';
 import { createQueueInfrastructure } from './infrastructure/queue-infrastructure';
@@ -33,6 +33,7 @@ import { ensureMyLifeWorkspace } from './workspaces/my-life-workspace';
 import { createScheduleInfrastructure } from './infrastructure/schedule-infrastructure';
 import { createLoopInfrastructure } from './infrastructure/loop-infrastructure';
 import { createMcpOauthInfrastructure } from './mcp-oauth';
+import { createCodexAuthInfrastructure } from './codex-auth';
 import type { LoopInfrastructure } from './infrastructure/loop-infrastructure';
 import { createCleanupInfrastructure } from './infrastructure/cleanup-infrastructure';
 import { createWebSocketInfrastructure } from './infrastructure/websocket-infrastructure';
@@ -82,6 +83,7 @@ interface CloseHandlerDeps {
     loopExecutor?: { shutdownAll(): void };
     loopInfraDispose?: () => void;
     mcpOauthDispose?: () => void;
+    codexAuthDispose?: () => void;
     syncEngines?: Map<string, SyncEngine>;
     activeSockets: Set<import('net').Socket>;
     server: http.Server;
@@ -105,6 +107,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.loopExecutor?.shutdownAll();
         deps.loopInfraDispose?.();
         deps.mcpOauthDispose?.();
+        deps.codexAuthDispose?.();
         deps.syncEngines?.forEach(e => e.stop());
         gitInfoCache.dispose();
         deps.notesGitTimerManager.dispose();
@@ -195,8 +198,36 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const mcpOauthEnabled = resolvedConfig.mcpOauth?.enabled ?? true;
     const mcpOauthInfra = mcpOauthEnabled ? createMcpOauthInfrastructure() : undefined;
 
+    // Codex Auth infra — only created when the codex feature flag is enabled.
+    // The auth checker is injected into the CodexSDKService so sendMessage
+    // returns an auth-required error (AC-08) when the user has not signed in.
+    const codexEnabled = resolvedConfig.codex?.enabled ?? false;
+    let codexAuthInfra: ReturnType<typeof createCodexAuthInfrastructure> | undefined;
+    if (codexEnabled) {
+        codexAuthInfra = createCodexAuthInfrastructure({ dataDir });
+        // Register the Codex provider with an auth checker that gates sendMessage
+        registerCodexSDKService(() => {
+            const info = codexAuthInfra!.store.readInfo();
+            return {
+                authenticated: info.status === 'authenticated',
+                authUrl: 'http://localhost:' + (options.port ?? 4000) + '/api/codex-auth/start',
+            };
+        });
+    }
+
+    const requestedProvider = resolvedConfig.activeProvider === 'codex' ? 'codex' : 'copilot';
+    const effectiveProvider = requestedProvider === 'codex' && sdkServiceRegistry.has(SDK_PROVIDER_CODEX)
+        ? 'codex'
+        : 'copilot';
+    if (requestedProvider === 'codex' && effectiveProvider !== 'codex') {
+        process.stderr.write('[ExecutionServer] activeProvider=codex requested, but Codex provider is not registered; falling back to Copilot\n');
+    }
+    const resolvedAiService = options.aiService ?? sdkServiceRegistry.getOrThrow(
+        effectiveProvider === 'codex' ? SDK_PROVIDER_CODEX : SDK_PROVIDER_COPILOT,
+    );
+
     const { registry, bridge, queuePersistence, queueFacade } = createQueueInfrastructure(
-        store, dataDir, options, defaultTimeoutMs,
+        store, dataDir, { ...options, aiService: resolvedAiService }, defaultTimeoutMs,
         resolvedConfig.chat.followUpSuggestions, resolvedConfig.chat.askUser, () => wsServer,
         resolvedConfig.memoryPromotion,
         () => {
@@ -244,6 +275,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             };
         },
         () => mcpOauthInfra?.manager,
+        effectiveProvider,
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
@@ -368,7 +400,6 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         scheduleManager.registerWorkspacePath(ws.id, ws.rootPath);
     }
 
-    const resolvedAiService= options.aiService ?? sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
     const aiInvoker = createCLIAIInvoker({ approvePermissions: true, aiService: resolvedAiService });
     cleanupInfra = createCleanupInfrastructure(store, dataDir, queueFacade);
     const { outputPruner, staleDetector } = cleanupInfra;
@@ -404,6 +435,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         loopStore: loopInfra?.loopStore,
         loopExecutor: loopInfra?.loopExecutor,
         mcpOauthManager: mcpOauthInfra?.manager,
+        codexAuthManager: codexAuthInfra?.manager,
         loopEmit: loopInfra?.emit,
         hostname: os.hostname(),
         bindAddress: host,
@@ -516,6 +548,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             loopExecutor: loopInfra?.loopExecutor,
             loopInfraDispose: loopInfra?.dispose,
             mcpOauthDispose: mcpOauthInfra?.dispose,
+            codexAuthDispose: codexAuthInfra?.dispose,
             syncEngines,
             activeSockets, server,
         }),

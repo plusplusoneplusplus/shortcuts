@@ -11,7 +11,7 @@
  * editor before the user clicks "Start Ralph".
  */
 
-const PROMPT_BASE = `You are now in the Ralph grilling phase for this conversation.
+export const RALPH_SYNTHESIS_PROMPT_BASE = `You are now in the Ralph grilling phase for this conversation.
 
 Your single job for this turn is to synthesize the discussion above into a precise goal spec for a Ralph iterative coding loop.
 
@@ -30,13 +30,16 @@ export const RALPH_SYNTHESIS_HINT_MAX_LENGTH = 2000;
 export interface BuildRalphSynthesisPromptInput {
     /** Optional one-line hint typed by the user into the message box. */
     extraGuidance?: string;
+    /** Override text from admin prompts; replaces RALPH_SYNTHESIS_PROMPT_BASE when provided. */
+    promptOverride?: string;
 }
 
 export function buildRalphSynthesisPrompt(input: BuildRalphSynthesisPromptInput = {}): string {
+    const base = input.promptOverride ?? RALPH_SYNTHESIS_PROMPT_BASE;
     const hint = (input.extraGuidance ?? '').trim();
-    if (!hint) return PROMPT_BASE;
+    if (!hint) return base;
     const truncated = hint.length > RALPH_SYNTHESIS_HINT_MAX_LENGTH
         ? hint.slice(0, RALPH_SYNTHESIS_HINT_MAX_LENGTH).trimEnd() + '…'
         : hint;
-    return `${PROMPT_BASE}${HINT_HEADER}${truncated}`;
+    return `${base}${HINT_HEADER}${truncated}`;
 }

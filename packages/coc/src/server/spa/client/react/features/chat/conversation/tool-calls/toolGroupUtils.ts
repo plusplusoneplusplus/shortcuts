@@ -6,6 +6,7 @@ import type { DetectedCommit } from '../commitDetection';
 import { detectCommitsInToolGroup } from '../commitDetection';
 import { detectPullRequestsInToolGroup, type DetectedPullRequest } from '../pullRequestDetection';
 import { getApplyPatchText, parseApplyPatchFileChanges } from '../../../../utils/applyPatchParser';
+import { getCodexFileChanges, normalizeToolName } from './toolNormalization';
 
 export type ToolGroupCategory = 'read' | 'write' | 'shell' | 'agent';
 
@@ -46,8 +47,9 @@ export function getToolGroupCategory(
     toolName: string,
     args?: unknown,
 ): ToolGroupCategory | null {
-    if (toolName === 'read_agent' && isRecord(args) && args.agent_id) return 'agent';
-    return CATEGORY_MAP[toolName] ?? null;
+    const canonicalName = normalizeToolName(toolName);
+    if (canonicalName === 'read_agent' && isRecord(args) && args.agent_id) return 'agent';
+    return CATEGORY_MAP[canonicalName] ?? null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -659,7 +661,8 @@ export function filterWhisperChunks(
     // Count file edits/creates
     const fileMap = new Map<string, FileEditStats>();
     for (const tc of allToolCalls) {
-        if (tc.toolName === 'edit' && isRecord(tc.args)) {
+        const toolName = normalizeToolName(tc.toolName);
+        if (toolName === 'edit' && isRecord(tc.args)) {
             const pathArg = tc.args.path;
             const filePathArg = tc.args.filePath;
             const filePath = typeof pathArg === 'string' ? pathArg : (typeof filePathArg === 'string' ? filePathArg : '');
@@ -676,7 +679,7 @@ export function filterWhisperChunks(
                 entry.netInsertions += net.insertions;
                 entry.netDeletions += net.deletions;
             }
-        } else if (tc.toolName === 'create' && isRecord(tc.args)) {
+        } else if (toolName === 'create' && isRecord(tc.args)) {
             const pathArg = tc.args.path;
             const filePathArg = tc.args.filePath;
             const filePath = typeof pathArg === 'string' ? pathArg : (typeof filePathArg === 'string' ? filePathArg : '');
@@ -688,7 +691,7 @@ export function filterWhisperChunks(
                 entry.insertions += lineCount;
                 entry.netInsertions += lineCount;
             }
-        } else if (tc.toolName === 'apply_patch') {
+        } else if (toolName === 'apply_patch') {
             const patchText = getApplyPatchText(tc.args);
             if (patchText) {
                 for (const change of parseApplyPatchFileChanges(patchText)) {
@@ -703,6 +706,15 @@ export function filterWhisperChunks(
                         entry.hasEdit = true;
                     }
                 }
+            } else {
+                for (const change of getCodexFileChanges(tc.args)) {
+                    const entry = getFileEditStats(fileMap, change.path);
+                    if (change.kind === 'add') {
+                        entry.hasCreate = true;
+                    } else {
+                        entry.hasEdit = true;
+                    }
+                }
             }
         }
     }
@@ -712,7 +724,8 @@ export function filterWhisperChunks(
     if (fileMap.size > 0) {
         const trackedPaths = [...fileMap.keys()];
         for (const tc of allToolCalls) {
-            if ((tc.toolName === 'powershell' || tc.toolName === 'shell' || tc.toolName === 'bash') && tc.args) {
+            const toolName = normalizeToolName(tc.toolName);
+            if ((toolName === 'powershell' || toolName === 'shell' || toolName === 'bash') && tc.args) {
                 const cmd = (tc.args.command || tc.args.cmd || '') as string;
                 if (!cmd) continue;
                 const extracted = extractDeletedPathsFromCommand(cmd);

@@ -68,6 +68,8 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getConfig: () => ({ apiBasePath: '/api' }),
     isRalphEnabled: () => mockRalphEnabled.value,
     isLoopsEnabled: () => false,
+    isCodexEnabled: () => false,
+    getActiveProvider: () => 'copilot',
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({

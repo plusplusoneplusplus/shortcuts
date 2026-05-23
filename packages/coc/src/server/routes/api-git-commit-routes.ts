@@ -5,15 +5,15 @@
  * diffs, per-file diffs, and file content at a given commit.
  */
 
-import * as url from 'url';
 import * as path from 'path';
 import { BranchService } from '@plusplusoneplusplus/forge';
-import { sendJSON, execGitArgsSync, readGitFileAtCommit } from '../core/api-handler';
+import { execGitArgsSync, readGitFileAtCommit } from '../core/api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
 import { gitCache } from '../git/git-cache';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
 import { truncateDiffIfNeeded } from './api-shared';
+import { createRoute, asString, asInt, asBool } from './route-utils';
 
 export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
     const { routes, store } = ctx;
@@ -26,19 +26,21 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
     }
 
     // GET /api/workspaces/:id/git/commits — List commits with pagination
-    routes.push({
+    routes.push(createRoute({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/commits$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        parseQuery: (q) => ({
+            limit: Math.min(Math.max(asInt(q.limit, 50), 1), 200),
+            skip: Math.max(asInt(q.skip, 0), 0),
+            refresh: asBool(q.refresh),
+            search: asString(q.search, '').trim(),
+        }),
+        handler: async ({ res, match, query }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
             const id = ws.id;
 
-            const parsed = url.parse(req.url || '/', true);
-            const limit = Math.min(Math.max(parseInt(String(parsed.query.limit || '50'), 10) || 50, 1), 200);
-            const skip = Math.max(parseInt(String(parsed.query.skip || '0'), 10) || 0, 0);
-            const refresh = parsed.query.refresh === 'true';
-            const search = parsed.query.search ? String(parsed.query.search).trim() : '';
+            const { limit, skip, refresh, search } = query;
 
             if (refresh) {
                 gitCache.invalidateMutable(id);
@@ -47,7 +49,7 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
             const cacheKey = `${id}:commits:${limit}:${skip}${search ? `:search:${search}` : ''}`;
             const cached = gitCache.get<{ commits: any[]; unpushedCount: number }>(cacheKey);
             if (cached) {
-                return sendJSON(res, 200, cached);
+                return cached;
             }
 
             try {
@@ -101,27 +103,27 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
 
                 const result = { commits, unpushedCount };
                 gitCache.set(cacheKey, result);
-                sendJSON(res, 200, result);
+                return result;
             } catch {
-                sendJSON(res, 200, { commits: [], unpushedCount: 0 });
+                return { commits: [], unpushedCount: 0 };
             }
         },
-    });
+    }));
 
     // GET /api/workspaces/:id/git/commits/:hash — Single commit details
-    routes.push({
+    routes.push(createRoute({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/commits\/([a-f0-9]{4,40})$/,
-        handler: async (_req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ res, match }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
             const id = ws.id;
-            const hash = match![2];
+            const hash = match[2];
 
             const cacheKey = `${id}:commit:${hash}`;
             const cached = gitCache.get<Record<string, string>>(cacheKey);
             if (cached) {
-                return sendJSON(res, 200, cached);
+                return cached;
             }
 
             try {
@@ -129,7 +131,7 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
                 const raw = execGitArgsSync(['log', '-1', `--format=${format}`, hash], ws.rootPath);
                 const lines = raw.trim().split('\n');
                 if (lines.length < 6) {
-                    return handleAPIError(res, notFound('Commit'));
+                    return void handleAPIError(res, notFound('Commit'));
                 }
                 const result = {
                     hash: lines[0],
@@ -142,27 +144,27 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
                     body: lines.slice(7).join('\n').trim(),
                 };
                 gitCache.set(cacheKey, result);
-                sendJSON(res, 200, result);
+                return result;
             } catch {
-                return handleAPIError(res, notFound('Commit'));
+                return void handleAPIError(res, notFound('Commit'));
             }
         },
-    });
+    }));
 
     // GET /api/workspaces/:id/git/commits/:hash/files — Files changed in a commit
-    routes.push({
+    routes.push(createRoute({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/commits\/([a-f0-9]{4,40})\/files$/,
-        handler: async (_req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ res, match }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
             const id = ws.id;
-            const hash = match![2];
+            const hash = match[2];
 
             const cacheKey = `${id}:commit-files:${hash}`;
             const cached = gitCache.get<{ files: any[] }>(cacheKey);
             if (cached) {
-                return sendJSON(res, 200, cached);
+                return cached;
             }
 
             try {
@@ -212,81 +214,81 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
                 }
                 const result = { files };
                 gitCache.set(cacheKey, result);
-                sendJSON(res, 200, result);
+                return result;
             } catch (err: any) {
-                return handleAPIError(res, badRequest('Failed to get commit files: ' + (err.message || 'unknown error')));
+                return void handleAPIError(res, badRequest('Failed to get commit files: ' + (err.message || 'unknown error')));
             }
         },
-    });
+    }));
 
     // GET /api/workspaces/:id/git/commits/:hash/diff — Full diff for a commit
-    routes.push({
+    routes.push(createRoute({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/commits\/([a-f0-9]{4,40})\/diff$/,
-        handler: async (_req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ res, match }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
             const id = ws.id;
-            const hash = match![2];
+            const hash = match[2];
 
             const cacheKey = `${id}:commit-diff:${hash}`;
             const cached = gitCache.get<{ diff: string }>(cacheKey);
             if (cached) {
-                return sendJSON(res, 200, cached);
+                return cached;
             }
 
             try {
                 const diff = execGitArgsSync(['show', '--format=', '--patch', hash], ws.rootPath);
                 const result = { diff };
                 gitCache.set(cacheKey, result);
-                sendJSON(res, 200, result);
+                return result;
             } catch (err: any) {
-                return handleAPIError(res, badRequest('Failed to get commit diff: ' + (err.message || 'unknown error')));
+                return void handleAPIError(res, badRequest('Failed to get commit diff: ' + (err.message || 'unknown error')));
             }
         },
-    });
+    }));
 
     // GET /api/workspaces/:id/git/commits/:hash/files/*/diff — Per-file diff for a commit
-    routes.push({
+    routes.push(createRoute({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/commits\/([a-f0-9]{4,40})\/files\/(.+)\/diff$/,
-        handler: async (req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        parseQuery: (q) => ({ full: asBool(q.full) }),
+        handler: async ({ res, match, query }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
             const id = ws.id;
-            const hash = match![2];
-            const filePath = decodeURIComponent(match![3]);
+            const hash = match[2];
+            const filePath = decodeURIComponent(match[3]);
 
-            const parsed = url.parse(req.url || '/', true);
-            const full = parsed.query.full === 'true';
+            const full = query.full;
 
             const cacheKey = `${id}:commit-file-diff:${hash}:${filePath}${full ? ':full' : ''}`;
             const cached = gitCache.get<{ diff: string; truncated?: boolean; totalLines?: number }>(cacheKey);
             if (cached) {
-                return sendJSON(res, 200, cached);
+                return cached;
             }
 
             try {
                 const diff = execGitArgsSync(['show', '--format=', '--patch', '-U99999', hash, '--', filePath], ws.rootPath);
                 const result = truncateDiffIfNeeded(diff, full);
                 gitCache.set(cacheKey, result);
-                sendJSON(res, 200, result);
+                return result;
             } catch (err: any) {
-                return handleAPIError(res, badRequest('Failed to get commit file diff: ' + (err.message || 'unknown error')));
+                return void handleAPIError(res, badRequest('Failed to get commit file diff: ' + (err.message || 'unknown error')));
             }
         },
-    });
+    }));
 
     // GET /api/workspaces/:id/git/commits/:hash/files/*/content — Full file content for a commit file
-    routes.push({
+    routes.push(createRoute({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/commits\/([a-f0-9]{4,40})\/files\/(.+)\/content$/,
-        handler: async (_req, res, match) => {
-            const ws = await resolveWorkspaceOrFail(store, match!, res);
+        handler: async ({ res, match }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
             const id = ws.id;
-            const hash = match![2];
-            const filePath = decodeURIComponent(match![3]);
+            const hash = match[2];
+            const filePath = decodeURIComponent(match[3]);
 
             const cacheKey = `${id}:commit-file-content:${hash}:${filePath}`;
             const cached = gitCache.get<{
@@ -299,13 +301,13 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
                 resolvedRef: string;
             }>(cacheKey);
             if (cached) {
-                return sendJSON(res, 200, cached);
+                return cached;
             }
 
             try {
                 const { content, resolvedRef } = readGitFileAtCommit(hash, filePath, ws.rootPath);
                 if (Buffer.byteLength(content, 'utf-8') > 10 * 1024 * 1024) {
-                    return handleAPIError(res, badRequest('Commit file is too large (max 10MB)'));
+                    return void handleAPIError(res, badRequest('Commit file is too large (max 10MB)'));
                 }
 
                 const allLines = content.split('\n');
@@ -324,10 +326,10 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
                     resolvedRef,
                 };
                 gitCache.set(cacheKey, result);
-                sendJSON(res, 200, result);
+                return result;
             } catch (err: any) {
-                return handleAPIError(res, badRequest('Failed to get commit file content: ' + (err.message || 'unknown error')));
+                return void handleAPIError(res, badRequest('Failed to get commit file content: ' + (err.message || 'unknown error')));
             }
         },
-    });
+    }));
 }

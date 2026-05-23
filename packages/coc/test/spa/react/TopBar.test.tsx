@@ -153,25 +153,6 @@ describe('TopBar', () => {
         expect(btn.getAttribute('aria-pressed')).toBe('false');
     });
 
-    it('hamburger is noop outside Repos tab (aria-pressed stays false)', () => {
-        renderTopBar();
-        // Open Tools dropdown then click Skills to leave the Repos tab.
-        act(() => {
-            fireEvent.click(document.getElementById('tools-toggle')!);
-        });
-        act(() => {
-            fireEvent.click(document.getElementById('skills-toggle')!);
-        });
-
-        const btn = document.getElementById('hamburger-btn')!;
-        expect(btn.getAttribute('aria-pressed')).toBe('false');
-
-        act(() => {
-            fireEvent.click(btn);
-        });
-        expect(btn.getAttribute('aria-pressed')).toBe('false');
-    });
-
     it('renders theme toggle button', () => {
         renderTopBar();
         expect(screen.getByLabelText('Toggle theme')).toBeDefined();
@@ -190,157 +171,41 @@ describe('TopBar', () => {
         }
     });
 
-    it('renders the Tools dropdown trigger', () => {
+    it('does not render the legacy Tools dropdown trigger', () => {
         renderTopBar();
-        const btn = document.getElementById('tools-toggle')!;
-        expect(btn).toBeTruthy();
-        expect(btn.getAttribute('aria-haspopup')).toBe('menu');
-        expect(btn.getAttribute('aria-expanded')).toBe('false');
-        expect(btn.getAttribute('aria-label')).toBe('Tools');
-    });
-
-    it('opens the Tools popover on click and closes on outside click', () => {
-        renderTopBar();
-        const btn = document.getElementById('tools-toggle')!;
-
-        // Closed initially.
-        expect(document.getElementById('tools-popover')).toBeNull();
-
-        act(() => { fireEvent.click(btn); });
-        expect(document.getElementById('tools-popover')).toBeTruthy();
-        expect(btn.getAttribute('aria-expanded')).toBe('true');
-
-        // Click outside (mousedown listener) closes the popover.
-        act(() => {
-            document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-        });
-        expect(document.getElementById('tools-popover')).toBeNull();
-        expect(btn.getAttribute('aria-expanded')).toBe('false');
-    });
-
-    it('Escape key closes the Tools popover', () => {
-        renderTopBar();
-        act(() => { fireEvent.click(document.getElementById('tools-toggle')!); });
-        expect(document.getElementById('tools-popover')).toBeTruthy();
-
-        act(() => {
-            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-        });
+        expect(document.getElementById('tools-toggle')).toBeNull();
         expect(document.getElementById('tools-popover')).toBeNull();
     });
 
-    it('Tools popover lists Skills, Logs, Usage, Models in that order', () => {
+    it('does not render Skills/Logs/Stats/Models/Servers items directly in the topbar', () => {
         renderTopBar();
-        act(() => { fireEvent.click(document.getElementById('tools-toggle')!); });
-
-        const popover = document.getElementById('tools-popover')!;
-        const items = Array.from(popover.querySelectorAll('[role="menuitem"]'));
-        const ids = items.map(el => el.id);
-        expect(ids).toContain('skills-toggle');
-        expect(ids).toContain('logs-toggle');
-        expect(ids).toContain('stats-toggle');
-        expect(ids).toContain('models-toggle');
-        expect(ids.indexOf('skills-toggle')).toBeLessThan(ids.indexOf('logs-toggle'));
-        expect(ids.indexOf('logs-toggle')).toBeLessThan(ids.indexOf('stats-toggle'));
-        expect(ids.indexOf('stats-toggle')).toBeLessThan(ids.indexOf('models-toggle'));
-    });
-
-    it('Tools popover shows description text for each menu row', () => {
-        renderTopBar();
-        act(() => { fireEvent.click(document.getElementById('tools-toggle')!); });
-
-        const popover = document.getElementById('tools-popover')!;
-        expect(popover.textContent).toContain('Installed capabilities');
-        expect(popover.textContent).toContain('Runtime events');
-        expect(popover.textContent).toContain('Model and task stats');
-        expect(popover.textContent).toContain('Model selection and limits');
-    });
-
-    it('clicking a Tools menu item closes the popover', () => {
-        renderTopBar();
-        act(() => { fireEvent.click(document.getElementById('tools-toggle')!); });
-        expect(document.getElementById('tools-popover')).toBeTruthy();
-
-        act(() => { fireEvent.click(document.getElementById('stats-toggle')!); });
-        expect(document.getElementById('tools-popover')).toBeNull();
+        // These rows now live in the Admin page's left-panel "Tools" group
+        // (see AdminPanel.tsx). The topbar should not include them.
+        expect(document.getElementById('skills-toggle')).toBeNull();
+        expect(document.getElementById('logs-toggle')).toBeNull();
+        expect(document.getElementById('stats-toggle')).toBeNull();
+        expect(document.getElementById('models-toggle')).toBeNull();
+        expect(document.getElementById('servers-toggle')).toBeNull();
     });
 });
 
 // ─── TopBar tab click → hash update ─────────────────────────────
 
 describe('TopBar — tab click updates location.hash', () => {
-    function openTools() {
-        act(() => { fireEvent.click(document.getElementById('tools-toggle')!); });
-    }
-
     it('sets hash to #repos is no longer applicable (repos is implicit default)', () => {
         // Repos has no tab button — navigating away from a detail page clears the hash
         expect(ALL_TABS.map(t => t.tab)).not.toContain('repos');
-    });
-
-    it('clicking the same icon tab still sets the hash', () => {
-        location.hash = '#skills';
-        renderTopBar();
-        openTools();
-        act(() => {
-            fireEvent.click(document.getElementById('skills-toggle')!);
-        });
-        expect(location.hash).toBe('#skills');
-    });
-
-    it('clicking icon tabs in sequence updates hash each time', () => {
-        renderTopBar();
-        openTools();
-        act(() => { fireEvent.click(document.getElementById('skills-toggle')!); });
-        expect(location.hash).toBe('#skills');
-
-        openTools();
-        act(() => { fireEvent.click(document.getElementById('stats-toggle')!); });
-        expect(location.hash).toBe('#stats');
     });
 });
 
 // ─── TopBar active tab styling ──────────────────────────────────
 
 describe('TopBar — active tab styling', () => {
-    function openTools() {
-        act(() => { fireEvent.click(document.getElementById('tools-toggle')!); });
-    }
-
     it('default active tab (repos) does not show active class on any text tab (repos has no button)', () => {
         renderTopBar();
         // Repos is the default tab but has no nav button; no text tab should be highlighted
         const tabBar = document.getElementById('tab-bar');
         expect(tabBar).toBeNull(); // nav is hidden when TABS is empty
-    });
-
-    it('non-active Tools menu rows do not show the blue accent', () => {
-        renderTopBar();
-        openTools();
-        const skillsBtn = document.getElementById('skills-toggle')!;
-        expect(skillsBtn.className).not.toContain('bg-[#ddf4ff]');
-    });
-
-    it('Tools dropdown row activates when its tab becomes active', () => {
-        renderTopBar();
-        openTools();
-        act(() => {
-            fireEvent.click(document.getElementById('skills-toggle')!);
-        });
-        // Reopen to inspect active styling.
-        openTools();
-        const skillsBtn = document.getElementById('skills-toggle')!;
-        const statsBtn = document.getElementById('stats-toggle')!;
-        expect(skillsBtn.className).toContain('bg-[#ddf4ff]');
-        expect(statsBtn.className).not.toContain('bg-[#ddf4ff]');
-    });
-
-    it('Tools button itself reflects active state when an inner tab is active', () => {
-        renderTopBar();
-        openTools();
-        act(() => { fireEvent.click(document.getElementById('skills-toggle')!); });
-        const toolsBtn = document.getElementById('tools-toggle')!;
-        expect(toolsBtn.getAttribute('data-tools-active')).toBe('true');
     });
 });
 
@@ -482,144 +347,27 @@ describe('TopBar tab → hash → tabFromHash round-trip', () => {
     });
 });
 
-// ─── TopBar logs menu row (inside Tools dropdown) ─────────────────
+// ─── TopBar tool routes (migrated to Admin sidebar) ───────────────
 
-describe('TopBar — logs menu row', () => {
-    function openTools() {
-        act(() => { fireEvent.click(document.getElementById('tools-toggle')!); });
-    }
-
-    it('renders a logs-toggle row inside the Tools popover', () => {
+describe('TopBar — Tools dropdown is removed', () => {
+    it('does not render Skills/Logs/Stats/Models/Memory rows inside the topbar', () => {
         renderTopBar();
+        expect(document.getElementById('skills-toggle')).toBeNull();
         expect(document.getElementById('logs-toggle')).toBeNull();
-        openTools();
-        expect(document.getElementById('logs-toggle')).toBeTruthy();
+        expect(document.getElementById('stats-toggle')).toBeNull();
+        expect(document.getElementById('models-toggle')).toBeNull();
+        expect(document.getElementById('memory-toggle')).toBeNull();
     });
 
-    it('logs-toggle has aria-label and title "Logs"', () => {
-        renderTopBar();
-        openTools();
-        const btn = document.getElementById('logs-toggle')!;
-        expect(btn.getAttribute('aria-label')).toBe('Logs');
-        expect(btn.getAttribute('title')).toBe('Logs');
+    it('SHOW_MEMORY_TAB remains false (memory view is direct-route only)', () => {
+        expect(SHOW_MEMORY_TAB).toBe(false);
     });
 
-    it('logs-toggle has touch-target class', () => {
-        renderTopBar();
-        openTools();
-        const btn = document.getElementById('logs-toggle')!;
-        expect(btn.className).toContain('touch-target');
-    });
-
-    it('clicking logs-toggle calls onLogsOpen prop', () => {
-        const onLogsOpen = vi.fn();
-        render(
-            <AppProvider>
-                <NotificationProvider>
-                    <ThemeProvider>
-                        <TopBar onLogsOpen={onLogsOpen} />
-                    </ThemeProvider>
-                </NotificationProvider>
-            </AppProvider>
-        );
-        act(() => { fireEvent.click(document.getElementById('tools-toggle')!); });
-        act(() => {
-            fireEvent.click(document.getElementById('logs-toggle')!);
-        });
-        expect(onLogsOpen).toHaveBeenCalledOnce();
-    });
-
-    it('logs-toggle never shows active style (logs is a dialog, not a tab)', () => {
-        renderTopBar();
-        openTools();
-        const btn = document.getElementById('logs-toggle')!;
-        expect(btn.className).not.toContain('bg-[#ddf4ff]');
-    });
-
-    it('"Logs" text tab is not rendered in the main nav', () => {
+    it('"Logs", "Skills" and "Memory" text tabs are not rendered in the main nav', () => {
         renderTopBar();
         const tabs = TABS.map(t => t.label);
         expect(tabs).not.toContain('Logs');
-    });
-});
-
-// ─── TopBar skills menu row (inside Tools dropdown) ───────────────
-
-describe('TopBar — skills menu row', () => {
-    function openTools() {
-        act(() => { fireEvent.click(document.getElementById('tools-toggle')!); });
-    }
-
-    it('renders a skills-toggle row inside the Tools popover', () => {
-        renderTopBar();
-        expect(document.getElementById('skills-toggle')).toBeNull();
-        openTools();
-        expect(document.getElementById('skills-toggle')).toBeTruthy();
-    });
-
-    it('skills-toggle has aria-label and title "Skills"', () => {
-        renderTopBar();
-        openTools();
-        const btn = document.getElementById('skills-toggle')!;
-        expect(btn.getAttribute('aria-label')).toBe('Skills');
-        expect(btn.getAttribute('title')).toBe('Skills');
-    });
-
-    it('skills-toggle has touch-target class', () => {
-        renderTopBar();
-        openTools();
-        const btn = document.getElementById('skills-toggle')!;
-        expect(btn.className).toContain('touch-target');
-    });
-
-    it('skills-toggle shows blue accent when activeTab is skills', () => {
-        renderTopBar();
-        openTools();
-        act(() => {
-            fireEvent.click(document.getElementById('skills-toggle')!);
-        });
-        // Reopen so we can inspect the active styling.
-        openTools();
-        const btn = document.getElementById('skills-toggle')!;
-        expect(btn.className).toContain('bg-[#ddf4ff]');
-    });
-
-    it('skills-toggle does not show active style when another tab is active', () => {
-        renderTopBar();
-        openTools();
-        const btn = document.getElementById('skills-toggle')!;
-        expect(btn.className).not.toContain('bg-[#ddf4ff]');
-    });
-
-    it('"Skills" text tab is not rendered in the main nav', () => {
-        renderTopBar();
-        const tabs = TABS.map(t => t.label);
         expect(tabs).not.toContain('Skills');
-    });
-
-    it('clicking skills-toggle sets hash to #skills', () => {
-        renderTopBar();
-        openTools();
-        act(() => {
-            fireEvent.click(document.getElementById('skills-toggle')!);
-        });
-        expect(location.hash).toBe('#skills');
-    });
-});
-
-describe('TopBar — memory menu row', () => {
-    it('does not render a memory-toggle row while SHOW_MEMORY_TAB is false', () => {
-        renderTopBar();
-        expect(SHOW_MEMORY_TAB).toBe(false);
-        // Even when Tools popover is opened, no memory item should appear.
-        act(() => { fireEvent.click(document.getElementById('tools-toggle')!); });
-        expect(document.getElementById('memory-toggle')).toBeNull();
-        expect(document.querySelector('[data-tab="memory"]')).toBeNull();
-    });
-
-    it('"Memory" text tab is not rendered in the main nav', () => {
-        renderTopBar();
-        const tabs = TABS.map(t => t.label);
         expect(tabs).not.toContain('Memory');
     });
 });
@@ -746,132 +494,24 @@ describe('TopBar — My Life icon button', () => {
     });
 });
 
-// ─── TopBar servers menu row (inside Tools dropdown) ──────────────
+// ─── TopBar servers entry (migrated to Admin sidebar) ─────────────
 
-describe('TopBar — servers menu row', () => {
-    function openTools() {
-        act(() => { fireEvent.click(document.getElementById('tools-toggle')!); });
-    }
-
+describe('TopBar — servers row no longer rendered in topbar', () => {
     afterEach(() => {
         delete (window as any).__DASHBOARD_CONFIG__;
     });
 
-    it('does not render servers-toggle when serversEnabled is absent', () => {
-        delete (window as any).__DASHBOARD_CONFIG__;
+    it('does not render servers-toggle in the topbar regardless of serversEnabled', () => {
+        (window as any).__DASHBOARD_CONFIG__ = {
+            apiBasePath: '/api',
+            wsPath: '/ws',
+            serversEnabled: true,
+        };
         renderTopBar();
-        openTools();
         expect(document.getElementById('servers-toggle')).toBeNull();
     });
 
-    it('does not render servers-toggle when serversEnabled is false', () => {
-        (window as any).__DASHBOARD_CONFIG__ = {
-            apiBasePath: '/api',
-            wsPath: '/ws',
-            serversEnabled: false,
-        };
-        renderTopBar();
-        openTools();
-        expect(document.getElementById('servers-toggle')).toBeNull();
-    });
-
-    it('renders servers-toggle inside Tools popover when serversEnabled is true', () => {
-        (window as any).__DASHBOARD_CONFIG__ = {
-            apiBasePath: '/api',
-            wsPath: '/ws',
-            serversEnabled: true,
-        };
-        renderTopBar();
-        openTools();
-        const btn = document.getElementById('servers-toggle');
-        expect(btn).toBeTruthy();
-        expect(btn!.getAttribute('aria-label')).toBe('Servers');
-        expect(btn!.getAttribute('title')).toBe('Servers');
-        expect(btn!.getAttribute('data-tab')).toBe('servers');
-    });
-
-    it('servers-toggle has touch-target class', () => {
-        (window as any).__DASHBOARD_CONFIG__ = {
-            apiBasePath: '/api',
-            wsPath: '/ws',
-            serversEnabled: true,
-        };
-        renderTopBar();
-        openTools();
-        const btn = document.getElementById('servers-toggle')!;
-        expect(btn.className).toContain('touch-target');
-    });
-
-    it('Tools dropdown trigger is hidden on mobile (parent is hidden md:inline-flex)', () => {
-        (window as any).__DASHBOARD_CONFIG__ = {
-            apiBasePath: '/api',
-            wsPath: '/ws',
-            serversEnabled: true,
-        };
-        renderTopBar();
-        const tools = document.getElementById('tools-toggle')!;
-        expect(tools.parentElement!.className).toContain('hidden');
-        expect(tools.parentElement!.className).toContain('md:inline-flex');
-    });
-
-    it('clicking servers-toggle sets hash to #servers', () => {
-        (window as any).__DASHBOARD_CONFIG__ = {
-            apiBasePath: '/api',
-            wsPath: '/ws',
-            serversEnabled: true,
-        };
-        renderTopBar();
-        openTools();
-        act(() => {
-            fireEvent.click(document.getElementById('servers-toggle')!);
-        });
-        expect(location.hash).toBe('#servers');
-    });
-
-    it('servers-toggle shows blue accent after being clicked', () => {
-        (window as any).__DASHBOARD_CONFIG__ = {
-            apiBasePath: '/api',
-            wsPath: '/ws',
-            serversEnabled: true,
-        };
-        renderTopBar();
-        openTools();
-        act(() => {
-            fireEvent.click(document.getElementById('servers-toggle')!);
-        });
-        openTools();
-        const btn = document.getElementById('servers-toggle')!;
-        expect(btn.className).toContain('bg-[#ddf4ff]');
-    });
-
-    it('servers-toggle does not show active style by default', () => {
-        (window as any).__DASHBOARD_CONFIG__ = {
-            apiBasePath: '/api',
-            wsPath: '/ws',
-            serversEnabled: true,
-        };
-        renderTopBar();
-        openTools();
-        const btn = document.getElementById('servers-toggle')!;
-        expect(btn.className).not.toContain('bg-[#ddf4ff]');
-    });
-
-    it('servers-toggle is rendered after models-toggle inside the Tools popover', () => {
-        (window as any).__DASHBOARD_CONFIG__ = {
-            apiBasePath: '/api',
-            wsPath: '/ws',
-            serversEnabled: true,
-        };
-        renderTopBar();
-        openTools();
-        const models = document.getElementById('models-toggle')!;
-        const servers = document.getElementById('servers-toggle')!;
-        const order = models.compareDocumentPosition(servers);
-        // Node.DOCUMENT_POSITION_FOLLOWING === 4
-        expect(order & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    });
-
-    it('admin-toggle remains a top-level button outside the Tools popover', () => {
+    it('admin-toggle remains a top-level button', () => {
         (window as any).__DASHBOARD_CONFIG__ = {
             apiBasePath: '/api',
             wsPath: '/ws',
@@ -879,10 +519,7 @@ describe('TopBar — servers menu row', () => {
         };
         renderTopBar();
         const admin = document.getElementById('admin-toggle')!;
-        const popover = document.getElementById('tools-popover');
-        // Popover is closed by default; admin should still be present.
         expect(admin).toBeTruthy();
-        expect(popover).toBeNull();
     });
 });
 

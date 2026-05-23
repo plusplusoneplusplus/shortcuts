@@ -22,15 +22,23 @@ import { FeatureTip } from '../welcome/FeatureTip';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
 import { useLinkHandlers } from '../hooks/useLinkHandlers';
 import { getLinkHandlersMeta } from '../utils/link-handler';
-import type { AdminSubTab } from '../types/dashboard';
+import type { AdminSubTab, DashboardTab } from '../types/dashboard';
 import { useOnboardingPreferences } from '../hooks/useOnboardingPreferences';
 import { patchGlobalPreferences } from '../utils/preferencesApi';
 
-import { isContainerMode } from '../utils/config';
+import { isContainerMode, isServersEnabled } from '../utils/config';
 
 const StorageSection = lazy(() => import('./StorageSection'));
 const AgentManagementPanel = lazy(() => import('../repos/AgentManagementPanel').then(m => ({ default: m.AgentManagementPanel })));
 const IMSettingsSection = lazy(() => import('./IMSettingsSection').then(m => ({ default: m.IMSettingsSection })));
+
+// Tool views embedded in the admin right panel. Keeping the imports here
+// (not in Router.tsx) means the admin shell owns their layout.
+const SkillsView = lazy(() => import('../features/skills/SkillsView').then(m => ({ default: m.SkillsView })));
+const LogsView = lazy(() => import('../features/logs/LogsView').then(m => ({ default: m.LogsView })));
+const UsageStatsView = lazy(() => import('../features/stats/UsageStatsView').then(m => ({ default: m.UsageStatsView })));
+const ModelsView = lazy(() => import('../features/models/ModelsView').then(m => ({ default: m.ModelsView })));
+const ServersView = lazy(() => import('../features/servers/ServersView').then(m => ({ default: m.ServersView })));
 
 function formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
@@ -47,7 +55,7 @@ interface Stats {
 }
 
 const VALID_OUTPUT_OPTIONS = ['table', 'json', 'csv', 'markdown'] as const;
-const TAB_LABELS: Record<AdminSubTab, string> = { settings: 'Settings', providers: 'Providers', data: 'Data', server: 'Server', prompts: 'Prompts', database: 'Database', agents: 'Agents', messaging: 'Messaging' };
+const TAB_LABELS: Record<AdminSubTab, string> = { settings: 'Settings', providers: 'Providers', data: 'Data', server: 'Server', prompts: 'Prompts', database: 'Database', agents: 'Agent Provider', messaging: 'Messaging' };
 const TAB_ICONS: Record<AdminSubTab, string> = {
     settings: '⚙',
     providers: '◇',
@@ -94,13 +102,46 @@ function parseSettingsSubTabFromHash(hash: string): SettingsSubTab | null {
 
 const WELCOME_RESET_PROGRESS = { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false, settingsVisited: false, dismissed: false, hasCompletedTour: false };
 
+// ── Tools nav group (migrated from the topbar Tools dropdown). Each entry
+// stays a top-level dashboard route (so deep links like `#skills` continue
+// to work), but the corresponding view is now rendered **embedded** in the
+// admin right panel instead of replacing the whole page. The Router maps
+// these tabs to `<AdminPanel />` and AdminPanel switches on
+// `state.activeTab` to mount the right view in `<main>`. Ids match the
+// legacy dropdown so existing tests/deep-link selectors keep working.
+interface ToolNavItem {
+    id: string;
+    tab: DashboardTab;
+    label: string;
+    icon: string;
+    description: string;
+}
+const ALL_TOOL_NAV_ITEMS: ToolNavItem[] = [
+    { id: 'skills-toggle',  tab: 'skills',  label: 'Skills',  icon: '⚡', description: 'Install, configure, and inspect agent skills surfaced to the assistant.' },
+    { id: 'logs-toggle',    tab: 'logs',    label: 'Logs',    icon: '📋', description: 'Live and historical server logs streamed via SSE.' },
+    { id: 'stats-toggle',   tab: 'stats',   label: 'Usage',   icon: '📊', description: 'Aggregated usage statistics for chats, tokens, and processes.' },
+    { id: 'models-toggle',  tab: 'models',  label: 'Models',  icon: '⚛', description: 'Available LLM models and their per-repo defaults.' },
+    { id: 'servers-toggle', tab: 'servers', label: 'Servers', icon: '🖥', description: 'Browse running CoC server instances and their health.' },
+];
+const TOOL_TAB_SET: ReadonlySet<DashboardTab> = new Set<DashboardTab>(ALL_TOOL_NAV_ITEMS.map(item => item.tab));
+const TOOL_NAV_LOOKUP: ReadonlyMap<DashboardTab, ToolNavItem> = new Map(ALL_TOOL_NAV_ITEMS.map(item => [item.tab, item]));
+
 export function AdminPanel() {
     const { toasts, addToast, removeToast } = useToast();
     const { state, dispatch } = useApp();
     const { updateOnboarding } = useOnboardingPreferences();
     const activeTab = state.activeAdminSubTab;
+    // `state.activeTab` is the dashboard-level route. When set to a tool
+    // route (skills/logs/stats/models/servers) the right panel hosts the
+    // corresponding view embedded inside the admin shell.
+    const activeDashboardTab = state.activeTab;
+    const activeToolItem = TOOL_NAV_LOOKUP.get(activeDashboardTab) ?? null;
+    const isToolEmbedded = activeToolItem !== null;
     const handleTabChange = (tab: AdminSubTab) => {
         dispatch({ type: 'SET_ADMIN_SUB_TAB', tab });
+        // Configure rows always land on the admin shell — make sure the
+        // dashboard tab leaves any embedded tool view.
+        dispatch({ type: 'SET_ACTIVE_TAB', tab: 'admin' });
         const suffix = tab === 'settings' && settingsSubTab !== DEFAULT_SETTINGS_SUBTAB
             ? `admin/${tab}/${settingsSubTab}`
             : `admin/${tab}`;
@@ -176,6 +217,9 @@ export function AdminPanel() {
     const [excalidrawEnabled, setExcalidrawEnabled] = useState(false);
     const [mcpOauthEnabled, setMcpOauthEnabled] = useState(false);
     const [focusedDiffEnabled, setFocusedDiffEnabled] = useState(false);
+    const [codexEnabled, setCodexEnabled] = useState(false);
+    const [activeProvider, setActiveProvider] = useState<'copilot' | 'codex'>('copilot');
+    const [providerAvailability, setProviderAvailability] = useState<Record<string, { available: boolean; error?: string }>>({});
 
     // Preferences(theme, reposSidebarCollapsed, uiLayoutMode) — for Appearance card
     const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('auto');
@@ -193,9 +237,11 @@ export function AdminPanel() {
     const [chatSaving, setChatSaving] = useState(false);
     const [appearanceSaving, setAppearanceSaving] = useState(false);
     const [featuresSaving, setFeaturesSaving] = useState(false);
+    const [activeProviderSaving, setActiveProviderSaving] = useState(false);
 
     // Snapshots for per-card dirty tracking (set when config/prefs loads)
     const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
+    const [activeProviderSnapshot, setActiveProviderSnapshot] = useState<'copilot' | 'codex'>('copilot');
     const [chatSnapshot, setChatSnapshot] = useState({ followUpEnabled: true, followUpCount: '3', askUserEnabled: false, showReportIntent: false, toolCompactness: 3 as 0 | 1 | 2 | 3 });
     const [appearanceSnapshot, setAppearanceSnapshot] = useState({
         theme: 'auto' as string,
@@ -207,7 +253,7 @@ export function AdminPanel() {
         taskCardDensity: 'compact' as 'compact' | 'dense',
         historyGrouping: true,
     });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false, codexEnabled: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -269,7 +315,6 @@ export function AdminPanel() {
                 output: resolved.output ?? 'table',
             };
             setConfigForm(form);
-            setAiExecSnapshot({ ...form });
             const sri = resolved.showReportIntent ?? false;
             const tc = (resolved.toolCompactness ?? 1) as 0 | 1 | 2 | 3;
             const fue = resolved.chat?.followUpSuggestions?.enabled ?? true;
@@ -319,7 +364,13 @@ export function AdminPanel() {
             setMcpOauthEnabled(moae);
             const fde = resolved.features?.focusedDiff ?? false;
             setFocusedDiffEnabled(fde);
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde });
+            const cxe = resolved.codex?.enabled ?? false;
+            setCodexEnabled(cxe);
+            const ap = (resolved.activeProvider === 'codex' ? 'codex' : 'copilot') as 'copilot' | 'codex';
+            setActiveProvider(ap);
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde, codexEnabled: cxe });
+            setAiExecSnapshot({ model: form.model, parallel: form.parallel, timeout: form.timeout, output: form.output });
+            setActiveProviderSnapshot(ap);
             const sgr = resolved.sync?.gitRemote ?? '';
             const sim = String(resolved.sync?.intervalMinutes ?? 5);
             setSyncGitRemote(sgr);
@@ -367,6 +418,10 @@ export function AdminPanel() {
         getSpaCocClient().admin.getVersion()
             .then(data => { if (data) setVersionInfo(data); })
             .catch(() => {});
+        fetch('/api/admin/providers/availability')
+            .then(r => r.json())
+            .then((data: Record<string, { available: boolean; error?: string }>) => setProviderAvailability(data))
+            .catch(() => {});
     }, [loadStats, loadConfig, loadPreferences]);
 
     // ── Per-card dirty state ──
@@ -374,6 +429,8 @@ export function AdminPanel() {
         configForm.parallel !== aiExecSnapshot.parallel ||
         configForm.timeout !== aiExecSnapshot.timeout ||
         configForm.output !== aiExecSnapshot.output;
+
+    const activeProviderDirty = activeProvider !== activeProviderSnapshot;
 
     const chatDirty = chatFollowUpEnabled !== chatSnapshot.followUpEnabled ||
         chatFollowUpCount !== chatSnapshot.followUpCount ||
@@ -405,7 +462,8 @@ export function AdminPanel() {
         loopsEnabled !== featuresSnapshot.loops ||
         excalidrawEnabled !== featuresSnapshot.excalidraw ||
         mcpOauthEnabled !== featuresSnapshot.mcpOauth ||
-        focusedDiffEnabled !== featuresSnapshot.focusedDiff;
+        focusedDiffEnabled !== featuresSnapshot.focusedDiff ||
+        codexEnabled !== featuresSnapshot.codexEnabled;
 
     // ── AI & Execution card ──
     const handleSaveAiExec = useCallback(async () => {
@@ -444,6 +502,24 @@ export function AdminPanel() {
     const handleCancelAiExec = useCallback(() => {
         setConfigForm({ ...aiExecSnapshot });
     }, [aiExecSnapshot]);
+
+    // ── Active Provider card (Agents tab) ──
+    const handleSaveActiveProvider = useCallback(async () => {
+        setActiveProviderSaving(true);
+        try {
+            await getSpaCocClient().admin.updateConfig({ activeProvider });
+            addToast('Active provider saved — restart required to apply change', 'success');
+            setActiveProviderSnapshot(activeProvider);
+        } catch (err: unknown) {
+            addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
+        } finally {
+            setActiveProviderSaving(false);
+        }
+    }, [activeProvider, addToast]);
+
+    const handleCancelActiveProvider = useCallback(() => {
+        setActiveProvider(activeProviderSnapshot);
+    }, [activeProviderSnapshot]);
 
     // ── Chat Experience card ──
     const handleSaveChat = useCallback(async () => {
@@ -561,16 +637,17 @@ export function AdminPanel() {
                 'excalidraw.enabled': excalidrawEnabled,
                 'mcpOauth.enabled': mcpOauthEnabled,
                 'features.focusedDiff': focusedDiffEnabled,
+                'codex.enabled': codexEnabled,
             });
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled });
+            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled, codexEnabled: codexEnabled });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, codexEnabled, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setTerminalEnabled(featuresSnapshot.terminal);
@@ -589,6 +666,7 @@ export function AdminPanel() {
         setExcalidrawEnabled(featuresSnapshot.excalidraw);
         setMcpOauthEnabled(featuresSnapshot.mcpOauth);
         setFocusedDiffEnabled(featuresSnapshot.focusedDiff);
+        setCodexEnabled(featuresSnapshot.codexEnabled);
     }, [featuresSnapshot]);
 
     const handleSaveServerName = useCallback(async () => {
@@ -789,7 +867,19 @@ export function AdminPanel() {
     const resolved = config?.resolved ?? {};
 
     const baseTabs: AdminSubTab[] = ['settings', 'providers', 'data', 'server', 'prompts', 'database'];
-    const tabs: AdminSubTab[] = isContainerMode() ? [...baseTabs, 'agents', 'messaging'] : baseTabs;
+    const tabs: AdminSubTab[] = isContainerMode() ? [...baseTabs, 'agents', 'messaging'] : [...baseTabs, 'agents'];
+
+    // Servers row is gated by the dashboard runtime config, same source the
+    // legacy topbar dropdown consulted. It is independent of the editable
+    // `serversEnabled` Features form state above.
+    const toolNavItems: ToolNavItem[] = isServersEnabled()
+        ? ALL_TOOL_NAV_ITEMS
+        : ALL_TOOL_NAV_ITEMS.filter(item => item.tab !== 'servers');
+
+    const handleToolNavClick = useCallback((tab: DashboardTab) => {
+        dispatch({ type: 'SET_ACTIVE_TAB', tab });
+        window.location.hash = '#' + tab;
+    }, [dispatch]);
 
     const activeTabLabel = TAB_LABELS[activeTab];
 
@@ -808,19 +898,49 @@ export function AdminPanel() {
 
                     <nav className="ar-nav-group" aria-label="Settings sections">
                         <div className="ar-nav-group-label">Configure</div>
-                        {tabs.map(tab => (
-                            <button
-                                key={tab}
-                                type="button"
-                                className={`ar-nav-item${activeTab === tab ? ' is-active' : ''}`}
-                                onClick={() => handleTabChange(tab)}
-                                data-testid={`admin-tab-${tab}`}
-                                aria-current={activeTab === tab ? 'page' : undefined}
-                            >
-                                <span className="ar-nav-icon" aria-hidden="true">{TAB_ICONS[tab]}</span>
-                                <span className="ar-nav-label">{TAB_LABELS[tab]}</span>
-                            </button>
-                        ))}
+                        {tabs.map(tab => {
+                            // Configure rows are only "active" when the dashboard
+                            // is on the admin shell — an embedded tool view should
+                            // not show any Configure row as the current page.
+                            const isActive = !isToolEmbedded && activeTab === tab;
+                            return (
+                                <button
+                                    key={tab}
+                                    type="button"
+                                    className={`ar-nav-item${isActive ? ' is-active' : ''}`}
+                                    onClick={() => handleTabChange(tab)}
+                                    data-testid={`admin-tab-${tab}`}
+                                    aria-current={isActive ? 'page' : undefined}
+                                >
+                                    <span className="ar-nav-icon" aria-hidden="true">{TAB_ICONS[tab]}</span>
+                                    <span className="ar-nav-label">{TAB_LABELS[tab]}</span>
+                                </button>
+                            );
+                        })}
+                    </nav>
+
+                    <nav className="ar-nav-group" aria-label="Tools">
+                        <div className="ar-nav-group-label">Tools</div>
+                        {toolNavItems.map(item => {
+                            const isActive = activeDashboardTab === item.tab;
+                            return (
+                                <button
+                                    key={item.id}
+                                    id={item.id}
+                                    type="button"
+                                    className={`ar-nav-item${isActive ? ' is-active' : ''}`}
+                                    onClick={() => handleToolNavClick(item.tab)}
+                                    data-testid={item.id}
+                                    data-tab={item.tab}
+                                    aria-label={item.label}
+                                    aria-current={isActive ? 'page' : undefined}
+                                    title={item.label}
+                                >
+                                    <span className="ar-nav-icon" aria-hidden="true">{item.icon}</span>
+                                    <span className="ar-nav-label">{item.label}</span>
+                                </button>
+                            );
+                        })}
                     </nav>
 
                     <div className="ar-sidebar-foot">
@@ -859,31 +979,54 @@ export function AdminPanel() {
                 </aside>
 
                 {/* ── Main pane ── */}
-                <main className="ar-main">
+                <main className={`ar-main${isToolEmbedded ? ' ar-main--embed' : ''}`}>
                     <header className="ar-topbar">
                         <nav className="ar-breadcrumb" aria-label="Breadcrumb">
-                            <span className="ar-crumb-now">{activeTabLabel}</span>
-                            {activeTab === 'settings' && (
+                            {isToolEmbedded && activeToolItem ? (
                                 <>
+                                    <span className="ar-crumb">Tools</span>
                                     <span className="ar-crumb-sep">/</span>
-                                    <span className="ar-crumb-now">
-                                        {SETTINGS_SUBTABS.find(t => t.id === settingsSubTab)?.label ?? activeTabLabel}
-                                    </span>
+                                    <span className="ar-crumb-now">{activeToolItem.label}</span>
+                                </>
+                            ) : (
+                                <>
+                                    <span className="ar-crumb-now">{activeTabLabel}</span>
+                                    {activeTab === 'settings' && (
+                                        <>
+                                            <span className="ar-crumb-sep">/</span>
+                                            <span className="ar-crumb-now">
+                                                {SETTINGS_SUBTABS.find(t => t.id === settingsSubTab)?.label ?? activeTabLabel}
+                                            </span>
+                                        </>
+                                    )}
                                 </>
                             )}
                         </nav>
-                        <select
-                            className="ar-tab-select ar-mobile-tab-select"
-                            value={activeTab}
-                            onChange={e => handleTabChange(e.target.value as AdminSubTab)}
-                            aria-label="Select admin section"
-                        >
-                            {tabs.map(tab => (
-                                <option key={tab} value={tab}>{TAB_LABELS[tab]}</option>
-                            ))}
-                        </select>
+                        {!isToolEmbedded && (
+                            <select
+                                className="ar-tab-select ar-mobile-tab-select"
+                                value={activeTab}
+                                onChange={e => handleTabChange(e.target.value as AdminSubTab)}
+                                aria-label="Select admin section"
+                            >
+                                {tabs.map(tab => (
+                                    <option key={tab} value={tab}>{TAB_LABELS[tab]}</option>
+                                ))}
+                            </select>
+                        )}
                     </header>
 
+                    {isToolEmbedded && activeToolItem ? (
+                        <div className="ar-tool-embed" data-testid={`admin-tool-embed-${activeToolItem.tab}`}>
+                            <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
+                                {activeToolItem.tab === 'skills' && <SkillsView />}
+                                {activeToolItem.tab === 'logs' && <LogsView />}
+                                {activeToolItem.tab === 'stats' && <UsageStatsView />}
+                                {activeToolItem.tab === 'models' && <ModelsView />}
+                                {activeToolItem.tab === 'servers' && <ServersView />}
+                            </Suspense>
+                        </div>
+                    ) : (
                     <div className="ar-page">
                         <header className="ar-page-header">
                             <div className="ar-page-header-row">
@@ -1279,6 +1422,13 @@ export function AdminPanel() {
                                         <AdminToggle checked={mcpOauthEnabled} onChange={setMcpOauthEnabled} data-testid="toggle-mcp-oauth-enabled" />
                                     </AdminRow>
                                     <AdminRow
+                                        name={<>Codex Provider <span className="ar-badge ar-badge-accent">Experimental</span> <span className="ar-badge ar-badge-warning">Restart</span></>}
+                                        hint="Enable the optional @openai/codex-sdk provider. Once enabled, switch the active provider in the AI & Execution tab. Requires a server restart."
+                                    >
+                                        <SourceBadge source={sources['codex.enabled']} />
+                                        <AdminToggle checked={codexEnabled} onChange={setCodexEnabled} data-testid="toggle-codex-enabled" />
+                                    </AdminRow>
+                                    <AdminRow
                                         name="Focused Diff"
                                         hint="AI-powered hunk classification for PR diffs. Highlights logic changes and dims mechanical edits."
                                     >
@@ -1583,10 +1733,59 @@ export function AdminPanel() {
                     </section>
                 )}
 
-                        {activeTab === 'agents' && isContainerMode() && (
-                            <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
-                                <AgentManagementPanel />
-                            </Suspense>
+                        {activeTab === 'agents' && (
+                            <>
+                                <SettingsCard
+                                    title="Active Provider"
+                                    description="AI provider used for all chat and task requests."
+                                    dirty={activeProviderDirty}
+                                    saving={activeProviderSaving}
+                                    onSave={handleSaveActiveProvider}
+                                    onCancel={handleCancelActiveProvider}
+                                    data-testid="settings-active-provider"
+                                >
+                                    <AdminRow
+                                        name={<>Active Provider <span className="ar-badge ar-badge-warning">Restart</span></>}
+                                        hint="Switch to 'Codex' only after enabling the Codex feature flag in Settings → Features and completing ChatGPT sign-in. Requires a server restart."
+                                    >
+                                        <select
+                                            id="admin-config-active-provider"
+                                            className="ar-select ar-med"
+                                            value={activeProvider}
+                                            onChange={e => setActiveProvider(e.target.value as 'copilot' | 'codex')}
+                                            data-testid="select-active-provider"
+                                        >
+                                            <option value="copilot">Copilot</option>
+                                            <option value="codex">Codex</option>
+                                        </select>
+                                        <SourceBadge source={sources['activeProvider']} />
+                                    </AdminRow>
+                                    {activeProvider === 'codex' && providerAvailability['codex'] && !providerAvailability['codex'].available && (
+                                        <div
+                                            data-testid="codex-sdk-unavailable-banner"
+                                            style={{
+                                                margin: '8px 0 4px',
+                                                padding: '8px 12px',
+                                                borderRadius: 4,
+                                                background: 'var(--ar-warn-bg, #fffbe6)',
+                                                border: '1px solid var(--ar-warn-border, #ffe58f)',
+                                                color: 'var(--ar-warn-text, #7c5200)',
+                                                fontSize: 12,
+                                                lineHeight: 1.5,
+                                                whiteSpace: 'pre-wrap',
+                                                fontFamily: 'inherit',
+                                            }}
+                                        >
+                                            ⚠ {providerAvailability['codex'].error}
+                                        </div>
+                                    )}
+                                </SettingsCard>
+                                {isContainerMode() && (
+                                    <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
+                                        <AgentManagementPanel />
+                                    </Suspense>
+                                )}
+                            </>
                         )}
 
                         {activeTab === 'messaging' && isContainerMode() && (
@@ -1595,6 +1794,7 @@ export function AdminPanel() {
                             </Suspense>
                         )}
                     </div>
+                    )}
                 </main>
 
                 <ToastContainer toasts={toasts} removeToast={removeToast} />

@@ -51,13 +51,13 @@ interface RepoDetailProps {
 export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] = [
     { key: 'chats', label: 'Chats', shortcut: 'Alt+A' },
     { key: 'git', label: 'Git', shortcut: 'Alt+G' },
+    { key: 'terminal', label: 'Terminal' },
     { key: 'work-items', label: 'Work Items', shortcut: 'Alt+I' },
     { key: 'schedules', label: 'Schedules', shortcut: 'Alt+S' },
     { key: 'explorer', label: 'Explorer', shortcut: 'Alt+E' },
     { key: 'workflows', label: 'Workflows', shortcut: 'Alt+W' },
     { key: 'pull-requests', label: 'Pull Requests', shortcut: 'Alt+R' },
     { key: 'tasks', label: 'Tasks (Dep.)', shortcut: 'Alt+T' },
-    { key: 'terminal', label: 'Terminal' },
     { key: 'notes', label: 'Notes', shortcut: 'Alt+N' },
     { key: 'settings', label: 'Settings', shortcut: 'Alt+C' },
     { key: 'wiki', label: 'Wiki' },
@@ -74,9 +74,9 @@ export const VISIBLE_SUB_TABS = SHOW_WIKI_TAB
  * Group identity is purely visual and does not affect functionality.
  */
 const TAB_GROUP_INDEX: Record<string, number> = {
-    'chats': 1, 'activity': 1, 'git': 1,
+    'chats': 1, 'activity': 1, 'git': 1, 'terminal': 1,
     'work-items': 2, 'schedules': 2, 'tasks': 2,
-    'explorer': 3, 'workflows': 3, 'pull-requests': 3, 'terminal': 3,
+    'explorer': 3, 'workflows': 3, 'pull-requests': 3,
     'notes': 4, 'settings': 4, 'wiki': 4,
 };
 
@@ -178,7 +178,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
             };
             const devWorkflowOrder: RepoSubTab[] = [
                 'chats', 'work-items', 'schedules', 'explorer',
-                'workflows', 'git', 'pull-requests', 'tasks', 'settings',
+                'workflows', 'git', 'terminal', 'pull-requests', 'tasks', 'settings',
             ];
             const tabMap = new Map(tabs.map(t => [t.key, t]));
             const ordered: typeof tabs = [];
@@ -190,7 +190,7 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                     tabMap.delete(key);
                 }
             }
-            // Append dynamic tabs (terminal, notes, wiki) that aren't in the fixed order
+            // Append dynamic tabs (notes, wiki) that aren't in the fixed order
             for (const [, tab] of tabMap) {
                 ordered.push(tab);
             }

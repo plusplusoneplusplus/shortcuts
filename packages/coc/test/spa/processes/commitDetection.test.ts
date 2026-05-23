@@ -331,6 +331,107 @@ describe('detectCommitsInToolGroup', () => {
         });
     });
 
+    describe('agent tool (task / general-purpose) results', () => {
+        function makeAgentCall(id: string, toolName: string, result: string) {
+            return { id, toolName, args: { prompt: 'do some work' }, result, status: 'completed' };
+        }
+
+        it('detects commit from task tool result with raw git output', () => {
+            const toolCalls = [
+                makeAgentCall('a1', 'task', [
+                    'I committed the changes:',
+                    '[main abc1234] feat: implement auth module',
+                    ' 3 files changed, 42 insertions(+), 5 deletions(-)',
+                ].join('\n')),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(1);
+            expect(commits[0]).toEqual<DetectedCommit>({
+                shortHash: 'abc1234',
+                subject: 'feat: implement auth module',
+                branch: 'main',
+                filesChanged: 3,
+                insertions: 42,
+                deletions: 5,
+                toolCallId: 'a1',
+                isFixup: false,
+            });
+        });
+
+        it('detects commit from general-purpose tool result', () => {
+            const toolCalls = [
+                makeAgentCall('a1', 'general-purpose', [
+                    'Done. Created a commit:',
+                    '[feature/x def5678] fix: resolve null pointer',
+                    ' 1 file changed, 2 insertions(+), 1 deletion(-)',
+                ].join('\n')),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(1);
+            expect(commits[0].shortHash).toBe('def5678');
+            expect(commits[0].branch).toBe('feature/x');
+        });
+
+        it('returns 0 commits for prose-only agent result (documented limitation)', () => {
+            const toolCalls = [
+                makeAgentCall('a1', 'task', 'I committed the fix as `[CWS] abc1234`. All tests pass.'),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(0);
+        });
+
+        it('does not false-positive on git-log-looking lines in agent result', () => {
+            const toolCalls = [
+                makeAgentCall('a1', 'task', [
+                    'Here are the recent commits:',
+                    'abc1234 Fix bug',
+                    'def5678 Add feature',
+                    'The codebase looks good.',
+                ].join('\n')),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(0);
+        });
+
+        it('detects commits from task and shell in same group', () => {
+            const toolCalls = [
+                makeAgentCall('a1', 'task', '[main aaa1111] feat: from agent\n 1 file changed, 1 insertion(+)'),
+                makeShellCall('s1', 'git commit -m "from shell"', '[main bbb2222] from shell\n 1 file changed, 1 insertion(+)'),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(2);
+            expect(commits[0].shortHash).toBe('aaa1111');
+            expect(commits[0].toolCallId).toBe('a1');
+            expect(commits[1].shortHash).toBe('bbb2222');
+            expect(commits[1].toolCallId).toBe('s1');
+        });
+
+        it('deduplicates hash already seen from a shell call', () => {
+            const toolCalls = [
+                makeShellCall('s1', 'git commit -m "Fix"', '[main abc1234] Fix\n 1 file changed, 1 insertion(+)'),
+                makeAgentCall('a1', 'task', 'Committed:\n[main abc1234] Fix\n 1 file changed, 1 insertion(+)'),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(1);
+            expect(commits[0].toolCallId).toBe('s1');
+        });
+
+        it('ignores agent results with no commit-like output', () => {
+            const toolCalls = [
+                makeAgentCall('a1', 'task', 'All tests pass. No changes needed.'),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(0);
+        });
+    });
+
     describe('fixup / squash / amend commit detection', () => {
         it('marks fixup! commits with isFixup = true', () => {
             const toolCalls = [

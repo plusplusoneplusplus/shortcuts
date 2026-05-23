@@ -28,6 +28,11 @@ export async function loadCopilotSdk(): Promise<typeof import('@github/copilot-s
     return mod;
 }
 
+/** Dynamically import an arbitrary ESM module without TypeScript rewriting it to require(). */
+export async function dynamicImportModule<T = any>(specifier: string): Promise<T> {
+    return dynamicImport(specifier) as Promise<T>;
+}
+
 /**
  * Return the cached SDK module if already loaded, or `null`.
  * Useful for synchronous access after an earlier `loadCopilotSdk()` call.

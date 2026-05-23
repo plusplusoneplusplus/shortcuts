@@ -687,7 +687,7 @@ describe('Git Branches API endpoints', () => {
             });
 
             expect(res.status).toBe(400);
-            expect(res.json()).toEqual({ success: false, error: 'Missing or invalid commitHash' });
+            expect(res.json()).toEqual({ error: 'Missing or invalid commitHash', code: 'BAD_REQUEST' });
         });
 
         it('should return 400 when commitHash is not a string', async () => {
@@ -697,7 +697,7 @@ describe('Git Branches API endpoints', () => {
             });
 
             expect(res.status).toBe(400);
-            expect(res.json()).toEqual({ success: false, error: 'Missing or invalid commitHash' });
+            expect(res.json()).toEqual({ error: 'Missing or invalid commitHash', code: 'BAD_REQUEST' });
         });
 
         it('should return failure result when pushUpTo fails', async () => {

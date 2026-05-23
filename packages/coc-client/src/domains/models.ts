@@ -1,4 +1,4 @@
-import type { EnabledModelsResponse, ModelInfo, ReasoningEffortsResponse } from '../contracts';
+import type { EnabledModelsResponse, ModelInfo, ModelQueryRequest, ModelQueryResponse, ReasoningEffortsResponse } from '../contracts';
 import type { RequestAdapter } from '../types';
 
 export class ModelsClient {
@@ -27,6 +27,13 @@ export class ModelsClient {
     return this.transport.request<ReasoningEffortsResponse>('/models/reasoning-efforts', {
       method: 'PUT',
       body: { modelId, effort },
+    });
+  }
+
+  query(request: ModelQueryRequest): Promise<ModelQueryResponse> {
+    return this.transport.request<ModelQueryResponse>('/models/query', {
+      method: 'POST',
+      body: request,
     });
   }
 }

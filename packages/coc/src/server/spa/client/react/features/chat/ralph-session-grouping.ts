@@ -9,7 +9,7 @@ export interface RalphSession {
     sessionId: string;
     /** The grilling-phase process (ask mode + context.ralph.phase = 'grilling') */
     grillingProcess: any | undefined;
-    /** Execution iterations (mode: 'ralph', phase: 'executing'|'complete') */
+    /** All non-grilling processes in this session (iterations, follow-ups, etc.) */
     iterations: any[];
     /** Most recent timestamp across all processes in this session */
     latestTimestamp: number;
@@ -111,8 +111,16 @@ export function groupByRalphSession(
     for (const [sessionId, sessionItems] of bySession) {
         const grillingProcess = sessionItems.find(t => getRalphPhase(t) === 'grilling');
         const iterations = sessionItems
-            .filter(t => getTaskMode(t) === 'ralph')
-            .sort((a: any, b: any) => getRalphIteration(a) - getRalphIteration(b));
+            .filter(t => t !== grillingProcess)
+            .sort((a: any, b: any) => {
+                const iterDiff = getRalphIteration(a) - getRalphIteration(b);
+                if (iterDiff !== 0) return iterDiff;
+                // Timestamp tiebreak for items at the same iteration number
+                const tsA = a.createdAt ?? a.startedAt ?? a.startTime ?? 0;
+                const tsB = b.createdAt ?? b.startedAt ?? b.startTime ?? 0;
+                return (typeof tsA === 'number' ? tsA : +new Date(tsA))
+                     - (typeof tsB === 'number' ? tsB : +new Date(tsB));
+            });
 
         // Sort timestamp for the session row in the chat list.
         //

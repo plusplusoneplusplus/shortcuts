@@ -3,9 +3,19 @@
  */
 import React, { useState, useMemo } from 'react';
 import { useModelConfig, type ModelInfo } from '../../hooks/useModels';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { Button } from '../../ui';
 
 type CapFilter = 'all' | 'vision' | 'reasoning';
+type ViewMode = 'catalog' | 'query';
+
+interface QueryState {
+    response: string;
+    error: string;
+    model?: string;
+    sessionId?: string;
+    durationMs?: number;
+}
 
 function fmt(n: number): string {
     if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
@@ -151,6 +161,11 @@ export function ModelsView() {
     const { models, loading, error, saving, reload, toggleModel, reasoningEfforts, setReasoningEffort } = useModelConfig();
     const [search, setSearch] = useState('');
     const [capFilter, setCapFilter] = useState<CapFilter>('all');
+    const [viewMode, setViewMode] = useState<ViewMode>('catalog');
+    const [queryModel, setQueryModel] = useState('');
+    const [queryPrompt, setQueryPrompt] = useState('');
+    const [queryRunning, setQueryRunning] = useState(false);
+    const [queryState, setQueryState] = useState<QueryState>({ response: '', error: '' });
 
     const filtered = useMemo(() => {
         let list = models;
@@ -164,6 +179,36 @@ export function ModelsView() {
     }, [models, search, capFilter]);
 
     const enabledCount = useMemo(() => models.filter(m => m.enabled).length, [models]);
+    const queryModels = useMemo(() => {
+        const enabled = models.filter(m => m.enabled);
+        return enabled.length > 0 ? enabled : models;
+    }, [models]);
+    const selectedQueryModel = queryModels.some(m => m.id === queryModel) ? queryModel : '';
+
+    const handleRunQuery = async () => {
+        const prompt = queryPrompt.trim();
+        if (!prompt || queryRunning) return;
+        setQueryRunning(true);
+        setQueryState({ response: '', error: '' });
+        try {
+            const result = await getSpaCocClient().models.query({
+                prompt,
+                ...(selectedQueryModel ? { model: selectedQueryModel } : {}),
+                timeoutMs: 60_000,
+            });
+            setQueryState({
+                response: result.response ?? '',
+                error: result.success ? '' : (result.error ?? 'Model query failed'),
+                model: result.model,
+                sessionId: result.sessionId,
+                durationMs: result.durationMs,
+            });
+        } catch (err) {
+            setQueryState({ response: '', error: getSpaCocClientErrorMessage(err, 'Model query failed') });
+        } finally {
+            setQueryRunning(false);
+        }
+    };
 
     if (loading) {
         return (
@@ -191,6 +236,30 @@ export function ModelsView() {
     return (
         <div id="view-models" className="h-[calc(100vh-48px)] overflow-y-auto p-4 md:p-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 mb-4">
+                <div className="inline-flex h-8 rounded border border-[#d0d0d0] dark:border-[#3c3c3c] overflow-hidden shrink-0" role="tablist" aria-label="Models view">
+                    <button
+                        type="button"
+                        className={`px-3 text-sm ${viewMode === 'catalog' ? 'bg-[#0078d4] text-white' : 'bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc]'}`}
+                        onClick={() => setViewMode('catalog')}
+                        role="tab"
+                        aria-selected={viewMode === 'catalog'}
+                        data-testid="models-tab-catalog"
+                    >
+                        Catalog
+                    </button>
+                    <button
+                        type="button"
+                        className={`px-3 text-sm border-l border-[#d0d0d0] dark:border-[#3c3c3c] ${viewMode === 'query' ? 'bg-[#0078d4] text-white' : 'bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc]'}`}
+                        onClick={() => setViewMode('query')}
+                        role="tab"
+                        aria-selected={viewMode === 'query'}
+                        data-testid="models-tab-query"
+                    >
+                        Query
+                    </button>
+                </div>
+                {viewMode === 'catalog' && (
+                    <>
                 <input
                     type="text"
                     placeholder="🔍 Search models..."
@@ -214,9 +283,73 @@ export function ModelsView() {
                 <Button variant="ghost" size="sm" onClick={reload} title="Refresh Models" data-testid="models-refresh-btn">
                     ↻ Refresh
                 </Button>
+                    </>
+                )}
             </div>
 
-            {filtered.length === 0 ? (
+            {viewMode === 'query' ? (
+                <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,520px)_minmax(0,1fr)] gap-4" data-testid="model-query-view">
+                    <div className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] p-4">
+                        <div className="flex flex-col gap-3">
+                            <label className="flex flex-col gap-1 text-xs text-[#666] dark:text-[#999]">
+                                Model
+                                <select
+                                    className="h-8 px-2 rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] text-sm text-[#1e1e1e] dark:text-[#cccccc]"
+                                    value={selectedQueryModel}
+                                    onChange={e => setQueryModel(e.target.value)}
+                                    data-testid="model-query-select"
+                                >
+                                    <option value="">Provider default</option>
+                                    {queryModels.map(m => (
+                                        <option key={m.id} value={m.id}>{m.name || m.id}</option>
+                                    ))}
+                                </select>
+                            </label>
+                            <label className="flex flex-col gap-1 text-xs text-[#666] dark:text-[#999]">
+                                Prompt
+                                <textarea
+                                    className="min-h-[180px] resize-y rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] p-3 text-sm text-[#1e1e1e] dark:text-[#cccccc] font-mono"
+                                    value={queryPrompt}
+                                    onChange={e => setQueryPrompt(e.target.value)}
+                                    data-testid="model-query-prompt"
+                                />
+                            </label>
+                            <div className="flex items-center gap-3">
+                                <Button
+                                    variant="primary"
+                                    size="sm"
+                                    onClick={handleRunQuery}
+                                    disabled={!queryPrompt.trim() || queryRunning}
+                                    data-testid="model-query-run"
+                                >
+                                    {queryRunning ? 'Running...' : 'Run'}
+                                </Button>
+                                <span className="text-xs text-[#888]">
+                                    {queryModels.length} selectable model{queryModels.length !== 1 ? 's' : ''}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] p-4 min-h-[280px]">
+                        <div className="flex items-center justify-between gap-3 mb-3">
+                            <div className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Result</div>
+                            {queryState.durationMs !== undefined && (
+                                <div className="text-xs text-[#888]">
+                                    {queryState.model || selectedQueryModel} · {queryState.durationMs}ms
+                                    {queryState.sessionId ? ` · ${queryState.sessionId}` : ''}
+                                </div>
+                            )}
+                        </div>
+                        {queryState.error ? (
+                            <pre className="whitespace-pre-wrap rounded bg-[#fff4f4] dark:bg-[#3a1f1f] border border-[#f2b8b8] dark:border-[#6f3333] p-3 text-sm text-[#9f1d1d] dark:text-[#ffb3b3]" data-testid="model-query-error">{queryState.error}</pre>
+                        ) : queryState.response ? (
+                            <pre className="whitespace-pre-wrap text-sm text-[#1e1e1e] dark:text-[#cccccc]" data-testid="model-query-result">{queryState.response}</pre>
+                        ) : (
+                            <div className="text-sm text-[#888]" data-testid="model-query-empty">No query result yet.</div>
+                        )}
+                    </div>
+                </div>
+            ) : filtered.length === 0 ? (
                 <div className="text-center text-[#888] mt-12" data-testid="models-empty">
                     No models match your filter.{' '}
                     <button className="underline text-[#0078d4]" onClick={() => { setSearch(''); setCapFilter('all'); }}>Clear</button>

@@ -49,7 +49,7 @@ import { ScratchpadPanel } from './scratchpad/ScratchpadPanel';
 import { MobileScratchpadTabBar } from './scratchpad/MobileScratchpadTabBar';
 import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
 import { isChatMode, resolveLoadedTaskMode } from './chatMode';
-import { isRalphEnabled, isLoopsEnabled } from '../../utils/config';
+import { isRalphEnabled, isLoopsEnabled, getActiveProvider } from '../../utils/config';
 import type { ChatMode } from '../../repos/modeConfig';
 import { RalphStartPanel } from './RalphStartPanel';
 import { ImplementPlanCard } from './ImplementPlanCard';
@@ -1387,6 +1387,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             workingDirectory={workingDirectory}
                             sessionTokenLimit={sessionTokenLimit}
                             sessionCurrentTokens={sessionCurrentTokens}
+                            activeProvider={getActiveProvider()}
                         />
                     )}
                 </div>
