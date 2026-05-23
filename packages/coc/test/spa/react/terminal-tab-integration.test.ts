@@ -61,10 +61,10 @@ describe('RepoDetail terminal tab', () => {
         expect(terminalTab!.label).toBe('Terminal');
     });
 
-    it('terminal is positioned after tasks in SUB_TABS', () => {
-        const tasksIdx = SUB_TABS.findIndex(t => t.key === 'tasks');
+    it('terminal is positioned after git in SUB_TABS', () => {
+        const gitIdx = SUB_TABS.findIndex(t => t.key === 'git');
         const terminalIdx = SUB_TABS.findIndex(t => t.key === 'terminal');
-        expect(terminalIdx).toBe(tasksIdx + 1);
+        expect(terminalIdx).toBe(gitIdx + 1);
     });
 
     it('VISIBLE_SUB_TABS includes terminal (wiki filtered, terminal kept)', () => {
