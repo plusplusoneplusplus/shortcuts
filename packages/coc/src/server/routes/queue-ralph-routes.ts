@@ -15,6 +15,7 @@ import { getRalphContext } from '../tasks/task-types';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
 import { buildRalphIterationPrompt } from '../ralph/iteration-prompt';
 import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
+import { getPromptOverride } from '../admin/ralph-prompt-overrides';
 
 export interface QueueRalphRouteContext {
     bridge: MultiRepoQueueRouter;
@@ -124,7 +125,12 @@ export function registerRalphRoutes(routes: Route[], ctx: QueueRalphRouteContext
                 payload: {
                     kind: 'chat',
                     mode: 'ralph',
-                    prompt: buildRalphIterationPrompt({ originalGoal: goalSpec }),
+                    prompt: buildRalphIterationPrompt({
+                        originalGoal: goalSpec,
+                        promptOverride: dataDir
+                            ? (getPromptOverride('ralph-iteration-user', dataDir) ?? undefined)
+                            : undefined,
+                    }),
                     workspaceId: wsId,
                     workingDirectory,
                     folderPath,

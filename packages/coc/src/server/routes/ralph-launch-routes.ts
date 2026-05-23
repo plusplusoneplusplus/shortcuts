@@ -92,6 +92,7 @@ export function registerRalphLaunchRoutes(routes: Route[], ctx: RalphLaunchRoute
                 originalGoal: goalSpec,
                 iteration: 1,
                 maxIterations,
+                dataDir,
             });
 
             const taskId = await bridge.enqueue({

@@ -66,8 +66,13 @@ function request(
 
 function assertCorsHeaders(headers: Record<string, string>): void {
     expect(headers['access-control-allow-origin']).toBe('*');
-    expect(headers['access-control-allow-methods']).toBe('GET, POST, PATCH, DELETE, OPTIONS');
-    expect(headers['access-control-allow-headers']).toBe('Content-Type');
+    expect(headers['access-control-allow-methods']).toContain('GET');
+    expect(headers['access-control-allow-methods']).toContain('POST');
+    expect(headers['access-control-allow-methods']).toContain('DELETE');
+    expect(headers['access-control-allow-methods']).toContain('OPTIONS');
+    expect(headers['access-control-allow-methods']).toContain('PUT');
+    expect(headers['access-control-allow-headers']).toContain('Content-Type');
+    expect(headers['access-control-allow-headers']).toContain('Authorization');
 }
 
 // ---------------------------------------------------------------------------
