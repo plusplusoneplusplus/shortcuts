@@ -253,6 +253,98 @@ describe('groupByRalphSession', () => {
         expect((result[1] as RalphSession).kind).toBe('ralph-session');
     });
 
+    // ---------------------------------------------------------------------
+    // Ask-mode follow-up regression: follow-ups run in 'ask' mode with
+    // ralph.phase='executing', so they must appear in the iterations list.
+    // ---------------------------------------------------------------------
+
+    it('ask-mode follow-up to a ralph session appears in iterations', () => {
+        const grilling = makeGrillingTask('sess-fu', { createdAt: 1000 });
+        const iter1 = makeIterationTask('sess-fu', 1, { createdAt: 2000 });
+        // Follow-up runs in ask mode but with ralph context
+        const followUp = makeTask({
+            createdAt: 3000,
+            payload: {
+                mode: 'ask',
+                context: {
+                    ralph: {
+                        sessionId: 'sess-fu',
+                        phase: 'executing',
+                        currentIteration: 0,
+                    },
+                },
+            },
+        });
+
+        const result = groupByRalphSession([grilling, iter1, followUp]);
+        expect(result).toHaveLength(1);
+        const session = result[0] as RalphSession;
+        expect(session.grillingProcess).toBe(grilling);
+        // Both the iteration and the follow-up must be in iterations
+        expect(session.iterations).toHaveLength(2);
+        expect(session.iterations).toContain(iter1);
+        expect(session.iterations).toContain(followUp);
+    });
+
+    it('ask-mode follow-up history item appears in iterations', () => {
+        const iter1 = makeIterationHistoryItem('sess-hfu', 1, { createdAt: 2000 });
+        // History follow-up: top-level mode='ask' with ralph metadata
+        const followUp = makeTask({
+            createdAt: 3000,
+            mode: 'ask',
+            ralph: {
+                sessionId: 'sess-hfu',
+                phase: 'executing',
+                currentIteration: 0,
+            },
+        });
+
+        const result = groupByRalphSession([iter1, followUp]);
+        expect(result).toHaveLength(1);
+        const session = result[0] as RalphSession;
+        expect(session.iterations).toHaveLength(2);
+        expect(session.iterations).toContain(iter1);
+        expect(session.iterations).toContain(followUp);
+    });
+
+    it('follow-ups with same iteration number are sorted by timestamp', () => {
+        const iter1 = makeIterationTask('sess-ts', 1, { createdAt: 2000 });
+        const followUp1 = makeTask({
+            createdAt: 3000,
+            payload: {
+                mode: 'ask',
+                context: {
+                    ralph: {
+                        sessionId: 'sess-ts',
+                        phase: 'executing',
+                        currentIteration: 0,
+                    },
+                },
+            },
+        });
+        const followUp2 = makeTask({
+            createdAt: 4000,
+            payload: {
+                mode: 'ask',
+                context: {
+                    ralph: {
+                        sessionId: 'sess-ts',
+                        phase: 'executing',
+                        currentIteration: 0,
+                    },
+                },
+            },
+        });
+
+        const result = groupByRalphSession([followUp2, iter1, followUp1]);
+        const session = result[0] as RalphSession;
+        expect(session.iterations).toHaveLength(3);
+        // iteration 0 items first (sorted by timestamp), then iteration 1
+        expect(session.iterations[0]).toBe(followUp1);
+        expect(session.iterations[1]).toBe(followUp2);
+        expect(session.iterations[2]).toBe(iter1);
+    });
+
     it('sorts iterations by currentIteration ascending within session', () => {
         const i2 = makeIterationTask('sess-1', 2, { createdAt: 3000 });
         const i1 = makeIterationTask('sess-1', 1, { createdAt: 2000 });
