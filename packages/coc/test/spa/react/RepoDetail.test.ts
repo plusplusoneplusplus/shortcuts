@@ -40,7 +40,7 @@ describe('RepoDetail SUB_TABS', () => {
 
     it('contains all expected sub-tabs in order', () => {
         const keys = SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['chats', 'git', 'work-items', 'schedules', 'explorer', 'workflows', 'pull-requests', 'tasks', 'terminal', 'notes', 'settings', 'wiki']);
+        expect(keys).toEqual(['chats', 'git', 'terminal', 'work-items', 'schedules', 'explorer', 'workflows', 'pull-requests', 'tasks', 'notes', 'settings', 'wiki']);
     });
 
     it('includes "wiki" entry without a shortcut', () => {
@@ -49,8 +49,8 @@ describe('RepoDetail SUB_TABS', () => {
         expect(wikiTab!.shortcut).toBeUndefined();
     });
 
-    it('has explorer as the fifth tab (after schedules)', () => {
-        expect(SUB_TABS[4].key).toBe('explorer');
+    it('has explorer as the sixth tab (after schedules)', () => {
+        expect(SUB_TABS[5].key).toBe('explorer');
     });
 
     it('chats is the first entry', () => {
@@ -75,7 +75,7 @@ describe('RepoDetail VISIBLE_SUB_TABS', () => {
 
     it('contains all non-wiki tabs in order', () => {
         const keys = VISIBLE_SUB_TABS.map(t => t.key);
-        expect(keys).toEqual(['chats', 'git', 'work-items', 'schedules', 'explorer', 'workflows', 'pull-requests', 'tasks', 'terminal', 'notes', 'settings']);
+        expect(keys).toEqual(['chats', 'git', 'terminal', 'work-items', 'schedules', 'explorer', 'workflows', 'pull-requests', 'tasks', 'notes', 'settings']);
     });
 
     it('renders visibleSubTabs.map in the tab strip', () => {
@@ -689,7 +689,7 @@ describe('RepoDetail dev-workflow tab relabeling and reorder', () => {
             "'chats', 'work-items', 'schedules', 'explorer',",
         );
         expect(REPO_DETAIL_SOURCE).toContain(
-            "'workflows', 'git', 'pull-requests', 'tasks', 'settings',",
+            "'workflows', 'git', 'terminal', 'pull-requests', 'tasks', 'settings',",
         );
     });
 
@@ -701,7 +701,7 @@ describe('RepoDetail dev-workflow tab relabeling and reorder', () => {
     });
 
     it('dev-workflow appends dynamic tabs after the fixed order', () => {
-        // The else branch must iterate tabMap leftovers (terminal, notes, wiki) after the ordered array
+        // The else branch must iterate tabMap leftovers (notes, wiki) after the ordered array
         expect(REPO_DETAIL_SOURCE).toContain("// Append dynamic tabs");
         expect(REPO_DETAIL_SOURCE).toContain("for (const [, tab] of tabMap)");
     });
