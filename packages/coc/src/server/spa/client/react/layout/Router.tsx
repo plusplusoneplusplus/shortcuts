@@ -18,12 +18,11 @@ import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubT
 import { SETTINGS_SECTION_VALUES, REPO_SUB_TAB_VALUES, WIKI_PROJECT_TAB_VALUES, WIKI_ADMIN_TAB_VALUES } from '../types/dashboard';
 
 const MemoryView = lazy(() => import('../features/memory/MemoryView').then(m => ({ default: m.MemoryView })));
-const SkillsView = lazy(() => import('../features/skills/SkillsView').then(m => ({ default: m.SkillsView })));
-const UsageStatsView = lazy(() => import('../features/stats/UsageStatsView').then(m => ({ default: m.UsageStatsView })));
 const AdminPanel = lazy(() => import('../admin/AdminPanel').then(m => ({ default: m.AdminPanel })));
-const LogsView = lazy(() => import('../features/logs/LogsView').then(m => ({ default: m.LogsView })));
-const ModelsView = lazy(() => import('../features/models/ModelsView').then(m => ({ default: m.ModelsView })));
-const ServersView = lazy(() => import('../features/servers/ServersView').then(m => ({ default: m.ServersView })));
+// Skills/Logs/Usage/Models/Servers no longer mount as standalone top-level
+// views — they render embedded inside AdminPanel's right pane. The
+// `'skills' | 'logs' | 'stats' | 'models' | 'servers'` cases below all
+// fall through to the admin shell so the sidebar stays mounted.
 
 function StubView({ id, label }: { id: string; label: string }) {
     return <div id={id}>{label}</div>;
@@ -755,42 +754,21 @@ export function Router() {
                     <MemoryView />
                 </Suspense>
             );
-        case 'skills':
-            return (
-                <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
-                    <SkillsView />
-                </Suspense>
-            );
+        // The admin shell hosts itself plus the five tool views as
+        // embedded right-pane content. All six dashboard tabs render the
+        // exact same React tree; AdminPanel switches on `state.activeTab`
+        // to decide what to mount in `<main>`.
         case 'admin':
+        case 'skills':
+        case 'logs':
+        case 'stats':
+        case 'models':
+        case 'servers':
             return (
                 <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
                     <div className="h-full overflow-hidden" data-testid="admin-scroll-container">
                         <AdminPanel />
                     </div>
-                </Suspense>
-            );
-        case 'logs':
-            return (
-                <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
-                    <LogsView />
-                </Suspense>
-            );
-        case 'stats':
-            return (
-                <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
-                    <UsageStatsView />
-                </Suspense>
-            );
-        case 'models':
-            return (
-                <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
-                    <ModelsView />
-                </Suspense>
-            );
-        case 'servers':
-            return (
-                <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
-                    <ServersView />
                 </Suspense>
             );
         case 'reports':

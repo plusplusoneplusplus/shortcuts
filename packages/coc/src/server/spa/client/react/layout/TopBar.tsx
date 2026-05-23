@@ -248,7 +248,16 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                     data-tab="admin"
                     className={
                         `h-7 w-7 md:h-8 md:w-8 inline-flex items-center justify-center rounded touch-target text-base leading-none ` +
+                        // The admin shell hosts both `admin` itself and the
+                        // five embedded tool routes (skills/logs/stats/models/
+                        // servers). Reflect "user is in the admin shell" in
+                        // the highlight for any of those tabs.
                         (state.activeTab === 'admin'
+                         || state.activeTab === 'skills'
+                         || state.activeTab === 'logs'
+                         || state.activeTab === 'stats'
+                         || state.activeTab === 'models'
+                         || state.activeTab === 'servers'
                             ? 'bg-[#0078d4] text-white'
                             : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
                     }
