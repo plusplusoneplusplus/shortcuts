@@ -16,7 +16,8 @@ import type { Route } from '../types';
 import { sendJson } from '../shared/router';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
 import type { CodexAuthInfo } from '../codex-auth/codex-auth-store';
-import type { AgentProviderStatus, AgentProvidersResponse } from '@plusplusoneplusplus/coc-client';
+import type { AgentProviderStatus, AgentProvidersResponse, AgentProvidersQuotaResponse, ProviderQuotaType } from '@plusplusoneplusplus/coc-client';
+import type { CopilotSDKService } from '@plusplusoneplusplus/forge';
 
 export interface AgentProvidersRouteContext {
     runtimeConfigService: RuntimeConfigService;
@@ -24,6 +25,8 @@ export interface AgentProvidersRouteContext {
     getCodexAuthInfo: () => CodexAuthInfo;
     /** The base URL prefix used to build authUrl (e.g. 'http://localhost:4000'). */
     serverBaseUrl: string;
+    /** Optional: getter for Copilot account quota. Used by the quota endpoint. */
+    getCopilotSdkService?: () => CopilotSDKService;
 }
 
 /** Build the providers array from live config + auth state. Exported for unit testing. */
@@ -81,6 +84,51 @@ export function registerAgentProvidersRoutes(routes: Route[], ctx: AgentProvider
         pattern: '/api/agent-providers',
         handler: (_req, res) => {
             const body = buildAgentProvidersResponse(ctx);
+            sendJson(res, body);
+        },
+    });
+
+    routes.push({
+        method: 'GET',
+        pattern: '/api/agent-providers/quota',
+        handler: async (_req, res) => {
+            const config = ctx.runtimeConfigService.config;
+            const codexEnabled = config.codex?.enabled ?? false;
+
+            const providers: AgentProvidersQuotaResponse['providers'] = [];
+
+            // Copilot quota
+            try {
+                const sdkService = ctx.getCopilotSdkService?.();
+                if (!sdkService) {
+                    providers.push({ id: 'copilot', quotaTypes: [], error: 'Copilot SDK service not available' });
+                } else {
+                    const result = await sdkService.getAccountQuota();
+                    const quotaTypes: ProviderQuotaType[] = Object.entries(result.quotaSnapshots).map(
+                        ([type, snap]) => ({
+                            type,
+                            isUnlimitedEntitlement: snap.isUnlimitedEntitlement,
+                            usedRequests: snap.usedRequests,
+                            entitlementRequests: snap.entitlementRequests,
+                            remainingPercentage: snap.remainingPercentage,
+                            usageAllowedWithExhaustedQuota: snap.usageAllowedWithExhaustedQuota,
+                            overage: snap.overage,
+                            resetDate: snap.resetDate,
+                        }),
+                    );
+                    providers.push({ id: 'copilot', quotaTypes });
+                }
+            } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : String(err);
+                providers.push({ id: 'copilot', quotaTypes: [], error: msg });
+            }
+
+            // Codex quota — SDK has no quota method; silently return empty
+            if (codexEnabled) {
+                providers.push({ id: 'codex', quotaTypes: [] });
+            }
+
+            const body: AgentProvidersQuotaResponse = { providers };
             sendJson(res, body);
         },
     });

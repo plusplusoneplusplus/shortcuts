@@ -330,3 +330,33 @@ export interface AdminPromptDeleteResponse {
   id: string;
   reset: true;
 }
+
+// ── Agent Providers Quota types ──────────────────────────────────────────
+
+/** A single quota-type snapshot for an agent provider. */
+export interface ProviderQuotaType {
+  /** Quota category name, e.g. "chat", "completions". */
+  type: string;
+  isUnlimitedEntitlement: boolean;
+  usedRequests: number;
+  entitlementRequests: number;
+  /** 0.0–1.0, percentage of quota remaining. */
+  remainingPercentage: number;
+  usageAllowedWithExhaustedQuota: boolean;
+  overage: number;
+  /** ISO 8601 reset date, if known. */
+  resetDate?: string;
+}
+
+/** Quota information for one provider returned by GET /api/agent-providers/quota. */
+export interface ProviderQuotaResult {
+  id: AgentProviderId;
+  quotaTypes: ProviderQuotaType[];
+  /** Set when the provider quota could not be fetched. */
+  error?: string;
+}
+
+/** Response from GET /api/agent-providers/quota. */
+export interface AgentProvidersQuotaResponse {
+  providers: ProviderQuotaResult[];
+}

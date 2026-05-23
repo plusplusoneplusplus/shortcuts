@@ -4,9 +4,10 @@
  * Unit tests for the GET /api/agent-providers endpoint logic.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
     buildAgentProvidersResponse,
+    registerAgentProvidersRoutes,
 } from '../../src/server/agent-providers/agent-providers-routes';
 import { RuntimeConfigService } from '../../src/config/runtime-config-service';
 
@@ -172,5 +173,156 @@ describe('live config reflection', () => {
         });
         expect(r2.providers.find(p => p.id === 'codex')!.enabled).toBe(true);
         expect(r2.providers.find(p => p.id === 'codex')!.available).toBe(true);
+    });
+});
+
+// ── Quota route registration ──────────────────────────────────────────────────
+
+describe('registerAgentProvidersRoutes — quota endpoint', () => {
+    function makeRes() {
+        const written: string[] = [];
+        let statusCode = 200;
+        return {
+            res: {
+                writeHead: (code: number) => { statusCode = code; },
+                setHeader: () => {},
+                write: (chunk: string) => written.push(chunk),
+                end: (chunk?: string) => { if (chunk) written.push(chunk); },
+                get statusCode() { return statusCode; },
+            } as any,
+            written,
+            getBody: () => written.join(''),
+        };
+    }
+
+    it('registers a GET /api/agent-providers/quota route', () => {
+        const svc = makeService(false);
+        const routes: any[] = [];
+        registerAgentProvidersRoutes(routes, {
+            runtimeConfigService: svc,
+            getCodexAuthInfo: () => ({ status: 'unauthenticated' }),
+            serverBaseUrl: BASE_URL,
+        });
+        const quotaRoute = routes.find(r => r.pattern === '/api/agent-providers/quota');
+        expect(quotaRoute).toBeDefined();
+        expect(quotaRoute.method).toBe('GET');
+    });
+
+    it('returns error for copilot when getCopilotSdkService is not provided', async () => {
+        const svc = makeService(false);
+        const routes: any[] = [];
+        registerAgentProvidersRoutes(routes, {
+            runtimeConfigService: svc,
+            getCodexAuthInfo: () => ({ status: 'unauthenticated' }),
+            serverBaseUrl: BASE_URL,
+            // no getCopilotSdkService
+        });
+        const quotaRoute = routes.find(r => r.pattern === '/api/agent-providers/quota');
+        const { res, getBody } = makeRes();
+        await quotaRoute.handler({} as any, res);
+        const body = JSON.parse(getBody());
+        expect(body.providers).toHaveLength(1);
+        expect(body.providers[0].id).toBe('copilot');
+        expect(body.providers[0].error).toMatch(/not available/i);
+    });
+
+    it('returns copilot quota from sdk service when available', async () => {
+        const svc = makeService(false);
+        const routes: any[] = [];
+        const mockSdkService = {
+            getAccountQuota: vi.fn().mockResolvedValue({
+                quotaSnapshots: {
+                    chat: {
+                        isUnlimitedEntitlement: false,
+                        entitlementRequests: 100,
+                        usedRequests: 30,
+                        remainingPercentage: 0.7,
+                        usageAllowedWithExhaustedQuota: false,
+                        overage: 0,
+                    },
+                },
+            }),
+        };
+        registerAgentProvidersRoutes(routes, {
+            runtimeConfigService: svc,
+            getCodexAuthInfo: () => ({ status: 'unauthenticated' }),
+            serverBaseUrl: BASE_URL,
+            getCopilotSdkService: () => mockSdkService as any,
+        });
+        const quotaRoute = routes.find(r => r.pattern === '/api/agent-providers/quota');
+        const { res, getBody } = makeRes();
+        await quotaRoute.handler({} as any, res);
+        const body = JSON.parse(getBody());
+        expect(body.providers).toHaveLength(1);
+        expect(body.providers[0].id).toBe('copilot');
+        expect(body.providers[0].error).toBeUndefined();
+        expect(body.providers[0].quotaTypes).toHaveLength(1);
+        const chatQuota = body.providers[0].quotaTypes[0];
+        expect(chatQuota.type).toBe('chat');
+        expect(chatQuota.usedRequests).toBe(30);
+        expect(chatQuota.entitlementRequests).toBe(100);
+        expect(chatQuota.remainingPercentage).toBe(0.7);
+    });
+
+    it('returns copilot error when sdk service throws', async () => {
+        const svc = makeService(false);
+        const routes: any[] = [];
+        const mockSdkService = {
+            getAccountQuota: vi.fn().mockRejectedValue(new Error('SDK unavailable')),
+        };
+        registerAgentProvidersRoutes(routes, {
+            runtimeConfigService: svc,
+            getCodexAuthInfo: () => ({ status: 'unauthenticated' }),
+            serverBaseUrl: BASE_URL,
+            getCopilotSdkService: () => mockSdkService as any,
+        });
+        const quotaRoute = routes.find(r => r.pattern === '/api/agent-providers/quota');
+        const { res, getBody } = makeRes();
+        await quotaRoute.handler({} as any, res);
+        const body = JSON.parse(getBody());
+        expect(body.providers[0].id).toBe('copilot');
+        expect(body.providers[0].error).toBe('SDK unavailable');
+    });
+
+    it('includes codex provider with empty quotaTypes when codex is enabled', async () => {
+        const svc = makeService(true);
+        const routes: any[] = [];
+        const mockSdkService = {
+            getAccountQuota: vi.fn().mockResolvedValue({ quotaSnapshots: {} }),
+        };
+        registerAgentProvidersRoutes(routes, {
+            runtimeConfigService: svc,
+            getCodexAuthInfo: () => ({ status: 'authenticated' }),
+            serverBaseUrl: BASE_URL,
+            getCopilotSdkService: () => mockSdkService as any,
+        });
+        const quotaRoute = routes.find(r => r.pattern === '/api/agent-providers/quota');
+        const { res, getBody } = makeRes();
+        await quotaRoute.handler({} as any, res);
+        const body = JSON.parse(getBody());
+        expect(body.providers).toHaveLength(2);
+        const codex = body.providers.find((p: any) => p.id === 'codex');
+        expect(codex).toBeDefined();
+        expect(codex.quotaTypes).toHaveLength(0);
+        expect(codex.error).toBeUndefined();
+    });
+
+    it('does not include codex provider when codex is disabled', async () => {
+        const svc = makeService(false);
+        const routes: any[] = [];
+        const mockSdkService = {
+            getAccountQuota: vi.fn().mockResolvedValue({ quotaSnapshots: {} }),
+        };
+        registerAgentProvidersRoutes(routes, {
+            runtimeConfigService: svc,
+            getCodexAuthInfo: () => ({ status: 'unauthenticated' }),
+            serverBaseUrl: BASE_URL,
+            getCopilotSdkService: () => mockSdkService as any,
+        });
+        const quotaRoute = routes.find(r => r.pattern === '/api/agent-providers/quota');
+        const { res, getBody } = makeRes();
+        await quotaRoute.handler({} as any, res);
+        const body = JSON.parse(getBody());
+        expect(body.providers.find((p: any) => p.id === 'codex')).toBeUndefined();
     });
 });

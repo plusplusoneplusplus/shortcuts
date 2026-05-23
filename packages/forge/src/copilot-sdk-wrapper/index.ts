@@ -94,6 +94,10 @@ export {
 } from './copilot-sdk-service';
 
 export type { BackgroundTasksInfo } from './copilot-sdk-service';
+export type {
+    CopilotAccountQuotaSnapshot,
+    CopilotAccountQuotaResult,
+} from './copilot-sdk-service';
 
 // ISDKService interface and provider-agnostic types
 export type {

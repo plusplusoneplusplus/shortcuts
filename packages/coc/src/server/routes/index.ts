@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { Route } from '../types';
 import type { ProcessStore, TaskQueueManager, ISDKService, AIInvoker } from '@plusplusoneplusplus/forge';
-import { modelMetadataStore, sdkServiceRegistry } from '@plusplusoneplusplus/forge';
+import { modelMetadataStore, sdkServiceRegistry, CopilotSDKService } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import type { SqliteQueuePersistence } from '../queue/sqlite-queue-persistence';
@@ -322,6 +322,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                 ? opts.codexAuthStore.readInfo()
                 : { status: 'unauthenticated' },
             serverBaseUrl: `http://localhost:${opts.serverPort ?? 4000}`,
+            getCopilotSdkService: () => CopilotSDKService.getInstance(),
         });
     }
 

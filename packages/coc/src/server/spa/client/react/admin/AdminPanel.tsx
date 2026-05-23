@@ -239,6 +239,11 @@ export function AdminPanel() {
     const [featuresSaving, setFeaturesSaving] = useState(false);
     const [activeProviderSaving, setActiveProviderSaving] = useState(false);
 
+    // Quota state
+    const [quotaData, setQuotaData] = useState<import('@plusplusoneplusplus/coc-client').AgentProvidersQuotaResponse | null>(null);
+    const [quotaLoading, setQuotaLoading] = useState(false);
+    const [quotaError, setQuotaError] = useState<string | null>(null);
+
     // Snapshots for per-card dirty tracking (set when config/prefs loads)
     const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
     const [activeProviderSnapshot, setActiveProviderSnapshot] = useState<'copilot' | 'codex'>('copilot');
@@ -520,6 +525,19 @@ export function AdminPanel() {
     const handleCancelActiveProvider = useCallback(() => {
         setActiveProvider(activeProviderSnapshot);
     }, [activeProviderSnapshot]);
+
+    const handleRefreshQuota = useCallback(async () => {
+        setQuotaLoading(true);
+        setQuotaError(null);
+        try {
+            const data = await getSpaCocClient().admin.getAgentProvidersQuota();
+            setQuotaData(data);
+        } catch (err: unknown) {
+            setQuotaError(getSpaCocClientErrorMessage(err, 'Failed to fetch quota'));
+        } finally {
+            setQuotaLoading(false);
+        }
+    }, []);
 
     // ── Chat Experience card ──
     const handleSaveChat = useCallback(async () => {
@@ -1779,6 +1797,72 @@ export function AdminPanel() {
                                             ⚠ {providerAvailability['codex'].error}
                                         </div>
                                     )}
+                                    {/* Quota section */}
+                                    <div style={{ marginTop: 12 }}>
+                                        <button
+                                            type="button"
+                                            className="ar-btn ar-btn-secondary"
+                                            onClick={handleRefreshQuota}
+                                            disabled={quotaLoading}
+                                            data-testid="btn-refresh-quota"
+                                        >
+                                            {quotaLoading ? <Spinner size="sm" /> : '↻'} Refresh Quota
+                                        </button>
+                                        {quotaError && (
+                                            <div className="ar-row" style={{ marginTop: 8, color: 'var(--ar-danger)', fontSize: 12 }}>
+                                                ⚠ {quotaError}
+                                            </div>
+                                        )}
+                                        {quotaData && (
+                                            <div data-testid="quota-results" style={{ marginTop: 12 }}>
+                                                {quotaData.providers.map(provider => (
+                                                    <div key={provider.id} style={{ marginBottom: 12 }}>
+                                                        <div style={{ fontWeight: 600, fontSize: 12.5, marginBottom: 6, color: 'var(--ar-text-2)', textTransform: 'capitalize' }}>
+                                                            {provider.id === 'copilot' ? 'Copilot' : 'Codex'}
+                                                        </div>
+                                                        {provider.error ? (
+                                                            <div style={{ fontSize: 12, color: 'var(--ar-danger)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                                ⚠ {provider.error}
+                                                            </div>
+                                                        ) : provider.quotaTypes.length === 0 ? (
+                                                            <div style={{ fontSize: 12, color: 'var(--ar-text-mute)' }}>Quota not available for this provider.</div>
+                                                        ) : (
+                                                            provider.quotaTypes.map(qt => (
+                                                                <div key={qt.type} style={{ marginBottom: 8 }} data-testid={`quota-type-${qt.type}`}>
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                                                                        <span style={{ fontSize: 12, color: 'var(--ar-text-2)', textTransform: 'capitalize' }}>{qt.type}</span>
+                                                                        {qt.isUnlimitedEntitlement ? (
+                                                                            <span className="ar-badge ar-badge-success">Unlimited</span>
+                                                                        ) : (
+                                                                            <span style={{ fontSize: 11, color: 'var(--ar-text-mute)' }}>{qt.usedRequests} / {qt.entitlementRequests} used</span>
+                                                                        )}
+                                                                    </div>
+                                                                    {!qt.isUnlimitedEntitlement && (
+                                                                        <>
+                                                                            <div className="ar-quota-bar-track">
+                                                                                <div
+                                                                                    className={`ar-quota-bar-fill ${qt.remainingPercentage >= 0.5 ? 'ar-quota-green' : qt.remainingPercentage >= 0.2 ? 'ar-quota-amber' : 'ar-quota-red'}`}
+                                                                                    style={{ width: `${Math.max(0, Math.min(100, qt.remainingPercentage * 100))}%` }}
+                                                                                />
+                                                                            </div>
+                                                                            {qt.resetDate && (
+                                                                                <div style={{ fontSize: 11, color: 'var(--ar-text-mute)', marginTop: 2 }}>
+                                                                                    Resets {new Date(qt.resetDate).toLocaleDateString()}
+                                                                                </div>
+                                                                            )}
+                                                                            {qt.usageAllowedWithExhaustedQuota && qt.remainingPercentage === 0 && (
+                                                                                <span className="ar-pill" style={{ marginTop: 4, display: 'inline-flex', fontSize: 11, color: 'var(--ar-warning)' }}>Overage allowed</span>
+                                                                            )}
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                            ))
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
                                 </SettingsCard>
                                 {isContainerMode() && (
                                     <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
