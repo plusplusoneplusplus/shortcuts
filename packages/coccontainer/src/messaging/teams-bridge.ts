@@ -400,24 +400,41 @@ export class TeamsBridge {
                 return;
             }
 
-            // Only send the final assistant message (skip intermediate turns)
-            const lastAssistantTurn = [...newTurns].reverse().find(t => t.role === 'assistant' && (t.content ?? t.text ?? '').trim());
-            if (!lastAssistantTurn) {
-                console.log(`[teams-bridge] Process ${processId}: no assistant turn in ${newTurns.length} new turns — skipping`);
-                // Still advance watermark
-                if (sendableEnd > lastSeen) {
-                    this.store!.setWatermark(processId, sendableEnd);
+            // Determine which turns to send:
+            // - User turns: always send immediately (so Teams shows what was asked)
+            // - Assistant turns: only send the FINAL one when process is completed
+            const turnsToSend: typeof newTurns = [];
+
+            // Collect user turns
+            for (const turn of newTurns) {
+                if (turn.role === 'user' && (turn.content ?? turn.text ?? '').trim()) {
+                    turnsToSend.push(turn);
                 }
+            }
+
+            // On completion, also send the final assistant turn
+            if (status === 'completed') {
+                const lastAssistantTurn = [...newTurns].reverse().find(t => t.role === 'assistant' && (t.content ?? t.text ?? '').trim());
+                if (lastAssistantTurn) {
+                    turnsToSend.push(lastAssistantTurn);
+                }
+            }
+
+            if (turnsToSend.length === 0) {
+                // Running with only intermediate assistant turns — don't advance watermark
+                // so we can pick up the final assistant turn on completion
+                console.log(`[teams-bridge] Process ${processId}: skipping ${newTurns.length} intermediate turn(s) (status=${status})`);
                 this._runningLocks.delete(processId);
                 return;
             }
 
-            console.log(`[teams-bridge] Process ${processId}: sending final assistant message (${newTurns.length} new turns, watermark=${lastSeen}→${sendableEnd})`);
-
-            // Advance watermark BEFORE sending — prevents infinite retry on send failure
+            // Advance watermark
             if (sendableEnd > lastSeen) {
                 this.store!.setWatermark(processId, sendableEnd);
             }
+
+            console.log(`[teams-bridge] Process ${processId}: sending ${turnsToSend.length} turn(s) (status=${status}, ${newTurns.length} new, watermark=${lastSeen}→${sendableEnd})`);
+
 
             const repoName = await this.resolveWorkspaceName(
                 proc.workspaceName as string | undefined,
@@ -430,7 +447,7 @@ export class TeamsBridge {
             // Retrieve sender info for @mention notifications
             const sender = this.store!.getProcessSender(processId);
 
-            for (const turn of [lastAssistantTurn]) {
+            for (const turn of turnsToSend) {
                 const content = (turn.content ?? turn.text ?? '') as string;
                 if (!content.trim()) continue;
 

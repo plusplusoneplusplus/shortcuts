@@ -269,11 +269,13 @@ describe('TeamsBridge', () => {
             // Wait for async processing
             await new Promise(resolve => setTimeout(resolve, 50));
 
-            expect(lastBot().send).toHaveBeenCalledTimes(1);
+            expect(lastBot().send).toHaveBeenCalledTimes(2);
             const calls = lastBot().send.mock.calls;
-            // Only the final assistant turn is sent
-            expect(calls[0][1]).toContain('CoC Agent');
-            expect(calls[0][1]).toContain('Hi there!');
+            // First call is user turn
+            expect(calls[0][1]).toContain('Hello');
+            // Second call is the final assistant turn
+            expect(calls[1][1]).toContain('CoC Agent');
+            expect(calls[1][1]).toContain('Hi there!');
 
             vi.unstubAllGlobals();
             await bridge.stop();
@@ -530,8 +532,8 @@ describe('TeamsBridge', () => {
             });
             await new Promise(resolve => setTimeout(resolve, 50));
 
-            // Should have sent only the final assistant turn (watermark was at 1, now 3 turns — only last assistant sent)
-            expect(lastBot().send).toHaveBeenCalledTimes(2);
+            // Should have sent user turn + final assistant turn (watermark was at 1, new turns = [user, assistant])
+            expect(lastBot().send).toHaveBeenCalledTimes(3);
 
             vi.unstubAllGlobals();
             await bridge.stop();
@@ -644,7 +646,7 @@ describe('TeamsBridge', () => {
             await bridge.stop();
         });
 
-        it('should send messages for running status after first event completes', async () => {
+        it('should skip intermediate assistant turns during running status', async () => {
             const bridge = createBridge();
             await bridge.start();
 
@@ -653,15 +655,15 @@ describe('TeamsBridge', () => {
             ]);
             vi.stubGlobal('fetch', mockFetch);
 
-            // First running event
+            // First running event — only assistant turn, should be skipped
             emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
                 type: 'process-updated',
                 process: { id: 'proc-lock', status: 'running', workspaceId: 'ws-1' },
             });
             await new Promise(resolve => setTimeout(resolve, 50));
-            expect(lastBot().send).toHaveBeenCalledTimes(1);
+            expect(lastBot().send).toHaveBeenCalledTimes(0);
 
-            // Second running event for same process — lock released, should work again
+            // Second running event with more assistant turns — still skipped
             const mockFetch2 = mockProcessFetch([
                 { role: 'assistant', content: 'Streaming done' },
                 { role: 'assistant', content: 'More content' },
@@ -674,8 +676,25 @@ describe('TeamsBridge', () => {
             });
             await new Promise(resolve => setTimeout(resolve, 50));
 
-            // Watermark was at 1, now 2 turns → sends the new one
-            expect(lastBot().send).toHaveBeenCalledTimes(2);
+            // Intermediate assistant turns are not sent during running
+            expect(lastBot().send).toHaveBeenCalledTimes(0);
+
+            // Completion event — now the final assistant turn is sent
+            const mockFetch3 = mockProcessFetch([
+                { role: 'assistant', content: 'Streaming done' },
+                { role: 'assistant', content: 'More content' },
+                { role: 'assistant', content: 'Final answer' },
+            ]);
+            vi.stubGlobal('fetch', mockFetch3);
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-lock', status: 'completed', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            expect(lastBot().send).toHaveBeenCalledTimes(1);
+            expect(lastBot().send.mock.calls[0][1]).toContain('Final answer');
 
             vi.unstubAllGlobals();
             await bridge.stop();
