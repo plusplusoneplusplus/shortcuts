@@ -202,6 +202,25 @@ describe('Notes Read Handler — GET /notes/content security', { timeout: 30_000
     });
 
     // -------------------------------------------------------------------------
+    // Happy path — workspace root directory (repo files via absolute path)
+    // -------------------------------------------------------------------------
+
+    it('returns 200 for an absolute path inside the workspace rootPath (regression: repo skill files)', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv);
+
+        // Create a file inside the workspace root directory (simulating a repo file)
+        const skillFile = path.join(workspaceDir, '.github', 'skills', 'help-me-review', 'SKILL.md');
+        fs.mkdirSync(path.dirname(skillFile), { recursive: true });
+        fs.writeFileSync(skillFile, '# Help Me Review\n\nSkill content.', 'utf-8');
+
+        const res = await request(contentUrl(srv, skillFile));
+        expect(res.status).toBe(200);
+        const data = JSON.parse(res.body);
+        expect(data.content).toBe('# Help Me Review\n\nSkill content.');
+    });
+
+    // -------------------------------------------------------------------------
     // Security — reject paths outside workspace data directory
     // -------------------------------------------------------------------------
 
