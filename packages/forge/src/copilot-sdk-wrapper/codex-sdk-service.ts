@@ -21,6 +21,8 @@ import type { SendMessageOptions } from './types';
 import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult } from './sdk-service-interface';
 import { sdkServiceRegistry, CODEX_PROVIDER } from './sdk-service-registry';
 import { dynamicImportModule } from './sdk-esm-loader';
+import { execFileAsync } from '../utils/exec-utils';
+import * as path from 'path';
 
 // ============================================================================
 // Auth checker injection (AC-08)
@@ -114,6 +116,18 @@ interface CodexStartThreadOptions {
     networkAccessEnabled?: boolean;
 }
 
+interface CodexCatalogModel {
+    slug?: unknown;
+    display_name?: unknown;
+    visibility?: unknown;
+    default_reasoning_level?: unknown;
+    supported_reasoning_levels?: unknown;
+}
+
+interface CodexReasoningLevel {
+    effort?: unknown;
+}
+
 // ============================================================================
 // Internal active-session record
 // ============================================================================
@@ -197,11 +211,58 @@ export class CodexSDKService implements ISDKService {
         if (this.disposed) throw new Error('CodexSDKService has been disposed');
         const avail = await this.isAvailable();
         if (!avail.available) throw new Error(avail.error ?? 'Codex SDK is not available');
-        // The Codex SDK does not currently expose model discovery in this
-        // adapter. Use a sentinel that maps to the provider/account default.
-        return [
-            { id: 'codex-default', name: 'Codex Provider Default' },
-        ];
+        return this.loadModelCatalog();
+    }
+
+    private async loadModelCatalog(): Promise<IModelInfo[]> {
+        const packageJsonPath = require.resolve('@openai/codex/package.json');
+        const codexBinPath = path.join(path.dirname(packageJsonPath), 'bin', 'codex.js');
+        const { stdout } = await execFileAsync(process.execPath, [codexBinPath, 'debug', 'models'], {
+            timeout: 30_000,
+            maxBuffer: 50 * 1024 * 1024,
+        });
+        const parsed = JSON.parse(stdout) as { models?: unknown };
+        if (!Array.isArray(parsed.models)) return [];
+        const models = parsed.models
+            .map(model => this.mapCatalogModel(model as CodexCatalogModel))
+            .filter((model): model is IModelInfo => model !== undefined);
+        if (models.length > 0) return models;
+        return [{ id: 'codex-default', name: 'Codex Provider Default' }];
+    }
+
+    private mapCatalogModel(model: CodexCatalogModel): IModelInfo | undefined {
+        if (typeof model.slug !== 'string' || !model.slug) return undefined;
+        if (model.visibility !== 'list') return undefined;
+        const supportedReasoningEfforts = this.normalizeReasoningLevels(model.supported_reasoning_levels);
+        const defaultReasoningEffort = typeof model.default_reasoning_level === 'string'
+            && supportedReasoningEfforts.includes(model.default_reasoning_level)
+            ? model.default_reasoning_level
+            : undefined;
+        return {
+            id: model.slug,
+            name: typeof model.display_name === 'string' && model.display_name ? model.display_name : model.slug,
+            capabilities: {
+                supports: {
+                    vision: false,
+                    reasoningEffort: supportedReasoningEfforts.length > 0,
+                    reasoning_effort: supportedReasoningEfforts,
+                },
+                limits: { max_context_window_tokens: 0 },
+            },
+            supportedReasoningEfforts,
+            ...(defaultReasoningEffort ? { defaultReasoningEffort } : {}),
+        } as IModelInfo;
+    }
+
+    private normalizeReasoningLevels(value: unknown): string[] {
+        if (!Array.isArray(value)) return [];
+        const efforts = new Set<string>();
+        for (const level of value as CodexReasoningLevel[]) {
+            if (typeof level.effort === 'string' && level.effort) {
+                efforts.add(level.effort);
+            }
+        }
+        return ['minimal', 'low', 'medium', 'high', 'xhigh'].filter(effort => efforts.has(effort));
     }
 
     // ── Message dispatch ──────────────────────────────────────────────────────

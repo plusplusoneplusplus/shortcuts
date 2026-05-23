@@ -209,10 +209,56 @@ describe('CodexSDKService — SDK mocked', () => {
     });
 
     it('listModels returns a non-empty list', async () => {
+        const catalogModels = [
+            {
+                id: 'gpt-5.5',
+                name: 'GPT-5.5',
+                capabilities: {
+                    supports: {
+                        vision: false,
+                        reasoningEffort: true,
+                        reasoning_effort: ['low', 'medium', 'high', 'xhigh'],
+                    },
+                    limits: { max_context_window_tokens: 0 },
+                },
+                supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
+                defaultReasoningEffort: 'medium',
+            },
+        ];
+        // @ts-expect-error — private method override for deterministic test
+        svc['loadModelCatalog'] = vi.fn().mockResolvedValue(catalogModels);
+
         const models = await svc.listModels();
-        expect(models).toEqual([
-            { id: 'codex-default', name: 'Codex Provider Default' },
-        ]);
+        expect(models).toEqual(catalogModels);
+    });
+
+    it('maps only listable Codex catalog models', () => {
+        const mapCatalogModel = svc['mapCatalogModel'].bind(svc);
+
+        expect(mapCatalogModel({
+            slug: 'gpt-5.5',
+            display_name: 'GPT-5.5',
+            visibility: 'list',
+            default_reasoning_level: 'medium',
+            supported_reasoning_levels: [
+                { effort: 'low' },
+                { effort: 'medium' },
+                { effort: 'high' },
+                { effort: 'xhigh' },
+            ],
+        })).toMatchObject({
+            id: 'gpt-5.5',
+            name: 'GPT-5.5',
+            supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
+            defaultReasoningEffort: 'medium',
+            capabilities: {
+                supports: {
+                    reasoningEffort: true,
+                    reasoning_effort: ['low', 'medium', 'high', 'xhigh'],
+                },
+            },
+        });
+        expect(mapCatalogModel({ slug: 'codex-auto-review', visibility: 'hide' })).toBeUndefined();
     });
 
     it('sendMessage creates a new thread and returns response', async () => {
