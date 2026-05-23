@@ -45,6 +45,7 @@ const TRUNCATED_RESULT_LENGTH = 4900;
 
 function formatArgs(args: any): string {
     if (!args) return '';
+    if (typeof args === 'object' && !Array.isArray(args) && Object.keys(args).length === 0) return '';
     if (typeof args === 'string') {
         try { return JSON.stringify(JSON.parse(args), null, 2); } catch { return args; }
     }
