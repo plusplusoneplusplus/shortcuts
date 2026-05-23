@@ -176,4 +176,47 @@ describe('MessagingStore', () => {
             expect(store.getWatermark('proc-b')).toBe(8);
         });
     });
+
+    describe('in-memory LRU cache', () => {
+        it('should serve lookups from cache after bindMessage', () => {
+            store.bindMessage('msg-cache-1', 'proc-c1', 'agent-c', 'Label-C', 'ws-c');
+            // Lookup should succeed (from cache, but result is same)
+            const result = store.lookupMessage('msg-cache-1');
+            expect(result).toEqual({
+                processId: 'proc-c1',
+                agentId: 'agent-c',
+                sessionLabel: 'Label-C',
+                workspaceId: 'ws-c',
+            });
+        });
+
+        it('should evict oldest entries when cache exceeds 50', () => {
+            // Fill cache with 50 entries
+            for (let i = 0; i < 50; i++) {
+                store.bindMessage(`msg-${i}`, `proc-${i}`, 'agent', 'Label');
+            }
+            // Add one more — should evict msg-0
+            store.bindMessage('msg-50', 'proc-50', 'agent', 'Label');
+
+            // msg-0 should still be found via SQLite fallback
+            const result = store.lookupMessage('msg-0');
+            expect(result).not.toBeNull();
+            expect(result?.processId).toBe('proc-0');
+
+            // msg-50 should be found (in cache)
+            expect(store.lookupMessage('msg-50')?.processId).toBe('proc-50');
+        });
+
+        it('should update cache on duplicate bind', () => {
+            store.bindMessage('msg-dup', 'proc-old', 'agent-old', 'Old');
+            store.bindMessage('msg-dup', 'proc-new', 'agent-new', 'New', 'ws-new');
+            const result = store.lookupMessage('msg-dup');
+            expect(result).toEqual({
+                processId: 'proc-new',
+                agentId: 'agent-new',
+                sessionLabel: 'New',
+                workspaceId: 'ws-new',
+            });
+        });
+    });
 });

@@ -2,10 +2,21 @@
  * Tests for config module.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { resolveConfig, getDefaultDataDir } from '../src/config';
 import * as path from 'path';
 import * as os from 'os';
+
+vi.mock('fs', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('fs')>();
+    return {
+        ...actual,
+        existsSync: (p: string) => {
+            if (String(p).includes('config.yaml')) return false;
+            return actual.existsSync(p);
+        },
+    };
+});
 
 describe('config', () => {
     it('should return defaults when no overrides', () => {

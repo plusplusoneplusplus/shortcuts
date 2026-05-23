@@ -27,6 +27,8 @@ export interface TeamsConfig {
     enabled?: boolean;
     /** Transport mode: 'graph' (default, uses Graph API with az tokens) or 'mcp' (Teams MCP server). */
     mode?: 'graph' | 'mcp';
+    /** Message target: 'chat' sends DM to self, 'channel' posts to configured channel. Default: 'chat'. */
+    target?: 'channel' | 'chat';
     /** Team display name — resolved to ID on startup, created if missing. */
     teamName?: string;
     /** Channel display name — resolved to ID on startup, created if missing. */
@@ -47,6 +49,8 @@ export interface TeamsConfig {
     clientId?: string;
     /** OAuth2 scope for the Teams MCP resource (optional) */
     scope?: string;
+    /** Enable verbose debug logging for message polling and routing (default: false) */
+    debug?: boolean;
 }
 
 export interface ContainerConfig {
@@ -77,6 +81,8 @@ export interface ResolvedWhatsAppConfig {
 export interface ResolvedTeamsConfig {
     enabled: boolean;
     mode: 'graph' | 'mcp';
+    /** Message target: 'chat' sends DM to self, 'channel' posts to configured channel. */
+    target: 'channel' | 'chat';
     teamName?: string;
     channelName?: string;
     teamId?: string;
@@ -87,6 +93,8 @@ export interface ResolvedTeamsConfig {
     defaultAgentId?: string;
     clientId?: string;
     scope?: string;
+    /** Enable verbose debug logging for message polling and routing (default: false) */
+    debug?: boolean;
 }
 
 export interface ResolvedContainerConfig {
@@ -121,7 +129,10 @@ const DEFAULTS: ResolvedContainerConfig = {
         },
         teams: {
             enabled: true,
+            // Graph mode disabled: az CLI tokens lack ChatMessage.Send/Chat.ReadWrite scopes.
+            // MCP mode uses SendMessageToSelf which works with first-party app tokens.
             mode: 'mcp',
+            target: 'chat',
             teamName: 'Coc',
             channelName: 'Coc-General',
             mcpServerUrl: 'https://agent365.svc.cloud.microsoft/agents/tenants/72f988bf-86f1-41af-91ab-2d7cd011db47/servers/mcp_TeamsServer',
@@ -163,6 +174,7 @@ export function resolveConfig(overrides?: Partial<ContainerConfig>): ResolvedCon
             teams: {
                 enabled: teamsOver?.enabled ?? teamsFile?.enabled ?? DEFAULTS.messaging.teams.enabled,
                 mode: teamsOver?.mode ?? teamsFile?.mode ?? DEFAULTS.messaging.teams.mode,
+                target: (teamsOver as any)?.target ?? (teamsFile as any)?.target ?? DEFAULTS.messaging.teams.target,
                 teamName: teamsOver?.teamName ?? teamsFile?.teamName ?? DEFAULTS.messaging.teams.teamName,
                 channelName: teamsOver?.channelName ?? teamsFile?.channelName ?? DEFAULTS.messaging.teams.channelName,
                 teamId: teamsOver?.teamId ?? teamsFile?.teamId ?? DEFAULTS.messaging.teams.teamId,

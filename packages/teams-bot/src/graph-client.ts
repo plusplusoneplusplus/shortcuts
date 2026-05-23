@@ -54,6 +54,7 @@ export class GraphClient {
     private teamId: string | null;
     private channelId: string | null;
     private chatId: string | null;
+    private _meCache: { id: string; displayName: string } | null = null;
 
     constructor(opts: GraphClientOptions) {
         this.graphBase = opts.graphBaseUrl?.replace(/\/$/, '') ?? 'https://graph.microsoft.com/v1.0';
@@ -91,6 +92,87 @@ export class GraphClient {
     /** Get current channel ID. */
     getChannelId(): string | null {
         return this.channelId;
+    }
+
+    /** Get current chat ID. */
+    getChatId(): string | null {
+        return this.chatId;
+    }
+
+    // ── Chat (1:1 / self) discovery & creation ───────────────────
+
+    /** Get the authenticated user's ID and display name (cached). */
+    async getMe(): Promise<{ id: string; displayName: string }> {
+        if (this._meCache) return this._meCache;
+        this._meCache = await this.get<{ id: string; displayName: string }>(`${this.graphBase}/me`);
+        return this._meCache;
+    }
+
+    /**
+     * Find or create a 1:1 chat between the authenticated user and a target user.
+     * For a "self-chat" (messaging yourself), pass the current user's ID.
+     */
+    async getOrCreateChat(targetUserId: string): Promise<string> {
+        const me = await this.getMe();
+
+        // List existing chats once
+        const chats = await this.get<{ value: Array<{ id: string; chatType: string; members: Array<{ userId?: string }> }> }>(
+            `${this.graphBase}/me/chats?$filter=chatType eq 'oneOnOne'&$expand=members&$top=50`
+        );
+
+        for (const chat of chats.value ?? []) {
+            const memberIds = chat.members?.map((m: any) => m.userId).filter(Boolean) ?? [];
+
+            if (targetUserId === me.id) {
+                // Self-chat: all members are the current user
+                const allSelf = memberIds.length > 0 && memberIds.every(id => id === me.id);
+                if (allSelf) {
+                    this.chatId = chat.id;
+                    return chat.id;
+                }
+            }
+
+            // Regular 1:1 with target user
+            if (memberIds.includes(targetUserId)) {
+                this.chatId = chat.id;
+                return chat.id;
+            }
+        }
+
+        // Create a new 1:1 chat — must include both members
+        const members: any[] = [
+            {
+                '@odata.type': '#microsoft.graph.aadUserConversationMember',
+                roles: ['owner'],
+                'user@odata.bind': `https://graph.microsoft.com/v1.0/users('${me.id}')`,
+            },
+            {
+                '@odata.type': '#microsoft.graph.aadUserConversationMember',
+                roles: ['owner'],
+                'user@odata.bind': `https://graph.microsoft.com/v1.0/users('${targetUserId}')`,
+            },
+        ];
+
+        const res = await fetch(`${this.graphBase}/chats`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${this.bearerToken}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                chatType: 'oneOnOne',
+                members,
+            }),
+        });
+
+        if (!res.ok) {
+            const text = await res.text().catch(() => '');
+            throw new Error(`Graph API create chat ${res.status}: ${text}`);
+        }
+
+        const data = await res.json() as { id: string };
+        this.chatId = data.id;
+        return data.id;
     }
 
     // ── Team/Channel discovery & creation ─────────────────────
@@ -265,7 +347,7 @@ export class GraphClient {
         const target = chatId ?? this.chatId;
         if (!target) throw new Error('No chatId configured');
         const url = `${this.graphBase}/chats/${target}/messages`;
-        const res = await this.post(url, { body: { content } });
+        const res = await this.post(url, { body: { content, contentType: 'html' } });
         return res.id;
     }
 

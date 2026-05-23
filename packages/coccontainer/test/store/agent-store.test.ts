@@ -38,11 +38,9 @@ describe('AgentStore', () => {
         expect(agent.address).toBe('http://localhost:4000');
     });
 
-    it('should allow duplicate addresses with different names', () => {
-        const a1 = store.add('http://localhost:4000', 'agent1');
-        const a2 = store.add('http://localhost:4000', 'agent2');
-        expect(a1.id).not.toBe(a2.id);
-        expect(a2.name).toBe('agent2');
+    it('should reject duplicate addresses', () => {
+        store.add('http://localhost:4000', 'agent1');
+        expect(() => store.add('http://localhost:4000', 'agent2')).toThrow(/already registered/);
     });
 
     it('should auto-name from URL host', () => {

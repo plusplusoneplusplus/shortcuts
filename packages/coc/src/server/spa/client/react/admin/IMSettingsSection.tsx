@@ -22,6 +22,7 @@ interface WhatsAppStatus {
 interface TeamsStatus {
     enabled: boolean;
     status: 'disconnected' | 'connecting' | 'authenticating' | 'connected' | 'error';
+    mode: 'graph' | 'mcp';
     error: string | null;
     teamName?: string;
     channelName?: string;
@@ -58,7 +59,7 @@ async function fetchTeamsStatus(): Promise<TeamsStatus> {
     return res.json();
 }
 
-async function postTeamsConfig(patch: { botName?: string; channelId?: string; enabled?: boolean; teamName?: string; channelName?: string }): Promise<void> {
+async function postTeamsConfig(patch: { botName?: string; channelId?: string; enabled?: boolean; teamName?: string; channelName?: string; mode?: 'graph' | 'mcp' }): Promise<void> {
     const res = await fetch(getRawApiBase() + '/container/messaging/teams/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -68,10 +69,76 @@ async function postTeamsConfig(patch: { botName?: string; channelId?: string; en
 }
 
 async function postTeamsReconnect(): Promise<void> {
-    const res = await fetch(getRawApiBase() + '/container/messaging/teams/reconnect', {
-        method: 'POST',
+    // 1. Start auth session — server creates temp callback server and returns OAuth config
+    const configRes = await fetch(getRawApiBase() + '/container/messaging/teams/auth/start', { method: 'POST' });
+    if (!configRes.ok) throw new Error(`HTTP ${configRes.status}`);
+    const oauthConfig = await configRes.json() as { clientId: string; tenantId: string; scope: string; authorizeUrl: string; redirectUri: string };
+
+    // 2. Generate PKCE code_verifier + code_challenge
+    const codeVerifierBytes = new Uint8Array(32);
+    crypto.getRandomValues(codeVerifierBytes);
+    const codeVerifier = btoa(String.fromCharCode(...codeVerifierBytes))
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const challengeBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(codeVerifier));
+    const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(challengeBuffer)))
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+    // 3. Use the localhost redirect URI from server config
+    const redirectUri = oauthConfig.redirectUri;
+
+    // 4. Build authorize URL and open popup
+    const params = new URLSearchParams({
+        client_id: oauthConfig.clientId,
+        response_type: 'code',
+        redirect_uri: redirectUri,
+        scope: oauthConfig.scope,
+        code_challenge: codeChallenge,
+        code_challenge_method: 'S256',
+        response_mode: 'query',
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const authUrl = `${oauthConfig.authorizeUrl}?${params.toString()}`;
+    const popup = window.open(authUrl, 'teams-auth', 'width=600,height=700');
+
+    // 5. Listen for postMessage from popup with the auth code
+    const code = await new Promise<string>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+            window.removeEventListener('message', handler);
+            reject(new Error('OAuth login timed out (120s)'));
+        }, 120000);
+        function handler(event: MessageEvent) {
+            if (event.data?.type !== 'teams-auth-callback') return;
+            clearTimeout(timeout);
+            window.removeEventListener('message', handler);
+            if (event.data.error) {
+                reject(new Error(`OAuth error: ${event.data.error} - ${event.data.errorDescription ?? ''}`));
+            } else if (event.data.code) {
+                resolve(event.data.code);
+            } else {
+                reject(new Error('No auth code received'));
+            }
+        }
+        window.addEventListener('message', handler);
+        // Also check if popup was closed without completing
+        const pollClosed = setInterval(() => {
+            if (popup && popup.closed) {
+                clearInterval(pollClosed);
+                clearTimeout(timeout);
+                window.removeEventListener('message', handler);
+                reject(new Error('Login window was closed'));
+            }
+        }, 1000);
+    });
+
+    // 6. Exchange code for tokens on server
+    const exchangeRes = await fetch(getRawApiBase() + '/container/messaging/teams/auth/exchange', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, codeVerifier, redirectUri }),
+    });
+    if (!exchangeRes.ok) {
+        const err = await exchangeRes.json().catch(() => ({ error: 'Exchange failed' }));
+        throw new Error((err as { error?: string }).error ?? `HTTP ${exchangeRes.status}`);
+    }
 }
 
 // ── QR Code Display ─────────────────────────────────────────
@@ -490,7 +557,7 @@ function TeamsSettingsCard() {
     return (
         <SettingsCard
             title="Microsoft Teams"
-            description="Connect MS Teams to bridge CoC conversations to a Teams channel via Graph API."
+            description="Bridge CoC conversations to Teams. Connection and authentication must be performed on the container node (where CoC server runs)."
             badge="Container"
             data-testid="im-settings-teams"
         >
@@ -530,6 +597,26 @@ function TeamsSettingsCard() {
                 </p>
             ) : (
                 <div className="space-y-3">
+                    {/* Mode selector — only MCP is available. Graph API mode is preserved in code
+                       but disabled because az CLI tokens lack ChatMessage.Send/Chat.ReadWrite scopes. */}
+                    <div className="flex items-center justify-between pb-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                        <label className="text-xs text-[#616161] dark:text-[#999]">Transport mode</label>
+                        <select
+                            value="mcp"
+                            disabled
+                            className="text-xs px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] text-[#1e1e1e] dark:text-[#cccccc] outline-none opacity-80"
+                        >
+                            <option value="mcp">MCP Server</option>
+                        </select>
+                    </div>
+
+                    {/* Container-node requirement notice */}
+                    {status.status !== 'connected' && (
+                        <div className="text-xs bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded px-3 py-2 text-blue-700 dark:text-blue-300">
+                            ℹ️ Connection must be initiated from the <strong>container node</strong> (where CoC server runs). The Connect button triggers authentication on that machine.
+                        </div>
+                    )}
+
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <TeamsStatusDot status={status.status} />

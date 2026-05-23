@@ -66,13 +66,20 @@ describe('TeamsBot', () => {
                 await bot.stop();
             });
 
-            it('should report error when teamId is missing', async () => {
+            it('should use chat (DM) mode when teamId is missing', async () => {
+                // Mock /me call (only verification needed in send-only mode)
+                mockFetch.mockResolvedValueOnce({
+                    ok: true,
+                    json: async () => ({ id: 'user-aad-id', displayName: 'Test User' }),
+                } as any);
+
                 const bot = createGraphBot({ teamId: undefined });
                 await bot.start();
 
-                expect(bot.getStatus()).toBe('error');
-                expect(bot.getLastError()).toContain('teamId is required');
-                expect(onError).toHaveBeenCalled();
+                expect(bot.getStatus()).toBe('connected');
+                // Graph send-only mode: no chatId discovery (requires Chat.ReadBasic)
+                expect(bot.getChannelId()).toBeNull();
+                await bot.stop();
             });
 
             it('should report error on Graph connection failure', async () => {
@@ -178,83 +185,18 @@ describe('TeamsBot', () => {
         });
 
         describe('polling', () => {
-            it('should poll for messages via Graph API', async () => {
+            it('should NOT poll in graph mode (send-only)', async () => {
                 mockGraphTeamResponse();
 
                 const bot = createGraphBot();
                 await bot.start();
                 bot.setChannelId('19:channel@thread.tacv2');
 
-                // Mock poll response
-                mockFetch.mockResolvedValueOnce({
-                    ok: true,
-                    json: async () => ({
-                        value: [{
-                            id: 'msg-100',
-                            body: { content: 'Hello from Teams' },
-                            from: { user: { displayName: 'Alice', id: 'user-aad-1' } },
-                            createdDateTime: '2026-05-19T22:00:00Z',
-                        }],
-                    }),
-                } as any);
-
                 await vi.advanceTimersByTimeAsync(1000);
 
-                expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({
-                    channelId: '19:channel@thread.tacv2',
-                    messageId: 'msg-100',
-                    text: 'Hello from Teams',
-                    senderName: 'Alice',
-                    senderAadId: 'user-aad-1',
-                }));
-
-                await bot.stop();
-            });
-
-            it('should skip messages sent by the bot itself', async () => {
-                mockGraphTeamResponse();
-
-                const bot = createGraphBot();
-                await bot.start();
-                bot.setChannelId('19:channel@thread.tacv2');
-
-                // Send a message first
-                mockFetch.mockResolvedValueOnce({
-                    ok: true,
-                    json: async () => ({ id: 'msg-sent', body: { content: 'Bot msg' } }),
-                } as any);
-                await bot.send('19:channel@thread.tacv2', 'Bot msg');
-
-                // Poll returns the bot's own message
-                mockFetch.mockResolvedValueOnce({
-                    ok: true,
-                    json: async () => ({
-                        value: [{
-                            id: 'msg-sent',
-                            body: { content: 'Bot msg' },
-                            from: { user: { displayName: 'CoC' } },
-                            createdDateTime: '2026-05-19T22:01:00Z',
-                        }],
-                    }),
-                } as any);
-
-                await vi.advanceTimersByTimeAsync(1000);
-
-                expect(onMessage).not.toHaveBeenCalled();
-                await bot.stop();
-            });
-
-            it('should not poll when no channelId is set', async () => {
-                mockGraphTeamResponse();
-
-                const bot = createGraphBot();
-                await bot.start();
-                // No setChannelId
-
-                await vi.advanceTimersByTimeAsync(1000);
-
-                // verifyConnection call only (no poll)
+                // Only verifyConnection call — no poll
                 expect(mockFetch).toHaveBeenCalledTimes(1);
+                expect(onMessage).not.toHaveBeenCalled();
                 await bot.stop();
             });
         });
@@ -532,6 +474,59 @@ describe('TeamsBot', () => {
                 await vi.advanceTimersByTimeAsync(1000);
 
                 expect(onMessage).not.toHaveBeenCalled();
+
+                await bot.stop();
+            });
+
+            it('should infer replyToMessageId from preceding bot message in DM mode', async () => {
+                // Mock initialize
+                mockFetch.mockResolvedValueOnce({
+                    ok: true,
+                    headers: new Map(),
+                    json: async () => ({ result: { serverInfo: { name: 'test' } } }),
+                } as any);
+
+                const bot = new TeamsBot({
+                    mode: 'mcp',
+                    teamId: 'team-123',
+                    mcpServerUrl: 'https://mcp.test/server',
+                    onMessage,
+                    onStatusChange,
+                    pollIntervalMs: 1000,
+                    auth: { bearerToken: 'token' },
+                });
+                await bot.start();
+                bot.setChannelId('19:channel@thread.tacv2');
+
+                // First poll — set watermark
+                mockFetch.mockResolvedValueOnce({
+                    ok: true,
+                    headers: new Map(),
+                    json: async () => ({
+                        result: { content: [{ type: 'text', text: JSON.stringify({ messages: [{ id: 'msg-500', body: { content: 'init' }, from: { user: { displayName: 'X' } }, createdDateTime: '2026-05-19T22:00:00Z' }] }) }] },
+                    }),
+                } as any);
+                await vi.advanceTimersByTimeAsync(1000);
+
+                // Second poll — bot message followed by user reply (no replyToId)
+                const botMsg = 'CoC Agent:<br>Agent: dev<br>Repo: my-repo<br>ChatId: queue_123<br>Message:<br>Here is the answer';
+                mockFetch.mockResolvedValueOnce({
+                    ok: true,
+                    headers: new Map(),
+                    json: async () => ({
+                        result: { content: [{ type: 'text', text: JSON.stringify({ messages: [
+                            { id: 'msg-bot-600', body: { content: botMsg }, from: { user: { displayName: 'Bot' } }, createdDateTime: '2026-05-19T22:01:00Z' },
+                            { id: 'msg-user-601', body: { content: 'Can we resume?' }, from: { user: { displayName: 'Alice', id: 'alice-aad' } }, createdDateTime: '2026-05-19T22:02:00Z' },
+                        ] }) }] },
+                    }),
+                } as any);
+                await vi.advanceTimersByTimeAsync(1000);
+
+                expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({
+                    messageId: 'msg-user-601',
+                    text: 'Can we resume?',
+                    replyToMessageId: 'msg-bot-600',
+                }));
 
                 await bot.stop();
             });

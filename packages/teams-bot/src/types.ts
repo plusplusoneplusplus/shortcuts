@@ -43,6 +43,8 @@ export interface TeamsBotOptions {
     botName?: string;
     /** Azure AD auth config for token acquisition. */
     auth?: TeamsAuthConfig;
+    /** Enable verbose debug logging for poll and message routing (default: false). */
+    debug?: boolean;
 }
 
 /** Azure AD authentication configuration for the Teams MCP server. */
@@ -98,4 +100,35 @@ export interface TeamsChannel {
     displayName: string;
     teamId?: string;
     teamName?: string;
+}
+
+/** Send options for transport layer. */
+export interface TransportSendOptions {
+    replyToId?: string;
+    mentions?: Array<{ aadId: string; displayName: string }>;
+}
+
+/**
+ * TeamsTransport — abstraction over communication with Teams.
+ * Two implementations: GraphTransport (Graph API) and McpTransport (MCP server).
+ */
+export interface TeamsTransport {
+    /** Connect/initialize the transport with a bearer token. */
+    initialize(token: string, opts: { teamId?: string; channelId?: string; chatId?: string }): Promise<void>;
+    /** Send a message to a target (channelId or chatId). Returns the message ID. */
+    send(target: string, text: string, opts?: TransportSendOptions): Promise<string>;
+    /** Poll for new messages since a timestamp or watermark. */
+    poll(target: string, since?: string): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }>;
+    /** List channels in the team. */
+    listChannels(teamId: string): Promise<TeamsChannel[]>;
+    /** Resolve team/channel names to IDs (create if missing). */
+    resolveTeamAndChannel(teamName: string, channelName: string): Promise<{ teamId: string; channelId: string }>;
+    /** Update the bearer token (e.g. after refresh). */
+    setToken(token: string): void;
+    /** Set the target channel for the transport. */
+    setChannelId(channelId: string): void;
+    /** Disconnect/cleanup. */
+    stop(): void;
+    /** Enable verbose debug logging (default: false). */
+    debug?: boolean;
 }
