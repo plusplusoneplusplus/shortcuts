@@ -156,13 +156,16 @@ export class McpTransport implements TeamsTransport {
     private async sendChat(_chatId: string, text: string): Promise<string> {
         if (!this.client) throw new Error('McpTransport not initialized');
 
+        // Escape backslashes — the MCP server rejects unrecognized escape sequences in content
+        const sanitizedText = text.replace(/\\/g, '\\\\');
+
         // SendMessageToSelf sends to the logged-in user — no chatId needed
         const toolName = this._availableTools.includes('SendMessageToSelf')
             ? 'SendMessageToSelf'
             : (this._availableTools.includes('SendMessageToChat') ? 'SendMessageToChat' : 'SendMessageToSelf');
 
         const args: Record<string, unknown> = {
-            content: text,
+            content: sanitizedText,
             contentType: 'html',
         };
 
