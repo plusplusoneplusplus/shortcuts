@@ -557,7 +557,7 @@ function TeamsSettingsCard() {
     return (
         <SettingsCard
             title="Microsoft Teams"
-            description="Connect MS Teams to bridge CoC conversations to a Teams channel."
+            description="Bridge CoC conversations to Teams. Connection and authentication must be performed on the container node (where CoC server runs)."
             badge="Container"
             data-testid="im-settings-teams"
         >
