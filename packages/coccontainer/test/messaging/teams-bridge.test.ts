@@ -269,14 +269,11 @@ describe('TeamsBridge', () => {
             // Wait for async processing
             await new Promise(resolve => setTimeout(resolve, 50));
 
-            expect(lastBot().send).toHaveBeenCalledTimes(2);
+            expect(lastBot().send).toHaveBeenCalledTimes(1);
             const calls = lastBot().send.mock.calls;
-            // First call is user turn with botName as sender
-            expect(calls[0][1]).toContain('TestBot');
-            expect(calls[0][1]).toContain('Hello');
-            // Second call is assistant turn with 'CoC Agent' as sender
-            expect(calls[1][1]).toContain('CoC Agent');
-            expect(calls[1][1]).toContain('Hi there!');
+            // Only the final assistant turn is sent
+            expect(calls[0][1]).toContain('CoC Agent');
+            expect(calls[0][1]).toContain('Hi there!');
 
             vi.unstubAllGlobals();
             await bridge.stop();
@@ -533,8 +530,8 @@ describe('TeamsBridge', () => {
             });
             await new Promise(resolve => setTimeout(resolve, 50));
 
-            // Should have sent the 2 new turns (watermark was at 1, now 3 turns)
-            expect(lastBot().send).toHaveBeenCalledTimes(3);
+            // Should have sent only the final assistant turn (watermark was at 1, now 3 turns — only last assistant sent)
+            expect(lastBot().send).toHaveBeenCalledTimes(2);
 
             vi.unstubAllGlobals();
             await bridge.stop();

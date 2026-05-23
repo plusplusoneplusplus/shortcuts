@@ -400,7 +400,19 @@ export class TeamsBridge {
                 return;
             }
 
-            console.log(`[teams-bridge] Process ${processId}: sending ${newTurns.length} new turn(s) to target=${target}`);
+            // Only send the final assistant message (skip intermediate turns)
+            const lastAssistantTurn = [...newTurns].reverse().find(t => t.role === 'assistant' && (t.content ?? t.text ?? '').trim());
+            if (!lastAssistantTurn) {
+                console.log(`[teams-bridge] Process ${processId}: no assistant turn in ${newTurns.length} new turns — skipping`);
+                // Still advance watermark
+                if (sendableEnd > lastSeen) {
+                    this.store!.setWatermark(processId, sendableEnd);
+                }
+                this._runningLocks.delete(processId);
+                return;
+            }
+
+            console.log(`[teams-bridge] Process ${processId}: sending final assistant message (${newTurns.length} new turns, watermark=${lastSeen}→${sendableEnd})`);
 
             // Advance watermark BEFORE sending — prevents infinite retry on send failure
             if (sendableEnd > lastSeen) {
@@ -418,7 +430,7 @@ export class TeamsBridge {
             // Retrieve sender info for @mention notifications
             const sender = this.store!.getProcessSender(processId);
 
-            for (const turn of newTurns) {
+            for (const turn of [lastAssistantTurn]) {
                 const content = (turn.content ?? turn.text ?? '') as string;
                 if (!content.trim()) continue;
 
