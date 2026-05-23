@@ -316,4 +316,172 @@ describe('McpTransport', () => {
         expect(result.teamId).toBe('new-team-id');
         expect(result.channelId).toBe('new-ch-id');
     });
+
+    describe('DM (self) mode', () => {
+        it('should initialize in DM mode when no teamId and discover chatId via SendMessageToSelf', async () => {
+            const t = new McpTransport('https://mcp.test.com/server');
+
+            // MCP initialize
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                headers: new Map([['mcp-session-id', 'session-dm']]),
+                json: async () => ({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-03-26' } }),
+            } as any);
+            // listTools
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                headers: new Map(),
+                json: async () => ({
+                    jsonrpc: '2.0', id: 2,
+                    result: { tools: [{ name: 'SendMessageToSelf' }, { name: 'ListChatMessages' }, { name: 'ListChats' }] },
+                }),
+            } as any);
+            // SendMessageToSelf (init message to discover chatId)
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                headers: new Map(),
+                json: async () => ({
+                    jsonrpc: '2.0', id: 3,
+                    result: { content: [{ type: 'text', text: JSON.stringify({ id: 'init-msg-1', chatId: '19:self-chat@unq.gbl.spaces' }) }] },
+                }),
+            } as any);
+
+            await t.initialize('mcp-token', {}); // no teamId → DM mode
+
+            expect(t.getChatId()).toBe('19:self-chat@unq.gbl.spaces');
+        });
+
+        it('should send via SendMessageToSelf in DM mode', async () => {
+            const t = new McpTransport('https://mcp.test.com/server');
+
+            // Initialize (with tools including SendMessageToSelf)
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                headers: new Map([['mcp-session-id', 'session-dm']]),
+                json: async () => ({ jsonrpc: '2.0', id: 1, result: {} }),
+            } as any);
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                headers: new Map(),
+                json: async () => ({
+                    jsonrpc: '2.0', id: 2,
+                    result: { tools: [{ name: 'SendMessageToSelf' }, { name: 'ListChatMessages' }] },
+                }),
+            } as any);
+            // SendMessageToSelf init
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                headers: new Map(),
+                json: async () => ({
+                    jsonrpc: '2.0', id: 3,
+                    result: { content: [{ type: 'text', text: JSON.stringify({ id: 'init-1', chatId: '19:chat@spaces' }) }] },
+                }),
+            } as any);
+
+            await t.initialize('token', {}); // DM mode
+
+            // Now send a real message
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                headers: new Map(),
+                json: async () => ({
+                    jsonrpc: '2.0', id: 4,
+                    result: { content: [{ type: 'text', text: JSON.stringify({ id: 'dm-msg-1', chatId: '19:chat@spaces' }) }] },
+                }),
+            } as any);
+
+            const msgId = await t.send('19:chat@spaces', 'Hello self!');
+            expect(msgId).toBe('dm-msg-1');
+
+            // Verify the tool called was SendMessageToSelf
+            const lastCall = mockFetch.mock.calls[mockFetch.mock.calls.length - 1];
+            const body = JSON.parse(lastCall[1].body);
+            expect(body.params.name).toBe('SendMessageToSelf');
+            expect(body.params.arguments.content).toBe('Hello self!');
+        });
+
+        it('should fall back to ListChats when SendMessageToSelf init fails', async () => {
+            const t = new McpTransport('https://mcp.test.com/server');
+
+            // Initialize
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                headers: new Map([['mcp-session-id', 'session-dm']]),
+                json: async () => ({ jsonrpc: '2.0', id: 1, result: {} }),
+            } as any);
+            // listTools — has both SendMessageToSelf and ListChats
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                headers: new Map(),
+                json: async () => ({
+                    jsonrpc: '2.0', id: 2,
+                    result: { tools: [{ name: 'SendMessageToSelf' }, { name: 'ListChats' }] },
+                }),
+            } as any);
+            // SendMessageToSelf init — returns error
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                headers: new Map(),
+                json: async () => ({
+                    jsonrpc: '2.0', id: 3,
+                    result: { content: [{ type: 'text', text: 'Error: something went wrong' }] },
+                }),
+            } as any);
+            // ListChats fallback
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                headers: new Map(),
+                json: async () => ({
+                    jsonrpc: '2.0', id: 4,
+                    result: { content: [{ type: 'text', text: JSON.stringify({ chats: [{ id: '19:fallback-chat@spaces', chatType: 'oneOnOne' }] }) }] },
+                }),
+            } as any);
+
+            await t.initialize('token', {});
+
+            expect(t.getChatId()).toBe('19:fallback-chat@spaces');
+        });
+
+        it('should throw error response from SendMessageToSelf during send', async () => {
+            const t = new McpTransport('https://mcp.test.com/server');
+
+            // Initialize in DM mode
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                headers: new Map([['mcp-session-id', 'session-dm']]),
+                json: async () => ({ jsonrpc: '2.0', id: 1, result: {} }),
+            } as any);
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                headers: new Map(),
+                json: async () => ({
+                    jsonrpc: '2.0', id: 2,
+                    result: { tools: [{ name: 'SendMessageToSelf' }] },
+                }),
+            } as any);
+            // SendMessageToSelf init — works
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                headers: new Map(),
+                json: async () => ({
+                    jsonrpc: '2.0', id: 3,
+                    result: { content: [{ type: 'text', text: JSON.stringify({ id: 'init-1', chatId: '19:c@s' }) }] },
+                }),
+            } as any);
+
+            await t.initialize('token', {});
+
+            // Send — returns error
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                headers: new Map(),
+                json: async () => ({
+                    jsonrpc: '2.0', id: 4,
+                    result: { content: [{ type: 'text', text: 'Error: Failed to send message: NotFound' }] },
+                }),
+            } as any);
+
+            await expect(t.send('19:c@s', 'test')).rejects.toThrow('Error: Failed to send message: NotFound');
+        });
+    });
 });
