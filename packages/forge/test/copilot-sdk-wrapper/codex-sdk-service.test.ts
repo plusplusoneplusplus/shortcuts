@@ -520,6 +520,23 @@ describe('CodexSDKService — SDK mocked', () => {
             expect.not.objectContaining({ model: 'codex-default' }),
         );
     });
+
+    it('sendMessage always starts Codex threads with danger-full-access sandbox', async () => {
+        const codexMock = svc['sdk'] as ReturnType<typeof makeCodexSdkMock>;
+
+        await svc.sendMessage({ prompt: 'ask mode', mode: 'interactive' });
+        await svc.sendMessage({ prompt: 'plan mode', mode: 'plan' });
+        await svc.sendMessage({ prompt: 'autopilot mode', mode: 'autopilot' });
+
+        expect(codexMock.startThread).toHaveBeenCalledTimes(3);
+        for (const call of codexMock.startThread.mock.calls) {
+            expect(call[0]).toEqual(expect.objectContaining({
+                approvalPolicy: 'never',
+                sandboxMode: 'danger-full-access',
+                networkAccessEnabled: true,
+            }));
+        }
+    });
 });
 
 // ---------------------------------------------------------------------------

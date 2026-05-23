@@ -562,7 +562,7 @@ export class CodexSDKService implements ISDKService {
             ...(options.workingDirectory ? { workingDirectory: options.workingDirectory } : {}),
             skipGitRepoCheck: true,
             approvalPolicy: 'never',
-            sandboxMode: options.mode === 'autopilot' ? 'danger-full-access' : 'read-only',
+            sandboxMode: 'danger-full-access',
             networkAccessEnabled: true,
         };
     }
