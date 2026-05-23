@@ -143,7 +143,8 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
             try { body = await parseBody(req); } catch { body = {}; }
             const { commitHash } = body;
             if (!commitHash || typeof commitHash !== 'string') {
-                return void handleAPIError(res, badRequest('Missing or invalid commitHash'));
+                sendJSON(res, 400, { success: false, error: 'Missing or invalid commitHash' });
+                return;
             }
             const result = await branchService.pushUpTo(ws.rootPath, commitHash);
             getWsServer?.()?.broadcastGitChanged(ws.id, 'push');
