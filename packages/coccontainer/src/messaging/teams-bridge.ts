@@ -412,11 +412,17 @@ export class TeamsBridge {
                 }
             }
 
-            // On completion, also send the final assistant turn
+            // On completion, send the task_complete summary (process.result) if available,
+            // otherwise fall back to the last assistant turn
             if (status === 'completed') {
-                const lastAssistantTurn = [...newTurns].reverse().find(t => t.role === 'assistant' && (t.content ?? t.text ?? '').trim());
-                if (lastAssistantTurn) {
-                    turnsToSend.push(lastAssistantTurn);
+                const resultSummary = (processData.result as string | undefined)?.trim();
+                if (resultSummary) {
+                    turnsToSend.push({ role: 'assistant', content: resultSummary });
+                } else {
+                    const lastAssistantTurn = [...newTurns].reverse().find(t => t.role === 'assistant' && (t.content ?? t.text ?? '').trim());
+                    if (lastAssistantTurn) {
+                        turnsToSend.push(lastAssistantTurn);
+                    }
                 }
             }
 

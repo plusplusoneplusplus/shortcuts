@@ -281,6 +281,45 @@ describe('TeamsBridge', () => {
             await bridge.stop();
         });
 
+        it('should prefer process.result (task_complete summary) over last assistant turn', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            const mockFetch = vi.fn().mockResolvedValue({
+                ok: true,
+                json: async () => ({
+                    process: {
+                        id: 'proc-1',
+                        status: 'completed',
+                        result: 'Task completed: disabled the test successfully.',
+                        conversationTurns: [
+                            { role: 'user', content: 'Disable the test' },
+                            { role: 'assistant', content: 'Long intermediate reasoning about builds and verification...' },
+                        ],
+                    },
+                }),
+            });
+            vi.stubGlobal('fetch', mockFetch);
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-1', status: 'completed', workspaceId: 'ws-1' },
+            });
+
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            expect(lastBot().send).toHaveBeenCalledTimes(2);
+            const calls = lastBot().send.mock.calls;
+            // First: user turn
+            expect(calls[0][1]).toContain('Disable the test');
+            // Second: process.result (not the verbose assistant turn)
+            expect(calls[1][1]).toContain('Task completed: disabled the test successfully.');
+            expect(calls[1][1]).not.toContain('Long intermediate reasoning');
+
+            vi.unstubAllGlobals();
+            await bridge.stop();
+        });
+
         it('should ignore non-process-updated events', async () => {
             const bridge = createBridge();
             await bridge.start();
