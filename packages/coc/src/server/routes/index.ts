@@ -319,6 +319,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         loadConfigFile,
         writeConfigFile,
         getConfigFilePath,
+        aiService: resolvedAiService,
     });
     registerLogsRoutes(routes);
     registerInstructionRoutes(routes, store);

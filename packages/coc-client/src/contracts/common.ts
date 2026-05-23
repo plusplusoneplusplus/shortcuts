@@ -34,3 +34,18 @@ export interface EnabledModelsResponse {
 export interface ReasoningEffortsResponse {
   reasoningEfforts: Record<string, string>;
 }
+
+export interface ModelQueryRequest {
+  prompt: string;
+  model?: string;
+  timeoutMs?: number;
+}
+
+export interface ModelQueryResponse {
+  success: boolean;
+  response?: string;
+  error?: string;
+  model?: string;
+  sessionId?: string;
+  durationMs: number;
+}
