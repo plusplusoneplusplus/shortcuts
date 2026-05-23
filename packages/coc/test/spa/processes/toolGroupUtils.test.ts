@@ -26,11 +26,14 @@ describe('getToolGroupCategory', () => {
         expect(getToolGroupCategory('edit')).toBe('write');
         expect(getToolGroupCategory('create')).toBe('write');
         expect(getToolGroupCategory('apply_patch')).toBe('write');
+        expect(getToolGroupCategory('file_change')).toBe('write');
+        expect(getToolGroupCategory('write_file')).toBe('write');
     });
 
     it('returns shell for powershell, shell, bash', () => {
         expect(getToolGroupCategory('powershell')).toBe('shell');
         expect(getToolGroupCategory('shell')).toBe('shell');
+        expect(getToolGroupCategory('command_execution')).toBe('shell');
         // bash is used on Linux/macOS — regression: was previously returning null
         expect(getToolGroupCategory('bash')).toBe('shell');
     });
@@ -1581,6 +1584,33 @@ describe('filterWhisperChunks', () => {
         expect(wg.summary.fileEdits![1].isCreate).toBe(true);
         expect(wg.summary.fileEdits![2].path).toBe('src/c.ts');
         expect(wg.summary.fileEdits![2].insertions).toBe(2);
+    });
+
+    it('counts Codex file_change args as file edits without patch text', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', {
+                toolName: 'file_change',
+                status: 'completed',
+                args: {
+                    changes: [
+                        { path: 'src/created.ts', kind: 'add' },
+                        { path: 'src/updated.ts', kind: 'update' },
+                    ],
+                },
+            }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.fileEditCount).toBe(2);
+        expect(wg.summary.fileEdits).toMatchObject([
+            { path: 'src/created.ts', isCreate: true, insertions: 0, deletions: 0 },
+            { path: 'src/updated.ts', isCreate: false, insertions: 0, deletions: 0 },
+        ]);
     });
 
     it('fileEditCount is undefined when there are no edit/create tools', () => {

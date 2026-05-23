@@ -15,6 +15,7 @@ import { copyToClipboard } from '../../../../utils/format';
 import { getApplyPatchText, parseApplyPatchFileChanges } from '../../../../utils/applyPatchParser';
 import { useToolCallVariant } from './ToolCallVariant';
 import { getToolKindInfo, KIND_PILL_CLASSES, getToolMetric } from './toolKindUtils';
+import { getCodexFileChanges, normalizeToolForDisplay, summarizeCodexFileChanges } from './toolNormalization';
 
 interface ToolCallData {
     id?: string;
@@ -112,6 +113,8 @@ function CopyCommandBtn({ command }: { command: string }) {
 
 function getToolSummary(toolName: string, args: any, rawArgs?: any): string {
     if (toolName === 'apply_patch') {
+        const codexSummary = summarizeCodexFileChanges(rawArgs ?? args);
+        if (codexSummary) return shortenPath(codexSummary);
         const changes = parseApplyPatchFileChanges(getApplyPatchText(rawArgs ?? args));
         if (changes.length === 1) {
             return shortenPath(changes[0].path);
@@ -380,6 +383,22 @@ function ApplyPatchToolView({ patchText }: { patchText: string }) {
     );
 }
 
+function CodexFileChangeView({ args }: { args: Record<string, any> }) {
+    const changes = useMemo(() => getCodexFileChanges(args), [args]);
+    if (changes.length === 0) return null;
+    return (
+        <div className="space-y-0.5">
+            <div className="text-[10px] uppercase text-[#848484] mb-0.5">Files</div>
+            {changes.map(change => (
+                <div key={`${change.kind}:${change.path}`} className="text-[11px] text-[#1e1e1e] dark:text-[#cccccc]">
+                    <span className="mr-1 text-[#848484]">{change.kind}</span>
+                    <FilePathLink path={change.path} noTruncate />
+                </div>
+            ))}
+        </div>
+    );
+}
+
 function ViewToolView({ args, result }: { args: Record<string, any>; result: string }) {
     const filePath = args.path || args.filePath || '';
     const viewRange = Array.isArray(args.view_range) ? args.view_range : null;
@@ -460,7 +479,8 @@ export function ToolCallView({
     onToggleSubtools,
     children,
 }: ToolCallProps) {
-    const toolName = toolCall.toolName || toolCall.name || 'unknown';
+    const normalizedToolCall = useMemo(() => normalizeToolForDisplay(toolCall), [toolCall]);
+    const toolName = normalizedToolCall.toolName || 'unknown';
     const isTaskComplete = toolName === 'task_complete';
     const [expanded, setExpanded] = useState(isTaskComplete);
     const [hoverVisible, setHoverVisible] = useState(false);
@@ -474,16 +494,17 @@ export function ToolCallView({
 
     const depthLevel = Math.max(0, Math.min(depth, 8));
     const name = toolName;
-    const argsObj = parseArgsObject(toolCall.args);
-    const args = formatArgs(toolCall.args);
-    const applyPatchText = name === 'apply_patch' ? getApplyPatchText(toolCall.args) : '';
-    const hasDetails = args || toolCall.result || toolCall.error;
-    const summary = getToolSummary(name, argsObj, toolCall.args);
+    const argsObj = parseArgsObject(normalizedToolCall.args);
+    const args = formatArgs(normalizedToolCall.args);
+    const applyPatchText = name === 'apply_patch' ? getApplyPatchText(normalizedToolCall.args) : '';
+    const codexFileChanges = name === 'apply_patch' ? getCodexFileChanges(normalizedToolCall.args) : [];
+    const hasDetails = args || normalizedToolCall.result || normalizedToolCall.error;
+    const summary = getToolSummary(name, argsObj, normalizedToolCall.args);
     const summaryIsPath = !!summary && ['view', 'edit', 'create', 'glob', 'grep'].includes(name)
         && argsObj && (argsObj.path || argsObj.filePath);
-    const duration = formatDuration(toolCall.startTime, toolCall.endTime);
-    const startTimeLabel = formatStartTime(toolCall.startTime);
-    const resultText = typeof toolCall.result === 'string' ? toolCall.result : '';
+    const duration = formatDuration(normalizedToolCall.startTime, normalizedToolCall.endTime);
+    const startTimeLabel = formatStartTime(normalizedToolCall.startTime);
+    const resultText = typeof normalizedToolCall.result === 'string' ? normalizedToolCall.result : '';
     const isResultTruncated = resultText.length > MAX_RESULT_LENGTH;
     const visibleResult = isResultTruncated ? `${resultText.slice(0, TRUNCATED_RESULT_LENGTH)}\n... (output truncated)` : resultText;
 
@@ -495,11 +516,11 @@ export function ToolCallView({
     const kindInfo = useMemo(() => getToolKindInfo(name), [name]);
     const kindPillClass = KIND_PILL_CLASSES[kindInfo.cls];
     const metric = useMemo(
-        () => (isWhisperRow ? getToolMetric(name, argsObj, resultText, toolCall.error) : null),
-        [isWhisperRow, name, argsObj, resultText, toolCall.error],
+        () => (isWhisperRow ? getToolMetric(name, argsObj, resultText, normalizedToolCall.error) : null),
+        [isWhisperRow, name, argsObj, resultText, normalizedToolCall.error],
     );
-    const rowSummary = summary || (toolCall.error ? 'error' : '');
-    const isRunning = toolCall.status === 'running';
+    const rowSummary = summary || (normalizedToolCall.error ? 'error' : '');
+    const isRunning = normalizedToolCall.status === 'running';
 
     const bashDescription = isShellLike && argsObj && typeof argsObj === 'object' && argsObj.description
         ? String(argsObj.description)
@@ -586,7 +607,7 @@ export function ToolCallView({
                     'hover:bg-[#fafafa] dark:hover:bg-[#2a2a2a]',
                     'select-text',
                 )}
-                data-tool-id={toolCall.id || toolCall.toolName || 'unknown'}
+                data-tool-id={normalizedToolCall.id || normalizedToolCall.toolName || 'unknown'}
                 data-tool-variant="whisper-row"
                 data-tool-kind={kindInfo.cls}
                 style={depthLevel > 0 ? { marginLeft: `${depthLevel * (isMobile ? 8 : 12)}px` } : undefined}
@@ -741,7 +762,8 @@ export function ToolCallView({
                         {name === 'create' && argsObj && <CreateToolView args={argsObj} />}
                         {name === 'view' && argsObj && <ViewToolView args={argsObj} result={visibleResult} />}
                         {name === 'apply_patch' && applyPatchText && <ApplyPatchToolView patchText={applyPatchText} />}
-                        {!isShellLike && !isSql && name !== 'edit' && name !== 'create' && name !== 'view' && !(name === 'apply_patch' && applyPatchText) && !isTaskComplete && args && (
+                        {name === 'apply_patch' && !applyPatchText && codexFileChanges.length > 0 && argsObj && <CodexFileChangeView args={argsObj} />}
+                        {!isShellLike && !isSql && name !== 'edit' && name !== 'create' && name !== 'view' && !(name === 'apply_patch' && (applyPatchText || codexFileChanges.length > 0)) && !isTaskComplete && args && (
                             <div>
                                 <div className="text-[10px] uppercase text-[#848484] mb-0.5">Arguments</div>
                                 <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
@@ -773,11 +795,11 @@ export function ToolCallView({
                                 )}
                             </div>
                         )}
-                        {toolCall.error && (
+                        {normalizedToolCall.error && (
                             <div>
                                 <div className="text-[10px] uppercase text-[#cf222e] mb-0.5">Error</div>
                                 <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#cf222e]">
-                                    <code>{toolCall.error}</code>
+                                    <code>{normalizedToolCall.error}</code>
                                 </pre>
                             </div>
                         )}
@@ -808,7 +830,7 @@ export function ToolCallView({
                 'tool-call-card my-0.5 md:my-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#1e1e1e] text-xs',
                 depthLevel > 0 && 'border-l-2'
             )}
-            data-tool-id={toolCall.id || toolCall.toolName || 'unknown'}
+            data-tool-id={normalizedToolCall.id || normalizedToolCall.toolName || 'unknown'}
             style={depthLevel > 0 ? { marginLeft: `${depthLevel * (isMobile ? 8 : 12)}px` } : undefined}
         >
             <div
@@ -824,7 +846,7 @@ export function ToolCallView({
                 onMouseEnter={!isMobile ? handleHeaderMouseEnter : undefined}
                 onMouseLeave={!isMobile ? handleHeaderMouseLeave : undefined}
             >
-                <span>{statusIndicator(toolCall.status)}</span>
+                <span>{statusIndicator(normalizedToolCall.status)}</span>
                 {hasSubtools && (
                     <button
                         type="button"
@@ -941,7 +963,10 @@ export function ToolCallView({
                     {name === 'apply_patch' && applyPatchText && (
                         <ApplyPatchToolView patchText={applyPatchText} />
                     )}
-                    {!isShellLike && !isSql && name !== 'edit' && name !== 'create' && name !== 'view' && !(name === 'apply_patch' && applyPatchText) && !isTaskComplete && args && (
+                    {name === 'apply_patch' && !applyPatchText && codexFileChanges.length > 0 && argsObj && (
+                        <CodexFileChangeView args={argsObj} />
+                    )}
+                    {!isShellLike && !isSql && name !== 'edit' && name !== 'create' && name !== 'view' && !(name === 'apply_patch' && (applyPatchText || codexFileChanges.length > 0)) && !isTaskComplete && args && (
                         <div>
                             <div className="text-[10px] uppercase text-[#848484] mb-0.5">Arguments</div>
                             <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
@@ -973,11 +998,11 @@ export function ToolCallView({
                             )}
                         </div>
                     )}
-                    {toolCall.error && (
+                    {normalizedToolCall.error && (
                         <div>
                             <div className="text-[10px] uppercase text-[#f14c4c] mb-0.5">Error</div>
                             <pre className="overflow-x-auto text-[11px] whitespace-pre-wrap break-words text-[#f14c4c]">
-                                <code>{toolCall.error}</code>
+                                <code>{normalizedToolCall.error}</code>
                             </pre>
                         </div>
                     )}

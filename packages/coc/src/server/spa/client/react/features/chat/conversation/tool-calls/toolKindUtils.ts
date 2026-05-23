@@ -9,6 +9,8 @@
  *   - The metric is a short result-derived stat (lines, hits, files, +N −M, ...).
  */
 
+import { normalizeToolName } from './toolNormalization';
+
 export type ToolKindClass =
     | 'read'
     | 'grep'
@@ -33,7 +35,8 @@ export interface ToolKindInfo {
  * Unknown tools fall back to a neutral pill with the original name truncated.
  */
 export function getToolKindInfo(toolName: string): ToolKindInfo {
-    switch (toolName) {
+    const canonicalName = normalizeToolName(toolName);
+    switch (canonicalName) {
         case 'view':
         case 'read':
             return { label: 'Read', cls: 'read' };
@@ -62,7 +65,7 @@ export function getToolKindInfo(toolName: string): ToolKindInfo {
         case 'task_complete':
             return { label: 'Done', cls: 'task' };
         default: {
-            const trimmed = toolName.length > 8 ? toolName.slice(0, 8) : toolName;
+            const trimmed = canonicalName.length > 8 ? canonicalName.slice(0, 8) : canonicalName;
             return { label: trimmed, cls: 'other' };
         }
     }
@@ -122,8 +125,9 @@ export function getToolMetric(
     if (error) {
         return { kind: 'plain', text: 'error' };
     }
+    const canonicalName = normalizeToolName(toolName);
     const trimmed = (result ?? '').trim();
-    switch (toolName) {
+    switch (canonicalName) {
         case 'view':
         case 'read': {
             if (!trimmed) return null;

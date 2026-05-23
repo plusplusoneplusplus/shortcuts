@@ -27,6 +27,7 @@ import type { ToolGroupCategory, GroupContentItem, GroupOrderedItem } from './to
 import { groupConsecutiveToolChunks, filterWhisperChunks } from './tool-calls/toolGroupUtils';
 import type { WhisperGroupChunk } from './tool-calls/toolGroupUtils';
 import { ToolCallGroupView } from './tool-calls/ToolCallGroupView';
+import { normalizeToolForDisplay } from './tool-calls/toolNormalization';
 import { TaskDefs } from '../../../../../../tasks/task-types';
 import { WhisperCollapsedGroup } from './tool-calls/WhisperCollapsedGroup';
 import { detectCommitsInToolGroup } from './commitDetection';
@@ -284,14 +285,14 @@ export function toContentHtml(content: string, wsId?: string, options?: { htmlEm
 }
 
 function normalizeToolCall(raw: any, fallbackId: string): RenderToolCall {
+    const normalized = normalizeToolForDisplay(raw ?? {});
     const rawId = raw?.id || raw?.toolCallId || raw?.tool_call_id;
-    const toolName = raw?.toolName || raw?.name || 'unknown';
 
     return {
         id: typeof rawId === 'string' && rawId ? rawId : fallbackId,
-        toolName: typeof toolName === 'string' && toolName ? toolName : 'unknown',
+        toolName: normalized.toolName,
         name: typeof raw?.name === 'string' ? raw.name : undefined,
-        args: raw?.args ?? raw?.parameters ?? {},
+        args: normalized.args,
         result: raw?.result,
         error: raw?.error,
         status: raw?.status || 'pending',
