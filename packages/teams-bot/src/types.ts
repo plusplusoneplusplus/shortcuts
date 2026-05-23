@@ -43,6 +43,8 @@ export interface TeamsBotOptions {
     botName?: string;
     /** Azure AD auth config for token acquisition. */
     auth?: TeamsAuthConfig;
+    /** Enable verbose debug logging for poll and message routing (default: false). */
+    debug?: boolean;
 }
 
 /** Azure AD authentication configuration for the Teams MCP server. */
@@ -127,4 +129,6 @@ export interface TeamsTransport {
     setChannelId(channelId: string): void;
     /** Disconnect/cleanup. */
     stop(): void;
+    /** Enable verbose debug logging (default: false). */
+    debug?: boolean;
 }

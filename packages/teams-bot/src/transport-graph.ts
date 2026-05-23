@@ -13,6 +13,7 @@ export class GraphTransport implements TeamsTransport {
     private teamId: string | null = null;
     private chatId: string | null = null;
     private _useChat = false;
+    debug = false;
 
     async initialize(token: string, opts: { teamId?: string; channelId?: string; chatId?: string }): Promise<void> {
         this.teamId = opts.teamId ?? null;

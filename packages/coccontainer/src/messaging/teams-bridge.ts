@@ -83,6 +83,7 @@ export class TeamsBridge {
             mcpServerUrl: this.opts.config.mcpServerUrl,
             botName: this.opts.config.botName,
             pollIntervalMs: this.opts.config.pollIntervalMs,
+            debug: this.opts.config.debug ?? false,
             auth: {
                 bearerToken: this._azToken ?? undefined,
                 clientId: this.opts.config.clientId,
@@ -190,6 +191,7 @@ export class TeamsBridge {
             mcpServerUrl: this.opts.config.mcpServerUrl,
             botName: this.opts.config.botName,
             pollIntervalMs: this.opts.config.pollIntervalMs,
+            debug: this.opts.config.debug ?? false,
             auth: {
                 bearerToken: this._azToken ?? undefined,
                 clientId: this.opts.config.clientId,
@@ -543,13 +545,14 @@ export class TeamsBridge {
         let workspaceId: string | undefined;
         let isFollowUp = false;
         const text = msg.text.trim();
+        const _debug = this.opts.config.debug ?? false;
 
-        console.log(`[teams-bridge] onInboundMessage: id=${msg.messageId}, replyToMessageId=${msg.replyToMessageId ?? '(none)'}, sender=${msg.senderName}, text="${text.substring(0, 60)}"`);
+        if (_debug) console.log(`[teams-bridge] onInboundMessage: id=${msg.messageId}, replyToMessageId=${msg.replyToMessageId ?? '(none)'}, sender=${msg.senderName}, text="${text.substring(0, 60)}"`);
 
         // Check if replying to a specific bot message → continue that session
         if (msg.replyToMessageId) {
             const entry = this.store.lookupMessage(msg.replyToMessageId);
-            console.log(`[teams-bridge] lookupMessage(${msg.replyToMessageId}) → ${entry ? `processId=${entry.processId}, agentId=${entry.agentId}` : 'NOT FOUND'}`);
+            if (_debug) console.log(`[teams-bridge] lookupMessage(${msg.replyToMessageId}) → ${entry ? `processId=${entry.processId}, agentId=${entry.agentId}` : 'NOT FOUND'}`);
             if (entry) {
                 processId = entry.processId;
                 agentId = entry.agentId;
@@ -564,7 +567,7 @@ export class TeamsBridge {
             const match = text.match(chatIdPrefix)!;
             const targetProcessId = match[1];
             const stripped = text.replace(chatIdPrefix, '');
-            console.log(`[teams-bridge] [chatId] prefix detected: processId="${targetProcessId}", message="${stripped.substring(0, 60)}"`);
+            if (_debug) console.log(`[teams-bridge] [chatId] prefix detected: processId="${targetProcessId}", message="${stripped.substring(0, 60)}"`);
             // Look up agent/workspace from an existing message binding for this process
             const lastMsgId = this.store.getLastMessageId(targetProcessId);
             if (lastMsgId) {
@@ -575,7 +578,7 @@ export class TeamsBridge {
                     workspaceId = entry.workspaceId;
                     isFollowUp = true;
                     msg = { ...msg, text: stripped };
-                    console.log(`[teams-bridge] ✓ Routed to processId=${processId}, agentId=${agentId}`);
+                    if (_debug) console.log(`[teams-bridge] ✓ Routed to processId=${processId}, agentId=${agentId}`);
                 }
             }
             if (!isFollowUp) {
@@ -583,7 +586,7 @@ export class TeamsBridge {
                 processId = targetProcessId;
                 isFollowUp = true;
                 msg = { ...msg, text: stripped };
-                console.log(`[teams-bridge] ✓ Using processId=${processId} directly (no stored binding)`);
+                if (_debug) console.log(`[teams-bridge] ✓ Using processId=${processId} directly (no stored binding)`);
             }
         }
 

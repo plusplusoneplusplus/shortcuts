@@ -42,6 +42,8 @@ export class TeamsBot {
     /** Whether a token refresh is already in progress. */
     private _refreshingToken = false;
 
+    private get debug(): boolean { return this.opts.debug ?? false; }
+
     constructor(opts: TeamsBotOptions) {
         this.opts = {
             pollIntervalMs: 3000,
@@ -50,6 +52,7 @@ export class TeamsBot {
         };
         this.mode = opts.mode ?? 'graph';
         this.transport = createTransport(this.mode, { mcpServerUrl: opts.mcpServerUrl });
+        this.transport.debug = opts.debug ?? false;
     }
 
     /** Connect to Teams. Acquires token if needed, then initializes transport. */
@@ -228,17 +231,19 @@ export class TeamsBot {
 
         const lastMsg = messages[messages.length - 1];
 
-        // Log all polled messages for debugging
-        console.log(`[teams-bot] Poll returned ${messages.length} message(s):`);
-        for (const m of messages) {
-            const preview = m.text.substring(0, 80).replace(/\n/g, '\\n');
-            console.log(`[teams-bot]   id=${m.messageId}, sender=${m.senderName}, replyToId=${m.replyToMessageId ?? '(none)'}, text="${preview}"`);
+        // Debug: log all polled messages
+        if (this.debug) {
+            console.log(`[teams-bot] Poll returned ${messages.length} message(s):`);
+            for (const m of messages) {
+                const preview = m.text.substring(0, 80).replace(/\n/g, '\\n');
+                console.log(`[teams-bot]   id=${m.messageId}, sender=${m.senderName}, replyToId=${m.replyToMessageId ?? '(none)'}, text="${preview}"`);
+            }
         }
 
         // First poll: just set watermark, don't process
         if (!this._lastPolledId) {
             this._lastPolledId = lastMsg.messageId;
-            console.log(`[teams-bot] First poll — setting watermark to ${lastMsg.messageId}`);
+            if (this.debug) console.log(`[teams-bot] First poll — setting watermark to ${lastMsg.messageId}`);
             return;
         }
 
@@ -250,7 +255,7 @@ export class TeamsBot {
 
         // Skip messages sent by this bot
         if (this._sentMessageIds.has(lastMsg.messageId)) {
-            console.log(`[teams-bot] Skipping own sent message: ${lastMsg.messageId}`);
+            if (this.debug) console.log(`[teams-bot] Skipping own sent message: ${lastMsg.messageId}`);
             this._sentMessageIds.delete(lastMsg.messageId);
             return;
         }
@@ -259,7 +264,7 @@ export class TeamsBot {
 
         // Skip bot-formatted messages (CoC outbound format)
         if (this.isBotFormattedMessage(lastMsg.text)) {
-            console.log(`[teams-bot] Skipping bot-formatted message: ${lastMsg.messageId}`);
+            if (this.debug) console.log(`[teams-bot] Skipping bot-formatted message: ${lastMsg.messageId}`);
             return;
         }
 
@@ -268,14 +273,14 @@ export class TeamsBot {
         // chat session even when Teams DM doesn't provide replyToId.
         if (!lastMsg.replyToMessageId && messages.length >= 2) {
             const preceding = messages[messages.length - 2];
-            console.log(`[teams-bot] No replyToId on last msg. Preceding: id=${preceding.messageId}, isSent=${this._sentMessageIds.has(preceding.messageId)}, isBotFormatted=${this.isBotFormattedMessage(preceding.text)}`);
+            if (this.debug) console.log(`[teams-bot] No replyToId on last msg. Preceding: id=${preceding.messageId}, isSent=${this._sentMessageIds.has(preceding.messageId)}, isBotFormatted=${this.isBotFormattedMessage(preceding.text)}`);
             if (preceding && (this._sentMessageIds.has(preceding.messageId) || this.isBotFormattedMessage(preceding.text))) {
                 lastMsg.replyToMessageId = preceding.messageId;
-                console.log(`[teams-bot] ✓ Inferred replyToMessageId=${preceding.messageId} from preceding bot message`);
+                if (this.debug) console.log(`[teams-bot] ✓ Inferred replyToMessageId=${preceding.messageId} from preceding bot message`);
             }
         }
 
-        console.log(`[teams-bot] Delivering inbound message: id=${lastMsg.messageId}, replyToMessageId=${lastMsg.replyToMessageId ?? '(none)'}, text="${lastMsg.text.substring(0, 60)}"`);
+        if (this.debug) console.log(`[teams-bot] Delivering inbound message: id=${lastMsg.messageId}, replyToMessageId=${lastMsg.replyToMessageId ?? '(none)'}, text="${lastMsg.text.substring(0, 60)}"`);
         await this.opts.onMessage(lastMsg).catch((err) => {
             console.error('[teams-bot] Error handling message:', err);
         });

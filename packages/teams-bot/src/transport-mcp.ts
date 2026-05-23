@@ -13,6 +13,7 @@ export class McpTransport implements TeamsTransport {
     private _availableTools: string[] = [];
     private _useChat = false;
     private _chatId: string | null = null;
+    debug = false;
 
     constructor(serverUrl: string) {
         this.serverUrl = serverUrl;
@@ -261,19 +262,19 @@ export class McpTransport implements TeamsTransport {
             return { messages: [], nextSince: '' };
         }
 
-        // Log raw message keys for debugging reply routing
-        for (const msg of rawMessages) {
-            const keys = Object.keys(msg).join(', ');
-            const rawBody = msg.body?.content ?? '';
-            console.log(`[mcp-transport] Raw message id=${msg.id}: keys=[${keys}], replyToId=${msg.replyToId ?? '(undefined)'}`);
-            // Log full body for messages that might be replies (non-bot, has content)
-            if (rawBody.length > 0 && rawBody.length < 2000) {
-                console.log(`[mcp-transport]   body.content: ${rawBody}`);
-            }
-            // Log any field that might contain reply info
-            for (const k of Object.keys(msg)) {
-                if (k.toLowerCase().includes('reply') || k.toLowerCase().includes('parent') || k.toLowerCase().includes('quote') || k.toLowerCase().includes('attach') || k.toLowerCase().includes('mention')) {
-                    console.log(`[mcp-transport]   → ${k}=${JSON.stringify((msg as any)[k])}`);
+        // Debug: log raw message keys for diagnosing reply routing
+        if (this.debug) {
+            for (const msg of rawMessages) {
+                const keys = Object.keys(msg).join(', ');
+                const rawBody = msg.body?.content ?? '';
+                console.log(`[mcp-transport] Raw message id=${msg.id}: keys=[${keys}], replyToId=${msg.replyToId ?? '(undefined)'}`);
+                if (rawBody.length > 0 && rawBody.length < 2000) {
+                    console.log(`[mcp-transport]   body.content: ${rawBody}`);
+                }
+                for (const k of Object.keys(msg)) {
+                    if (k.toLowerCase().includes('reply') || k.toLowerCase().includes('parent') || k.toLowerCase().includes('quote') || k.toLowerCase().includes('attach') || k.toLowerCase().includes('mention')) {
+                        console.log(`[mcp-transport]   → ${k}=${JSON.stringify((msg as any)[k])}`);
+                    }
                 }
             }
         }

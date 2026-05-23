@@ -49,6 +49,8 @@ export interface TeamsConfig {
     clientId?: string;
     /** OAuth2 scope for the Teams MCP resource (optional) */
     scope?: string;
+    /** Enable verbose debug logging for message polling and routing (default: false) */
+    debug?: boolean;
 }
 
 export interface ContainerConfig {
@@ -91,6 +93,8 @@ export interface ResolvedTeamsConfig {
     defaultAgentId?: string;
     clientId?: string;
     scope?: string;
+    /** Enable verbose debug logging for message polling and routing (default: false) */
+    debug?: boolean;
 }
 
 export interface ResolvedContainerConfig {
