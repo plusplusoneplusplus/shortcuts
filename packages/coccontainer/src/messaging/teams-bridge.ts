@@ -386,10 +386,10 @@ export class TeamsBridge {
             const lastSeen = this.store!.getWatermark(processId);
             console.log(`[teams-bridge] Process ${processId}: ${turns.length} turns, watermark=${lastSeen}`);
 
-            // Skip streaming turns
+            // Skip trailing streaming assistant turns (user turns are never streaming)
             let sendableEnd = turns.length;
             for (let i = turns.length - 1; i >= lastSeen; i--) {
-                if (turns[i].streaming) { sendableEnd = i; continue; }
+                if (turns[i].streaming && turns[i].role === 'assistant') { sendableEnd = i; continue; }
                 break;
             }
 
@@ -414,7 +414,9 @@ export class TeamsBridge {
                 if (resultSummary) {
                     turnsToSend.push({ role: 'assistant', content: resultSummary });
                 } else {
-                    const lastAssistantTurn = [...newTurns].reverse().find(t => t.role === 'assistant' && (t.content ?? t.text ?? '').trim());
+                    // Fall back: look in ALL turns (not just new) for last assistant
+                    const allAssistant = turns.filter(t => t.role === 'assistant' && (t.content ?? t.text ?? '').trim());
+                    const lastAssistantTurn = allAssistant.length > 0 ? allAssistant[allAssistant.length - 1] : undefined;
                     if (lastAssistantTurn) {
                         turnsToSend.push(lastAssistantTurn);
                     }
@@ -424,7 +426,11 @@ export class TeamsBridge {
             if (turnsToSend.length === 0) {
                 // Running with only intermediate assistant turns — don't advance watermark
                 // so we can pick up the final assistant turn on completion
-                console.log(`[teams-bridge] Process ${processId}: skipping ${newTurns.length} intermediate turn(s) (status=${status})`);
+                if (newTurns.length > 0) {
+                    console.log(`[teams-bridge] Process ${processId}: skipping ${newTurns.length} intermediate turn(s) (status=${status})`);
+                } else {
+                    console.log(`[teams-bridge] Process ${processId}: no new turns (watermark=${lastSeen}, total=${turns.length}, sendableEnd=${sendableEnd})`);
+                }
                 this._runningLocks.delete(processId);
                 return;
             }
