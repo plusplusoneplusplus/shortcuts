@@ -27,6 +27,18 @@ import { execFileAsync } from '../utils/exec-utils';
 import * as path from 'path';
 
 // ============================================================================
+// Install mode detection
+// ============================================================================
+
+/**
+ * Returns true when forge is running from a global npm install.
+ * When installed globally, __dirname contains 'node_modules'.
+ */
+function isGlobalInstall(): boolean {
+    return __dirname.includes('node_modules');
+}
+
+// ============================================================================
 // Auth checker injection (AC-08)
 // ============================================================================
 
@@ -204,11 +216,15 @@ export class CodexSDKService implements ISDKService {
             this.sdk = new CodexCtor();
             this.availabilityCache = { available: true };
         } catch {
+            const installCmd = isGlobalInstall()
+                ? 'npm install -g @openai/codex-sdk'
+                : 'npm install @openai/codex-sdk --no-save  # run from the repo root';
             this.availabilityCache = {
                 available: false,
                 error:
-                    'Codex SDK not found. Install the optional peer dependency: ' +
-                    'npm install @openai/codex-sdk',
+                    'Codex SDK not installed (~239 MB). To enable Codex, run:\n' +
+                    `  ${installCmd}\n` +
+                    'Then restart CoC.',
             };
         }
         return this.availabilityCache;

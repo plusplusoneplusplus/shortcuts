@@ -93,7 +93,6 @@
     "vitest": "^1.0.0"
   },
   "optionalDependencies": {
-    "@openai/codex-sdk": "^0.133.0",
     "node-pty": "^1.0.0"
   },
   "publishConfig": {

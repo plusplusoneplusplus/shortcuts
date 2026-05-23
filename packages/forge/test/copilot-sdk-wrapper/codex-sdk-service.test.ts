@@ -119,7 +119,9 @@ describe('CodexSDKService — SDK not available', () => {
     it('isAvailable returns false when @openai/codex-sdk is not installed', async () => {
         const result = await svc.isAvailable();
         expect(result.available).toBe(false);
-        expect(result.error).toContain('Codex SDK not found');
+        expect(result.error).toContain('Codex SDK not installed');
+        expect(result.error).toContain('npm install');
+        expect(result.error).toContain('Then restart CoC');
     });
 
     it('isAvailable caches the result on subsequent calls', async () => {
