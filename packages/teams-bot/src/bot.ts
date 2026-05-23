@@ -251,6 +251,16 @@ export class TeamsBot {
         // Skip bot-formatted messages (CoC outbound format)
         if (this.isBotFormattedMessage(lastMsg.text)) return;
 
+        // In DM mode: if user message has no replyToMessageId, infer it from
+        // the preceding bot message. This ensures replies route to the correct
+        // chat session even when Teams DM doesn't provide replyToId.
+        if (!lastMsg.replyToMessageId && messages.length >= 2) {
+            const preceding = messages[messages.length - 2];
+            if (preceding && (this._sentMessageIds.has(preceding.messageId) || this.isBotFormattedMessage(preceding.text))) {
+                lastMsg.replyToMessageId = preceding.messageId;
+            }
+        }
+
         await this.opts.onMessage(lastMsg).catch((err) => {
             console.error('[teams-bot] Error handling message:', err);
         });

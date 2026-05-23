@@ -477,6 +477,59 @@ describe('TeamsBot', () => {
 
                 await bot.stop();
             });
+
+            it('should infer replyToMessageId from preceding bot message in DM mode', async () => {
+                // Mock initialize
+                mockFetch.mockResolvedValueOnce({
+                    ok: true,
+                    headers: new Map(),
+                    json: async () => ({ result: { serverInfo: { name: 'test' } } }),
+                } as any);
+
+                const bot = new TeamsBot({
+                    mode: 'mcp',
+                    teamId: 'team-123',
+                    mcpServerUrl: 'https://mcp.test/server',
+                    onMessage,
+                    onStatusChange,
+                    pollIntervalMs: 1000,
+                    auth: { bearerToken: 'token' },
+                });
+                await bot.start();
+                bot.setChannelId('19:channel@thread.tacv2');
+
+                // First poll — set watermark
+                mockFetch.mockResolvedValueOnce({
+                    ok: true,
+                    headers: new Map(),
+                    json: async () => ({
+                        result: { content: [{ type: 'text', text: JSON.stringify({ messages: [{ id: 'msg-500', body: { content: 'init' }, from: { user: { displayName: 'X' } }, createdDateTime: '2026-05-19T22:00:00Z' }] }) }] },
+                    }),
+                } as any);
+                await vi.advanceTimersByTimeAsync(1000);
+
+                // Second poll — bot message followed by user reply (no replyToId)
+                const botMsg = 'CoC Agent:<br>Agent: dev<br>Repo: my-repo<br>ChatId: queue_123<br>Message:<br>Here is the answer';
+                mockFetch.mockResolvedValueOnce({
+                    ok: true,
+                    headers: new Map(),
+                    json: async () => ({
+                        result: { content: [{ type: 'text', text: JSON.stringify({ messages: [
+                            { id: 'msg-bot-600', body: { content: botMsg }, from: { user: { displayName: 'Bot' } }, createdDateTime: '2026-05-19T22:01:00Z' },
+                            { id: 'msg-user-601', body: { content: 'Can we resume?' }, from: { user: { displayName: 'Alice', id: 'alice-aad' } }, createdDateTime: '2026-05-19T22:02:00Z' },
+                        ] }) }] },
+                    }),
+                } as any);
+                await vi.advanceTimersByTimeAsync(1000);
+
+                expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({
+                    messageId: 'msg-user-601',
+                    text: 'Can we resume?',
+                    replyToMessageId: 'msg-bot-600',
+                }));
+
+                await bot.stop();
+            });
         });
     });
 
