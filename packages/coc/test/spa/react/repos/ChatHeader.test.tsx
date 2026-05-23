@@ -599,4 +599,38 @@ describe('ChatHeader', () => {
             expect(count).toBe(3);
         });
     });
+
+    describe('provider badge', () => {
+        it('shows provider badge when task.metadata.provider is "codex"', () => {
+            render(<ChatHeader {...defaultProps({
+                task: { status: 'completed', duration: 5000, metadata: { provider: 'codex' } },
+            })} />);
+            const badge = screen.getByTestId('provider-badge');
+            expect(badge).toBeTruthy();
+            expect(badge.textContent).toBe('Codex');
+            expect(badge.getAttribute('data-provider')).toBe('codex');
+        });
+
+        it('shows provider badge when task.metadata.provider is "copilot"', () => {
+            render(<ChatHeader {...defaultProps({
+                task: { status: 'completed', duration: 5000, metadata: { provider: 'copilot' } },
+            })} />);
+            const badge = screen.getByTestId('provider-badge');
+            expect(badge).toBeTruthy();
+            expect(badge.textContent).toBe('Copilot');
+            expect(badge.getAttribute('data-provider')).toBe('copilot');
+        });
+
+        it('does NOT show provider badge when task has no metadata.provider', () => {
+            render(<ChatHeader {...defaultProps({
+                task: { status: 'completed', duration: 5000 },
+            })} />);
+            expect(screen.queryByTestId('provider-badge')).toBeNull();
+        });
+
+        it('does NOT show provider badge when task is null', () => {
+            render(<ChatHeader {...defaultProps({ task: null })} />);
+            expect(screen.queryByTestId('provider-badge')).toBeNull();
+        });
+    });
 });

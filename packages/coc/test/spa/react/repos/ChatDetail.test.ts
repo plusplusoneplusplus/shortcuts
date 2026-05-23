@@ -1021,19 +1021,19 @@ describe('ChatDetail', () => {
         });
 
         it('renders ReferencesDropdown with planPath and files after the status pill', () => {
-            const headerBlock = CHAT_HEADER_SRC.substring(
-                CHAT_HEADER_SRC.indexOf('<ChatStatusPill'),
-                CHAT_HEADER_SRC.indexOf('<ChatStatusPill') + 800,
+            const statusPillIdx = CHAT_HEADER_SRC.indexOf('<ChatStatusPill');
+            const refsIdx = CHAT_HEADER_SRC.indexOf(
+                '<ReferencesDropdown planPath={planPath} files={createdFiles} wsId={wsId} />',
             );
-            expect(headerBlock).toContain('<ReferencesDropdown planPath={planPath} files={createdFiles} wsId={wsId} />');
+            expect(refsIdx).toBeGreaterThan(statusPillIdx);
         });
 
         it('ReferencesDropdown is placed after the status pill in the header', () => {
-            const headerSection = CHAT_HEADER_SRC.substring(
-                CHAT_HEADER_SRC.indexOf('<ChatStatusPill'),
-                CHAT_HEADER_SRC.indexOf('<ChatStatusPill') + 800,
+            const statusPillIdx = CHAT_HEADER_SRC.indexOf('<ChatStatusPill');
+            const refsIdx = CHAT_HEADER_SRC.indexOf(
+                '<ReferencesDropdown planPath={planPath} files={createdFiles} wsId={wsId} />',
             );
-            expect(headerSection).toContain('<ReferencesDropdown planPath={planPath} files={createdFiles} wsId={wsId} />');
+            expect(refsIdx).toBeGreaterThan(statusPillIdx);
         });
     });
 
