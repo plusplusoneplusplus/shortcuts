@@ -47,6 +47,8 @@ export class TeamsBridge {
     private _azToken: string | null = null;
 
     constructor(private opts: TeamsBridgeOptions) {
+        // Force MCP mode — Graph API is disabled (az CLI tokens lack Chat permissions)
+        this.opts.config.mode = 'mcp';
         this.transport = createTransport(opts.config.mode, { mcpServerUrl: opts.config.mcpServerUrl });
     }
 

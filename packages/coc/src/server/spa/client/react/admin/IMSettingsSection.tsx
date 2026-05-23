@@ -597,10 +597,18 @@ function TeamsSettingsCard() {
                 </p>
             ) : (
                 <div className="space-y-3">
-                    {/* Mode selector — hidden for now: Graph API mode is effectively broken
-                       because az CLI tokens lack ChatMessage.Send and Chat.ReadWrite scopes.
-                       Only MCP mode works reliably. Keeping Graph code in codebase for future
-                       use if proper app registration with Chat permissions is set up. */}
+                    {/* Mode selector — only MCP is available. Graph API mode is preserved in code
+                       but disabled because az CLI tokens lack ChatMessage.Send/Chat.ReadWrite scopes. */}
+                    <div className="flex items-center justify-between pb-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                        <label className="text-xs text-[#616161] dark:text-[#999]">Transport mode</label>
+                        <select
+                            value="mcp"
+                            disabled
+                            className="text-xs px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] text-[#1e1e1e] dark:text-[#cccccc] outline-none opacity-80"
+                        >
+                            <option value="mcp">MCP Server</option>
+                        </select>
+                    </div>
 
                     {/* Container-node requirement notice */}
                     {status.status !== 'connected' && (
