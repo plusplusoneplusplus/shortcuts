@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { Route } from '../types';
 import type { ProcessStore, TaskQueueManager, ISDKService, AIInvoker } from '@plusplusoneplusplus/forge';
-import { modelMetadataStore } from '@plusplusoneplusplus/forge';
+import { modelMetadataStore, sdkServiceRegistry } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import type { SqliteQueuePersistence } from '../queue/sqlite-queue-persistence';
@@ -259,6 +259,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         configFunctions: { getConfigFilePath, getResolvedConfigWithSource, loadConfigFile, writeConfigFile },
         runtimeConfigService: opts.runtimeConfigService,
         tokenTtlMs,
+        sdkServiceRegistry: sdkServiceRegistry,
     });
 
     // Runtime config endpoint for SPA feature flag freshness

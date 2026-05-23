@@ -219,6 +219,7 @@ export function AdminPanel() {
     const [focusedDiffEnabled, setFocusedDiffEnabled] = useState(false);
     const [codexEnabled, setCodexEnabled] = useState(false);
     const [activeProvider, setActiveProvider] = useState<'copilot' | 'codex'>('copilot');
+    const [providerAvailability, setProviderAvailability] = useState<Record<string, { available: boolean; error?: string }>>({});
 
     // Preferences(theme, reposSidebarCollapsed, uiLayoutMode) — for Appearance card
     const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('auto');
@@ -416,6 +417,10 @@ export function AdminPanel() {
         loadPreferences();
         getSpaCocClient().admin.getVersion()
             .then(data => { if (data) setVersionInfo(data); })
+            .catch(() => {});
+        fetch('/api/admin/providers/availability')
+            .then(r => r.json())
+            .then((data: Record<string, { available: boolean; error?: string }>) => setProviderAvailability(data))
             .catch(() => {});
     }, [loadStats, loadConfig, loadPreferences]);
 
@@ -1754,6 +1759,26 @@ export function AdminPanel() {
                                             <option value="codex">Codex</option>
                                         </select>
                                         <SourceBadge source={sources['activeProvider']} />
+                                    </AdminRow>
+                                    {activeProvider === 'codex' && providerAvailability['codex'] && !providerAvailability['codex'].available && (
+                                        <div
+                                            data-testid="codex-sdk-unavailable-banner"
+                                            style={{
+                                                margin: '8px 0 4px',
+                                                padding: '8px 12px',
+                                                borderRadius: 4,
+                                                background: 'var(--ar-warn-bg, #fffbe6)',
+                                                border: '1px solid var(--ar-warn-border, #ffe58f)',
+                                                color: 'var(--ar-warn-text, #7c5200)',
+                                                fontSize: 12,
+                                                lineHeight: 1.5,
+                                                whiteSpace: 'pre-wrap',
+                                                fontFamily: 'inherit',
+                                            }}
+                                        >
+                                            ⚠ {providerAvailability['codex'].error}
+                                        </div>
+                                    )}
                                     </AdminRow>
                                 </SettingsCard>
                                 {isContainerMode() && (
