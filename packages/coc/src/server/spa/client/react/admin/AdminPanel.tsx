@@ -1779,7 +1779,6 @@ export function AdminPanel() {
                                             ⚠ {providerAvailability['codex'].error}
                                         </div>
                                     )}
-                                    </AdminRow>
                                 </SettingsCard>
                                 {isContainerMode() && (
                                     <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
