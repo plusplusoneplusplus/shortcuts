@@ -320,6 +320,63 @@ describe('TeamsBridge', () => {
             await bridge.stop();
         });
 
+        it('should send process.result even when watermark is already at end (no new turns)', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            // First event: running with user turn — advances watermark
+            const mockFetch1 = vi.fn().mockResolvedValue({
+                ok: true,
+                json: async () => ({
+                    process: {
+                        id: 'proc-wm',
+                        status: 'running',
+                        conversationTurns: [
+                            { role: 'user', content: 'Plan auth feature' },
+                        ],
+                    },
+                }),
+            });
+            vi.stubGlobal('fetch', mockFetch1);
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-wm', status: 'running', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 50));
+            expect(lastBot().send).toHaveBeenCalledTimes(1); // user turn sent
+
+            // Second event: completed — same turns but now has result
+            const mockFetch2 = vi.fn().mockResolvedValue({
+                ok: true,
+                json: async () => ({
+                    process: {
+                        id: 'proc-wm',
+                        status: 'completed',
+                        result: 'Here is the auth plan with 10 tasks.',
+                        conversationTurns: [
+                            { role: 'user', content: 'Plan auth feature' },
+                            { role: 'assistant', content: 'Long verbose planning output...' },
+                        ],
+                    },
+                }),
+            });
+            vi.stubGlobal('fetch', mockFetch2);
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-wm', status: 'completed', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            // Should send process.result even though watermark covered the assistant turn
+            expect(lastBot().send).toHaveBeenCalledTimes(2);
+            expect(lastBot().send.mock.calls[1][1]).toContain('Here is the auth plan with 10 tasks.');
+
+            vi.unstubAllGlobals();
+            await bridge.stop();
+        });
+
         it('should ignore non-process-updated events', async () => {
             const bridge = createBridge();
             await bridge.start();

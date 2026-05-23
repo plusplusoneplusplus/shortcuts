@@ -394,18 +394,13 @@ export class TeamsBridge {
             }
 
             const newTurns = turns.slice(lastSeen, sendableEnd);
-            if (newTurns.length === 0) {
-                console.log(`[teams-bridge] Process ${processId}: no new turns to send (lastSeen=${lastSeen}, sendableEnd=${sendableEnd})`);
-                this._runningLocks.delete(processId);
-                return;
-            }
 
             // Determine which turns to send:
             // - User turns: always send immediately (so Teams shows what was asked)
             // - Assistant turns: only send the FINAL one when process is completed
             const turnsToSend: typeof newTurns = [];
 
-            // Collect user turns
+            // Collect user turns from new turns
             for (const turn of newTurns) {
                 if (turn.role === 'user' && (turn.content ?? turn.text ?? '').trim()) {
                     turnsToSend.push(turn);
@@ -413,7 +408,7 @@ export class TeamsBridge {
             }
 
             // On completion, send the task_complete summary (process.result) if available,
-            // otherwise fall back to the last assistant turn
+            // otherwise fall back to the last assistant turn in newTurns
             if (status === 'completed') {
                 const resultSummary = (processData.result as string | undefined)?.trim();
                 if (resultSummary) {
