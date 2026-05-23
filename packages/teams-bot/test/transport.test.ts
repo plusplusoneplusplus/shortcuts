@@ -139,60 +139,30 @@ describe('GraphTransport', () => {
         expect(lastCall[1].headers.Authorization).toBe('Bearer new-token');
     });
 
-    describe('chat (DM) mode', () => {
-        it('should initialize in chat mode when no teamId provided', async () => {
-            // Mock /me
+    describe('chat (DM) mode — send-only', () => {
+        it('should initialize in chat mode when no teamId (only calls /me)', async () => {
+            // Only /me is called — no chat discovery (requires Chat.ReadBasic)
             mockFetch.mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({ id: 'user-id-1', displayName: 'Test User' }),
-            } as any);
-            // Mock GET /me/chats (no existing chats)
-            mockFetch.mockResolvedValueOnce({
-                ok: true,
-                json: async () => ({ value: [] }),
-            } as any);
-            // Mock POST /chats (create)
-            mockFetch.mockResolvedValueOnce({
-                ok: true,
-                json: async () => ({ id: 'new-chat-id' }),
             } as any);
 
             const t = new GraphTransport();
             await t.initialize('token', {});
 
-            expect(t.getChatId()).toBe('new-chat-id');
+            // No chatId discovered — Graph send-only mode
+            expect(t.getChatId()).toBeNull();
+            expect(mockFetch).toHaveBeenCalledTimes(1);
         });
 
-        it('should reuse existing chat if found', async () => {
-            // Mock /me
-            mockFetch.mockResolvedValueOnce({
-                ok: true,
-                json: async () => ({ id: 'user-id-1', displayName: 'Test User' }),
-            } as any);
-            // Mock GET /me/chats — has existing chat with user-id-1
-            mockFetch.mockResolvedValueOnce({
-                ok: true,
-                json: async () => ({
-                    value: [{ id: 'existing-chat', chatType: 'oneOnOne', members: [{ userId: 'user-id-1' }, { userId: 'other-user' }] }],
-                }),
-            } as any);
-
-            const t = new GraphTransport();
-            await t.initialize('token', {});
-
-            expect(t.getChatId()).toBe('existing-chat');
-        });
-
-        it('should send to chat in DM mode', async () => {
-            // Initialize with chat
+        it('should send to provided chatId target in DM mode', async () => {
+            // Initialize — only /me
             mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'u1', displayName: 'Me' }) } as any);
-            mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ value: [] }) } as any);
-            mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'chat-1' }) } as any);
 
             const t = new GraphTransport();
             await t.initialize('token', {});
 
-            // Send
+            // Send to explicit target chatId
             mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'msg-chat-1' }) } as any);
             const msgId = await t.send('chat-1', 'Hello DM!');
             expect(msgId).toBe('msg-chat-1');
@@ -202,54 +172,14 @@ describe('GraphTransport', () => {
             expect(sendCall[0]).toContain('/chats/chat-1/messages');
         });
 
-        it('should poll chat messages in DM mode', async () => {
-            // Initialize with chat
+        it('should use pre-configured chatId if provided in opts', async () => {
+            // Initialize with chatId — only /me needed
             mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'u1', displayName: 'Me' }) } as any);
-            mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ value: [] }) } as any);
-            mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'chat-1' }) } as any);
 
             const t = new GraphTransport();
-            await t.initialize('token', {});
+            await t.initialize('token', { chatId: 'pre-configured-chat' });
 
-            // Poll
-            mockFetch.mockResolvedValueOnce({
-                ok: true,
-                json: async () => ({
-                    value: [
-                        { id: 'cm-1', body: { content: 'Hi from chat' }, createdDateTime: '2026-01-01T10:00:00Z', from: { user: { displayName: 'User1', id: 'u-1' } } },
-                    ],
-                }),
-            } as any);
-
-            const result = await t.poll('chat-1');
-            expect(result.messages).toHaveLength(1);
-            expect(result.messages[0].text).toBe('Hi from chat');
-            expect(result.messages[0].channelId).toBe('chat-1');
-        });
-
-        it('should filter chat messages by since timestamp', async () => {
-            // Initialize with chat
-            mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'u1', displayName: 'Me' }) } as any);
-            mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ value: [] }) } as any);
-            mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'chat-1' }) } as any);
-
-            const t = new GraphTransport();
-            await t.initialize('token', {});
-
-            // Poll with since
-            mockFetch.mockResolvedValueOnce({
-                ok: true,
-                json: async () => ({
-                    value: [
-                        { id: 'cm-old', body: { content: 'Old' }, createdDateTime: '2026-01-01T09:00:00Z', from: { user: { displayName: 'U', id: 'u-1' } } },
-                        { id: 'cm-new', body: { content: 'New' }, createdDateTime: '2026-01-01T11:00:00Z', from: { user: { displayName: 'U', id: 'u-1' } } },
-                    ],
-                }),
-            } as any);
-
-            const result = await t.poll('chat-1', '2026-01-01T10:00:00Z');
-            expect(result.messages).toHaveLength(1);
-            expect(result.messages[0].text).toBe('New');
+            expect(t.getChatId()).toBe('pre-configured-chat');
         });
     });
 });

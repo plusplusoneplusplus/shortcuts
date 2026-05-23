@@ -67,27 +67,18 @@ describe('TeamsBot', () => {
             });
 
             it('should use chat (DM) mode when teamId is missing', async () => {
-                // Mock /me call
+                // Mock /me call (only verification needed in send-only mode)
                 mockFetch.mockResolvedValueOnce({
                     ok: true,
                     json: async () => ({ id: 'user-aad-id', displayName: 'Test User' }),
-                } as any);
-                // Mock GET /me/chats (empty — no existing chats)
-                mockFetch.mockResolvedValueOnce({
-                    ok: true,
-                    json: async () => ({ value: [] }),
-                } as any);
-                // Mock POST /chats (create new chat)
-                mockFetch.mockResolvedValueOnce({
-                    ok: true,
-                    json: async () => ({ id: 'chat-id-456' }),
                 } as any);
 
                 const bot = createGraphBot({ teamId: undefined });
                 await bot.start();
 
                 expect(bot.getStatus()).toBe('connected');
-                expect(bot.getChannelId()).toBe('chat-id-456');
+                // Graph send-only mode: no chatId discovery (requires Chat.ReadBasic)
+                expect(bot.getChannelId()).toBeNull();
                 await bot.stop();
             });
 

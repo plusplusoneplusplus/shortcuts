@@ -24,16 +24,16 @@ export class GraphTransport implements TeamsTransport {
             chatId: opts.chatId,
         });
 
-        // If no teamId, use chat mode (direct message)
-        if (!opts.teamId) {
-            this._useChat = true;
-            // Find/create self-chat
-            if (!this.chatId) {
-                const me = await this.client.getMe();
-                this.chatId = await this.client.getOrCreateChat(me.id);
-            }
-        } else {
+        // Graph mode is send-only. Just verify token works via /me endpoint.
+        // Chat discovery (getOrCreateChat) requires Chat.ReadBasic which typical
+        // az cli tokens don't have, so we skip it entirely.
+        if (opts.teamId) {
             await this.client.verifyConnection();
+        } else {
+            this._useChat = true;
+            // Verify token is valid without needing Chat permissions
+            await this.client.getMe();
+            console.log(`[graph-transport] Token verified via /me. Send-only mode (no chat discovery).`);
         }
     }
 
