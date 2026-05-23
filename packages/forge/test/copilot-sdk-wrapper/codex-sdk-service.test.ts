@@ -210,9 +210,9 @@ describe('CodexSDKService — SDK mocked', () => {
 
     it('listModels returns a non-empty list', async () => {
         const models = await svc.listModels();
-        expect(models.length).toBeGreaterThan(0);
-        expect(models[0]).toHaveProperty('id');
-        expect(models[0]).toHaveProperty('name');
+        expect(models).toEqual([
+            { id: 'codex-default', name: 'Codex Provider Default' },
+        ]);
     });
 
     it('sendMessage creates a new thread and returns response', async () => {
@@ -349,6 +349,14 @@ describe('CodexSDKService — SDK mocked', () => {
         await svc.sendMessage({ prompt: 'test', model: 'claude-sonnet-4.6' });
         expect(codexMock.startThread).toHaveBeenCalledWith(
             expect.not.objectContaining({ model: 'claude-sonnet-4.6' }),
+        );
+    });
+
+    it('sendMessage omits the Codex provider-default sentinel when starting threads', async () => {
+        const codexMock = svc['sdk'] as ReturnType<typeof makeCodexSdkMock>;
+        await svc.sendMessage({ prompt: 'test', model: 'codex-default' });
+        expect(codexMock.startThread).toHaveBeenCalledWith(
+            expect.not.objectContaining({ model: 'codex-default' }),
         );
     });
 });

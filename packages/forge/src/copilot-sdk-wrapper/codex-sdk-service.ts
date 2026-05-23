@@ -197,10 +197,10 @@ export class CodexSDKService implements ISDKService {
         if (this.disposed) throw new Error('CodexSDKService has been disposed');
         const avail = await this.isAvailable();
         if (!avail.available) throw new Error(avail.error ?? 'Codex SDK is not available');
-        // Codex model list is static for now; extend when the SDK exposes an endpoint.
+        // The Codex SDK does not currently expose model discovery in this
+        // adapter. Use a sentinel that maps to the provider/account default.
         return [
-            { id: 'codex-davinci-002', name: 'Codex Davinci 002' },
-            { id: 'code-cushman-001', name: 'Code Cushman 001' },
+            { id: 'codex-default', name: 'Codex Provider Default' },
         ];
     }
 
@@ -321,6 +321,9 @@ export class CodexSDKService implements ISDKService {
     private normalizeCodexModel(model: string | undefined): string | undefined {
         if (!model) return undefined;
         const normalized = model.toLowerCase();
+        if (normalized === 'codex-default' || normalized === 'provider-default') {
+            return undefined;
+        }
         // CoC per-repo defaults are shared with Copilot. Do not pass provider-
         // specific Copilot model IDs through to Codex, because ChatGPT-backed
         // Codex accounts reject them before the turn starts.
