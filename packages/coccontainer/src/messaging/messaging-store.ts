@@ -29,6 +29,10 @@ export interface ProcessSender {
 export class MessagingStore {
     private db: ReturnType<typeof Database>;
 
+    // In-memory LRU cache for recent message bindings (avoids SQLite lookups)
+    private static readonly CACHE_MAX = 50;
+    private _cache: Map<string, MessageBinding> = new Map();
+
     constructor(dataDir: string) {
         fs.mkdirSync(dataDir, { recursive: true });
         const dbPath = path.join(dataDir, 'messaging.db');
@@ -42,15 +46,43 @@ export class MessagingStore {
         this.db.prepare(
             `INSERT OR REPLACE INTO wa_message_map (wa_message_id, process_id, agent_id, session_label, workspace_id) VALUES (?, ?, ?, ?, ?)`
         ).run(waMessageId, processId, agentId, sessionLabel, workspaceId ?? null);
+
+        // Update LRU cache
+        const binding: MessageBinding = { processId, agentId, sessionLabel, workspaceId };
+        this._cache.delete(waMessageId);
+        this._cache.set(waMessageId, binding);
+        if (this._cache.size > MessagingStore.CACHE_MAX) {
+            // Evict oldest entry (first key in Map iteration order)
+            const oldest = this._cache.keys().next().value!;
+            this._cache.delete(oldest);
+        }
     }
 
-    /** Look up the CoC process for a WA message ID. */
+    /** Look up the CoC process for a WA message ID. Cache-first, then SQLite. */
     lookupMessage(waMessageId: string): MessageBinding | null {
+        // Check in-memory cache first
+        const cached = this._cache.get(waMessageId);
+        if (cached) {
+            // Move to end (most recently accessed)
+            this._cache.delete(waMessageId);
+            this._cache.set(waMessageId, cached);
+            return cached;
+        }
+
+        // Fall back to SQLite
         const row = this.db.prepare(
             `SELECT process_id, agent_id, session_label, workspace_id FROM wa_message_map WHERE wa_message_id = ?`
         ).get(waMessageId) as { process_id: string; agent_id: string; session_label: string; workspace_id: string | null } | undefined;
         if (!row) return null;
-        return { processId: row.process_id, agentId: row.agent_id, sessionLabel: row.session_label, workspaceId: row.workspace_id ?? undefined };
+        const binding: MessageBinding = { processId: row.process_id, agentId: row.agent_id, sessionLabel: row.session_label, workspaceId: row.workspace_id ?? undefined };
+
+        // Populate cache with this lookup result
+        this._cache.set(waMessageId, binding);
+        if (this._cache.size > MessagingStore.CACHE_MAX) {
+            const oldest = this._cache.keys().next().value!;
+            this._cache.delete(oldest);
+        }
+        return binding;
     }
 
     /** Get the most recent WA message ID for a process (for reply threading). */
