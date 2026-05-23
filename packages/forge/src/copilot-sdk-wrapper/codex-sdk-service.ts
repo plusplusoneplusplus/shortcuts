@@ -39,6 +39,19 @@ function isGlobalInstall(): boolean {
 }
 
 // ============================================================================
+// Dynamic require.resolve (webpack-safe)
+// ============================================================================
+
+/**
+ * Resolves a module path at runtime without webpack statically analysing it.
+ * Uses the same `new Function` indirection as `dynamicImportModule` in
+ * sdk-esm-loader.ts so that webpack does not attempt to bundle optional
+ * peer dependencies that may not be installed.
+ */
+// eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
+const dynamicRequireResolve = new Function('m', 'return require.resolve(m)') as (m: string) => string;
+
+// ============================================================================
 // Auth checker injection (AC-08)
 // ============================================================================
 
@@ -245,7 +258,7 @@ export class CodexSDKService implements ISDKService {
     }
 
     private async loadModelCatalog(): Promise<IModelInfo[]> {
-        const packageJsonPath = require.resolve('@openai/codex/package.json');
+        const packageJsonPath = dynamicRequireResolve('@openai/codex/package.json');
         const codexBinPath = path.join(path.dirname(packageJsonPath), 'bin', 'codex.js');
         const { stdout } = await execFileAsync(process.execPath, [codexBinPath, 'debug', 'models'], {
             timeout: 30_000,
