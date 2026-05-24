@@ -104,7 +104,10 @@ export const CLIConfigSchema = z.object({
     codex: z.object({
         enabled: z.boolean().optional(),
     }).passthrough().optional(),
-    activeProvider: z.enum(['copilot', 'codex']).optional(),
+    claude: z.object({
+        enabled: z.boolean().optional(),
+    }).passthrough().optional(),
+    activeProvider: z.enum(['copilot', 'codex', 'claude']).optional(),
     loops: z.object({
         enabled: z.boolean().optional(),
     }).passthrough().optional(),

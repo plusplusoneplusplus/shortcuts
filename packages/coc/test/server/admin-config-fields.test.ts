@@ -187,8 +187,11 @@ describe('validate()', () => {
         it('accepts "codex"', () => {
             expect(fieldFor('activeProvider').validate('codex')).toBeUndefined();
         });
+        it('accepts "claude"', () => {
+            expect(fieldFor('activeProvider').validate('claude')).toBeUndefined();
+        });
         it('rejects other strings', () => {
-            expect(fieldFor('activeProvider').validate('claude')).toMatch(/copilot.*codex/);
+            expect(fieldFor('activeProvider').validate('unknown')).toMatch(/copilot.*codex/);
         });
         it('rejects non-string', () => {
             expect(fieldFor('activeProvider').validate(true)).toMatch(/copilot.*codex/);

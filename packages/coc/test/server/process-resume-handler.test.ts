@@ -578,5 +578,20 @@ describe('launchFreshChatInTerminal – Windows spawn arguments', () => {
         expect(startLine).toContain('powershell.exe -NoExit -Command codex --dangerously-bypass-approvals-and-sandbox');
         expect(startLine).not.toContain('copilot --yolo');
     });
+
+    it('launches Claude CLI when provider is claude', async () => {
+        const result = await launchFreshChatInTerminal({
+            workingDirectory: 'C:\\Users\\test\\project',
+            provider: 'claude',
+        });
+
+        expect(result.launched).toBe(true);
+        expect(result.command).toContain('claude --dangerously-skip-permissions');
+
+        const startLine = (spawnMock.mock.calls[0][1] as string[])[0];
+        expect(startLine).toContain('powershell.exe -NoExit -Command claude --dangerously-skip-permissions');
+        expect(startLine).not.toContain('copilot --yolo');
+        expect(startLine).not.toContain('codex');
+    });
 });
 

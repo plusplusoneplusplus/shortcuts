@@ -63,7 +63,7 @@ export function createQueueInfrastructure(
     memoryPromotion: MemoryPromoteConfig | undefined,
     getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined,
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined,
-    provider?: 'copilot' | 'codex',
+    provider?: 'copilot' | 'codex' | 'claude',
     resolveAiServiceForProvider?: (provider: import('../tasks/task-types').ChatProvider) => import('@plusplusoneplusplus/forge').ISDKService,
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.

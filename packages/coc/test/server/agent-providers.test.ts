@@ -10,25 +10,34 @@ import {
     registerAgentProvidersRoutes,
 } from '../../src/server/agent-providers/agent-providers-routes';
 import { RuntimeConfigService } from '../../src/config/runtime-config-service';
+import type { IAvailabilityResult } from '@plusplusoneplusplus/forge';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-function makeService(codexEnabled: boolean): RuntimeConfigService {
+function makeService(codexEnabled: boolean, claudeEnabled = false): RuntimeConfigService {
     return new RuntimeConfigService({
-        fileConfig: { codex: { enabled: codexEnabled } },
+        fileConfig: { codex: { enabled: codexEnabled }, claude: { enabled: claudeEnabled } },
     });
 }
 
 const BASE_URL = 'http://localhost:4000';
 
+/** Default Claude availability — SDK not installed */
+const claudeUnavailable = (): Promise<IAvailabilityResult> =>
+    Promise.resolve({ available: false, error: 'Claude Code SDK is not installed.' });
+
+const claudeAvailable = (): Promise<IAvailabilityResult> =>
+    Promise.resolve({ available: true });
+
 // ── Copilot provider ──────────────────────────────────────────────────────────
 
 describe('Copilot provider', () => {
-    it('is always enabled, available, and locked', () => {
+    it('is always enabled, available, and locked', async () => {
         const svc = makeService(false);
-        const { providers } = buildAgentProvidersResponse({
+        const { providers } = await buildAgentProvidersResponse({
             runtimeConfigService: svc,
             getCodexAuthInfo: () => ({ status: 'unauthenticated' }),
+            getClaudeAvailability: claudeUnavailable,
             serverBaseUrl: BASE_URL,
         });
         const copilot = providers.find(p => p.id === 'copilot')!;
@@ -41,11 +50,12 @@ describe('Copilot provider', () => {
 // ── Codex provider — disabled ────────────────────────────────────────────────
 
 describe('Codex provider when codex.enabled = false', () => {
-    it('is not enabled and not available', () => {
+    it('is not enabled and not available', async () => {
         const svc = makeService(false);
-        const { providers } = buildAgentProvidersResponse({
+        const { providers } = await buildAgentProvidersResponse({
             runtimeConfigService: svc,
             getCodexAuthInfo: () => ({ status: 'authenticated' }),
+            getClaudeAvailability: claudeUnavailable,
             serverBaseUrl: BASE_URL,
         });
         const codex = providers.find(p => p.id === 'codex')!;
@@ -55,11 +65,12 @@ describe('Codex provider when codex.enabled = false', () => {
         expect(codex.authUrl).toBeUndefined();
     });
 
-    it('has no reason or authUrl when not enabled (even if auth is expired)', () => {
+    it('has no reason or authUrl when not enabled (even if auth is expired)', async () => {
         const svc = makeService(false);
-        const { providers } = buildAgentProvidersResponse({
+        const { providers } = await buildAgentProvidersResponse({
             runtimeConfigService: svc,
             getCodexAuthInfo: () => ({ status: 'expired' }),
+            getClaudeAvailability: claudeUnavailable,
             serverBaseUrl: BASE_URL,
         });
         const codex = providers.find(p => p.id === 'codex')!;
@@ -71,11 +82,12 @@ describe('Codex provider when codex.enabled = false', () => {
 // ── Codex provider — enabled + authenticated ──────────────────────────────────
 
 describe('Codex provider when enabled and authenticated', () => {
-    it('is enabled and available', () => {
+    it('is enabled and available', async () => {
         const svc = makeService(true);
-        const { providers } = buildAgentProvidersResponse({
+        const { providers } = await buildAgentProvidersResponse({
             runtimeConfigService: svc,
             getCodexAuthInfo: () => ({ status: 'authenticated' }),
+            getClaudeAvailability: claudeUnavailable,
             serverBaseUrl: BASE_URL,
         });
         const codex = providers.find(p => p.id === 'codex')!;
@@ -89,11 +101,12 @@ describe('Codex provider when enabled and authenticated', () => {
 // ── Codex provider — enabled + unauthenticated ────────────────────────────────
 
 describe('Codex provider when enabled but unauthenticated', () => {
-    it('is enabled but not available, with auth reason and URL', () => {
+    it('is enabled but not available, with auth reason and URL', async () => {
         const svc = makeService(true);
-        const { providers } = buildAgentProvidersResponse({
+        const { providers } = await buildAgentProvidersResponse({
             runtimeConfigService: svc,
             getCodexAuthInfo: () => ({ status: 'unauthenticated' }),
+            getClaudeAvailability: claudeUnavailable,
             serverBaseUrl: BASE_URL,
         });
         const codex = providers.find(p => p.id === 'codex')!;
@@ -107,11 +120,12 @@ describe('Codex provider when enabled but unauthenticated', () => {
 // ── Codex provider — enabled + expired ───────────────────────────────────────
 
 describe('Codex provider when enabled but auth expired', () => {
-    it('is enabled but not available, with expired reason and authUrl', () => {
+    it('is enabled but not available, with expired reason and authUrl', async () => {
         const svc = makeService(true);
-        const { providers } = buildAgentProvidersResponse({
+        const { providers } = await buildAgentProvidersResponse({
             runtimeConfigService: svc,
             getCodexAuthInfo: () => ({ status: 'expired' }),
+            getClaudeAvailability: claudeUnavailable,
             serverBaseUrl: BASE_URL,
         });
         const codex = providers.find(p => p.id === 'codex')!;
@@ -122,29 +136,92 @@ describe('Codex provider when enabled but auth expired', () => {
     });
 });
 
+// ── Claude provider ───────────────────────────────────────────────────────────
+
+describe('Claude provider when claude.enabled = false', () => {
+    it('is not enabled and not available', async () => {
+        const svc = makeService(false, false);
+        const { providers } = await buildAgentProvidersResponse({
+            runtimeConfigService: svc,
+            getCodexAuthInfo: () => ({ status: 'unauthenticated' }),
+            getClaudeAvailability: claudeUnavailable,
+            serverBaseUrl: BASE_URL,
+        });
+        const claude = providers.find(p => p.id === 'claude')!;
+        expect(claude.enabled).toBe(false);
+        expect(claude.available).toBe(false);
+    });
+});
+
+describe('Claude provider when enabled and SDK available', () => {
+    it('is enabled and available', async () => {
+        const svc = makeService(false, true);
+        const { providers } = await buildAgentProvidersResponse({
+            runtimeConfigService: svc,
+            getCodexAuthInfo: () => ({ status: 'unauthenticated' }),
+            getClaudeAvailability: claudeAvailable,
+            serverBaseUrl: BASE_URL,
+        });
+        const claude = providers.find(p => p.id === 'claude')!;
+        expect(claude.enabled).toBe(true);
+        expect(claude.available).toBe(true);
+        expect(claude.reason).toBeUndefined();
+    });
+});
+
+describe('Claude provider when enabled but SDK unavailable', () => {
+    it('is enabled but not available, with remediation reason', async () => {
+        const svc = makeService(false, true);
+        const { providers } = await buildAgentProvidersResponse({
+            runtimeConfigService: svc,
+            getCodexAuthInfo: () => ({ status: 'unauthenticated' }),
+            getClaudeAvailability: () => Promise.resolve({ available: false, error: 'Run: npm install -g @anthropic-ai/claude-code' }),
+            serverBaseUrl: BASE_URL,
+        });
+        const claude = providers.find(p => p.id === 'claude')!;
+        expect(claude.enabled).toBe(true);
+        expect(claude.available).toBe(false);
+        expect(claude.reason).toMatch(/install/i);
+    });
+});
+
 // ── Response shape ────────────────────────────────────────────────────────────
 
 describe('response shape', () => {
-    it('always returns two providers in order: copilot, codex', () => {
+    it('always returns three providers in order: copilot, codex, claude', async () => {
         const svc = makeService(false);
-        const { providers } = buildAgentProvidersResponse({
+        const { providers } = await buildAgentProvidersResponse({
             runtimeConfigService: svc,
             getCodexAuthInfo: () => ({ status: 'unauthenticated' }),
+            getClaudeAvailability: claudeUnavailable,
             serverBaseUrl: BASE_URL,
         });
-        expect(providers).toHaveLength(2);
+        expect(providers).toHaveLength(3);
         expect(providers[0].id).toBe('copilot');
         expect(providers[1].id).toBe('codex');
+        expect(providers[2].id).toBe('claude');
     });
 
-    it('codex is visible in the providers list even when disabled', () => {
+    it('codex is visible in the providers list even when disabled', async () => {
         const svc = makeService(false);
-        const { providers } = buildAgentProvidersResponse({
+        const { providers } = await buildAgentProvidersResponse({
             runtimeConfigService: svc,
             getCodexAuthInfo: () => ({ status: 'unauthenticated' }),
+            getClaudeAvailability: claudeUnavailable,
             serverBaseUrl: BASE_URL,
         });
         expect(providers.some(p => p.id === 'codex')).toBe(true);
+    });
+
+    it('claude is visible in the providers list even when disabled', async () => {
+        const svc = makeService(false);
+        const { providers } = await buildAgentProvidersResponse({
+            runtimeConfigService: svc,
+            getCodexAuthInfo: () => ({ status: 'unauthenticated' }),
+            getClaudeAvailability: claudeUnavailable,
+            serverBaseUrl: BASE_URL,
+        });
+        expect(providers.some(p => p.id === 'claude')).toBe(true);
     });
 });
 
@@ -155,9 +232,10 @@ describe('live config reflection', () => {
         const svc = makeService(false);
 
         // Initially disabled
-        const r1 = buildAgentProvidersResponse({
+        const r1 = await buildAgentProvidersResponse({
             runtimeConfigService: svc,
             getCodexAuthInfo: () => ({ status: 'authenticated' }),
+            getClaudeAvailability: claudeUnavailable,
             serverBaseUrl: BASE_URL,
         });
         expect(r1.providers.find(p => p.id === 'codex')!.enabled).toBe(false);
@@ -166,9 +244,10 @@ describe('live config reflection', () => {
         // (RuntimeConfigService.config getter always returns latest)
         // We test this by creating a new service with enabled=true
         const svc2 = makeService(true);
-        const r2 = buildAgentProvidersResponse({
+        const r2 = await buildAgentProvidersResponse({
             runtimeConfigService: svc2,
             getCodexAuthInfo: () => ({ status: 'authenticated' }),
+            getClaudeAvailability: claudeUnavailable,
             serverBaseUrl: BASE_URL,
         });
         expect(r2.providers.find(p => p.id === 'codex')!.enabled).toBe(true);
@@ -201,6 +280,7 @@ describe('registerAgentProvidersRoutes — quota endpoint', () => {
         registerAgentProvidersRoutes(routes, {
             runtimeConfigService: svc,
             getCodexAuthInfo: () => ({ status: 'unauthenticated' }),
+            getClaudeAvailability: claudeUnavailable,
             serverBaseUrl: BASE_URL,
         });
         const quotaRoute = routes.find(r => r.pattern === '/api/agent-providers/quota');
@@ -214,6 +294,7 @@ describe('registerAgentProvidersRoutes — quota endpoint', () => {
         registerAgentProvidersRoutes(routes, {
             runtimeConfigService: svc,
             getCodexAuthInfo: () => ({ status: 'unauthenticated' }),
+            getClaudeAvailability: claudeUnavailable,
             serverBaseUrl: BASE_URL,
             // no getCopilotSdkService
         });
@@ -246,6 +327,7 @@ describe('registerAgentProvidersRoutes — quota endpoint', () => {
         registerAgentProvidersRoutes(routes, {
             runtimeConfigService: svc,
             getCodexAuthInfo: () => ({ status: 'unauthenticated' }),
+            getClaudeAvailability: claudeUnavailable,
             serverBaseUrl: BASE_URL,
             getCopilotSdkService: () => mockSdkService as any,
         });
@@ -273,6 +355,7 @@ describe('registerAgentProvidersRoutes — quota endpoint', () => {
         registerAgentProvidersRoutes(routes, {
             runtimeConfigService: svc,
             getCodexAuthInfo: () => ({ status: 'unauthenticated' }),
+            getClaudeAvailability: claudeUnavailable,
             serverBaseUrl: BASE_URL,
             getCopilotSdkService: () => mockSdkService as any,
         });
@@ -293,6 +376,7 @@ describe('registerAgentProvidersRoutes — quota endpoint', () => {
         registerAgentProvidersRoutes(routes, {
             runtimeConfigService: svc,
             getCodexAuthInfo: () => ({ status: 'authenticated' }),
+            getClaudeAvailability: claudeUnavailable,
             serverBaseUrl: BASE_URL,
             getCopilotSdkService: () => mockSdkService as any,
         });
@@ -316,6 +400,7 @@ describe('registerAgentProvidersRoutes — quota endpoint', () => {
         registerAgentProvidersRoutes(routes, {
             runtimeConfigService: svc,
             getCodexAuthInfo: () => ({ status: 'unauthenticated' }),
+            getClaudeAvailability: claudeUnavailable,
             serverBaseUrl: BASE_URL,
             getCopilotSdkService: () => mockSdkService as any,
         });

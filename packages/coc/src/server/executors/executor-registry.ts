@@ -37,7 +37,7 @@ export interface ExecutorRegistryOptions {
     askUser?: { enabled: boolean };
     memoryPromotion?: MemoryPromoteConfig;
     /** Active AI provider name recorded on each process for attribution. Defaults to 'copilot'. */
-    provider?: 'copilot' | 'codex';
+    provider?: 'copilot' | 'codex' | 'claude';
     /**
      * Resolve an ISDKService for a given provider, checking enablement.
      * Injected from the bridge so executors can route per-chat without

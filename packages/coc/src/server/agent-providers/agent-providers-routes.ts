@@ -2,7 +2,7 @@
  * Agent Providers REST API Routes
  *
  * GET /api/agent-providers
- *   Returns enabled/available status for Copilot and Codex so the
+ *   Returns enabled/available status for Copilot, Codex, and Claude so the
  *   New Chat UI and Admin page can show live provider state without a
  *   server restart.
  *
@@ -10,6 +10,9 @@
  * Codex status is derived from:
  *   - `codex.enabled` in live runtime config (enabled flag)
  *   - Codex auth store (available flag; requires authenticated status)
+ * Claude status is derived from:
+ *   - `claude.enabled` in live runtime config (enabled flag)
+ *   - `@anthropic-ai/claude-code` SDK availability check (available flag)
  */
 
 import type { Route } from '../types';
@@ -17,22 +20,25 @@ import { sendJson } from '../shared/router';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
 import type { CodexAuthInfo } from '../codex-auth/codex-auth-store';
 import type { AgentProviderStatus, AgentProvidersResponse, AgentProvidersQuotaResponse, ProviderQuotaType } from '@plusplusoneplusplus/coc-client';
-import type { CopilotSDKService } from '@plusplusoneplusplus/forge';
+import type { CopilotSDKService, IAvailabilityResult } from '@plusplusoneplusplus/forge';
 
 export interface AgentProvidersRouteContext {
     runtimeConfigService: RuntimeConfigService;
     /** Reads current Codex auth info. Returns unauthenticated info if Codex infra is absent. */
     getCodexAuthInfo: () => CodexAuthInfo;
+    /** Checks Claude SDK availability. Resolved per-request; the service caches the result. */
+    getClaudeAvailability: () => Promise<IAvailabilityResult>;
     /** The base URL prefix used to build authUrl (e.g. 'http://localhost:4000'). */
     serverBaseUrl: string;
     /** Optional: getter for Copilot account quota. Used by the quota endpoint. */
     getCopilotSdkService?: () => CopilotSDKService;
 }
 
-/** Build the providers array from live config + auth state. Exported for unit testing. */
-export function buildAgentProvidersResponse(ctx: AgentProvidersRouteContext): AgentProvidersResponse {
+/** Build the providers array from live config + auth/SDK state. Exported for unit testing. */
+export async function buildAgentProvidersResponse(ctx: AgentProvidersRouteContext): Promise<AgentProvidersResponse> {
     const config = ctx.runtimeConfigService.config;
     const codexEnabled = config.codex?.enabled ?? false;
+    const claudeEnabled = config.claude?.enabled ?? false;
 
     const copilot: AgentProviderStatus = {
         id: 'copilot',
@@ -75,15 +81,43 @@ export function buildAgentProvidersResponse(ctx: AgentProvidersRouteContext): Ag
         }
     }
 
-    return { providers: [copilot, codexProvider] };
+    let claudeProvider: AgentProviderStatus;
+    if (!claudeEnabled) {
+        claudeProvider = {
+            id: 'claude',
+            label: 'Claude',
+            enabled: false,
+            available: false,
+        };
+    } else {
+        const availability = await ctx.getClaudeAvailability();
+        if (availability.available) {
+            claudeProvider = {
+                id: 'claude',
+                label: 'Claude',
+                enabled: true,
+                available: true,
+            };
+        } else {
+            claudeProvider = {
+                id: 'claude',
+                label: 'Claude',
+                enabled: true,
+                available: false,
+                reason: availability.error ?? 'Claude Code SDK is not available.',
+            };
+        }
+    }
+
+    return { providers: [copilot, codexProvider, claudeProvider] };
 }
 
 export function registerAgentProvidersRoutes(routes: Route[], ctx: AgentProvidersRouteContext): void {
     routes.push({
         method: 'GET',
         pattern: '/api/agent-providers',
-        handler: (_req, res) => {
-            const body = buildAgentProvidersResponse(ctx);
+        handler: async (_req, res) => {
+            const body = await buildAgentProvidersResponse(ctx);
             sendJson(res, body);
         },
     });
@@ -94,6 +128,7 @@ export function registerAgentProvidersRoutes(routes: Route[], ctx: AgentProvider
         handler: async (_req, res) => {
             const config = ctx.runtimeConfigService.config;
             const codexEnabled = config.codex?.enabled ?? false;
+            const claudeEnabled = config.claude?.enabled ?? false;
 
             const providers: AgentProvidersQuotaResponse['providers'] = [];
 
@@ -126,6 +161,21 @@ export function registerAgentProvidersRoutes(routes: Route[], ctx: AgentProvider
             // Codex quota — SDK has no quota method; silently return empty
             if (codexEnabled) {
                 providers.push({ id: 'codex', quotaTypes: [] });
+            }
+
+            // Claude quota — SDK has no quota method; return empty or unavailable
+            if (claudeEnabled) {
+                try {
+                    const availability = await ctx.getClaudeAvailability();
+                    if (availability.available) {
+                        providers.push({ id: 'claude', quotaTypes: [] });
+                    } else {
+                        providers.push({ id: 'claude', quotaTypes: [], error: availability.error ?? 'Claude not available' });
+                    }
+                } catch (err: unknown) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    providers.push({ id: 'claude', quotaTypes: [], error: msg });
+                }
             }
 
             const body: AgentProvidersQuotaResponse = { providers };

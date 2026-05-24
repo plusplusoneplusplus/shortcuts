@@ -23,7 +23,7 @@ export interface CLITaskExecutorOptions {
     askUser?: { enabled: boolean };
     memoryPromotion?: MemoryPromoteConfig;
     /** Active AI provider name recorded on each process for attribution. Defaults to 'copilot'. */
-    provider?: 'copilot' | 'codex';
+    provider?: 'copilot' | 'codex' | 'claude';
     /**
      * Resolve an ISDKService for a given provider, checking enablement.
      * Supplied by the server so executors can perform per-chat routing without

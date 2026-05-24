@@ -219,13 +219,17 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         if (!cfg.codex) { cfg.codex = {}; }
         cfg.codex.enabled = v;
     }),
+    bool('claude.enabled', (cfg, v) => {
+        if (!cfg.claude) { cfg.claude = {}; }
+        cfg.claude.enabled = v;
+    }),
     {
         key: 'activeProvider',
         runtime: 'live',
-        validate: (v) => v === 'copilot' || v === 'codex'
+        validate: (v) => v === 'copilot' || v === 'codex' || v === 'claude'
             ? undefined
-            : 'activeProvider must be "copilot" or "codex"',
-        apply: (cfg, v) => { cfg.activeProvider = v as 'copilot' | 'codex'; },
+            : 'activeProvider must be "copilot", "codex", or "claude"',
+        apply: (cfg, v) => { cfg.activeProvider = v as 'copilot' | 'codex' | 'claude'; },
     },
 
     bool('features.focusedDiff', (cfg, v) => {

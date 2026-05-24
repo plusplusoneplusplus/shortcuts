@@ -252,10 +252,10 @@ export type PostAction =
 // ============================================================================
 
 /** Supported AI provider IDs for per-chat routing. */
-export type ChatProvider = 'copilot' | 'codex';
+export type ChatProvider = 'copilot' | 'codex' | 'claude';
 
 /** Supported ChatProvider values (for runtime validation). */
-export const VALID_CHAT_PROVIDERS: ReadonlySet<ChatProvider> = new Set(['copilot', 'codex']);
+export const VALID_CHAT_PROVIDERS: ReadonlySet<ChatProvider> = new Set(['copilot', 'codex', 'claude']);
 
 export interface ChatPayload {
     readonly kind: 'chat';

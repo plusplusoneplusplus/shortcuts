@@ -22,7 +22,7 @@ import type { ExecutionServerOptions, ExecutionServer, ServerCloseOptions } from
 import type { Route } from './types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ModelInfo } from '@plusplusoneplusplus/forge';
-import { sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, modelMetadataStore, registerCodexSDKService } from '@plusplusoneplusplus/forge';
+import { sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, SDK_PROVIDER_CLAUDE, modelMetadataStore, registerCodexSDKService, registerClaudeSDKService } from '@plusplusoneplusplus/forge';
 import { cleanupAllStalePasteFiles } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueRouter } from './queue/multi-repo-queue-router';
 import { createQueueInfrastructure } from './infrastructure/queue-infrastructure';
@@ -214,20 +214,34 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         };
     });
 
-    const requestedProvider = resolvedConfig.activeProvider === 'codex' ? 'codex' : 'copilot';
+    // Register the Claude provider unconditionally so the /api/agent-providers
+    // endpoint and per-chat routing can check availability regardless of whether
+    // claude.enabled was set at startup. Live config gates actual usage.
+    registerClaudeSDKService();
+
+    const requestedProvider = resolvedConfig.activeProvider === 'codex' ? 'codex'
+        : resolvedConfig.activeProvider === 'claude' ? 'claude'
+        : 'copilot';
     const effectiveProvider = requestedProvider === 'codex' && sdkServiceRegistry.has(SDK_PROVIDER_CODEX)
         ? 'codex'
-        : 'copilot';
+        : requestedProvider === 'claude' && sdkServiceRegistry.has(SDK_PROVIDER_CLAUDE)
+            ? 'claude'
+            : 'copilot';
     if (requestedProvider === 'codex' && effectiveProvider !== 'codex') {
         process.stderr.write('[ExecutionServer] activeProvider=codex requested, but Codex provider is not registered; falling back to Copilot\n');
     }
+    if (requestedProvider === 'claude' && effectiveProvider !== 'claude') {
+        process.stderr.write('[ExecutionServer] activeProvider=claude requested, but Claude provider is not registered; falling back to Copilot\n');
+    }
     const resolvedAiService = options.aiService ?? sdkServiceRegistry.getOrThrow(
-        effectiveProvider === 'codex' ? SDK_PROVIDER_CODEX : SDK_PROVIDER_COPILOT,
+        effectiveProvider === 'codex' ? SDK_PROVIDER_CODEX
+            : effectiveProvider === 'claude' ? SDK_PROVIDER_CLAUDE
+            : SDK_PROVIDER_COPILOT,
     );
 
     // Per-chat provider resolver: checks runtime enablement, then looks up the
-    // SDK service. Returns the Copilot service unconditionally; blocks Codex
-    // when codex.enabled is false in the live admin config.
+    // SDK service. Returns the Copilot service unconditionally; blocks Codex/Claude
+    // when their respective enabled flag is false in the live admin config.
     const resolveAiServiceForProvider = (provider: import('./tasks/task-types').ChatProvider): import('@plusplusoneplusplus/forge').ISDKService => {
         if (provider === 'codex') {
             const liveConfig = runtimeConfigService.config;
@@ -237,6 +251,17 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             const svc = sdkServiceRegistry.get(SDK_PROVIDER_CODEX);
             if (!svc) {
                 throw new Error('Codex SDK service is not available. Codex may not be installed on this server.');
+            }
+            return svc;
+        }
+        if (provider === 'claude') {
+            const liveConfig = runtimeConfigService.config;
+            if (!liveConfig.claude?.enabled) {
+                throw new Error('Claude provider is currently disabled. Enable Claude in Admin settings to use it.');
+            }
+            const svc = sdkServiceRegistry.get(SDK_PROVIDER_CLAUDE);
+            if (!svc) {
+                throw new Error('Claude SDK service is not available. Install @anthropic-ai/claude-code and restart the server.');
             }
             return svc;
         }
