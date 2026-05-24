@@ -69,6 +69,10 @@ jobs:
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
+      - name: Build coc-agent-sdk package
+        run: npm run build
+        working-directory: packages/coc-agent-sdk
+
       - name: Build forge package
         run: npm run build
         working-directory: packages/forge
@@ -130,6 +134,10 @@ jobs:
       - name: Install dependencies
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
+
+      - name: Build coc-agent-sdk package
+        run: npm run build
+        working-directory: packages/coc-agent-sdk
 
       - name: Build forge package
         run: npm run build
@@ -259,6 +267,10 @@ jobs:
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
+      - name: Build coc-agent-sdk package
+        run: npm run build
+        working-directory: packages/coc-agent-sdk
+
       - name: Build forge package
         run: npm run build
         working-directory: packages/forge
@@ -368,6 +380,10 @@ jobs:
       - name: Install dependencies
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
+
+      - name: Build coc-agent-sdk package
+        run: npm run build
+        working-directory: packages/coc-agent-sdk
 
       - name: Build forge package
         run: npm run build
@@ -515,6 +531,10 @@ jobs:
       - name: Install dependencies
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
+
+      - name: Build coc-agent-sdk package
+        run: npm run build
+        working-directory: packages/coc-agent-sdk
 
       - name: Build forge package
         run: npm run build
