@@ -80,6 +80,13 @@ export interface ConversationAreaProps {
     /** Called when the user cancels a queued/pending follow-up message. */
     onCancelPendingMessage?: (messageId: string) => void;
     /**
+     * Process-level failure reason (from `processDetails.error`). When set and
+     * the task status is `failed`, shown as an error banner — either replacing
+     * the "No conversation data" placeholder (0 turns) or appended after the
+     * last conversation turn.
+     */
+    processError?: string | null;
+    /**
      * Optional handle to the chat follow-up input. When provided,
      * vim-style `i` re-focuses the input from nav mode.
      */
@@ -131,6 +138,7 @@ export function ConversationArea({
     mcpOAuthPrompts,
     onMcpOAuthCompleted,
     onMcpOAuthFailed,
+    processError,
 }: ConversationAreaProps) {
     const [showArchived, setShowArchived] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -172,7 +180,21 @@ export function ConversationArea({
                         <Spinner size="sm" /> Loading conversation...
                     </div>
                 ) : turns.length === 0 ? (
-                    <div className="text-[#848484] text-sm">No conversation data available.</div>
+                    processError ? (
+                        <div
+                            className="flex items-start gap-3 p-3 rounded-lg bg-[#fdf3f3] dark:bg-[#3a1a1a] border border-[#f1707050] dark:border-[#f1707040]"
+                            data-testid="process-error-banner"
+                            role="alert"
+                        >
+                            <span className="text-[#d32f2f] dark:text-[#f48771] flex-shrink-0 text-base leading-5">⚠</span>
+                            <div className="min-w-0">
+                                <div className="text-sm font-semibold text-[#d32f2f] dark:text-[#f48771] mb-1">Task failed</div>
+                                <pre className="text-xs text-[#1f2328] dark:text-[#cccccc] whitespace-pre-wrap break-words font-mono">{processError}</pre>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="text-[#848484] text-sm">No conversation data available.</div>
+                    )
                 ) : (
                     <div className="space-y-3" ref={turnsContainerRef}>
                         {/* Pinned messages section */}
@@ -357,6 +379,19 @@ export function ConversationArea({
                         )}
                         {backgroundTasks && backgroundTasks.backgroundTotalActive > 0 && (
                             <BackgroundTasksIndicator backgroundTasks={backgroundTasks} />
+                        )}
+                        {processError && task?.status === 'failed' && (
+                            <div
+                                className="flex items-start gap-3 p-3 rounded-lg bg-[#fdf3f3] dark:bg-[#3a1a1a] border border-[#f1707050] dark:border-[#f1707040]"
+                                data-testid="process-error-banner"
+                                role="alert"
+                            >
+                                <span className="text-[#d32f2f] dark:text-[#f48771] flex-shrink-0 text-base leading-5">⚠</span>
+                                <div className="min-w-0">
+                                    <div className="text-sm font-semibold text-[#d32f2f] dark:text-[#f48771] mb-1">Task failed</div>
+                                    <pre className="text-xs text-[#1f2328] dark:text-[#cccccc] whitespace-pre-wrap break-words font-mono">{processError}</pre>
+                                </div>
+                            </div>
                         )}
                     </div>
                 )}

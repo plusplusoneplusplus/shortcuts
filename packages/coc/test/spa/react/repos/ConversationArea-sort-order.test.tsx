@@ -53,3 +53,39 @@ describe('ConversationArea: turn ordering', () => {
         expect(CONVERSATION_AREA_SOURCE).toContain('nextTurnIndex');
     });
 });
+
+describe('ConversationArea: process error banner', () => {
+    it('accepts a processError prop in ConversationAreaProps', () => {
+        expect(CONVERSATION_AREA_SOURCE).toContain('processError?:');
+    });
+
+    it('renders a process-error-banner when processError is provided', () => {
+        expect(CONVERSATION_AREA_SOURCE).toContain('process-error-banner');
+    });
+
+    it('shows the error banner in the zero-turns case when processError is set', () => {
+        // The banner should replace the generic "No conversation data available." message
+        // when a processError is provided (failed task with no turns).
+        expect(CONVERSATION_AREA_SOURCE).toContain('processError ?');
+        // Generic fallback must still exist for the no-error zero-turns case
+        expect(CONVERSATION_AREA_SOURCE).toContain('No conversation data available.');
+    });
+
+    it('shows the error banner after turns when the task failed with an error', () => {
+        // The banner is also rendered inside the turns branch for failed tasks
+        // that produced some turns before failing.
+        expect(CONVERSATION_AREA_SOURCE).toContain("task?.status === 'failed'");
+    });
+
+    it('labels the banner with "Task failed" heading', () => {
+        expect(CONVERSATION_AREA_SOURCE).toContain('Task failed');
+    });
+
+    it('passes processError from ChatDetail to ConversationArea', () => {
+        const chatDetailSource = fs.readFileSync(
+            path.join(REPOS_DIR, 'ChatDetail.tsx'), 'utf-8'
+        );
+        expect(chatDetailSource).toContain('processError={processDetails?.error');
+    });
+});
+
