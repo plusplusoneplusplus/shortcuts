@@ -86,7 +86,7 @@ async function seedSession(
         completedAt: '2026-05-11T03:00:00Z',
         terminalReason: 'CAP_REACHED' as RalphTerminalReason,
         iterations: [
-            { iteration: 10, taskId: 't10', processId: 'queue_p10', startedAt: '2026-05-11T02:50:00Z', endedAt: '2026-05-11T03:00:00Z', status: 'completed' },
+            { iteration: 10, loopIndex: 1, taskId: 't10', processId: 'queue_p10', startedAt: '2026-05-11T02:50:00Z', endedAt: '2026-05-11T03:00:00Z', status: 'completed' },
         ],
         ...overrides,
     }));

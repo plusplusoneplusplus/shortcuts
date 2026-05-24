@@ -13,6 +13,7 @@ import { getRepoDataPath } from '../paths';
 import type {
     ParsedProgressSection,
     RalphExitSignal,
+    RalphLoopRecord,
     RalphSessionRecord,
 } from './types';
 
@@ -140,7 +141,7 @@ export class RalphSessionStore {
             throw err;
         }
         try {
-            return JSON.parse(raw) as RalphSessionRecord;
+            return normaliseSessionRecord(JSON.parse(raw));
         } catch {
             return null;
         }
@@ -300,6 +301,33 @@ export class RalphSessionStore {
             await fd.close();
         }
     }
+}
+
+// ============================================================================
+// Normalisation — read-time migration shim
+// ============================================================================
+
+/**
+ * Normalise a raw deserialized `session.json` object.
+ *
+ * Handles pre-existing records that lack `loopIndex` on iteration entries:
+ * those iterations are treated as belonging to loop 1.
+ *
+ * No file writes are triggered — normalisation is applied in memory only.
+ */
+export function normaliseSessionRecord(raw: unknown): RalphSessionRecord {
+    const rec = raw as RalphSessionRecord;
+    if (!rec || typeof rec !== 'object') return rec;
+
+    if (Array.isArray(rec.iterations)) {
+        rec.iterations = rec.iterations.map(iter =>
+            (iter as any).loopIndex == null
+                ? { ...iter, loopIndex: 1 }
+                : iter,
+        );
+    }
+
+    return rec;
 }
 
 // ============================================================================

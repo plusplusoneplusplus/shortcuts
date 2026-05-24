@@ -298,12 +298,26 @@ export type RalphTerminalReason =
 
 export interface RalphIterationRecord {
   iteration: number;
+  /** 1-based index of the loop this iteration belongs to. */
+  loopIndex: number;
   taskId: string;
   processId: string;
   startedAt: string;
   endedAt?: string;
   status: 'running' | 'completed' | 'failed' | 'cancelled';
   exitSignal?: RalphExitSignal;
+}
+
+/** Metadata for a single goal-phase (loop) within a Ralph session. */
+export interface RalphLoopRecord {
+  /** 1-based loop index. */
+  loopIndex: number;
+  goal: string;
+  startIteration: number;
+  endIteration?: number;
+  terminalReason?: RalphTerminalReason;
+  startedAt: string;
+  completedAt?: string;
 }
 
 export interface RalphSessionRecord {
@@ -317,6 +331,8 @@ export interface RalphSessionRecord {
   completedAt?: string;
   terminalReason?: RalphTerminalReason;
   iterations: RalphIterationRecord[];
+  /** Multi-loop history. Absent on pre-existing single-loop sessions. */
+  loops?: RalphLoopRecord[];
 }
 
 export interface ParsedProgressSection {

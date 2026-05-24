@@ -9,6 +9,7 @@ import * as path from 'path';
 import {
     RalphSessionStore,
     parseProgressSections,
+    normaliseSessionRecord,
 } from '../../../src/server/ralph/ralph-session-store';
 
 let dataDir: string;
@@ -269,5 +270,75 @@ describe('RalphSessionStore — size cap', () => {
         const contents = await fs.promises.readFile(store.getProgressPath(WS, SID), 'utf-8');
         expect(contents).not.toContain('Ralph Session (truncated)');
         expect(contents).toContain('## Iteration 1 — RALPH_NEXT — t');
+    });
+});
+
+describe('normaliseSessionRecord', () => {
+    it('sets loopIndex: 1 on iterations that lack the field', () => {
+        const raw = {
+            sessionId: 's1',
+            workspaceId: 'ws1',
+            originalGoal: 'goal',
+            maxIterations: 5,
+            currentIteration: 2,
+            phase: 'complete',
+            startedAt: '2026-01-01T00:00:00Z',
+            iterations: [
+                { iteration: 1, taskId: 't1', processId: 'p1', startedAt: '2026-01-01T00:00:00Z', status: 'completed' },
+                { iteration: 2, taskId: 't2', processId: 'p2', startedAt: '2026-01-01T01:00:00Z', status: 'completed' },
+            ],
+        };
+        const result = normaliseSessionRecord(raw);
+        expect(result.iterations[0].loopIndex).toBe(1);
+        expect(result.iterations[1].loopIndex).toBe(1);
+    });
+
+    it('leaves loopIndex unchanged when already set', () => {
+        const raw = {
+            sessionId: 's1',
+            workspaceId: 'ws1',
+            originalGoal: 'goal',
+            maxIterations: 10,
+            currentIteration: 5,
+            phase: 'complete',
+            startedAt: '2026-01-01T00:00:00Z',
+            iterations: [
+                { iteration: 1, loopIndex: 1, taskId: 't1', processId: 'p1', startedAt: '2026-01-01T00:00:00Z', status: 'completed' },
+                { iteration: 5, loopIndex: 2, taskId: 't5', processId: 'p5', startedAt: '2026-01-01T04:00:00Z', status: 'completed' },
+            ],
+        };
+        const result = normaliseSessionRecord(raw);
+        expect(result.iterations[0].loopIndex).toBe(1);
+        expect(result.iterations[1].loopIndex).toBe(2);
+    });
+
+    it('handles records with no iterations gracefully', () => {
+        const raw = {
+            sessionId: 's1',
+            workspaceId: 'ws1',
+            originalGoal: 'goal',
+            maxIterations: 5,
+            currentIteration: 0,
+            phase: 'executing',
+            startedAt: '2026-01-01T00:00:00Z',
+            iterations: [],
+        };
+        const result = normaliseSessionRecord(raw);
+        expect(result.iterations).toEqual([]);
+    });
+
+    it('round-trips through readSessionRecord persisting loopIndex', async () => {
+        await store.initSession(WS, SID, { originalGoal: 'g', maxIterations: 3 });
+        // Write a session.json without loopIndex on iterations
+        const recordPath = store.getSessionRecordPath(WS, SID);
+        const raw = JSON.parse(await fs.promises.readFile(recordPath, 'utf-8'));
+        raw.iterations = [
+            { iteration: 1, taskId: 't1', processId: 'p1', startedAt: '2026-01-01T00:00:00Z', status: 'completed', exitSignal: 'RALPH_NEXT' },
+        ];
+        await fs.promises.writeFile(recordPath, JSON.stringify(raw, null, 2), 'utf-8');
+
+        const read = await store.readSessionRecord(WS, SID);
+        expect(read).not.toBeNull();
+        expect(read!.iterations[0].loopIndex).toBe(1);
     });
 });
