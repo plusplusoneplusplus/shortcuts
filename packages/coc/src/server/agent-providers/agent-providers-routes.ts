@@ -20,7 +20,7 @@ import { sendJson } from '../shared/router';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
 import type { CodexAuthInfo } from '../codex-auth/codex-auth-store';
 import type { AgentProviderStatus, AgentProvidersResponse, AgentProvidersQuotaResponse, ProviderQuotaType } from '@plusplusoneplusplus/coc-client';
-import type { CopilotSDKService, IAvailabilityResult } from '@plusplusoneplusplus/forge';
+import type { CopilotSDKService, IAvailabilityResult, CodexSDKService } from '@plusplusoneplusplus/forge';
 
 export interface AgentProvidersRouteContext {
     runtimeConfigService: RuntimeConfigService;
@@ -32,6 +32,8 @@ export interface AgentProvidersRouteContext {
     serverBaseUrl: string;
     /** Optional: getter for Copilot account quota. Used by the quota endpoint. */
     getCopilotSdkService?: () => CopilotSDKService;
+    /** Optional: getter for Codex account quota. Used by the quota endpoint. */
+    getCodexSdkService?: () => CodexSDKService | undefined;
 }
 
 /** Build the providers array from live config + auth/SDK state. Exported for unit testing. */
@@ -158,9 +160,32 @@ export function registerAgentProvidersRoutes(routes: Route[], ctx: AgentProvider
                 providers.push({ id: 'copilot', quotaTypes: [], error: msg });
             }
 
-            // Codex quota — SDK has no quota method; silently return empty
+            // Codex quota via app-server RPC
             if (codexEnabled) {
-                providers.push({ id: 'codex', quotaTypes: [] });
+                try {
+                    const codexService = ctx.getCodexSdkService?.();
+                    if (!codexService) {
+                        providers.push({ id: 'codex', quotaTypes: [] });
+                    } else {
+                        const result = await codexService.getAccountQuota();
+                        const quotaTypes: ProviderQuotaType[] = Object.entries(result.quotaSnapshots).map(
+                            ([type, snap]) => ({
+                                type,
+                                isUnlimitedEntitlement: snap.isUnlimitedEntitlement,
+                                usedRequests: snap.usedRequests,
+                                entitlementRequests: snap.entitlementRequests,
+                                remainingPercentage: snap.remainingPercentage,
+                                usageAllowedWithExhaustedQuota: snap.usageAllowedWithExhaustedQuota,
+                                overage: snap.overage,
+                                resetDate: snap.resetDate,
+                            }),
+                        );
+                        providers.push({ id: 'codex', quotaTypes });
+                    }
+                } catch (err: unknown) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    providers.push({ id: 'codex', quotaTypes: [], error: msg });
+                }
             }
 
             // Claude quota — SDK has no quota method; return empty or unavailable
