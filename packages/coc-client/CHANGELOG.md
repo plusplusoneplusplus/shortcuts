@@ -1,6 +1,6 @@
-# @plusplusoneplusplus/forge
+# @plusplusoneplusplus/coc-client
 
-## 1.3.0
+## 0.2.0
 
 ### Minor Changes
 
@@ -15,33 +15,3 @@
   - Classification stored as CoC conversation in process store, cached by PR ID + head SHA
   - `headSha` and `baseSha` added to canonical `PullRequest` type (GitHub and ADO adapters)
   - `PullRequestsClient` extended with `classify()` and `getClassification()` methods
-
-## 1.2.0
-
-### Minor Changes
-
-- Migrate the storage to SQLite
-
-## 1.1.0
-
-### Minor Changes
-
-- Improvements and bug fixes.
-
-## 1.0.3
-
-### Patch Changes
-
-- bug fixes
-
-## 1.0.2
-
-### Patch Changes
-
-- Minor updates
-
-## 1.0.1
-
-### Patch Changes
-
-- 62faf71: Publish the packages in separate ones.
