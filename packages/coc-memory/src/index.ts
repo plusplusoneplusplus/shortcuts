@@ -82,3 +82,12 @@ export type { HybridSearchOptions } from './hybrid-search';
 export { HybridSearchEngine } from './hybrid-search';
 export type { BackfillResult } from './embedding-indexer';
 export { EmbeddingBackfillService } from './embedding-indexer';
+
+// Capture service (AC-04)
+export type { CaptureExplicitInput, CaptureFromTurnResult } from './capture-service';
+export {
+    MemoryCaptureService,
+    isTurnEligibleForExtraction,
+    noopExtractor,
+    createFnExtractor,
+} from './capture-service';
