@@ -18,7 +18,7 @@ import { AddFolderDialog } from './AddFolderDialog';
 import { groupReposByRemote, groupReposByAgent, applyGroupOrder, groupKey } from './repoGrouping';
 import type { RepoData, RepoGroup } from './repoGrouping';
 import { getGlobalPreferences, updateGlobalPreferences } from './repositoryService';
-import { isContainerMode } from '../utils/config';
+import { isContainerMode, isContainerDefaultAgentEnabled } from '../utils/config';
 
 const GROUP_DRAG_MIME = 'application/x-git-group-drag';
 const GROUP_EXPANDED_KEY = 'coc-git-group-expanded-state';
@@ -374,7 +374,29 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
                     )
                 ) : agentGroups ? (
                     /* Container mode: agent sections wrapping remote groups */
-                    agentGroups.map((ag) => {
+                    <>
+                        {/* Default container agent entry — pinned at top */}
+                        {isContainerDefaultAgentEnabled() && (
+                            <button
+                                data-testid="default-container-agent-entry"
+                                className={cn(
+                                    'flex items-center gap-2 w-full text-left px-3 py-2 rounded transition-colors mb-2',
+                                    state.selectedRepoId === '__container_default__'
+                                        ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/15 border border-[#0078d4]/40 dark:border-[#3794ff]/40'
+                                        : 'bg-[#f8f8f8] dark:bg-[#252526] hover:bg-[#e8e8e8] dark:hover:bg-[#2a2a2a] border border-[#e0e0e0] dark:border-[#3c3c3c]',
+                                )}
+                                onClick={() => {
+                                    dispatch({ type: 'SET_CURRENT_AGENT', agentId: null });
+                                    dispatch({ type: 'SET_SELECTED_REPO', id: '__container_default__' });
+                                    location.hash = '#container-session';
+                                }}
+                            >
+                                <span className="text-base">🌐</span>
+                                <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Default</span>
+                                <span className="ml-auto text-[10px] text-[#848484] italic">smart routing</span>
+                            </button>
+                        )}
+                        {agentGroups.map((ag) => {
                         const agentKey = ag.normalizedUrl ?? 'unknown';
                         const isExpanded = expandedState[`agent:${agentKey}`] !== false;
                         // Sub-group this agent's repos by remote
@@ -405,7 +427,8 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
                                 )}
                             </div>
                         );
-                    })
+                    })}
+                    </>
                 ) : (
                     groups.map((group, idx) => renderGroup(group, idx))
                 )}

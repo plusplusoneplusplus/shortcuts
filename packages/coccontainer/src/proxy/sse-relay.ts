@@ -57,6 +57,16 @@ export class SSERelay extends EventEmitter {
                     buffer = lastIdx >= 0 ? buffer.slice(lastIdx + 2) : buffer;
 
                     for (const event of events) {
+                        // Log relay dispatch with event type
+                        try {
+                            const parsed = JSON.parse(event.data);
+                            const type = parsed.type || event.event || 'unknown';
+                            const processId = parsed.process?.id || '';
+                            const status = parsed.process?.status || '';
+                            console.log(`[sse-relay] 📨 Received from ${agentName}: type=${type} process=${processId} status=${status} → dispatching to ${this.listenerCount('event')} subscriber(s)`);
+                        } catch {
+                            console.log(`[sse-relay] 📨 Received event from ${agentName} → dispatching to ${this.listenerCount('event')} subscriber(s)`);
+                        }
                         this.emit('event', event);
                     }
                 });

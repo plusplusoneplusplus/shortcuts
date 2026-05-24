@@ -2,16 +2,20 @@
  * TeamsBridge — glue between WS relay / agent proxy and TeamsBot.
  *
  * Only imported via dynamic import when messaging.teams.enabled is true.
- * Uses Graph API (default) or MCP server for communication, selected via config.mode.
+ * Uses MCP server for communication (Graph API disabled — az CLI tokens lack Chat permissions).
  * The transport is abstracted behind the TeamsTransport interface.
- * On startup, resolves team/channel names to IDs via the transport.
- * Auth tokens are acquired via browser OAuth (acquireTokenViaBrowser) and
- * cached/refreshed via acquireMcpOAuthToken.
+ *
+ * Outbound flow:
+ * - Subscribes to the same WS relay that feeds the web client (no extra connections).
+ * - On process-updated (running): HTTP-fetches process, forwards new user turns,
+ *   tracks last assistant content.
+ * - On process-updated (completed): sends the last tracked message to Teams.
  */
 
 import type { InboundTeamsMessage, BotStatus, TeamsTransport } from '@plusplusoneplusplus/teams-bot';
 import { TeamsBot, createTransport, acquireMcpOAuthToken } from '@plusplusoneplusplus/teams-bot';
 import type { WebSocketRelay, WSRelayMessage } from '../proxy/ws-relay';
+import type { SSERelay, SSEEvent } from '../proxy/sse-relay';
 import type { AgentStore } from '../store/agent-store';
 import type { TunnelBridge } from '../proxy/tunnel-bridge';
 import type { ResolvedTeamsConfig } from '../config';
@@ -21,6 +25,7 @@ export interface TeamsBridgeOptions {
     config: ResolvedTeamsConfig;
     dataDir: string;
     wsRelay: WebSocketRelay;
+    sseRelay: SSERelay;
     agentStore: AgentStore;
     tunnelBridge: TunnelBridge;
 }
@@ -42,7 +47,12 @@ export class TeamsBridge {
     private bot: TeamsBot | null = null;
     private transport: TeamsTransport;
     private wsHandler: ((msg: WSRelayMessage) => void) | null = null;
-    private _runningLocks: Set<string> | undefined;
+    private sseHandler: ((event: SSEEvent) => void) | null = null;
+    private _completionSent = new Set<string>();
+    /** Track latest assistant content per process (updated on each WS event) */
+    private _lastAssistantContent = new Map<string, string>();
+    /** Track user turn count per process to detect new user turns */
+    private _userTurnCount = new Map<string, number>();
     private _workspaceNameCache = new Map<string, string>();
     private _azToken: string | null = null;
 
@@ -113,12 +123,19 @@ export class TeamsBridge {
 
         this.wsHandler = (msg) => this.onWsMessage(msg);
         this.opts.wsRelay.on('message', this.wsHandler);
+
+        this.sseHandler = (event) => this.onSSEEvent(event);
+        this.opts.sseRelay.on('event', this.sseHandler);
     }
 
     async stop(): Promise<void> {
         if (this.wsHandler) {
             this.opts.wsRelay.off('message', this.wsHandler);
             this.wsHandler = null;
+        }
+        if (this.sseHandler) {
+            this.opts.sseRelay.off('event', this.sseHandler);
+            this.sseHandler = null;
         }
         await this.bot?.stop();
         this.bot = null;
@@ -316,8 +333,31 @@ export class TeamsBridge {
     }
 
     // ── Outbound: CoC process update → Teams ────────────
+    // Teams-bridge subscribes to BOTH the WS relay and the SSE relay.
+    // Each relay carries different data:
+    //
+    // WS Relay (WSRelayMessage):
+    //   - data: JSON string with { type, process: ProcessSummary }
+    //   - ProcessSummary has: id, status, title, lastMessagePreview (~120 chars)
+    //   - Used for: detecting status changes (running → completed)
+    //
+    // SSE Relay (SSEEvent):
+    //   - event: SSE event name (e.g., "process-updated", "chunk")
+    //   - data: JSON string payload (varies by event type)
+    //   - id: optional event ID for resumability
+    //   - Used for: future per-event-type handling (e.g., streaming chunks)
+    //
+    // On process-updated events (from either relay):
+    // - running: fetch process, forward new user turns, track last assistant content
+    // - completed: send the last tracked assistant content (or task_complete summary) to Teams
+
+    /**
+     * Handle WS relay messages.
+     * WS relay delivers: { agentId, agentName, data: "<JSON>" }
+     * where data contains { type: "process-updated", process: ProcessSummary }
+     */
     private async onWsMessage(msg: WSRelayMessage): Promise<void> {
-        if (!this.bot) { console.log('[teams-bridge] WS ignored: bot is null'); return; }
+        if (!this.bot) return;
         if (!this.store) return;
 
         let parsed: Record<string, unknown>;
@@ -335,150 +375,362 @@ export class TeamsBridge {
         const processId = proc.id as string;
         if (!processId) return;
 
+        console.log(`[teams-bridge] 📥 WS event: process=${processId} status=${status}`);
+
         if (status !== 'completed' && status !== 'running') return;
 
-        // Prevent concurrent processing of the same process (watermark prevents duplicate sends)
-        if (!this._runningLocks) this._runningLocks = new Set();
-        if (this._runningLocks.has(processId)) return;
-        this._runningLocks.add(processId);
+        if (status === 'completed') {
+            await this.handleCompletion(processId, msg, proc);
+        } else {
+            await this.handleRunning(processId, msg, proc);
+        }
+    }
 
-        let target = this.bot.getChannelId() ?? this.opts.config.channelId;
-        if (!target) {
-            console.warn('[teams-bridge] No target (chatId/channelId) available — skipping outbound');
-            this._runningLocks.delete(processId);
+    /**
+     * Handle SSE relay events.
+     * SSE relay delivers: { agentId, agentName, event?: string, data: string, id?: string }
+     * The `event` field is the SSE event name (e.g., "process-updated").
+     * The `data` field is the JSON payload.
+     * The `id` field is the SSE event ID for resumability.
+     *
+     * Currently SSE relay carries the same process-updated events as WS.
+     * In the future, it could carry per-process streaming chunks directly.
+     */
+    private async onSSEEvent(event: SSEEvent): Promise<void> {
+        if (!this.bot) return;
+        if (!this.store) return;
+
+        let parsed: Record<string, unknown>;
+        try {
+            parsed = JSON.parse(event.data);
+        } catch {
             return;
         }
 
-        // Skip if Teams bot is not connected
-        if (!this.bot || this.bot.getStatus() !== 'connected') {
-            this._runningLocks.delete(processId);
-            return;
-        }
+        // SSE events have an explicit event name field
+        const eventType = event.event || (parsed.type as string) || 'unknown';
+        if (eventType !== 'process-updated') return;
 
-        const agentId = msg.agentId;
-        const agentAddr = this.getAgentAddress(agentId);
-        if (!agentAddr) {
-            console.warn(`[teams-bridge] No address for agent ${agentId} (${msg.agentName}) — skipping outbound`);
-            this._runningLocks.delete(processId);
-            return;
-        }
+        const proc = parsed.process as Record<string, unknown> | undefined;
+        if (!proc) return;
 
-        console.log(`[teams-bridge] Process ${processId} status=${status} from=${msg.agentName}, target=${target}`);
+        const status = proc.status as string;
+        const processId = proc.id as string;
+        if (!processId) return;
+
+        console.log(`[teams-bridge] 📥 SSE event: type=${eventType} process=${processId} status=${status}`);
+
+        if (status !== 'completed' && status !== 'running') return;
+
+        // Construct a WSRelayMessage to reuse existing handlers
+        const msg: WSRelayMessage = {
+            agentId: event.agentId,
+            agentName: event.agentName,
+            data: event.data,
+        };
+
+        if (status === 'completed') {
+            await this.handleCompletion(processId, msg, proc);
+        } else {
+            await this.handleRunning(processId, msg, proc);
+        }
+    }
+
+    /**
+     * Handle running status: fetch process, forward new user turns,
+     * track latest assistant content for when completion arrives.
+     */
+    private async handleRunning(
+        processId: string,
+        msg: WSRelayMessage,
+        proc: Record<string, unknown>,
+    ): Promise<void> {
+        const agentAddr = this.getAgentAddress(msg.agentId);
+        if (!agentAddr) return;
+        if (!this.bot || this.bot.getStatus() !== 'connected') return;
+
+        const workspaceId = (proc.workspaceId ?? proc.workspace) as string || '';
 
         try {
-            const workspaceId = (proc.workspaceId ?? proc.workspace) as string || '';
             const url = `${agentAddr}/api/processes/${processId}?workspaceId=${encodeURIComponent(workspaceId)}`;
+            console.log(`[teams-bridge] 🔍 Fetching process: ${url}`);
             const res = await fetch(url);
             if (!res.ok) {
-                console.warn(`[teams-bridge] Process fetch failed: ${res.status} from ${url}`);
-                this._runningLocks.delete(processId);
+                console.log(`[teams-bridge] ⚠️ Fetch failed: ${res.status}`);
                 return;
             }
+
             const body = await res.json() as Record<string, unknown>;
             const processData = (body.process ?? body) as Record<string, unknown>;
             const turns = (processData.conversationTurns ?? processData.conversation ?? processData.turns) as Array<{ role: string; content?: string; text?: string; streaming?: boolean }> | undefined;
             if (!turns || turns.length === 0) {
-                console.log(`[teams-bridge] Process ${processId}: no turns found`);
-                this._runningLocks.delete(processId);
+                console.log(`[teams-bridge] ⚠️ No turns in response for ${processId}`);
                 return;
             }
 
-            const lastSeen = this.store!.getWatermark(processId);
-            console.log(`[teams-bridge] Process ${processId}: ${turns.length} turns, watermark=${lastSeen}`);
-
-            // Skip streaming turns
-            let sendableEnd = turns.length;
-            for (let i = turns.length - 1; i >= lastSeen; i--) {
-                if (turns[i].streaming) { sendableEnd = i; continue; }
-                break;
+            // Log all turns received
+            console.log(`[teams-bridge] 📋 Process ${processId}: got ${turns.length} turn(s):`);
+            for (let i = 0; i < turns.length; i++) {
+                const t = turns[i];
+                const content = (t.content ?? t.text ?? '').trim();
+                const streaming = t.streaming ? ' [streaming]' : '';
+                console.log(`[teams-bridge]   turn[${i}] role=${t.role}${streaming} (${content.length} chars): ${content.substring(0, 80)}`);
             }
 
-            const newTurns = turns.slice(lastSeen, sendableEnd);
-            if (newTurns.length === 0) {
-                console.log(`[teams-bridge] Process ${processId}: no new turns to send (lastSeen=${lastSeen}, sendableEnd=${sendableEnd})`);
-                this._runningLocks.delete(processId);
-                return;
+            // Forward new user turns
+            let currentUserCount = 0;
+            for (const turn of turns) {
+                if (turn.role === 'user') currentUserCount++;
             }
+            const prevUserCount = this._userTurnCount.get(processId) ?? 0;
+            if (currentUserCount > prevUserCount) {
+                this._userTurnCount.set(processId, currentUserCount);
+                this._completionSent.delete(processId);
+                this._lastAssistantContent.delete(processId);
 
-            console.log(`[teams-bridge] Process ${processId}: sending ${newTurns.length} new turn(s) to target=${target}`);
-
-            // Advance watermark BEFORE sending — prevents infinite retry on send failure
-            if (sendableEnd > lastSeen) {
-                this.store!.setWatermark(processId, sendableEnd);
-            }
-
-            const repoName = await this.resolveWorkspaceName(
-                proc.workspaceName as string | undefined,
-                (processData.metadata as Record<string, unknown> | undefined)?.workspaceName as string | undefined,
-                workspaceId,
-                agentAddr,
-            );
-            const title = (processData.title ?? proc.title ?? '') as string;
-
-            // Retrieve sender info for @mention notifications
-            const sender = this.store!.getProcessSender(processId);
-
-            for (const turn of newTurns) {
-                const content = (turn.content ?? turn.text ?? '') as string;
-                if (!content.trim()) continue;
-
-                const teamsText = this.formatOutboundMessage({
-                    role: turn.role,
-                    agent: msg.agentName,
-                    repo: repoName,
-                    title,
-                    content,
-                    botName: this.opts.config.botName,
-                    mentionName: sender?.senderName,
-                    processId,
-                });
-
-                try {
-                    const mentions = sender
-                        ? [{ aadId: sender.senderAadId, displayName: sender.senderName }]
-                        : undefined;
-                    const messageId = await this.bot!.send(target, teamsText, { mentions });
-                    console.log(`[teams-bridge] Sent message ${messageId} for process ${processId} (role=${turn.role})`);
-                    this.store!.bindMessage(messageId, processId, agentId, `${msg.agentName}:${repoName}`, workspaceId);
-                } catch (err: any) {
-                    // If NotFound, channel may be stale — re-resolve and retry once
-                    if (err?.message?.includes('NotFound') && this.opts.config.teamName) {
-                        console.warn(`[teams-bridge] Channel NotFound — re-resolving team/channel...`);
-                        this.opts.config.channelId = undefined;
-                        this.opts.config.teamId = undefined;
-                        await this.resolveTeamAndChannel();
-                        const newTarget = this.bot!.getChannelId();
-                        if (newTarget && newTarget !== target) {
-                            target = newTarget;
-                            try {
-                                const mentions = sender
-                                    ? [{ aadId: sender.senderAadId, displayName: sender.senderName }]
-                                    : undefined;
-                                const messageId = await this.bot!.send(target, teamsText, { mentions });
-                                console.log(`[teams-bridge] Sent message ${messageId} (after re-resolve) for process ${processId}`);
-                                this.store!.bindMessage(messageId, processId, agentId, `${msg.agentName}:${repoName}`, workspaceId);
-                            } catch (retryErr) {
-                                console.error('[teams-bridge] Retry after re-resolve also failed:', retryErr);
-                            }
-                        } else {
-                            console.error('[teams-bridge] Re-resolve did not produce a new channelId');
+                for (let i = turns.length - 1; i >= 0; i--) {
+                    if (turns[i].role === 'user') {
+                        const content = (turns[i].content ?? turns[i].text ?? '').trim();
+                        if (content) {
+                            console.log(`[teams-bridge] 📝 New user turn for ${processId} (${content.length} chars): ${content.substring(0, 100)}`);
+                            await this.sendToTeams(processId, 'user', content, msg.agentId, msg.agentName, workspaceId);
                         }
-                    } else {
-                        // Detect Graph API scope permission errors and suggest MCP mode
-                        if (err?.message?.includes('403') && err?.message?.includes('Missing scope permissions')) {
-                            console.error('[teams-bridge] ❌ Graph API 403: Token lacks ChatMessage.Send or Chat.ReadWrite scope.');
-                            console.error('[teams-bridge] 💡 Switch to MCP Server mode in Teams settings — az CLI tokens do not have Teams chat permissions.');
-                        } else {
-                            console.error('[teams-bridge] Failed to send outbound message:', err);
-                        }
+                        break;
                     }
                 }
             }
+
+            // Track latest assistant content — only keep the LAST non-streaming assistant message
+            for (let i = turns.length - 1; i >= 0; i--) {
+                const turn = turns[i];
+                if (turn.role === 'user') break;
+                if (turn.role === 'assistant' && !turn.streaming) {
+                    const content = (turn.content ?? turn.text ?? '').trim();
+                    if (content) {
+                        const prev = this._lastAssistantContent.get(processId);
+                        if (prev !== content) {
+                            this._lastAssistantContent.set(processId, content);
+                            console.log(`[teams-bridge] ✅ Kept as LAST message for ${processId} (turn[${i}], ${content.length} chars): ${content.substring(0, 120)}`);
+                        } else {
+                            console.log(`[teams-bridge] ⏭️ Same as previous last message, skipping update`);
+                        }
+                    }
+                    break;
+                }
+            }
         } catch (err) {
-            console.error('[teams-bridge] Failed to fetch process turns:', err);
-        } finally {
-            // Always release lock so future events can be processed
-            this._runningLocks.delete(processId);
+            console.log(`[teams-bridge] ❌ Error in handleRunning for ${processId}:`, err);
+        }
+    }
+
+    /**
+     * Handle completion: send final message to Teams.
+     * Uses tracked last assistant content or task_complete summary.
+     */
+    private async handleCompletion(
+        processId: string,
+        msg: WSRelayMessage,
+        proc: Record<string, unknown>,
+    ): Promise<void> {
+        const agentAddr = this.getAgentAddress(msg.agentId);
+        if (!agentAddr) return;
+        if (!this.bot || this.bot.getStatus() !== 'connected') return;
+
+        const workspaceId = (proc.workspaceId ?? proc.workspace) as string || '';
+
+        try {
+            const url = `${agentAddr}/api/processes/${processId}?workspaceId=${encodeURIComponent(workspaceId)}`;
+            console.log(`[teams-bridge] 🏁 Completion: fetching process ${processId}`);
+            const res = await fetch(url);
+            if (!res.ok) {
+                console.log(`[teams-bridge] ⚠️ Completion fetch failed: ${res.status}`);
+                return;
+            }
+
+            const body = await res.json() as Record<string, unknown>;
+            const processData = (body.process ?? body) as Record<string, unknown>;
+            const turns = (processData.conversationTurns ?? processData.conversation ?? processData.turns) as Array<{ role: string; content?: string; text?: string; streaming?: boolean; toolCalls?: Array<{ name: string; toolName?: string; args?: { summary?: string } }>; timeline?: Array<{ type: string; content?: string }> }> | undefined;
+            if (!turns || turns.length === 0) {
+                console.log(`[teams-bridge] ⚠️ No turns in completion response for ${processId}`);
+                return;
+            }
+
+            // Log all turns received on completion
+            console.log(`[teams-bridge] 🏁 Process ${processId} COMPLETED: got ${turns.length} turn(s):`);
+            for (let i = 0; i < turns.length; i++) {
+                const t = turns[i];
+                const content = (t.content ?? t.text ?? '').trim();
+                const streaming = t.streaming ? ' [streaming]' : '';
+                const hasToolCalls = t.toolCalls?.length ? ` [${t.toolCalls.length} tool call(s)]` : '';
+                console.log(`[teams-bridge]   turn[${i}] role=${t.role}${streaming}${hasToolCalls} (${content.length} chars): ${content.substring(0, 80)}`);
+            }
+
+            // Detect new user turns → reset completion tracking for new round
+            let currentUserCount = 0;
+            for (const turn of turns) {
+                if (turn.role === 'user') currentUserCount++;
+            }
+            const prevUserCount = this._userTurnCount.get(processId) ?? 0;
+            if (currentUserCount > prevUserCount) {
+                this._userTurnCount.set(processId, currentUserCount);
+                this._completionSent.delete(processId);
+                this._lastAssistantContent.delete(processId);
+
+                // Forward the new user turn
+                for (let i = turns.length - 1; i >= 0; i--) {
+                    if (turns[i].role === 'user') {
+                        const content = (turns[i].content ?? turns[i].text ?? '').trim();
+                        if (content) {
+                            await this.sendToTeams(processId, 'user', content, msg.agentId, msg.agentName, workspaceId);
+                        }
+                        break;
+                    }
+                }
+            }
+
+            if (this._completionSent.has(processId)) return;
+
+            // Find last user turn (start of current round)
+            let lastUserIdx = -1;
+            for (let i = turns.length - 1; i >= 0; i--) {
+                if (turns[i].role === 'user') { lastUserIdx = i; break; }
+            }
+
+            // Try task_complete summary first
+            let content: string | undefined;
+            for (let i = turns.length - 1; i > lastUserIdx; i--) {
+                const turn = turns[i];
+                if (turn.role === 'assistant' && turn.toolCalls) {
+                    const tc = turn.toolCalls.find(t => (t.name || t.toolName) === 'task_complete');
+                    if (tc?.args?.summary) {
+                        content = tc.args.summary;
+                        console.log(`[teams-bridge] Process ${processId}: found task_complete summary (${content.length} chars)`);
+                        break;
+                    }
+                }
+            }
+
+            // Fallback: last non-streaming assistant turn after last user turn
+            if (!content) {
+                for (let i = turns.length - 1; i > lastUserIdx; i--) {
+                    if (turns[i].role === 'assistant' && !turns[i].streaming) {
+                        content = (turns[i].content ?? turns[i].text ?? '').trim();
+                        if (content) break;
+                    }
+                }
+            }
+
+            // Final fallback: use tracked content from running events
+            if (!content) {
+                content = this._lastAssistantContent.get(processId);
+            }
+
+            if (content) {
+                this._completionSent.add(processId);
+                this._lastAssistantContent.delete(processId);
+
+                // Extract content chunks from the timeline of the last assistant turn.
+                // Only send the last chunk — it's the final prose the user cares about;
+                // intermediate chunks are just reasoning between tool calls.
+                const lastAssistantTurn = (() => {
+                    for (let i = turns.length - 1; i > lastUserIdx; i--) {
+                        if (turns[i].role === 'assistant' && !turns[i].streaming) return turns[i];
+                    }
+                    return undefined;
+                })();
+
+                const contentChunks = extractTimelineContentChunks(lastAssistantTurn?.timeline);
+                const messageToSend = contentChunks.length > 1
+                    ? contentChunks[contentChunks.length - 1]
+                    : content;
+
+                console.log(`[teams-bridge] *** SENDING FINAL MESSAGE for process ${processId} (${messageToSend.length} chars, from ${contentChunks.length > 1 ? 'last of ' + contentChunks.length + ' chunks' : 'full content'}):\n${messageToSend.substring(0, 300)}`);
+                await this.sendToTeams(processId, 'assistant', messageToSend, msg.agentId, msg.agentName, workspaceId);
+            }
+        } catch (err) {
+            console.error(`[teams-bridge] Failed to handle completion for ${processId}:`, err);
+        }
+    }
+
+    /**
+     * Send a message to Teams for a given process.
+     */
+    private async sendToTeams(
+        processId: string,
+        role: string,
+        content: string,
+        agentId: string,
+        agentName: string,
+        workspaceId: string,
+    ): Promise<void> {
+        if (!this.bot || !this.store) return;
+
+        let target = this.bot.getChannelId() ?? this.opts.config.channelId;
+        if (!target) {
+            console.warn('[teams-bridge] No target (chatId/channelId) available — skipping');
+            return;
+        }
+
+        if (this.bot.getStatus() !== 'connected') return;
+
+        const agentAddr = this.getAgentAddress(agentId);
+        const repoName = await this.resolveWorkspaceName(undefined, undefined, workspaceId, agentAddr || '');
+
+        // Fetch process title
+        let title = '';
+        if (agentAddr) {
+            try {
+                const res = await fetch(`${agentAddr}/api/processes/${processId}?workspaceId=${encodeURIComponent(workspaceId)}`);
+                if (res.ok) {
+                    const body = await res.json() as Record<string, unknown>;
+                    const pd = (body.process ?? body) as Record<string, unknown>;
+                    title = (pd.title ?? '') as string;
+                }
+            } catch { /* ignore */ }
+        }
+
+        const sender = this.store.getProcessSender(processId);
+        const teamsText = this.formatOutboundMessage({
+            role,
+            agent: agentName,
+            repo: repoName,
+            title,
+            content,
+            botName: this.opts.config.botName,
+            mentionName: sender?.senderName,
+            processId,
+        });
+
+        try {
+            const mentions = sender
+                ? [{ aadId: sender.senderAadId, displayName: sender.senderName }]
+                : undefined;
+            const messageId = await this.bot.send(target, teamsText, { mentions });
+            console.log(`[teams-bridge] ✅ Sent message ${messageId} for process ${processId} (role=${role}, ${content.length} chars)`);
+            this.store.bindMessage(messageId, processId, agentId, `${agentName}:${repoName}`, workspaceId);
+        } catch (err: any) {
+            if (err?.message?.includes('NotFound') && this.opts.config.teamName) {
+                console.warn(`[teams-bridge] Channel NotFound — re-resolving...`);
+                this.opts.config.channelId = undefined;
+                this.opts.config.teamId = undefined;
+                await this.resolveTeamAndChannel();
+                const newTarget = this.bot.getChannelId();
+                if (newTarget && newTarget !== target) {
+                    target = newTarget;
+                    try {
+                        const mentions = sender
+                            ? [{ aadId: sender.senderAadId, displayName: sender.senderName }]
+                            : undefined;
+                        const messageId = await this.bot.send(target, teamsText, { mentions });
+                        console.log(`[teams-bridge] ✅ Sent message ${messageId} (after re-resolve) for process ${processId}`);
+                        this.store.bindMessage(messageId, processId, agentId, `${agentName}:${repoName}`, workspaceId);
+                    } catch (retryErr) {
+                        console.error('[teams-bridge] Retry after re-resolve also failed:', retryErr);
+                    }
+                }
+            } else {
+                console.error('[teams-bridge] Failed to send outbound message:', err);
+            }
         }
     }
 
@@ -689,4 +941,23 @@ export class TeamsBridge {
         if (localUrl) return localUrl;
         return this.opts.agentStore.get(agentId)?.address;
     }
+}
+
+/**
+ * Extract content chunks from a turn's timeline array.
+ * Each timeline item with type === 'content' represents a separate prose chunk
+ * emitted between tool calls during streaming. Returns the non-empty chunks
+ * in order, or an empty array if no usable timeline is available.
+ */
+export function extractTimelineContentChunks(
+    timeline: Array<{ type: string; content?: string }> | undefined | null,
+): string[] {
+    if (!timeline || !Array.isArray(timeline) || timeline.length === 0) return [];
+    const chunks: string[] = [];
+    for (const item of timeline) {
+        if (item.type === 'content' && item.content?.trim()) {
+            chunks.push(item.content.trim());
+        }
+    }
+    return chunks;
 }

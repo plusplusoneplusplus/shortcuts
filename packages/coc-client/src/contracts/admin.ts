@@ -149,6 +149,7 @@ export interface RuntimeDashboardConfig {
     excalidrawEnabled: boolean;
     mcpOauthEnabled: boolean;
     focusedDiffEnabled: boolean;
+    containerDefaultAgentEnabled: boolean;
     codexEnabled: boolean;
     activeProvider: 'copilot' | 'codex';
   };

@@ -43,6 +43,16 @@ export class WebSocketRelay extends EventEmitter {
                 agentName,
                 data: data.toString(),
             };
+            // Log relay dispatch with event type
+            try {
+                const parsed = JSON.parse(message.data);
+                const type = parsed.type || 'unknown';
+                const processId = parsed.process?.id || '';
+                const status = parsed.process?.status || '';
+                console.log(`[ws-relay] 📨 Received from ${agentName}: type=${type} process=${processId} status=${status} → dispatching to ${this.listenerCount('message')} subscriber(s)`);
+            } catch {
+                console.log(`[ws-relay] 📨 Received raw data from ${agentName} → dispatching to ${this.listenerCount('message')} subscriber(s)`);
+            }
             this.emit('message', message);
         });
 

@@ -101,6 +101,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
             config: teamsConfig,
             dataDir: config.serve.dataDir,
             wsRelay,
+            sseRelay,
             agentStore,
             tunnelBridge,
         });
@@ -471,6 +472,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                                 config: resolvedTeamsConfig,
                                 dataDir: config.serve.dataDir,
                                 wsRelay,
+                                sseRelay,
                                 agentStore,
                                 tunnelBridge,
                             });

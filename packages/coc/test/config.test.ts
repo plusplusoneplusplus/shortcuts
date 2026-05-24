@@ -940,6 +940,9 @@ timeout: 300
                       "enabled": false,
                     },
                   },
+                  "containerDefaultAgent": {
+                    "enabled": false,
+                  },
                   "codex": {
                     "enabled": false,
                   },
