@@ -20,6 +20,7 @@ detailed architecture lives in its `references/*.md` files.
 | Dashboard SPA (`src/server/spa/`) | [dashboard-spa.md](../../.github/skills/coc-knowledge/references/dashboard-spa.md) |
 | REST endpoints | [rest-api.md](../../.github/skills/coc-knowledge/references/rest-api.md) |
 | Notes sync engine (`src/server/sync/`) | [sync.md](../../.github/skills/coc-knowledge/references/sync.md) |
+| SDK wrapper, Copilot/Codex providers, `ISDKService`, `SDKServiceRegistry` | [sdk-wrapper.md](../../.github/skills/coc-knowledge/references/sdk-wrapper.md) |
 
 Other domains (memory, workflow engine, prompt autocomplete, wiki serving,
 remote servers, task comments, llm-tools, sdk-wrapper, chat-prompt-history)

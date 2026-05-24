@@ -11,7 +11,7 @@ Guidance for AI agents working in this repository. NEVER create document files u
 
 ## Repo Layout (one-liner)
 
-npm workspaces monorepo with one frozen VS Code extension and four published Node packages (`forge`, `coc`, `coc-client`, `deep-wiki`). `packages/vscode-extension/` is **FROZEN — do not read, edit, or reason about its code.**
+npm workspaces monorepo with one frozen VS Code extension and five published Node packages (`forge`, `coc`, `coc-client`, `coc-agent-sdk`, `deep-wiki`). `packages/vscode-extension/` is **FROZEN — do not read, edit, or reason about its code.**
 
 ## Load the CoC Knowledge Skill
 
@@ -30,6 +30,7 @@ Quick-start pointers (full detail lives in the skill):
 - **Deep Wiki six-phase pipeline** → [deep-wiki.md](.github/skills/coc-knowledge/references/deep-wiki.md)
 - **REST API catalog** → [rest-api.md](.github/skills/coc-knowledge/references/rest-api.md)
 - **Notes Git sync engine** → [sync.md](.github/skills/coc-knowledge/references/sync.md)
+- **SDK wrapper, Codex support, provider registry** → [sdk-wrapper.md](.github/skills/coc-knowledge/references/sdk-wrapper.md)
 
 ## Hard Invariants (apply even before reading the skill)
 
@@ -37,6 +38,6 @@ Quick-start pointers (full detail lives in the skill):
 - **Repo-scoped data:** all per-repo runtime data lives under `~/.coc/repos/<workspaceId>/`; resolve paths with `getRepoDataPath(dataDir, workspaceId, filename)`. Never add new top-level dirs under `~/.coc/` for per-repo data.
 - **Work items:** create/update via `POST http://localhost:4000/api/workspaces/<workspaceId>/work-items` — never write `work-items/*.json` files directly.
 - **VS Code extension is frozen:** do not read, edit, or reason about `packages/vscode-extension/`. It is not an npm workspace.
-- **No SDK session caching:** `copilot-sdk-wrapper` and above must never add `sendFollowUp` or keep-alive/session caches.
+- **No SDK session caching:** `coc-agent-sdk` and above must never add `sendFollowUp` or keep-alive/session caches.
 - **Model resolution order:** `task.config.model` > `PerRepoPreferences.defaultModels[mode]` > `defaultModel` > CLI default.
 - **Node.js ≥ 24** for every package (`engines.node`).

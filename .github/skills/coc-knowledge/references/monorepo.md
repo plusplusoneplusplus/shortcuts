@@ -13,7 +13,8 @@ All four published packages plus a frozen VS Code extension live in one npm work
 
 | Shared Package | Location | Description |
 |----------------|----------|-------------|
-| **forge** | `packages/forge/` | Core AI/pipeline engine: AI SDK (CopilotSDKService, session-per-request), DAG workflow engine (`executeWorkflow`, `compileToWorkflow`), task queue, runtime policies, process store, git CLI, utilities |
+| **forge** | `packages/forge/` | Core AI/pipeline engine: imports AI SDK from `coc-agent-sdk`, DAG workflow engine (`executeWorkflow`, `compileToWorkflow`), task queue, runtime policies, process store, git CLI, utilities |
+| **coc-agent-sdk** | `packages/coc-agent-sdk/` | Provider-agnostic AI agent SDK: `CopilotSDKService`, `CodexSDKService`, `SDKServiceRegistry`, session lifecycle, streaming state machine, MCP config, model registry |
 | **whatsapp-bot** | `packages/whatsapp-bot/` | Standalone WhatsApp bot via Baileys — no CoC/forge deps. Used by `coccontainer` when `messaging.whatsapp.enabled` is true |
 
 **Architectural boundary:** Pure Node.js logic lives in packages (no VS Code deps). VS Code-specific wrappers live in `packages/vscode-extension/src/shortcuts/`. Example: `forge/src/ai/` = pure AI SDK; `packages/vscode-extension/src/shortcuts/ai-service/` = VS Code UI wrapper. **`packages/vscode-extension/` is frozen — do not read, edit, or reason about its code.**
