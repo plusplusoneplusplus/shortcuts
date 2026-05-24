@@ -3792,18 +3792,18 @@
     "validate:models": "node scripts/validate-model-registry.js",
     "test": "npm run test:extension && npm run test:packages",
     "test:extension": "node ./out/test/runTest.js",
-    "test:packages": "npm run test:run -w packages/forge && npm run test:run -w packages/coc-client && npm run test:run -w packages/coc && npm run test:run -w packages/deep-wiki",
+    "test:packages": "npm run test:run -w packages/coc-agent-sdk && npm run test:run -w packages/forge && npm run test:run -w packages/coc-client && npm run test:run -w packages/coc && npm run test:run -w packages/deep-wiki",
     "test:all": "npm run test",
-    "coverage": "npm run coverage -w packages/forge && npm run coverage -w packages/coc-client && npm run coverage -w packages/coc && npm run coverage -w packages/deep-wiki",
-    "coverage:diff": "npm run coverage:diff -w packages/forge && npm run coverage:diff -w packages/coc-client && npm run coverage:diff -w packages/coc && npm run coverage:diff -w packages/deep-wiki",
-    "build:packages": "npm run build -w packages/forge && npm run build -w packages/coc-client && npm run build -w packages/teams-bot && npm run build -w packages/coc && npm run build -w packages/deep-wiki",
+    "coverage": "npm run coverage -w packages/coc-agent-sdk && npm run coverage -w packages/forge && npm run coverage -w packages/coc-client && npm run coverage -w packages/coc && npm run coverage -w packages/deep-wiki",
+    "coverage:diff": "npm run coverage:diff -w packages/coc-agent-sdk && npm run coverage:diff -w packages/forge && npm run coverage:diff -w packages/coc-client && npm run coverage:diff -w packages/coc && npm run coverage:diff -w packages/deep-wiki",
+    "build:packages": "npm run build -w packages/coc-agent-sdk && npm run build -w packages/forge && npm run build -w packages/coc-client && npm run build -w packages/teams-bot && npm run build -w packages/coc && npm run build -w packages/deep-wiki",
     "coc:link": "cd packages/forge && npm run build && npm link && cd ../coc-client && npm run build && cd ../teams-bot && npm run build && cd ../coc && npm run build && npm link && node -e \"require('fs').rmSync('node_modules/@plusplusoneplusplus/forge', {recursive:true,force:true})\"",
     "deep-wiki:link": "cd packages/deep-wiki && npm run build && npm link",
     "vsce:package": "vsce package --no-dependencies",
     "vsce:publish": "vsce publish",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "publish-packages": "npm run build -w packages/forge && npm run build -w packages/coc-client && npm run build -w packages/coc && npm run build:bundle -w packages/deep-wiki && changeset publish"
+    "publish-packages": "npm run build -w packages/coc-agent-sdk && npm run build -w packages/forge && npm run build -w packages/coc-client && npm run build -w packages/coc && npm run build:bundle -w packages/deep-wiki && changeset publish"
   },
   "devDependencies": {
     "@changesets/cli": "^2.30.0",
