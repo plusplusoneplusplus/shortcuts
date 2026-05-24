@@ -1,23 +1,30 @@
-# Copilot SDK Wrapper
+# CoC Agent SDK (`coc-agent-sdk`)
 
-Pure Node.js integration layer for `@github/copilot-sdk`. Manages AI session lifecycle, MCP server configuration, model registry and metadata, reasoning-effort resolution, and folder trust.
+Provider-agnostic AI agent SDK for CoC. Manages AI session lifecycle, MCP server configuration, model registry and metadata, reasoning-effort resolution, and folder trust. Supports **Copilot** (via `@github/copilot-sdk`) and **Codex** (via the optional `@openai/codex-sdk`) backends through a common `ISDKService` interface.
 
-Location: `packages/forge/src/copilot-sdk-wrapper/`
+Package: `@plusplusoneplusplus/coc-agent-sdk`  
+Location: `packages/coc-agent-sdk/src/`
+
+> **Forge relationship:** `packages/forge/src/copilot-sdk-wrapper/` has been removed. All forge source files import directly from `@plusplusoneplusplus/coc-agent-sdk`.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `copilot-sdk-service.ts` | Facade singleton (≤200 lines): lifecycle + single-delegation stubs |
+| `copilot-sdk-service.ts` | `CopilotSDKService` facade singleton — Copilot backend |
+| `codex-sdk-service.ts` | `CodexSDKService` — optional Codex backend (`@openai/codex-sdk`) |
+| `sdk-service-interface.ts` | `ISDKService` provider-agnostic contract |
+| `sdk-service-registry.ts` | `SDKServiceRegistry` — named-provider registry |
 | `request-runner.ts` | `sendMessage`/`transform` execution: session creation, MCP wiring, permission handler, streaming routing |
 | `stream-error-guard.ts` | `StreamErrorGuard` + `isStreamDestroyedError()`/`isConnectionDisposedError()` helpers |
 | `session-manager.ts` | Active session tracking and cancellation |
 | `streaming-session.ts` | Streaming orchestrator (`StreamingSession.run()`) — state machine, timers, telemetry |
-| `streaming-state-machine.ts` | Pure state machine: `Idle → Streaming → Settled | Cancelled` |
+| `streaming-state-machine.ts` | Pure state machine: `Idle → Streaming → Settled \| Cancelled` |
 | `session-timer-manager.ts` | Timer management: overall timeout, idle timeout, turn-end grace |
 | `session-telemetry.ts` | Token usage accumulation, tool-call tracking |
 | `sdk-client-factory.ts` | Per-request `CopilotClient` spawning: cwd validation, folder trust |
 | `sdk-loader.ts` | SDK binary discovery + ESM import workaround |
+| `sdk-esm-loader.ts` | Dynamic ESM import helper (webpack-safe `new Function` indirection) |
 | `types.ts` | Shared types: `SendMessageOptions`, MCP configs, permissions, tools, token usage |
 | `model-registry.ts` | Single source of truth for supported AI models |
 | `model-metadata-store.ts` | Runtime model metadata cache with SDK polling |
@@ -25,7 +32,33 @@ Location: `packages/forge/src/copilot-sdk-wrapper/`
 | `mcp-config-loader.ts` | Loads/merges MCP config from `~/.copilot/mcp-config.json`, workspace `.vscode/mcp.json`, and explicit request options |
 | `trusted-folder.ts` | Pre-registers working directories in `~/.copilot/config.json` |
 | `image-converter.ts` | Image file → data-URL conversion |
+| `tool-call.ts` | `ToolCall`, `ToolCallStatus`, `ToolCallPermissionRequest`, serialization types |
+| `model-info.ts` | `ModelInfo` type (id, name, description, tier, …) |
+| `logger.ts` | `initSDKLogger` / `resetSDKLogger` / `getSDKLogger` — pino logger lifecycle |
+| `internal/exec-utils.ts` | Internal: async `execFileAsync` helper |
+| `internal/path-security.ts` | Internal: path traversal validation |
+| `internal/path-utils.ts` | Internal: path resolution utilities |
+| `internal/workspace-execution.ts` | Internal: workspace execution helpers |
 | `index.ts` | Public API surface |
+
+## SDKServiceRegistry
+
+Replaces the `CopilotSDKService.getInstance()` singleton pattern. Providers register under a string key; callers look up by key.
+
+```ts
+// Well-known keys:
+COPILOT_PROVIDER / SDK_PROVIDER_COPILOT = 'copilot'
+CODEX_PROVIDER   / SDK_PROVIDER_CODEX   = 'codex'
+
+// Registration (done once during provider init):
+sdkServiceRegistry.register(SDK_PROVIDER_COPILOT, new CopilotSDKService());
+sdkServiceRegistry.register(SDK_PROVIDER_CODEX,   new CodexSDKService());
+
+// Lookup:
+const svc = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
+```
+
+`sdkServiceRegistry` is the module-level singleton. `CopilotSDKService.getInstance()` still exists for compatibility and re-registers itself if absent from the registry.
 
 ## CopilotSDKService Architecture
 
@@ -46,9 +79,26 @@ Location: `packages/forge/src/copilot-sdk-wrapper/`
 ### Singleton + Per-Session Client Isolation
 
 Each `sendMessage()` call creates its **own `CopilotClient`** child process — no shared client. Concurrent tasks with different working directories cannot interfere.
-The public Forge entrypoint registers the default `copilot` SDK provider when loaded, and `CopilotSDKService.getInstance()` idempotently re-registers the singleton if its registry entry was removed.
 
-## RequestRunner — sendMessage() Flow
+## CodexSDKService Architecture
+
+`CodexSDKService` implements `ISDKService` backed by the **optional** `@openai/codex-sdk` peer dependency. When the package is not installed, `isAvailable()` returns `{ available: false }` and `sendMessage()` returns an error result rather than throwing.
+
+**Thread ↔ session mapping:** Every CoC session ID maps to exactly one Codex thread. The mapping is created on the first `sendMessage()` call for a session and removed on abort or dispose.
+
+**Auth checker injection:** An optional `CodexAuthChecker` callback can be injected to gate requests. When not authenticated, `sendMessage()` returns an error with `authUrl` so callers can surface a sign-in link.
+
+```ts
+registerCodexSDKService();            // registers under SDK_PROVIDER_CODEX
+// or:
+const svc = new CodexSDKService();
+svc.setAuthChecker(() => ({ authenticated: true }));
+sdkServiceRegistry.register(SDK_PROVIDER_CODEX, svc);
+```
+
+**Lazy loading:** No SDK module is loaded until the first `isAvailable()` or `sendMessage()` call.
+
+## RequestRunner — sendMessage() Flow (Copilot)
 
 ```
 1. isAvailable() → check SDK exists
@@ -92,7 +142,7 @@ forceReload: true                        →  bypasses the path-keyed config cac
 Workspace MCP loading is resolved from the per-request `workingDirectory`, not
 the process current directory, so concurrent repos do not share MCP state. VS
 Code workspace config uses a top-level `servers` map, which is normalized into
-Forge's existing `mcpServers` shape before passing configuration to the SDK.
+the `mcpServers` shape before passing configuration to the SDK.
 Config load results include source-scoped `success`/`error` metadata so callers
 can continue with valid sources when another source is malformed.
 
@@ -106,6 +156,18 @@ Resolution order for per-request model:
 
 Variant models with `capabilities.family` base are sent to SDK as base model + resolved reasoning effort.
 
+## Logger Lifecycle
+
+`coc-agent-sdk` uses a pino logger injected by the host application:
+
+```ts
+import { initSDKLogger, resetSDKLogger } from '@plusplusoneplusplus/coc-agent-sdk';
+initSDKLogger(pinoInstance);   // call once at startup
+resetSDKLogger();              // call in tests to restore no-op logger
+```
+
+Without a call to `initSDKLogger`, all internal SDK log statements are silently discarded.
+
 ## Cleanup
 
 - `cleanup()` (async): aborts all sessions, removes stream error guard, nulls sdkModule
@@ -114,6 +176,7 @@ Variant models with `capabilities.family` base are sent to SDK as base model + r
 
 ## Testing Notes
 
-- Mock helpers in `test/helpers/mock-sdk.ts`
+- Mock helpers in `packages/coc-agent-sdk/test/helpers/mock-sdk.ts`
+- 306 tests in `packages/coc-agent-sdk/test/`
 - Set `serviceAny.sdkModule` and `serviceAny.availabilityCache` to bypass real SDK
-- Unit tests for: session-manager, streaming-session, sdk-loader, sdk-client-factory, stream-error-guard, request-runner
+- Unit tests cover: session-manager, streaming-session, sdk-loader, sdk-client-factory, stream-error-guard, request-runner, logger, codex-sdk-service
