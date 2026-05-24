@@ -109,6 +109,27 @@ describe('ComposerMetaStrip', () => {
         expect(title).toContain('100');
     });
 
+    it('renders Codex provider badge when activeProvider is "codex"', () => {
+        render(<ComposerMetaStrip workingDirectory="/x" activeProvider="codex" />);
+        const badge = screen.getByTestId('composer-provider-badge');
+        expect(badge).toBeTruthy();
+        expect(badge.textContent).toContain('Codex');
+        expect(badge.getAttribute('title')).toContain('Codex');
+    });
+
+    it('renders Claude provider badge when activeProvider is "claude"', () => {
+        render(<ComposerMetaStrip workingDirectory="/x" activeProvider="claude" />);
+        const badge = screen.getByTestId('composer-provider-badge');
+        expect(badge).toBeTruthy();
+        expect(badge.textContent).toContain('Claude');
+        expect(badge.getAttribute('title')).toContain('Claude');
+    });
+
+    it('does not render provider badge when activeProvider is "copilot"', () => {
+        render(<ComposerMetaStrip workingDirectory="/x" activeProvider="copilot" />);
+        expect(screen.queryByTestId('composer-provider-badge')).toBeNull();
+    });
+
     it('treats an all-whitespace working directory as empty', () => {
         const { container } = render(<ComposerMetaStrip workingDirectory="   " />);
         // Strip should render nothing (no cwd, no ctx)

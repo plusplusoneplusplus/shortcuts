@@ -2,8 +2,8 @@
  * AgentSelectorChip — compact toolbar chip for selecting the AI agent provider.
  *
  * Renders a small button in the chat input toolbar that shows the active agent
- * ("Copilot" or "Codex") and opens a popover menu to switch providers. Codex
- * appears disabled when not available, with a short explanation.
+ * ("Copilot", "Codex", or "Claude") and opens a popover menu to switch providers.
+ * Codex and Claude appear disabled when not available, with a short explanation.
  *
  * Visual style mirrors the existing model picker chip in NewChatArea/FollowUpInputArea.
  */
@@ -12,7 +12,7 @@ import { useRef, useState, useEffect } from 'react';
 import { cn } from '../../ui/cn';
 import type { AgentProviderStatus } from '@plusplusoneplusplus/coc-client';
 
-export type ChatProvider = 'copilot' | 'codex';
+export type ChatProvider = 'copilot' | 'codex' | 'claude';
 
 export interface AgentSelectorChipProps {
     providers: AgentProviderStatus[];
@@ -46,6 +46,26 @@ function CopilotIcon() {
     );
 }
 
+/** Spark/diamond icon for Claude — distinct geometric glyph. */
+function ClaudeIcon() {
+    return (
+        <svg width="9" height="9" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
+            <path
+                d="M8 1l2 5.5L16 8l-6 1.5L8 15l-2-5.5L0 8l6-1.5z"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinejoin="round"
+            />
+        </svg>
+    );
+}
+
+function ProviderIcon({ id }: { id: string }) {
+    if (id === 'codex') return <CodexIcon />;
+    if (id === 'claude') return <ClaudeIcon />;
+    return <CopilotIcon />;
+}
+
 export function AgentSelectorChip({ providers, loading, selected, onChange, disabled }: AgentSelectorChipProps) {
     const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -62,7 +82,7 @@ export function AgentSelectorChip({ providers, loading, selected, onChange, disa
         return () => document.removeEventListener('mousedown', handleClick);
     }, [open]);
 
-    const selectedLabel = selected === 'codex' ? 'Codex' : 'Copilot';
+    const selectedLabel = selected === 'codex' ? 'Codex' : selected === 'claude' ? 'Claude' : 'Copilot';
 
     return (
         <div ref={containerRef} className="relative shrink-0" data-testid="agent-selector-chip-container">
@@ -83,7 +103,7 @@ export function AgentSelectorChip({ providers, loading, selected, onChange, disa
                 aria-haspopup="listbox"
                 aria-expanded={open}
             >
-                {selected === 'codex' ? <CodexIcon /> : <CopilotIcon />}
+                <ProviderIcon id={selected} />
                 <span className="font-mono text-[10.5px] font-medium text-[#848484] dark:text-[#999] truncate">
                     {selectedLabel}
                 </span>
@@ -140,7 +160,7 @@ export function AgentSelectorChip({ providers, loading, selected, onChange, disa
                                 data-testid={`agent-option-${provider.id}`}
                             >
                                 <span className="mt-0.5 shrink-0">
-                                    {provider.id === 'codex' ? <CodexIcon /> : <CopilotIcon />}
+                                    <ProviderIcon id={provider.id} />
                                 </span>
                                 <span className="flex flex-col min-w-0">
                                     <span className="font-medium leading-tight">{provider.label}</span>

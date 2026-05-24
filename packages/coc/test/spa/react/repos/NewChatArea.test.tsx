@@ -82,6 +82,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
         agentProviders: { list: vi.fn().mockResolvedValue({ providers: [
             { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
             { id: 'codex', label: 'Codex', enabled: false, available: false },
+            { id: 'claude', label: 'Claude', enabled: false, available: false, reason: 'Claude Code not installed' },
         ] }) },
     }),
     getSpaCocClientErrorMessage: (err: any, fallback: string) =>
@@ -775,6 +776,41 @@ describe('NewChatArea', () => {
 
             expect(mockDraftStore.newChatDraftKey).toHaveBeenCalledWith(undefined);
             expect(mockDraftStore.getDraft).toHaveBeenCalledWith('new-chat:__global__');
+        });
+    });
+
+    describe('agent selector chip — claude provider', () => {
+        it('renders claude option in the agent selector menu (disabled when unavailable)', async () => {
+            await act(async () => {
+                render(<NewChatArea workspaceId="ws-1" />);
+            });
+            // Wait for providers to load (button becomes enabled when loading=false)
+            await waitFor(() => {
+                const btn = screen.getByTestId('agent-selector-chip-btn') as HTMLButtonElement;
+                expect(btn.disabled).toBe(false);
+            });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+            });
+            const claudeOption = screen.getByTestId('agent-option-claude');
+            expect(claudeOption).toBeTruthy();
+            // Claude is disabled in the mock (enabled: false, available: false)
+            expect((claudeOption as HTMLButtonElement).disabled).toBe(true);
+        });
+
+        it('shows disabled reason for claude when it is unavailable', async () => {
+            await act(async () => {
+                render(<NewChatArea workspaceId="ws-1" />);
+            });
+            await waitFor(() => {
+                const btn = screen.getByTestId('agent-selector-chip-btn') as HTMLButtonElement;
+                expect(btn.disabled).toBe(false);
+            });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+            });
+            const claudeOption = screen.getByTestId('agent-option-claude');
+            expect(claudeOption.title).toContain('Claude Code not installed');
         });
     });
 

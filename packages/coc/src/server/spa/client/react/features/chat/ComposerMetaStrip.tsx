@@ -22,13 +22,12 @@ export interface ComposerMetaStripProps {
     /** Active model name (used in the ctx tooltip). */
     sessionModel?: string;
     /**
-     * Active AI provider. When codex is enabled (`'codex'` value) a small
-     * read-only badge is shown so the user always knows which provider is
-     * handling their chat.  When `undefined` or `'copilot'` no badge is
-     * shown (copilot is the default and the badge adds no value when there
-     * is only one provider).
+     * Active AI provider. When a non-default provider is active (`'codex'` or
+     * `'claude'`), a small read-only badge is shown so the user always knows
+     * which provider is handling their chat. When `undefined` or `'copilot'`
+     * no badge is shown (copilot is the default and the badge adds no value).
      */
-    activeProvider?: 'copilot' | 'codex';
+    activeProvider?: 'copilot' | 'codex' | 'claude';
     className?: string;
 }
 
@@ -54,7 +53,8 @@ export function ComposerMetaStrip({
 }: ComposerMetaStripProps) {
     const trimmedCwd = workingDirectory?.trim();
     const hasCwd = Boolean(trimmedCwd);
-    const showProvider = activeProvider === 'codex';
+    const showProvider = activeProvider === 'codex' || activeProvider === 'claude';
+    const providerLabel = activeProvider === 'claude' ? 'Claude' : 'Codex';
 
     const ctxLimit = sessionTokenLimit ?? 0;
     const ctxUsed = sessionCurrentTokens ?? 0;
@@ -133,14 +133,23 @@ export function ComposerMetaStrip({
             )}
             {showProvider && (
                 <span
-                    title="Active AI provider: Codex"
+                    title={`Active AI provider: ${providerLabel}`}
                     data-testid="composer-provider-badge"
-                    className="inline-flex items-center gap-1 h-[22px] px-2 rounded-sm border border-[#0078d4]/30 dark:border-[#3794ff]/30 bg-[#0078d4]/8 dark:bg-[#3794ff]/8 text-[11px] text-[#0078d4] dark:text-[#3794ff] flex-shrink-0"
+                    className={activeProvider === 'claude'
+                        ? 'inline-flex items-center gap-1 h-[22px] px-2 rounded-sm border border-violet-400/30 dark:border-violet-500/30 bg-violet-500/8 dark:bg-violet-500/8 text-[11px] text-violet-700 dark:text-violet-400 flex-shrink-0'
+                        : 'inline-flex items-center gap-1 h-[22px] px-2 rounded-sm border border-[#0078d4]/30 dark:border-[#3794ff]/30 bg-[#0078d4]/8 dark:bg-[#3794ff]/8 text-[11px] text-[#0078d4] dark:text-[#3794ff] flex-shrink-0'
+                    }
                 >
-                    <svg width="9" height="9" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="flex-shrink-0">
-                        <polygon points="8,1 14,4.5 14,11.5 8,15 2,11.5 2,4.5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-                    </svg>
-                    <span className="font-mono text-[10px] font-medium uppercase tracking-wider">Codex</span>
+                    {activeProvider === 'claude' ? (
+                        <svg width="9" height="9" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="flex-shrink-0">
+                            <path d="M8 1l2 5.5L16 8l-6 1.5L8 15l-2-5.5L0 8l6-1.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+                        </svg>
+                    ) : (
+                        <svg width="9" height="9" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="flex-shrink-0">
+                            <polygon points="8,1 14,4.5 14,11.5 8,15 2,11.5 2,4.5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                        </svg>
+                    )}
+                    <span className="font-mono text-[10px] font-medium uppercase tracking-wider">{providerLabel}</span>
                 </span>
             )}
         </div>

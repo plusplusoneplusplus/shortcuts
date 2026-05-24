@@ -103,8 +103,8 @@ export interface FollowUpInputAreaProps {
     sessionTokenLimit?: number;
     /** Tokens currently occupying the context. Drives the ctx fuel gauge fill + percent. */
     sessionCurrentTokens?: number;
-    /** Active AI provider — shown as a read-only badge in the toolbar when set to 'codex'. */
-    activeProvider?: 'copilot' | 'codex';
+    /** Active AI provider — shown as a read-only badge in the toolbar when set to 'codex' or 'claude'. */
+    activeProvider?: 'copilot' | 'codex' | 'claude';
 }
 
 export function FollowUpInputArea({
