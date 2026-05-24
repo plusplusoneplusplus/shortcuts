@@ -137,6 +137,16 @@ Users can add up to **10** additional notes roots per workspace — subfolders i
 | PUT | `/api/memory/bounded/:level` | Write bounded memory |
 | DELETE | `/api/repos/:repoId/memory` | Wipe repo memory |
 | GET | `/api/repos/:repoId/memory/entries` | List memory entries |
+| GET | `/api/workspaces/:id/memory/v2/facts` | List/search Memory V2 facts (`q`, repeated `status`, `limit`) |
+| POST | `/api/workspaces/:id/memory/v2/facts` | Create an explicit Memory V2 fact |
+| PATCH | `/api/workspaces/:id/memory/v2/facts/:factId` | Update fact content, importance, tags, or status |
+| DELETE | `/api/workspaces/:id/memory/v2/facts/:factId` | Delete a Memory V2 fact |
+| GET | `/api/workspaces/:id/memory/v2/review` | List facts pending review |
+| POST | `/api/workspaces/:id/memory/v2/review/:factId/approve` | Approve a review fact; body may include edited `content` |
+| POST | `/api/workspaces/:id/memory/v2/review/:factId/reject` | Reject a review fact |
+| GET | `/api/workspaces/:id/memory/v2/episodes` | List Memory V2 episodes (`limit`) |
+| GET | `/api/workspaces/:id/memory/v2/export` | Export active-scope Memory V2 facts and episodes |
+| DELETE | `/api/workspaces/:id/memory/v2/wipe` | Wipe active-scope Memory V2 facts and episodes; body requires `{ "confirm": true }` |
 
 ## Pull Requests
 

@@ -20,7 +20,7 @@ import { MemoryV2EpisodesTab } from './MemoryV2EpisodesTab';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type V2Tab = 'facts' | 'review' | 'episodes';
+export type V2Tab = 'facts' | 'review' | 'episodes';
 
 interface MemoryV2Prefs {
     enabled: boolean;
@@ -111,7 +111,11 @@ function WipeConfirmDialog({ wsId, isolated, onClose, onWiped }: WipeConfirmDial
 
 // ── MemoryV2Panel ─────────────────────────────────────────────────────────────
 
-export function MemoryV2Panel() {
+interface MemoryV2PanelProps {
+    initialTab?: V2Tab;
+}
+
+export function MemoryV2Panel({ initialTab = 'facts' }: MemoryV2PanelProps) {
     const { state } = useApp();
     const wsId = state.selectedRepoId;
 
@@ -120,7 +124,8 @@ export function MemoryV2Panel() {
     const [prefsError, setPrefsError] = useState<string | null>(null);
     const [savingIsolated, setSavingIsolated] = useState(false);
 
-    const [activeTab, setActiveTab] = useState<V2Tab>('facts');
+    const [activeTab, setActiveTab] = useState<V2Tab>(initialTab);
+    const [contentVersion, setContentVersion] = useState(0);
     const [reviewCount, setReviewCount] = useState(0);
 
     const [showWipeDialog, setShowWipeDialog] = useState(false);
@@ -145,6 +150,8 @@ export function MemoryV2Panel() {
 
     useEffect(() => { loadPrefs(); }, [loadPrefs]);
 
+    useEffect(() => { setActiveTab(initialTab); }, [initialTab]);
+
     // Load review count for badge
     const loadReviewCount = useCallback(async () => {
         if (!wsId || !prefs?.enabled) return;
@@ -166,6 +173,7 @@ export function MemoryV2Panel() {
             const newIsolated = !prefs.isolated;
             await patchWorkspacePreferences(wsId, { memoryV2: { ...prefs, isolated: newIsolated } } as any);
             setPrefs(p => p ? { ...p, isolated: newIsolated } : p);
+            setContentVersion(v => v + 1);
         } catch (err) {
             setPrefsError(err instanceof Error ? err.message : String(err));
         } finally {
@@ -209,8 +217,7 @@ export function MemoryV2Panel() {
 
     const handleWiped = () => {
         setShowWipeDialog(false);
-        // Reload the active tab data by re-mounting via key change
-        setActiveTab(t => t);
+        setContentVersion(v => v + 1);
         setReviewCount(0);
     };
 
@@ -352,13 +359,14 @@ export function MemoryV2Panel() {
 
                 {/* Tab content */}
                 <div className="flex-1 overflow-hidden">
-                    {activeTab === 'facts' && <MemoryV2FactsTab wsId={wsId} />}
+                    {activeTab === 'facts' && <MemoryV2FactsTab key={`facts-${contentVersion}`} wsId={wsId} />}
                     {activeTab === 'review' && (
                         <MemoryV2ReviewTab
+                            key={`review-${contentVersion}`}
                             wsId={wsId}
                         />
                     )}
-                    {activeTab === 'episodes' && <MemoryV2EpisodesTab wsId={wsId} />}
+                    {activeTab === 'episodes' && <MemoryV2EpisodesTab key={`episodes-${contentVersion}`} wsId={wsId} />}
                 </div>
             </div>
 

@@ -9,6 +9,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, Spinner } from '../../ui';
+import { useApp } from '../../contexts/AppContext';
 import { memoryV2Api, type MemoryFact, type MemoryFactStatus } from './memoryV2Api';
 
 // ── Local types ───────────────────────────────────────────────────────────────
@@ -18,6 +19,7 @@ interface FactCardProps {
     onEdit: (fact: MemoryFact) => void;
     onDelete: (id: string) => void;
     onArchive: (id: string) => void;
+    onOpenProcess: (processId: string) => void;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -46,9 +48,10 @@ function relativeTime(iso: string): string {
 
 // ── FactCard ──────────────────────────────────────────────────────────────────
 
-function FactCard({ fact, onEdit, onDelete, onArchive }: FactCardProps) {
+function FactCard({ fact, onEdit, onDelete, onArchive, onOpenProcess }: FactCardProps) {
     const [expanded, setExpanded] = useState(false);
     const isLong = fact.content.length > 180;
+    const sourceProcessId = fact.sourceProcessId;
     const displayContent = isLong && !expanded
         ? fact.content.slice(0, 180) + '…'
         : fact.content;
@@ -92,12 +95,17 @@ function FactCard({ fact, onEdit, onDelete, onArchive }: FactCardProps) {
                 </span>
                 <span className="text-[#aaa]">·</span>
                 <span>{fact.source}</span>
-                {fact.sourceProcessId && (
+                {sourceProcessId && (
                     <>
                         <span className="text-[#aaa]">·</span>
-                        <span className="font-mono truncate max-w-[120px]" title={fact.sourceProcessId}>
-                            proc:{fact.sourceProcessId.slice(0, 8)}
-                        </span>
+                        <button
+                            className="font-mono truncate max-w-[120px] text-[#0078d4] hover:underline"
+                            title={sourceProcessId}
+                            onClick={() => onOpenProcess(sourceProcessId)}
+                            data-testid="fact-process-link"
+                        >
+                            proc:{sourceProcessId.slice(0, 8)}
+                        </button>
                     </>
                 )}
                 <span className="text-[#aaa]">·</span>
@@ -297,6 +305,7 @@ interface MemoryV2FactsTabProps {
 }
 
 export function MemoryV2FactsTab({ wsId }: MemoryV2FactsTabProps) {
+    const { dispatch } = useApp();
     const [facts, setFacts] = useState<MemoryFact[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -366,6 +375,11 @@ export function MemoryV2FactsTab({ wsId }: MemoryV2FactsTabProps) {
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err));
         }
+    };
+
+    const handleOpenProcess = (processId: string) => {
+        dispatch({ type: 'SELECT_PROCESS', id: processId });
+        dispatch({ type: 'SET_ACTIVE_TAB', tab: 'processes' });
     };
 
     return (
@@ -476,6 +490,7 @@ export function MemoryV2FactsTab({ wsId }: MemoryV2FactsTabProps) {
                             onEdit={setEditingFact}
                             onDelete={(id) => setConfirmDeleteId(id)}
                             onArchive={handleArchive}
+                            onOpenProcess={handleOpenProcess}
                         />
                     )
                 ))}

@@ -151,7 +151,7 @@ const initialState: AppContextState = {
     selectedWorkItemCommitFilePath: null,
     conversationCache: {},
     wsStatus: 'closed',
-    activeMemorySubTab: 'bounded',
+    activeMemorySubTab: 'facts',
     activeSkillsSubTab: 'installed',
     activeAdminSubTab: 'settings',
     adminDbTable: null,

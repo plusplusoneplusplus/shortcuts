@@ -20,6 +20,7 @@ spa/client/react/
 ├── layout/             # Layout (Router, TopBar, BottomNav, ThemeProvider)
 ├── features/
 │   ├── chat/           # Chat UI: ChatDetail, ChatListPane, ConversationArea
+│   ├── memory/         # Memory V2 route, facts/review/episodes tabs, repo memory settings section
 │   ├── notes/          # Notes UI: NoteEditor, sidebar, multi-root dropdown (useNotesRoots)
 │   ├── pull-requests/  # PR dashboard: attention groups, BatchCommandPanel
 │   └── terminal/       # Terminal UI: TerminalView, pin/unpin
@@ -122,13 +123,19 @@ Each tool's internal sub-tab/hash scheme (e.g. `#skills/installed`,
 - Search box
 - Selection persists in `localStorage['coc-activity-scope']`
 
+## Memory Route
+
+The top-level `#memory` route renders `MemoryV2Panel` plus its feature tip. `MemorySubTab` values are `facts`, `review`, and `episodes`; hash links such as `#memory/review` select the matching V2 tab. Legacy bounded-memory/config/explore-cache panels are not rendered on the Memory route. Repo settings still use `RepoMemorySection` for repo-scoped bounded memory and raw memory inspection.
+
+`MemoryV2Panel` reads `PerRepoPreferences.memoryV2` for enabled/isolated state, lets users enable Memory V2 for the selected workspace, toggles global vs isolated workspace scope, exports JSON, and wipes the active scope after confirmation. The tab content is split into `MemoryV2FactsTab`, `MemoryV2ReviewTab`, and `MemoryV2EpisodesTab`.
+
 ## Feature Flags
 
 `featureFlags.ts` defines compile-time flags (e.g., `SHOW_WELCOME_TUTORIAL`). Features gated by flags are disabled by default.
 
 ## coc-client Integration
 
-The SPA consumes `@plusplusoneplusplus/coc-client` for typed REST transport. Domain clients: admin, processes, queue, schedules, tasks, notes, workflows, wiki, memory, skills, preferences, seen-state, work-items, models, git.
+The SPA consumes `@plusplusoneplusplus/coc-client` for typed REST transport. Domain clients: admin, processes, queue, schedules, tasks, notes, workflows, wiki, memory, memoryV2, skills, preferences, seen-state, work-items, models, git.
 
 Local React hooks (`fetchApi`, `useWebSocket`, `seenStateApi`) wrap the client for React state management.
 

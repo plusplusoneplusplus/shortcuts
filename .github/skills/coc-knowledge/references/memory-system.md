@@ -7,6 +7,8 @@ Bounded, file-backed persistence layer that lets AI chat sessions learn from pas
 - Per-repo: `~/.coc/repos/<workspaceId>/memory/MEMORY.md`
 - System: `~/.coc/memory/system/MEMORY.md`
 - `MemoryLevel` = `'repo' | 'system' | 'git-remote' | 'both'`
+- Memory V2 global store: `~/.coc/memory/global/`
+- Memory V2 isolated workspace store: `~/.coc/repos/<workspaceId>/memory/`
 
 ## Core Components (`packages/forge/src/memory/`)
 
@@ -80,6 +82,17 @@ Auto-promotion requires both `features.autoMemoryPromotion` AND `boundedMemory.a
 - Always keeps protected entries
 - Records recall events/counts for future promotion signals
 
+## Memory V2
+
+Memory V2 stores durable facts and compact episodes in SQLite via the `@plusplusoneplusplus/coc-memory` package. Facts have scope (`global` or `workspace`), status (`active`, `review`, `rejected`, `archived`), importance, confidence, tags, source metadata, and optional source process/turn links. Episodes summarize completed interactions and link back to their source process/Ralph context.
+
+Workspace preferences control the runtime scope:
+- `memoryV2.enabled` gates all Memory V2 prompt injection, tools, and REST routes.
+- `memoryV2.isolated` selects the per-workspace store under `~/.coc/repos/<workspaceId>/memory/`; otherwise the workspace uses the shared global store under `~/.coc/memory/global/`.
+- `memoryV2.frozenSnapshotLimit` and `memoryV2.recallLimit` tune prompt snapshot and recall behavior.
+
+The dashboard Memory route uses `MemoryV2Panel` with Facts, Review, and Episodes tabs. It calls `@plusplusoneplusplus/coc-client` through the `memoryV2` domain client for listing/searching facts, creating/editing/deleting facts, approving/rejecting review facts, listing episodes, exporting JSON, and wiping the active scope.
+
 ## Server Integration (`packages/coc/src/server/`)
 
 `buildBoundedMemoryAddon()` in `executors/bounded-memory-addon.ts`:
@@ -92,6 +105,15 @@ Auto-promotion requires both `features.autoMemoryPromotion` AND `boundedMemory.a
 - `memory_search` — FTS5 search over bounded memory entries
 - `memory_get` — exact entry resolution by id or ordinal
 - Gated by `boundedMemory.readTools.enabled` (disabled by default)
+
+`buildMemoryV2Addon()` in `executors/memory-v2-addon.ts`:
+- Resolves global vs isolated workspace scope from `PerRepoPreferences.memoryV2`
+- Opens Memory V2 fact/episode stores for each request and closes them after use
+- Builds frozen fact snapshots and recall blocks for prompt injection
+- Registers Memory V2 write/capture tools
+- Returns the empty addon when dataDir, workspaceId, or `memoryV2.enabled` is missing
+
+`registerMemoryV2Routes()` in `server/memory/memory-v2-routes.ts` exposes workspace-scoped Memory V2 REST endpoints under `/api/workspaces/:id/memory/v2/*`. The shared `@plusplusoneplusplus/coc-client` package exposes the matching typed `MemoryV2Client` as `coc.memoryV2`.
 
 ## Key Design Decisions
 
