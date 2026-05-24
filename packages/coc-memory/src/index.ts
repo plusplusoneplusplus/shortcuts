@@ -59,3 +59,13 @@ export type {
     IMemoryExtractor,
 } from './extraction-contract';
 export { DEFAULT_CONFIDENCE_THRESHOLD } from './extraction-contract';
+
+// SQLite store implementations (AC-02)
+export { SqliteFactStore } from './store-impl/sqlite-fact-store';
+export { SqliteEpisodeStore } from './store-impl/sqlite-episode-store';
+export type { CloseableMemoryStoreHandle } from './store-impl/store-factory';
+export { createMemoryStores } from './store-impl/store-factory';
+
+// Scope resolver (AC-02)
+export type { WorkspaceMemoryConfig } from './scope-resolver';
+export { MemoryScopeResolver } from './scope-resolver';
