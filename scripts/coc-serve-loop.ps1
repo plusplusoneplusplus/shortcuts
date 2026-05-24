@@ -244,13 +244,13 @@ function Build-Coc {
     Write-Log '=== Installing dependencies ===' -Color Cyan
     Push-Location $repoRoot
     try {
-        npm install
+        npm install 2>&1 | ForEach-Object { Write-Host $_ }
         if ($LASTEXITCODE -ne 0) {
             Write-Log "npm install failed with exit code $LASTEXITCODE" -Color Red
             return $false
         }
         Write-Log '=== Building coc packages ===' -Color Cyan
-        npm run coc:link
+        npm run coc:link 2>&1 | ForEach-Object { Write-Host $_ }
         if ($LASTEXITCODE -ne 0) {
             Write-Log "Build failed with exit code $LASTEXITCODE" -Color Red
             return $false
