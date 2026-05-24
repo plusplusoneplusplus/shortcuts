@@ -58,6 +58,8 @@ import {
     prependSelectedSkillsDirective,
 } from './prompt-builder';
 import type { BoundedMemoryAddon } from './bounded-memory-addon';
+import { buildMemoryV2Addon } from './memory-v2-addon';
+import type { MemoryV2Addon } from './memory-v2-addon';
 import { resolveAutoFolderContext } from './auto-folder-utils';
 import { systemMessageBuilder } from './system-message-builder';
 import { buildChatToolBundle } from './chat-tool-builder';
@@ -308,6 +310,15 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         return buildBoundedMemoryAddon(this.dataDir, workspaceId, captureContext, recallQuery);
     }
 
+    /** Build Memory V2 addon (redesigned coc-memory system). */
+    protected buildMemoryV2Addon(
+        workspaceId: string | undefined,
+        query?: string,
+        processId?: string,
+    ): Promise<MemoryV2Addon> {
+        return buildMemoryV2Addon(this.dataDir, workspaceId, query, processId);
+    }
+
     // ========================================================================
     // Shared helper — auto-folder context (used by ask and plan modes)
     // ========================================================================
@@ -347,9 +358,10 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             : undefined;
 
         const boundedMemory = await this.buildMemoryAddon(payload.workspaceId, this.buildCaptureContext(task), prompt);
+        const processId = toQueueProcessId(task.id);
+        const memoryV2 = await this.buildMemoryV2Addon(payload.workspaceId, prompt, processId);
         const notePath = payload.context?.noteChat?.notePath;
 
-        const processId = toQueueProcessId(task.id);
         const loopDeps = this.buildLoopToolDeps(processId);
 
         const toolBundle = buildChatToolBundle({
@@ -360,6 +372,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             followUpSuggestions: this.followUpSuggestions,
             broadcastWorkItem,
             boundedMemory,
+            memoryV2,
             scheduleWakeup: loopDeps.scheduleWakeup,
             loopTools: loopDeps.loopTools,
             askUser: {
@@ -391,6 +404,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             .append(buildModeSystemMessage(mode)?.content)
             .withRepoInstructions(workingDirectory, mode)
             .appendMemory(boundedMemory)
+            .appendMemoryV2(memoryV2)
             .appendToolGuidance(toolBundle.toolGuidance)
             .appendAutoFolder(autoFolderContext)
             .appendNoteFile(notePath)
@@ -411,7 +425,10 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             systemMessage,
             tools: toolBundle.tools,
             effectivePrompt: prompt,
-            dispose: boundedMemory.dispose,
+            dispose: () => {
+                boundedMemory.dispose();
+                memoryV2.dispose();
+            },
         };
     }
 

@@ -195,6 +195,23 @@ const BoundedMemorySchema = z.object({
     autoPromote: AutoPromoteConfigSchema.optional().catch(undefined),
 }).strip();
 
+/**
+ * Schema for the redesigned coc-memory v2 per-workspace preferences.
+ *
+ * - `enabled`  — master switch for the new memory feature (default: false).
+ * - `isolated` — when true, this workspace uses its own isolated store and
+ *                never reads/writes global memory. Defaults to false (global).
+ * - `frozenSnapshotLimit` — how many top-importance facts to inject as the
+ *                           frozen system-prompt snapshot (default: 10).
+ * - `recallLimit` — how many per-turn recalled facts to inject (default: 5).
+ */
+const MemoryV2Schema = z.object({
+    enabled: z.boolean(),
+    isolated: z.boolean().optional().catch(undefined),
+    frozenSnapshotLimit: z.number().int().min(1).max(50).optional().catch(undefined),
+    recallLimit: z.number().int().min(1).max(20).optional().catch(undefined),
+}).strip();
+
 const NotesGitAutoCommitSchema = z.object({
     enabled: z.boolean(),
     intervalMs: z.number().int().min(1).optional().catch(undefined),
@@ -276,6 +293,7 @@ export const PerRepoPreferencesSchema = z.object({
         .optional(),
     filesViewMode: z.enum(['flat', 'tree']).optional(),
     boundedMemory: BoundedMemorySchema.optional(),
+    memoryV2: MemoryV2Schema.optional(),
     notesGit: NotesGitSchema.optional(),
     activityFilters: ActivityFiltersSchema.optional(),
     disabledLlmTools: z.array(z.unknown())

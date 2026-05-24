@@ -5,6 +5,7 @@ import type { WakeupToolDeps, LoopToolDeps } from '../llm-tools/loop-tools';
 import { DEFAULT_DISABLED_LLM_TOOLS } from '../llm-tools/llm-tool-registry';
 import { readEffectiveDisabledLlmTools } from '../preferences-handler';
 import type { BoundedMemoryAddon } from './bounded-memory-addon';
+import type { MemoryV2Addon } from './memory-v2-addon';
 import {
     applyLlmToolPreferences,
     buildAskUserAddon,
@@ -33,6 +34,8 @@ export interface ChatToolBundleOptions {
     };
     broadcastWorkItem?: BroadcastWorkItemFn;
     boundedMemory?: BoundedMemoryAddon;
+    /** Memory V2 addon (redesigned coc-memory system). */
+    memoryV2?: MemoryV2Addon;
     scheduleWakeup?: WakeupToolDeps;
     loopTools?: LoopToolDeps;
     includeFollowUpSuggestions?: boolean;
@@ -111,6 +114,10 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
 
     if (options.boundedMemory) {
         addons.push(options.boundedMemory);
+    }
+
+    if (options.memoryV2) {
+        addons.push(options.memoryV2);
     }
 
     const disabledLlmTools = options.dataDir && options.workspaceId

@@ -21,11 +21,7 @@
 
 import * as os from 'os';
 import * as path from 'path';
-import type {
-    AgentMode,
-    ProcessStore,
-    QueuedTask,
-} from '@plusplusoneplusplus/forge';
+import type { AgentMode, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { systemMessageBuilder } from './system-message-builder';
@@ -141,8 +137,9 @@ export class RalphExecutor extends ChatBaseExecutor {
         }, resolvedBaseInstructions);
 
         const boundedMemory = await this.buildMemoryAddon(payload.workspaceId, this.buildCaptureContext(task), prompt);
-
         const processId = toQueueProcessId(task.id);
+        const memoryV2 = await this.buildMemoryV2Addon(payload.workspaceId, prompt, processId);
+
         const loopDeps = this.buildLoopToolDeps(processId);
         const { tools, toolGuidance } = buildChatToolBundle({
             dataDir: this.dataDir,
@@ -154,6 +151,7 @@ export class RalphExecutor extends ChatBaseExecutor {
                 ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
                 : undefined,
             boundedMemory,
+            memoryV2,
             scheduleWakeup: loopDeps.scheduleWakeup,
             loopTools: loopDeps.loopTools,
         });
@@ -162,6 +160,7 @@ export class RalphExecutor extends ChatBaseExecutor {
             .append(ralphSystemPrompt)
             .withRepoInstructions(workingDirectory, 'ralph')
             .appendMemory(boundedMemory)
+            .appendMemoryV2(memoryV2)
             .appendToolGuidance(toolGuidance)
             .build();
 
@@ -170,7 +169,10 @@ export class RalphExecutor extends ChatBaseExecutor {
             systemMessage,
             tools,
             effectivePrompt: prompt,
-            dispose: boundedMemory.dispose,
+            dispose: () => {
+                boundedMemory.dispose();
+                memoryV2.dispose();
+            },
         };
     }
 

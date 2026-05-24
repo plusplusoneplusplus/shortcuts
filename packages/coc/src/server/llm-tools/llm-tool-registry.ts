@@ -81,6 +81,18 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         enabledByDefault: true,
     },
     {
+        name: 'store_memory',
+        label: 'Store Memory (V2)',
+        description: 'Explicitly stores a new fact in the redesigned memory system.',
+        enabledByDefault: true,
+    },
+    {
+        name: 'recall_memory',
+        label: 'Recall Memory (V2)',
+        description: 'Searches the redesigned memory system for relevant facts.',
+        enabledByDefault: true,
+    },
+    {
         name: 'scheduleWakeup',
         label: 'Schedule Wakeup',
         description: 'Schedules a one-shot delayed follow-up message into the conversation.',

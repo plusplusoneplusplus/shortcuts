@@ -24,6 +24,7 @@ import {
     toForwardSlashes,
 } from '@plusplusoneplusplus/forge';
 import type { BoundedMemoryAddon } from './bounded-memory-addon';
+import type { MemoryV2Addon } from './memory-v2-addon';
 import type { ChatMode } from '../tasks/task-types';
 import { resolveInstructionMode } from '../tasks/task-types';
 
@@ -63,6 +64,17 @@ class SystemMessageBuilder {
 
     /** Append the bounded memory snapshot from an addon. No-op when the addon has no suffix. */
     appendMemory(addon: BoundedMemoryAddon | undefined): this {
+        if (addon?.systemMessageSuffix) {
+            this.steps.push({ kind: 'eager', block: addon.systemMessageSuffix });
+        }
+        return this;
+    }
+
+    /**
+     * Append the redesigned coc-memory v2 context (frozen snapshot + per-turn recall).
+     * No-op when the addon has no system message suffix (feature disabled or no facts).
+     */
+    appendMemoryV2(addon: MemoryV2Addon | undefined): this {
         if (addon?.systemMessageSuffix) {
             this.steps.push({ kind: 'eager', block: addon.systemMessageSuffix });
         }

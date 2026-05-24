@@ -110,6 +110,10 @@ export function appendAutoFolderBlock(
 export { buildBoundedMemoryAddon } from './bounded-memory-addon';
 export type { BoundedMemoryAddon } from './bounded-memory-addon';
 
+// Re-export the Memory V2 addon for executor convenience.
+export { buildMemoryV2Addon } from './memory-v2-addon';
+export type { MemoryV2Addon } from './memory-v2-addon';
+
 /**
  * Appends bounded memory snapshot to the system message.
  * Uses BoundedMemoryAddon.systemMessageSuffix if available.
