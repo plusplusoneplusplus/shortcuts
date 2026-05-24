@@ -811,6 +811,8 @@ timeout: 300
                 '  enabled: true',
                 'codex:',
                 '  enabled: true',
+                'claude:',
+                '  enabled: true',
                 'activeProvider: codex',
                 'features:',
                 '  autoMemoryPromotion: true',
@@ -942,6 +944,9 @@ timeout: 300
                       "enabled": false,
                     },
                   },
+                  "claude": {
+                    "enabled": false,
+                  },
                   "codex": {
                     "enabled": false,
                   },
@@ -1067,6 +1072,7 @@ timeout: 300
                   "chat.askUser.enabled": "file",
                   "chat.followUpSuggestions.count": "file",
                   "chat.followUpSuggestions.enabled": "file",
+                  "claude.enabled": "default",
                   "codex.enabled": "default",
                   "containerDefaultAgent.enabled": "default",
                   "excalidraw.enabled": "default",
