@@ -218,6 +218,127 @@ export class RalphSessionStore {
     }
 
     /**
+     * Start a new loop inside an existing session that has completed with
+     * `RALPH_COMPLETE`.
+     *
+     * 1. Validates `phase === complete` + `terminalReason === RALPH_COMPLETE`.
+     * 2. Lazily populates `loops[]` from the session's `originalGoal` if absent.
+     * 3. Appends a new `RalphLoopRecord` for the new goal.
+     * 4. Resets the session to `executing` phase and bumps `maxIterations`.
+     * 5. Appends a loop banner to `progress.md`.
+     *
+     * Throws with `statusCode: 404` if the session is missing.
+     * Throws with `statusCode: 409` if the session is not in a new-loop eligible state.
+     */
+    async startNewLoop(
+        workspaceId: string,
+        sessionId: string,
+        newGoal: string,
+        additionalIterations: number,
+        nowIso?: string,
+    ): Promise<RalphSessionRecord> {
+        const existing = await this.readSessionRecord(workspaceId, sessionId);
+        if (!existing) {
+            const err = new Error(
+                `Ralph session ${sessionId} not found in workspace ${workspaceId}`,
+            );
+            (err as any).statusCode = 404;
+            throw err;
+        }
+
+        if (existing.phase !== 'complete' || existing.terminalReason !== 'RALPH_COMPLETE') {
+            const reason = existing.phase !== 'complete'
+                ? `Session phase is "${existing.phase}"; new-loop requires phase=complete`
+                : `Session terminalReason is "${existing.terminalReason}"; new-loop requires RALPH_COMPLETE`;
+            const err = new Error(reason);
+            (err as any).statusCode = 409;
+            throw err;
+        }
+
+        const ts = nowIso ?? new Date().toISOString();
+
+        // Lazily build loops[] from the session's originalGoal if absent.
+        const currentLoops: RalphLoopRecord[] = existing.loops ?? [{
+            loopIndex: 1,
+            goal: existing.originalGoal,
+            startIteration: 1,
+            endIteration: existing.currentIteration,
+            terminalReason: existing.terminalReason,
+            startedAt: existing.startedAt,
+            completedAt: existing.completedAt,
+        }];
+
+        const newLoopIndex = currentLoops.length + 1;
+        const newLoop: RalphLoopRecord = {
+            loopIndex: newLoopIndex,
+            goal: newGoal,
+            startIteration: existing.currentIteration + 1,
+            startedAt: ts,
+        };
+        const updatedLoops = [...currentLoops, newLoop];
+
+        const updated = await this.updateSessionRecord(workspaceId, sessionId, (rec) => {
+            const base = rec ?? existing;
+            const next: RalphSessionRecord = { ...base };
+            next.phase = 'executing';
+            next.maxIterations = base.maxIterations + additionalIterations;
+            delete next.completedAt;
+            delete next.terminalReason;
+            next.loops = updatedLoops;
+            return next;
+        });
+
+        try {
+            await this.appendNewLoopBanner(workspaceId, sessionId, newLoopIndex, newGoal, ts);
+        } catch {
+            // Banner failure is cosmetic; loop proceeds correctly without it.
+        }
+
+        return updated;
+    }
+
+    /**
+     * Append a "Loop N — <ts>" banner to `progress.md`.
+     * Idempotent: re-running with an identical `(loopIndex, ts)` pair skips
+     * the write if the tail already contains the same marker.
+     */
+    private async appendNewLoopBanner(
+        workspaceId: string,
+        sessionId: string,
+        loopIndex: number,
+        goal: string,
+        nowIso: string,
+    ): Promise<void> {
+        const dir = this.getSessionDir(workspaceId, sessionId);
+        await fs.promises.mkdir(dir, { recursive: true });
+        const progressPath = this.getProgressPath(workspaceId, sessionId);
+        const goalPreview = goal.length > 200 ? `${goal.slice(0, 200)}…` : goal;
+        const marker = `\n---\n## Loop ${loopIndex} — ${nowIso}\nGoal: ${goalPreview}\n`;
+
+        try {
+            const stat = await fs.promises.stat(progressPath);
+            const readBytes = Math.min(stat.size, 1024);
+            if (readBytes > 0) {
+                const fd = await fs.promises.open(progressPath, 'r');
+                try {
+                    const buf = Buffer.alloc(readBytes);
+                    await fd.read(buf, 0, readBytes, stat.size - readBytes);
+                    const tail = buf.toString('utf-8');
+                    if (tail.includes(`## Loop ${loopIndex} — ${nowIso}`)) {
+                        return;
+                    }
+                } finally {
+                    await fd.close();
+                }
+            }
+        } catch {
+            // Missing file — fall through and append (which will create it).
+        }
+
+        await fs.promises.appendFile(progressPath, marker, 'utf-8');
+    }
+
+    /**
      * Append a "Loop continued at <ts> — extending to <newMax>" banner to
      * `progress.md`. Idempotent against double-appends within the same
      * tick — re-running with an identical `(newMax, timestamp)` pair will

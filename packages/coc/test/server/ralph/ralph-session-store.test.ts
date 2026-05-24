@@ -273,6 +273,128 @@ describe('RalphSessionStore — size cap', () => {
     });
 });
 
+describe('RalphSessionStore — startNewLoop', () => {
+    async function makeCompleteSession(goal = 'goal-1', iterations = 3): Promise<void> {
+        await store.initSession(WS, SID, {
+            originalGoal: goal,
+            maxIterations: iterations,
+            startedAt: '2026-05-01T10:00:00Z',
+        });
+        await store.updateSessionRecord(WS, SID, (rec) => ({
+            ...rec!,
+            phase: 'complete',
+            terminalReason: 'RALPH_COMPLETE',
+            currentIteration: iterations,
+            completedAt: '2026-05-01T12:00:00Z',
+        }));
+    }
+
+    it('happy path: resets phase and bumps maxIterations, creates two loops', async () => {
+        await makeCompleteSession('goal-1', 3);
+        const updated = await store.startNewLoop(
+            WS, SID, 'goal-2', 20, '2026-05-01T13:00:00Z',
+        );
+
+        expect(updated.phase).toBe('executing');
+        expect(updated.maxIterations).toBe(23);
+        expect(updated.terminalReason).toBeUndefined();
+        expect(updated.completedAt).toBeUndefined();
+        expect(updated.loops).toHaveLength(2);
+        expect(updated.loops![0]).toMatchObject({
+            loopIndex: 1,
+            goal: 'goal-1',
+            startIteration: 1,
+            endIteration: 3,
+            terminalReason: 'RALPH_COMPLETE',
+        });
+        expect(updated.loops![1]).toMatchObject({
+            loopIndex: 2,
+            goal: 'goal-2',
+            startIteration: 4,
+            startedAt: '2026-05-01T13:00:00Z',
+        });
+    });
+
+    it('appends a loop banner to progress.md', async () => {
+        await makeCompleteSession('goal-1', 3);
+        await store.startNewLoop(WS, SID, 'goal-2', 20, '2026-05-01T13:00:00Z');
+        const md = await store.readProgress(WS, SID);
+        expect(md).toContain('## Loop 2 — 2026-05-01T13:00:00Z');
+        expect(md).toContain('Goal: goal-2');
+    });
+
+    it('throws 404 when session does not exist', async () => {
+        const err = await store.startNewLoop(WS, 'no-such-session', 'goal', 5).catch(e => e);
+        expect(err).toBeInstanceOf(Error);
+        expect((err as any).statusCode).toBe(404);
+    });
+
+    it('throws 409 when phase is not complete (still executing)', async () => {
+        await store.initSession(WS, SID, { originalGoal: 'g', maxIterations: 10 });
+        const err = await store.startNewLoop(WS, SID, 'new-goal', 5).catch(e => e);
+        expect(err).toBeInstanceOf(Error);
+        expect((err as any).statusCode).toBe(409);
+        expect(err.message).toContain('executing');
+    });
+
+    it('throws 409 when terminalReason is CAP_REACHED (not RALPH_COMPLETE)', async () => {
+        await store.initSession(WS, SID, { originalGoal: 'g', maxIterations: 3 });
+        await store.updateSessionRecord(WS, SID, (rec) => ({
+            ...rec!,
+            phase: 'complete',
+            terminalReason: 'CAP_REACHED',
+            currentIteration: 3,
+        }));
+        const err = await store.startNewLoop(WS, SID, 'new-goal', 5).catch(e => e);
+        expect(err).toBeInstanceOf(Error);
+        expect((err as any).statusCode).toBe(409);
+        expect(err.message).toContain('CAP_REACHED');
+    });
+
+    it('lazily initialises loops[] from originalGoal when absent', async () => {
+        await makeCompleteSession('original-goal', 5);
+        // Remove loops field to simulate pre-existing record
+        const recordPath = store.getSessionRecordPath(WS, SID);
+        const raw = JSON.parse(await (await import('fs')).promises.readFile(recordPath, 'utf-8'));
+        delete raw.loops;
+        await (await import('fs')).promises.writeFile(recordPath, JSON.stringify(raw, null, 2), 'utf-8');
+
+        const updated = await store.startNewLoop(WS, SID, 'new-goal', 10, '2026-05-01T15:00:00Z');
+        expect(updated.loops).toHaveLength(2);
+        expect(updated.loops![0].goal).toBe('original-goal');
+        expect(updated.loops![0].loopIndex).toBe(1);
+        expect(updated.loops![1].goal).toBe('new-goal');
+        expect(updated.loops![1].loopIndex).toBe(2);
+    });
+
+    it('idempotent banner: calling twice with same timestamp does not double-append', async () => {
+        await makeCompleteSession('goal-1', 3);
+        const ts = '2026-05-01T14:00:00Z';
+        await store.startNewLoop(WS, SID, 'goal-2', 10, ts);
+        // Manually reset phase for the second call (simulating concurrent race)
+        await store.updateSessionRecord(WS, SID, (rec) => ({
+            ...rec!,
+            phase: 'complete',
+            terminalReason: 'RALPH_COMPLETE',
+        }));
+        await store.startNewLoop(WS, SID, 'goal-2', 10, ts);
+
+        const md = await store.readProgress(WS, SID);
+        const occurrences = (md.match(/## Loop 2 — 2026-05-01T14:00:00Z/g) ?? []).length;
+        expect(occurrences).toBe(1);
+    });
+
+    it('goal preview is truncated to 200 chars in banner', async () => {
+        await makeCompleteSession('goal-1', 1);
+        const longGoal = 'x'.repeat(300);
+        await store.startNewLoop(WS, SID, longGoal, 5, '2026-05-01T16:00:00Z');
+        const md = await store.readProgress(WS, SID);
+        const goalLine = md.split('\n').find(l => l.startsWith('Goal: '))!;
+        // "Goal: " prefix (6 chars) + up to 200 chars + ellipsis char
+        expect(goalLine.length).toBeLessThanOrEqual('Goal: '.length + 201);
+    });
+});
+
 describe('normaliseSessionRecord', () => {
     it('sets loopIndex: 1 on iterations that lack the field', () => {
         const raw = {
