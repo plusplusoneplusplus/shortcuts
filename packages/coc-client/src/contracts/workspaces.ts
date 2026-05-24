@@ -355,3 +355,13 @@ export interface RalphContinueResponse {
   nextIteration: number;
   newMaxIterations: number;
 }
+
+export interface RalphNewLoopResponse {
+  resumed: true;
+  sessionId: string;
+  workspaceId: string;
+  loopIndex: number;
+  taskId: string;
+  nextIteration: number;
+  newMaxIterations: number;
+}

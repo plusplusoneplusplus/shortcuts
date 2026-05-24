@@ -80,6 +80,7 @@ import { DevTunnelConnector } from '../servers/devtunnel-connector';
 import { registerRalphRoutes } from './queue-ralph-routes';
 import { registerRalphSessionRoutes } from './ralph-session-routes';
 import { registerRalphContinueRoutes } from './ralph-continue-routes';
+import { registerRalphNewLoopRoutes } from './ralph-new-loop-routes';
 import { registerRalphPromoteRoutes } from './ralph-promote-routes';
 import { registerRalphLaunchRoutes } from './ralph-launch-routes';
 import { registerLoopRoutes } from '../loops/loop-handler';
@@ -432,6 +433,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerRalphRoutes(routes, { bridge, store, dataDir });
     registerRalphSessionRoutes(routes, { dataDir });
     registerRalphContinueRoutes(routes, { bridge, store, dataDir });
+    registerRalphNewLoopRoutes(routes, { bridge, store, dataDir });
     registerRalphPromoteRoutes(routes, { bridge, store, dataDir });
     registerRalphLaunchRoutes(routes, { bridge, dataDir });
 

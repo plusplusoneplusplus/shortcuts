@@ -17,6 +17,7 @@ import type {
   MyWorkSyncRequest,
   MyWorkSyncResponse,
   RalphContinueResponse,
+  RalphNewLoopResponse,
   RalphSessionResponse,
   RegisterWorkspaceRequest,
   TerminalPinResponse,
@@ -244,6 +245,25 @@ export class WorkspacesClient {
     }
     return this.transport.request<RalphContinueResponse>(
       `/workspaces/${encodePathSegment(workspaceId)}/ralph-sessions/${encodePathSegment(sessionId)}/continue`,
+      { method: 'POST', body },
+    );
+  }
+
+  /**
+   * Start a new goal-loop inside a Ralph session that reached RALPH_COMPLETE.
+   * The session's `progress.md` is preserved, giving the agent full prior context.
+   */
+  startNewRalphLoop(
+    workspaceId: string,
+    sessionId: string,
+    request: { newGoal: string; additionalIterations?: number },
+  ): Promise<RalphNewLoopResponse> {
+    const body: Record<string, unknown> = { newGoal: request.newGoal };
+    if (typeof request.additionalIterations === 'number') {
+      body.additionalIterations = request.additionalIterations;
+    }
+    return this.transport.request<RalphNewLoopResponse>(
+      `/workspaces/${encodePathSegment(workspaceId)}/ralph-sessions/${encodePathSegment(sessionId)}/new-loop`,
       { method: 'POST', body },
     );
   }
