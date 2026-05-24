@@ -9,6 +9,7 @@
     "url": "https://github.com/plusplusoneplusplus/shortcuts.git"
   },
   "workspaces": [
+    "packages/coc-memory",
     "packages/coc-agent-sdk",
     "packages/forge",
     "packages/coc",
