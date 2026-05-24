@@ -20,10 +20,13 @@
 import type { SendMessageOptions } from './types';
 import type { ToolEvent } from './types';
 import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult } from './sdk-service-interface';
+import type { IAccountQuotaResult, IAccountQuotaSnapshot } from './copilot-sdk-service';
 import type { ToolCall } from './tool-call';
 import { sdkServiceRegistry, CODEX_PROVIDER } from './sdk-service-registry';
 import { dynamicImportModule } from './sdk-esm-loader';
 import { execFileAsync } from './internal/exec-utils';
+import { spawn } from 'child_process';
+import * as readline from 'readline';
 import * as path from 'path';
 
 // ============================================================================
@@ -168,6 +171,37 @@ interface CodexReasoningLevel {
 }
 
 // ============================================================================
+// Codex app-server RPC response types
+// ============================================================================
+
+interface CodexRateLimitWindow {
+    usedPercent: number;
+    windowDurationMins: number;
+    resetsAt: number;
+}
+
+interface CodexCredits {
+    hasCredits: boolean;
+    unlimited: boolean;
+    balance: string;
+}
+
+interface CodexRateLimitEntry {
+    limitId: string;
+    limitName: string | null;
+    primary: CodexRateLimitWindow;
+    secondary: CodexRateLimitWindow;
+    credits: CodexCredits;
+    planType: string;
+    rateLimitReachedType: string | null;
+}
+
+interface CodexRateLimitsResult {
+    rateLimits: CodexRateLimitEntry;
+    rateLimitsByLimitId?: Record<string, CodexRateLimitEntry>;
+}
+
+// ============================================================================
 // Internal active-session record
 // ============================================================================
 
@@ -306,6 +340,106 @@ export class CodexSDKService implements ISDKService {
             }
         }
         return ['minimal', 'low', 'medium', 'high', 'xhigh'].filter(effort => efforts.has(effort));
+    }
+
+    // ── Account quota via codex app-server RPC ────────────────────────────────
+
+    /**
+     * Fetch Codex account quota by spawning `codex app-server` and reading
+     * rate limits via JSON-RPC over stdin/stdout.
+     */
+    public async getAccountQuota(): Promise<IAccountQuotaResult> {
+        if (this.disposed) throw new Error('CodexSDKService has been disposed');
+
+        const codexBinPath = this.resolveCodexBinPath();
+        const rpcResult = await this.fetchRateLimitsViaRpc(codexBinPath);
+        return this.mapRateLimitsToQuota(rpcResult);
+    }
+
+    private resolveCodexBinPath(): string {
+        try {
+            const packageJsonPath = dynamicRequireResolve('@openai/codex/package.json');
+            return path.join(path.dirname(packageJsonPath), 'bin', 'codex.js');
+        } catch {
+            throw new Error('Codex CLI (@openai/codex) is not installed');
+        }
+    }
+
+    /** Spawn `codex app-server`, send RPC messages, and return rate limits. */
+    private fetchRateLimitsViaRpc(codexBinPath: string): Promise<CodexRateLimitsResult> {
+        return new Promise<CodexRateLimitsResult>((resolve, reject) => {
+            const child = spawn(process.execPath, [codexBinPath, 'app-server'], {
+                stdio: ['pipe', 'pipe', 'ignore'],
+                windowsHide: true,
+            });
+
+            const rl = readline.createInterface({ input: child.stdout! });
+            let settled = false;
+
+            const cleanup = () => {
+                if (settled) return;
+                settled = true;
+                rl.close();
+                child.kill('SIGTERM');
+            };
+
+            const timer = setTimeout(() => {
+                cleanup();
+                reject(new Error('Codex app-server RPC timed out'));
+            }, 10_000);
+
+            child.on('error', (err) => {
+                clearTimeout(timer);
+                cleanup();
+                reject(err);
+            });
+
+            child.on('exit', () => {
+                clearTimeout(timer);
+                if (!settled) {
+                    settled = true;
+                    reject(new Error('Codex app-server exited before returning rate limits'));
+                }
+            });
+
+            rl.on('line', (line) => {
+                try {
+                    const msg = JSON.parse(line) as { id?: number; result?: unknown; error?: { message?: string } };
+                    // Wait for the rateLimits response (id: 2)
+                    if (msg.id === 2) {
+                        clearTimeout(timer);
+                        if (msg.error) {
+                            cleanup();
+                            reject(new Error(msg.error.message ?? 'Codex RPC error'));
+                        } else {
+                            cleanup();
+                            resolve(msg.result as CodexRateLimitsResult);
+                        }
+                    }
+                } catch {
+                    // Ignore non-JSON lines
+                }
+            });
+
+            const send = (msg: Record<string, unknown>) => {
+                child.stdin!.write(JSON.stringify(msg) + '\n');
+            };
+
+            send({
+                method: 'initialize',
+                id: 0,
+                params: {
+                    clientInfo: { name: 'coc', title: 'Copilot of Copilot', version: '0.1.0' },
+                },
+            });
+            send({ method: 'initialized', params: {} });
+            send({ method: 'account/rateLimits/read', id: 2, params: {} });
+        });
+    }
+
+    /** Map Codex rate limits response to the IAccountQuotaResult format. */
+    private mapRateLimitsToQuota(result: CodexRateLimitsResult): IAccountQuotaResult {
+        return mapCodexRateLimitsToQuota(result);
     }
 
     // ── Message dispatch ──────────────────────────────────────────────────────
@@ -684,6 +818,38 @@ export class CodexSDKService implements ISDKService {
         this.disposed = true;
         this.cleanup().catch(() => {});
     }
+}
+
+// ============================================================================
+// Exported mapping helper (testable without spawning a process)
+// ============================================================================
+
+/** Map a Codex rate limits RPC response to the IAccountQuotaResult format. */
+export function mapCodexRateLimitsToQuota(result: CodexRateLimitsResult): IAccountQuotaResult {
+    const snapshots: Record<string, IAccountQuotaSnapshot> = {};
+    const entries = result.rateLimitsByLimitId
+        ? Object.entries(result.rateLimitsByLimitId)
+        : [[result.rateLimits.limitId || 'codex', result.rateLimits] as const];
+
+    for (const [limitId, entry] of entries) {
+        const primary = entry.primary;
+        const remaining = Math.max(0, Math.min(1, (100 - primary.usedPercent) / 100));
+        const resetDate = primary.resetsAt
+            ? new Date(primary.resetsAt * 1000).toISOString()
+            : undefined;
+
+        snapshots[limitId] = {
+            isUnlimitedEntitlement: entry.credits?.unlimited ?? false,
+            entitlementRequests: 100,
+            usedRequests: primary.usedPercent,
+            remainingPercentage: remaining,
+            usageAllowedWithExhaustedQuota: entry.credits?.hasCredits ?? false,
+            overage: 0,
+            resetDate,
+        };
+    }
+
+    return { quotaSnapshots: snapshots };
 }
 
 // ============================================================================

@@ -284,7 +284,7 @@ describe('registerAgentProvidersRoutes — quota endpoint', () => {
         expect(body.providers[0].error).toBe('SDK unavailable');
     });
 
-    it('includes codex provider with empty quotaTypes when codex is enabled', async () => {
+    it('includes codex provider with empty quotaTypes when codex is enabled but no codex service', async () => {
         const svc = makeService(true);
         const routes: any[] = [];
         const mockSdkService = {
@@ -295,6 +295,7 @@ describe('registerAgentProvidersRoutes — quota endpoint', () => {
             getCodexAuthInfo: () => ({ status: 'authenticated' }),
             serverBaseUrl: BASE_URL,
             getCopilotSdkService: () => mockSdkService as any,
+            // no getCodexSdkService
         });
         const quotaRoute = routes.find(r => r.pattern === '/api/agent-providers/quota');
         const { res, getBody } = makeRes();
@@ -305,6 +306,75 @@ describe('registerAgentProvidersRoutes — quota endpoint', () => {
         expect(codex).toBeDefined();
         expect(codex.quotaTypes).toHaveLength(0);
         expect(codex.error).toBeUndefined();
+    });
+
+    it('returns codex quota data when codex service provides rate limits', async () => {
+        const svc = makeService(true);
+        const routes: any[] = [];
+        const mockCopilotService = {
+            getAccountQuota: vi.fn().mockResolvedValue({ quotaSnapshots: {} }),
+        };
+        const mockCodexService = {
+            getAccountQuota: vi.fn().mockResolvedValue({
+                quotaSnapshots: {
+                    codex: {
+                        isUnlimitedEntitlement: false,
+                        entitlementRequests: 100,
+                        usedRequests: 5,
+                        remainingPercentage: 0.95,
+                        usageAllowedWithExhaustedQuota: false,
+                        overage: 0,
+                        resetDate: '2025-06-01T00:00:00.000Z',
+                    },
+                },
+            }),
+        };
+        registerAgentProvidersRoutes(routes, {
+            runtimeConfigService: svc,
+            getCodexAuthInfo: () => ({ status: 'authenticated' }),
+            serverBaseUrl: BASE_URL,
+            getCopilotSdkService: () => mockCopilotService as any,
+            getCodexSdkService: () => mockCodexService as any,
+        });
+        const quotaRoute = routes.find(r => r.pattern === '/api/agent-providers/quota');
+        const { res, getBody } = makeRes();
+        await quotaRoute.handler({} as any, res);
+        const body = JSON.parse(getBody());
+        expect(body.providers).toHaveLength(2);
+        const codex = body.providers.find((p: any) => p.id === 'codex');
+        expect(codex).toBeDefined();
+        expect(codex.quotaTypes).toHaveLength(1);
+        expect(codex.quotaTypes[0].type).toBe('codex');
+        expect(codex.quotaTypes[0].usedRequests).toBe(5);
+        expect(codex.quotaTypes[0].remainingPercentage).toBe(0.95);
+        expect(codex.quotaTypes[0].resetDate).toBe('2025-06-01T00:00:00.000Z');
+        expect(codex.error).toBeUndefined();
+    });
+
+    it('returns codex error when codex service throws', async () => {
+        const svc = makeService(true);
+        const routes: any[] = [];
+        const mockCopilotService = {
+            getAccountQuota: vi.fn().mockResolvedValue({ quotaSnapshots: {} }),
+        };
+        const mockCodexService = {
+            getAccountQuota: vi.fn().mockRejectedValue(new Error('Codex CLI not installed')),
+        };
+        registerAgentProvidersRoutes(routes, {
+            runtimeConfigService: svc,
+            getCodexAuthInfo: () => ({ status: 'authenticated' }),
+            serverBaseUrl: BASE_URL,
+            getCopilotSdkService: () => mockCopilotService as any,
+            getCodexSdkService: () => mockCodexService as any,
+        });
+        const quotaRoute = routes.find(r => r.pattern === '/api/agent-providers/quota');
+        const { res, getBody } = makeRes();
+        await quotaRoute.handler({} as any, res);
+        const body = JSON.parse(getBody());
+        const codex = body.providers.find((p: any) => p.id === 'codex');
+        expect(codex).toBeDefined();
+        expect(codex.error).toBe('Codex CLI not installed');
+        expect(codex.quotaTypes).toHaveLength(0);
     });
 
     it('does not include codex provider when codex is disabled', async () => {
