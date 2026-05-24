@@ -1254,6 +1254,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         mcpOAuthPrompts={mcpOAuthPrompts}
                         onMcpOAuthCompleted={(requestId) => setMcpOAuthPrompts(prev => prev.filter(p => p.requestId !== requestId))}
                         onMcpOAuthFailed={(requestId) => setMcpOAuthPrompts(prev => prev.filter(p => p.requestId !== requestId))}
+                        processError={processDetails?.error ?? null}
                     />
                     {variant !== 'floating' && !isMobile && (
                         <ConversationMiniMap
