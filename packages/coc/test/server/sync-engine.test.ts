@@ -242,13 +242,30 @@ describe('SyncEngine', () => {
         expect(status.lastError).toBeNull();
     });
 
-    it('start() is a no-op when gitRemote is empty', async () => {
+    it('start() with empty gitRemote keeps enabled false', async () => {
         engine = new SyncEngine({
             dataDir: tmpDir,
             workspaceId: 'my_work',
             logger: silentLogger,
         });
 
+        await engine.start('', 5);
+        expect(engine.getStatus().enabled).toBe(false);
+    });
+
+    it('start() with empty gitRemote after being enabled disables the engine', async () => {
+        engine = new SyncEngine({
+            dataDir: tmpDir,
+            workspaceId: 'my_work',
+            logger: silentLogger,
+        });
+
+        // Manually set enabled to simulate a previously-started engine
+        // without actually performing git operations (no real remote)
+        (engine as any).status.enabled = true;
+        (engine as any).gitRemoteCache = 'git@github.com:user/notes.git';
+
+        // Calling start with empty remote should disable
         await engine.start('', 5);
         expect(engine.getStatus().enabled).toBe(false);
     });

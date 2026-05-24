@@ -10,7 +10,7 @@
  * Uses port 0 (OS-assigned) for test isolation.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -28,9 +28,13 @@ import {
     validateGlobalPreferences,
     normalizeGlobalPreferencesForRead,
     resolveDefaultModel,
+    registerPreferencesRoutes,
     PREFERENCES_FILE_NAME,
 } from '../../src/server/preferences-handler';
 import type { PreferencesFile } from '../../src/server/preferences-handler';
+import type { Route } from '../../src/server/types';
+import type { SyncEngine } from '../../src/server/sync/sync-engine';
+import type { IncomingMessage, ServerResponse } from 'http';
 
 // ============================================================================
 // HTTP Helpers
@@ -2405,6 +2409,185 @@ describe('Per-Repo Preferences REST API', () => {
         const body = JSON.parse(res.body);
         expect(body.defaultModel).toBe('gpt-4');
         expect(body.lastDepth).toBe('deep');
+    });
+});
+
+// ============================================================================
+// registerPreferencesRoutes — sync engine wiring
+// ============================================================================
+
+/** Minimal fake request that streams a JSON body. */
+function fakeReq(method: string, body: unknown): IncomingMessage {
+    const { Readable } = require('stream');
+    const buf = Buffer.from(JSON.stringify(body));
+    const readable = new Readable({ read() {} });
+    readable.push(buf);
+    readable.push(null);
+    return Object.assign(readable, {
+        method,
+        headers: { 'content-type': 'application/json', 'content-length': String(buf.length) },
+    }) as unknown as IncomingMessage;
+}
+
+function fakeRes() {
+    const res = {
+        statusCode: 200,
+        headers: {} as Record<string, string>,
+        body: '',
+        writeHead: vi.fn((code: number) => { res.statusCode = code; }),
+        end: vi.fn((data: string) => { res.body = data; }),
+        setHeader: vi.fn((k: string, v: string) => { res.headers[k] = v; }),
+    };
+    return res as unknown as ServerResponse & { statusCode: number; body: string };
+}
+
+function findRoute(routes: Route[], method: string, url: string): { route: Route; match: RegExpMatchArray } | undefined {
+    for (const r of routes) {
+        if (r.method !== method) continue;
+        if (r.pattern instanceof RegExp) {
+            const m = url.match(r.pattern);
+            if (m) return { route: r, match: m };
+        } else if (r.pattern === url) {
+            return { route: r, match: [url] as unknown as RegExpMatchArray };
+        }
+    }
+    return undefined;
+}
+
+describe('registerPreferencesRoutes — sync engine wiring', () => {
+    let tmpDir: string;
+
+    beforeEach(() => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-prefs-sync-'));
+    });
+
+    afterEach(() => {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('PATCH sync prefs calls engine.start() with merged remote and interval', async () => {
+        const mockEngine = {
+            start: vi.fn().mockResolvedValue(undefined),
+        } as unknown as SyncEngine;
+
+        const routes: Route[] = [];
+        registerPreferencesRoutes(routes, tmpDir, (wsId) => wsId === 'my_life' ? mockEngine : undefined);
+
+        const url = '/api/workspaces/my_life/preferences';
+        const found = findRoute(routes, 'PATCH', url)!;
+        expect(found).toBeDefined();
+
+        const res = fakeRes();
+        await found.route.handler(fakeReq('PATCH', { sync: { gitRemote: 'git@github.com:u/notes.git', intervalMinutes: 10 } }), res, found.match);
+
+        expect(res.statusCode).toBe(200);
+        expect(mockEngine.start).toHaveBeenCalledWith('git@github.com:u/notes.git', 10);
+    });
+
+    it('PATCH sync prefs with empty gitRemote calls engine.start() to disable', async () => {
+        const mockEngine = {
+            start: vi.fn().mockResolvedValue(undefined),
+        } as unknown as SyncEngine;
+
+        const routes: Route[] = [];
+        registerPreferencesRoutes(routes, tmpDir, () => mockEngine);
+
+        const url = '/api/workspaces/my_work/preferences';
+        const found = findRoute(routes, 'PATCH', url)!;
+
+        const res = fakeRes();
+        await found.route.handler(fakeReq('PATCH', { sync: { gitRemote: '' } }), res, found.match);
+
+        expect(res.statusCode).toBe(200);
+        expect(mockEngine.start).toHaveBeenCalledWith('', 5);
+    });
+
+    it('PATCH non-sync fields does NOT call engine.start()', async () => {
+        const mockEngine = {
+            start: vi.fn().mockResolvedValue(undefined),
+        } as unknown as SyncEngine;
+
+        const routes: Route[] = [];
+        registerPreferencesRoutes(routes, tmpDir, () => mockEngine);
+
+        const url = '/api/workspaces/my_work/preferences';
+        const found = findRoute(routes, 'PATCH', url)!;
+
+        const res = fakeRes();
+        await found.route.handler(fakeReq('PATCH', { lastDepth: 'deep' }), res, found.match);
+
+        expect(res.statusCode).toBe(200);
+        expect(mockEngine.start).not.toHaveBeenCalled();
+    });
+
+    it('PATCH sync prefs without getSyncEngine does not crash', async () => {
+        const routes: Route[] = [];
+        // No getSyncEngine provided (original call signature)
+        registerPreferencesRoutes(routes, tmpDir);
+
+        const url = '/api/workspaces/my_work/preferences';
+        const found = findRoute(routes, 'PATCH', url)!;
+
+        const res = fakeRes();
+        await expect(
+            found.route.handler(fakeReq('PATCH', { sync: { gitRemote: 'git@github.com:u/notes.git' } }), res, found.match)
+        ).resolves.not.toThrow();
+        expect(res.statusCode).toBe(200);
+    });
+
+    it('PATCH sync prefs uses default interval 5 when not specified', async () => {
+        const mockEngine = {
+            start: vi.fn().mockResolvedValue(undefined),
+        } as unknown as SyncEngine;
+
+        const routes: Route[] = [];
+        registerPreferencesRoutes(routes, tmpDir, () => mockEngine);
+
+        const url = '/api/workspaces/my_work/preferences';
+        const found = findRoute(routes, 'PATCH', url)!;
+
+        const res = fakeRes();
+        await found.route.handler(fakeReq('PATCH', { sync: { gitRemote: 'git@github.com:u/notes.git' } }), res, found.match);
+
+        expect(res.statusCode).toBe(200);
+        expect(mockEngine.start).toHaveBeenCalledWith('git@github.com:u/notes.git', 5);
+    });
+
+    it('PATCH sync prefs when getSyncEngine returns undefined is a no-op for sync', async () => {
+        const routes: Route[] = [];
+        registerPreferencesRoutes(routes, tmpDir, () => undefined);
+
+        const url = '/api/workspaces/my_work/preferences';
+        const found = findRoute(routes, 'PATCH', url)!;
+
+        const res = fakeRes();
+        await expect(
+            found.route.handler(fakeReq('PATCH', { sync: { gitRemote: 'git@github.com:u/notes.git' } }), res, found.match)
+        ).resolves.not.toThrow();
+        expect(res.statusCode).toBe(200);
+    });
+
+    it('PATCH sync preserves existing interval when only gitRemote is updated', async () => {
+        const mockEngine = {
+            start: vi.fn().mockResolvedValue(undefined),
+        } as unknown as SyncEngine;
+
+        // Pre-populate with existing interval
+        const repoDir = path.join(tmpDir, 'repos', 'my_work');
+        fs.mkdirSync(repoDir, { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'preferences.json'), JSON.stringify({ sync: { gitRemote: 'old', intervalMinutes: 15 } }), 'utf-8');
+
+        const routes: Route[] = [];
+        registerPreferencesRoutes(routes, tmpDir, () => mockEngine);
+
+        const url = '/api/workspaces/my_work/preferences';
+        const found = findRoute(routes, 'PATCH', url)!;
+
+        const res = fakeRes();
+        await found.route.handler(fakeReq('PATCH', { sync: { gitRemote: 'git@github.com:u/notes.git', intervalMinutes: 15 } }), res, found.match);
+
+        expect(res.statusCode).toBe(200);
+        expect(mockEngine.start).toHaveBeenCalledWith('git@github.com:u/notes.git', 15);
     });
 });
 
