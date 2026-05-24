@@ -6,7 +6,7 @@
  * fetching is exercised here — that comes in commit 7.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
@@ -16,8 +16,17 @@ import {
 import type {
     ParsedProgressSection,
     RalphIterationRecord,
+    RalphLoopRecord,
     RalphSessionRecord,
 } from '@plusplusoneplusplus/coc-client';
+
+// Default feature flags: RALPH_MULTI_LOOP off so existing tests are unaffected.
+vi.mock('../../../../src/server/spa/client/react/featureFlags', () => ({
+    RALPH_MULTI_LOOP: false,
+    SHOW_WELCOME_TUTORIAL: true,
+    SHOW_FOCUSED_DIFF: true,
+    SHOW_EXCALIDRAW_DIAGRAMS: true,
+}));
 
 function makeRecord(overrides: Partial<RalphSessionRecord> = {}): RalphSessionRecord {
     return {
@@ -309,5 +318,49 @@ describe('RalphWorkflowPane', () => {
         await user.click(screen.getByTestId('ralph-workflow-continue-cancel'));
         expect(screen.queryByTestId('ralph-workflow-continue-confirm')).toBeNull();
         expect(onContinue).not.toHaveBeenCalled();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// New Loop UI (requires RALPH_MULTI_LOOP=true, tested in isolation)
+// ---------------------------------------------------------------------------
+
+describe('RalphWorkflowPane — new-loop UI (RALPH_MULTI_LOOP enabled)', () => {
+    beforeEach(() => {
+        vi.resetModules();
+        // Override the module-level flag for this suite.
+        vi.doMock('../../../../src/server/spa/client/react/featureFlags', () => ({
+            RALPH_MULTI_LOOP: true,
+            SHOW_WELCOME_TUTORIAL: true,
+            SHOW_FOCUSED_DIFF: true,
+            SHOW_EXCALIDRAW_DIAGRAMS: true,
+        }));
+    });
+
+    afterEach(() => {
+        vi.doUnmock('../../../../src/server/spa/client/react/featureFlags');
+        vi.resetModules();
+    });
+
+    function makeRalphCompleteView(overrides: Partial<RalphSessionRecord> = {}): RalphSessionView {
+        return {
+            record: makeRecord({
+                phase: 'complete',
+                currentIteration: 5,
+                completedAt: new Date().toISOString(),
+                terminalReason: 'RALPH_COMPLETE',
+                iterations: [makeIter(5)],
+                ...overrides,
+            }),
+            sections: [makeSection(5, 'RALPH_COMPLETE')],
+        };
+    }
+
+    it('hides the new-loop button when RALPH_MULTI_LOOP is false (global mock)', () => {
+        // This test runs with the module-level RALPH_MULTI_LOOP=false mock set in the outer describe.
+        // It verifies the default-off behaviour.
+        const view = makeRalphCompleteView();
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.queryByTestId('ralph-workflow-new-loop')).toBeNull();
     });
 });

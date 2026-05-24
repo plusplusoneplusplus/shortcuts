@@ -17,6 +17,8 @@ export interface RalphSession {
     hasUnseen: boolean;
     /** Overall session phase */
     phase: 'grilling' | 'executing' | 'complete';
+    /** Number of goal-loops that have occurred in this session (≥ 1). */
+    loopCount: number;
 }
 
 export type RalphHistoryEntry = RalphSession | (any & { kind?: undefined });
@@ -39,6 +41,11 @@ export function getRalphPhase(task: any): 'grilling' | 'executing' | 'complete' 
 /** Extract ralph.currentIteration from a process/task. Same fallback rule. */
 function getRalphIteration(task: any): number {
     return (task.payload?.context?.ralph?.currentIteration ?? task.ralph?.currentIteration ?? 0) as number;
+}
+
+/** Extract ralph.loopIndex from a process/task (1 if absent). */
+function getRalphLoopIndex(task: any): number {
+    return (task.payload?.context?.ralph?.loopIndex ?? task.ralph?.loopIndex ?? 1) as number;
 }
 
 /** Extract the task mode (live: payload.mode; history: top-level mode). */
@@ -151,6 +158,8 @@ export function groupByRalphSession(
             ? sessionItems.some(t => unseenIds.has(t.id))
             : false;
 
+        const loopCount = Math.max(1, ...sessionItems.map(getRalphLoopIndex));
+
         entries.push({
             kind: 'ralph-session',
             sessionId,
@@ -159,6 +168,7 @@ export function groupByRalphSession(
             latestTimestamp,
             hasUnseen,
             phase: sessionPhase,
+            loopCount,
         });
     }
 

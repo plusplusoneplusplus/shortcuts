@@ -13,6 +13,7 @@ import type React from 'react';
 import { useCallback } from 'react';
 import { RalphWorkflowPane } from './RalphWorkflowPane';
 import { useRalphSessionView } from './useRalphSessionView';
+import { getSpaCocClient } from '../../api/cocClient';
 
 export interface RalphWorkflowPaneContainerProps {
     workspaceId: string;
@@ -28,7 +29,7 @@ export function RalphWorkflowPaneContainer(
     props: RalphWorkflowPaneContainerProps,
 ): React.ReactElement {
     const { workspaceId, sessionId, onClose, onSelectIteration, now } = props;
-    const { view } = useRalphSessionView(workspaceId, sessionId);
+    const { view, refresh } = useRalphSessionView(workspaceId, sessionId);
 
     const handleSelectIteration = useCallback(
         (iteration: number) => {
@@ -43,6 +44,17 @@ export function RalphWorkflowPaneContainer(
         [onSelectIteration, view, sessionId],
     );
 
+    const handleNewLoop = useCallback(
+        async (newGoal: string, additionalIterations: number) => {
+            await getSpaCocClient().workspaces.startNewRalphLoop(workspaceId, sessionId, {
+                newGoal,
+                additionalIterations,
+            });
+            refresh();
+        },
+        [workspaceId, sessionId, refresh],
+    );
+
     return (
         <RalphWorkflowPane
             workspaceId={workspaceId}
@@ -50,6 +62,7 @@ export function RalphWorkflowPaneContainer(
             view={view}
             onClose={onClose}
             onSelectIteration={onSelectIteration ? handleSelectIteration : undefined}
+            onNewLoop={handleNewLoop}
             now={now}
         />
     );
