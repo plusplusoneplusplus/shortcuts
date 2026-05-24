@@ -59,7 +59,7 @@ export {
 export { tryConvertImageFileToDataUrl } from './image-converter';
 
 /** A single quota snapshot as returned by the Copilot SDK account.getQuota() RPC. */
-export interface CopilotAccountQuotaSnapshot {
+export interface IAccountQuotaSnapshot {
     isUnlimitedEntitlement: boolean;
     entitlementRequests: number;
     usedRequests: number;
@@ -70,8 +70,8 @@ export interface CopilotAccountQuotaSnapshot {
 }
 
 /** Return type of CopilotSDKService.getAccountQuota(). */
-export interface CopilotAccountQuotaResult {
-    quotaSnapshots: Record<string, CopilotAccountQuotaSnapshot>;
+export interface IAccountQuotaResult {
+    quotaSnapshots: Record<string, IAccountQuotaSnapshot>;
 }
 
 export class CopilotSDKService implements ISDKService {
@@ -184,7 +184,7 @@ export class CopilotSDKService implements ISDKService {
      * Spawns a fresh CopilotClient, calls account.getQuota(), then stops the client.
      * @param gitHubToken  Optional per-user GitHub token. Omit to use global auth.
      */
-    public async getAccountQuota(gitHubToken?: string): Promise<CopilotAccountQuotaResult> {
+    public async getAccountQuota(gitHubToken?: string): Promise<IAccountQuotaResult> {
         if (this.disposed) throw new Error('CopilotSDKService has been disposed');
         const availability = await this.isAvailable();
         if (!availability.available) throw new Error(availability.error ?? 'Copilot SDK is not available');
@@ -193,7 +193,7 @@ export class CopilotSDKService implements ISDKService {
             await client.start();
             const params = gitHubToken ? { gitHubToken } : {};
             const result = await (client as any).rpc.account.getQuota(params);
-            return result as CopilotAccountQuotaResult;
+            return result as IAccountQuotaResult;
         } finally {
             await client.stop();
         }
