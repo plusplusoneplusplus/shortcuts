@@ -64,6 +64,7 @@ export function createQueueInfrastructure(
     getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined,
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined,
     provider?: 'copilot' | 'codex',
+    resolveAiServiceForProvider?: (provider: import('../tasks/task-types').ChatProvider) => import('@plusplusoneplusplus/forge').ISDKService,
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.
     let db: Database.Database;
@@ -92,6 +93,7 @@ export function createQueueInfrastructure(
         getWsServer,
         memoryPromotion,
         provider,
+        resolveAiServiceForProvider,
         initialDelayMs: options.queue?.restartPickupDelayMs,
         getLoopInfra,
         getMcpOauthManager,

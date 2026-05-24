@@ -14,6 +14,7 @@ import { useFloatingChats } from '../../contexts/FloatingChatsContext';
 import { ChatHeaderOverflowMenu, type OverflowMenuItem } from './ChatHeaderOverflowMenu';
 import type { ClientConversationTurn } from '../../types/dashboard';
 import { LoopBadge } from './LoopBadge';
+import { ProviderBadge, type ChatProvider } from './ProviderBadge';
 import { isLoopsEnabled } from '../../utils/config';
 
 /**
@@ -441,6 +442,9 @@ export function ChatHeader({
                 )}
                 {isLoopsEnabled() && (loopCount ?? 0) > 0 && (
                     <LoopBadge count={loopCount!} hasActiveLoops={hasActiveLoops} onClick={onToggleLoopPanel} />
+                )}
+                {task?.metadata?.provider && (
+                    <ProviderBadge provider={task.metadata.provider as ChatProvider} />
                 )}
                 {/* References — only in wide tier (live ctx + duration moved into pill / composer) */}
                 {isWide && (

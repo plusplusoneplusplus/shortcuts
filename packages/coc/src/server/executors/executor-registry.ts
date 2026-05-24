@@ -38,6 +38,12 @@ export interface ExecutorRegistryOptions {
     memoryPromotion?: MemoryPromoteConfig;
     /** Active AI provider name recorded on each process for attribution. Defaults to 'copilot'. */
     provider?: 'copilot' | 'codex';
+    /**
+     * Resolve an ISDKService for a given provider, checking enablement.
+     * Injected from the bridge so executors can route per-chat without
+     * receiving the RuntimeConfigService directly.
+     */
+    resolveAiServiceForProvider?: (provider: import('../tasks/task-types').ChatProvider) => ISDKService;
     toolCallCacheStore: FileToolCallCacheStore;
     resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
@@ -100,6 +106,7 @@ export class ExecutorRegistry {
             getLoopInfra: options.getLoopInfra,
             getMcpOauthManager: options.getMcpOauthManager,
             provider: options.provider,
+            resolveAiServiceForProvider: options.resolveAiServiceForProvider,
         };
 
         this.strategyRegistry = new TaskStrategyRegistry();

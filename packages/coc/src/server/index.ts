@@ -198,22 +198,21 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const mcpOauthEnabled = resolvedConfig.mcpOauth?.enabled ?? true;
     const mcpOauthInfra = mcpOauthEnabled ? createMcpOauthInfrastructure() : undefined;
 
-    // Codex Auth infra — only created when the codex feature flag is enabled.
-    // The auth checker is injected into the CodexSDKService so sendMessage
-    // returns an auth-required error (AC-08) when the user has not signed in.
-    const codexEnabled = resolvedConfig.codex?.enabled ?? false;
-    let codexAuthInfra: ReturnType<typeof createCodexAuthInfrastructure> | undefined;
-    if (codexEnabled) {
-        codexAuthInfra = createCodexAuthInfrastructure({ dataDir });
-        // Register the Codex provider with an auth checker that gates sendMessage
-        registerCodexSDKService(() => {
-            const info = codexAuthInfra!.store.readInfo();
-            return {
-                authenticated: info.status === 'authenticated',
-                authUrl: 'http://localhost:' + (options.port ?? 4000) + '/api/codex-auth/start',
-            };
-        });
-    }
+    // Codex Auth infra — always created so the auth system is ready for live
+    // enablement via admin config. Previously gated on codex.enabled at startup;
+    // the /api/agent-providers endpoint and per-chat provider routing need it
+    // available regardless of the current enabled flag.
+    const codexAuthInfra = createCodexAuthInfrastructure({ dataDir });
+    // Register the Codex provider unconditionally with an auth checker that
+    // gates sendMessage. This allows per-chat routing to resolve Codex even
+    // when it was enabled after startup.
+    registerCodexSDKService(() => {
+        const info = codexAuthInfra.store.readInfo();
+        return {
+            authenticated: info.status === 'authenticated',
+            authUrl: 'http://localhost:' + (options.port ?? 4000) + '/api/codex-auth/start',
+        };
+    });
 
     const requestedProvider = resolvedConfig.activeProvider === 'codex' ? 'codex' : 'copilot';
     const effectiveProvider = requestedProvider === 'codex' && sdkServiceRegistry.has(SDK_PROVIDER_CODEX)
@@ -225,6 +224,24 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const resolvedAiService = options.aiService ?? sdkServiceRegistry.getOrThrow(
         effectiveProvider === 'codex' ? SDK_PROVIDER_CODEX : SDK_PROVIDER_COPILOT,
     );
+
+    // Per-chat provider resolver: checks runtime enablement, then looks up the
+    // SDK service. Returns the Copilot service unconditionally; blocks Codex
+    // when codex.enabled is false in the live admin config.
+    const resolveAiServiceForProvider = (provider: import('./tasks/task-types').ChatProvider): import('@plusplusoneplusplus/forge').ISDKService => {
+        if (provider === 'codex') {
+            const liveConfig = runtimeConfigService.config;
+            if (!liveConfig.codex?.enabled) {
+                throw new Error('Codex provider is currently disabled. Enable Codex in Admin settings to use it.');
+            }
+            const svc = sdkServiceRegistry.get(SDK_PROVIDER_CODEX);
+            if (!svc) {
+                throw new Error('Codex SDK service is not available. Codex may not be installed on this server.');
+            }
+            return svc;
+        }
+        return options.aiService ?? sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
+    };
 
     const { registry, bridge, queuePersistence, queueFacade } = createQueueInfrastructure(
         store, dataDir, { ...options, aiService: resolvedAiService }, defaultTimeoutMs,
@@ -276,6 +293,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         },
         () => mcpOauthInfra?.manager,
         effectiveProvider,
+        resolveAiServiceForProvider,
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
@@ -435,10 +453,12 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         loopStore: loopInfra?.loopStore,
         loopExecutor: loopInfra?.loopExecutor,
         mcpOauthManager: mcpOauthInfra?.manager,
-        codexAuthManager: codexAuthInfra?.manager,
+        codexAuthManager: codexAuthInfra.manager,
+        codexAuthStore: codexAuthInfra.store,
         loopEmit: loopInfra?.emit,
         hostname: os.hostname(),
         bindAddress: host,
+        serverPort: port,
         syncEngines,
     });
     // Restore auto-commit timers for all workspaces that had it enabled
@@ -548,7 +568,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             loopExecutor: loopInfra?.loopExecutor,
             loopInfraDispose: loopInfra?.dispose,
             mcpOauthDispose: mcpOauthInfra?.dispose,
-            codexAuthDispose: codexAuthInfra?.dispose,
+            codexAuthDispose: codexAuthInfra.dispose,
             syncEngines,
             activeSockets, server,
         }),

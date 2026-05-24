@@ -1,4 +1,5 @@
 export { AdminClient } from './admin';
+export { AgentProvidersClient } from './agent-providers';
 export { DbBrowserClient } from './db-browser';
 export { ExplorerClient } from './explorer';
 export { GitClient } from './git';

@@ -1158,3 +1158,25 @@
     flex-direction: column;
   }
 }
+
+/* ── Quota progress bars ──────────────────────────────────────── */
+.admin-redesign .ar-quota-bar-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--ar-bg-3);
+  overflow: hidden;
+}
+.admin-redesign .ar-quota-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+.admin-redesign .ar-quota-bar-fill.ar-quota-green {
+  background: var(--ar-success);
+}
+.admin-redesign .ar-quota-bar-fill.ar-quota-amber {
+  background: var(--ar-warning);
+}
+.admin-redesign .ar-quota-bar-fill.ar-quota-red {
+  background: var(--ar-danger);
+}

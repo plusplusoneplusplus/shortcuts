@@ -20,6 +20,7 @@ import type {
   AdminTokenResponse,
   AdminVersionResponse,
   AdminWipeResponse,
+  AgentProvidersQuotaResponse,
 } from '../contracts';
 import type { CocRequestOptions, NormalizedCocClientOptions, QueryPrimitive, RequestAdapter } from '../types';
 import { buildApiUrl } from '../url';
@@ -160,6 +161,10 @@ export class AdminClient {
       body: { path: options.path },
       signal: options.signal,
     });
+  }
+
+  getAgentProvidersQuota(): Promise<AgentProvidersQuotaResponse> {
+    return this.transport.request<AgentProvidersQuotaResponse>('/agent-providers/quota');
   }
 
   private fetchRaw(path: string, options: {

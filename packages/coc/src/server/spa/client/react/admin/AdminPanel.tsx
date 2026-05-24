@@ -239,9 +239,14 @@ export function AdminPanel() {
     const [featuresSaving, setFeaturesSaving] = useState(false);
     const [activeProviderSaving, setActiveProviderSaving] = useState(false);
 
+    // Quota state
+    const [quotaData, setQuotaData] = useState<import('@plusplusoneplusplus/coc-client').AgentProvidersQuotaResponse | null>(null);
+    const [quotaLoading, setQuotaLoading] = useState(false);
+    const [quotaError, setQuotaError] = useState<string | null>(null);
+
     // Snapshots for per-card dirty tracking (set when config/prefs loads)
     const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
-    const [activeProviderSnapshot, setActiveProviderSnapshot] = useState<'copilot' | 'codex'>('copilot');
+    const [activeProviderSnapshot, setActiveProviderSnapshot] = useState<{ provider: 'copilot' | 'codex'; codexEnabled: boolean }>({ provider: 'copilot', codexEnabled: false });
     const [chatSnapshot, setChatSnapshot] = useState({ followUpEnabled: true, followUpCount: '3', askUserEnabled: false, showReportIntent: false, toolCompactness: 3 as 0 | 1 | 2 | 3 });
     const [appearanceSnapshot, setAppearanceSnapshot] = useState({
         theme: 'auto' as string,
@@ -253,7 +258,7 @@ export function AdminPanel() {
         taskCardDensity: 'compact' as 'compact' | 'dense',
         historyGrouping: true,
     });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false, codexEnabled: false });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -368,9 +373,9 @@ export function AdminPanel() {
             setCodexEnabled(cxe);
             const ap = (resolved.activeProvider === 'codex' ? 'codex' : 'copilot') as 'copilot' | 'codex';
             setActiveProvider(ap);
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde, codexEnabled: cxe });
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde });
             setAiExecSnapshot({ model: form.model, parallel: form.parallel, timeout: form.timeout, output: form.output });
-            setActiveProviderSnapshot(ap);
+            setActiveProviderSnapshot({ provider: ap, codexEnabled: cxe });
             const sgr = resolved.sync?.gitRemote ?? '';
             const sim = String(resolved.sync?.intervalMinutes ?? 5);
             setSyncGitRemote(sgr);
@@ -430,7 +435,7 @@ export function AdminPanel() {
         configForm.timeout !== aiExecSnapshot.timeout ||
         configForm.output !== aiExecSnapshot.output;
 
-    const activeProviderDirty = activeProvider !== activeProviderSnapshot;
+    const activeProviderDirty = activeProvider !== activeProviderSnapshot.provider || codexEnabled !== activeProviderSnapshot.codexEnabled;
 
     const chatDirty = chatFollowUpEnabled !== chatSnapshot.followUpEnabled ||
         chatFollowUpCount !== chatSnapshot.followUpCount ||
@@ -462,8 +467,7 @@ export function AdminPanel() {
         loopsEnabled !== featuresSnapshot.loops ||
         excalidrawEnabled !== featuresSnapshot.excalidraw ||
         mcpOauthEnabled !== featuresSnapshot.mcpOauth ||
-        focusedDiffEnabled !== featuresSnapshot.focusedDiff ||
-        codexEnabled !== featuresSnapshot.codexEnabled;
+        focusedDiffEnabled !== featuresSnapshot.focusedDiff;
 
     // ── AI & Execution card ──
     const handleSaveAiExec = useCallback(async () => {
@@ -507,19 +511,33 @@ export function AdminPanel() {
     const handleSaveActiveProvider = useCallback(async () => {
         setActiveProviderSaving(true);
         try {
-            await getSpaCocClient().admin.updateConfig({ activeProvider });
-            addToast('Active provider saved — restart required to apply change', 'success');
-            setActiveProviderSnapshot(activeProvider);
+            await getSpaCocClient().admin.updateConfig({ activeProvider, 'codex.enabled': codexEnabled });
+            addToast('Provider settings saved — restart required to apply changes', 'success');
+            setActiveProviderSnapshot({ provider: activeProvider, codexEnabled });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setActiveProviderSaving(false);
         }
-    }, [activeProvider, addToast]);
+    }, [activeProvider, codexEnabled, addToast]);
 
     const handleCancelActiveProvider = useCallback(() => {
-        setActiveProvider(activeProviderSnapshot);
+        setActiveProvider(activeProviderSnapshot.provider);
+        setCodexEnabled(activeProviderSnapshot.codexEnabled);
     }, [activeProviderSnapshot]);
+
+    const handleRefreshQuota = useCallback(async () => {
+        setQuotaLoading(true);
+        setQuotaError(null);
+        try {
+            const data = await getSpaCocClient().admin.getAgentProvidersQuota();
+            setQuotaData(data);
+        } catch (err: unknown) {
+            setQuotaError(getSpaCocClientErrorMessage(err, 'Failed to fetch quota'));
+        } finally {
+            setQuotaLoading(false);
+        }
+    }, []);
 
     // ── Chat Experience card ──
     const handleSaveChat = useCallback(async () => {
@@ -637,17 +655,16 @@ export function AdminPanel() {
                 'excalidraw.enabled': excalidrawEnabled,
                 'mcpOauth.enabled': mcpOauthEnabled,
                 'features.focusedDiff': focusedDiffEnabled,
-                'codex.enabled': codexEnabled,
             });
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled, codexEnabled: codexEnabled });
+            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, codexEnabled, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setTerminalEnabled(featuresSnapshot.terminal);
@@ -666,7 +683,6 @@ export function AdminPanel() {
         setExcalidrawEnabled(featuresSnapshot.excalidraw);
         setMcpOauthEnabled(featuresSnapshot.mcpOauth);
         setFocusedDiffEnabled(featuresSnapshot.focusedDiff);
-        setCodexEnabled(featuresSnapshot.codexEnabled);
     }, [featuresSnapshot]);
 
     const handleSaveServerName = useCallback(async () => {
@@ -1422,13 +1438,6 @@ export function AdminPanel() {
                                         <AdminToggle checked={mcpOauthEnabled} onChange={setMcpOauthEnabled} data-testid="toggle-mcp-oauth-enabled" />
                                     </AdminRow>
                                     <AdminRow
-                                        name={<>Codex Provider <span className="ar-badge ar-badge-accent">Experimental</span> <span className="ar-badge ar-badge-warning">Restart</span></>}
-                                        hint="Enable the optional @openai/codex-sdk provider. Once enabled, switch the active provider in the AI & Execution tab. Requires a server restart."
-                                    >
-                                        <SourceBadge source={sources['codex.enabled']} />
-                                        <AdminToggle checked={codexEnabled} onChange={setCodexEnabled} data-testid="toggle-codex-enabled" />
-                                    </AdminRow>
-                                    <AdminRow
                                         name="Focused Diff"
                                         hint="AI-powered hunk classification for PR diffs. Highlights logic changes and dims mechanical edits."
                                     >
@@ -1745,8 +1754,15 @@ export function AdminPanel() {
                                     data-testid="settings-active-provider"
                                 >
                                     <AdminRow
+                                        name={<>Codex Provider <span className="ar-badge ar-badge-accent">Experimental</span> <span className="ar-badge ar-badge-warning">Restart</span></>}
+                                        hint="Enable the optional @openai/codex-sdk provider. Requires a server restart."
+                                    >
+                                        <SourceBadge source={sources['codex.enabled']} />
+                                        <AdminToggle checked={codexEnabled} onChange={setCodexEnabled} data-testid="toggle-codex-enabled" />
+                                    </AdminRow>
+                                    <AdminRow
                                         name={<>Active Provider <span className="ar-badge ar-badge-warning">Restart</span></>}
-                                        hint="Switch to 'Codex' only after enabling the Codex feature flag in Settings → Features and completing ChatGPT sign-in. Requires a server restart."
+                                        hint="Switch to 'Codex' only after enabling the Codex provider above and completing ChatGPT sign-in. Requires a server restart."
                                     >
                                         <select
                                             id="admin-config-active-provider"
@@ -1779,6 +1795,72 @@ export function AdminPanel() {
                                             ⚠ {providerAvailability['codex'].error}
                                         </div>
                                     )}
+                                    {/* Quota section */}
+                                    <div style={{ marginTop: 12 }}>
+                                        <button
+                                            type="button"
+                                            className="ar-btn ar-btn-secondary"
+                                            onClick={handleRefreshQuota}
+                                            disabled={quotaLoading}
+                                            data-testid="btn-refresh-quota"
+                                        >
+                                            {quotaLoading ? <Spinner size="sm" /> : '↻'} Refresh Quota
+                                        </button>
+                                        {quotaError && (
+                                            <div className="ar-row" style={{ marginTop: 8, color: 'var(--ar-danger)', fontSize: 12 }}>
+                                                ⚠ {quotaError}
+                                            </div>
+                                        )}
+                                        {quotaData && (
+                                            <div data-testid="quota-results" style={{ marginTop: 12 }}>
+                                                {quotaData.providers.map(provider => (
+                                                    <div key={provider.id} style={{ marginBottom: 12 }}>
+                                                        <div style={{ fontWeight: 600, fontSize: 12.5, marginBottom: 6, color: 'var(--ar-text-2)', textTransform: 'capitalize' }}>
+                                                            {provider.id === 'copilot' ? 'Copilot' : 'Codex'}
+                                                        </div>
+                                                        {provider.error ? (
+                                                            <div style={{ fontSize: 12, color: 'var(--ar-danger)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                                ⚠ {provider.error}
+                                                            </div>
+                                                        ) : provider.quotaTypes.length === 0 ? (
+                                                            <div style={{ fontSize: 12, color: 'var(--ar-text-mute)' }}>Quota not available for this provider.</div>
+                                                        ) : (
+                                                            provider.quotaTypes.map(qt => (
+                                                                <div key={qt.type} style={{ marginBottom: 8 }} data-testid={`quota-type-${qt.type}`}>
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                                                                        <span style={{ fontSize: 12, color: 'var(--ar-text-2)', textTransform: 'capitalize' }}>{qt.type}</span>
+                                                                        {qt.isUnlimitedEntitlement ? (
+                                                                            <span className="ar-badge ar-badge-success">Unlimited</span>
+                                                                        ) : (
+                                                                            <span style={{ fontSize: 11, color: 'var(--ar-text-mute)' }}>{qt.usedRequests} / {qt.entitlementRequests} used</span>
+                                                                        )}
+                                                                    </div>
+                                                                    {!qt.isUnlimitedEntitlement && (
+                                                                        <>
+                                                                            <div className="ar-quota-bar-track">
+                                                                                <div
+                                                                                    className={`ar-quota-bar-fill ${qt.remainingPercentage >= 0.5 ? 'ar-quota-green' : qt.remainingPercentage >= 0.2 ? 'ar-quota-amber' : 'ar-quota-red'}`}
+                                                                                    style={{ width: `${Math.max(0, Math.min(100, qt.remainingPercentage * 100))}%` }}
+                                                                                />
+                                                                            </div>
+                                                                            {qt.resetDate && (
+                                                                                <div style={{ fontSize: 11, color: 'var(--ar-text-mute)', marginTop: 2 }}>
+                                                                                    Resets {new Date(qt.resetDate).toLocaleDateString()}
+                                                                                </div>
+                                                                            )}
+                                                                            {qt.usageAllowedWithExhaustedQuota && qt.remainingPercentage === 0 && (
+                                                                                <span className="ar-pill" style={{ marginTop: 4, display: 'inline-flex', fontSize: 11, color: 'var(--ar-warning)' }}>Overage allowed</span>
+                                                                            )}
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                            ))
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
                                 </SettingsCard>
                                 {isContainerMode() && (
                                     <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>

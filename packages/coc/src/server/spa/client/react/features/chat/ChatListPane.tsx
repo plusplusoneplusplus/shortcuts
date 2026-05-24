@@ -34,6 +34,7 @@ import { getListModeConfig } from './list-mode-config';
 import { useAllLoops, type ProcessLoopState } from './hooks/useAllLoops';
 import { LoopIcon } from './icons/LoopIcon';
 import { isRalphTask } from '../../../../../tasks/task-types';
+import { ProviderBadge } from './ProviderBadge';
 
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {
@@ -1395,6 +1396,13 @@ export function ChatListPane({
                                     <LoopIcon className="w-3.5 h-3.5" />
                                 </span>
                             );
+                        })()}
+                        {(() => {
+                            // Show provider badge only for codex — copilot is the default
+                            // and would add noise to every chat row if shown universally.
+                            const provider = task.provider ?? task.metadata?.provider ?? task.payload?.provider;
+                            if (provider !== 'codex') return null;
+                            return <ProviderBadge provider="codex" />;
                         })()}
                     </span>
                     <span className={cn('flex items-center gap-1', isAwaitingInput ? 'text-amber-700 dark:text-amber-300 font-medium' : 'text-[#848484] dark:text-[#999]')}>

@@ -41,6 +41,8 @@ export interface PerRepoPreferences {
   defaultModels?: Record<string, string | undefined>;
   /** Max iterations a Ralph loop runs before stopping. Range 1..200. */
   maxRalphIterations?: number;
+  /** Last agent provider selected for new chats in this workspace. Persisted per-repo. */
+  lastChatProvider?: 'copilot' | 'codex';
   boundedMemory?: {
     enabled?: boolean;
     charLimit?: number;

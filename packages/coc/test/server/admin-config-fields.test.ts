@@ -395,12 +395,12 @@ describe('runtime classification', () => {
         expect(fieldFor('mcpOauth.enabled').runtime).toBe('restartRequired');
     });
 
-    it('marks codex.enabled as restartRequired', () => {
-        expect(fieldFor('codex.enabled').runtime).toBe('restartRequired');
+    it('marks codex.enabled as live', () => {
+        expect(fieldFor('codex.enabled').runtime).toBe('live');
     });
 
-    it('marks activeProvider as restartRequired', () => {
-        expect(fieldFor('activeProvider').runtime).toBe('restartRequired');
+    it('marks activeProvider as live', () => {
+        expect(fieldFor('activeProvider').runtime).toBe('live');
     });
 
     const liveFeatures = [

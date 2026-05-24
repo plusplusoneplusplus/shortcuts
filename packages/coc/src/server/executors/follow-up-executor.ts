@@ -23,7 +23,7 @@ import type {
     SystemMessageConfig,
     TurnSource,
 } from '@plusplusoneplusplus/forge';
-import type { ChatMode } from '../tasks/task-types';
+import type { ChatMode, ChatProvider } from '../tasks/task-types';
 import {
     approveAllPermissions,
     getLogger,
@@ -144,17 +144,15 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             throw new Error(`Process not found: ${processId}`);
         }
 
-        // AC-10 — Provider mismatch guard: reject follow-up if the session was
-        // created by a different provider than the one currently active.
-        const sessionProvider = (process.metadata?.provider as string | undefined) ?? 'copilot';
-        if (sessionProvider !== this.provider) {
-            const sessionProviderLabel = sessionProvider === 'codex' ? 'Codex' : 'Copilot';
-            const activeProviderLabel = this.provider === 'codex' ? 'Codex' : 'Copilot';
-            throw new Error(
-                `Provider mismatch: this session was created with ${sessionProviderLabel} but the active provider is ${activeProviderLabel}. ` +
-                `Switch the active provider back to ${sessionProviderLabel} in admin settings, or start a new session.`,
-            );
-        }
+        // AC-04 — Use the original chat's provider for follow-ups.
+        // Read provider from process metadata (set at creation time). Processes
+        // created before this feature had no provider metadata; default to 'copilot'.
+        const sessionProvider: ChatProvider = ((process.metadata?.provider as string | undefined) ?? 'copilot') as ChatProvider;
+
+        // Resolve the AI service for this provider. This also checks that the
+        // provider is still enabled — if not, it throws a clear error that blocks
+        // the new follow-up turn without affecting already-running turns.
+        const followUpAiService = this.getAiServiceForProvider(sessionProvider);
 
         const workingDirectory = process.workingDirectory || this.defaultWorkingDirectory;
 
@@ -233,7 +231,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                         await flushMemories({
                             turns: process.conversationTurns ?? [],
                             memoryStore,
-                            aiService: this.aiService,
+                            aiService: followUpAiService,
                             minTurns: 0,
                             timeoutMs: 30_000,
                         });
@@ -394,7 +392,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             };
 
             let result: SDKInvocationResult;
-            result = await this.aiService.sendMessage(sendOptions) as SDKInvocationResult;
+            result = await followUpAiService.sendMessage(sendOptions) as SDKInvocationResult;
 
             if (resolvedDeliveryMode === 'immediate') {
                 const turnIndex = process.conversationTurns?.length ?? 0;

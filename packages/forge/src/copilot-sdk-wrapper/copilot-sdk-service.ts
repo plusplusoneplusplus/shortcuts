@@ -58,6 +58,22 @@ export {
 
 export { tryConvertImageFileToDataUrl } from './image-converter';
 
+/** A single quota snapshot as returned by the Copilot SDK account.getQuota() RPC. */
+export interface IAccountQuotaSnapshot {
+    isUnlimitedEntitlement: boolean;
+    entitlementRequests: number;
+    usedRequests: number;
+    usageAllowedWithExhaustedQuota: boolean;
+    remainingPercentage: number;
+    overage: number;
+    resetDate?: string;
+}
+
+/** Return type of CopilotSDKService.getAccountQuota(). */
+export interface IAccountQuotaResult {
+    quotaSnapshots: Record<string, IAccountQuotaSnapshot>;
+}
+
 export class CopilotSDKService implements ISDKService {
     private static instance: CopilotSDKService | null = null;
 
@@ -161,6 +177,26 @@ export class CopilotSDKService implements ISDKService {
         const availability = await this.isAvailable();
         if (!availability.available) throw new Error(availability.error ?? 'Copilot SDK is not available');
         return fetchModelsFromClient(await this.createClient());
+    }
+
+    /**
+     * Retrieve per-type account-level quota from the Copilot SDK.
+     * Spawns a fresh CopilotClient, calls account.getQuota(), then stops the client.
+     * @param gitHubToken  Optional per-user GitHub token. Omit to use global auth.
+     */
+    public async getAccountQuota(gitHubToken?: string): Promise<IAccountQuotaResult> {
+        if (this.disposed) throw new Error('CopilotSDKService has been disposed');
+        const availability = await this.isAvailable();
+        if (!availability.available) throw new Error(availability.error ?? 'Copilot SDK is not available');
+        const client = await this.createClient();
+        try {
+            await client.start();
+            const params = gitHubToken ? { gitHubToken } : {};
+            const result = await (client as any).rpc.account.getQuota(params);
+            return result as IAccountQuotaResult;
+        } finally {
+            await client.stop();
+        }
     }
 
     public async sendMessage(options: SendMessageOptions): Promise<SDKInvocationResult> {

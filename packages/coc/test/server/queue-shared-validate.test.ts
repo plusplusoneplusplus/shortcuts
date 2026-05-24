@@ -236,3 +236,56 @@ describe('validateAndParseTask – kind injection enables correct type guard dis
         expect(isChatPayload(payload)).toBe(false);
     });
 });
+
+// ============================================================================
+// ChatPayload.provider validation (AC-03)
+// ============================================================================
+
+describe('validateAndParseTask – ChatPayload.provider validation', () => {
+    it('accepts provider: copilot', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello', provider: 'copilot' },
+        });
+        expect(result.valid).toBe(true);
+        expect((result.input!.payload as any).provider).toBe('copilot');
+    });
+
+    it('accepts provider: codex', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello', provider: 'codex' },
+        });
+        expect(result.valid).toBe(true);
+        expect((result.input!.payload as any).provider).toBe('codex');
+    });
+
+    it('rejects an unknown provider value with a 400-style error', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello', provider: 'openai' },
+        });
+        expect(result.valid).toBe(false);
+        expect(result.error).toMatch(/invalid provider/i);
+        expect(result.error).toContain('openai');
+    });
+
+    it('passes through when provider is omitted (defaults to copilot at execution time)', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello' },
+        });
+        expect(result.valid).toBe(true);
+        expect((result.input!.payload as any).provider).toBeUndefined();
+    });
+
+    it('does not validate provider for non-chat task types', () => {
+        // run-script payloads have no provider concept; an accidentally passed
+        // provider field should not cause a validation error at the chat layer.
+        const result = validateAndParseTask({
+            type: 'run-script',
+            payload: { script: 'echo hi', workingDirectory: '/ws', provider: 'unknown' },
+        });
+        expect(result.valid).toBe(true);
+    });
+});

@@ -68,15 +68,21 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getConfig: () => ({ apiBasePath: '/api' }),
     isRalphEnabled: () => mockRalphEnabled.value,
     isLoopsEnabled: () => false,
-    isCodexEnabled: () => false,
-    getActiveProvider: () => 'copilot',
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         queue: { enqueue: mockEnqueueTask },
-        preferences: { patchGlobal: vi.fn().mockResolvedValue({}) },
+        preferences: {
+            patchGlobal: vi.fn().mockResolvedValue({}),
+            getRepo: vi.fn().mockResolvedValue({}),
+            patchRepo: vi.fn().mockResolvedValue({}),
+        },
         skills: { listAllWorkspace: vi.fn().mockResolvedValue({ merged: [] }) },
+        agentProviders: { list: vi.fn().mockResolvedValue({ providers: [
+            { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+            { id: 'codex', label: 'Codex', enabled: false, available: false },
+        ] }) },
     }),
     getSpaCocClientErrorMessage: (err: any, fallback: string) =>
         (err instanceof Error ? err.message : undefined) || fallback,

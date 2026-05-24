@@ -251,6 +251,12 @@ export type PostAction =
 // Payload Interfaces
 // ============================================================================
 
+/** Supported AI provider IDs for per-chat routing. */
+export type ChatProvider = 'copilot' | 'codex';
+
+/** Supported ChatProvider values (for runtime validation). */
+export const VALID_CHAT_PROVIDERS: ReadonlySet<ChatProvider> = new Set(['copilot', 'codex']);
+
 export interface ChatPayload {
     readonly kind: 'chat';
     mode: ChatMode;
@@ -275,6 +281,12 @@ export interface ChatPayload {
     postActions?: PostAction[];
     /** Base64 data-URLs to persist in the user conversation turn. */
     images?: string[];
+    /**
+     * AI provider to use for this chat task.
+     * Defaults to 'copilot' when omitted.
+     * Supported values: 'copilot' | 'codex'.
+     */
+    provider?: ChatProvider;
 }
 
 export interface RunWorkflowPayload {
