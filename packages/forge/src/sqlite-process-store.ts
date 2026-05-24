@@ -38,7 +38,7 @@ import {
     ProcessEvent,
 } from './ai/process-types';
 import type { AIBackendType } from './ai/types';
-import type { TokenUsage } from './copilot-sdk-wrapper/types';
+import type { TokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
 import { initializeDatabase } from './sqlite-schema';
 import { getLogger } from './logger';
 import { computeMessagePreview } from './utils/message-preview';

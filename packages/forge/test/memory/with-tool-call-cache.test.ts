@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import type { AIInvoker, AIInvokerResult, AIInvokerOptions } from '../../src/ai/types';
 import type { ToolCallCacheStore, ToolCallFilter } from '../../src/memory/tool-call-cache-types';
-import type { ToolEvent } from '../../src/copilot-sdk-wrapper/types';
+import type { ToolEvent } from '@plusplusoneplusplus/coc-agent-sdk';
 
 vi.mock('../../src/memory/tool-call-capture');
 vi.mock('../../src/memory/tool-call-cache-aggregator');

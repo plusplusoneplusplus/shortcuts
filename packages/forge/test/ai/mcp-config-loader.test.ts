@@ -25,8 +25,8 @@ import {
     setHomeDirectoryOverride,
     MCPConfigFile,
     VSCodeMCPConfigFile
-} from '../../src/copilot-sdk-wrapper/mcp-config-loader';
-import { MCPServerConfig, MCPLocalServerConfig, MCPRemoteServerConfig } from '../../src/copilot-sdk-wrapper/types';
+} from '@plusplusoneplusplus/coc-agent-sdk';
+import { MCPServerConfig, MCPLocalServerConfig, MCPRemoteServerConfig } from '@plusplusoneplusplus/coc-agent-sdk';
 
 describe('MCP Config Loader', () => {
     let tempDir: string;

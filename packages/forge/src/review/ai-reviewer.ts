@@ -17,7 +17,7 @@ import type {
     ReviewAuthor,
 } from './types';
 import { createReviewComment, buildReviewResult, type CreateReviewCommentInput } from './utils';
-import type { CopilotSDKService, SendMessageOptions, SDKInvocationResult } from '../copilot-sdk-wrapper/copilot-sdk-service';
+import type { CopilotSDKService, SendMessageOptions, SDKInvocationResult } from '@plusplusoneplusplus/coc-agent-sdk';
 
 // ── AI reviewer configuration ───────────────────────────────
 

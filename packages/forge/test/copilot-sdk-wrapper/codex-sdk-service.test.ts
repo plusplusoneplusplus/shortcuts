@@ -7,12 +7,12 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { CodexSDKService, registerCodexSDKService } from '../../src/copilot-sdk-wrapper/codex-sdk-service';
+import { CodexSDKService, registerCodexSDKService } from '@plusplusoneplusplus/coc-agent-sdk';
 import {
     sdkServiceRegistry,
     CODEX_PROVIDER,
     SDK_PROVIDER_CODEX,
-} from '../../src/copilot-sdk-wrapper/sdk-service-registry';
+} from '@plusplusoneplusplus/coc-agent-sdk';
 
 // ---------------------------------------------------------------------------
 // Helper: build a minimal mock @openai/codex-sdk module

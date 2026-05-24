@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ToolCallCapture, ToolCallCaptureOptions } from '../../src/memory/tool-call-capture';
 import type { ToolCallCacheStore, ToolCallFilter, ToolCallQAEntry } from '../../src/memory/tool-call-cache-types';
-import type { ToolEvent } from '../../src/copilot-sdk-wrapper/types';
+import type { ToolEvent } from '@plusplusoneplusplus/coc-agent-sdk';
 import { TASK_FILTER } from '../../src/memory/tool-call-cache-presets';
 
 // ---------------------------------------------------------------------------

@@ -12,7 +12,7 @@
  */
 
 import type { AIInvoker, AIInvokerResult, AIInvokerOptions } from '../ai/types';
-import type { ToolEvent } from '../copilot-sdk-wrapper/types';
+import type { ToolEvent } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { ToolCallCacheStore, ToolCallFilter, ToolCallCacheLevel } from './tool-call-cache-types';
 import { ToolCallCapture } from './tool-call-capture';
 import { ToolCallCacheAggregator } from './tool-call-cache-aggregator';

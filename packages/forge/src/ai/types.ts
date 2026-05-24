@@ -1,9 +1,11 @@
 /**
  * AI Service Types (Pure Node.js)
- * 
+ *
  * Core types for AI service operations. These types are VS Code-free
  * and can be used in CLI tools, tests, and other Node.js environments.
  */
+
+import type { Tool, ToolEvent, SystemMessageConfig, TokenUsage, BackgroundTasksInfo } from '@plusplusoneplusplus/coc-agent-sdk';
 
 /**
  * Supported AI backends for invocation.
@@ -17,7 +19,7 @@ export type AIBackendType = 'copilot-sdk' | 'copilot-cli' | 'clipboard';
  * Valid AI model options for Copilot CLI.
  * Derived from the central model registry (model-registry.ts).
  */
-export { VALID_MODELS, AIModel, DEFAULT_MODEL_ID } from '../copilot-sdk-wrapper/model-registry';
+export { VALID_MODELS, AIModel, DEFAULT_MODEL_ID } from '@plusplusoneplusplus/coc-agent-sdk';
 
 // Re-export model registry helpers and types for convenience
 export {
@@ -32,7 +34,7 @@ export {
     getModelCount,
     getModelsByTier,
     getModelContextWindow
-} from '../copilot-sdk-wrapper/model-registry';
+} from '@plusplusoneplusplus/coc-agent-sdk';
 
 /**
  * Result of an AI invocation
@@ -109,13 +111,13 @@ export interface AIInvokerOptions {
     /** Abort signal for cooperative cancellation. */
     signal?: AbortSignal;
     /** Custom tools to register on the AI session (SDK-native tools, not MCP). */
-    tools?: import('../copilot-sdk-wrapper/types').Tool<any>[];
+    tools?: Tool<any>[];
     /** Callback invoked for each tool event during the AI session. */
-    onToolEvent?: (event: import('../copilot-sdk-wrapper/types').ToolEvent) => void;
+    onToolEvent?: (event: ToolEvent) => void;
     /** Callback invoked whenever background task state changes. */
-    onBackgroundTasksChanged?: (tasks: import('../copilot-sdk-wrapper/streaming-session').BackgroundTasksInfo) => void;
+    onBackgroundTasksChanged?: (tasks: BackgroundTasksInfo) => void;
     /** System message configuration for the SDK session. */
-    systemMessage?: import('../copilot-sdk-wrapper/types').SystemMessageConfig;
+    systemMessage?: SystemMessageConfig;
 }
 
 /**
@@ -131,7 +133,7 @@ export interface AIInvokerResult {
     /** SDK session ID if the request was made via SDK (for session resume) */
     sessionId?: string;
     /** Token usage data from the SDK (if available) */
-    tokenUsage?: import('../copilot-sdk-wrapper/types').TokenUsage;
+    tokenUsage?: TokenUsage;
 }
 
 /**

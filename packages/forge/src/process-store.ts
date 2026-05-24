@@ -9,7 +9,7 @@
 
 import { AIProcess, AIProcessStatus, AIProcessType, ProcessEvent, ConversationTurn, TimelineItem } from './ai/process-types';
 import type { PipelinePhaseEvent, PipelineProgressEvent, ItemProcessEventData } from './pipeline-types';
-import type { TokenUsage } from './copilot-sdk-wrapper/types';
+import type { TokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
 
 /**
  * A single FTS5 search hit within a conversation turn,

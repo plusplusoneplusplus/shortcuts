@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { ExtendedSdkRequest, PermissionRequest } from '../../src/copilot-sdk-wrapper/types';
+import type { ExtendedSdkRequest, PermissionRequest } from '@plusplusoneplusplus/coc-agent-sdk';
 
 describe('ExtendedSdkRequest', () => {
     it('should extend PermissionRequest with resource and operation fields', () => {

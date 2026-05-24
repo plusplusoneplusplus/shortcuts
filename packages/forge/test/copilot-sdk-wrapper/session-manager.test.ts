@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { SessionManager, IAbortableSession } from '../../src/copilot-sdk-wrapper/session-manager';
+import { SessionManager, IAbortableSession } from '@plusplusoneplusplus/coc-agent-sdk';
 import { setLogger, nullLogger } from '../../src/logger';
 
 setLogger(nullLogger);

@@ -8,8 +8,8 @@ import {
     sdkServiceRegistry,
     COPILOT_PROVIDER,
     SDK_PROVIDER_COPILOT,
-} from '../../src/copilot-sdk-wrapper/sdk-service-registry';
-import type { ISDKService } from '../../src/copilot-sdk-wrapper/sdk-service-interface';
+} from '@plusplusoneplusplus/coc-agent-sdk';
+import type { ISDKService } from '@plusplusoneplusplus/coc-agent-sdk';
 
 // ---------------------------------------------------------------------------
 // Minimal stub that satisfies ISDKService structurally

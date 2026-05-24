@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { defineTool } from '../../src/copilot-sdk-wrapper/types';
+import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 
 describe('defineTool', () => {
     it('returns a tool with name merged from the first arg', () => {

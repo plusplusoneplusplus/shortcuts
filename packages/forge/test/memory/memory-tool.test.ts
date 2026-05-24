@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createMemoryTool, MemoryToolOptions, MemoryToolStores, getMemorySchema, MEMORY_SCHEMA } from '../../src/memory/memory-tool';
 import type { BoundedMemoryStore } from '../../src/memory/bounded-memory-store';
 import type { MemoryMutationResult, MemoryUsage } from '../../src/memory/bounded-memory-types';
-import { ToolInvocation } from '../../src/copilot-sdk-wrapper/types';
+import { ToolInvocation } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { MemoryCandidateStore } from '../../src/memory/memory-candidate-store';
 import type { MemoryCandidate, MemoryCandidateInput } from '../../src/memory/memory-candidate-types';
 
