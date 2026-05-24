@@ -7,17 +7,16 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setLogger, nullLogger } from '../../src/logger';
 import {
     StreamingSession,
     StreamingState,
     IStreamableSession,
     ISessionEvent,
     StreamingSessionRunOptions,
-} from '../../src/copilot-sdk-wrapper/streaming-session';
+} from '../../src/streaming-session';
 
 // Suppress logger output during tests
-setLogger(nullLogger);
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers

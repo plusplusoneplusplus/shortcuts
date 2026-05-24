@@ -9,20 +9,19 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { setLogger, nullLogger } from '../../src/logger';
 
 // Suppress logger output during tests
-setLogger(nullLogger);
+
 
 // ---------------------------------------------------------------------------
 // Module mocks
 // ---------------------------------------------------------------------------
 
-vi.mock('../../src/copilot-sdk-wrapper/trusted-folder', () => ({
+vi.mock('../../src/trusted-folder', () => ({
     ensureFolderTrusted: vi.fn(),
 }));
 
-vi.mock('../../src/utils/workspace-execution', () => ({
+vi.mock('../../src/internal/workspace-execution', () => ({
     resolveWorkspaceExecutionContext: vi.fn((cwd?: string) => cwd && (cwd.startsWith(String.raw`\\wsl$`) || cwd.startsWith('/home/tester/'))
         ? { kind: 'wsl', distro: 'Ubuntu', linuxWorkingDirectory: '/home/tester/repo', originalWorkingDirectory: cwd }
         : { kind: 'windows', workingDirectory: cwd }),
@@ -49,7 +48,7 @@ class MockCopilotClient {
     }
 }
 
-vi.mock('../../src/copilot-sdk-wrapper/sdk-esm-loader', () => ({
+vi.mock('../../src/sdk-esm-loader', () => ({
     getCachedCopilotSdk: () => ({ CopilotClient: MockCopilotClient }),
 }));
 
@@ -57,10 +56,10 @@ vi.mock('../../src/copilot-sdk-wrapper/sdk-esm-loader', () => ({
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
 
-import { createSdkClient } from '../../src/copilot-sdk-wrapper/sdk-client-factory';
-import * as trustedFolder from '../../src/copilot-sdk-wrapper/trusted-folder';
+import { createSdkClient } from '../../src/sdk-client-factory';
+import * as trustedFolder from '../../src/trusted-folder';
 import * as fs from 'fs';
-import * as workspaceExecution from '../../src/utils/workspace-execution';
+import * as workspaceExecution from '../../src/internal/workspace-execution';
 
 // ---------------------------------------------------------------------------
 // Tests

@@ -6,10 +6,9 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { CopilotSDKService, resetCopilotSDKService, TokenUsage } from '../../src/copilot-sdk-wrapper/copilot-sdk-service';
-import { setLogger, nullLogger } from '../../src/logger';
-import { initAIServiceLogger } from '../../src/ai-logger';
-import * as trustedFolder from '../../src/copilot-sdk-wrapper/trusted-folder';
+import { CopilotSDKService, resetCopilotSDKService, TokenUsage } from '../../src/copilot-sdk-service';
+import { initSDKLogger, resetSDKLogger } from '../../src/logger';
+import * as trustedFolder from '../../src/trusted-folder';
 import {
     createMockSDKModule,
     createStreamingMockSession,
@@ -17,15 +16,15 @@ import {
 } from '../helpers/mock-sdk';
 
 // Suppress logger output during tests
-setLogger(nullLogger);
+
 
 // vi.mock factories must be inline (hoisted before imports)
-vi.mock('../../src/copilot-sdk-wrapper/trusted-folder', async () => {
-    const actual = await vi.importActual('../../src/copilot-sdk-wrapper/trusted-folder');
+vi.mock('../../src/trusted-folder', async () => {
+    const actual = await vi.importActual('../../src/trusted-folder');
     return { ...actual, ensureFolderTrusted: vi.fn() };
 });
 
-vi.mock('../../src/copilot-sdk-wrapper/mcp-config-loader', () => ({
+vi.mock('../../src/mcp-config-loader', () => ({
     loadDefaultMcpConfig: vi.fn().mockReturnValue({
         success: false, fileExists: false, mcpServers: {},
     }),
@@ -39,7 +38,7 @@ vi.mock('../../src/copilot-sdk-wrapper/mcp-config-loader', () => ({
 
 // Mock sdk-client-factory so tests can control CopilotClient instantiation
 const createSdkClientMock = vi.fn();
-vi.mock('../../src/copilot-sdk-wrapper/sdk-client-factory', () => ({
+vi.mock('../../src/sdk-client-factory', () => ({
     createSdkClient: (...args: any[]) => createSdkClientMock(...args),
 }));
 
@@ -2118,12 +2117,12 @@ describe('CopilotSDKService - Debug Logging (tool execution events)', () => {
         resetCopilotSDKService();
         service = CopilotSDKService.getInstance();
         capLogger = createCapturingLogger();
-        initAIServiceLogger(capLogger.logger as any);
+        initSDKLogger(capLogger.logger as any);
         vi.clearAllMocks();
     });
 
     afterEach(async () => {
-        initAIServiceLogger({ level: 'silent' });
+        resetSDKLogger();
         service.dispose();
         resetCopilotSDKService();
     });
@@ -2442,12 +2441,12 @@ describe('CopilotSDKService - Debug Logging (permission handler wrapping)', () =
         resetCopilotSDKService();
         service = CopilotSDKService.getInstance();
         capLogger = createCapturingLogger();
-        initAIServiceLogger(capLogger.logger as any);
+        initSDKLogger(capLogger.logger as any);
         vi.clearAllMocks();
     });
 
     afterEach(async () => {
-        initAIServiceLogger({ level: 'silent' });
+        resetSDKLogger();
         service.dispose();
         resetCopilotSDKService();
     });

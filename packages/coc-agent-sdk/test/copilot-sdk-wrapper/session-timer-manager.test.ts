@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { SessionTimerManager } from '../../src/copilot-sdk-wrapper/session-timer-manager';
+import { SessionTimerManager } from '../../src/session-timer-manager';
 
 describe('SessionTimerManager', () => {
     beforeEach(() => { vi.useFakeTimers(); });

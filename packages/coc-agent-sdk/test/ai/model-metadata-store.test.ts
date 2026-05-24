@@ -3,13 +3,12 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { setLogger, nullLogger } from '../../src/logger';
 
-setLogger(nullLogger);
+
 
 // Mock sdkServiceRegistry before importing the store
 const mockGetOrThrow = vi.hoisted(() => vi.fn());
-vi.mock('../../src/copilot-sdk-wrapper/sdk-service-registry', () => ({
+vi.mock('../../src/sdk-service-registry', () => ({
     sdkServiceRegistry: {
         getOrThrow: mockGetOrThrow,
     },
@@ -17,8 +16,8 @@ vi.mock('../../src/copilot-sdk-wrapper/sdk-service-registry', () => ({
     COPILOT_PROVIDER: 'copilot',
 }));
 
-import { modelMetadataStore } from '../../src/copilot-sdk-wrapper/model-metadata-store';
-import { ModelInfo } from '../../src/copilot-sdk-wrapper/model-info';
+import { modelMetadataStore } from '../../src/model-metadata-store';
+import { ModelInfo } from '../../src/model-info';
 
 const makeModel = (id: string, maxContextWindow: number): ModelInfo => ({
     id,

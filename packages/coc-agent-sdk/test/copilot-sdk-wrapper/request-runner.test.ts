@@ -6,16 +6,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setLogger, nullLogger } from '../../src/logger';
-import { RequestRunner } from '../../src/copilot-sdk-wrapper/request-runner';
-import { SessionManager } from '../../src/copilot-sdk-wrapper/session-manager';
+import { RequestRunner } from '../../src/request-runner';
+import { SessionManager } from '../../src/session-manager';
 import { createMockSession, createStreamingMockSession } from '../helpers/mock-sdk';
-import { DEFAULT_AI_TIMEOUT_MS } from '../../src/config/defaults';
-import { loadEffectiveMcpConfig } from '../../src/copilot-sdk-wrapper/mcp-config-loader';
+const DEFAULT_AI_TIMEOUT_MS = 6 * 60 * 60 * 1000;
+import { loadEffectiveMcpConfig } from '../../src/mcp-config-loader';
 
-setLogger(nullLogger);
 
-vi.mock('../../src/copilot-sdk-wrapper/mcp-config-loader', () => ({
+
+vi.mock('../../src/mcp-config-loader', () => ({
     loadEffectiveMcpConfig: vi.fn().mockReturnValue({ success: true, fileExists: false, mcpServers: {}, configPath: '' }),
 }));
 

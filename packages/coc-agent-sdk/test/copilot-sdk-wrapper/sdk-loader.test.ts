@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
-import { findSdkBinaryPath } from '../../src/copilot-sdk-wrapper/sdk-loader';
+import { findSdkBinaryPath } from '../../src/sdk-loader';
 
 describe('findSdkBinaryPath', () => {
     it('returns undefined when the SDK is not in any ancestor node_modules', () => {

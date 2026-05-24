@@ -10,20 +10,19 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { CopilotSDKService, resetCopilotSDKService } from '../../src/copilot-sdk-wrapper/copilot-sdk-service';
-import { setLogger, nullLogger } from '../../src/logger';
+import { CopilotSDKService, resetCopilotSDKService } from '../../src/copilot-sdk-service';
 import {
     createStreamingMockSDKModule,
     createStreamingMockSession,
 } from '../helpers/mock-sdk';
 
 // Suppress logger output during tests
-setLogger(nullLogger);
+
 
 // Shared warn spy — reset in beforeEach
 const warnSpy = vi.fn();
 
-vi.mock('../../src/ai-logger', () => {
+vi.mock('../../src/logger', () => {
     const mockChildLogger = {
         debug: vi.fn(),
         info: vi.fn(),
@@ -41,12 +40,12 @@ vi.mock('../../src/ai-logger', () => {
     };
 });
 
-vi.mock('../../src/copilot-sdk-wrapper/trusted-folder', async () => {
-    const actual = await vi.importActual('../../src/copilot-sdk-wrapper/trusted-folder');
+vi.mock('../../src/trusted-folder', async () => {
+    const actual = await vi.importActual('../../src/trusted-folder');
     return { ...actual, ensureFolderTrusted: vi.fn() };
 });
 
-vi.mock('../../src/copilot-sdk-wrapper/mcp-config-loader', () => ({
+vi.mock('../../src/mcp-config-loader', () => ({
     loadDefaultMcpConfig: vi.fn().mockReturnValue({
         success: false, fileExists: false, mcpServers: {},
     }),
@@ -59,7 +58,7 @@ vi.mock('../../src/copilot-sdk-wrapper/mcp-config-loader', () => ({
 }));
 
 const createSdkClientMock = vi.fn();
-vi.mock('../../src/copilot-sdk-wrapper/sdk-client-factory', () => ({
+vi.mock('../../src/sdk-client-factory', () => ({
     createSdkClient: (...args: any[]) => createSdkClientMock(...args),
 }));
 

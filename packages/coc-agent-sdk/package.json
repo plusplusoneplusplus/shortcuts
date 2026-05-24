@@ -1,0 +1,39 @@
+{
+  "name": "@plusplusoneplusplus/coc-agent-sdk",
+  "version": "0.1.0",
+  "description": "Provider-agnostic AI agent SDK for CoC — supports Copilot and Codex",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest",
+    "test:run": "vitest run"
+  },
+  "peerDependencies": {
+    "@github/copilot-sdk": "^0.3.0",
+    "@openai/codex-sdk": ">=0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@openai/codex-sdk": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "pino": "^9.x"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

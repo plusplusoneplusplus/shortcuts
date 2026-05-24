@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { SessionTelemetry } from '../../src/copilot-sdk-wrapper/session-telemetry';
+import { SessionTelemetry } from '../../src/session-telemetry';
 
 describe('SessionTelemetry — token usage', () => {
     it('returns undefined token usage when no usage recorded', () => {

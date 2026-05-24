@@ -8,14 +8,13 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { setLogger, nullLogger } from '../../src/logger';
 import {
     isStreamDestroyedError,
     isConnectionDisposedError,
     StreamErrorGuard,
-} from '../../src/copilot-sdk-wrapper/stream-error-guard';
+} from '../../src/stream-error-guard';
 
-setLogger(nullLogger);
+
 
 // ============================================================================
 // isStreamDestroyedError

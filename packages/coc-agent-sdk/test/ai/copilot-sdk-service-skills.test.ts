@@ -6,22 +6,21 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { CopilotSDKService, resetCopilotSDKService } from '../../src/copilot-sdk-wrapper/copilot-sdk-service';
-import { setLogger, nullLogger } from '../../src/logger';
+import { CopilotSDKService, resetCopilotSDKService } from '../../src/copilot-sdk-service';
 import {
     createStreamingMockSession,
     createMockSDKModule,
 } from '../helpers/mock-sdk';
 
 // Suppress logger output during tests
-setLogger(nullLogger);
+
 
 // Mock trusted-folder and mcp-config-loader to avoid filesystem access
-vi.mock('../../src/copilot-sdk-wrapper/trusted-folder', () => ({
+vi.mock('../../src/trusted-folder', () => ({
     ensureFolderTrusted: vi.fn(),
 }));
 
-vi.mock('../../src/copilot-sdk-wrapper/mcp-config-loader', () => ({
+vi.mock('../../src/mcp-config-loader', () => ({
     loadDefaultMcpConfig: vi.fn().mockReturnValue({
         success: false,
         fileExists: false,
@@ -42,7 +41,7 @@ vi.mock('../../src/copilot-sdk-wrapper/mcp-config-loader', () => ({
 }));
 
 const createSdkClientMock = vi.fn();
-vi.mock('../../src/copilot-sdk-wrapper/sdk-client-factory', () => ({
+vi.mock('../../src/sdk-client-factory', () => ({
     createSdkClient: (...args: any[]) => createSdkClientMock(...args),
 }));
 

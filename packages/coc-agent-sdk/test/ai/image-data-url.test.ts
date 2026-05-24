@@ -7,12 +7,11 @@ import { describe, it, expect, beforeEach, afterEach, vi, beforeAll, afterAll } 
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { tryConvertImageFileToDataUrl } from '../../src/copilot-sdk-wrapper/copilot-sdk-service';
-import { CopilotSDKService, resetCopilotSDKService } from '../../src/copilot-sdk-wrapper/copilot-sdk-service';
-import { setLogger, nullLogger } from '../../src/logger';
+import { tryConvertImageFileToDataUrl } from '../../src/copilot-sdk-service';
+import { CopilotSDKService, resetCopilotSDKService } from '../../src/copilot-sdk-service';
 import { createStreamingMockSDKModule } from '../helpers/mock-sdk';
 
-setLogger(nullLogger);
+
 
 // ---------------------------------------------------------------------------
 // tryConvertImageFileToDataUrl — unit tests
@@ -111,12 +110,12 @@ describe('tryConvertImageFileToDataUrl', () => {
 // Integration: view tool completion replaces result with data URL
 // ---------------------------------------------------------------------------
 
-vi.mock('../../src/copilot-sdk-wrapper/trusted-folder', async () => {
-    const actual = await vi.importActual('../../src/copilot-sdk-wrapper/trusted-folder');
+vi.mock('../../src/trusted-folder', async () => {
+    const actual = await vi.importActual('../../src/trusted-folder');
     return { ...actual, ensureFolderTrusted: vi.fn() };
 });
 
-vi.mock('../../src/copilot-sdk-wrapper/mcp-config-loader', () => ({
+vi.mock('../../src/mcp-config-loader', () => ({
     loadDefaultMcpConfig: vi.fn().mockReturnValue({
         success: false, fileExists: false, mcpServers: {},
     }),
@@ -129,7 +128,7 @@ vi.mock('../../src/copilot-sdk-wrapper/mcp-config-loader', () => ({
 }));
 
 const createSdkClientMock = vi.fn();
-vi.mock('../../src/copilot-sdk-wrapper/sdk-client-factory', () => ({
+vi.mock('../../src/sdk-client-factory', () => ({
     createSdkClient: (...args: any[]) => createSdkClientMock(...args),
 }));
 

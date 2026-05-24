@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { StreamingStateMachine, StreamingState } from '../../src/copilot-sdk-wrapper/streaming-state-machine';
+import { StreamingStateMachine, StreamingState } from '../../src/streaming-state-machine';
 
 describe('StreamingStateMachine', () => {
     it('starts in Idle state', () => {
