@@ -500,4 +500,194 @@ describe('Memory V2 Routes', () => {
             expect(facts.some((f: any) => f.content.includes('Isolated fact'))).toBe(false);
         });
     });
+
+    // ── Wipe scope isolation ──────────────────────────────────────────────────
+
+    describe('wipe scope isolation', () => {
+        const WS_GLOBAL = 'ws-wipe-global';
+        const WS_ISOLATED = 'ws-wipe-isolated';
+        const WS_ISOLATED_B = 'ws-wipe-isolated-b';
+
+        it('wiping global scope does not delete isolated workspace facts', async () => {
+            enableMemoryV2(dataDir, WS_GLOBAL, false);  // global mode
+            enableMemoryV2(dataDir, WS_ISOLATED, true); // isolated mode
+
+            const globalRes = await router.post(`/api/workspaces/${WS_GLOBAL}/memory/v2/facts`, {
+                content: 'Global fact that should survive after isolated wipe',
+            });
+            expect(globalRes.status).toBe(201);
+
+            const isolatedRes = await router.post(`/api/workspaces/${WS_ISOLATED}/memory/v2/facts`, {
+                content: 'Isolated fact that should survive global wipe',
+            });
+            expect(isolatedRes.status).toBe(201);
+
+            // Wipe global scope
+            const wipeRes = await router.delete(
+                `/api/workspaces/${WS_GLOBAL}/memory/v2/wipe`,
+                { confirm: true },
+            );
+            expect(wipeRes.status).toBe(200);
+            expect(wipeRes.json().scope).toBe('global');
+
+            // Global facts are gone
+            const globalList = await router.get(`/api/workspaces/${WS_GLOBAL}/memory/v2/facts`);
+            expect(globalList.json().facts).toHaveLength(0);
+
+            // Isolated workspace facts are intact
+            const isolatedList = await router.get(`/api/workspaces/${WS_ISOLATED}/memory/v2/facts`);
+            expect(isolatedList.json().facts).toHaveLength(1);
+            expect(isolatedList.json().facts[0].content).toContain('Isolated fact');
+        });
+
+        it('wiping isolated workspace scope does not delete global facts', async () => {
+            enableMemoryV2(dataDir, WS_GLOBAL, false);
+            enableMemoryV2(dataDir, WS_ISOLATED, true);
+
+            await router.post(`/api/workspaces/${WS_GLOBAL}/memory/v2/facts`, {
+                content: 'Global fact that must survive',
+            });
+            await router.post(`/api/workspaces/${WS_ISOLATED}/memory/v2/facts`, {
+                content: 'Isolated fact about to be wiped',
+            });
+
+            // Wipe the isolated workspace
+            const wipeRes = await router.delete(
+                `/api/workspaces/${WS_ISOLATED}/memory/v2/wipe`,
+                { confirm: true },
+            );
+            expect(wipeRes.status).toBe(200);
+            expect(wipeRes.json().scope).toBe('workspace');
+
+            // Isolated facts are gone
+            const isolatedList = await router.get(`/api/workspaces/${WS_ISOLATED}/memory/v2/facts`);
+            expect(isolatedList.json().facts).toHaveLength(0);
+
+            // Global facts are intact
+            const globalList = await router.get(`/api/workspaces/${WS_GLOBAL}/memory/v2/facts`);
+            expect(globalList.json().facts).toHaveLength(1);
+            expect(globalList.json().facts[0].content).toContain('Global fact that must survive');
+        });
+
+        it('wiping one isolated workspace does not delete another isolated workspace facts', async () => {
+            enableMemoryV2(dataDir, WS_ISOLATED, true);
+            enableMemoryV2(dataDir, WS_ISOLATED_B, true);
+
+            await router.post(`/api/workspaces/${WS_ISOLATED}/memory/v2/facts`, {
+                content: 'Workspace A fact',
+            });
+            await router.post(`/api/workspaces/${WS_ISOLATED_B}/memory/v2/facts`, {
+                content: 'Workspace B fact - must survive',
+            });
+
+            // Wipe workspace A
+            const wipeRes = await router.delete(
+                `/api/workspaces/${WS_ISOLATED}/memory/v2/wipe`,
+                { confirm: true },
+            );
+            expect(wipeRes.status).toBe(200);
+
+            // Workspace A facts are gone
+            const listA = await router.get(`/api/workspaces/${WS_ISOLATED}/memory/v2/facts`);
+            expect(listA.json().facts).toHaveLength(0);
+
+            // Workspace B facts are intact
+            const listB = await router.get(`/api/workspaces/${WS_ISOLATED_B}/memory/v2/facts`);
+            expect(listB.json().facts).toHaveLength(1);
+            expect(listB.json().facts[0].content).toContain('Workspace B fact');
+        });
+    });
+
+    // ── Export field completeness ─────────────────────────────────────────────
+
+    describe('export field completeness', () => {
+        beforeEach(async () => {
+            enableMemoryV2(dataDir, WORKSPACE_ID);
+            const storeDir = getGlobalStoreDir(dataDir);
+            const handle = createMemoryStores(storeDir);
+            try {
+                await handle.facts.addFact({
+                    scope: 'global',
+                    content: 'The project uses TypeScript strict mode',
+                    importance: 0.85,
+                    confidence: 0.95,
+                    status: 'active',
+                    tags: ['typescript', 'config'],
+                    source: 'explicit',
+                    sourceProcessId: 'proc-export-test',
+                });
+                await handle.facts.addFact({
+                    scope: 'global',
+                    content: 'Low-confidence inferred fact',
+                    importance: 0.3,
+                    confidence: 0.4,
+                    status: 'review',
+                    tags: ['uncertain'],
+                    source: 'auto-extracted',
+                });
+                await handle.episodes.addEpisode({
+                    scope: 'global',
+                    processId: 'proc-export-test',
+                    summary: 'Discussed TypeScript config',
+                    eventType: 'chat-turn',
+                    provenance: { createdBy: 'ai', version: 1 },
+                });
+            } finally {
+                handle.close();
+            }
+        });
+
+        it('export includes all required fact fields: id, content, status, tags, importance, confidence, source, sourceProcessId, createdAt', async () => {
+            const res = await router.get(`/api/workspaces/${WORKSPACE_ID}/memory/v2/export`);
+            expect(res.status).toBe(200);
+            const body = res.json();
+
+            expect(body.version).toBe(1);
+            expect(body.exportedAt).toBeTruthy();
+            expect(body.scope).toBe('global');
+            expect(body.facts.length).toBeGreaterThanOrEqual(2);
+
+            const activeFact = body.facts.find((f: any) => f.status === 'active');
+            expect(activeFact).toBeDefined();
+            expect(activeFact.id).toBeTruthy();
+            expect(activeFact.content).toBe('The project uses TypeScript strict mode');
+            expect(activeFact.status).toBe('active');
+            expect(activeFact.tags).toContain('typescript');
+            expect(activeFact.tags).toContain('config');
+            expect(typeof activeFact.importance).toBe('number');
+            expect(typeof activeFact.confidence).toBe('number');
+            expect(activeFact.importance).toBe(0.85);
+            expect(activeFact.confidence).toBe(0.95);
+            expect(activeFact.source).toBe('explicit');
+            expect(activeFact.sourceProcessId).toBe('proc-export-test');
+            expect(activeFact.createdAt).toBeTruthy();
+        });
+
+        it('export includes review-status facts with correct fields', async () => {
+            const res = await router.get(`/api/workspaces/${WORKSPACE_ID}/memory/v2/export`);
+            const body = res.json();
+            const reviewFact = body.facts.find((f: any) => f.status === 'review');
+            expect(reviewFact).toBeDefined();
+            expect(reviewFact.status).toBe('review');
+            expect(reviewFact.tags).toContain('uncertain');
+            expect(reviewFact.source).toBe('auto-extracted');
+            expect(typeof reviewFact.importance).toBe('number');
+            expect(typeof reviewFact.confidence).toBe('number');
+        });
+
+        it('export includes episodes with processId, summary, eventType, scope, and provenance', async () => {
+            const res = await router.get(`/api/workspaces/${WORKSPACE_ID}/memory/v2/export`);
+            const body = res.json();
+            expect(body.episodes.length).toBeGreaterThan(0);
+            const ep = body.episodes[0];
+            expect(ep.id).toBeTruthy();
+            expect(ep.processId).toBe('proc-export-test');
+            expect(ep.summary).toBe('Discussed TypeScript config');
+            expect(ep.eventType).toBe('chat-turn');
+            expect(ep.scope).toBe('global');
+            expect(ep.provenance).toBeDefined();
+            expect(ep.provenance.createdBy).toBe('ai');
+            expect(ep.createdAt).toBeTruthy();
+        });
+    });
 });

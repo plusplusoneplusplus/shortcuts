@@ -226,4 +226,41 @@ describe('buildMemoryV2Addon', () => {
         const addon = await buildMemoryV2Addon(undefined, undefined);
         expect(() => addon.dispose()).not.toThrow();
     });
+
+    // -----------------------------------------------------------------------
+    // AC-07: Legacy path guard — v2 enabled does not depend on bounded memory
+    // -----------------------------------------------------------------------
+
+    describe('AC-07: V2 enabled provides tools without bounded memory', () => {
+        it('provides both store_memory and recall_memory tools independently of bounded memory state', async () => {
+            writeRepoPreferences(tmpDir, WORKSPACE_ID, {
+                memoryV2: { enabled: true },
+            });
+
+            const addon = await buildMemoryV2Addon(tmpDir, WORKSPACE_ID);
+            try {
+                expect(addon.tools).toHaveLength(2);
+                expect(addon.tools.map(t => t.name)).toContain(MEMORY_V2_STORE_TOOL_NAME);
+                expect(addon.tools.map(t => t.name)).toContain(MEMORY_V2_RECALL_TOOL_NAME);
+                expect(addon.suffix).toContain('memory');
+            } finally {
+                addon.dispose();
+            }
+        });
+
+        it('buildMemoryV2Addon is independent of forge bounded-memory modules', async () => {
+            writeRepoPreferences(tmpDir, WORKSPACE_ID, { memoryV2: { enabled: true } });
+
+            const globalDir = path.join(tmpDir, 'memory', 'global');
+            await seedFact(globalDir, 'Architectural decision: TypeScript strict mode', ['arch']);
+
+            const addon = await buildMemoryV2Addon(tmpDir, WORKSPACE_ID, 'architecture decisions', 'proc-1');
+            try {
+                expect(addon.systemMessageSuffix).toContain('Architectural decision');
+                expect(addon.tools).toHaveLength(2);
+            } finally {
+                addon.dispose();
+            }
+        });
+    });
 });
