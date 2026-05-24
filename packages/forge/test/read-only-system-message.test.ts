@@ -31,6 +31,10 @@ describe('READ_ONLY_SYSTEM_MESSAGE', () => {
         expect(READ_ONLY_SYSTEM_MESSAGE).toContain('attached note file');
     });
 
+    it('should allow writing .goal.md specification files', () => {
+        expect(READ_ONLY_SYSTEM_MESSAGE).toContain('.goal.md');
+    });
+
     it('should suggest switching modes', () => {
         expect(READ_ONLY_SYSTEM_MESSAGE).toContain('autopilot');
         expect(READ_ONLY_SYSTEM_MESSAGE).toContain('plan mode');
