@@ -34,6 +34,7 @@ export type ResolvedConfigNamespaceValues = Pick<
     | 'loops'
     | 'mcpOauth'
     | 'excalidraw'
+    | 'containerDefaultAgent'
     | 'codex'
     | 'features'
     | 'memoryPromotion'
@@ -72,6 +73,7 @@ const VIM_NAVIGATION_SOURCE_KEYS = ['vimNavigation.enabled'] as const;
 const LOOPS_SOURCE_KEYS = ['loops.enabled'] as const;
 const MCP_OAUTH_SOURCE_KEYS = ['mcpOauth.enabled'] as const;
 const EXCALIDRAW_SOURCE_KEYS = ['excalidraw.enabled'] as const;
+const CONTAINER_DEFAULT_AGENT_SOURCE_KEYS = ['containerDefaultAgent.enabled'] as const;
 const CODEX_SOURCE_KEYS = ['codex.enabled'] as const;
 const FEATURES_SOURCE_KEYS = ['features.autoMemoryPromotion', 'features.focusedDiff'] as const;
 
@@ -104,6 +106,7 @@ export const CONFIG_NAMESPACE_SOURCE_KEYS = [
     ...LOOPS_SOURCE_KEYS,
     ...MCP_OAUTH_SOURCE_KEYS,
     ...EXCALIDRAW_SOURCE_KEYS,
+    ...CONTAINER_DEFAULT_AGENT_SOURCE_KEYS,
     ...CODEX_SOURCE_KEYS,
     ...FEATURES_SOURCE_KEYS,
     ...MEMORY_PROMOTION_SOURCE_KEYS,
@@ -256,6 +259,11 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
             name: 'excalidraw',
             sourceDescriptors: [source('excalidraw.', ['excalidraw'], EXCALIDRAW_SOURCE_KEYS)],
             merge: (base, override) => ({ excalidraw: { enabled: override?.excalidraw?.enabled ?? base.excalidraw?.enabled ?? false } }),
+        },
+        {
+            name: 'containerDefaultAgent',
+            sourceDescriptors: [source('containerDefaultAgent.', ['containerDefaultAgent'], CONTAINER_DEFAULT_AGENT_SOURCE_KEYS)],
+            merge: (base, override) => ({ containerDefaultAgent: { enabled: override?.containerDefaultAgent?.enabled ?? base.containerDefaultAgent?.enabled ?? false } }),
         },
         {
             name: 'codex',

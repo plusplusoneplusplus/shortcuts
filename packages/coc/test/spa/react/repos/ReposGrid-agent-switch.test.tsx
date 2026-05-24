@@ -62,6 +62,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '',
     getHostname: () => 'localhost',
     isServersEnabled: () => false,
+    isContainerDefaultAgentEnabled: () => false,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/repos/repositoryService', () => ({

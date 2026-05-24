@@ -113,6 +113,7 @@ export class TeamsBot {
         if (this._status !== 'connected') {
             throw new Error('TeamsBot is not connected');
         }
+        this.resetPollInterval();
 
         console.log(`[teams-bot] send() target=${channelId.substring(0, 20)}..., text length=${text.length}, mode=${this.mode}`);
         try {
@@ -180,6 +181,10 @@ export class TeamsBot {
         this.opts.onStatusChange?.(status);
     }
 
+    private _lastActivityTime: number = Date.now();
+    private static readonly IDLE_TIMEOUT_MS = 60_000; // 1 minute
+    private static readonly IDLE_POLL_MS = 30_000; // 30s when idle
+
     private startPolling(): void {
         // Graph mode is send-only — do not poll for messages
         if (this.mode === 'graph') {
@@ -187,18 +192,44 @@ export class TeamsBot {
             return;
         }
         if (this._pollTimer) return;
-        this._pollTimer = setInterval(() => void this.pollMessages(), this.opts.pollIntervalMs);
+        this._lastActivityTime = Date.now();
+        this.schedulePoll();
+    }
+
+    private schedulePoll(): void {
+        if (this._pollTimer) return;
+        const elapsed = Date.now() - this._lastActivityTime;
+        const interval = elapsed >= TeamsBot.IDLE_TIMEOUT_MS
+            ? TeamsBot.IDLE_POLL_MS
+            : this.opts.pollIntervalMs;
+        this._pollTimer = setTimeout(() => {
+            this._pollTimer = null;
+            void this.pollMessages();
+        }, interval);
     }
 
     private stopPolling(): void {
         if (this._pollTimer) {
-            clearInterval(this._pollTimer);
+            clearTimeout(this._pollTimer);
             this._pollTimer = null;
         }
     }
 
+    /** Cancel any pending slow poll and reschedule at fast interval. */
+    private resetPollInterval(): void {
+        this._lastActivityTime = Date.now();
+        if (this._pollTimer) {
+            clearTimeout(this._pollTimer);
+            this._pollTimer = null;
+            this.schedulePoll();
+        }
+    }
+
     private async pollMessages(): Promise<void> {
-        if (this._status !== 'connected' || !this._channelId) return;
+        if (this._status !== 'connected' || !this._channelId) {
+            this.schedulePoll();
+            return;
+        }
 
         try {
             const since = this.mode === 'graph' ? this._lastSeenTimestamp ?? undefined : this._lastPolledId ?? undefined;
@@ -209,6 +240,11 @@ export class TeamsBot {
             } else {
                 await this.handleGraphPoll(messages, nextSince);
             }
+
+            // Reset activity timer when new messages arrive
+            if (messages.length > 0) {
+                this._lastActivityTime = Date.now();
+            }
         } catch (err: any) {
             // On 401, attempt token refresh
             if (err.message?.includes('401') && !this._refreshingToken) {
@@ -217,6 +253,9 @@ export class TeamsBot {
                 console.error(`[teams-bot] ${this.mode} poll error:`, err.message);
             }
         }
+
+        // Schedule next poll (adaptive interval based on activity)
+        this.schedulePoll();
     }
 
     /**

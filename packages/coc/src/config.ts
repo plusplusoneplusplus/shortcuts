@@ -137,6 +137,10 @@ export interface CLIConfig {
     excalidraw?: {
         enabled?: boolean;
     };
+    /** Container default agent — smart routing session. Disabled by default. */
+    containerDefaultAgent?: {
+        enabled?: boolean;
+    };
     /** Codex SDK provider support. Disabled by default. */
     codex?: {
         enabled?: boolean;
@@ -318,6 +322,10 @@ export interface ResolvedCLIConfig {
     excalidraw: {
         enabled: boolean;
     };
+    /** Container default agent — smart routing session. */
+    containerDefaultAgent: {
+        enabled: boolean;
+    };
     /** Codex SDK provider support. Disabled by default. */
     codex: {
         enabled: boolean;
@@ -455,6 +463,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
     },
     excalidraw: {
+        enabled: false,
+    },
+    containerDefaultAgent: {
         enabled: false,
     },
     codex: {

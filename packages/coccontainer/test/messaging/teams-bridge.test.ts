@@ -62,7 +62,7 @@ vi.mock('@plusplusoneplusplus/teams-bot', () => {
     };
 });
 
-import { TeamsBridge, type TeamsBridgeOptions } from '../../src/messaging/teams-bridge';
+import { TeamsBridge, extractTimelineContentChunks, type TeamsBridgeOptions } from '../../src/messaging/teams-bridge';
 
 function createMockAgentStore() {
     return {
@@ -109,6 +109,7 @@ function emitProcessUpdate(wsRelay: EventEmitter, agentId: string, agentName: st
 describe('TeamsBridge', () => {
     let tmpDir: string;
     let wsRelay: EventEmitter & { on: any; off: any; emit: any };
+    let sseRelay: EventEmitter & { on: any; off: any; emit: any };
     let agentStore: ReturnType<typeof createMockAgentStore>;
     let tunnelBridge: ReturnType<typeof createMockTunnelBridge>;
 
@@ -116,6 +117,7 @@ describe('TeamsBridge', () => {
         botInstances = [];
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-bridge-test-'));
         wsRelay = new EventEmitter() as any;
+        sseRelay = new EventEmitter() as any;
         agentStore = createMockAgentStore();
         tunnelBridge = createMockTunnelBridge();
     });
@@ -146,6 +148,7 @@ describe('TeamsBridge', () => {
             },
             dataDir: tmpDir,
             wsRelay: wsRelay as any,
+            sseRelay: sseRelay as any,
             agentStore: agentStore as any,
             tunnelBridge: tunnelBridge as any,
         });
@@ -162,6 +165,62 @@ describe('TeamsBridge', () => {
 
             await bridge.stop();
             expect(lastBot().stop).toHaveBeenCalled();
+        });
+
+        it('should subscribe to both WS relay and SSE relay', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            expect(wsRelay.listenerCount('message')).toBe(1);
+            expect(sseRelay.listenerCount('event')).toBe(1);
+
+            await bridge.stop();
+
+            expect(wsRelay.listenerCount('message')).toBe(0);
+            expect(sseRelay.listenerCount('event')).toBe(0);
+        });
+
+        it('should dispatch SSE events same as WS events', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            agentStore.list.mockReturnValue([{ id: 'agent-a', name: 'Agent-A', address: 'http://localhost:4001' }]);
+
+            const mockFetch = vi.fn().mockResolvedValue({
+                ok: true,
+                json: async () => ({
+                    process: {
+                        id: 'proc-sse',
+                        status: 'completed',
+                        conversationTurns: [
+                            { role: 'user', content: 'SSE test' },
+                            { role: 'assistant', content: 'SSE response', toolCalls: [
+                                { name: 'task_complete', args: { summary: 'SSE response' }, status: 'completed' },
+                            ] },
+                        ],
+                    },
+                }),
+            });
+            vi.stubGlobal('fetch', mockFetch);
+
+            // Emit via SSE relay instead of WS relay
+            sseRelay.emit('event', {
+                agentId: 'agent-a',
+                agentName: 'Agent-A',
+                data: JSON.stringify({
+                    type: 'process-updated',
+                    process: { id: 'proc-sse', status: 'completed', workspaceId: 'ws-1' },
+                }),
+            });
+
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            // Should have processed the event and sent to Teams
+            expect(lastBot().send).toHaveBeenCalled();
+            const calls = lastBot().send.mock.calls;
+            expect(calls.some((c: any[]) => c[1]?.includes('SSE response'))).toBe(true);
+
+            await bridge.stop();
         });
 
         it('should pass config to TeamsBot', async () => {
@@ -245,7 +304,7 @@ describe('TeamsBridge', () => {
             const bridge = createBridge();
             await bridge.start();
 
-            // Mock fetch for process turns
+            // Mock fetch for process turns — includes task_complete tool call
             const mockFetch = vi.fn().mockResolvedValue({
                 ok: true,
                 json: async () => ({
@@ -254,7 +313,9 @@ describe('TeamsBridge', () => {
                         status: 'completed',
                         conversationTurns: [
                             { role: 'user', content: 'Hello' },
-                            { role: 'assistant', content: 'Hi there!' },
+                            { role: 'assistant', content: 'Hi there!', toolCalls: [
+                                { name: 'task_complete', args: { summary: 'Hi there!' }, status: 'completed' },
+                            ] },
                         ],
                     },
                 }),
@@ -271,12 +332,155 @@ describe('TeamsBridge', () => {
 
             expect(lastBot().send).toHaveBeenCalledTimes(2);
             const calls = lastBot().send.mock.calls;
-            // First call is user turn with botName as sender
-            expect(calls[0][1]).toContain('TestBot');
+            // First call is user turn (forwarded immediately)
             expect(calls[0][1]).toContain('Hello');
-            // Second call is assistant turn with 'CoC Agent' as sender
+            // Second call is the task_complete summary
             expect(calls[1][1]).toContain('CoC Agent');
             expect(calls[1][1]).toContain('Hi there!');
+
+            vi.unstubAllGlobals();
+            await bridge.stop();
+        });
+
+        it('should only send task_complete summary on completion (not process.result fallback)', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            // Process with task_complete tool call in turns
+            const mockFetch = vi.fn().mockResolvedValue({
+                ok: true,
+                json: async () => ({
+                    process: {
+                        id: 'proc-1',
+                        status: 'completed',
+                        result: 'Long verbose reasoning that should NOT be sent...',
+                        conversationTurns: [
+                            { role: 'user', content: 'Disable the test' },
+                            { role: 'assistant', content: 'Long intermediate reasoning...', toolCalls: [
+                                { name: 'task_complete', args: { summary: 'Disabled the test successfully.' }, status: 'completed' },
+                            ] },
+                        ],
+                    },
+                }),
+            });
+            vi.stubGlobal('fetch', mockFetch);
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-1', status: 'completed', workspaceId: 'ws-1' },
+            });
+
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            expect(lastBot().send).toHaveBeenCalledTimes(2);
+            const calls = lastBot().send.mock.calls;
+            // First: user turn forwarded
+            expect(calls[0][1]).toContain('Disable the test');
+            // Second: task_complete summary (not verbose reasoning)
+            expect(calls[1][1]).toContain('Disabled the test successfully.');
+            expect(calls[1][1]).not.toContain('Long intermediate reasoning');
+            expect(calls[1][1]).not.toContain('Long verbose reasoning');
+
+            vi.unstubAllGlobals();
+            await bridge.stop();
+        });
+
+        it('should send task_complete summary even when watermark is already at end (no new turns)', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            // First event: running with user turn — user turn forwarded immediately
+            const mockFetch1 = vi.fn().mockResolvedValue({
+                ok: true,
+                json: async () => ({
+                    process: {
+                        id: 'proc-wm',
+                        status: 'running',
+                        conversationTurns: [
+                            { role: 'user', content: 'Plan auth feature' },
+                        ],
+                    },
+                }),
+            });
+            vi.stubGlobal('fetch', mockFetch1);
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-wm', status: 'running', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 50));
+            expect(lastBot().send).toHaveBeenCalledTimes(1); // user turn sent
+
+            // Second event: completed with task_complete tool call
+            const mockFetch2 = vi.fn().mockResolvedValue({
+                ok: true,
+                json: async () => ({
+                    process: {
+                        id: 'proc-wm',
+                        status: 'completed',
+                        conversationTurns: [
+                            { role: 'user', content: 'Plan auth feature' },
+                            { role: 'assistant', content: 'Long verbose planning...', toolCalls: [
+                                { name: 'task_complete', args: { summary: 'Here is the auth plan with 10 tasks.' }, status: 'completed' },
+                            ] },
+                        ],
+                    },
+                }),
+            });
+            vi.stubGlobal('fetch', mockFetch2);
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-wm', status: 'completed', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            // Should send task_complete summary even though watermark covered the assistant turn
+            expect(lastBot().send).toHaveBeenCalledTimes(2);
+            expect(lastBot().send.mock.calls[1][1]).toContain('Here is the auth plan with 10 tasks.');
+
+            vi.unstubAllGlobals();
+            await bridge.stop();
+        });
+
+        it('should not re-send task_complete on duplicate completion events', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            const mockFetch = vi.fn().mockResolvedValue({
+                ok: true,
+                json: async () => ({
+                    process: {
+                        id: 'proc-dup',
+                        status: 'completed',
+                        conversationTurns: [
+                            { role: 'user', content: 'Do something' },
+                            { role: 'assistant', content: 'Done', toolCalls: [
+                                { name: 'task_complete', args: { summary: 'Task done.' }, status: 'completed' },
+                            ] },
+                        ],
+                    },
+                }),
+            });
+            vi.stubGlobal('fetch', mockFetch);
+
+            // First completion event
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-dup', status: 'completed', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 50));
+            expect(lastBot().send).toHaveBeenCalledTimes(2); // user + task_complete
+
+            // Duplicate completion event (same turns, same status)
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-dup', status: 'completed', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            // Should NOT re-send — watermark already past task_complete
+            expect(lastBot().send).toHaveBeenCalledTimes(2);
 
             vi.unstubAllGlobals();
             await bridge.stop();
@@ -295,6 +499,140 @@ describe('TeamsBridge', () => {
             expect(lastBot().send).not.toHaveBeenCalled();
 
             await bridge.stop();
+        });
+
+        it('should send only the last content chunk when timeline has multiple content items', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            const mockFetch = vi.fn().mockResolvedValue({
+                ok: true,
+                json: async () => ({
+                    process: {
+                        id: 'proc-chunked',
+                        status: 'completed',
+                        conversationTurns: [
+                            { role: 'user', content: 'Show Batch 4 details' },
+                            {
+                                role: 'assistant',
+                                content: 'Chunk one text. Chunk two text. Chunk three text.',
+                                timeline: [
+                                    { type: 'content', content: 'Chunk one text.' },
+                                    { type: 'tool-start', toolCall: { id: 'tc1', toolName: 'grep' } },
+                                    { type: 'tool-complete', toolCall: { id: 'tc1', toolName: 'grep' } },
+                                    { type: 'content', content: 'Chunk two text.' },
+                                    { type: 'tool-start', toolCall: { id: 'tc2', toolName: 'view' } },
+                                    { type: 'tool-complete', toolCall: { id: 'tc2', toolName: 'view' } },
+                                    { type: 'content', content: 'Chunk three text.' },
+                                ],
+                                toolCalls: [
+                                    { name: 'grep', args: {} },
+                                    { name: 'view', args: {} },
+                                ],
+                            },
+                        ],
+                    },
+                }),
+            });
+            vi.stubGlobal('fetch', mockFetch);
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-chunked', status: 'completed', workspaceId: 'ws-1' },
+            });
+
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            // Expect: 1 user turn + 1 last-chunk assistant message = 2 sends
+            expect(lastBot().send).toHaveBeenCalledTimes(2);
+            const calls = lastBot().send.mock.calls;
+            // First call: user turn forwarded
+            expect(calls[0][1]).toContain('Show Batch 4 details');
+            // Second: only the last chunk
+            expect(calls[1][1]).toContain('Chunk three text.');
+            expect(calls[1][1]).not.toContain('Chunk one text.');
+            expect(calls[1][1]).not.toContain('Chunk two text.');
+
+            vi.unstubAllGlobals();
+            await bridge.stop();
+        });
+
+        it('should send single message when timeline has only one content item', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            const mockFetch = vi.fn().mockResolvedValue({
+                ok: true,
+                json: async () => ({
+                    process: {
+                        id: 'proc-single',
+                        status: 'completed',
+                        conversationTurns: [
+                            { role: 'user', content: 'Quick question' },
+                            {
+                                role: 'assistant',
+                                content: 'Here is the answer.',
+                                timeline: [
+                                    { type: 'content', content: 'Here is the answer.' },
+                                ],
+                            },
+                        ],
+                    },
+                }),
+            });
+            vi.stubGlobal('fetch', mockFetch);
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-single', status: 'completed', workspaceId: 'ws-1' },
+            });
+
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            // 1 user turn + 1 single final message = 2 sends
+            expect(lastBot().send).toHaveBeenCalledTimes(2);
+            const calls = lastBot().send.mock.calls;
+            expect(calls[1][1]).toContain('Here is the answer.');
+
+            vi.unstubAllGlobals();
+            await bridge.stop();
+        });
+    });
+
+    describe('extractTimelineContentChunks', () => {
+        it('should extract content chunks from timeline', () => {
+            const timeline = [
+                { type: 'content', content: 'First chunk' },
+                { type: 'tool-start', toolCall: { id: 'tc1' } },
+                { type: 'tool-complete', toolCall: { id: 'tc1' } },
+                { type: 'content', content: 'Second chunk' },
+                { type: 'content', content: 'Third chunk' },
+            ];
+            expect(extractTimelineContentChunks(timeline)).toEqual(['First chunk', 'Second chunk', 'Third chunk']);
+        });
+
+        it('should return empty array for undefined/null timeline', () => {
+            expect(extractTimelineContentChunks(undefined)).toEqual([]);
+            expect(extractTimelineContentChunks(null)).toEqual([]);
+            expect(extractTimelineContentChunks([])).toEqual([]);
+        });
+
+        it('should skip empty content items', () => {
+            const timeline = [
+                { type: 'content', content: 'Valid' },
+                { type: 'content', content: '   ' },
+                { type: 'content', content: '' },
+                { type: 'content', content: 'Also valid' },
+            ];
+            expect(extractTimelineContentChunks(timeline)).toEqual(['Valid', 'Also valid']);
+        });
+
+        it('should return empty array when no content items exist', () => {
+            const timeline = [
+                { type: 'tool-start', toolCall: { id: 'tc1' } },
+                { type: 'tool-complete', toolCall: { id: 'tc1' } },
+            ];
+            expect(extractTimelineContentChunks(timeline)).toEqual([]);
         });
     });
 
@@ -403,7 +741,9 @@ describe('TeamsBridge', () => {
                                 id: 'proc-alice-001',
                                 status: 'completed',
                                 conversationTurns: [
-                                    { role: 'assistant', content: 'Hello Alice!' },
+                                    { role: 'assistant', content: 'Hello Alice!', toolCalls: [
+                                        { name: 'task_complete', args: { summary: 'Hello Alice!' }, status: 'completed' },
+                                    ] },
                                 ],
                             },
                         }),
@@ -459,7 +799,9 @@ describe('TeamsBridge', () => {
                         id: 'proc-unknown',
                         status: 'completed',
                         conversationTurns: [
-                            { role: 'assistant', content: 'Done' },
+                            { role: 'assistant', content: 'Done', toolCalls: [
+                                { name: 'task_complete', args: { summary: 'Done' }, status: 'completed' },
+                            ] },
                         ],
                     },
                 }),
@@ -489,7 +831,7 @@ describe('TeamsBridge', () => {
     });
 
     describe('outbound locking — messages sent in all scenarios', () => {
-        function mockProcessFetch(turns: Array<{ role: string; content: string; streaming?: boolean }>) {
+        function mockProcessFetch(turns: Array<{ role: string; content: string; streaming?: boolean; toolCalls?: Array<{ name: string; args?: any; status?: string }> }>) {
             return vi.fn().mockResolvedValue({
                 ok: true,
                 json: async () => ({
@@ -508,7 +850,9 @@ describe('TeamsBridge', () => {
 
             // First completion
             const mockFetch = mockProcessFetch([
-                { role: 'assistant', content: 'First response' },
+                { role: 'assistant', content: 'First response', toolCalls: [
+                    { name: 'task_complete', args: { summary: 'First response' }, status: 'completed' },
+                ] },
             ]);
             vi.stubGlobal('fetch', mockFetch);
 
@@ -521,9 +865,13 @@ describe('TeamsBridge', () => {
 
             // Second completion (simulating follow-up response — same processId)
             const mockFetch2 = mockProcessFetch([
-                { role: 'assistant', content: 'First response' },
+                { role: 'assistant', content: 'First response', toolCalls: [
+                    { name: 'task_complete', args: { summary: 'First response' }, status: 'completed' },
+                ] },
                 { role: 'user', content: 'Follow-up question' },
-                { role: 'assistant', content: 'Second response' },
+                { role: 'assistant', content: 'Second response', toolCalls: [
+                    { name: 'task_complete', args: { summary: 'Second response' }, status: 'completed' },
+                ] },
             ]);
             vi.stubGlobal('fetch', mockFetch2);
 
@@ -533,7 +881,7 @@ describe('TeamsBridge', () => {
             });
             await new Promise(resolve => setTimeout(resolve, 50));
 
-            // Should have sent the 2 new turns (watermark was at 1, now 3 turns)
+            // Should have sent user turn + final assistant turn for the follow-up round
             expect(lastBot().send).toHaveBeenCalledTimes(3);
 
             vi.unstubAllGlobals();
@@ -562,7 +910,9 @@ describe('TeamsBridge', () => {
 
             // Second event: now has turns — should NOT be blocked
             const goodFetch = mockProcessFetch([
-                { role: 'assistant', content: 'Now I have something' },
+                { role: 'assistant', content: 'Now I have something', toolCalls: [
+                    { name: 'task_complete', args: { summary: 'Now I have something' }, status: 'completed' },
+                ] },
             ]);
             vi.stubGlobal('fetch', goodFetch);
 
@@ -596,7 +946,9 @@ describe('TeamsBridge', () => {
 
             // Second event: fetch succeeds — should NOT be blocked
             const goodFetch = mockProcessFetch([
-                { role: 'assistant', content: 'Recovered!' },
+                { role: 'assistant', content: 'Recovered!', toolCalls: [
+                    { name: 'task_complete', args: { summary: 'Recovered!' }, status: 'completed' },
+                ] },
             ]);
             vi.stubGlobal('fetch', goodFetch);
 
@@ -630,7 +982,9 @@ describe('TeamsBridge', () => {
 
             // Second event: succeeds — should NOT be blocked
             const goodFetch = mockProcessFetch([
-                { role: 'assistant', content: 'After error' },
+                { role: 'assistant', content: 'After error', toolCalls: [
+                    { name: 'task_complete', args: { summary: 'After error' }, status: 'completed' },
+                ] },
             ]);
             vi.stubGlobal('fetch', goodFetch);
 
@@ -647,7 +1001,7 @@ describe('TeamsBridge', () => {
             await bridge.stop();
         });
 
-        it('should send messages for running status after first event completes', async () => {
+        it('should skip intermediate assistant turns during running status', async () => {
             const bridge = createBridge();
             await bridge.start();
 
@@ -656,15 +1010,15 @@ describe('TeamsBridge', () => {
             ]);
             vi.stubGlobal('fetch', mockFetch);
 
-            // First running event
+            // First running event — only assistant turn, should be skipped
             emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
                 type: 'process-updated',
                 process: { id: 'proc-lock', status: 'running', workspaceId: 'ws-1' },
             });
             await new Promise(resolve => setTimeout(resolve, 50));
-            expect(lastBot().send).toHaveBeenCalledTimes(1);
+            expect(lastBot().send).toHaveBeenCalledTimes(0);
 
-            // Second running event for same process — lock released, should work again
+            // Second running event with more assistant turns — still skipped
             const mockFetch2 = mockProcessFetch([
                 { role: 'assistant', content: 'Streaming done' },
                 { role: 'assistant', content: 'More content' },
@@ -677,8 +1031,27 @@ describe('TeamsBridge', () => {
             });
             await new Promise(resolve => setTimeout(resolve, 50));
 
-            // Watermark was at 1, now 2 turns → sends the new one
-            expect(lastBot().send).toHaveBeenCalledTimes(2);
+            // Intermediate assistant turns are not sent during running
+            expect(lastBot().send).toHaveBeenCalledTimes(0);
+
+            // Completion event — only task_complete summary is sent
+            const mockFetch3 = mockProcessFetch([
+                { role: 'assistant', content: 'Streaming done' },
+                { role: 'assistant', content: 'More content' },
+                { role: 'assistant', content: 'Final answer', toolCalls: [
+                    { name: 'task_complete', args: { summary: 'Final answer' }, status: 'completed' },
+                ] },
+            ]);
+            vi.stubGlobal('fetch', mockFetch3);
+
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-lock', status: 'completed', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            expect(lastBot().send).toHaveBeenCalledTimes(1);
+            expect(lastBot().send.mock.calls[0][1]).toContain('Final answer');
 
             vi.unstubAllGlobals();
             await bridge.stop();
@@ -692,7 +1065,9 @@ describe('TeamsBridge', () => {
             lastBot().getStatus.mockReturnValue('disconnected');
 
             const mockFetch = mockProcessFetch([
-                { role: 'assistant', content: 'Should not arrive' },
+                { role: 'assistant', content: 'Should not arrive', toolCalls: [
+                    { name: 'task_complete', args: { summary: 'Should not arrive' }, status: 'completed' },
+                ] },
             ]);
             vi.stubGlobal('fetch', mockFetch);
 
@@ -731,7 +1106,9 @@ describe('TeamsBridge', () => {
                             id,
                             status: 'completed',
                             conversationTurns: [
-                                { role: 'assistant', content: `Response from ${id}` },
+                                { role: 'assistant', content: `Response from ${id}`, toolCalls: [
+                                    { name: 'task_complete', args: { summary: `Response from ${id}` }, status: 'completed' },
+                                ] },
                             ],
                         },
                     }),
@@ -774,7 +1151,9 @@ describe('TeamsBridge', () => {
                                 id: 'proc-target',
                                 status: 'completed',
                                 conversationTurns: [
-                                    { role: 'assistant', content: 'First response' },
+                                    { role: 'assistant', content: 'First response', toolCalls: [
+                                        { name: 'task_complete', args: { summary: 'First response' }, status: 'completed' },
+                                    ] },
                                 ],
                             },
                         }),
@@ -830,7 +1209,9 @@ describe('TeamsBridge', () => {
                                 id: 'proc-strip',
                                 status: 'completed',
                                 conversationTurns: [
-                                    { role: 'assistant', content: 'Done' },
+                                    { role: 'assistant', content: 'Done', toolCalls: [
+                                        { name: 'task_complete', args: { summary: 'Done' }, status: 'completed' },
+                                    ] },
                                 ],
                             },
                         }),

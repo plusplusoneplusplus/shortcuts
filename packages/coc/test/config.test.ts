@@ -807,6 +807,8 @@ timeout: 300
                 '  enabled: true',
                 'excalidraw:',
                 '  enabled: true',
+                'containerDefaultAgent:',
+                '  enabled: true',
                 'codex:',
                 '  enabled: true',
                 'activeProvider: codex',
@@ -943,6 +945,9 @@ timeout: 300
                   "codex": {
                     "enabled": false,
                   },
+                  "containerDefaultAgent": {
+                    "enabled": false,
+                  },
                   "excalidraw": {
                     "enabled": false,
                   },
@@ -1063,6 +1068,7 @@ timeout: 300
                   "chat.followUpSuggestions.count": "file",
                   "chat.followUpSuggestions.enabled": "file",
                   "codex.enabled": "default",
+                  "containerDefaultAgent.enabled": "default",
                   "excalidraw.enabled": "default",
                   "features.autoMemoryPromotion": "file",
                   "features.focusedDiff": "file",
