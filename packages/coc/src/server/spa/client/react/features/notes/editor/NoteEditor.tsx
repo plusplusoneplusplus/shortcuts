@@ -22,6 +22,7 @@ import { extractHeadings } from './noteTocUtils';
 import './noteEditor.css';
 
 import { NoteConflictBanner } from './NoteConflictBanner';
+import { resetEditorHistory } from './editorHistory';
 import { FilePreviewTooltip } from './FilePreviewTooltip';
 import { NoteVersionHistoryPanel } from './NoteVersionHistoryPanel';
 import { NoteMetadataPanel } from './NoteMetadataPanel';
@@ -591,6 +592,7 @@ export function NoteEditor({
             html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current, rootRef.current);
             ed.commands.setContent(html, { emitUpdate: false });
             ed.commands.setTextSelection?.(1);
+            resetEditorHistory(ed);
 
             // Cancel any save triggered by setContent
             pendingContentRef.current = null;
@@ -642,6 +644,7 @@ export function NoteEditor({
             let html = markdownToHtml(richMarkdown);
             html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current, rootRef.current);
             ed.commands.setContent(html, { emitUpdate: false });
+            resetEditorHistory(ed);
         }
         setRawMarkdown(conflictContent);
         pendingContentRef.current = null;
@@ -734,6 +737,7 @@ export function NoteEditor({
                 if (ed && !ed.isDestroyed) {
                     ed.commands.setContent(html, { emitUpdate: false });
                     ed.commands.setTextSelection?.(1);
+                    resetEditorHistory(ed);
                     pendingContentRef.current = null;
                     if (saveTimerRef.current) {
                         clearTimeout(saveTimerRef.current);
@@ -997,6 +1001,7 @@ export function NoteEditor({
                 let html = markdownToHtml(richMarkdown);
                 html = rewriteHtmlImageSrc(html, ioRef.current, workspaceIdRef.current, rootRef.current);
                 ed.commands.setContent(html, { emitUpdate: false });
+                resetEditorHistory(ed);
                 setDirty(false);
                 setRawMarkdown(content);
 
