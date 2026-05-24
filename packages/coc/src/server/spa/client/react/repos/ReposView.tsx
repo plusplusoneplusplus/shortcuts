@@ -13,6 +13,7 @@ import { useMyWorkEnabled } from '../hooks/feature-flags/useMyWorkEnabled';
 import { useMyLifeEnabled } from '../hooks/feature-flags/useMyLifeEnabled';
 import { ReposGrid } from './ReposGrid';
 import { RepoDetail } from '../features/repo-detail/RepoDetail';
+import { ContainerSessionView, CONTAINER_DEFAULT_REPO_ID } from '../features/container-session/ContainerSessionView';
 import { MyWorkView, MY_WORK_WORKSPACE_ID } from './MyWorkView';
 import { MyLifeView, MY_LIFE_WORKSPACE_ID } from './MyLifeView';
 
@@ -64,6 +65,9 @@ export function ReposView() {
     // My Life virtual workspace — personal goals, journal, life admin
     const isMyLife = myLifeEnabled && state.selectedRepoId === MY_LIFE_WORKSPACE_ID;
 
+    // Container default session — smart routing chat
+    const isContainerDefault = state.selectedRepoId === CONTAINER_DEFAULT_REPO_ID;
+
     const selectedRepo = repos.find(r =>
         r.workspace.id === state.selectedRepoId &&
         (!state.currentAgentId || !r.workspace.agentId || r.workspace.agentId === state.currentAgentId)
@@ -71,7 +75,12 @@ export function ReposView() {
 
     return (
         <div id="view-repos" className={`flex ${heightClass} overflow-hidden`}>
-            {isMyWork ? (
+            {isContainerDefault ? (
+                // ── Container Default: smart routing chat ──
+                <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden">
+                    <ContainerSessionView />
+                </main>
+            ) : isMyWork ? (
                 // ── My Work: notes-based workspace with sync/summary toolbar ──
                 <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden">
                     <MyWorkView />

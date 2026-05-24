@@ -386,26 +386,62 @@ export class TeamsBridge {
             const lastSeen = this.store!.getWatermark(processId);
             console.log(`[teams-bridge] Process ${processId}: ${turns.length} turns, watermark=${lastSeen}`);
 
-            // Skip streaming turns
+            // Skip trailing streaming assistant turns (user turns are never streaming)
             let sendableEnd = turns.length;
             for (let i = turns.length - 1; i >= lastSeen; i--) {
-                if (turns[i].streaming) { sendableEnd = i; continue; }
+                if (turns[i].streaming && turns[i].role === 'assistant') { sendableEnd = i; continue; }
                 break;
             }
 
             const newTurns = turns.slice(lastSeen, sendableEnd);
-            if (newTurns.length === 0) {
-                console.log(`[teams-bridge] Process ${processId}: no new turns to send (lastSeen=${lastSeen}, sendableEnd=${sendableEnd})`);
+
+            // Determine which turns to send:
+            // - User turns: always send immediately (so Teams shows what was asked)
+            // - Assistant turns: only send the FINAL one when process is completed
+            const turnsToSend: typeof newTurns = [];
+
+            // Collect user turns from new turns
+            for (const turn of newTurns) {
+                if (turn.role === 'user' && (turn.content ?? turn.text ?? '').trim()) {
+                    turnsToSend.push(turn);
+                }
+            }
+
+            // On completion, send the task_complete summary (process.result) if available,
+            // otherwise fall back to the last assistant turn in newTurns
+            if (status === 'completed') {
+                const resultSummary = (processData.result as string | undefined)?.trim();
+                if (resultSummary) {
+                    turnsToSend.push({ role: 'assistant', content: resultSummary });
+                } else {
+                    // Fall back: look in ALL turns (not just new) for last assistant
+                    const allAssistant = turns.filter(t => t.role === 'assistant' && (t.content ?? t.text ?? '').trim());
+                    const lastAssistantTurn = allAssistant.length > 0 ? allAssistant[allAssistant.length - 1] : undefined;
+                    if (lastAssistantTurn) {
+                        turnsToSend.push(lastAssistantTurn);
+                    }
+                }
+            }
+
+            if (turnsToSend.length === 0) {
+                // Running with only intermediate assistant turns — don't advance watermark
+                // so we can pick up the final assistant turn on completion
+                if (newTurns.length > 0) {
+                    console.log(`[teams-bridge] Process ${processId}: skipping ${newTurns.length} intermediate turn(s) (status=${status})`);
+                } else {
+                    console.log(`[teams-bridge] Process ${processId}: no new turns (watermark=${lastSeen}, total=${turns.length}, sendableEnd=${sendableEnd})`);
+                }
                 this._runningLocks.delete(processId);
                 return;
             }
 
-            console.log(`[teams-bridge] Process ${processId}: sending ${newTurns.length} new turn(s) to target=${target}`);
-
-            // Advance watermark BEFORE sending — prevents infinite retry on send failure
+            // Advance watermark
             if (sendableEnd > lastSeen) {
                 this.store!.setWatermark(processId, sendableEnd);
             }
+
+            console.log(`[teams-bridge] Process ${processId}: sending ${turnsToSend.length} turn(s) (status=${status}, ${newTurns.length} new, watermark=${lastSeen}→${sendableEnd})`);
+
 
             const repoName = await this.resolveWorkspaceName(
                 proc.workspaceName as string | undefined,
@@ -418,7 +454,7 @@ export class TeamsBridge {
             // Retrieve sender info for @mention notifications
             const sender = this.store!.getProcessSender(processId);
 
-            for (const turn of newTurns) {
+            for (const turn of turnsToSend) {
                 const content = (turn.content ?? turn.text ?? '') as string;
                 if (!content.trim()) continue;
 

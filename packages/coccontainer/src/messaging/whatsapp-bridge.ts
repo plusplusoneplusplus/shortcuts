@@ -222,6 +222,7 @@ export class WhatsAppBridge {
 
         // Skip if WhatsApp is not connected (e.g. qr-pending, disconnected)
         if (!this.bot || this.bot.getStatus() !== 'connected') {
+            console.log(`[whatsapp-bridge] Not connected (status=${this.bot?.getStatus() ?? 'no-bot'}) — skipping outbound for ${processId}`);
             this._processingLocks.delete(processId);
             return;
         }

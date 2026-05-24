@@ -28,6 +28,7 @@ interface DashboardConfig {
     excalidrawEnabled?: boolean;
     mcpOauthEnabled?: boolean;
     focusedDiffEnabled?: boolean;
+    containerDefaultAgentEnabled?: boolean;
     bindAddress?: string;
     /** Whether the Codex SDK provider is enabled (feature flag). */
     codexEnabled?: boolean;
@@ -90,6 +91,7 @@ async function _doLoadRuntimeConfig(): Promise<void> {
             excalidrawEnabled: data.features.excalidrawEnabled,
             mcpOauthEnabled: data.features.mcpOauthEnabled,
             focusedDiffEnabled: data.features.focusedDiffEnabled,
+            containerDefaultAgentEnabled: data.features.containerDefaultAgentEnabled,
             codexEnabled: data.features.codexEnabled,
             activeProvider: data.features.activeProvider,
             hostname: data.hostname ?? bootstrap.hostname,
@@ -213,6 +215,10 @@ export function isMcpOauthEnabled(): boolean {
 
 export function isFocusedDiffEnabled(): boolean {
     return getConfig().focusedDiffEnabled === true;
+}
+
+export function isContainerDefaultAgentEnabled(): boolean {
+    return getConfig().containerDefaultAgentEnabled === true;
 }
 
 /** Returns true when the Codex SDK provider feature flag is enabled. */
