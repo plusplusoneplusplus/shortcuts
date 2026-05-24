@@ -28,6 +28,7 @@ import { registerDiffCommentsRoutes } from '../tasks/comments/diff-comments-hand
 import { registerWikiRoutes } from '../wiki';
 import { registerMemoryRoutes } from '../memory/memory-routes';
 import { registerRepoMemoryRoutes } from '../memory/repo-memory-handler';
+import { registerMemoryV2Routes } from '../memory/memory-v2-routes';
 import { registerRepoRoutes } from '../repos/repo-routes';
 import { registerInstructionRoutes } from '../skills/instruction-handler';
 import { registerProviderRoutes } from '../providers/provider-routes';
@@ -364,6 +365,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         queueManager: queueFacade,
         scheduleManager,
     });
+
+    registerMemoryV2Routes(routes, dataDir);
 
     registerModelRoutes(routes, modelMetadataStore, {
         configPath,

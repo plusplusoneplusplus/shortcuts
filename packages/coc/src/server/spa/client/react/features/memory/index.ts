@@ -16,3 +16,8 @@ export { BoundedMemoryPanel } from './BoundedMemoryPanel';
 export { MemoryConfigPanel } from './MemoryConfigPanel';
 export { ExploreCachePanel } from './ExploreCachePanel';
 export { ExploreCacheBrowserPanel } from './ExploreCacheBrowserPanel';
+export { MemoryV2Panel } from './MemoryV2Panel';
+export { MemoryV2FactsTab } from './MemoryV2FactsTab';
+export { MemoryV2ReviewTab } from './MemoryV2ReviewTab';
+export { MemoryV2EpisodesTab } from './MemoryV2EpisodesTab';
+export { memoryV2Api } from './memoryV2Api';
