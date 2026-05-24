@@ -362,6 +362,38 @@ export class SqliteFactStore implements IMemoryFactStore {
         return rows.map(rowToFact);
     }
 
+    /**
+     * Return all (id, embedding) pairs for facts in the given scope/statuses.
+     * Used by HybridSearchEngine to compute cosine similarities in-process.
+     * Only rows with a non-null embedding BLOB are returned.
+     */
+    listEmbeddingPairs(
+        scope?: import('../types').MemoryScope,
+        workspaceId?: string,
+        statuses?: string[],
+    ): Array<{ id: string; embedding: Buffer }> {
+        const conditions: string[] = ['embedding IS NOT NULL'];
+        const params: unknown[] = [];
+
+        if (scope === 'workspace' && workspaceId) {
+            conditions.push("scope = 'workspace'");
+            conditions.push('workspace_id = ?');
+            params.push(workspaceId);
+        } else if (scope === 'global') {
+            conditions.push("scope = 'global'");
+        }
+
+        if (statuses && statuses.length > 0) {
+            conditions.push(`status IN (${statuses.map(() => '?').join(', ')})`);
+            params.push(...statuses);
+        }
+
+        const where = `WHERE ${conditions.join(' AND ')}`;
+        return this.db
+            .prepare(`SELECT id, embedding FROM facts ${where}`)
+            .all(...params) as Array<{ id: string; embedding: Buffer }>;
+    }
+
     close(): void {
         this.db.close();
     }

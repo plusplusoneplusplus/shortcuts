@@ -69,3 +69,16 @@ export { createMemoryStores } from './store-impl/store-factory';
 // Scope resolver (AC-02)
 export type { WorkspaceMemoryConfig } from './scope-resolver';
 export { MemoryScopeResolver } from './scope-resolver';
+
+// Vector search utilities (AC-03)
+export {
+    encodeEmbedding,
+    decodeEmbedding,
+    cosineSimilarity,
+    normalise,
+    recencyScore,
+} from './vector-ranker';
+export type { HybridSearchOptions } from './hybrid-search';
+export { HybridSearchEngine } from './hybrid-search';
+export type { BackfillResult } from './embedding-indexer';
+export { EmbeddingBackfillService } from './embedding-indexer';
