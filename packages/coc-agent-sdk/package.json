@@ -18,10 +18,14 @@
   },
   "peerDependencies": {
     "@github/copilot-sdk": "^0.3.0",
-    "@openai/codex-sdk": ">=0.1.0"
+    "@openai/codex-sdk": ">=0.1.0",
+    "@anthropic-ai/claude-code": ">=0.2.0"
   },
   "peerDependenciesMeta": {
     "@openai/codex-sdk": {
+      "optional": true
+    },
+    "@anthropic-ai/claude-code": {
       "optional": true
     }
   },

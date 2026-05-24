@@ -1,0 +1,481 @@
+/**
+ * Claude SDK Service
+ *
+ * Implements ISDKService backed by the optional `@anthropic-ai/claude-code` package.
+ * When the package is not installed the service reports itself as unavailable
+ * and all method calls return appropriate error results rather than throwing.
+ *
+ * Session mapping
+ * ─────────────────────────
+ * Each CoC session ID maps to an AbortController used to cancel an in-flight
+ * query. Claude Code SDK does not expose a persistent session/thread object
+ * above the single-query boundary, so sessions cannot be resumed via the SDK.
+ * The sessionId reported back is a CoC-generated UUID that stays stable across
+ * the adapter boundary.
+ *
+ * Optional peer dependency
+ * ─────────────────────────
+ * `@anthropic-ai/claude-code` is declared as an optional peer dependency.
+ * The module is loaded lazily with a try/catch so the rest of the SDK works
+ * fine without it.
+ *
+ * Authentication detection
+ * ─────────────────────────
+ * Claude credentials are managed entirely outside CoC (via the `claude` CLI or
+ * the `@anthropic-ai/claude-code` SDK's own auth mechanism). CoC does not store
+ * or retrieve any Anthropic API key or OAuth token. Availability checks detect
+ * whether Claude auth exists on the server without touching the credentials
+ * themselves.
+ */
+
+import type { SendMessageOptions } from './types';
+import type { ToolEvent } from './types';
+import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult } from './sdk-service-interface';
+import type { ToolCall } from './tool-call';
+import { sdkServiceRegistry, CLAUDE_PROVIDER } from './sdk-service-registry';
+import { dynamicImportModule } from './sdk-esm-loader';
+import * as crypto from 'crypto';
+
+// ============================================================================
+// @anthropic-ai/claude-code type stubs
+// These mirror the streaming query API published by the package.
+// Kept here so the file compiles without the optional peer dependency.
+// ============================================================================
+
+interface ClaudeTextBlock {
+    type: 'text';
+    text: string;
+}
+
+interface ClaudeToolUseBlock {
+    type: 'tool_use';
+    id: string;
+    name: string;
+    input: unknown;
+}
+
+type ClaudeContentBlock = ClaudeTextBlock | ClaudeToolUseBlock;
+
+interface ClaudeAssistantMessage {
+    type: 'assistant';
+    message: {
+        content: ClaudeContentBlock[];
+    };
+}
+
+interface ClaudeResultMessage {
+    type: 'result';
+    subtype: 'success' | 'error_max_turns' | 'error_during_execution';
+    result?: string;
+    is_error?: boolean;
+    /** Total cost of the request in USD */
+    total_cost_usd?: number;
+    /** Total input/output token counts */
+    usage?: {
+        input_tokens?: number;
+        output_tokens?: number;
+        cache_creation_input_tokens?: number;
+        cache_read_input_tokens?: number;
+    };
+}
+
+interface ClaudeSystemMessage {
+    type: 'system';
+    subtype: string;
+    [key: string]: unknown;
+}
+
+type ClaudeSDKMessage = ClaudeAssistantMessage | ClaudeResultMessage | ClaudeSystemMessage | Record<string, unknown>;
+
+interface ClaudeQueryOptions {
+    prompt: string;
+    abortController?: AbortController;
+    options?: {
+        cwd?: string;
+        model?: string;
+        customSystemPrompt?: string;
+        appendSystemPrompt?: string;
+    };
+}
+
+interface ClaudeSDKModule {
+    query?: (options: ClaudeQueryOptions) => AsyncIterable<ClaudeSDKMessage>;
+    default?: {
+        query?: (options: ClaudeQueryOptions) => AsyncIterable<ClaudeSDKMessage>;
+    } | ((options: ClaudeQueryOptions) => AsyncIterable<ClaudeSDKMessage>);
+}
+
+// ============================================================================
+// Internal active-session record
+// ============================================================================
+
+interface ActiveClaudeSession {
+    sessionId: string;
+    abortController: AbortController;
+}
+
+// ============================================================================
+// ClaudeSDKService
+// ============================================================================
+
+/**
+ * Provider for the optional `@anthropic-ai/claude-code` package.
+ * Registered under the `'claude'` key in `SDKServiceRegistry`.
+ *
+ * Construction is cheap — no SDK is loaded until the first call to
+ * `isAvailable()` or `sendMessage()`.
+ */
+export class ClaudeSDKService implements ISDKService {
+    private availabilityCache: IAvailabilityResult | null = null;
+    private queryFn: ((options: ClaudeQueryOptions) => AsyncIterable<ClaudeSDKMessage>) | null = null;
+    private disposed = false;
+
+    /** sessionId → active session metadata (request/active-session state only) */
+    private readonly sessions = new Map<string, ActiveClaudeSession>();
+
+    // ── Availability ─────────────────────────────────────────────────────────
+
+    public async isAvailable(): Promise<IAvailabilityResult> {
+        if (this.disposed) return { available: false, error: 'ClaudeSDKService has been disposed' };
+        if (this.availabilityCache) return this.availabilityCache;
+
+        try {
+            const mod = await dynamicImportModule<ClaudeSDKModule>('@anthropic-ai/claude-code');
+            const queryFn = this.resolveQueryFn(mod);
+            if (!queryFn) {
+                throw new Error(
+                    '@anthropic-ai/claude-code loaded but did not export a `query` function. ' +
+                    'Ensure you have a compatible version installed:\n' +
+                    '  npm install -g @anthropic-ai/claude-code',
+                );
+            }
+            this.queryFn = queryFn;
+            this.availabilityCache = { available: true };
+        } catch (err) {
+            const isNotInstalled = err instanceof Error && (
+                err.message.includes('Cannot find module') ||
+                err.message.includes('MODULE_NOT_FOUND')
+            );
+            if (isNotInstalled) {
+                this.availabilityCache = {
+                    available: false,
+                    error:
+                        'Claude Code SDK not installed. To enable Claude, run:\n' +
+                        '  npm install -g @anthropic-ai/claude-code\n' +
+                        'Then authenticate with `claude` and restart CoC.',
+                };
+            } else {
+                const msg = err instanceof Error ? err.message : String(err);
+                this.availabilityCache = {
+                    available: false,
+                    error: `Claude Code SDK failed to load: ${msg}\n` +
+                        'Ensure @anthropic-ai/claude-code is installed and `claude` is authenticated.',
+                };
+            }
+        }
+        return this.availabilityCache;
+    }
+
+    private resolveQueryFn(
+        mod: ClaudeSDKModule,
+    ): ((options: ClaudeQueryOptions) => AsyncIterable<ClaudeSDKMessage>) | undefined {
+        if (typeof mod.query === 'function') return mod.query;
+        if (typeof mod.default === 'function') {
+            return mod.default as (options: ClaudeQueryOptions) => AsyncIterable<ClaudeSDKMessage>;
+        }
+        if (mod.default && typeof (mod.default as { query?: unknown }).query === 'function') {
+            return (mod.default as { query: (options: ClaudeQueryOptions) => AsyncIterable<ClaudeSDKMessage> }).query;
+        }
+        return undefined;
+    }
+
+    public clearAvailabilityCache(): void {
+        this.availabilityCache = null;
+        this.queryFn = null;
+    }
+
+    // ── Model discovery ───────────────────────────────────────────────────────
+
+    /**
+     * Returns a static list of well-known Claude model IDs.
+     * Claude Code SDK does not expose a dynamic model catalog, so we return
+     * a curated list of known Claude models with a provider-default fallback.
+     */
+    public async listModels(): Promise<IModelInfo[]> {
+        if (this.disposed) throw new Error('ClaudeSDKService has been disposed');
+        const avail = await this.isAvailable();
+        if (!avail.available) throw new Error(avail.error ?? 'Claude Code SDK is not available');
+        return [
+            { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5' },
+            { id: 'claude-opus-4-5', name: 'Claude Opus 4.5' },
+            { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
+            { id: 'claude-provider-default', name: 'Claude Provider Default' },
+        ];
+    }
+
+    // ── Message dispatch ──────────────────────────────────────────────────────
+
+    public async sendMessage(options: SendMessageOptions): Promise<IInvocationResult> {
+        if (this.disposed) return { success: false, error: 'ClaudeSDKService has been disposed' };
+
+        if (options.signal?.aborted) {
+            return { success: false, error: 'Request aborted', sessionId: options.sessionId };
+        }
+
+        const avail = await this.isAvailable();
+        if (!avail.available) {
+            return { success: false, error: avail.error };
+        }
+
+        const queryFn = this.queryFn!;
+        const sessionId = options.sessionId ?? crypto.randomUUID();
+        const abortController = new AbortController();
+
+        // Propagate caller's AbortSignal into our internal controller.
+        let signalCleanup: (() => void) | undefined;
+        if (options.signal) {
+            const onAbort = () => abortController.abort();
+            options.signal.addEventListener('abort', onAbort);
+            signalCleanup = () => options.signal!.removeEventListener('abort', onAbort);
+        }
+
+        this.sessions.set(sessionId, { sessionId, abortController });
+
+        // Notify caller of session ID immediately so abort can be wired up.
+        options.onSessionCreated?.(sessionId);
+
+        const chunks: string[] = [];
+        const toolCalls = new Map<string, ToolCall>();
+        const startedToolCalls = new Set<string>();
+
+        try {
+            const model = this.normalizeClaudeModel(options.model);
+            const queryOptions: ClaudeQueryOptions = {
+                prompt: options.prompt ?? '',
+                abortController,
+                options: {
+                    ...(options.workingDirectory ? { cwd: options.workingDirectory } : {}),
+                    ...(model ? { model } : {}),
+                    ...(options.systemMessage?.mode === 'append' ? { appendSystemPrompt: options.systemMessage.content } : {}),
+                    ...(options.systemMessage?.mode === 'replace' ? { customSystemPrompt: options.systemMessage.content } : {}),
+                },
+            };
+
+            for await (const msg of queryFn(queryOptions)) {
+                if (abortController.signal.aborted) break;
+                if (this.isAssistantMessage(msg)) {
+                    for (const block of msg.message.content) {
+                        if (block.type === 'text') {
+                            chunks.push(block.text);
+                            options.onStreamingChunk?.(block.text);
+                        } else if (block.type === 'tool_use') {
+                            this.handleClaudeToolUse(block, options, toolCalls, startedToolCalls);
+                        }
+                    }
+                } else if (this.isResultMessage(msg)) {
+                    if (msg.subtype !== 'success' || msg.is_error) {
+                        const errText = typeof msg.result === 'string' && msg.result
+                            ? msg.result
+                            : `Claude returned ${msg.subtype}`;
+                        return {
+                            success: false,
+                            error: errText,
+                            sessionId,
+                        };
+                    }
+                    // If the result contains text not yet emitted, add it.
+                    if (typeof msg.result === 'string' && msg.result && chunks.join('') === '') {
+                        chunks.push(msg.result);
+                        options.onStreamingChunk?.(msg.result);
+                    }
+                }
+            }
+
+            // Empty chunk signals end-of-stream.
+            options.onStreamingChunk?.('');
+
+            return {
+                success: true,
+                response: chunks.join(''),
+                sessionId,
+                ...(toolCalls.size > 0 ? { toolCalls: Array.from(toolCalls.values()) } : {}),
+            } as IInvocationResult;
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            return { success: false, error: message, sessionId };
+        } finally {
+            signalCleanup?.();
+            this.sessions.delete(sessionId);
+        }
+    }
+
+    private isAssistantMessage(msg: ClaudeSDKMessage): msg is ClaudeAssistantMessage {
+        return (
+            typeof msg === 'object' &&
+            msg !== null &&
+            (msg as Record<string, unknown>).type === 'assistant' &&
+            typeof (msg as ClaudeAssistantMessage).message === 'object' &&
+            Array.isArray((msg as ClaudeAssistantMessage).message.content)
+        );
+    }
+
+    private isResultMessage(msg: ClaudeSDKMessage): msg is ClaudeResultMessage {
+        return (
+            typeof msg === 'object' &&
+            msg !== null &&
+            (msg as Record<string, unknown>).type === 'result'
+        );
+    }
+
+    private handleClaudeToolUse(
+        block: ClaudeToolUseBlock,
+        options: SendMessageOptions,
+        toolCalls: Map<string, ToolCall>,
+        startedToolCalls: Set<string>,
+    ): void {
+        const id = block.id ?? crypto.randomUUID();
+        const toolName = block.name ?? 'unknown_tool';
+        const parameters = (typeof block.input === 'object' && block.input !== null)
+            ? (block.input as Record<string, unknown>)
+            : {};
+
+        if (!startedToolCalls.has(id)) {
+            startedToolCalls.add(id);
+            const now = new Date();
+            toolCalls.set(id, {
+                id,
+                name: toolName,
+                status: 'running',
+                startTime: now,
+                args: parameters,
+            });
+            this.emitToolEvent(options, {
+                type: 'tool-start',
+                toolCallId: id,
+                toolName,
+                parameters,
+            });
+        }
+
+        // Claude Code SDK emits tool_use blocks in assistant messages when the tool
+        // completes. Mark it complete immediately.
+        const existing = toolCalls.get(id);
+        if (existing) {
+            existing.status = 'completed';
+            existing.endTime = new Date();
+        }
+        this.emitToolEvent(options, {
+            type: 'tool-complete',
+            toolCallId: id,
+            toolName,
+            result: JSON.stringify(parameters),
+        });
+    }
+
+    private emitToolEvent(options: SendMessageOptions, event: ToolEvent): void {
+        try {
+            options.onToolEvent?.(event);
+        } catch {
+            // Tool events are observational; never fail the Claude turn because
+            // a caller-side renderer/cache handler threw.
+        }
+    }
+
+    /**
+     * Normalize model ID for Claude: pass through Claude-looking model IDs,
+     * use provider default for missing or non-Claude model IDs.
+     */
+    private normalizeClaudeModel(model: string | undefined): string | undefined {
+        if (!model) return undefined;
+        const normalized = model.toLowerCase();
+        if (normalized === 'claude-provider-default' || normalized === 'provider-default') {
+            return undefined;
+        }
+        // Only pass through Claude model IDs; reject Copilot/Codex model IDs.
+        if (normalized.startsWith('claude')) return model;
+        return undefined;
+    }
+
+    public async transform<T = string>(
+        prompt: string,
+        parse?: (raw: string) => T,
+        options?: { model?: string; timeoutMs?: number; cwd?: string },
+    ): Promise<T> {
+        const result = await this.sendMessage({
+            prompt,
+            model: options?.model,
+            workingDirectory: options?.cwd,
+        });
+        if (!result.success) throw new Error(result.error ?? 'Claude transform failed');
+        const raw = result.response ?? '';
+        return (parse ? parse(raw) : raw) as T;
+    }
+
+    // ── Session management ────────────────────────────────────────────────────
+
+    public async forkSession(_sessionId: string): Promise<string> {
+        throw new Error(
+            'ClaudeSDKService does not support session forking. ' +
+            'The @anthropic-ai/claude-code SDK does not expose fork semantics.',
+        );
+    }
+
+    public async abortSession(sessionId: string): Promise<boolean> {
+        const session = this.sessions.get(sessionId);
+        if (!session) return false;
+        session.abortController.abort();
+        this.sessions.delete(sessionId);
+        return true;
+    }
+
+    public async softAbortSession(sessionId: string): Promise<boolean> {
+        // Claude Code SDK does not distinguish soft from hard abort.
+        return this.abortSession(sessionId);
+    }
+
+    public async steerSession(_sessionId: string, _prompt: string): Promise<boolean> {
+        // Steering is not supported by the Claude Code SDK.
+        return false;
+    }
+
+    public hasActiveSession(sessionId: string): boolean {
+        return this.sessions.has(sessionId);
+    }
+
+    public getActiveSessionCount(): number {
+        return this.sessions.size;
+    }
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    public async cleanup(): Promise<void> {
+        for (const [, session] of this.sessions) {
+            session.abortController.abort();
+        }
+        this.sessions.clear();
+        this.availabilityCache = null;
+        this.queryFn = null;
+    }
+
+    public dispose(): void {
+        this.disposed = true;
+        this.cleanup().catch(() => {});
+    }
+}
+
+// ============================================================================
+// Registration helper
+// ============================================================================
+
+/**
+ * Register a new `ClaudeSDKService` instance under `'claude'` in the module-
+ * level `sdkServiceRegistry`. Call this once during server startup, regardless
+ * of whether `claude.enabled` is true — live config gates actual usage.
+ *
+ * @returns The newly created service instance.
+ */
+export function registerClaudeSDKService(): ClaudeSDKService {
+    const svc = new ClaudeSDKService();
+    sdkServiceRegistry.register(CLAUDE_PROVIDER, svc);
+    return svc;
+}

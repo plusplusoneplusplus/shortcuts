@@ -17,6 +17,9 @@ export const COPILOT_PROVIDER = 'copilot';
 // Well-known provider name for the Codex SDK implementation.
 export const CODEX_PROVIDER = 'codex';
 
+// Well-known provider name for the Claude SDK implementation.
+export const CLAUDE_PROVIDER = 'claude';
+
 /**
  * Alias for `COPILOT_PROVIDER` — use this constant at call sites so the
  * name clearly communicates its role as the registry key for the Copilot
@@ -34,6 +37,15 @@ export const SDK_PROVIDER_COPILOT = COPILOT_PROVIDER;
  * Usage: `sdkServiceRegistry.getOrThrow(SDK_PROVIDER_CODEX)`
  */
 export const SDK_PROVIDER_CODEX = CODEX_PROVIDER;
+
+/**
+ * Alias for `CLAUDE_PROVIDER` — use this constant at call sites so the
+ * name clearly communicates its role as the registry key for the Claude
+ * SDK provider.
+ *
+ * Usage: `sdkServiceRegistry.getOrThrow(SDK_PROVIDER_CLAUDE)`
+ */
+export const SDK_PROVIDER_CLAUDE = CLAUDE_PROVIDER;
 
 /**
  * Registry that maps provider names to `ISDKService` instances.
