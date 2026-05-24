@@ -53,7 +53,7 @@ import {
     ToolEvent,
     // Delivery mode type
     DeliveryMode,
-} from '../../src/copilot-sdk-wrapper';
+} from '@plusplusoneplusplus/coc-agent-sdk';
 
 // Import from the ai/ barrel (backward compatibility)
 import {

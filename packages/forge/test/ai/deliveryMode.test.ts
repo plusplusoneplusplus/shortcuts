@@ -13,7 +13,7 @@
  * request body validation in api-handler.ts).
  */
 import { describe, it, expect } from 'vitest';
-import type { DeliveryMode, SendMessageOptions } from '../../src/copilot-sdk-wrapper/types';
+import type { DeliveryMode, SendMessageOptions } from '@plusplusoneplusplus/coc-agent-sdk';
 
 // ---------------------------------------------------------------------------
 // Local type-guard helper (mirrors the inline validation in api-handler.ts)

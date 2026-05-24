@@ -1,4 +1,4 @@
-import type { TokenUsage } from '../copilot-sdk-wrapper/types';
+import type { TokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { SerializedAIProcess } from './process-types';
 import { estimateCopilotTokenCost } from './copilot-token-cost';
 

@@ -8,7 +8,7 @@
  */
 
 import { ToolCallCacheStore, ToolCallFilter, ToolCallQAEntry } from './tool-call-cache-types';
-import { ToolEvent } from '../copilot-sdk-wrapper/types';
+import { ToolEvent } from '@plusplusoneplusplus/coc-agent-sdk';
 import { getAIServiceLogger } from '../ai-logger';
 
 export interface ToolCallCaptureOptions {

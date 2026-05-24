@@ -7,7 +7,7 @@
  */
 
 import { AIBackendType } from './types';
-import type { TokenUsage, Attachment } from '../copilot-sdk-wrapper/types';
+import type { TokenUsage, Attachment } from '@plusplusoneplusplus/coc-agent-sdk';
 import type {
     CodeReviewProcessMetadata,
     DiscoveryProcessMetadata,

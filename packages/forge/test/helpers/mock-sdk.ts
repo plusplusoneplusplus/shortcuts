@@ -8,7 +8,7 @@
  */
 
 import { vi } from 'vitest';
-import type { CopilotSDKService } from '../../src/copilot-sdk-wrapper/copilot-sdk-service';
+import type { CopilotSDKService } from '@plusplusoneplusplus/coc-agent-sdk';
 
 // ---------------------------------------------------------------------------
 // Interfaces

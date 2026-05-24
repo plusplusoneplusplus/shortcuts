@@ -6,19 +6,18 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { CopilotSDKService, resetCopilotSDKService } from '../../src/copilot-sdk-wrapper/copilot-sdk-service';
-import { setLogger, nullLogger } from '../../src/logger';
+import { CopilotSDKService, resetCopilotSDKService } from '../../src/copilot-sdk-service';
+import { initSDKLogger, resetSDKLogger } from '../../src/logger';
 import { createMockSDKModule } from '../helpers/mock-sdk';
 
-// Suppress logger output during tests
-setLogger(nullLogger);
+initSDKLogger({ level: 'silent' });
 
-vi.mock('../../src/copilot-sdk-wrapper/trusted-folder', async () => {
-    const actual = await vi.importActual('../../src/copilot-sdk-wrapper/trusted-folder');
+vi.mock('../../src/trusted-folder', async () => {
+    const actual = await vi.importActual('../../src/trusted-folder');
     return { ...actual, ensureFolderTrusted: vi.fn() };
 });
 
-vi.mock('../../src/copilot-sdk-wrapper/mcp-config-loader', () => ({
+vi.mock('../../src/mcp-config-loader', () => ({
     loadDefaultMcpConfig: vi.fn().mockReturnValue({
         success: false, fileExists: false, mcpServers: {},
     }),
@@ -42,6 +41,7 @@ describe('CopilotSDKService.transform', () => {
     afterEach(async () => {
         service.dispose();
         resetCopilotSDKService();
+        resetSDKLogger();
     });
 
     it('should return raw string when no parse function is provided', async () => {

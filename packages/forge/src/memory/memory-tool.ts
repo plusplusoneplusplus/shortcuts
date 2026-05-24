@@ -11,7 +11,7 @@
  *    `replace`/`remove` are disabled until explicit promotion is
  *    implemented.
  */
-import { defineTool, Tool } from '../copilot-sdk-wrapper/types';
+import { defineTool, Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { BoundedMemoryStore } from './bounded-memory-store';
 import { scanMemoryContent } from './memory-security-scanner';
 import type { MemoryCandidateStore } from './memory-candidate-store';

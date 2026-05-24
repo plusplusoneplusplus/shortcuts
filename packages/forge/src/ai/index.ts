@@ -127,7 +127,7 @@ export {
     isFolderTrusted,
     getCopilotConfigPath,
     setTrustedFolderHomeOverride,
-} from '../copilot-sdk-wrapper';
+} from '@plusplusoneplusplus/coc-agent-sdk';
 
 // AI Command Types
 export {

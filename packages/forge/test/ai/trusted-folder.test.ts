@@ -19,7 +19,7 @@ import {
     getCopilotConfigPath,
     setTrustedFolderHomeOverride,
     stripJsoncComments,
-} from '../../src/copilot-sdk-wrapper/trusted-folder';
+} from '@plusplusoneplusplus/coc-agent-sdk';
 
 /**
  * Normalize a Unix-style path to the platform's format.

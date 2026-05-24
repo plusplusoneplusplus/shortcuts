@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { DiffSource, CommitDiffSource, RangeDiffSource, WorkingTreeDiffSource } from '../../src/diff/types';
 import type { ReviewComment, ReviewOptions } from '../../src/review/types';
 import { AIReviewer, AIReviewerConfig, parseReviewFindings, extractJsonFromResponse } from '../../src/review/ai-reviewer';
-import type { SDKInvocationResult } from '../../src/copilot-sdk-wrapper/types';
+import type { SDKInvocationResult } from '@plusplusoneplusplus/coc-agent-sdk';
 
 // ── Helpers ──────────────────────────────────────────────────
 

@@ -22,7 +22,7 @@ import type {
 } from '../../src/memory';
 import type { BoundedMemoryStore } from '../../src/memory/bounded-memory-store';
 import type { MemoryMutationResult, MemoryUsage } from '../../src/memory/bounded-memory-types';
-import { ToolInvocation } from '../../src/copilot-sdk-wrapper/types';
+import { ToolInvocation } from '@plusplusoneplusplus/coc-agent-sdk';
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -37,6 +37,7 @@ export type {
     ToolResultObject,
     ToolResultType,
     ZodSchema,
+    ExtendedSdkRequest,
 } from './types';
 
 export type {

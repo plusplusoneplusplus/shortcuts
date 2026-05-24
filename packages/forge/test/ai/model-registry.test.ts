@@ -24,7 +24,7 @@ import {
     getModelContextWindow,
     IModelListClient,
     fetchModelsFromClient,
-} from '../../src/copilot-sdk-wrapper/model-registry';
+} from '@plusplusoneplusplus/coc-agent-sdk';
 
 describe('Model Registry', () => {
     // ========================================================================

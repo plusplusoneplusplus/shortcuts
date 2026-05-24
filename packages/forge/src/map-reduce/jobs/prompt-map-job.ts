@@ -87,7 +87,7 @@ export interface PromptMapResult {
     /** Optional process ID for tracking */
     processId?: string;
     /** Token usage from the AI call (if available) */
-    tokenUsage?: import('../../copilot-sdk-wrapper/types').TokenUsage;
+    tokenUsage?: import('@plusplusoneplusplus/coc-agent-sdk').TokenUsage;
 }
 
 /**

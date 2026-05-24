@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { READ_ONLY_SYSTEM_MESSAGE } from '../src/copilot-sdk-wrapper/types';
+import { READ_ONLY_SYSTEM_MESSAGE } from '@plusplusoneplusplus/coc-agent-sdk';
 
 describe('READ_ONLY_SYSTEM_MESSAGE', () => {
     it('should be a non-empty string', () => {

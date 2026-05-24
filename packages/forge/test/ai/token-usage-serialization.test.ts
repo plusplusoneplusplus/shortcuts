@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { serializeProcess, deserializeProcess } from '../../src/ai/process-types';
 import type { AIProcess, ConversationTurn } from '../../src/ai/process-types';
-import type { TokenUsage } from '../../src/copilot-sdk-wrapper/types';
+import type { TokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
 
 function makeProcess(overrides?: Partial<AIProcess>): AIProcess {
     return {

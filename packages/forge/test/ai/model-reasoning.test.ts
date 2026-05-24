@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { ModelInfo } from '../../src/copilot-sdk-wrapper/model-info';
-import { resolveReasoningEffort, resolveReasoningSelection } from '../../src/copilot-sdk-wrapper/model-reasoning';
+import type { ModelInfo } from '@plusplusoneplusplus/coc-agent-sdk';
+import { resolveReasoningEffort, resolveReasoningSelection } from '@plusplusoneplusplus/coc-agent-sdk';
 
 function model(
     id: string,
