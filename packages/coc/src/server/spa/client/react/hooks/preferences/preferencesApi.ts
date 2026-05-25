@@ -10,29 +10,6 @@ import { getSpaCocClient, translateSpaCocClientError } from '../../api/cocClient
 export interface PerRepoPrefsClient extends PerRepoPreferences {
   /** Preferred file-list display mode across all git views. */
   filesViewMode?: 'flat' | 'tree';
-  /** Repo-scoped bounded memory controls used by the Memory settings panel. */
-  boundedMemory?: {
-    enabled?: boolean;
-    charLimit?: number;
-    writeFrequency?: 'low' | 'medium' | 'high';
-    readTools?: {
-      enabled?: boolean;
-      maxResults?: number;
-      maxEntryChars?: number;
-    };
-    autoPromote?: {
-      mode: 'off' | 'threshold' | 'cron' | 'cron+threshold';
-      cron?: string;
-      timezone?: string;
-      thresholdCount?: number;
-      minIntervalMs?: number;
-      gates?: {
-        minScore?: number;
-        minRecallCount?: number;
-        minUniqueQueries?: number;
-      };
-    };
-  };
   /** Notes directory git tracking settings. */
   notesGit?: NotesGitConfig;
   /** Per-repo activity filter selections (status and type filters). */

@@ -1,3 +1,5 @@
+export type MemoryLevel = 'system' | 'repo' | 'git-remote';
+
 export interface MemoryConfig {
   storageDir: string;
   backend: string;
@@ -5,6 +7,83 @@ export interface MemoryConfig {
   ttlDays?: number;
   autoInject?: boolean;
   recording?: { enabled: boolean };
+}
+
+// ── Explore-cache types ───────────────────────────────────────────────────────
+
+export interface ExploreCacheStats {
+  rawCount: number;
+  consolidatedExists: boolean;
+  consolidatedCount: number;
+  lastAggregation: string | null;
+}
+
+export interface ExploreCacheRepoEntry extends ExploreCacheStats {
+  hash: string;
+  path?: string;
+  name?: string;
+  remoteUrl?: string;
+}
+
+export interface ExploreCacheGitRemoteEntry extends ExploreCacheStats {
+  hash: string;
+  remoteUrl?: string;
+  name?: string;
+}
+
+export interface ExploreCacheLevelsOverview {
+  system: ExploreCacheStats;
+  repos: ExploreCacheRepoEntry[];
+  gitRemotes: ExploreCacheGitRemoteEntry[];
+}
+
+export interface ExploreCacheRawListResponse {
+  level: MemoryLevel;
+  hash?: string;
+  files: string[];
+}
+
+export interface ToolCallQAEntry {
+  id: string;
+  toolName: string;
+  question: string;
+  answer: string;
+  args: Record<string, unknown>;
+  gitHash?: string;
+  timestamp: string;
+}
+
+export interface ConsolidatedIndexEntry {
+  id: string;
+  question: string;
+  topics: string[];
+  toolSources: string[];
+  createdAt: string;
+  hitCount: number;
+  gitHash?: string;
+}
+
+export interface ExploreCacheConsolidatedListResponse {
+  level: MemoryLevel;
+  hash?: string;
+  entries: ConsolidatedIndexEntry[];
+}
+
+export interface ConsolidatedEntryWithAnswer extends ConsolidatedIndexEntry {
+  answer: string;
+}
+
+export interface ToolCallCacheStats {
+  rawCount: number;
+  consolidatedCount: number;
+  consolidatedExists: boolean;
+  lastAggregation: string | null;
+}
+
+export interface AggregateToolCallsResponse {
+  aggregated?: boolean;
+  rawCount: number;
+  consolidatedCount: number;
 }
 
 export type MemoryScope = 'global' | 'workspace';
