@@ -22,7 +22,7 @@ import { CustomInstructionsPanel } from '../skills/CustomInstructionsPanel';
 import type { InstructionMode } from '../skills/CustomInstructionsPanel';
 import type { SettingsSection } from '../../types/dashboard';
 import type { RepoData } from '../../repos/repoGrouping';
-import { RepoMemorySection } from '../memory/RepoMemorySection';
+import { MemoryStatusCard } from '../memory/MemoryStatusCard';
 import { useRepos } from '../../contexts/ReposContext';
 import { TasksSettingsSection } from './TasksSettingsSection';
 import { RepoPreferencesSection } from './RepoPreferencesSection';
@@ -952,7 +952,7 @@ export function RepoSettingsTab({ workspaceId, repo }: RepoSettingsTabProps) {
                     )}
                     {activeSection === 'memory' && (
                         <SectionCard>
-                            <RepoMemorySection repoId={workspaceId} repoPath={ws.rootPath} />
+                            <MemoryStatusCard workspaceId={workspaceId} />
                         </SectionCard>
                     )}
                     {activeSection === 'tasks' && (

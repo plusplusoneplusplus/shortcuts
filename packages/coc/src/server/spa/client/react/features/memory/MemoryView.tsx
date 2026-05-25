@@ -10,7 +10,15 @@ import { FeatureTip } from '../../welcome/FeatureTip';
 import { MemoryV2Panel } from './MemoryV2Panel';
 
 export function MemoryView() {
-    const { state } = useApp();
+    const { state, dispatch } = useApp();
+
+    const handleScopeConsumed = () => {
+        // Clear the transient scope after the panel has picked it up so a
+        // later navigation to #memory without a scope doesn't re-apply it.
+        if (state.activeMemoryScopeId !== null) {
+            dispatch({ type: 'SET_MEMORY_SCOPE', scopeId: null });
+        }
+    };
 
     return (
         <div id="view-memory" className="flex flex-col h-full overflow-hidden">
@@ -18,7 +26,11 @@ export function MemoryView() {
 
             {/* Memory V2 panel — handles its own enabled/disabled state */}
             <div className="flex-1 overflow-hidden" data-testid="memory-v2-container">
-                <MemoryV2Panel initialTab={state.activeMemorySubTab} />
+                <MemoryV2Panel
+                    initialTab={state.activeMemorySubTab}
+                    initialScopeId={state.activeMemoryScopeId}
+                    onInitialScopeConsumed={handleScopeConsumed}
+                />
             </div>
         </div>
     );

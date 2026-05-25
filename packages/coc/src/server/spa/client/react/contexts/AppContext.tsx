@@ -82,6 +82,8 @@ export interface AppContextState {
     conversationCache: Record<string, ConversationCacheEntry>;
     wsStatus: WsStatus;
     activeMemorySubTab: MemorySubTab;
+    /** Transient initial scope ID for the Memory workbench (set by deep-link from repo settings). */
+    activeMemoryScopeId: string | null;
     activeSkillsSubTab: SkillsSubTab;
     activeAdminSubTab: AdminSubTab;
     adminDbTable: string | null;
@@ -152,6 +154,7 @@ const initialState: AppContextState = {
     conversationCache: {},
     wsStatus: 'closed',
     activeMemorySubTab: 'facts',
+    activeMemoryScopeId: null,
     activeSkillsSubTab: 'installed',
     activeAdminSubTab: 'settings',
     adminDbTable: null,
@@ -230,6 +233,7 @@ export type AppAction =
     | { type: 'SET_SELECTED_NOTE_PATH'; notePath: string | null }
     | { type: 'SET_WORK_ITEM_DEEP_LINK'; workItemId: string | null; sessionTaskId?: string | null; commitHash?: string | null; commitFilePath?: string | null }
     | { type: 'SET_MEMORY_SUB_TAB'; tab: MemorySubTab }
+    | { type: 'SET_MEMORY_SCOPE'; scopeId: string | null }
     | { type: 'SET_SKILLS_SUB_TAB'; tab: SkillsSubTab }
     | { type: 'SET_ADMIN_SUB_TAB'; tab: AdminSubTab }
     | { type: 'SET_ADMIN_DB_DEEP_LINK'; table: string | null; page: number; sort: string | null; order: 'asc' | 'desc' | null }
@@ -501,6 +505,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             };
         case 'SET_MEMORY_SUB_TAB':
             return { ...state, activeMemorySubTab: action.tab };
+        case 'SET_MEMORY_SCOPE':
+            return { ...state, activeMemoryScopeId: action.scopeId };
         case 'SET_SKILLS_SUB_TAB':
             return { ...state, activeSkillsSubTab: action.tab };
         case 'SET_ADMIN_SUB_TAB':

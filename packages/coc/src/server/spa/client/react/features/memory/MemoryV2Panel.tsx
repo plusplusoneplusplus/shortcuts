@@ -9,7 +9,7 @@
  * wsId="global" is used for the global scope across all workspace-scoped routes.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, Spinner } from '../../ui';
 import { memoryV2Api, type MemoryScopeInfo } from './memoryV2Api';
 import { MemoryV2FactsTab } from './MemoryV2FactsTab';
@@ -242,24 +242,30 @@ function ScopeSidebar({ scopes, selectedId, onSelect }: ScopeSidebarProps) {
 
 interface MemoryV2PanelProps {
     initialTab?: V2Tab;
+    /** Pre-select a scope by ID (e.g. "global" or "workspace:<wsId>"). Used for deep-link navigation. */
+    initialScopeId?: string | null;
+    /** Called once when the initial scope has been consumed, so the parent can clear it. */
+    onInitialScopeConsumed?: () => void;
 }
 
-export function MemoryV2Panel({ initialTab = 'facts' }: MemoryV2PanelProps) {
+export function MemoryV2Panel({ initialTab = 'facts', initialScopeId, onInitialScopeConsumed }: MemoryV2PanelProps) {
     const [scopes, setScopes] = useState<MemoryScopeInfo[]>([]);
     const [scopesLoading, setScopesLoading] = useState(true);
     const [scopesError, setScopesError] = useState<string | null>(null);
-    const [selectedScopeId, setSelectedScopeId] = useState<string | null>(null);
+    const [selectedScopeId, setSelectedScopeId] = useState<string | null>(initialScopeId ?? null);
     const [activeTab, setActiveTab] = useState<V2Tab>(initialTab);
     const [contentVersion, setContentVersion] = useState(0);
+    const consumedRef = useRef(false);
 
-    const loadScopes = useCallback(async () => {
+    const loadScopes = useCallback(async (requestedScopeId?: string | null) => {
         setScopesLoading(true);
         setScopesError(null);
         try {
             const result = await memoryV2Api.listScopes();
             setScopes(result);
             setSelectedScopeId(prev => {
-                if (prev && result.some(s => s.id === prev)) return prev;
+                const target = requestedScopeId ?? prev;
+                if (target && result.some(s => s.id === target)) return target;
                 return result.length > 0 ? result[0].id : null;
             });
         } catch (err) {
@@ -269,7 +275,16 @@ export function MemoryV2Panel({ initialTab = 'facts' }: MemoryV2PanelProps) {
         }
     }, []);
 
-    useEffect(() => { loadScopes(); }, [loadScopes]);
+    useEffect(() => { loadScopes(initialScopeId); }, [loadScopes, initialScopeId]);
+
+    // Notify parent once the initial scope has been picked up so the parent can
+    // clear its transient scope state (prevents re-applying it on re-renders).
+    useEffect(() => {
+        if (!scopesLoading && !consumedRef.current && onInitialScopeConsumed) {
+            consumedRef.current = true;
+            onInitialScopeConsumed();
+        }
+    }, [scopesLoading, onInitialScopeConsumed]);
 
     useEffect(() => { setActiveTab(initialTab); }, [initialTab]);
 

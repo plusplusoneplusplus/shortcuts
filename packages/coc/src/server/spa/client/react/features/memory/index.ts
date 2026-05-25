@@ -21,3 +21,4 @@ export { MemoryV2FactsTab } from './MemoryV2FactsTab';
 export { MemoryV2ReviewTab } from './MemoryV2ReviewTab';
 export { MemoryV2EpisodesTab } from './MemoryV2EpisodesTab';
 export { memoryV2Api } from './memoryV2Api';
+export { MemoryStatusCard } from './MemoryStatusCard';
