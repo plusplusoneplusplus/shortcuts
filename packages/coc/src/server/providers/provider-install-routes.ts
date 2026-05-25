@@ -18,6 +18,8 @@
 
 import * as path from 'path';
 import * as childProcess from 'child_process';
+import * as fs from 'fs';
+import { createRequire } from 'module';
 import type { Route } from '../types';
 import { sendJson, send400, send404, send500 } from '../shared/router';
 import { registerCodexSDKService, registerClaudeSDKService } from '@plusplusoneplusplus/forge';
@@ -30,6 +32,14 @@ import type { CodexAuthCheckResult } from '@plusplusoneplusplus/forge';
 const PROVIDER_PACKAGES: Record<string, string> = {
     codex: '@openai/codex-sdk',
     claude: '@anthropic-ai/claude-agent-sdk',
+};
+
+const PROVIDER_INSTALL_PROBES: Record<string, string[]> = {
+    // @openai/codex-sdk is ESM import-only, so require.resolve('@openai/codex-sdk')
+    // reports ERR_PACKAGE_PATH_NOT_EXPORTED even when installed. Its bundled CLI
+    // dependency is required for quota/model RPCs and exposes a resolvable bin.
+    codex: ['@openai/codex/bin/codex.js', '@openai/codex/package.json'],
+    claude: ['@anthropic-ai/claude-agent-sdk'],
 };
 
 // ============================================================================
@@ -65,17 +75,32 @@ export function clearInstallStates(): void {
 // Package detection helper
 // ============================================================================
 
-// eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
-const dynamicRequireResolve = new Function('m', 'return require.resolve(m)') as (m: string) => string;
+const runtimeRequire = createRequire(__filename);
 
-/** Returns true when the npm package `pkg` can be resolved in the current environment. */
-function isPackageInstalled(pkg: string): boolean {
-    try {
-        dynamicRequireResolve(pkg);
-        return true;
-    } catch {
-        return false;
+/** Returns true when the provider's runtime package can be resolved in the current environment. */
+function isPackageInstalled(provider: string): boolean {
+    const pkg = PROVIDER_PACKAGES[provider];
+    if (!pkg || !packageJsonExists(pkg)) return false;
+
+    for (const specifier of PROVIDER_INSTALL_PROBES[provider] ?? [PROVIDER_PACKAGES[provider]!]) {
+        try {
+            runtimeRequire.resolve(specifier);
+            return true;
+        } catch {
+            // Try the next probe for packages with multiple valid layouts.
+        }
     }
+    return false;
+}
+
+function packageJsonExists(pkg: string): boolean {
+    const packageParts = pkg.split('/');
+    for (const baseDir of runtimeRequire.resolve.paths(pkg) ?? []) {
+        if (fs.existsSync(path.join(baseDir, ...packageParts, 'package.json'))) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // ============================================================================
@@ -221,8 +246,7 @@ export function registerProviderInstallRoutes(routes: Route[], ctx: ProviderInst
             }
 
             // Fall back to runtime package detection.
-            const pkg = PROVIDER_PACKAGES[provider]!;
-            const installed = isPackageInstalled(pkg);
+            const installed = isPackageInstalled(provider);
             sendJson(res, { status: installed ? 'installed' : 'not-installed' });
         },
     });
@@ -241,8 +265,21 @@ export function registerProviderInstallRoutes(routes: Route[], ctx: ProviderInst
 
             const pkg = PROVIDER_PACKAGES[provider]!;
 
+            // Validate that the install directory exists.
+            const installDir = ctx.cocInstallDir;
+            try {
+                const stat = fs.statSync(installDir);
+                if (!stat.isDirectory()) {
+                    send500(res, `cocInstallDir is not a directory: ${installDir}`);
+                    return;
+                }
+            } catch {
+                send500(res, `cocInstallDir does not exist: ${installDir}`);
+                return;
+            }
+
             // If already installed, return 200 to be idempotent.
-            if (isPackageInstalled(pkg)) {
+            if (isPackageInstalled(provider)) {
                 installStates.set(provider, { status: 'installed' });
                 sendJson(res, { status: 'installed', message: `${pkg} is already installed` });
                 return;
@@ -252,20 +289,6 @@ export function registerProviderInstallRoutes(routes: Route[], ctx: ProviderInst
             const current = installStates.get(provider);
             if (current?.status === 'installing') {
                 sendJson(res, { status: 'installing', message: 'Install already in progress' }, 409);
-                return;
-            }
-
-            // Validate that the install directory exists.
-            const installDir = ctx.cocInstallDir;
-            try {
-                const fs = require('fs') as typeof import('fs');
-                const stat = fs.statSync(installDir);
-                if (!stat.isDirectory()) {
-                    send500(res, `cocInstallDir is not a directory: ${installDir}`);
-                    return;
-                }
-            } catch {
-                send500(res, `cocInstallDir does not exist: ${installDir}`);
                 return;
             }
 

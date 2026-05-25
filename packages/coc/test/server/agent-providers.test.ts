@@ -175,7 +175,7 @@ describe('Claude provider when enabled but SDK unavailable', () => {
         const { providers } = await buildAgentProvidersResponse({
             runtimeConfigService: svc,
             getCodexAuthInfo: () => ({ status: 'unauthenticated' }),
-            getClaudeAvailability: () => Promise.resolve({ available: false, error: 'Run: npm install -g @anthropic-ai/claude-code' }),
+            getClaudeAvailability: () => Promise.resolve({ available: false, error: 'Run: npm install @anthropic-ai/claude-agent-sdk' }),
             serverBaseUrl: BASE_URL,
         });
         const claude = providers.find(p => p.id === 'claude')!;

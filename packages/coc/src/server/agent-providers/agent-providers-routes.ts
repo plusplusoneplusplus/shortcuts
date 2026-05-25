@@ -12,7 +12,7 @@
  *   - Codex auth store (available flag; requires authenticated status)
  * Claude status is derived from:
  *   - `claude.enabled` in live runtime config (enabled flag)
- *   - `@anthropic-ai/claude-code` SDK availability check (available flag)
+ *   - `@anthropic-ai/claude-agent-sdk` SDK availability check (available flag)
  */
 
 import type { Route } from '../types';

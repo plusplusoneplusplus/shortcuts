@@ -1984,7 +1984,7 @@ export function AdminPanel() {
                                     )}
                                     <AdminRow
                                         name={<>Claude Provider <span className="ar-badge ar-badge-accent">Experimental</span> <span className="ar-badge ar-badge-warning">Restart</span></>}
-                                        hint="Enable the optional @anthropic-ai/claude-code provider. Requires Claude Code to be installed and authenticated on the server."
+                                        hint="Enable the optional @anthropic-ai/claude-agent-sdk provider. Requires Claude Code to be installed and authenticated on the server."
                                     >
                                         {sdkInstallStatuses['claude'] && (
                                             <SdkInstallBadge status={sdkInstallStatuses['claude']} />

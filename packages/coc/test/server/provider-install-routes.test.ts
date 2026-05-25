@@ -88,14 +88,16 @@ describe('Provider Install Routes', () => {
             expect(status).toBe(404);
         });
 
-        it('returns not-installed when package is absent', async () => {
-            // '@openai/codex-sdk' is not installed in the test environment
+        it('returns installed for the import-only Codex SDK package', async () => {
             const { status, body } = await apiGet(baseUrl, '/api/providers/sdk/codex/install-status');
             expect(status).toBe(200);
-            // The status may be 'not-installed' or 'installed' depending on the environment;
-            // but at minimum it must be one of the valid statuses.
-            const validStatuses = ['not-installed', 'installing', 'installed', 'install-failed'];
-            expect(validStatuses).toContain((body as any).status);
+            expect((body as any).status).toBe('installed');
+        });
+
+        it('returns installed for the Claude Agent SDK package', async () => {
+            const { status, body } = await apiGet(baseUrl, '/api/providers/sdk/claude/install-status');
+            expect(status).toBe(200);
+            expect((body as any).status).toBe('installed');
         });
 
         it('returns installing when install is in progress', async () => {
@@ -157,14 +159,15 @@ describe('Provider Install Routes', () => {
         });
 
         it('accepts codex provider', async () => {
-            const { status } = await apiPost(baseUrl, '/api/providers/sdk/codex/install');
-            // Should be 200 (already installed), 202 (install started), or 500 (dir issue)
-            expect([200, 202, 500]).toContain(status);
+            const { status, body } = await apiPost(baseUrl, '/api/providers/sdk/codex/install');
+            expect(status).toBe(200);
+            expect((body as any).status).toBe('installed');
         });
 
         it('accepts claude provider', async () => {
-            const { status } = await apiPost(baseUrl, '/api/providers/sdk/claude/install');
-            expect([200, 202, 500]).toContain(status);
+            const { status, body } = await apiPost(baseUrl, '/api/providers/sdk/claude/install');
+            expect(status).toBe(200);
+            expect((body as any).status).toBe('installed');
         });
 
         it('returns 500 when cocInstallDir does not exist', async () => {

@@ -1,7 +1,7 @@
 /**
  * Claude SDK Service
  *
- * Implements ISDKService backed by the optional `@anthropic-ai/claude-code` package.
+ * Implements ISDKService backed by the optional `@anthropic-ai/claude-agent-sdk` package.
  * When the package is not installed the service reports itself as unavailable
  * and all method calls return appropriate error results rather than throwing.
  *
@@ -15,14 +15,14 @@
  *
  * Optional peer dependency
  * ─────────────────────────
- * `@anthropic-ai/claude-code` is declared as an optional peer dependency.
+ * `@anthropic-ai/claude-agent-sdk` is declared as an optional peer dependency.
  * The module is loaded lazily with a try/catch so the rest of the SDK works
  * fine without it.
  *
  * Authentication detection
  * ─────────────────────────
  * Claude credentials are managed entirely outside CoC (via the `claude` CLI or
- * the `@anthropic-ai/claude-code` SDK's own auth mechanism). CoC does not store
+ * the `@anthropic-ai/claude-agent-sdk` SDK's own auth mechanism). CoC does not store
  * or retrieve any Anthropic API key or OAuth token. Availability checks detect
  * whether Claude auth exists on the server without touching the credentials
  * themselves.
@@ -37,7 +37,7 @@ import { dynamicImportModule } from './sdk-esm-loader';
 import * as crypto from 'crypto';
 
 // ============================================================================
-// @anthropic-ai/claude-code type stubs
+// @anthropic-ai/claude-agent-sdk type stubs
 // These mirror the streaming query API published by the package.
 // Kept here so the file compiles without the optional peer dependency.
 // ============================================================================
@@ -118,8 +118,10 @@ interface ActiveClaudeSession {
 // ClaudeSDKService
 // ============================================================================
 
+const CLAUDE_AGENT_SDK_PACKAGE = '@anthropic-ai/claude-agent-sdk';
+
 /**
- * Provider for the optional `@anthropic-ai/claude-code` package.
+ * Provider for the optional `@anthropic-ai/claude-agent-sdk` package.
  * Registered under the `'claude'` key in `SDKServiceRegistry`.
  *
  * Construction is cheap — no SDK is loaded until the first call to
@@ -140,13 +142,13 @@ export class ClaudeSDKService implements ISDKService {
         if (this.availabilityCache) return this.availabilityCache;
 
         try {
-            const mod = await dynamicImportModule<ClaudeSDKModule>('@anthropic-ai/claude-code');
+            const mod = await dynamicImportModule<ClaudeSDKModule>(CLAUDE_AGENT_SDK_PACKAGE);
             const queryFn = this.resolveQueryFn(mod);
             if (!queryFn) {
                 throw new Error(
-                    '@anthropic-ai/claude-code loaded but did not export a `query` function. ' +
+                    `${CLAUDE_AGENT_SDK_PACKAGE} loaded but did not export a \`query\` function. ` +
                     'Ensure you have a compatible version installed:\n' +
-                    '  npm install -g @anthropic-ai/claude-code',
+                    `  npm install ${CLAUDE_AGENT_SDK_PACKAGE}`,
                 );
             }
             this.queryFn = queryFn;
@@ -160,16 +162,16 @@ export class ClaudeSDKService implements ISDKService {
                 this.availabilityCache = {
                     available: false,
                     error:
-                        'Claude Code SDK not installed. To enable Claude, run:\n' +
-                        '  npm install -g @anthropic-ai/claude-code\n' +
+                        'Claude Agent SDK not installed. To enable Claude, run:\n' +
+                        `  npm install ${CLAUDE_AGENT_SDK_PACKAGE}\n` +
                         'Then authenticate with `claude` and restart CoC.',
                 };
             } else {
                 const msg = err instanceof Error ? err.message : String(err);
                 this.availabilityCache = {
                     available: false,
-                    error: `Claude Code SDK failed to load: ${msg}\n` +
-                        'Ensure @anthropic-ai/claude-code is installed and `claude` is authenticated.',
+                    error: `Claude Agent SDK failed to load: ${msg}\n` +
+                        `Ensure ${CLAUDE_AGENT_SDK_PACKAGE} is installed and \`claude\` is authenticated.`,
                 };
             }
         }
@@ -416,7 +418,7 @@ export class ClaudeSDKService implements ISDKService {
     public async forkSession(_sessionId: string): Promise<string> {
         throw new Error(
             'ClaudeSDKService does not support session forking. ' +
-            'The @anthropic-ai/claude-code SDK does not expose fork semantics.',
+            `The ${CLAUDE_AGENT_SDK_PACKAGE} SDK does not expose fork semantics.`,
         );
     }
 

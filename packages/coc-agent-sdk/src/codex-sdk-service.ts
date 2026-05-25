@@ -26,6 +26,7 @@ import { sdkServiceRegistry, CODEX_PROVIDER } from './sdk-service-registry';
 import { dynamicImportModule } from './sdk-esm-loader';
 import { execFileAsync } from './internal/exec-utils';
 import { spawn } from 'child_process';
+import { createRequire } from 'module';
 import * as readline from 'readline';
 import * as path from 'path';
 
@@ -42,17 +43,15 @@ function isGlobalInstall(): boolean {
 }
 
 // ============================================================================
-// Dynamic require.resolve (webpack-safe)
+// Runtime module resolution
 // ============================================================================
 
 /**
- * Resolves a module path at runtime without webpack statically analysing it.
- * Uses the same `new Function` indirection as `dynamicImportModule` in
- * sdk-esm-loader.ts so that webpack does not attempt to bundle optional
- * peer dependencies that may not be installed.
+ * Resolves optional runtime dependencies relative to this package instead of
+ * the process entrypoint. This keeps globally installed CoC and workspace-linked
+ * development installs from resolving against different node_modules trees.
  */
-// eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
-const dynamicRequireResolve = new Function('m', 'return require.resolve(m)') as (m: string) => string;
+const runtimeRequire = createRequire(__filename);
 
 // ============================================================================
 // Auth checker injection (AC-08)
@@ -292,8 +291,7 @@ export class CodexSDKService implements ISDKService {
     }
 
     private async loadModelCatalog(): Promise<IModelInfo[]> {
-        const packageJsonPath = dynamicRequireResolve('@openai/codex/package.json');
-        const codexBinPath = path.join(path.dirname(packageJsonPath), 'bin', 'codex.js');
+        const codexBinPath = this.resolveCodexBinPath();
         const { stdout } = await execFileAsync(process.execPath, [codexBinPath, 'debug', 'models'], {
             timeout: 30_000,
             maxBuffer: 50 * 1024 * 1024,
@@ -358,7 +356,14 @@ export class CodexSDKService implements ISDKService {
 
     private resolveCodexBinPath(): string {
         try {
-            const packageJsonPath = dynamicRequireResolve('@openai/codex/package.json');
+            return runtimeRequire.resolve('@openai/codex/bin/codex.js');
+        } catch {
+            // Older package layouts did not expose the bin file as a resolvable
+            // subpath, but did allow resolving package.json.
+        }
+
+        try {
+            const packageJsonPath = runtimeRequire.resolve('@openai/codex/package.json');
             return path.join(path.dirname(packageJsonPath), 'bin', 'codex.js');
         } catch {
             throw new Error('Codex CLI (@openai/codex) is not installed');

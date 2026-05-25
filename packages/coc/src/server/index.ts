@@ -261,7 +261,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             }
             const svc = sdkServiceRegistry.get(SDK_PROVIDER_CLAUDE);
             if (!svc) {
-                throw new Error('Claude SDK service is not available. Install @anthropic-ai/claude-code and restart the server.');
+                throw new Error('Claude SDK service is not available. Install @anthropic-ai/claude-agent-sdk and restart the server.');
             }
             return svc;
         }

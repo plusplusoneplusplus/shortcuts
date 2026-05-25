@@ -20,7 +20,7 @@ import {
 } from '../../src/sdk-service-registry';
 
 // ============================================================================
-// Module mock for @anthropic-ai/claude-code
+// Module mock for @anthropic-ai/claude-agent-sdk
 // ============================================================================
 
 // The mock factory is hoisted; we control what dynamicImportModule returns.
@@ -93,11 +93,18 @@ describe('ClaudeSDKService.isAvailable', () => {
     });
 
     it('returns unavailable with install guidance when SDK is not installed', async () => {
-        mockDynamicImport.mockRejectedValueOnce(new Error("Cannot find module '@anthropic-ai/claude-code'"));
+        mockDynamicImport.mockRejectedValueOnce(new Error("Cannot find module '@anthropic-ai/claude-agent-sdk'"));
         const result = await svc.isAvailable();
         expect(result.available).toBe(false);
-        expect(result.error).toMatch(/@anthropic-ai\/claude-code/);
+        expect(result.error).toMatch(/@anthropic-ai\/claude-agent-sdk/);
         expect(result.error).toMatch(/npm install/);
+    });
+
+    it('imports the Claude Agent SDK package name', async () => {
+        const queryFn = vi.fn();
+        mockDynamicImport.mockResolvedValueOnce({ query: queryFn });
+        await svc.isAvailable();
+        expect(mockDynamicImport).toHaveBeenCalledWith('@anthropic-ai/claude-agent-sdk');
     });
 
     it('returns unavailable when SDK does not export query', async () => {
@@ -268,7 +275,7 @@ describe('ClaudeSDKService.sendMessage', () => {
     }, 5000);
 
     it('returns unavailable error when SDK is not installed', async () => {
-        mockDynamicImport.mockRejectedValueOnce(new Error("Cannot find module '@anthropic-ai/claude-code'"));
+        mockDynamicImport.mockRejectedValueOnce(new Error("Cannot find module '@anthropic-ai/claude-agent-sdk'"));
         const result = await svc.sendMessage({ prompt: 'hi' });
         expect(result.success).toBe(false);
         expect(result.error).toMatch(/npm install/);
@@ -415,7 +422,7 @@ describe('ClaudeSDKService.transform', () => {
     });
 
     it('throws when sendMessage fails', async () => {
-        mockDynamicImport.mockRejectedValueOnce(new Error("Cannot find module '@anthropic-ai/claude-code'"));
+        mockDynamicImport.mockRejectedValueOnce(new Error("Cannot find module '@anthropic-ai/claude-agent-sdk'"));
         await expect(svc.transform('fail')).rejects.toThrow();
     });
 });

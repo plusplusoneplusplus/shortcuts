@@ -3,7 +3,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { mapCodexRateLimitsToQuota } from '../../src/codex-sdk-service';
+import * as fs from 'fs';
+import * as path from 'path';
+import { CodexSDKService, mapCodexRateLimitsToQuota } from '../../src/codex-sdk-service';
 
 describe('mapCodexRateLimitsToQuota', () => {
     it('maps a single rate limit entry from rateLimitsByLimitId', () => {
@@ -167,5 +169,16 @@ describe('mapCodexRateLimitsToQuota', () => {
 
         const snap = result.quotaSnapshots['codex'];
         expect(snap.resetDate).toBeUndefined();
+    });
+});
+
+describe('CodexSDKService runtime CLI resolution', () => {
+    it('resolves the bundled Codex CLI bin used by quota and model catalog RPCs', () => {
+        const svc = new CodexSDKService();
+        const binPath = (svc as unknown as { resolveCodexBinPath: () => string }).resolveCodexBinPath();
+
+        expect(path.basename(binPath)).toBe('codex.js');
+        expect(path.basename(path.dirname(binPath))).toBe('bin');
+        expect(fs.existsSync(binPath)).toBe(true);
     });
 });
