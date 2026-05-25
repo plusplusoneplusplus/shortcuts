@@ -108,6 +108,7 @@ export function PendingTaskPayload({ task }: { task: any }) {
                     <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Resolve Comments Details</h3>
                     <div className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-2 text-sm mb-3">
                         {rc.filePath && <FilePathValue label="Document" value={rc.filePath} />}
+                        {!rc.filePath && rc.documentUri && <MetaRow label="Document" value={rc.documentUri} breakAll />}
                         {commentIds.length > 0 && (
                             <MetaRow
                                 label="Comments"
@@ -117,10 +118,18 @@ export function PendingTaskPayload({ task }: { task: any }) {
                         )}
                     </div>
                     {payload.prompt && (
-                        <details>
-                            <summary className="cursor-pointer text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Prompt</summary>
-                            <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mt-2">
+                        <>
+                            <h3 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">Full Prompt</h3>
+                            <pre className="max-h-96 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mb-3">
                                 {payload.prompt}
+                            </pre>
+                        </>
+                    )}
+                    {rc.documentContent && (
+                        <details className="mt-2">
+                            <summary className="cursor-pointer text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Document Snapshot</summary>
+                            <pre className="max-h-72 overflow-auto p-3 rounded-md text-xs whitespace-pre-wrap break-words bg-[#f3f3f3] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] mt-2">
+                                {rc.documentContent}
                             </pre>
                         </details>
                     )}
