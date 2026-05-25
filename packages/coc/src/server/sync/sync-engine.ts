@@ -191,12 +191,16 @@ export class SyncEngine {
     }
 
     /**
-     * Start the sync engine: do an initial sync, then schedule periodic syncs.
-     * No-op when gitRemote is empty.
+     * Start (or reconfigure) the sync engine: do an initial sync, then schedule
+     * periodic syncs. Passing an empty gitRemote disables the engine and stops
+     * any running timer — useful when the user clears the remote in settings.
      */
     async start(gitRemote: string, intervalMinutes: number): Promise<void> {
         if (!gitRemote) {
             this.logger.info(`Sync disabled for ${this.workspaceId} (no gitRemote configured)`);
+            this.status.enabled = false;
+            this.gitRemoteCache = '';
+            this.stopPeriodicSync();
             return;
         }
 

@@ -61,7 +61,7 @@ Sync settings live in `PerRepoPreferences.sync` (in `preferences-handler.ts`):
 | `sync.gitRemote` | string | (absent) | Git remote URL. Sync disabled when empty/absent. |
 | `sync.intervalMinutes` | number | `5` | Periodic sync interval in minutes. |
 
-Server bootstrap creates two `SyncEngine` instances (`syncEngines: Map<string, SyncEngine>`) for `my_work` and `my_life`, reading preferences from `~/.coc/repos/<workspaceId>/preferences.json`.
+Server bootstrap creates two `SyncEngine` instances (`syncEngines: Map<string, SyncEngine>`) for `my_work` and `my_life`, reading preferences from `~/.coc/repos/<workspaceId>/preferences.json`. The `syncEngines` map is also passed to `registerPreferencesRoutes` so that saving sync settings via the dashboard PATCH API immediately reconfigures the live engine without requiring a server restart.
 
 ## Sync Flow (performSync)
 
@@ -94,3 +94,4 @@ Only `my_work` and `my_life` workspace IDs are valid for sync routes.
 - **Non-blocking startup**: Initial sync is fire-and-forget — server startup never waits for sync to complete.
 - **Error isolation**: Sync failures are logged and surfaced in status but never crash the server.
 - **Locking**: Only one sync operation runs at a time per workspace, enforced by `.lock` with stale-PID detection.
+- **Live reconfiguration**: Saving sync preferences via PATCH immediately calls `engine.start()`, activating or disabling the engine without a restart. Passing an empty `gitRemote` to `start()` disables the engine and stops its timer.

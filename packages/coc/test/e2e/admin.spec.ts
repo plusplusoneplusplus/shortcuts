@@ -51,6 +51,76 @@ test.describe('Admin Panel (008)', () => {
         expect(page.url()).toContain('#admin');
     });
 
+    test('8.2 sidebar groups admin sections by user task', async ({ page, serverUrl }) => {
+        await navigateToAdmin(page, serverUrl);
+
+        const groups = await page.locator('.ar-sidebar .ar-nav-group').evaluateAll(nodes =>
+            nodes.map(group => ({
+                label: group.querySelector('.ar-nav-group-label')?.textContent?.trim() ?? '',
+                items: Array.from(group.querySelectorAll('.ar-nav-label')).map(node => node.textContent?.trim() ?? ''),
+            })),
+        );
+        const byLabel = Object.fromEntries(groups.map(group => [group.label, group.items]));
+
+        expect(Object.keys(byLabel)).toEqual([
+            'Configure',
+            'Connections',
+            'Operations',
+            'Developer / Internals',
+        ]);
+        expect(byLabel.Configure).toEqual([
+            'AI & Execution',
+            'Models',
+            'AI Provider',
+            'Chat',
+            'Appearance',
+            'Features',
+            'Integrations',
+        ]);
+        expect(byLabel.Connections).toEqual(expect.arrayContaining(['Providers', 'Skills']));
+        expect(byLabel.Operations).toEqual(['Usage & Costs', 'Logs', 'Server', 'Backup & Reset']);
+        expect(byLabel['Developer / Internals']).toEqual(['System Prompts', 'Database Browser', 'Advanced']);
+
+        await page.getByTestId('models-toggle').click();
+        await expect(page.locator('.ar-breadcrumb')).toContainText('Configure');
+        await expect(page.locator('.ar-breadcrumb')).toContainText('Models');
+
+        await page.getByTestId('stats-toggle').click();
+        await expect(page.locator('.ar-breadcrumb')).toContainText('Operations');
+        await expect(page.locator('.ar-breadcrumb')).toContainText('Usage & Costs');
+    });
+
+    test('8.3 mobile admin picker exposes the same grouped destinations', async ({ page, serverUrl }) => {
+        await page.setViewportSize({ width: 500, height: 900 });
+        await navigateToAdmin(page, serverUrl);
+
+        const picker = page.locator('.ar-mobile-tab-select');
+        await expect(picker).toBeVisible({ timeout: 5000 });
+
+        const groups = await picker.locator('optgroup').evaluateAll(nodes =>
+            nodes.map(group => ({
+                label: group.getAttribute('label') ?? '',
+                values: Array.from(group.querySelectorAll('option')).map(option => option.value),
+            })),
+        );
+        const byLabel = Object.fromEntries(groups.map(group => [group.label, group.values]));
+
+        expect(byLabel.Configure).toEqual(expect.arrayContaining(['settings:features', 'tool:models', 'admin:agents']));
+        expect(byLabel.Connections).toEqual(expect.arrayContaining(['admin:providers', 'tool:skills']));
+        expect(byLabel.Operations).toEqual(expect.arrayContaining(['tool:stats', 'tool:logs', 'admin:data']));
+        expect(byLabel['Developer / Internals']).toEqual(expect.arrayContaining(['admin:prompts', 'admin:database', 'settings:advanced']));
+
+        await picker.selectOption('settings:features');
+        await expect(page.locator('.ar-breadcrumb')).toContainText('Configure');
+        await expect(page.locator('.ar-breadcrumb')).toContainText('Features');
+        await expect(page.getByTestId('settings-features')).toBeVisible({ timeout: 5000 });
+
+        await picker.selectOption('tool:stats');
+        await expect(page.locator('[data-testid="admin-tool-embed-stats"]')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.ar-breadcrumb')).toContainText('Operations');
+        await expect(page.locator('.ar-breadcrumb')).toContainText('Usage & Costs');
+    });
+
     test('8.2 navigating away from admin hides admin page', async ({ page, serverUrl }) => {
         await navigateToAdmin(page, serverUrl);
 

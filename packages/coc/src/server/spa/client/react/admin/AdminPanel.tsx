@@ -1,10 +1,9 @@
 /**
  * AdminPanel — full admin page replacing vanilla admin.ts.
- * Storage stats, config view, export, import, and data wipe.
+ * Config sections, operational tools, storage actions, and diagnostics.
  *
  * Visuals are driven by `admin-redesign.css` (a Linear-inspired CSS layer
- * scoped under `.admin-redesign`). Behaviour, testids, and structure are
- * unchanged — only the look is updated.
+ * scoped under `.admin-redesign`).
  */
 
 import './admin-redesign.css';
@@ -55,7 +54,16 @@ interface Stats {
 }
 
 const VALID_OUTPUT_OPTIONS = ['table', 'json', 'csv', 'markdown'] as const;
-const TAB_LABELS: Record<AdminSubTab, string> = { settings: 'Settings', providers: 'Providers', data: 'Data', server: 'Server', prompts: 'Prompts', database: 'Database', agents: 'Agent Provider', messaging: 'Messaging' };
+const TAB_LABELS: Record<AdminSubTab, string> = {
+    settings: 'AI & Execution',
+    providers: 'Providers',
+    data: 'Backup & Reset',
+    server: 'Server',
+    prompts: 'System Prompts',
+    database: 'Database Browser',
+    agents: 'AI Provider',
+    messaging: 'Messaging',
+};
 const TAB_ICONS: Record<AdminSubTab, string> = {
     settings: '⚙',
     providers: '◇',
@@ -67,20 +75,18 @@ const TAB_ICONS: Record<AdminSubTab, string> = {
     messaging: '✉',
 };
 const TAB_DESCRIPTIONS: Record<AdminSubTab, string> = {
-    settings: 'Configure how this CoC server runs — model, chat, appearance, and feature flags.',
+    settings: 'Default model, execution limits, timeout, and output format for AI tasks.',
     providers: 'Manage credentials for GitHub, Azure DevOps, and other connected providers.',
     data: 'Storage backend, JSON import / export, and destructive cleanup actions.',
     server: 'Inspect the running CoC process, change its display name, or restart it.',
     prompts: 'Read-only view of the system prompts the assistant uses.',
     database: 'Browse the underlying SQLite tables that back CoC.',
-    agents: 'Manage container-mode agents and their lifecycles.',
+    agents: 'Choose the AI provider used for chat and task requests.',
     messaging: 'Configure container messaging integrations (e.g. WhatsApp).',
 };
-// ── Settings sub-tabs (rendered as an underline tab row inside the
-// Settings page, matching the Linear-style design reference). Each entry
-// maps 1:1 to a `SettingsCard` further down. The current selection is
-// kept in component state and synced to the URL fragment so refreshes
-// land on the same section.
+// ── Settings sections promoted into the sidebar. Each entry maps 1:1 to a
+// `SettingsCard` further down. Selection is kept in component state and synced
+// to the URL fragment so refreshes land on the same section.
 type SettingsSubTab = 'ai' | 'chat' | 'appearance' | 'features' | 'integrations' | 'advanced';
 const SETTINGS_SUBTABS: { id: SettingsSubTab; label: string; icon: string }[] = [
     { id: 'ai', label: 'AI & Execution', icon: '✦' },
@@ -92,23 +98,33 @@ const SETTINGS_SUBTABS: { id: SettingsSubTab; label: string; icon: string }[] = 
 ];
 const DEFAULT_SETTINGS_SUBTAB: SettingsSubTab = 'ai';
 const VALID_SETTINGS_SUBTABS = new Set<SettingsSubTab>(SETTINGS_SUBTABS.map(t => t.id));
+const SETTINGS_SUBTAB_DESCRIPTIONS: Record<SettingsSubTab, string> = {
+    ai: 'Default model, execution limits, timeout, and output format for AI tasks.',
+    chat: 'Conversation behavior, follow-up suggestions, and transcript detail.',
+    appearance: 'Theme, layout density, navigation, and prompt autocomplete preferences.',
+    features: 'Enable or disable optional workspace and dashboard features.',
+    integrations: 'Desktop link handlers and local integration preferences.',
+    advanced: 'Read-only diagnostics and recovery actions.',
+};
+
+function getSettingsSubTabMeta(subTab: SettingsSubTab): { id: SettingsSubTab; label: string; icon: string } {
+    return SETTINGS_SUBTABS.find(t => t.id === subTab) ?? SETTINGS_SUBTABS[0];
+}
 
 function parseSettingsSubTabFromHash(hash: string): SettingsSubTab | null {
     const parts = hash.replace(/^#/, '').split('/');
     if (parts[0] !== 'admin' || parts[1] !== 'settings') return null;
     const candidate = parts[2] as SettingsSubTab | undefined;
-    return candidate && VALID_SETTINGS_SUBTABS.has(candidate) ? candidate : null;
+    if (!candidate) return DEFAULT_SETTINGS_SUBTAB;
+    return VALID_SETTINGS_SUBTABS.has(candidate) ? candidate : null;
 }
 
 const WELCOME_RESET_PROGRESS = { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false, settingsVisited: false, dismissed: false, hasCompletedTour: false };
 
-// ── Tools nav group (migrated from the topbar Tools dropdown). Each entry
-// stays a top-level dashboard route (so deep links like `#skills` continue
-// to work), but the corresponding view is now rendered **embedded** in the
-// admin right panel instead of replacing the whole page. The Router maps
-// these tabs to `<AdminPanel />` and AdminPanel switches on
-// `state.activeTab` to mount the right view in `<main>`. Ids match the
-// legacy dropdown so existing tests/deep-link selectors keep working.
+// ── Embedded tool routes. Each entry stays a top-level dashboard route (so
+// deep links like `#skills` continue to work), but the corresponding view is
+// rendered inside the admin right panel. Sidebar grouping is defined below by
+// user task, not by whether the destination is a config section or a tool route.
 interface ToolNavItem {
     id: string;
     tab: DashboardTab;
@@ -119,35 +135,88 @@ interface ToolNavItem {
 const ALL_TOOL_NAV_ITEMS: ToolNavItem[] = [
     { id: 'skills-toggle',  tab: 'skills',  label: 'Skills',  icon: '⚡', description: 'Install, configure, and inspect agent skills surfaced to the assistant.' },
     { id: 'logs-toggle',    tab: 'logs',    label: 'Logs',    icon: '📋', description: 'Live and historical server logs streamed via SSE.' },
-    { id: 'stats-toggle',   tab: 'stats',   label: 'Usage',   icon: '📊', description: 'Aggregated usage statistics for chats, tokens, and processes.' },
+    { id: 'stats-toggle',   tab: 'stats',   label: 'Usage & Costs',   icon: '📊', description: 'Aggregated usage statistics for chats, tokens, costs, and processes.' },
     { id: 'models-toggle',  tab: 'models',  label: 'Models',  icon: '⚛', description: 'Available LLM models and their per-repo defaults.' },
     { id: 'servers-toggle', tab: 'servers', label: 'Servers', icon: '🖥', description: 'Browse running CoC server instances and their health.' },
 ];
-const TOOL_TAB_SET: ReadonlySet<DashboardTab> = new Set<DashboardTab>(ALL_TOOL_NAV_ITEMS.map(item => item.tab));
 const TOOL_NAV_LOOKUP: ReadonlyMap<DashboardTab, ToolNavItem> = new Map(ALL_TOOL_NAV_ITEMS.map(item => [item.tab, item]));
+
+type AdminNavAction =
+    | { kind: 'settings'; subTab: SettingsSubTab }
+    | { kind: 'admin'; tab: AdminSubTab }
+    | { kind: 'tool'; tab: DashboardTab };
+
+interface AdminNavItem {
+    key: string;
+    label: string;
+    icon: string;
+    testId: string;
+    action: AdminNavAction;
+}
+
+interface AdminNavGroup {
+    label: string;
+    items: AdminNavItem[];
+}
+
+const ADMIN_TAB_GROUP_LABELS: Partial<Record<AdminSubTab, string>> = {
+    providers: 'Connections',
+    messaging: 'Connections',
+    server: 'Operations',
+    data: 'Operations',
+    prompts: 'Developer / Internals',
+    database: 'Developer / Internals',
+    agents: 'Configure',
+};
+
+const TOOL_TAB_GROUP_LABELS: Partial<Record<DashboardTab, string>> = {
+    models: 'Configure',
+    skills: 'Connections',
+    servers: 'Connections',
+    stats: 'Operations',
+    logs: 'Operations',
+};
+
+function settingsNavItem(subTab: SettingsSubTab): AdminNavItem {
+    const meta = getSettingsSubTabMeta(subTab);
+    return {
+        key: `settings:${subTab}`,
+        label: meta.label,
+        icon: meta.icon,
+        testId: `settings-subtab-${subTab}`,
+        action: { kind: 'settings', subTab },
+    };
+}
+
+function adminNavItem(tab: AdminSubTab): AdminNavItem {
+    return {
+        key: `admin:${tab}`,
+        label: TAB_LABELS[tab],
+        icon: TAB_ICONS[tab],
+        testId: `admin-tab-${tab}`,
+        action: { kind: 'admin', tab },
+    };
+}
+
+function toolNavItem(tab: DashboardTab): AdminNavItem {
+    const item = TOOL_NAV_LOOKUP.get(tab);
+    if (!item) {
+        throw new Error(`Unknown admin tool tab: ${tab}`);
+    }
+    return {
+        key: `tool:${tab}`,
+        label: item.label,
+        icon: item.icon,
+        testId: item.id,
+        action: { kind: 'tool', tab },
+    };
+}
 
 export function AdminPanel() {
     const { toasts, addToast, removeToast } = useToast();
     const { state, dispatch } = useApp();
     const { updateOnboarding } = useOnboardingPreferences();
     const activeTab = state.activeAdminSubTab;
-    // `state.activeTab` is the dashboard-level route. When set to a tool
-    // route (skills/logs/stats/models/servers) the right panel hosts the
-    // corresponding view embedded inside the admin shell.
-    const activeDashboardTab = state.activeTab;
-    const activeToolItem = TOOL_NAV_LOOKUP.get(activeDashboardTab) ?? null;
-    const isToolEmbedded = activeToolItem !== null;
-    const handleTabChange = (tab: AdminSubTab) => {
-        dispatch({ type: 'SET_ADMIN_SUB_TAB', tab });
-        // Configure rows always land on the admin shell — make sure the
-        // dashboard tab leaves any embedded tool view.
-        dispatch({ type: 'SET_ACTIVE_TAB', tab: 'admin' });
-        const suffix = tab === 'settings' && settingsSubTab !== DEFAULT_SETTINGS_SUBTAB
-            ? `admin/${tab}/${settingsSubTab}`
-            : `admin/${tab}`;
-        window.location.hash = suffix;
-    };
-
     // Settings sub-tab (only meaningful when activeTab === 'settings'). The
     // initial value is derived from the URL so refreshing on
     // `#admin/settings/<sub>` lands on the same section.
@@ -155,11 +224,29 @@ export function AdminPanel() {
         if (typeof window === 'undefined') return DEFAULT_SETTINGS_SUBTAB;
         return parseSettingsSubTabFromHash(window.location.hash) ?? DEFAULT_SETTINGS_SUBTAB;
     });
-    const handleSettingsSubTabChange = (sub: SettingsSubTab) => {
+    // `state.activeTab` is the dashboard-level route. When set to a tool
+    // route (skills/logs/stats/models/servers) the right panel hosts the
+    // corresponding view embedded inside the admin shell.
+    const activeDashboardTab = state.activeTab;
+    const activeToolItem = TOOL_NAV_LOOKUP.get(activeDashboardTab) ?? null;
+    const isToolEmbedded = activeToolItem !== null;
+    const handleTabChange = useCallback((tab: AdminSubTab) => {
+        dispatch({ type: 'SET_ADMIN_SUB_TAB', tab });
+        // Admin rows always land on the admin shell — make sure the dashboard
+        // tab leaves any embedded tool view.
+        dispatch({ type: 'SET_ACTIVE_TAB', tab: 'admin' });
+        const suffix = tab === 'settings' && settingsSubTab !== DEFAULT_SETTINGS_SUBTAB
+            ? `admin/${tab}/${settingsSubTab}`
+            : `admin/${tab}`;
+        window.location.hash = suffix;
+    }, [dispatch, settingsSubTab]);
+    const handleSettingsSubTabChange = useCallback((sub: SettingsSubTab) => {
+        dispatch({ type: 'SET_ADMIN_SUB_TAB', tab: 'settings' });
+        dispatch({ type: 'SET_ACTIVE_TAB', tab: 'admin' });
         setSettingsSubTab(sub);
         const suffix = sub === DEFAULT_SETTINGS_SUBTAB ? 'admin/settings' : `admin/settings/${sub}`;
         window.location.hash = suffix;
-    };
+    }, [dispatch]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -882,22 +969,95 @@ export function AdminPanel() {
     const sources: Record<string, string> = config?.sources ?? {};
     const resolved = config?.resolved ?? {};
 
-    const baseTabs: AdminSubTab[] = ['settings', 'providers', 'data', 'server', 'prompts', 'database'];
-    const tabs: AdminSubTab[] = isContainerMode() ? [...baseTabs, 'agents', 'messaging'] : [...baseTabs, 'agents'];
-
     // Servers row is gated by the dashboard runtime config, same source the
     // legacy topbar dropdown consulted. It is independent of the editable
     // `serversEnabled` Features form state above.
-    const toolNavItems: ToolNavItem[] = isServersEnabled()
-        ? ALL_TOOL_NAV_ITEMS
-        : ALL_TOOL_NAV_ITEMS.filter(item => item.tab !== 'servers');
+    const serversNavItems = isServersEnabled() ? [toolNavItem('servers')] : [];
+    const containerNavItems = isContainerMode() ? [adminNavItem('messaging')] : [];
 
     const handleToolNavClick = useCallback((tab: DashboardTab) => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab });
         window.location.hash = '#' + tab;
     }, [dispatch]);
 
-    const activeTabLabel = TAB_LABELS[activeTab];
+    const navGroups: AdminNavGroup[] = [
+        {
+            label: 'Configure',
+            items: [
+                settingsNavItem('ai'),
+                toolNavItem('models'),
+                adminNavItem('agents'),
+                settingsNavItem('chat'),
+                settingsNavItem('appearance'),
+                settingsNavItem('features'),
+                settingsNavItem('integrations'),
+            ],
+        },
+        {
+            label: 'Connections',
+            items: [
+                adminNavItem('providers'),
+                toolNavItem('skills'),
+                ...serversNavItems,
+                ...containerNavItems,
+            ],
+        },
+        {
+            label: 'Operations',
+            items: [
+                toolNavItem('stats'),
+                toolNavItem('logs'),
+                adminNavItem('server'),
+                adminNavItem('data'),
+            ],
+        },
+        {
+            label: 'Developer / Internals',
+            items: [
+                adminNavItem('prompts'),
+                adminNavItem('database'),
+                settingsNavItem('advanced'),
+            ],
+        },
+    ].filter(group => group.items.length > 0);
+
+    const handleNavItemClick = useCallback((item: AdminNavItem) => {
+        switch (item.action.kind) {
+            case 'settings':
+                handleSettingsSubTabChange(item.action.subTab);
+                return;
+            case 'admin':
+                handleTabChange(item.action.tab);
+                return;
+            case 'tool':
+                handleToolNavClick(item.action.tab);
+                return;
+        }
+    }, [handleSettingsSubTabChange, handleTabChange, handleToolNavClick]);
+
+    const handleNavSelectChange = (key: string) => {
+        const item = navGroups.flatMap(group => group.items).find(candidate => candidate.key === key);
+        if (item) {
+            handleNavItemClick(item);
+        }
+    };
+
+    const activeNavKey = isToolEmbedded
+        ? `tool:${activeDashboardTab}`
+        : activeTab === 'settings'
+            ? `settings:${settingsSubTab}`
+            : `admin:${activeTab}`;
+    const activeTabLabel = activeTab === 'settings'
+        ? getSettingsSubTabMeta(settingsSubTab).label
+        : TAB_LABELS[activeTab];
+    const activeBreadcrumbGroup = isToolEmbedded
+        ? TOOL_TAB_GROUP_LABELS[activeDashboardTab] ?? 'Operations'
+        : activeTab === 'settings'
+            ? 'Configure'
+            : ADMIN_TAB_GROUP_LABELS[activeTab] ?? 'Configure';
+    const activePageDescription = activeTab === 'settings'
+        ? SETTINGS_SUBTAB_DESCRIPTIONS[settingsSubTab]
+        : TAB_DESCRIPTIONS[activeTab];
 
     return (
         <div id="view-admin" className="admin-redesign">
@@ -912,52 +1072,32 @@ export function AdminPanel() {
                         </div>
                     </div>
 
-                    <nav className="ar-nav-group" aria-label="Settings sections">
-                        <div className="ar-nav-group-label">Configure</div>
-                        {tabs.map(tab => {
-                            // Configure rows are only "active" when the dashboard
-                            // is on the admin shell — an embedded tool view should
-                            // not show any Configure row as the current page.
-                            const isActive = !isToolEmbedded && activeTab === tab;
-                            return (
-                                <button
-                                    key={tab}
-                                    type="button"
-                                    className={`ar-nav-item${isActive ? ' is-active' : ''}`}
-                                    onClick={() => handleTabChange(tab)}
-                                    data-testid={`admin-tab-${tab}`}
-                                    aria-current={isActive ? 'page' : undefined}
-                                >
-                                    <span className="ar-nav-icon" aria-hidden="true">{TAB_ICONS[tab]}</span>
-                                    <span className="ar-nav-label">{TAB_LABELS[tab]}</span>
-                                </button>
-                            );
-                        })}
-                    </nav>
-
-                    <nav className="ar-nav-group" aria-label="Tools">
-                        <div className="ar-nav-group-label">Tools</div>
-                        {toolNavItems.map(item => {
-                            const isActive = activeDashboardTab === item.tab;
-                            return (
-                                <button
-                                    key={item.id}
-                                    id={item.id}
-                                    type="button"
-                                    className={`ar-nav-item${isActive ? ' is-active' : ''}`}
-                                    onClick={() => handleToolNavClick(item.tab)}
-                                    data-testid={item.id}
-                                    data-tab={item.tab}
-                                    aria-label={item.label}
-                                    aria-current={isActive ? 'page' : undefined}
-                                    title={item.label}
-                                >
-                                    <span className="ar-nav-icon" aria-hidden="true">{item.icon}</span>
-                                    <span className="ar-nav-label">{item.label}</span>
-                                </button>
-                            );
-                        })}
-                    </nav>
+                    {navGroups.map(group => (
+                        <nav key={group.label} className="ar-nav-group" aria-label={group.label}>
+                            <div className="ar-nav-group-label">{group.label}</div>
+                            {group.items.map(item => {
+                                const isActive = activeNavKey === item.key;
+                                const isTool = item.action.kind === 'tool';
+                                return (
+                                    <button
+                                        key={item.key}
+                                        id={isTool ? item.testId : undefined}
+                                        type="button"
+                                        className={`ar-nav-item${isActive ? ' is-active' : ''}`}
+                                        onClick={() => handleNavItemClick(item)}
+                                        data-testid={item.testId}
+                                        data-tab={isTool ? item.action.tab : undefined}
+                                        aria-label={item.label}
+                                        aria-current={isActive ? 'page' : undefined}
+                                        title={item.label}
+                                    >
+                                        <span className="ar-nav-icon" aria-hidden="true">{item.icon}</span>
+                                        <span className="ar-nav-label">{item.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </nav>
+                    ))}
 
                     <div className="ar-sidebar-foot">
                         <div className="ar-stats-block">
@@ -1000,36 +1140,32 @@ export function AdminPanel() {
                         <nav className="ar-breadcrumb" aria-label="Breadcrumb">
                             {isToolEmbedded && activeToolItem ? (
                                 <>
-                                    <span className="ar-crumb">Tools</span>
+                                    <span className="ar-crumb">{activeBreadcrumbGroup}</span>
                                     <span className="ar-crumb-sep">/</span>
                                     <span className="ar-crumb-now">{activeToolItem.label}</span>
                                 </>
                             ) : (
                                 <>
+                                    <span className="ar-crumb">{activeBreadcrumbGroup}</span>
+                                    <span className="ar-crumb-sep">/</span>
                                     <span className="ar-crumb-now">{activeTabLabel}</span>
-                                    {activeTab === 'settings' && (
-                                        <>
-                                            <span className="ar-crumb-sep">/</span>
-                                            <span className="ar-crumb-now">
-                                                {SETTINGS_SUBTABS.find(t => t.id === settingsSubTab)?.label ?? activeTabLabel}
-                                            </span>
-                                        </>
-                                    )}
                                 </>
                             )}
                         </nav>
-                        {!isToolEmbedded && (
-                            <select
-                                className="ar-tab-select ar-mobile-tab-select"
-                                value={activeTab}
-                                onChange={e => handleTabChange(e.target.value as AdminSubTab)}
-                                aria-label="Select admin section"
-                            >
-                                {tabs.map(tab => (
-                                    <option key={tab} value={tab}>{TAB_LABELS[tab]}</option>
-                                ))}
-                            </select>
-                        )}
+                        <select
+                            className="ar-tab-select ar-mobile-tab-select"
+                            value={activeNavKey}
+                            onChange={e => handleNavSelectChange(e.target.value)}
+                            aria-label="Select admin section"
+                        >
+                            {navGroups.map(group => (
+                                <optgroup key={group.label} label={group.label}>
+                                    {group.items.map(item => (
+                                        <option key={item.key} value={item.key}>{item.label}</option>
+                                    ))}
+                                </optgroup>
+                            ))}
+                        </select>
                     </header>
 
                     {isToolEmbedded && activeToolItem ? (
@@ -1047,7 +1183,7 @@ export function AdminPanel() {
                         <header className="ar-page-header">
                             <div className="ar-page-header-row">
                                 <div>
-                                    <p className="ar-page-desc">{TAB_DESCRIPTIONS[activeTab]}</p>
+                                    <p className="ar-page-desc">{activePageDescription}</p>
                                 </div>
                             </div>
                         </header>
@@ -1067,23 +1203,6 @@ export function AdminPanel() {
                             </section>
                         ) : (
                             <>
-                                <div className="ar-subtab-row" role="tablist" aria-label="Settings sections">
-                                    {SETTINGS_SUBTABS.map(sub => (
-                                        <button
-                                            key={sub.id}
-                                            type="button"
-                                            role="tab"
-                                            aria-selected={settingsSubTab === sub.id}
-                                            className={`ar-subtab${settingsSubTab === sub.id ? ' is-active' : ''}`}
-                                            onClick={() => handleSettingsSubTabChange(sub.id)}
-                                            data-testid={`settings-subtab-${sub.id}`}
-                                        >
-                                            <span className="ar-subtab-icon" aria-hidden="true">{sub.icon}</span>
-                                            {sub.label}
-                                        </button>
-                                    ))}
-                                </div>
-
                                 {/* ── AI & Execution ── */}
                                 {settingsSubTab === 'ai' && (
                                 <SettingsCard

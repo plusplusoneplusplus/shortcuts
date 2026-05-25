@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, act, fireEvent, waitFor } from '@testing-library/react';
+import { render, act, fireEvent, waitFor } from '@testing-library/react';
 import { AppProvider } from '../../../../src/server/spa/client/react/contexts/AppContext';
 import { AdminPanel } from '../../../../src/server/spa/client/react/admin/AdminPanel';
 
@@ -53,15 +53,18 @@ function renderAdmin() {
     );
 }
 
-// ── AdminPanel sidebar Tools group ─────────────────────────────
+// ── AdminPanel grouped sidebar navigation ─────────────────────
 
-describe('AdminPanel — Tools sidebar group', () => {
-    it('renders a Tools nav group label in the sidebar', async () => {
+describe('AdminPanel — grouped sidebar navigation', () => {
+    it('renders user-intent nav groups in the sidebar', async () => {
         await act(async () => { renderAdmin(); });
-        await waitFor(() => expect(screen.getByText('Tools')).toBeTruthy());
+        await waitFor(() => {
+            const labels = Array.from(document.querySelectorAll('.ar-sidebar .ar-nav-group-label')).map(node => node.textContent);
+            expect(labels).toEqual(['Configure', 'Connections', 'Operations', 'Developer / Internals']);
+        });
     });
 
-    it('renders Skills, Logs, Usage, Models rows by default (servers disabled)', async () => {
+    it('renders embedded tool rows in their task groups by default (servers disabled)', async () => {
         delete (window as any).__DASHBOARD_CONFIG__;
         await act(async () => { renderAdmin(); });
         await waitFor(() => {
@@ -84,7 +87,7 @@ describe('AdminPanel — Tools sidebar group', () => {
         await waitFor(() => expect(document.getElementById('servers-toggle')).toBeTruthy());
     });
 
-    it('Tools rows order: skills → logs → stats → models → servers', async () => {
+    it('orders embedded tools by their user-intent groups', async () => {
         (window as any).__DASHBOARD_CONFIG__ = {
             apiBasePath: '/api',
             wsPath: '/ws',
@@ -92,18 +95,21 @@ describe('AdminPanel — Tools sidebar group', () => {
         };
         await act(async () => { renderAdmin(); });
         await waitFor(() => expect(document.getElementById('servers-toggle')).toBeTruthy());
-        const ids = ['skills-toggle', 'logs-toggle', 'stats-toggle', 'models-toggle', 'servers-toggle'];
-        const positions = ids.map(id => document.getElementById(id)!.compareDocumentPosition(document.body));
-        for (let i = 0; i < ids.length - 1; i++) {
-            const a = document.getElementById(ids[i])!;
-            const b = document.getElementById(ids[i + 1])!;
-            expect(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-        }
-        // Reference `positions` so eslint does not complain about unused locals.
-        void positions;
+
+        const groups = Array.from(document.querySelectorAll('.ar-sidebar .ar-nav-group')).map(group => ({
+            label: group.querySelector('.ar-nav-group-label')?.textContent ?? '',
+            ids: Array.from(group.querySelectorAll('.ar-nav-item')).map(item => item.id).filter(Boolean),
+        }));
+
+        expect(groups).toEqual([
+            { label: 'Configure', ids: ['models-toggle'] },
+            { label: 'Connections', ids: ['skills-toggle', 'servers-toggle'] },
+            { label: 'Operations', ids: ['stats-toggle', 'logs-toggle'] },
+            { label: 'Developer / Internals', ids: [] },
+        ]);
     });
 
-    it('each Tools row carries data-tab attribute matching its global route', async () => {
+    it('each embedded tool row carries data-tab attribute matching its global route', async () => {
         (window as any).__DASHBOARD_CONFIG__ = {
             apiBasePath: '/api',
             wsPath: '/ws',
@@ -118,7 +124,7 @@ describe('AdminPanel — Tools sidebar group', () => {
         expect(document.getElementById('servers-toggle')!.getAttribute('data-tab')).toBe('servers');
     });
 
-    it('clicking a Tools row updates location.hash to the corresponding global route', async () => {
+    it('clicking an embedded tool row updates location.hash to the corresponding global route', async () => {
         await act(async () => { renderAdmin(); });
         await waitFor(() => expect(document.getElementById('logs-toggle')).toBeTruthy());
 
@@ -143,7 +149,7 @@ describe('AdminPanel — Tools sidebar group', () => {
         expect(window.location.hash).toBe('#models');
     });
 
-    it('Tools rows are accessible (aria-label + title)', async () => {
+    it('embedded tool rows are accessible (aria-label + title)', async () => {
         await act(async () => { renderAdmin(); });
         await waitFor(() => expect(document.getElementById('logs-toggle')).toBeTruthy());
         const logs = document.getElementById('logs-toggle')!;
@@ -154,7 +160,7 @@ describe('AdminPanel — Tools sidebar group', () => {
 
 // ── Tool views render embedded in the admin right panel ──────
 
-describe('AdminPanel — Tools embed the view in the right panel', () => {
+describe('AdminPanel — embedded tools render in the right panel', () => {
     it('starts with no embed shown (default activeTab is "repos")', async () => {
         await act(async () => { renderAdmin(); });
         await waitFor(() => expect(document.getElementById('skills-toggle')).toBeTruthy());
@@ -191,7 +197,7 @@ describe('AdminPanel — Tools embed the view in the right panel', () => {
         await waitFor(() => expect(document.querySelector('[data-testid="logs-view"]')).toBeTruthy());
     });
 
-    it('marks the active Tools row with is-active + aria-current="page"', async () => {
+    it('marks the active embedded tool row with is-active + aria-current="page"', async () => {
         await act(async () => { renderAdmin(); });
         await waitFor(() => expect(document.getElementById('skills-toggle')).toBeTruthy());
 
@@ -204,31 +210,31 @@ describe('AdminPanel — Tools embed the view in the right panel', () => {
             expect(skills.className).toContain('is-active');
             expect(skills.getAttribute('aria-current')).toBe('page');
         });
-        // Other Tools rows are not marked active.
+        // Other embedded tool rows are not marked active.
         expect(document.getElementById('logs-toggle')!.className).not.toContain('is-active');
         expect(document.getElementById('logs-toggle')!.getAttribute('aria-current')).toBeNull();
     });
 
-    it('clears Configure row is-active styling when a Tool view is embedded', async () => {
+    it('clears admin/settings row is-active styling when an embedded tool view is active', async () => {
         await act(async () => { renderAdmin(); });
         await waitFor(() => expect(document.getElementById('skills-toggle')).toBeTruthy());
 
-        // Default admin sub-tab is "settings"; before clicking a tool, the
-        // Settings Configure row is active.
-        const settingsRow = document.querySelector<HTMLButtonElement>('[data-testid="admin-tab-settings"]')!;
-        expect(settingsRow.className).toContain('is-active');
+        // Default admin sub-section is AI & Execution; before clicking a tool,
+        // that promoted settings row is active.
+        const aiRow = document.querySelector<HTMLButtonElement>('[data-testid="settings-subtab-ai"]')!;
+        expect(aiRow.className).toContain('is-active');
 
         await act(async () => {
             fireEvent.click(document.getElementById('skills-toggle')!);
         });
 
         await waitFor(() => {
-            // Once a tool is embedded, no Configure row should show as active.
-            expect(document.querySelector<HTMLButtonElement>('[data-testid="admin-tab-settings"]')!.className).not.toContain('is-active');
+            // Once a tool is embedded, no admin/settings row should show as active.
+            expect(document.querySelector<HTMLButtonElement>('[data-testid="settings-subtab-ai"]')!.className).not.toContain('is-active');
         });
     });
 
-    it('breadcrumb reads "Tools / <Label>" while a tool is embedded', async () => {
+    it('breadcrumb reads "<Group> / <Label>" while a tool is embedded', async () => {
         await act(async () => { renderAdmin(); });
         await waitFor(() => expect(document.getElementById('models-toggle')).toBeTruthy());
 
@@ -237,15 +243,15 @@ describe('AdminPanel — Tools embed the view in the right panel', () => {
         });
 
         await waitFor(() => expect(document.querySelector('[data-testid="admin-tool-embed-models"]')).toBeTruthy());
-        // Both crumbs ("Tools" and the active tool label) sit inside the
+        // Both crumbs ("Configure" and the active tool label) sit inside the
         // breadcrumb nav as direct text content.
         const crumb = document.querySelector('.ar-breadcrumb');
         expect(crumb).toBeTruthy();
-        expect(crumb!.textContent).toContain('Tools');
+        expect(crumb!.textContent).toContain('Configure');
         expect(crumb!.textContent).toContain('Models');
     });
 
-    it('clicking a Configure row after a Tool view restores the admin page', async () => {
+    it('clicking a settings row after an embedded tool view restores the admin page', async () => {
         await act(async () => { renderAdmin(); });
         await waitFor(() => expect(document.getElementById('skills-toggle')).toBeTruthy());
 
@@ -254,16 +260,17 @@ describe('AdminPanel — Tools embed the view in the right panel', () => {
         });
         await waitFor(() => expect(document.querySelector('[data-testid="admin-tool-embed-skills"]')).toBeTruthy());
 
-        // Click the Settings Configure row — embed should unmount and the
-        // standard admin Settings card view should render.
+        // Click the Chat settings row — embed should unmount and the standard
+        // admin settings card view should render.
         await act(async () => {
-            fireEvent.click(document.querySelector<HTMLButtonElement>('[data-testid="admin-tab-settings"]')!);
+            fireEvent.click(document.querySelector<HTMLButtonElement>('[data-testid="settings-subtab-chat"]')!);
         });
 
         await waitFor(() => expect(document.querySelector('[data-testid="admin-tool-embed-skills"]')).toBeNull());
         // Settings cards container is back.
         expect(document.querySelector('[data-testid="settings-cards"]')).toBeTruthy();
-        // Settings row regains is-active.
-        expect(document.querySelector<HTMLButtonElement>('[data-testid="admin-tab-settings"]')!.className).toContain('is-active');
+        expect(document.querySelector('[data-testid="settings-chat"]')).toBeTruthy();
+        // Chat row is active.
+        expect(document.querySelector<HTMLButtonElement>('[data-testid="settings-subtab-chat"]')!.className).toContain('is-active');
     });
 });

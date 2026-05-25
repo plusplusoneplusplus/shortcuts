@@ -247,7 +247,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     registerReplicateApplyRoutes(routes, store);
     registerPromptRoutes(routes, store);
-    registerPreferencesRoutes(routes, dataDir);
+    registerPreferencesRoutes(routes, dataDir, (workspaceId) => opts.syncEngines?.get(workspaceId));
     registerSeenStateRoutes(routes, store as any);
     registerPromptSuggestionRoutes(routes, store as any, dataDir, resolvedAiService);
     registerPromptHistoryRoutes(routes, store as any);

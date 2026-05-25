@@ -18,6 +18,7 @@ import { getRepoDataPath } from './paths';
 import type { Route } from './types';
 import { getEffectiveDefaultDisabledTools } from './llm-tools/llm-tool-registry';
 import { MAX_ADDITIONAL_NOTES_ROOTS } from './notes/notes-root-resolver';
+import type { SyncEngine } from './sync/sync-engine';
 
 // ============================================================================
 // Types
@@ -640,8 +641,15 @@ export function writeRepoPreferences(dataDir: string, workspaceId: string, data:
  *
  * @param routes - Shared route table
  * @param dataDir - Directory for preferences file (e.g. ~/.coc)
+ * @param getSyncEngine - Optional getter for per-workspace sync engines; when
+ *   provided, saving sync preferences immediately reconfigures the live engine
+ *   without requiring a server restart.
  */
-export function registerPreferencesRoutes(routes: Route[], dataDir: string): void {
+export function registerPreferencesRoutes(
+    routes: Route[],
+    dataDir: string,
+    getSyncEngine?: (workspaceId: string) => SyncEngine | undefined,
+): void {
 
     // ------------------------------------------------------------------
     // GET /api/preferences — Read global preferences
@@ -823,6 +831,18 @@ export function registerPreferencesRoutes(routes: Route[], dataDir: string): voi
             }
 
             writeRepoPreferences(dataDir, repoId, merged);
+
+            // If sync settings changed, immediately reconfigure the live engine
+            // so the status reflects the new configuration without a server restart.
+            if (patch.sync !== undefined && getSyncEngine) {
+                const engine = getSyncEngine(repoId);
+                if (engine) {
+                    const gitRemote = merged.sync?.gitRemote ?? '';
+                    const intervalMinutes = merged.sync?.intervalMinutes ?? 5;
+                    engine.start(gitRemote, intervalMinutes).catch(() => {});
+                }
+            }
+
             sendJSON(res, 200, merged);
         },
     });

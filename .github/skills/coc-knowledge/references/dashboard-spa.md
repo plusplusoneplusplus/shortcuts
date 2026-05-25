@@ -85,25 +85,26 @@ Focus indicator propagates mode-colored ring from contenteditable to parent card
 
 Right-hand action cluster: `[Connected pill | NotificationBell | Admin | Theme]`
 
-The legacy "Tools" popover has been migrated to the Admin page's left
-sidebar. The Admin sidebar exposes a "Tools" nav group containing Skills,
-Logs, Usage, Models, and Servers (Servers only when `isServersEnabled()`
-is true). Row ids match the legacy dropdown (`skills-toggle`,
+The legacy "Tools" popover has been migrated into the Admin page's left
+sidebar, but there is no longer a generic Tools group. The Admin sidebar is
+grouped by user task: Configure, Connections, Operations, and Developer /
+Internals. Embedded tool rows keep the legacy ids (`skills-toggle`,
 `logs-toggle`, `stats-toggle`, `models-toggle`, `servers-toggle`) and
-`data-tab` carries the matching dashboard route.
+`data-tab` still carries the matching dashboard route; Servers is shown only
+when `isServersEnabled()` is true.
 
-Clicking a Tools row dispatches `SET_ACTIVE_TAB` and updates
+Clicking an embedded tool row dispatches `SET_ACTIVE_TAB` and updates
 `location.hash` to the corresponding top-level route (`#skills`, `#logs`,
-`#stats`, `#models`, `#servers`). The Router maps every Tools tab plus
+`#stats`, `#models`, `#servers`). The Router maps every embedded tool tab plus
 `'admin'` itself to a single `<AdminPanel />` render, so the admin shell
 (sidebar + breadcrumb + right pane) stays mounted across navigation.
-`AdminPanel` switches on `state.activeTab` — when it matches a Tools
+`AdminPanel` switches on `state.activeTab` — when it matches an embedded tool
 route, the right pane mounts the corresponding View embedded inside an
-`.ar-tool-embed` flex column (instead of the standard `.ar-page` card
-grid). The breadcrumb reads `Tools / <Label>` while a view is embedded.
+`.ar-tool-embed` flex column (instead of the standard `.ar-page` card grid).
+The breadcrumb reads `<Group> / <Label>` while a view is embedded.
 
-Clicking a Configure row resets the dashboard tab back to `'admin'`,
-unmounts the embed, and renders the standard admin sub-tab content.
+Clicking an admin/settings row resets the dashboard tab back to `'admin'`,
+unmounts the embed, and renders the standard admin card content.
 Each tool's internal sub-tab/hash scheme (e.g. `#skills/installed`,
 `#logs?sessionId=…`) is unchanged.
 
