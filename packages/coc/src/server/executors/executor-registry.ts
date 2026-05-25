@@ -49,7 +49,6 @@ export interface ExecutorRegistryOptions {
     resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
     onTitleNeeded: (processId: string, turns: ConversationTurn[]) => void;
     onBackgroundReview?: (processId: string, workspaceId: string, turns: ConversationTurn[]) => void;
-    getMemoryStore?: (workspaceId: string) => import('@plusplusoneplusplus/forge').BoundedMemoryStore | undefined;
     getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
     getLoopInfra?: () => import('./chat-base-executor').LoopInfraDeps | undefined;
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
@@ -126,7 +125,7 @@ export class ExecutorRegistry {
         this.classificationExecutor = new ClassificationExecutor(store, chatOpts, options.dataDir);
         this.backgroundReviewExecutor = new BackgroundReviewExecutor(
             options.aiService,
-            options.getMemoryStore ?? (() => undefined),
+            () => undefined,
         );
         this.memoryPromoteExecutor = options.dataDir
             ? new MemoryPromoteExecutor(options.aiService, options.dataDir, options.memoryPromotion, options.getWsServer)

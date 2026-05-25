@@ -69,18 +69,6 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         enabledByDefault: true,
     },
     {
-        name: 'memory_search',
-        label: 'Memory Search',
-        description: 'Searches repo-scoped memory entries on demand.',
-        enabledByDefault: true,
-    },
-    {
-        name: 'memory_get',
-        label: 'Memory Get',
-        description: 'Fetches an exact repo-scoped memory entry by id or ordinal.',
-        enabledByDefault: true,
-    },
-    {
         name: 'store_memory',
         label: 'Store Memory (V2)',
         description: 'Explicitly stores a new fact in the redesigned memory system.',
