@@ -60,6 +60,10 @@ test.describe('Admin page scrollability regression', () => {
     test('right main pane is the scroll container with scrollable content', async ({ page, serverUrl }) => {
         await navigateToAdmin(page, serverUrl);
 
+        // The Features sub-tab has enough toggles to overflow a desktop viewport.
+        await page.click('[data-testid="settings-subtab-features"]');
+        await page.waitForTimeout(200);
+
         const main = page.locator('#view-admin .ar-main');
         await expect(main).toBeVisible();
 
@@ -79,12 +83,16 @@ test.describe('Admin page scrollability regression', () => {
         expect(box).not.toBeNull();
         const viewportHeight = page.viewportSize()?.height ?? 800;
         expect(box!.height).toBeLessThanOrEqual(viewportHeight);
-        // The Settings tab has enough cards to force overflow on a desktop viewport.
+        // The Features sub-tab has enough toggles to force overflow on a desktop viewport.
         expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
     });
 
     test('mouse wheel scrolls the main pane, not the document', async ({ page, serverUrl }) => {
         await navigateToAdmin(page, serverUrl);
+
+        // Navigate to Features sub-tab which has enough content to make the main pane overflow.
+        await page.click('[data-testid="settings-subtab-features"]');
+        await page.waitForTimeout(200);
 
         const main = page.locator('#view-admin .ar-main');
         await expect(main).toBeVisible();
