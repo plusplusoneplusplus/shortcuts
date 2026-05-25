@@ -1,21 +1,16 @@
 /**
- * Memory Tool Factory — Hermes-style bounded memory tool.
+ * Memory Tool Factory — capture-mode memory tool.
  *
- * Creates a `memory` tool with add/replace/remove actions against a
- * BoundedMemoryStore. Supports two modes:
- *
- *  - `bounded` (default) — direct MEMORY.md mutation, retained for
- *    internal reconciliation flows and backward compatibility.
- *  - `capture` — chat-time mode where `add` upserts a durable memory
- *    candidate and returns a success payload without changing MEMORY.md.
- *    `replace`/`remove` are disabled until explicit promotion is
- *    implemented.
+ * Creates a `memory` tool that captures add requests for later promotion.
+ * replace/remove actions are not supported.
  */
+import * as crypto from 'crypto';
 import { defineTool, Tool } from '@plusplusoneplusplus/coc-agent-sdk';
-import type { BoundedMemoryStore } from './bounded-memory-store';
 import { scanMemoryContent } from './memory-security-scanner';
-import type { MemoryCandidateStore } from './memory-candidate-store';
-import type { MemoryCandidate } from './memory-candidate-types';
+import type { MemoryScanResult, ThreatPatternId } from './memory-security-scanner';
+
+// Re-export for consumers
+export type { MemoryScanResult, ThreatPatternId };
 
 // ---------------------------------------------------------------------------
 // Option & argument interfaces
@@ -24,15 +19,15 @@ import type { MemoryCandidate } from './memory-candidate-types';
 /** How aggressively the AI should write memory entries. */
 export type MemoryWriteFrequency = 'low' | 'medium' | 'high';
 
-/** Mode for the memory tool — determines how `add` is handled. */
-export type MemoryToolMode = 'bounded' | 'capture';
+/** Mode for the memory tool. */
+export type MemoryToolMode = 'capture';
 
 export interface MemoryToolOptions {
     /** Source pipeline/feature name for logging (e.g. 'chat', 'code-review') */
     source: string;
     /** Override which targets the AI can write to. Default: ['repo', 'system'] */
     allowedTargets?: Array<'repo' | 'system'>;
-    /** Operating mode. Default: 'bounded'. */
+    /** Operating mode. Default: 'capture'. */
     mode?: MemoryToolMode;
     /** Controls how aggressively the AI writes memory entries. Default: 'medium'. */
     writeFrequency?: MemoryWriteFrequency;
@@ -61,22 +56,23 @@ export interface MemoryToolArgs {
     explicitMemoryIntent?: boolean;
 }
 
-/** Map of target name → BoundedMemoryStore instance. */
-export type MemoryToolStores = {
-    repo?: BoundedMemoryStore;
-    system?: BoundedMemoryStore;
-};
-
-/** Map of target name → MemoryCandidateStore instance (for capture mode). */
-export type MemoryToolCandidateStores = {
-    repo?: MemoryCandidateStore;
-    system?: MemoryCandidateStore;
-};
+/** Captured candidate shape passed to onCandidateCaptured. */
+export interface CapturedCandidate {
+    id: string;
+    target: 'repo' | 'system';
+    content: string;
+    source: string;
+    workspaceId: string;
+    processId: string | null;
+    turnIndex: number | null;
+    explicitMemoryIntent: boolean;
+    score: number;
+}
 
 export type MemoryCandidateCapturedCallback = (
     event: {
         target: 'repo' | 'system';
-        candidate: MemoryCandidate;
+        candidate: CapturedCandidate;
         context: MemoryToolCaptureContext;
     },
 ) => void | Promise<void>;
@@ -178,9 +174,9 @@ export function getMemorySchema(frequency?: MemoryWriteFrequency): string {
 export interface MemoryToolCaptureResult {
     success: true;
     message: string;
-    /** The candidate ID that was persisted when candidate stores are configured */
+    /** The candidate ID that was persisted */
     candidateId?: string;
-    /** The persisted candidate ID, or the legacy raw record ID for older callers */
+    /** The persisted candidate ID */
     recordId: string;
 }
 
@@ -189,17 +185,14 @@ export interface MemoryToolCaptureResult {
 // ---------------------------------------------------------------------------
 
 export function createMemoryTool(
-    stores: MemoryToolStores,
     options: MemoryToolOptions,
     captureConfig?: {
-        candidateStores?: MemoryToolCandidateStores;
         context: MemoryToolCaptureContext;
         onCandidateCaptured?: MemoryCandidateCapturedCallback;
     },
 ): { tool: Tool<MemoryToolArgs>; getWrittenFacts: () => string[] } {
     const writtenFacts: string[] = [];
     const allowedTargets = options.allowedTargets ?? ['repo', 'system'];
-    const mode: MemoryToolMode = options.mode ?? 'bounded';
 
     const tool = defineTool<MemoryToolArgs>('memory', {
         description: getMemorySchema(options.writeFrequency),
@@ -232,53 +225,10 @@ export function createMemoryTool(
             required: ['action', 'target'],
         },
         handler: async (args) => {
-            // 1. Validate target is allowed
             if (!allowedTargets.includes(args.target)) {
                 return { success: false, error: `Target '${args.target}' is not available.` };
             }
-
-            // Capture mode: route through raw record store
-            if (mode === 'capture') {
-                return handleCaptureMode(args, captureConfig, options, writtenFacts);
-            }
-
-            // Bounded mode: direct MEMORY.md mutation (original behavior)
-            // 2. Resolve store for target
-            const store = stores[args.target];
-            if (!store) {
-                return { success: false, error: `No store configured for target '${args.target}'.` };
-            }
-
-            // 3. Dispatch by action
-            switch (args.action) {
-                case 'add': {
-                    if (!args.content) {
-                        return { success: false, error: "Content is required for 'add' action." };
-                    }
-                    const result = await store.add(args.content);
-                    if (result.success) writtenFacts.push(args.content);
-                    return result;
-                }
-                case 'replace': {
-                    if (!args.old_text) {
-                        return { success: false, error: "old_text is required for 'replace' action." };
-                    }
-                    if (!args.content) {
-                        return { success: false, error: "content is required for 'replace' action." };
-                    }
-                    const result = await store.replace(args.old_text, args.content);
-                    if (result.success) writtenFacts.push(args.content);
-                    return result;
-                }
-                case 'remove': {
-                    if (!args.old_text) {
-                        return { success: false, error: "old_text is required for 'remove' action." };
-                    }
-                    return store.remove(args.old_text);
-                }
-                default:
-                    return { success: false, error: `Unknown action '${(args as any).action}'.` };
-            }
+            return handleCaptureMode(args, captureConfig, options, writtenFacts);
         },
     });
 
@@ -292,14 +242,12 @@ export function createMemoryTool(
 async function handleCaptureMode(
     args: MemoryToolArgs,
     captureConfig: {
-        candidateStores?: MemoryToolCandidateStores;
         context: MemoryToolCaptureContext;
         onCandidateCaptured?: MemoryCandidateCapturedCallback;
     } | undefined,
     options: MemoryToolOptions,
     writtenFacts: string[],
 ): Promise<MemoryToolCaptureResult | { success: false; error: string }> {
-    // replace/remove not supported in capture mode
     if (args.action === 'replace' || args.action === 'remove') {
         return {
             success: false,
@@ -315,11 +263,6 @@ async function handleCaptureMode(
         return { success: false, error: "Content is required for 'add' action." };
     }
 
-    if (!captureConfig) {
-        return { success: false, error: 'Capture mode is enabled but no candidate stores are configured.' };
-    }
-
-    // Security scan before accepting
     const trimmed = args.content.trim();
     if (!trimmed) {
         return { success: false, error: 'Content cannot be empty.' };
@@ -330,40 +273,36 @@ async function handleCaptureMode(
         return { success: false, error: `Content blocked by security scanner: ${scan.reason}` };
     }
 
-    // args.target is already 'repo' or 'system' — pass through directly
-    const rawTarget = args.target;
     const explicitIntent = args.explicitMemoryIntent === true;
     const captureScore = getCaptureScore(explicitIntent, options.writeFrequency);
+    const id = crypto.randomUUID();
 
-    const candidateStore = captureConfig.candidateStores?.[args.target];
-    if (candidateStore) {
-        const candidate = await candidateStore.upsertCandidate({
-            target: rawTarget,
-            content: trimmed,
-            source: options.source,
-            workspaceId: captureConfig.context.workspaceId ?? '',
-            processId: captureConfig.context.processId ?? null,
-            turnIndex: captureConfig.context.turnIndex ?? null,
-            explicitMemoryIntent: explicitIntent,
-            score: captureScore,
-        });
+    const candidate: CapturedCandidate = {
+        id,
+        target: args.target,
+        content: trimmed,
+        source: options.source,
+        workspaceId: captureConfig?.context.workspaceId ?? '',
+        processId: captureConfig?.context.processId ?? null,
+        turnIndex: captureConfig?.context.turnIndex ?? null,
+        explicitMemoryIntent: explicitIntent,
+        score: captureScore,
+    };
 
-        writtenFacts.push(trimmed);
-        await captureConfig.onCandidateCaptured?.({
-            target: args.target,
-            candidate,
-            context: captureConfig.context,
-        });
+    writtenFacts.push(trimmed);
 
-        return {
-            success: true,
-            message: 'Memory candidate captured; memory will update after promotion.',
-            candidateId: candidate.id,
-            recordId: candidate.id,
-        };
-    }
+    await captureConfig?.onCandidateCaptured?.({
+        target: args.target,
+        candidate,
+        context: captureConfig.context,
+    });
 
-    return { success: false, error: `No candidate store configured for target '${args.target}'.` };
+    return {
+        success: true,
+        message: 'Memory candidate captured; memory will update after promotion.',
+        candidateId: id,
+        recordId: id,
+    };
 }
 
 function getCaptureScore(explicitIntent: boolean, frequency: MemoryWriteFrequency | undefined): number {

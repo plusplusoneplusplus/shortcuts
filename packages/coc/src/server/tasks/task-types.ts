@@ -3,8 +3,7 @@
  *
  * Unified task type model with mode-based AI dispatch for chat tasks.
  *
- *   CocTaskKind = 'chat' | 'run-workflow' | 'run-script' | 'memory-promote'
- *                 | 'background-review' | 'pr-classification'
+ *   CocTaskKind = 'chat' | 'run-workflow' | 'run-script' | 'pr-classification'
  *   ChatMode = 'ask' | 'plan' | 'autopilot'
  *
  * All former AI task types (follow-prompt, ai-clarification, code-review,
@@ -27,7 +26,7 @@ import type { Attachment, MCPServerConfig } from '@plusplusoneplusplus/forge';
 // Target Type
 // ============================================================================
 
-export type TargetType = 'prompt' | 'script' | 'memory-promote';
+export type TargetType = 'prompt' | 'script';
 
 // ============================================================================
 // Task Type Definitions (Single Source of Truth)
@@ -71,18 +70,6 @@ export const TaskDefs = {
         label: 'Run Script',
         exclusive: true,
         visible: true,
-    },
-    memoryPromote: {
-        kind: 'memory-promote',
-        label: 'Memory Promotion',
-        exclusive: false,
-        visible: false,
-    },
-    backgroundReview: {
-        kind: 'background-review',
-        label: 'Background Review',
-        exclusive: false,
-        visible: false,
     },
     prClassification: {
         kind: 'pr-classification',
@@ -307,29 +294,6 @@ export interface RunScriptPayload {
     scheduleId?: string;
 }
 
-export interface MemoryPromotePayload {
-    readonly kind: 'memory-promote';
-    workspaceId: string;
-    target: 'memory' | 'system';
-    model?: string;
-    /** Why this task was enqueued. */
-    trigger?: 'manual' | 'auto-threshold' | 'auto-cron';
-    /** Optional promotion gates for auto-triggered runs. */
-    gates?: {
-        minScore?: number;
-        minRecallCount?: number;
-        minUniqueQueries?: number;
-    };
-}
-
-export interface BackgroundReviewPayload {
-    readonly kind: 'background-review';
-    sourceProcessId: string;
-    workspaceId: string;
-    conversationSnapshot: Array<{ role: 'user' | 'assistant'; content: string }>;
-    timeoutMs?: number;
-}
-
 export interface PrClassificationPayload {
     readonly kind: 'pr-classification';
     workspaceId: string;
@@ -345,7 +309,7 @@ export interface PrClassificationPayload {
 // Payload Union
 // ============================================================================
 
-export type TaskPayload = ChatPayload | RunWorkflowPayload | RunScriptPayload | MemoryPromotePayload | BackgroundReviewPayload | PrClassificationPayload;
+export type TaskPayload = ChatPayload | RunWorkflowPayload | RunScriptPayload | PrClassificationPayload;
 
 // ============================================================================
 // Type Guards
@@ -365,14 +329,6 @@ export function isRunWorkflowPayload(payload: Record<string, unknown>): payload 
 
 export function isRunScriptPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & RunScriptPayload {
     return payload.kind === 'run-script';
-}
-
-export function isMemoryPromotePayload(payload: Record<string, unknown>): payload is Record<string, unknown> & MemoryPromotePayload {
-    return payload.kind === 'memory-promote';
-}
-
-export function isBackgroundReviewPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & BackgroundReviewPayload {
-    return payload.kind === 'background-review';
 }
 
 export function isPrClassificationPayload(payload: Record<string, unknown>): payload is Record<string, unknown> & PrClassificationPayload {

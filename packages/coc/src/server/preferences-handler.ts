@@ -158,43 +158,6 @@ const stringRecordSchema = z.record(z.string(), z.unknown()).transform(rec => {
     return Object.keys(out).length > 0 ? out : undefined;
 });
 
-const AutoPromoteGatesSchema = z.object({
-    minScore: z.number().min(0).max(1).optional().catch(undefined),
-    minRecallCount: z.number().int().min(1).optional().catch(undefined),
-    minUniqueQueries: z.number().int().min(1).optional().catch(undefined),
-}).strip().transform(dropIfEmpty);
-
-const AutoPromoteConfigSchema = z.object({
-    mode: z.enum(['off', 'threshold', 'cron', 'cron+threshold']).catch('off' as const),
-    cron: z.string().transform(s => s.trim() || undefined).optional().catch(undefined),
-    timezone: z.string().transform(s => s.trim() || undefined).optional().catch(undefined),
-    thresholdCount: z.number().int().min(1).optional().catch(undefined),
-    minIntervalMs: z.number().int().min(0).optional().catch(undefined),
-    gates: AutoPromoteGatesSchema.optional().catch(undefined),
-}).strip();
-
-const BoundedMemoryRecallSchema = z.object({
-    enabled: z.boolean().optional().catch(undefined),
-    maxEntries: z.number().int().min(1).optional().catch(undefined),
-    charBudget: z.number().int().min(1).optional().catch(undefined),
-    maxBm25Score: z.number().finite().optional().catch(undefined),
-}).strip().transform(dropIfEmpty);
-
-const BoundedMemoryReadToolsSchema = z.object({
-    enabled: z.boolean().optional().catch(undefined),
-    maxResults: z.number().int().min(1).optional().catch(undefined),
-    maxEntryChars: z.number().int().min(1).optional().catch(undefined),
-}).strip().transform(dropIfEmpty);
-
-const BoundedMemorySchema = z.object({
-    enabled: z.boolean(),
-    charLimit: z.number().int().min(1).optional().catch(undefined),
-    writeFrequency: z.enum(['low', 'medium', 'high']).optional().catch(undefined),
-    recall: BoundedMemoryRecallSchema.optional().catch(undefined),
-    readTools: BoundedMemoryReadToolsSchema.optional().catch(undefined),
-    autoPromote: AutoPromoteConfigSchema.optional().catch(undefined),
-}).strip();
-
 /**
  * Schema for the redesigned coc-memory v2 per-workspace preferences.
  *
@@ -292,7 +255,6 @@ export const PerRepoPreferencesSchema = z.object({
         )
         .optional(),
     filesViewMode: z.enum(['flat', 'tree']).optional(),
-    boundedMemory: BoundedMemorySchema.optional(),
     memoryV2: MemoryV2Schema.optional(),
     notesGit: NotesGitSchema.optional(),
     activityFilters: ActivityFiltersSchema.optional(),
@@ -833,22 +795,6 @@ export function registerPreferencesRoutes(
             // preserves existing typeFilter value.
             if (patch.activityFilters && existingRepo.activityFilters) {
                 merged.activityFilters = { ...existingRepo.activityFilters, ...patch.activityFilters };
-            }
-
-            if (patch.boundedMemory && existingRepo.boundedMemory) {
-                merged.boundedMemory = {
-                    ...existingRepo.boundedMemory,
-                    ...patch.boundedMemory,
-                    ...(patch.boundedMemory.recall && existingRepo.boundedMemory.recall
-                        ? { recall: { ...existingRepo.boundedMemory.recall, ...patch.boundedMemory.recall } }
-                        : {}),
-                    ...(patch.boundedMemory.readTools && existingRepo.boundedMemory.readTools
-                        ? { readTools: { ...existingRepo.boundedMemory.readTools, ...patch.boundedMemory.readTools } }
-                        : {}),
-                    ...(patch.boundedMemory.autoPromote && existingRepo.boundedMemory.autoPromote
-                        ? { autoPromote: { ...existingRepo.boundedMemory.autoPromote, ...patch.boundedMemory.autoPromote } }
-                        : {}),
-                };
             }
 
             // Explicitly set linkedRepoIds to empty array when client sends [] to clear

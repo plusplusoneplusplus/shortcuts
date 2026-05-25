@@ -29,11 +29,6 @@ export interface FeedItem {
     createdAt: string;
 }
 
-export interface DiffLine {
-    type: 'add' | 'remove' | 'unchanged';
-    text: string;
-}
-
 export type {
     AggregateToolCallsResponse,
     ConsolidatedEntryWithAnswer,
@@ -86,24 +81,5 @@ export const memoryApi = {
 
     aggregateToolCalls(): Promise<AggregateToolCallsResponse> {
         return getSpaCocClient().memory.aggregateToolCalls();
-    },
-
-    // ── Raw DB browser ───────────────────────────────────────────────────────
-
-    /** List tables in the repo's memory candidate database with row counts. */
-    getRawDbTables(repoId: string): Promise<{ tables: DbBrowserTable[] }> {
-        return getSpaCocClient().dbBrowser.listTables('repo-raw-memory-db', { repoId });
-    },
-
-    /** Read paginated rows from a specific candidate database table. */
-    getRawDbTable(
-        repoId: string,
-        tableName: string,
-        page = 1,
-        pageSize = 50,
-        sort?: string,
-        order?: 'asc' | 'desc',
-    ): Promise<DbBrowserTableDataResponse> {
-        return getSpaCocClient().dbBrowser.getTable('repo-raw-memory-db', tableName, { repoId, page, pageSize, sort, order });
     },
 };

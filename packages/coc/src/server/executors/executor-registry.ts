@@ -1,7 +1,7 @@
 import type { ConversationTurn, ISDKService, FileToolCallCacheStore, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import { approveAllPermissions, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../tasks/task-types';
-import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext, hasCommitChatContext, hasNoteChatContext, hasNoteCreateContext, hasClassifyDiffContext, isBackgroundReviewPayload, isMemoryPromotePayload, isPrClassificationPayload } from '../tasks/task-types';
+import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext, hasCommitChatContext, hasNoteChatContext, hasNoteCreateContext, hasClassifyDiffContext, isPrClassificationPayload } from '../tasks/task-types';
 import type { ChatMode } from '../tasks/task-types';
 import type { ExecutionContext } from '../task-strategies';
 import { TaskStrategyRegistry } from '../task-strategies';
@@ -23,9 +23,6 @@ import { ProcessLifecycleRunner } from './process-lifecycle-runner';
 import { WrappedTaskExecutor } from './wrapped-task-executor';
 import type { SkillExecuteFn } from './wrapped-task-executor';
 import type { ITaskExecutor } from './executor-types';
-import { BackgroundReviewExecutor } from '../memory/background-review-executor';
-import { MemoryPromoteExecutor } from '../memory/memory-promote-executor';
-import type { MemoryPromoteConfig } from '../memory/memory-promote';
 
 export interface ExecutorRegistryOptions {
     approvePermissions: boolean;
@@ -35,7 +32,6 @@ export interface ExecutorRegistryOptions {
     defaultTimeoutMs: number;
     followUpSuggestions: { enabled: boolean; count: number };
     askUser?: { enabled: boolean };
-    memoryPromotion?: MemoryPromoteConfig;
     /** Active AI provider name recorded on each process for attribution. Defaults to 'copilot'. */
     provider?: 'copilot' | 'codex' | 'claude';
     /**
@@ -48,7 +44,6 @@ export interface ExecutorRegistryOptions {
     resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
     onTitleNeeded: (processId: string, turns: ConversationTurn[]) => void;
-    onBackgroundReview?: (processId: string, workspaceId: string, turns: ConversationTurn[]) => void;
     getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
     getLoopInfra?: () => import('./chat-base-executor').LoopInfraDeps | undefined;
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
@@ -62,8 +57,6 @@ export interface ExecutorRegistryOptions {
 export class ExecutorRegistry {
     readonly followUpExecutor: FollowUpExecutor;
     readonly runner: ProcessLifecycleRunner;
-    readonly backgroundReviewExecutor: BackgroundReviewExecutor;
-    readonly memoryPromoteExecutor: MemoryPromoteExecutor | undefined;
 
     private readonly store: ProcessStore;
     private readonly approvePermissions: boolean;
@@ -123,23 +116,11 @@ export class ExecutorRegistry {
         this.noteChatExecutor = new NoteChatExecutor(store, chatOpts, options.dataDir);
         this.noteCreateExecutor = new NoteCreateExecutor(store, chatOpts, options.dataDir);
         this.classificationExecutor = new ClassificationExecutor(store, chatOpts, options.dataDir);
-        this.backgroundReviewExecutor = new BackgroundReviewExecutor(
-            options.aiService,
-            () => undefined,
-        );
-        this.memoryPromoteExecutor = options.dataDir
-            ? new MemoryPromoteExecutor(options.aiService, options.dataDir, options.memoryPromotion, options.getWsServer)
-            : undefined;
-        this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded, options.onBackgroundReview, options.provider);
+        this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded, options.provider);
     }
 
     /** Dispatch a task to the appropriate executor based on its type and payload. */
     async dispatch(task: QueuedTask, prompt: string): Promise<unknown> {
-        if (isBackgroundReviewPayload(task.payload)) return this.backgroundReviewExecutor.execute(task);
-        if (isMemoryPromotePayload(task.payload)) {
-            if (this.memoryPromoteExecutor) return this.memoryPromoteExecutor.execute(task);
-            return { status: 'completed', message: 'memory-promote: no dataDir configured' };
-        }
         if (isRunWorkflowPayload(task.payload)) return this.workflowExecutor.execute(task);
         if (isRunScriptPayload(task.payload)) return new ShellExecutor(this.store, this.dataDir, this.defaultWorkingDirectory).execute(task);
         if (isPrClassificationPayload(task.payload)) return this.classificationExecutor.execute(task, task.payload.prompt);

@@ -446,40 +446,30 @@ describe('TaskDefs', () => {
         expect(TaskDefs.chat.kind).toBe('chat');
         expect(TaskDefs.runWorkflow.kind).toBe('run-workflow');
         expect(TaskDefs.runScript.kind).toBe('run-script');
-        expect(TaskDefs.memoryPromote.kind).toBe('memory-promote');
-        expect(TaskDefs.backgroundReview.kind).toBe('background-review');
     });
 
     it('has correct labels', () => {
         expect(TaskDefs.chat.label).toBe('Chat');
         expect(TaskDefs.runWorkflow.label).toBe('Run Workflow');
         expect(TaskDefs.runScript.label).toBe('Run Script');
-        expect(TaskDefs.memoryPromote.label).toBe('Memory Promotion');
-        expect(TaskDefs.backgroundReview.label).toBe('Background Review');
     });
 
     it('has correct exclusivity', () => {
         expect(TaskDefs.chat.exclusive).toBe(false);
         expect(TaskDefs.runWorkflow.exclusive).toBe(true);
         expect(TaskDefs.runScript.exclusive).toBe(true);
-        expect(TaskDefs.memoryPromote.exclusive).toBe(false);
-        expect(TaskDefs.backgroundReview.exclusive).toBe(false);
     });
 
     it('has correct visibility', () => {
         expect(TaskDefs.chat.visible).toBe(true);
         expect(TaskDefs.runWorkflow.visible).toBe(true);
         expect(TaskDefs.runScript.visible).toBe(true);
-        expect(TaskDefs.memoryPromote.visible).toBe(false);
-        expect(TaskDefs.backgroundReview.visible).toBe(false);
     });
 
     it('kind values match payload interface literal types', () => {
         expect(TaskDefs.chat.kind).toBe('chat');
         expect(TaskDefs.runWorkflow.kind).toBe('run-workflow');
         expect(TaskDefs.runScript.kind).toBe('run-script');
-        expect(TaskDefs.memoryPromote.kind).toBe('memory-promote');
-        expect(TaskDefs.backgroundReview.kind).toBe('background-review');
     });
 });
 
@@ -492,8 +482,6 @@ describe('getTaskDef', () => {
         expect(getTaskDef('chat')).toBe(TaskDefs.chat);
         expect(getTaskDef('run-workflow')).toBe(TaskDefs.runWorkflow);
         expect(getTaskDef('run-script')).toBe(TaskDefs.runScript);
-        expect(getTaskDef('memory-promote')).toBe(TaskDefs.memoryPromote);
-        expect(getTaskDef('background-review')).toBe(TaskDefs.backgroundReview);
     });
 
     it('returns undefined for unknown kind', () => {
@@ -514,11 +502,6 @@ describe('VISIBLE_TASK_TYPE_LABELS', () => {
             'run-script': 'Run Script',
         });
     });
-
-    it('does not contain hidden task types', () => {
-        expect(VISIBLE_TASK_TYPE_LABELS).not.toHaveProperty('memory-promote');
-        expect(VISIBLE_TASK_TYPE_LABELS).not.toHaveProperty('background-review');
-    });
 });
 
 // ============================================================================
@@ -531,11 +514,6 @@ describe('VALID_ENQUEUE_TYPES', () => {
         expect(VALID_ENQUEUE_TYPES.has('run-workflow')).toBe(true);
         expect(VALID_ENQUEUE_TYPES.has('run-script')).toBe(true);
     });
-
-    it('does not contain hidden task kinds', () => {
-        expect(VALID_ENQUEUE_TYPES.has('memory-promote')).toBe(false);
-        expect(VALID_ENQUEUE_TYPES.has('background-review')).toBe(false);
-    });
 });
 
 // ============================================================================
@@ -544,8 +522,8 @@ describe('VALID_ENQUEUE_TYPES', () => {
 
 describe('CocTaskKind type', () => {
     it('accepts all valid task kind strings at type level', () => {
-        const kinds: CocTaskKind[] = ['chat', 'run-workflow', 'run-script', 'memory-promote', 'background-review'];
-        expect(kinds).toHaveLength(5);
+        const kinds: CocTaskKind[] = ['chat', 'run-workflow', 'run-script'];
+        expect(kinds).toHaveLength(3);
     });
 });
 

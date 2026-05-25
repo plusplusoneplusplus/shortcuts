@@ -6,16 +6,15 @@ import { describe, it, expect } from 'vitest';
 import { getBuiltInPrompts } from '../../src/server/admin/admin-handler';
 
 describe('getBuiltInPrompts', () => {
-    it('returns all 13 built-in prompts', () => {
+    it('returns all 12 built-in prompts', () => {
         const prompts = getBuiltInPrompts();
         const ids = Object.keys(prompts);
-        expect(ids).toHaveLength(13);
+        expect(ids).toHaveLength(12);
         expect(ids).toContain('read-only-mode');
         expect(ids).toContain('task-creation');
         expect(ids).toContain('plan-generation');
         expect(ids).toContain('skill-prompt-wrapper');
         expect(ids).toContain('memory-tool-schema');
-        expect(ids).toContain('memory-system-prompt');
         expect(ids).toContain('memory-security-patterns');
         expect(ids).toContain('tool-call-cache');
         expect(ids).toContain('follow-up-suggestions');
@@ -53,10 +52,10 @@ describe('getBuiltInPrompts', () => {
         expect(pipelinePrompts).toHaveLength(4);
     });
 
-    it('Memory group contains 4 prompts', () => {
+    it('Memory group contains 3 prompts', () => {
         const prompts = getBuiltInPrompts();
         const memoryPrompts = Object.values(prompts).filter(p => p.group === 'Memory');
-        expect(memoryPrompts).toHaveLength(4);
+        expect(memoryPrompts).toHaveLength(3);
     });
 
     it('UI group contains 1 prompt', () => {

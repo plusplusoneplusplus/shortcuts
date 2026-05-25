@@ -5,18 +5,14 @@
  * resolved server-side; callers never provide filesystem paths or SQL strings.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
 import * as url from 'url';
 import type * as http from 'http';
-import DatabaseConstructor from 'better-sqlite3';
 import type { Database as DatabaseType } from 'better-sqlite3';
 import type { Route } from '../types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody } from '../core/api-handler';
 import { APIError, badRequest, forbidden, handleAPIError, notFound } from '../errors';
-import { getRepoDataPath } from '../paths';
 import {
     deleteRow,
     deleteRowsBulk,
@@ -26,7 +22,7 @@ import {
     updateRow,
 } from './db-browser-core';
 
-type DbBrowserSourceId = 'process-db' | 'repo-raw-memory-db';
+type DbBrowserSourceId = 'process-db';
 
 interface DbBrowserSourceCapabilities {
     readonly: boolean;
@@ -58,15 +54,7 @@ const PROCESS_DB_SOURCE: DbBrowserSourceMetadata = {
     capabilities: { readonly: false, updateRows: true, deleteRows: true, bulkDeleteRows: true },
 };
 
-const REPO_RAW_MEMORY_DB_SOURCE: DbBrowserSourceMetadata = {
-    id: 'repo-raw-memory-db',
-    label: 'Repo raw memory database',
-    description: 'Repo-scoped raw memory records database.',
-    requiredParams: ['repoId'],
-    capabilities: { readonly: true, updateRows: false, deleteRows: false, bulkDeleteRows: false },
-};
-
-const SOURCES = [PROCESS_DB_SOURCE, REPO_RAW_MEMORY_DB_SOURCE] as const;
+const SOURCES = [PROCESS_DB_SOURCE] as const;
 
 function getQuery(req: http.IncomingMessage): Record<string, string | string[] | undefined> {
     return url.parse(req.url || '/', true).query;
@@ -80,36 +68,20 @@ function getSingleQueryParam(query: Record<string, string | string[] | undefined
 
 function parseSourceId(rawSourceId: string): DbBrowserSourceId {
     const sourceId = decodeURIComponent(rawSourceId);
-    if (sourceId === PROCESS_DB_SOURCE.id || sourceId === REPO_RAW_MEMORY_DB_SOURCE.id) {
+    if (sourceId === PROCESS_DB_SOURCE.id) {
         return sourceId;
     }
     throw notFound(`DB browser source "${sourceId}"`);
 }
 
-function requireRepoId(req: http.IncomingMessage): string {
-    const repoId = getSingleQueryParam(getQuery(req), 'repoId');
-    if (!repoId) {
-        throw badRequest('Missing required query parameter: repoId');
-    }
-    return repoId;
-}
-
-function resolveSource(sourceId: DbBrowserSourceId, req: http.IncomingMessage, store: ProcessStore, dataDir: string): ResolvedDbSource {
+function resolveSource(sourceId: DbBrowserSourceId, _req: http.IncomingMessage, store: ProcessStore, _dataDir: string): ResolvedDbSource {
     if (sourceId === 'process-db') {
         if (!(store instanceof SqliteProcessStore)) {
             throw new APIError(501, 'Database browser source "process-db" is only available with the SQLite store backend.', 'NOT_IMPLEMENTED');
         }
         return { metadata: PROCESS_DB_SOURCE, db: store.getDatabase() };
     }
-
-    const repoId = requireRepoId(req);
-    const rawDbPath = getRepoDataPath(dataDir, repoId, path.join('memory', 'raw-memory.db'));
-    if (!fs.existsSync(rawDbPath)) {
-        return { metadata: REPO_RAW_MEMORY_DB_SOURCE, missing: true };
-    }
-
-    const db = new DatabaseConstructor(rawDbPath, { readonly: true, fileMustExist: true });
-    return { metadata: REPO_RAW_MEMORY_DB_SOURCE, db, close: () => db.close() };
+    throw notFound(`DB browser source "${sourceId}"`);
 }
 
 function assertWritable(source: ResolvedDbSource, capability: keyof Pick<DbBrowserSourceCapabilities, 'updateRows' | 'deleteRows' | 'bulkDeleteRows'>): void {

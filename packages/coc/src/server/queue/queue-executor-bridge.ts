@@ -1,5 +1,5 @@
 import type { ChatPayload, ChatMode } from '../tasks/task-types';
-import { isChatPayload, isBackgroundReviewPayload, isMemoryPromotePayload, TaskDefs, getTaskDef } from '../tasks/task-types';
+import { isChatPayload, TaskDefs, getTaskDef } from '../tasks/task-types';
 import { applyFollowUpToTask } from '../shared/queue-utils';
 import { processToQueuedTask } from '../shared/process-history-mapper';
 import type { Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
@@ -9,8 +9,6 @@ import { BaseExecutor } from '../executors/base-executor';
 import { resolveSkillConfig } from '../executors/skill-config-resolver';
 import { TitleGenerationService } from '../executors/title-generator';
 import { ExecutorRegistry } from '../executors/executor-registry';
-import { shouldEnqueueReview, DEFAULT_REVIEW_CONFIG } from '../memory/background-review';
-import type { MemoryPromoteConfig } from '../memory/memory-promote';
 import { parseRalphSignal } from '../executors/ralph-signal-parser';
 import { recordRalphIteration } from '../ralph/record-iteration';
 
@@ -21,7 +19,6 @@ export interface CLITaskExecutorOptions {
     aiService?: ISDKService; defaultTimeoutMs?: number;
     followUpSuggestions?: { enabled: boolean; count: number };
     askUser?: { enabled: boolean };
-    memoryPromotion?: MemoryPromoteConfig;
     /** Active AI provider name recorded on each process for attribution. Defaults to 'copilot'. */
     provider?: 'copilot' | 'codex' | 'claude';
     /**
@@ -103,14 +100,12 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             defaultTimeoutMs: options.defaultTimeoutMs ?? DEFAULT_AI_TIMEOUT_MS,
             followUpSuggestions: options.followUpSuggestions ?? DEFAULT_FOLLOW_UP_SUGGESTIONS,
             askUser: options.askUser,
-            memoryPromotion: options.memoryPromotion,
             provider: options.provider,
             resolveAiServiceForProvider: options.resolveAiServiceForProvider,
             toolCallCacheStore: cacheStore,
             resolveSkillConfig: skillCfg,
             resolveWorkspaceIdForPath: (p: string) => this.resolveWorkspaceIdForPath(p),
             onTitleNeeded: (pid: string, turns: ConversationTurn[]) => this.generateTitleIfNeeded(pid, turns),
-            onBackgroundReview: (pid: string, wsId: string, turns: ConversationTurn[]) => this.enqueueBackgroundReview(pid, wsId, turns),
             getWsServer: options.getWsServer,
             getLoopInfra: options.getLoopInfra,
             getMcpOauthManager: options.getMcpOauthManager,
@@ -124,24 +119,6 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     }
     setQueueExecutor(qe: QueueExecutor): void { this.queueExecutor = qe; }
     private generateTitleIfNeeded(processId: string, turns: ConversationTurn[]): void { this.titleGenerationService.generateIfNeeded(processId, turns); }
-    private enqueueBackgroundReview(processId: string, workspaceId: string, turns: ConversationTurn[]): void {
-        if (!this.queueManager) return;
-        const payload = shouldEnqueueReview(processId, workspaceId, turns, DEFAULT_REVIEW_CONFIG);
-        if (!payload) return;
-        // Dedup: skip if a review for this process is already queued or running
-        const existing = this.queueManager.getAll()
-            .find(t => t.type === TaskDefs.backgroundReview.kind && (t.payload as any)?.sourceProcessId === processId
-                && (t.status === 'queued' || t.status === 'running'));
-        if (existing) return;
-        this.queueManager.enqueue({
-            type: TaskDefs.backgroundReview.kind,
-            repoId: workspaceId,
-            priority: 'low',
-            payload: payload as any,
-            config: {},
-            displayName: `Memory review (${processId})`,
-        });
-    }
 
     private async resolveWorkspaceIdForPath(rootPath: string): Promise<string> {
         const ws = (await this.store.getWorkspaces())
@@ -282,16 +259,6 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     }
 
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
-        // Background-review and memory-promote tasks bypass the lifecycle
-        // runner — they don't create visible processes or conversation turns.
-        if (isBackgroundReviewPayload(task.payload) || isMemoryPromotePayload(task.payload)) {
-            try {
-                const result = await this.executors.dispatch(task, '');
-                return { success: true, result, durationMs: 0 };
-            } catch (error) {
-                return { success: false, error: error instanceof Error ? error : new Error(String(error)), durationMs: 0 };
-            }
-        }
         try {
             return await this.executors.runner.run(task, {
                 cancelledTasks: this.cancelledTasks,

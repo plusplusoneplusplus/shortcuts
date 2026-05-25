@@ -266,7 +266,6 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const { registry, bridge, queuePersistence, queueFacade } = createQueueInfrastructure(
         store, dataDir, { ...options, aiService: resolvedAiService }, defaultTimeoutMs,
         resolvedConfig.chat.followUpSuggestions, resolvedConfig.chat.askUser, () => wsServer,
-        resolvedConfig.memoryPromotion,
         () => {
             if (!loopInfra) return undefined;
             return {
