@@ -193,7 +193,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         connector: opts.remoteServerConnector ?? new DevTunnelConnector(),
     });
     registerProviderRoutes(routes, dataDir);
-    // Provider SDK install routes (on-demand install of @openai/codex-sdk and @anthropic-ai/claude-code).
+    // Provider SDK install routes (on-demand install of @openai/codex-sdk and @anthropic-ai/claude-agent-sdk).
     // cocInstallDir is the package root so npm installs land in the same node_modules as coc.
     registerProviderInstallRoutes(routes, {
         // __dirname at runtime = dist/server/routes/; package root is 3 levels up.

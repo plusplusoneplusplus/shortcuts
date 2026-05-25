@@ -29,7 +29,7 @@ import type { CodexAuthCheckResult } from '@plusplusoneplusplus/forge';
 
 const PROVIDER_PACKAGES: Record<string, string> = {
     codex: '@openai/codex-sdk',
-    claude: '@anthropic-ai/claude-code',
+    claude: '@anthropic-ai/claude-agent-sdk',
 };
 
 // ============================================================================
