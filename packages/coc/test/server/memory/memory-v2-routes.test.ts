@@ -3,6 +3,7 @@
  *
  * Covers:
  *   - Feature gate: 404 when not enabled
+ *   - GET    /api/memory/v2/scopes                            — list scopes
  *   - POST   /api/workspaces/:wsId/memory/v2/facts          — create fact (happy path + blocked)
  *   - GET    /api/workspaces/:wsId/memory/v2/facts          — list facts
  *   - PATCH  /api/workspaces/:wsId/memory/v2/facts/:id      — update fact
@@ -13,7 +14,8 @@
  *   - GET    /api/workspaces/:wsId/memory/v2/episodes       — list episodes
  *   - GET    /api/workspaces/:wsId/memory/v2/export
  *   - DELETE /api/workspaces/:wsId/memory/v2/wipe           — with/without confirm
- *   - Global vs isolated scope
+ *   - Workspace isolation (each workspace has its own store)
+ *   - Global scope via wsId="global"
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -21,10 +23,10 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { registerMemoryV2Routes } from '../../../src/server/memory/memory-v2-routes';
-import { writeRepoPreferences } from '../../../src/server/preferences-handler';
+import { writeRepoPreferences, writePreferences } from '../../../src/server/preferences-handler';
 import type { Route } from '../../../src/server/types';
 import { createTestRouter } from './test-helpers';
-import { createMemoryStores, MemoryCaptureService, GLOBAL_MEMORY_SUBDIR, WORKSPACE_MEMORY_SUBDIR } from '@plusplusoneplusplus/coc-memory';
+import { createMemoryStores, MemoryCaptureService, WORKSPACE_MEMORY_SUBDIR } from '@plusplusoneplusplus/coc-memory';
 
 // ============================================================================
 // Constants
@@ -41,17 +43,17 @@ function setupDataDir(): string {
     return dataDir;
 }
 
-function enableMemoryV2(dataDir: string, wsId: string, isolated = false): void {
+function enableMemoryV2(dataDir: string, wsId: string): void {
     writeRepoPreferences(dataDir, wsId, {
-        memoryV2: { enabled: true, isolated },
+        memoryV2: { enabled: true },
     } as any);
 }
 
-function getGlobalStoreDir(dataDir: string): string {
-    return path.join(dataDir, GLOBAL_MEMORY_SUBDIR);
+function enableGlobalMemoryV2(dataDir: string): void {
+    writePreferences(dataDir, { global: { memoryV2: { enabled: true } } });
 }
 
-function getIsolatedStoreDir(dataDir: string, wsId: string): string {
+function getWorkspaceStoreDir(dataDir: string, wsId: string): string {
     return path.join(dataDir, 'repos', wsId, WORKSPACE_MEMORY_SUBDIR);
 }
 
@@ -98,6 +100,52 @@ describe('Memory V2 Routes', () => {
         });
     });
 
+    // ── Scopes endpoint ───────────────────────────────────────────────────────
+
+    describe('GET /api/memory/v2/scopes', () => {
+        it('returns global scope disabled by default', async () => {
+            const res = await router.get('/api/memory/v2/scopes');
+            expect(res.status).toBe(200);
+            const body = res.json();
+            expect(body.scopes).toBeDefined();
+            expect(Array.isArray(body.scopes)).toBe(true);
+            const global = body.scopes.find((s: any) => s.id === 'global');
+            expect(global).toBeDefined();
+            expect(global.type).toBe('global');
+            expect(global.label).toBe('Global');
+            expect(global.enabled).toBe(false);
+            expect(global.counts).toBeDefined();
+        });
+
+        it('returns global scope enabled after enabling global prefs', async () => {
+            enableGlobalMemoryV2(dataDir);
+            const res = await router.get('/api/memory/v2/scopes');
+            expect(res.status).toBe(200);
+            const body = res.json();
+            const global = body.scopes.find((s: any) => s.id === 'global');
+            expect(global.enabled).toBe(true);
+        });
+
+        it('counts reflect facts in enabled global scope', async () => {
+            enableGlobalMemoryV2(dataDir);
+            await router.post(`/api/workspaces/global/memory/v2/facts`, {
+                content: 'A global fact',
+            });
+            const res = await router.get('/api/memory/v2/scopes');
+            const body = res.json();
+            const global = body.scopes.find((s: any) => s.id === 'global');
+            expect(global.counts.activeFacts).toBe(1);
+        });
+
+        it('returns only global scope when no store provided', async () => {
+            const res = await router.get('/api/memory/v2/scopes');
+            expect(res.status).toBe(200);
+            const body = res.json();
+            const workspaceScopes = body.scopes.filter((s: any) => s.type === 'workspace');
+            expect(workspaceScopes).toHaveLength(0);
+        });
+    });
+
     // ── Facts: create ─────────────────────────────────────────────────────────
 
     describe('POST /facts', () => {
@@ -126,7 +174,6 @@ describe('Memory V2 Routes', () => {
         });
 
         it('returns 422 when content is blocked by safety scanner', async () => {
-            // Use a valid Bearer token format that matches the safety scanner pattern
             const res = await router.post(`/api/workspaces/${WORKSPACE_ID}/memory/v2/facts`, {
                 content: 'Authorization: Bearer AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
             });
@@ -141,19 +188,20 @@ describe('Memory V2 Routes', () => {
     describe('GET /facts', () => {
         beforeEach(async () => {
             enableMemoryV2(dataDir, WORKSPACE_ID);
-            // Seed two facts
-            const storeDir = getGlobalStoreDir(dataDir);
+            const storeDir = getWorkspaceStoreDir(dataDir, WORKSPACE_ID);
             const handle = createMemoryStores(storeDir);
             try {
                 const svc = new MemoryCaptureService(handle.facts, handle.episodes);
                 await svc.captureExplicit({
                     content: 'Project uses Vitest for testing',
-                    scope: 'global',
+                    scope: 'workspace',
+                    workspaceId: WORKSPACE_ID,
                     provenance: { createdBy: 'user', version: 1 },
                 });
                 await svc.captureExplicit({
                     content: 'Database is SQLite with better-sqlite3',
-                    scope: 'global',
+                    scope: 'workspace',
+                    workspaceId: WORKSPACE_ID,
                     provenance: { createdBy: 'user', version: 1 },
                 });
             } finally {
@@ -184,13 +232,14 @@ describe('Memory V2 Routes', () => {
 
         beforeEach(async () => {
             enableMemoryV2(dataDir, WORKSPACE_ID);
-            const storeDir = getGlobalStoreDir(dataDir);
+            const storeDir = getWorkspaceStoreDir(dataDir, WORKSPACE_ID);
             const handle = createMemoryStores(storeDir);
             try {
                 const svc = new MemoryCaptureService(handle.facts, handle.episodes);
                 const fact = await svc.captureExplicit({
                     content: 'Original content',
-                    scope: 'global',
+                    scope: 'workspace',
+                    workspaceId: WORKSPACE_ID,
                     provenance: { createdBy: 'user', version: 1 },
                 });
                 factId = fact!.id;
@@ -239,13 +288,14 @@ describe('Memory V2 Routes', () => {
 
         beforeEach(async () => {
             enableMemoryV2(dataDir, WORKSPACE_ID);
-            const storeDir = getGlobalStoreDir(dataDir);
+            const storeDir = getWorkspaceStoreDir(dataDir, WORKSPACE_ID);
             const handle = createMemoryStores(storeDir);
             try {
                 const svc = new MemoryCaptureService(handle.facts, handle.episodes);
                 const fact = await svc.captureExplicit({
                     content: 'Fact to delete',
-                    scope: 'global',
+                    scope: 'workspace',
+                    workspaceId: WORKSPACE_ID,
                     provenance: { createdBy: 'user', version: 1 },
                 });
                 factId = fact!.id;
@@ -274,12 +324,12 @@ describe('Memory V2 Routes', () => {
 
         beforeEach(async () => {
             enableMemoryV2(dataDir, WORKSPACE_ID);
-            const storeDir = getGlobalStoreDir(dataDir);
+            const storeDir = getWorkspaceStoreDir(dataDir, WORKSPACE_ID);
             const handle = createMemoryStores(storeDir);
             try {
-                // Insert a low-confidence fact directly as review status
                 await handle.facts.addFact({
-                    scope: 'global',
+                    scope: 'workspace',
+                    workspaceId: WORKSPACE_ID,
                     content: 'Low confidence extracted fact',
                     importance: 0.4,
                     confidence: 0.3,
@@ -288,7 +338,6 @@ describe('Memory V2 Routes', () => {
                     source: 'auto-extracted',
                     provenance: { createdBy: 'ai', version: 1 },
                 });
-                // Get ID of the review fact
                 const all = await handle.facts.listFacts({ statuses: ['review'] });
                 reviewFactId = all[0].id;
             } finally {
@@ -338,11 +387,12 @@ describe('Memory V2 Routes', () => {
     describe('GET /episodes', () => {
         beforeEach(async () => {
             enableMemoryV2(dataDir, WORKSPACE_ID);
-            const storeDir = getGlobalStoreDir(dataDir);
+            const storeDir = getWorkspaceStoreDir(dataDir, WORKSPACE_ID);
             const handle = createMemoryStores(storeDir);
             try {
                 await handle.episodes.addEpisode({
-                    scope: 'global',
+                    scope: 'workspace',
+                    workspaceId: WORKSPACE_ID,
                     processId: 'proc-001',
                     summary: 'Discussed TypeScript strict mode config',
                     eventType: 'chat-turn',
@@ -367,13 +417,14 @@ describe('Memory V2 Routes', () => {
     describe('GET /export', () => {
         beforeEach(async () => {
             enableMemoryV2(dataDir, WORKSPACE_ID);
-            const storeDir = getGlobalStoreDir(dataDir);
+            const storeDir = getWorkspaceStoreDir(dataDir, WORKSPACE_ID);
             const handle = createMemoryStores(storeDir);
             try {
                 const svc = new MemoryCaptureService(handle.facts, handle.episodes);
                 await svc.captureExplicit({
                     content: 'Export test fact',
-                    scope: 'global',
+                    scope: 'workspace',
+                    workspaceId: WORKSPACE_ID,
                     provenance: { createdBy: 'user', version: 1 },
                 });
             } finally {
@@ -390,7 +441,7 @@ describe('Memory V2 Routes', () => {
             expect(Array.isArray(body.episodes)).toBe(true);
             expect(body.facts).toHaveLength(1);
             expect(body.facts[0].content).toBe('Export test fact');
-            expect(body.scope).toBe('global');
+            expect(body.scope).toBe('workspace');
         });
     });
 
@@ -399,13 +450,14 @@ describe('Memory V2 Routes', () => {
     describe('DELETE /wipe', () => {
         beforeEach(async () => {
             enableMemoryV2(dataDir, WORKSPACE_ID);
-            const storeDir = getGlobalStoreDir(dataDir);
+            const storeDir = getWorkspaceStoreDir(dataDir, WORKSPACE_ID);
             const handle = createMemoryStores(storeDir);
             try {
                 const svc = new MemoryCaptureService(handle.facts, handle.episodes);
                 await svc.captureExplicit({
                     content: 'Fact to be wiped',
-                    scope: 'global',
+                    scope: 'workspace',
+                    workspaceId: WORKSPACE_ID,
                     provenance: { createdBy: 'user', version: 1 },
                 });
             } finally {
@@ -420,19 +472,14 @@ describe('Memory V2 Routes', () => {
         });
 
         it('wipes facts when confirm=true', async () => {
-            // Wipe
             const res = await router.delete(`/api/workspaces/${WORKSPACE_ID}/memory/v2/wipe`);
-            // This uses DELETE without body which returns 400 — force body via post-like
-            // Actually, let's test that the endpoint accepts the confirm body via custom dispatch
             expect(res.status).toBe(400);
         });
 
         it('wipes all data with confirm: true body', async () => {
-            // Verify the list is non-empty before wipe
             const listBefore = await router.get(`/api/workspaces/${WORKSPACE_ID}/memory/v2/facts`);
             expect(listBefore.json().facts).toHaveLength(1);
 
-            // Wipe with confirm body
             const res = await router.delete(
                 `/api/workspaces/${WORKSPACE_ID}/memory/v2/wipe`,
                 { confirm: true }
@@ -441,157 +488,187 @@ describe('Memory V2 Routes', () => {
             const body = res.json();
             expect(body.wiped).toBe(true);
 
-            // Verify empty
             const listAfter = await router.get(`/api/workspaces/${WORKSPACE_ID}/memory/v2/facts`);
             expect(listAfter.json().facts).toHaveLength(0);
         });
     });
 
-    // ── Global vs Isolated scope ──────────────────────────────────────────────
+    // ── Workspace isolation ───────────────────────────────────────────────────
+    // Each workspace has its own isolated store; facts never bleed between workspaces.
 
-    describe('global vs isolated scope', () => {
-        const WS_A = 'ws-global-test';
-        const WS_B = 'ws-isolated-test';
+    describe('workspace isolation', () => {
+        const WS_A = 'ws-isolation-a';
+        const WS_B = 'ws-isolation-b';
 
-        it('global workspace can see facts stored in global store', async () => {
-            // WS_A uses global mode
-            enableMemoryV2(dataDir, WS_A, false);
+        it('workspaces do not share facts', async () => {
+            enableMemoryV2(dataDir, WS_A);
+            enableMemoryV2(dataDir, WS_B);
 
-            const res = await router.post(`/api/workspaces/${WS_A}/memory/v2/facts`, {
-                content: 'Global fact from WS_A',
-            });
-            expect(res.status).toBe(201);
-
-            // WS_B also uses global mode → can see WS_A's fact
-            enableMemoryV2(dataDir, WS_B, false);
-            const listRes = await router.get(`/api/workspaces/${WS_B}/memory/v2/facts`);
-            expect(listRes.status).toBe(200);
-            const facts = listRes.json().facts as any[];
-            expect(facts.some((f: any) => f.content === 'Global fact from WS_A')).toBe(true);
-        });
-
-        it('isolated workspace cannot see global facts and vice versa', async () => {
-            // WS_A: global
-            enableMemoryV2(dataDir, WS_A, false);
             await router.post(`/api/workspaces/${WS_A}/memory/v2/facts`, {
-                content: 'Global fact, should not be seen by isolated',
+                content: 'Fact for workspace A',
             });
 
-            // WS_B: isolated
-            enableMemoryV2(dataDir, WS_B, true);
-            const listRes = await router.get(`/api/workspaces/${WS_B}/memory/v2/facts`);
-            expect(listRes.status).toBe(200);
-            const facts = listRes.json().facts as any[];
-            expect(facts.some((f: any) => f.content.includes('Global fact'))).toBe(false);
+            const listB = await router.get(`/api/workspaces/${WS_B}/memory/v2/facts`);
+            expect(listB.status).toBe(200);
+            const facts = listB.json().facts as any[];
+            expect(facts.some((f: any) => f.content === 'Fact for workspace A')).toBe(false);
         });
 
-        it('isolated workspace fact is not visible in global mode', async () => {
-            // WS_B: isolated
-            enableMemoryV2(dataDir, WS_B, true);
-            await router.post(`/api/workspaces/${WS_B}/memory/v2/facts`, {
-                content: 'Isolated fact, should not leak to global',
-            });
+        it('WS_A and WS_B facts remain isolated', async () => {
+            enableMemoryV2(dataDir, WS_A);
+            enableMemoryV2(dataDir, WS_B);
 
-            // WS_A: global
-            enableMemoryV2(dataDir, WS_A, false);
-            const listRes = await router.get(`/api/workspaces/${WS_A}/memory/v2/facts`);
-            expect(listRes.status).toBe(200);
-            const facts = listRes.json().facts as any[];
-            expect(facts.some((f: any) => f.content.includes('Isolated fact'))).toBe(false);
-        });
-    });
+            await router.post(`/api/workspaces/${WS_A}/memory/v2/facts`, { content: 'Fact A' });
+            await router.post(`/api/workspaces/${WS_B}/memory/v2/facts`, { content: 'Fact B' });
 
-    // ── Wipe scope isolation ──────────────────────────────────────────────────
+            const listA = await router.get(`/api/workspaces/${WS_A}/memory/v2/facts`);
+            expect(listA.json().facts).toHaveLength(1);
+            expect(listA.json().facts[0].content).toBe('Fact A');
 
-    describe('wipe scope isolation', () => {
-        const WS_GLOBAL = 'ws-wipe-global';
-        const WS_ISOLATED = 'ws-wipe-isolated';
-        const WS_ISOLATED_B = 'ws-wipe-isolated-b';
-
-        it('wiping global scope does not delete isolated workspace facts', async () => {
-            enableMemoryV2(dataDir, WS_GLOBAL, false);  // global mode
-            enableMemoryV2(dataDir, WS_ISOLATED, true); // isolated mode
-
-            const globalRes = await router.post(`/api/workspaces/${WS_GLOBAL}/memory/v2/facts`, {
-                content: 'Global fact that should survive after isolated wipe',
-            });
-            expect(globalRes.status).toBe(201);
-
-            const isolatedRes = await router.post(`/api/workspaces/${WS_ISOLATED}/memory/v2/facts`, {
-                content: 'Isolated fact that should survive global wipe',
-            });
-            expect(isolatedRes.status).toBe(201);
-
-            // Wipe global scope
-            const wipeRes = await router.delete(
-                `/api/workspaces/${WS_GLOBAL}/memory/v2/wipe`,
-                { confirm: true },
-            );
-            expect(wipeRes.status).toBe(200);
-            expect(wipeRes.json().scope).toBe('global');
-
-            // Global facts are gone
-            const globalList = await router.get(`/api/workspaces/${WS_GLOBAL}/memory/v2/facts`);
-            expect(globalList.json().facts).toHaveLength(0);
-
-            // Isolated workspace facts are intact
-            const isolatedList = await router.get(`/api/workspaces/${WS_ISOLATED}/memory/v2/facts`);
-            expect(isolatedList.json().facts).toHaveLength(1);
-            expect(isolatedList.json().facts[0].content).toContain('Isolated fact');
+            const listB = await router.get(`/api/workspaces/${WS_B}/memory/v2/facts`);
+            expect(listB.json().facts).toHaveLength(1);
+            expect(listB.json().facts[0].content).toBe('Fact B');
         });
 
-        it('wiping isolated workspace scope does not delete global facts', async () => {
-            enableMemoryV2(dataDir, WS_GLOBAL, false);
-            enableMemoryV2(dataDir, WS_ISOLATED, true);
+        it('wiping one workspace does not affect another', async () => {
+            enableMemoryV2(dataDir, WS_A);
+            enableMemoryV2(dataDir, WS_B);
 
-            await router.post(`/api/workspaces/${WS_GLOBAL}/memory/v2/facts`, {
-                content: 'Global fact that must survive',
-            });
-            await router.post(`/api/workspaces/${WS_ISOLATED}/memory/v2/facts`, {
-                content: 'Isolated fact about to be wiped',
-            });
+            await router.post(`/api/workspaces/${WS_A}/memory/v2/facts`, { content: 'WS_A fact' });
+            await router.post(`/api/workspaces/${WS_B}/memory/v2/facts`, { content: 'WS_B fact — must survive' });
 
-            // Wipe the isolated workspace
-            const wipeRes = await router.delete(
-                `/api/workspaces/${WS_ISOLATED}/memory/v2/wipe`,
-                { confirm: true },
-            );
+            const wipeRes = await router.delete(`/api/workspaces/${WS_A}/memory/v2/wipe`, { confirm: true });
             expect(wipeRes.status).toBe(200);
             expect(wipeRes.json().scope).toBe('workspace');
 
-            // Isolated facts are gone
+            const listA = await router.get(`/api/workspaces/${WS_A}/memory/v2/facts`);
+            expect(listA.json().facts).toHaveLength(0);
+
+            const listB = await router.get(`/api/workspaces/${WS_B}/memory/v2/facts`);
+            expect(listB.json().facts).toHaveLength(1);
+            expect(listB.json().facts[0].content).toContain('WS_B fact');
+        });
+    });
+
+    // ── Global scope via wsId="global" ────────────────────────────────────────
+
+    describe('global scope (wsId="global")', () => {
+        beforeEach(() => enableGlobalMemoryV2(dataDir));
+
+        it('creates a fact in global scope', async () => {
+            const res = await router.post(`/api/workspaces/global/memory/v2/facts`, {
+                content: 'A globally shared fact',
+            });
+            expect(res.status).toBe(201);
+            expect(res.json().fact.content).toBe('A globally shared fact');
+        });
+
+        it('global scope is separate from workspace scope', async () => {
+            enableMemoryV2(dataDir, WORKSPACE_ID);
+
+            await router.post(`/api/workspaces/global/memory/v2/facts`, { content: 'Global fact' });
+            await router.post(`/api/workspaces/${WORKSPACE_ID}/memory/v2/facts`, { content: 'Workspace fact' });
+
+            const globalList = await router.get(`/api/workspaces/global/memory/v2/facts`);
+            expect(globalList.json().facts).toHaveLength(1);
+            expect(globalList.json().facts[0].content).toBe('Global fact');
+
+            const wsList = await router.get(`/api/workspaces/${WORKSPACE_ID}/memory/v2/facts`);
+            expect(wsList.json().facts).toHaveLength(1);
+            expect(wsList.json().facts[0].content).toBe('Workspace fact');
+        });
+
+        it('wipe global scope does not delete workspace facts', async () => {
+            enableMemoryV2(dataDir, WORKSPACE_ID);
+
+            await router.post(`/api/workspaces/global/memory/v2/facts`, { content: 'Global fact' });
+            await router.post(`/api/workspaces/${WORKSPACE_ID}/memory/v2/facts`, { content: 'WS fact — must survive' });
+
+            const wipeRes = await router.delete(`/api/workspaces/global/memory/v2/wipe`, { confirm: true });
+            expect(wipeRes.status).toBe(200);
+            expect(wipeRes.json().scope).toBe('global');
+
+            const globalList = await router.get(`/api/workspaces/global/memory/v2/facts`);
+            expect(globalList.json().facts).toHaveLength(0);
+
+            const wsList = await router.get(`/api/workspaces/${WORKSPACE_ID}/memory/v2/facts`);
+            expect(wsList.json().facts).toHaveLength(1);
+            expect(wsList.json().facts[0].content).toContain('WS fact');
+        });
+
+        it('returns 404 for global scope when global memory is disabled', async () => {
+            writePreferences(dataDir, { global: { memoryV2: { enabled: false } } });
+            const res = await router.get(`/api/workspaces/global/memory/v2/facts`);
+            expect(res.status).toBe(404);
+        });
+
+        it('export for global scope reports scope as global', async () => {
+            await router.post(`/api/workspaces/global/memory/v2/facts`, { content: 'Global export fact' });
+            const res = await router.get(`/api/workspaces/global/memory/v2/export`);
+            expect(res.status).toBe(200);
+            const body = res.json();
+            expect(body.scope).toBe('global');
+            expect(body.facts).toHaveLength(1);
+        });
+    });
+
+    // ── Wipe scope isolation (global vs workspace) ────────────────────────────
+
+    describe('wipe scope isolation', () => {
+        const WS_ISOLATED = 'ws-wipe-isolated';
+        const WS_ISOLATED_B = 'ws-wipe-isolated-b';
+
+        it('wiping workspace scope does not delete global facts', async () => {
+            enableGlobalMemoryV2(dataDir);
+            enableMemoryV2(dataDir, WS_ISOLATED);
+
+            await router.post(`/api/workspaces/global/memory/v2/facts`, { content: 'Global fact that must survive' });
+            await router.post(`/api/workspaces/${WS_ISOLATED}/memory/v2/facts`, { content: 'Workspace fact about to be wiped' });
+
+            const wipeRes = await router.delete(`/api/workspaces/${WS_ISOLATED}/memory/v2/wipe`, { confirm: true });
+            expect(wipeRes.status).toBe(200);
+            expect(wipeRes.json().scope).toBe('workspace');
+
             const isolatedList = await router.get(`/api/workspaces/${WS_ISOLATED}/memory/v2/facts`);
             expect(isolatedList.json().facts).toHaveLength(0);
 
-            // Global facts are intact
-            const globalList = await router.get(`/api/workspaces/${WS_GLOBAL}/memory/v2/facts`);
+            const globalList = await router.get(`/api/workspaces/global/memory/v2/facts`);
             expect(globalList.json().facts).toHaveLength(1);
             expect(globalList.json().facts[0].content).toContain('Global fact that must survive');
         });
 
-        it('wiping one isolated workspace does not delete another isolated workspace facts', async () => {
-            enableMemoryV2(dataDir, WS_ISOLATED, true);
-            enableMemoryV2(dataDir, WS_ISOLATED_B, true);
+        it('wiping global scope does not delete workspace facts', async () => {
+            enableGlobalMemoryV2(dataDir);
+            enableMemoryV2(dataDir, WS_ISOLATED);
 
-            await router.post(`/api/workspaces/${WS_ISOLATED}/memory/v2/facts`, {
-                content: 'Workspace A fact',
-            });
-            await router.post(`/api/workspaces/${WS_ISOLATED_B}/memory/v2/facts`, {
-                content: 'Workspace B fact - must survive',
-            });
+            await router.post(`/api/workspaces/global/memory/v2/facts`, { content: 'Global fact about to be wiped' });
+            await router.post(`/api/workspaces/${WS_ISOLATED}/memory/v2/facts`, { content: 'Workspace fact that must survive' });
 
-            // Wipe workspace A
-            const wipeRes = await router.delete(
-                `/api/workspaces/${WS_ISOLATED}/memory/v2/wipe`,
-                { confirm: true },
-            );
+            const wipeRes = await router.delete(`/api/workspaces/global/memory/v2/wipe`, { confirm: true });
+            expect(wipeRes.status).toBe(200);
+            expect(wipeRes.json().scope).toBe('global');
+
+            const globalList = await router.get(`/api/workspaces/global/memory/v2/facts`);
+            expect(globalList.json().facts).toHaveLength(0);
+
+            const isolatedList = await router.get(`/api/workspaces/${WS_ISOLATED}/memory/v2/facts`);
+            expect(isolatedList.json().facts).toHaveLength(1);
+            expect(isolatedList.json().facts[0].content).toContain('Workspace fact that must survive');
+        });
+
+        it('wiping one workspace does not delete another workspace facts', async () => {
+            enableMemoryV2(dataDir, WS_ISOLATED);
+            enableMemoryV2(dataDir, WS_ISOLATED_B);
+
+            await router.post(`/api/workspaces/${WS_ISOLATED}/memory/v2/facts`, { content: 'Workspace A fact' });
+            await router.post(`/api/workspaces/${WS_ISOLATED_B}/memory/v2/facts`, { content: 'Workspace B fact - must survive' });
+
+            const wipeRes = await router.delete(`/api/workspaces/${WS_ISOLATED}/memory/v2/wipe`, { confirm: true });
             expect(wipeRes.status).toBe(200);
 
-            // Workspace A facts are gone
             const listA = await router.get(`/api/workspaces/${WS_ISOLATED}/memory/v2/facts`);
             expect(listA.json().facts).toHaveLength(0);
 
-            // Workspace B facts are intact
             const listB = await router.get(`/api/workspaces/${WS_ISOLATED_B}/memory/v2/facts`);
             expect(listB.json().facts).toHaveLength(1);
             expect(listB.json().facts[0].content).toContain('Workspace B fact');
@@ -603,11 +680,12 @@ describe('Memory V2 Routes', () => {
     describe('export field completeness', () => {
         beforeEach(async () => {
             enableMemoryV2(dataDir, WORKSPACE_ID);
-            const storeDir = getGlobalStoreDir(dataDir);
+            const storeDir = getWorkspaceStoreDir(dataDir, WORKSPACE_ID);
             const handle = createMemoryStores(storeDir);
             try {
                 await handle.facts.addFact({
-                    scope: 'global',
+                    scope: 'workspace',
+                    workspaceId: WORKSPACE_ID,
                     content: 'The project uses TypeScript strict mode',
                     importance: 0.85,
                     confidence: 0.95,
@@ -617,7 +695,8 @@ describe('Memory V2 Routes', () => {
                     sourceProcessId: 'proc-export-test',
                 });
                 await handle.facts.addFact({
-                    scope: 'global',
+                    scope: 'workspace',
+                    workspaceId: WORKSPACE_ID,
                     content: 'Low-confidence inferred fact',
                     importance: 0.3,
                     confidence: 0.4,
@@ -626,7 +705,8 @@ describe('Memory V2 Routes', () => {
                     source: 'auto-extracted',
                 });
                 await handle.episodes.addEpisode({
-                    scope: 'global',
+                    scope: 'workspace',
+                    workspaceId: WORKSPACE_ID,
                     processId: 'proc-export-test',
                     summary: 'Discussed TypeScript config',
                     eventType: 'chat-turn',
@@ -637,14 +717,14 @@ describe('Memory V2 Routes', () => {
             }
         });
 
-        it('export includes all required fact fields: id, content, status, tags, importance, confidence, source, sourceProcessId, createdAt', async () => {
+        it('export includes all required fact fields', async () => {
             const res = await router.get(`/api/workspaces/${WORKSPACE_ID}/memory/v2/export`);
             expect(res.status).toBe(200);
             const body = res.json();
 
             expect(body.version).toBe(1);
             expect(body.exportedAt).toBeTruthy();
-            expect(body.scope).toBe('global');
+            expect(body.scope).toBe('workspace');
             expect(body.facts.length).toBeGreaterThanOrEqual(2);
 
             const activeFact = body.facts.find((f: any) => f.status === 'active');
@@ -684,7 +764,7 @@ describe('Memory V2 Routes', () => {
             expect(ep.processId).toBe('proc-export-test');
             expect(ep.summary).toBe('Discussed TypeScript config');
             expect(ep.eventType).toBe('chat-turn');
-            expect(ep.scope).toBe('global');
+            expect(ep.scope).toBe('workspace');
             expect(ep.provenance).toBeDefined();
             expect(ep.provenance.createdBy).toBe('ai');
             expect(ep.createdAt).toBeTruthy();

@@ -1,8 +1,9 @@
 /**
- * Memory V2 Routes (AC-06 server side)
+ * Memory V2 Routes (AC-01 / AC-02 server side)
  *
- * Registers workspace-scoped REST endpoints for the redesigned coc-memory v2:
+ * Registers workspace-scoped and global REST endpoints for coc-memory v2:
  *
+ *   GET    /api/memory/v2/scopes                              — list all memory scopes
  *   GET    /api/workspaces/:wsId/memory/v2/facts            — list/search facts
  *   POST   /api/workspaces/:wsId/memory/v2/facts            — create explicit fact
  *   PATCH  /api/workspaces/:wsId/memory/v2/facts/:id        — update fact
@@ -14,12 +15,17 @@
  *   GET    /api/workspaces/:wsId/memory/v2/export           — export all
  *   DELETE /api/workspaces/:wsId/memory/v2/wipe             — wipe scope
  *
- * All routes are gated by prefs.memoryV2.enabled. Returns 404 when disabled.
+ * The special wsId "global" addresses the global memory scope directly (using
+ * global preferences rather than per-workspace preferences).
+ *
+ * All workspace-scoped routes are gated by prefs.memoryV2.enabled. Returns 404 when
+ * disabled. The "global" wsId is gated by global preferences.memoryV2.enabled.
  *
  * No VS Code dependencies — pure Node.js.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
+import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
 import {
@@ -31,15 +37,19 @@ import {
     type MemoryScope,
     type CloseableMemoryStoreHandle,
 } from '@plusplusoneplusplus/coc-memory';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJson, readJsonBody, send400, send404, send500 } from '../router';
-import { readRepoPreferences } from '../preferences-handler';
+import { readRepoPreferences, readGlobalPreferences } from '../preferences-handler';
 
 // ============================================================================
 // Constants & types
 // ============================================================================
 
 const FEATURE_DISABLED_MSG = 'Memory v2 is not enabled for this workspace';
+
+/** The reserved wsId that addresses the global memory scope. */
+export const GLOBAL_SCOPE_WS_ID = 'global';
 
 // ============================================================================
 // Helpers
@@ -53,27 +63,33 @@ interface ScopeInfo {
 
 /**
  * Read memoryV2 prefs and resolve scope + storeDir.
- * Returns null if the feature is disabled for this workspace.
+ *
+ * When wsId === GLOBAL_SCOPE_WS_ID, reads global preferences.
+ * Otherwise reads per-workspace preferences and always uses the workspace-isolated store.
+ *
+ * Returns null if the feature is disabled for this scope.
  */
 function resolveScope(
     dataDir: string,
     wsId: string,
 ): ScopeInfo | null {
+    if (wsId === GLOBAL_SCOPE_WS_ID) {
+        const globalPrefs = readGlobalPreferences(dataDir);
+        if (!globalPrefs.memoryV2?.enabled) return null;
+        return {
+            scope: 'global',
+            storeDir: path.join(dataDir, GLOBAL_MEMORY_SUBDIR),
+            workspaceId: undefined,
+        };
+    }
+
     const prefs = readRepoPreferences(dataDir, wsId);
     if (!prefs.memoryV2?.enabled) return null;
 
-    const isolated = prefs.memoryV2.isolated === true;
-    if (isolated) {
-        return {
-            scope: 'workspace',
-            storeDir: path.join(dataDir, 'repos', wsId, WORKSPACE_MEMORY_SUBDIR),
-            workspaceId: wsId,
-        };
-    }
     return {
-        scope: 'global',
-        storeDir: path.join(dataDir, GLOBAL_MEMORY_SUBDIR),
-        workspaceId: undefined,
+        scope: 'workspace',
+        storeDir: path.join(dataDir, 'repos', wsId, WORKSPACE_MEMORY_SUBDIR),
+        workspaceId: wsId,
     };
 }
 
@@ -90,15 +106,101 @@ async function withStores<T>(
     }
 }
 
+/** Get fact/episode counts for a scope; returns zeros when store does not exist or is disabled. */
+async function getScopeCounts(
+    storeDir: string,
+    scope: MemoryScope,
+    workspaceId: string | undefined,
+    enabled: boolean,
+): Promise<{ activeFacts: number; reviewFacts: number; episodes: number }> {
+    if (!enabled) return { activeFacts: 0, reviewFacts: 0, episodes: 0 };
+    try {
+        if (!fs.existsSync(storeDir)) {
+            return { activeFacts: 0, reviewFacts: 0, episodes: 0 };
+        }
+        return await withStores(storeDir, async (handle) => {
+            const [active, review, eps] = await Promise.all([
+                handle.facts.listFacts({ statuses: ['active'], scope, workspaceId, limit: 1000 })
+                    .then(f => f.length),
+                handle.facts.listFacts({ statuses: ['review'], scope, workspaceId, limit: 1000 })
+                    .then(f => f.length),
+                handle.episodes.listEpisodes({ scope, workspaceId, limit: 1000 })
+                    .then(e => e.length),
+            ]);
+            return { activeFacts: active, reviewFacts: review, episodes: eps };
+        });
+    } catch {
+        return { activeFacts: 0, reviewFacts: 0, episodes: 0 };
+    }
+}
+
 // ============================================================================
 // Registration
 // ============================================================================
 
 /**
- * Register all memory v2 workspace-scoped routes.
+ * Register all memory v2 routes (global scopes + workspace-scoped).
  * Mutates `routes` in place.
+ *
+ * @param routes  Route table to add to.
+ * @param dataDir CoC data root.
+ * @param store   Optional process store; used by the scopes endpoint to include workspace labels.
  */
-export function registerMemoryV2Routes(routes: Route[], dataDir: string): void {
+export function registerMemoryV2Routes(routes: Route[], dataDir: string, store?: ProcessStore): void {
+
+    // ── GET /api/memory/v2/scopes ─────────────────────────────────────────────
+    routes.push({
+        method: 'GET',
+        pattern: '/api/memory/v2/scopes',
+        handler: async (_req, res) => {
+            try {
+                const scopes: Array<{
+                    id: string;
+                    type: 'global' | 'workspace';
+                    label: string;
+                    enabled: boolean;
+                    workspaceId?: string;
+                    counts: { activeFacts: number; reviewFacts: number; episodes: number };
+                }> = [];
+
+                // Global scope
+                const globalPrefs = readGlobalPreferences(dataDir);
+                const globalEnabled = globalPrefs.memoryV2?.enabled === true;
+                const globalStoreDir = path.join(dataDir, GLOBAL_MEMORY_SUBDIR);
+                const globalCounts = await getScopeCounts(globalStoreDir, 'global', undefined, globalEnabled);
+                scopes.push({
+                    id: GLOBAL_SCOPE_WS_ID,
+                    type: 'global',
+                    label: 'Global',
+                    enabled: globalEnabled,
+                    counts: globalCounts,
+                });
+
+                // Workspace scopes (requires store for labels)
+                if (store) {
+                    const workspaces = await store.getWorkspaces();
+                    for (const ws of workspaces) {
+                        const prefs = readRepoPreferences(dataDir, ws.id);
+                        const wsEnabled = prefs.memoryV2?.enabled === true;
+                        const wsStoreDir = path.join(dataDir, 'repos', ws.id, WORKSPACE_MEMORY_SUBDIR);
+                        const wsCounts = await getScopeCounts(wsStoreDir, 'workspace', ws.id, wsEnabled);
+                        scopes.push({
+                            id: `workspace:${ws.id}`,
+                            type: 'workspace',
+                            label: ws.name,
+                            enabled: wsEnabled,
+                            workspaceId: ws.id,
+                            counts: wsCounts,
+                        });
+                    }
+                }
+
+                sendJson(res, { scopes });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
 
     // ── GET /api/workspaces/:wsId/memory/v2/facts ─────────────────────────────
     routes.push({

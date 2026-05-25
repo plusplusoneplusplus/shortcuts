@@ -367,7 +367,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         scheduleManager,
     });
 
-    registerMemoryV2Routes(routes, dataDir);
+    registerMemoryV2Routes(routes, dataDir, store);
 
     registerModelRoutes(routes, modelMetadataStore, {
         configPath,

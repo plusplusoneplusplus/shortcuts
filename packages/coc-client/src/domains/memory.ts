@@ -17,6 +17,7 @@ import type {
   MemoryFact,
   MemoryLevel,
   MemoryOverviewResponse,
+  MemoryScopeInfo,
   MemoryV2ExportData,
   RepoMemoryDeleteResponse,
   ToolCallCacheStats,
@@ -283,5 +284,10 @@ export class MemoryV2Client {
       method: 'DELETE',
       body: { confirm: true },
     });
+  }
+
+  async listMemoryScopes(): Promise<MemoryScopeInfo[]> {
+    const response = await this.transport.request<{ scopes: MemoryScopeInfo[] }>('/memory/v2/scopes');
+    return response.scopes;
   }
 }

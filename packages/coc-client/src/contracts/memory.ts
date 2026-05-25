@@ -235,3 +235,24 @@ export interface ListFactsOptions {
   status?: MemoryFactStatus | MemoryFactStatus[];
   limit?: number;
 }
+
+// ── Memory V2 Scope types ─────────────────────────────────────────────────────
+
+export interface MemoryScopeCounts {
+  activeFacts: number;
+  reviewFacts: number;
+  episodes: number;
+}
+
+export interface MemoryScopeInfo {
+  id: string;
+  type: 'global' | 'workspace';
+  label: string;
+  enabled: boolean;
+  workspaceId?: string;
+  counts: MemoryScopeCounts;
+}
+
+export interface MemoryScopesResponse {
+  scopes: MemoryScopeInfo[];
+}

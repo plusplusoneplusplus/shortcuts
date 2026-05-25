@@ -352,6 +352,12 @@ const HtmlEmbedSchema = z.object({
     enabled: z.boolean(),
 }).strip();
 
+const GlobalMemoryV2Schema = z.object({
+    enabled: z.boolean().optional().catch(undefined),
+    frozenSnapshotLimit: z.number().int().min(1).max(50).optional().catch(undefined),
+    recallLimit: z.number().int().min(1).max(20).optional().catch(undefined),
+}).strip().transform(dropIfEmpty);
+
 const PromptAutocompleteAiSchema = z.object({
     enabled: z.boolean().optional().catch(undefined),
     model: z.string().min(1).max(100).optional().catch(undefined),
@@ -422,6 +428,8 @@ export const GlobalPreferencesSchema = z.object({
     htmlEmbed: HtmlEmbedSchema.optional().catch(undefined),
     /** VS Code-style inline ghost-text autocomplete for the Queue Task and follow-up inputs. */
     promptAutocomplete: PromptAutocompleteSchema.optional().catch(undefined),
+    /** Global Memory V2 settings — independent of any workspace scope. */
+    memoryV2: GlobalMemoryV2Schema.optional().catch(undefined),
 }).strip();
 
 /** Global (cross-repo) UI preferences — derived from GlobalPreferencesSchema. */

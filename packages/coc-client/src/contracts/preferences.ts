@@ -20,6 +20,12 @@ export interface GlobalPreferences {
       includeGlobalHistory?: boolean;
     };
   };
+  /** Global Memory V2 settings — independent of any workspace. */
+  memoryV2?: {
+    enabled?: boolean;
+    frozenSnapshotLimit?: number;
+    recallLimit?: number;
+  };
   [key: string]: unknown;
 }
 
