@@ -17,12 +17,10 @@ import { lazy, Suspense } from 'react';
 import type { DashboardTab, RepoSubTab, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, PrDetailTab, SettingsSection } from '../types/dashboard';
 import { SETTINGS_SECTION_VALUES, REPO_SUB_TAB_VALUES, WIKI_PROJECT_TAB_VALUES, WIKI_ADMIN_TAB_VALUES } from '../types/dashboard';
 
-const MemoryView = lazy(() => import('../features/memory/MemoryView').then(m => ({ default: m.MemoryView })));
 const AdminPanel = lazy(() => import('../admin/AdminPanel').then(m => ({ default: m.AdminPanel })));
-// Skills/Logs/Usage/Models/Servers no longer mount as standalone top-level
-// views — they render embedded inside AdminPanel's right pane. The
-// `'skills' | 'logs' | 'stats' | 'models' | 'servers'` cases below all
-// fall through to the admin shell so the sidebar stays mounted.
+// Memory/Skills/Logs/Usage/Models/Servers no longer mount as standalone
+// top-level views — they render embedded inside AdminPanel's right pane.
+// All these tabs fall through to the admin shell so the sidebar stays mounted.
 
 function StubView({ id, label }: { id: string; label: string }) {
     return <div id={id}>{label}</div>;
@@ -748,17 +746,13 @@ export function Router() {
             return <ReposView />;
         case 'wiki':
             return <WikiView />;
-        case 'memory':
-            return (
-                <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
-                    <MemoryView />
-                </Suspense>
-            );
-        // The admin shell hosts itself plus the five tool views as
-        // embedded right-pane content. All six dashboard tabs render the
-        // exact same React tree; AdminPanel switches on `state.activeTab`
-        // to decide what to mount in `<main>`.
+        // The admin shell hosts itself plus the tool views as embedded
+        // right-pane content. All of these dashboard tabs render the exact
+        // same React tree; AdminPanel switches on `state.activeTab` to
+        // decide what to mount in `<main>`. Memory is included here so the
+        // admin sidebar always remains visible on the left.
         case 'admin':
+        case 'memory':
         case 'skills':
         case 'logs':
         case 'stats':

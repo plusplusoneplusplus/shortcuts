@@ -1262,7 +1262,15 @@ export function AdminPanel() {
                     {isToolEmbedded && activeToolItem ? (
                         <div className="ar-tool-embed" data-testid={`admin-tool-embed-${activeToolItem.tab}`}>
                             <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
-                                {activeToolItem.tab === 'memory' && <MemoryV2Panel initialScopeId="global" initialTab="facts" />}
+                                {activeToolItem.tab === 'memory' && <MemoryV2Panel
+                                    initialScopeId={state.activeMemoryScopeId}
+                                    initialTab={state.activeMemorySubTab}
+                                    onInitialScopeConsumed={() => {
+                                        if (state.activeMemoryScopeId !== null) {
+                                            dispatch({ type: 'SET_MEMORY_SCOPE', scopeId: null });
+                                        }
+                                    }}
+                                />}
                                 {activeToolItem.tab === 'skills' && <SkillsView />}
                                 {activeToolItem.tab === 'logs' && <LogsView />}
                                 {activeToolItem.tab === 'stats' && <UsageStatsView />}
