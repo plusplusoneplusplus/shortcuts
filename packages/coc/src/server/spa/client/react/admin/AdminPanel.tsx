@@ -31,6 +31,7 @@ const StorageSection = lazy(() => import('./StorageSection'));
 const AgentManagementPanel = lazy(() => import('../repos/AgentManagementPanel').then(m => ({ default: m.AgentManagementPanel })));
 const IMSettingsSection = lazy(() => import('./IMSettingsSection').then(m => ({ default: m.IMSettingsSection })));
 const ContainerLinkSection = lazy(() => import('./ContainerLinkSection').then(m => ({ default: m.ContainerLinkSection })));
+const ConnectedAgentsPanel = lazy(() => import('./ConnectedAgentsPanel').then(m => ({ default: m.ConnectedAgentsPanel })));
 
 // Tool views embedded in the admin right panel. Keeping the imports here
 // (not in Router.tsx) means the admin shell owns their layout.
@@ -62,7 +63,7 @@ const TAB_LABELS: Record<AdminSubTab, string> = {
     server: 'Server',
     prompts: 'System Prompts',
     database: 'Database Browser',
-    agents: 'AI Provider',
+    agents: isContainerMode() ? 'Agents' : 'AI Provider',
     messaging: 'Messaging',
 };
 const TAB_ICONS: Record<AdminSubTab, string> = {
@@ -72,7 +73,7 @@ const TAB_ICONS: Record<AdminSubTab, string> = {
     server: '⌗',
     prompts: '✎',
     database: '◫',
-    agents: '◉',
+    agents: isContainerMode() ? '⊞' : '◉',
     messaging: '✉',
 };
 const TAB_DESCRIPTIONS: Record<AdminSubTab, string> = {
@@ -82,7 +83,7 @@ const TAB_DESCRIPTIONS: Record<AdminSubTab, string> = {
     server: 'Inspect the running CoC process, change its display name, or restart it.',
     prompts: 'Read-only view of the system prompts the assistant uses.',
     database: 'Browse the underlying SQLite tables that back CoC.',
-    agents: 'Choose the AI provider used for chat and task requests.',
+    agents: isContainerMode() ? 'View and manage agents connected to this container.' : 'Choose the AI provider used for chat and task requests.',
     messaging: 'Configure container messaging integrations (e.g. WhatsApp).',
 };
 // ── Settings sections promoted into the sidebar. Each entry maps 1:1 to a
@@ -979,6 +980,8 @@ export function AdminPanel() {
     // `serversEnabled` Features form state above.
     const serversNavItems = isServersEnabled() ? [toolNavItem('servers')] : [];
     const containerNavItems = isContainerMode() ? [adminNavItem('messaging')] : [];
+    const containerAgentsNavItem = isContainerMode() ? [adminNavItem('agents')] : [];
+    const nonContainerAgentsNavItem = !isContainerMode() ? [adminNavItem('agents')] : [];
 
     const handleToolNavClick = useCallback((tab: DashboardTab) => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab });
@@ -991,7 +994,7 @@ export function AdminPanel() {
             items: [
                 settingsNavItem('ai'),
                 toolNavItem('models'),
-                adminNavItem('agents'),
+                ...nonContainerAgentsNavItem,
                 settingsNavItem('chat'),
                 settingsNavItem('appearance'),
                 settingsNavItem('features'),
@@ -1005,6 +1008,7 @@ export function AdminPanel() {
                 toolNavItem('skills'),
                 ...serversNavItems,
                 ...containerNavItems,
+                ...containerAgentsNavItem,
             ],
         },
         {
@@ -1882,7 +1886,13 @@ export function AdminPanel() {
                     </section>
                 )}
 
-                        {activeTab === 'agents' && (
+                        {activeTab === 'agents' && isContainerMode() && (
+                            <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
+                                <ConnectedAgentsPanel />
+                            </Suspense>
+                        )}
+
+                        {activeTab === 'agents' && !isContainerMode() && (
                             <>
                                 <SettingsCard
                                     title="Active Provider"
@@ -2029,11 +2039,6 @@ export function AdminPanel() {
                                         )}
                                     </div>
                                 </SettingsCard>
-                                {isContainerMode() && (
-                                    <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
-                                        <AgentManagementPanel />
-                                    </Suspense>
-                                )}
                             </>
                         )}
 
