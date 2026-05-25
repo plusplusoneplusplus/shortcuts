@@ -39,6 +39,7 @@ const LogsView = lazy(() => import('../features/logs/LogsView').then(m => ({ def
 const UsageStatsView = lazy(() => import('../features/stats/UsageStatsView').then(m => ({ default: m.UsageStatsView })));
 const ModelsView = lazy(() => import('../features/models/ModelsView').then(m => ({ default: m.ModelsView })));
 const ServersView = lazy(() => import('../features/servers/ServersView').then(m => ({ default: m.ServersView })));
+const MemoryV2Panel = lazy(() => import('../features/memory/MemoryV2Panel').then(m => ({ default: m.MemoryV2Panel })));
 
 function formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
@@ -133,13 +134,22 @@ interface ToolNavItem {
     icon: string;
     description: string;
 }
-const ALL_TOOL_NAV_ITEMS: ToolNavItem[] = [
+export const ALL_TOOL_NAV_ITEMS: ToolNavItem[] = [
+    { id: 'memory-toggle',  tab: 'memory',  label: 'Memory',  icon: '◈', description: 'View and manage global and workspace memory facts, reviews, and episodes.' },
     { id: 'skills-toggle',  tab: 'skills',  label: 'Skills',  icon: '⚡', description: 'Install, configure, and inspect agent skills surfaced to the assistant.' },
     { id: 'logs-toggle',    tab: 'logs',    label: 'Logs',    icon: '📋', description: 'Live and historical server logs streamed via SSE.' },
     { id: 'stats-toggle',   tab: 'stats',   label: 'Usage & Costs',   icon: '📊', description: 'Aggregated usage statistics for chats, tokens, costs, and processes.' },
     { id: 'models-toggle',  tab: 'models',  label: 'Models',  icon: '⚛', description: 'Available LLM models and their per-repo defaults.' },
     { id: 'servers-toggle', tab: 'servers', label: 'Servers', icon: '🖥', description: 'Browse running CoC server instances and their health.' },
 ];
+export const TOOL_TAB_GROUP_LABELS: Partial<Record<DashboardTab, string>> = {
+    models: 'Configure',
+    memory: 'Knowledge',
+    skills: 'Knowledge',
+    servers: 'Connections',
+    stats: 'Operations',
+    logs: 'Operations',
+};
 const TOOL_NAV_LOOKUP: ReadonlyMap<DashboardTab, ToolNavItem> = new Map(ALL_TOOL_NAV_ITEMS.map(item => [item.tab, item]));
 
 type AdminNavAction =
@@ -168,14 +178,6 @@ const ADMIN_TAB_GROUP_LABELS: Partial<Record<AdminSubTab, string>> = {
     prompts: 'Developer / Internals',
     database: 'Developer / Internals',
     agents: 'Configure',
-};
-
-const TOOL_TAB_GROUP_LABELS: Partial<Record<DashboardTab, string>> = {
-    models: 'Configure',
-    skills: 'Connections',
-    servers: 'Connections',
-    stats: 'Operations',
-    logs: 'Operations',
 };
 
 function settingsNavItem(subTab: SettingsSubTab): AdminNavItem {
@@ -1077,10 +1079,16 @@ export function AdminPanel() {
             ],
         },
         {
+            label: 'Knowledge',
+            items: [
+                toolNavItem('memory'),
+                toolNavItem('skills'),
+            ],
+        },
+        {
             label: 'Connections',
             items: [
                 adminNavItem('providers'),
-                toolNavItem('skills'),
                 ...serversNavItems,
                 ...containerNavItems,
             ],
@@ -1254,6 +1262,7 @@ export function AdminPanel() {
                     {isToolEmbedded && activeToolItem ? (
                         <div className="ar-tool-embed" data-testid={`admin-tool-embed-${activeToolItem.tab}`}>
                             <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
+                                {activeToolItem.tab === 'memory' && <MemoryV2Panel initialScopeId="global" initialTab="facts" />}
                                 {activeToolItem.tab === 'skills' && <SkillsView />}
                                 {activeToolItem.tab === 'logs' && <LogsView />}
                                 {activeToolItem.tab === 'stats' && <UsageStatsView />}

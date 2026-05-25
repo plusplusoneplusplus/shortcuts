@@ -60,7 +60,7 @@ describe('AdminPanel — grouped sidebar navigation', () => {
         await act(async () => { renderAdmin(); });
         await waitFor(() => {
             const labels = Array.from(document.querySelectorAll('.ar-sidebar .ar-nav-group-label')).map(node => node.textContent);
-            expect(labels).toEqual(['Configure', 'Connections', 'Operations', 'Developer / Internals']);
+            expect(labels).toEqual(['Configure', 'Knowledge', 'Connections', 'Operations', 'Developer / Internals']);
         });
     });
 
@@ -68,6 +68,7 @@ describe('AdminPanel — grouped sidebar navigation', () => {
         delete (window as any).__DASHBOARD_CONFIG__;
         await act(async () => { renderAdmin(); });
         await waitFor(() => {
+            expect(document.getElementById('memory-toggle')).toBeTruthy();
             expect(document.getElementById('skills-toggle')).toBeTruthy();
             expect(document.getElementById('logs-toggle')).toBeTruthy();
             expect(document.getElementById('stats-toggle')).toBeTruthy();
@@ -103,7 +104,8 @@ describe('AdminPanel — grouped sidebar navigation', () => {
 
         expect(groups).toEqual([
             { label: 'Configure', ids: ['models-toggle'] },
-            { label: 'Connections', ids: ['skills-toggle', 'servers-toggle'] },
+            { label: 'Knowledge', ids: ['memory-toggle', 'skills-toggle'] },
+            { label: 'Connections', ids: ['servers-toggle'] },
             { label: 'Operations', ids: ['stats-toggle', 'logs-toggle'] },
             { label: 'Developer / Internals', ids: [] },
         ]);
@@ -117,6 +119,7 @@ describe('AdminPanel — grouped sidebar navigation', () => {
         };
         await act(async () => { renderAdmin(); });
         await waitFor(() => expect(document.getElementById('servers-toggle')).toBeTruthy());
+        expect(document.getElementById('memory-toggle')!.getAttribute('data-tab')).toBe('memory');
         expect(document.getElementById('skills-toggle')!.getAttribute('data-tab')).toBe('skills');
         expect(document.getElementById('logs-toggle')!.getAttribute('data-tab')).toBe('logs');
         expect(document.getElementById('stats-toggle')!.getAttribute('data-tab')).toBe('stats');
