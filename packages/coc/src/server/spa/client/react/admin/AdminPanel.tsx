@@ -7,9 +7,10 @@
  */
 
 import './admin-redesign.css';
-import { useState, useEffect, useCallback, lazy, Suspense, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, Suspense, type ReactNode } from 'react';
 import { Spinner, useToast, ToastContainer } from '../ui';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import type { ProviderInstallStatus } from '@plusplusoneplusplus/coc-client';
 import { invalidateDisplaySettings } from '../hooks/preferences/useDisplaySettings';
 import { invalidateHtmlEmbedPreference } from '../hooks/preferences/useHtmlEmbedPreference';
 import { SettingsCard } from './SettingsCard';
@@ -212,6 +213,29 @@ function toolNavItem(tab: DashboardTab): AdminNavItem {
     };
 }
 
+// ── SDK Install Badge ──────────────────────────────────────────────────────
+
+const SDK_INSTALL_BADGE_LABEL: Record<ProviderInstallStatus, string> = {
+    'not-installed': 'Not Installed',
+    'installing': 'Installing…',
+    'installed': 'Installed',
+    'install-failed': 'Install Failed',
+};
+const SDK_INSTALL_BADGE_CLASS: Record<ProviderInstallStatus, string> = {
+    'not-installed': 'ar-badge',
+    'installing': 'ar-badge ar-badge-accent',
+    'installed': 'ar-badge ar-badge-success',
+    'install-failed': 'ar-badge ar-badge-danger',
+};
+
+function SdkInstallBadge({ status }: { status: ProviderInstallStatus }) {
+    return (
+        <span className={SDK_INSTALL_BADGE_CLASS[status]} data-testid={`sdk-install-badge-${status}`}>
+            {SDK_INSTALL_BADGE_LABEL[status]}
+        </span>
+    );
+}
+
 export function AdminPanel() {
     const { toasts, addToast, removeToast } = useToast();
     const { state, dispatch } = useApp();
@@ -308,6 +332,9 @@ export function AdminPanel() {
     const [claudeEnabled, setClaudeEnabled] = useState(false);
     const [activeProvider, setActiveProvider] = useState<'copilot' | 'codex' | 'claude'>('copilot');
     const [providerAvailability, setProviderAvailability] = useState<Record<string, { available: boolean; error?: string }>>({});
+    const [sdkInstallStatuses, setSdkInstallStatuses] = useState<Record<string, ProviderInstallStatus>>({});
+    const [sdkInstallErrors, setSdkInstallErrors] = useState<Record<string, string | undefined>>({});
+    const sdkPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     // Preferences(theme, reposSidebarCollapsed, uiLayoutMode) — for Appearance card
     const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('auto');
@@ -506,6 +533,22 @@ export function AdminPanel() {
         } catch { /* ignore */ }
     }, []);
 
+    /** Refreshes install status for both optional SDK providers from the providers list. */
+    const loadSdkInstallStatuses = useCallback(() => {
+        getSpaCocClient().agentProviders.list()
+            .then(data => {
+                if (!data?.providers) return;
+                const statuses: Record<string, ProviderInstallStatus> = {};
+                for (const p of data.providers) {
+                    if (p.installStatus) {
+                        statuses[p.id] = p.installStatus;
+                    }
+                }
+                setSdkInstallStatuses(statuses);
+            })
+            .catch(() => { /* non-fatal */ });
+    }, []);
+
     useEffect(() => {
         loadStats();
         loadConfig();
@@ -517,7 +560,8 @@ export function AdminPanel() {
             .then(r => r.json())
             .then((data: Record<string, { available: boolean; error?: string }>) => setProviderAvailability(data))
             .catch(() => {});
-    }, [loadStats, loadConfig, loadPreferences]);
+        loadSdkInstallStatuses();
+    }, [loadStats, loadConfig, loadPreferences, loadSdkInstallStatuses]);
 
     // ── Per-card dirty state ──
     const aiExecDirty = configForm.model !== aiExecSnapshot.model ||
@@ -616,6 +660,41 @@ export function AdminPanel() {
         setCodexEnabled(activeProviderSnapshot.codexEnabled);
         setClaudeEnabled(activeProviderSnapshot.claudeEnabled);
     }, [activeProviderSnapshot]);
+
+    // ── SDK install status helpers ──
+
+    /** Starts npm install for the given optional provider (codex|claude). */
+    const handleInstallSdk = useCallback(async (provider: 'codex' | 'claude') => {
+        setSdkInstallStatuses(prev => ({ ...prev, [provider]: 'installing' }));
+        setSdkInstallErrors(prev => ({ ...prev, [provider]: undefined }));
+        try {
+            await getSpaCocClient().agentProviders.installProvider(provider);
+        } catch (err: unknown) {
+            const msg = getSpaCocClientErrorMessage(err, 'Install request failed');
+            setSdkInstallStatuses(prev => ({ ...prev, [provider]: 'install-failed' }));
+            setSdkInstallErrors(prev => ({ ...prev, [provider]: msg }));
+            return;
+        }
+        // Poll until status resolves (installed or install-failed).
+        if (sdkPollRef.current) clearInterval(sdkPollRef.current);
+        sdkPollRef.current = setInterval(async () => {
+            try {
+                const res = await getSpaCocClient().agentProviders.getProviderInstallStatus(provider);
+                setSdkInstallStatuses(prev => ({ ...prev, [provider]: res.status }));
+                if (res.status === 'install-failed') {
+                    setSdkInstallErrors(prev => ({ ...prev, [provider]: res.error }));
+                }
+                if (res.status === 'installed' || res.status === 'install-failed') {
+                    if (sdkPollRef.current) { clearInterval(sdkPollRef.current); sdkPollRef.current = null; }
+                    // Reload providers list so the main UI reflects the change.
+                    loadSdkInstallStatuses();
+                }
+            } catch { /* ignore transient poll errors */ }
+        }, 2000);
+    }, [loadSdkInstallStatuses]);
+
+    // Stop polling when the component unmounts.
+    useEffect(() => () => { if (sdkPollRef.current) clearInterval(sdkPollRef.current); }, []);
 
     const handleRefreshQuota = useCallback(async () => {
         setQuotaLoading(true);
@@ -1880,16 +1959,56 @@ export function AdminPanel() {
                                         name={<>Codex Provider <span className="ar-badge ar-badge-accent">Experimental</span> <span className="ar-badge ar-badge-warning">Restart</span></>}
                                         hint="Enable the optional @openai/codex-sdk provider. Requires a server restart."
                                     >
+                                        {sdkInstallStatuses['codex'] && (
+                                            <SdkInstallBadge status={sdkInstallStatuses['codex']} />
+                                        )}
+                                        {(!sdkInstallStatuses['codex'] || sdkInstallStatuses['codex'] === 'not-installed' || sdkInstallStatuses['codex'] === 'install-failed') && (
+                                            <button
+                                                type="button"
+                                                className="ar-btn ar-btn-secondary"
+                                                style={{ fontSize: 11, padding: '2px 10px' }}
+                                                onClick={() => handleInstallSdk('codex')}
+                                                data-testid="btn-install-codex"
+                                            >
+                                                Install
+                                            </button>
+                                        )}
+                                        {sdkInstallStatuses['codex'] === 'installing' && <Spinner size="sm" />}
                                         <SourceBadge source={sources['codex.enabled']} />
                                         <AdminToggle checked={codexEnabled} onChange={setCodexEnabled} data-testid="toggle-codex-enabled" />
                                     </AdminRow>
+                                    {sdkInstallStatuses['codex'] === 'install-failed' && sdkInstallErrors['codex'] && (
+                                        <div style={{ margin: '4px 0 8px', padding: '6px 10px', borderRadius: 4, background: 'var(--ar-danger-bg)', border: '1px solid var(--ar-danger-border)', color: 'var(--ar-danger)', fontSize: 11 }} data-testid="codex-install-error">
+                                            ✕ {sdkInstallErrors['codex']}
+                                        </div>
+                                    )}
                                     <AdminRow
                                         name={<>Claude Provider <span className="ar-badge ar-badge-accent">Experimental</span> <span className="ar-badge ar-badge-warning">Restart</span></>}
                                         hint="Enable the optional @anthropic-ai/claude-code provider. Requires Claude Code to be installed and authenticated on the server."
                                     >
+                                        {sdkInstallStatuses['claude'] && (
+                                            <SdkInstallBadge status={sdkInstallStatuses['claude']} />
+                                        )}
+                                        {(!sdkInstallStatuses['claude'] || sdkInstallStatuses['claude'] === 'not-installed' || sdkInstallStatuses['claude'] === 'install-failed') && (
+                                            <button
+                                                type="button"
+                                                className="ar-btn ar-btn-secondary"
+                                                style={{ fontSize: 11, padding: '2px 10px' }}
+                                                onClick={() => handleInstallSdk('claude')}
+                                                data-testid="btn-install-claude"
+                                            >
+                                                Install
+                                            </button>
+                                        )}
+                                        {sdkInstallStatuses['claude'] === 'installing' && <Spinner size="sm" />}
                                         <SourceBadge source={sources['claude.enabled']} />
                                         <AdminToggle checked={claudeEnabled} onChange={setClaudeEnabled} data-testid="toggle-claude-enabled" />
                                     </AdminRow>
+                                    {sdkInstallStatuses['claude'] === 'install-failed' && sdkInstallErrors['claude'] && (
+                                        <div style={{ margin: '4px 0 8px', padding: '6px 10px', borderRadius: 4, background: 'var(--ar-danger-bg)', border: '1px solid var(--ar-danger-border)', color: 'var(--ar-danger)', fontSize: 11 }} data-testid="claude-install-error">
+                                            ✕ {sdkInstallErrors['claude']}
+                                        </div>
+                                    )}
                                     <AdminRow
                                         name={<>Active Provider <span className="ar-badge ar-badge-warning">Restart</span></>}
                                         hint="Switch to 'Codex' only after enabling the Codex provider above and completing ChatGPT sign-in. Switch to 'Claude' only after enabling the Claude provider above. Requires a server restart."
