@@ -264,14 +264,14 @@ export const PerRepoPreferencesSchema = z.object({
         .transform(arr => arr
             .map(entry => ScriptTemplateSchema.safeParse(entry))
             .filter(r => r.success)
-            .map(r => (r as z.SafeParseSuccess<z.infer<typeof ScriptTemplateSchema>>).data)
+            .map(r => (r as z.ZodSafeParseSuccess<z.infer<typeof ScriptTemplateSchema>>).data)
         )
         .optional(),
     skillTemplates: z.array(z.unknown())
         .transform(arr => arr
             .map(entry => SkillTemplateSchema.safeParse(entry))
             .filter(r => r.success)
-            .map(r => (r as z.SafeParseSuccess<z.infer<typeof SkillTemplateSchema>>).data)
+            .map(r => (r as z.ZodSafeParseSuccess<z.infer<typeof SkillTemplateSchema>>).data)
         )
         .optional(),
     filesViewMode: z.enum(['flat', 'tree']).optional(),
