@@ -7,13 +7,6 @@ import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 
 const WS_ID = 'ws-tools';
 
-const makeTool = (name: string) => ({
-    name,
-    description: `${name} description`,
-    parameters: {},
-    handler: async () => ({}),
-});
-
 function makeStore(searchEnabled = true) {
     return {
         ...(searchEnabled ? { searchConversations: vi.fn() } : {}),
@@ -47,12 +40,6 @@ describe('buildChatToolBundle', () => {
                     computeTurnIndex: () => 1,
                 },
             },
-            boundedMemory: {
-                systemMessageSuffix: undefined,
-                tools: [makeTool('memory') as any],
-                suffix: ' memory suffix',
-                dispose: () => {},
-            },
         });
 
         expect(result.tools.map(t => t.name).sort()).toEqual([
@@ -61,7 +48,6 @@ describe('buildChatToolBundle', () => {
             'create_or_update_excalidraw',
             'create_work_item',
             'get_conversation',
-            'memory',
             'read_excalidraw',
             'search_conversations',
             'suggest_follow_ups',
@@ -102,71 +88,6 @@ describe('buildChatToolBundle', () => {
         expect(result.tools.map(t => t.name)).not.toContain('suggest_follow_ups');
         expect(result.tools.map(t => t.name)).toContain('tavily_web_search');
         expect(result.toolGuidance).not.toContain('2 suggestions');
-    });
-
-    it('adds memory read tools only when bounded memory read tools are enabled', () => {
-        writeRepoPreferences(tmpDir, WS_ID, {
-            disabledLlmTools: [],
-            boundedMemory: {
-                enabled: true,
-                readTools: { enabled: true },
-            },
-        });
-
-        const result = buildChatToolBundle({
-            dataDir: tmpDir,
-            store: makeStore(false),
-            workspaceId: WS_ID,
-            followUpSuggestions: { enabled: false, count: 0 },
-        });
-
-        expect(result.tools.map(t => t.name)).toContain('memory_search');
-        expect(result.tools.map(t => t.name)).toContain('memory_get');
-        expect(result.toolGuidance).toContain('memory_search');
-        expect(result.toolGuidance).toContain('memory_get');
-        expect(result.toolGuidance).toContain('context only');
-    });
-
-    it('omits memory read tools when readTools is disabled', () => {
-        writeRepoPreferences(tmpDir, WS_ID, {
-            disabledLlmTools: [],
-            boundedMemory: {
-                enabled: true,
-                readTools: { enabled: false },
-            },
-        });
-
-        const result = buildChatToolBundle({
-            dataDir: tmpDir,
-            store: makeStore(false),
-            workspaceId: WS_ID,
-            followUpSuggestions: { enabled: false, count: 0 },
-        });
-
-        expect(result.tools.map(t => t.name)).not.toContain('memory_search');
-        expect(result.tools.map(t => t.name)).not.toContain('memory_get');
-        expect(result.toolGuidance).not.toContain('memory_search');
-    });
-
-    it('filters memory read tools through LLM tool preferences', () => {
-        writeRepoPreferences(tmpDir, WS_ID, {
-            disabledLlmTools: ['memory_search', 'memory_get'],
-            boundedMemory: {
-                enabled: true,
-                readTools: { enabled: true },
-            },
-        });
-
-        const result = buildChatToolBundle({
-            dataDir: tmpDir,
-            store: makeStore(false),
-            workspaceId: WS_ID,
-            followUpSuggestions: { enabled: false, count: 0 },
-        });
-
-        expect(result.tools.map(t => t.name)).not.toContain('memory_search');
-        expect(result.tools.map(t => t.name)).not.toContain('memory_get');
-        expect(result.toolGuidance).not.toContain('memory_search');
     });
 
     it('includes loop tools when loopTools deps are provided', () => {

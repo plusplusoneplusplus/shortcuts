@@ -25,7 +25,6 @@ import type { ChatModeAIOptions, ChatModeExecutorOptions, ChatModeExecutionResul
 import { ChatBaseExecutor } from './chat-base-executor';
 import {
     buildFollowUpSuggestionsAddon,
-    buildMemoryReadToolsAddon,
     buildSearchConversationsAddon,
     buildTavilyWebSearchAddon,
     applyLlmToolPreferences,
@@ -293,24 +292,20 @@ export class NoteCreateExecutor extends ChatBaseExecutor {
         const payload = task.payload as unknown as ChatPayload;
         const wsId = payload.workspaceId;
 
-        const boundedMemory = await this.buildMemoryAddon(wsId, this.buildCaptureContext(task), prompt);
-
         const followUp = buildFollowUpSuggestionsAddon(false, 0);
         const searchConversations = buildSearchConversationsAddon(this.store, wsId, toQueueProcessId(task.id));
         const tavilySearch = buildTavilyWebSearchAddon(this.dataDir);
-        const memoryReadTools = buildMemoryReadToolsAddon(this.dataDir, wsId);
 
         const disabledLlmTools = this.dataDir && wsId
             ? readEffectiveDisabledLlmTools(this.dataDir, wsId)
             : undefined;
 
         const { tools, toolGuidance } = applyLlmToolPreferences(
-            [followUp, searchConversations, tavilySearch, memoryReadTools, boundedMemory],
+            [followUp, searchConversations, tavilySearch],
             disabledLlmTools,
         );
 
         const systemMessage = await systemMessageBuilder()
-            .appendMemory(boundedMemory)
             .appendToolGuidance(toolGuidance)
             .build();
 
@@ -319,7 +314,7 @@ export class NoteCreateExecutor extends ChatBaseExecutor {
             systemMessage,
             tools,
             effectivePrompt: prompt,
-            dispose: boundedMemory.dispose,
+            dispose: undefined,
         };
     }
 

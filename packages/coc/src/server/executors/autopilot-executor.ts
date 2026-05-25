@@ -48,7 +48,6 @@ export class AutopilotExecutor extends ChatBaseExecutor {
     ): Promise<ChatModeAIOptions> {
         const payload = task.payload as unknown as ChatPayload;
 
-        const boundedMemory = await this.buildMemoryAddon(payload.workspaceId, this.buildCaptureContext(task), prompt);
         const processId = toQueueProcessId(task.id);
         const loopDeps = this.buildLoopToolDeps(processId);
         const { tools, toolGuidance } = buildChatToolBundle({
@@ -60,13 +59,11 @@ export class AutopilotExecutor extends ChatBaseExecutor {
             broadcastWorkItem: this.getWsServerFn
                 ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
                 : undefined,
-            boundedMemory,
             scheduleWakeup: loopDeps.scheduleWakeup,
             loopTools: loopDeps.loopTools,
         });
 
         const systemMessage = await systemMessageBuilder()
-            .appendMemory(boundedMemory)
             .appendToolGuidance(toolGuidance)
             .build();
 
@@ -75,7 +72,7 @@ export class AutopilotExecutor extends ChatBaseExecutor {
             systemMessage,
             tools,
             effectivePrompt: prompt,
-            dispose: boundedMemory.dispose,
+            dispose: undefined,
         };
     }
 }

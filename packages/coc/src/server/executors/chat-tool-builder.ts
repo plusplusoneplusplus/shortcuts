@@ -4,7 +4,6 @@ import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { WakeupToolDeps, LoopToolDeps } from '../llm-tools/loop-tools';
 import { DEFAULT_DISABLED_LLM_TOOLS } from '../llm-tools/llm-tool-registry';
 import { readEffectiveDisabledLlmTools } from '../preferences-handler';
-import type { BoundedMemoryAddon } from './bounded-memory-addon';
 import type { MemoryV2Addon } from './memory-v2-addon';
 import {
     applyLlmToolPreferences,
@@ -13,7 +12,6 @@ import {
     buildExcalidrawToolsAddon,
     buildFollowUpSuggestionsAddon,
     buildLoopToolsAddon,
-    buildMemoryReadToolsAddon,
     buildScheduleWakeupAddon,
     buildSearchConversationsAddon,
     buildTavilyWebSearchAddon,
@@ -33,7 +31,6 @@ export interface ChatToolBundleOptions {
         deps: AskUserToolDeps;
     };
     broadcastWorkItem?: BroadcastWorkItemFn;
-    boundedMemory?: BoundedMemoryAddon;
     /** Memory V2 addon (redesigned coc-memory system). */
     memoryV2?: MemoryV2Addon;
     scheduleWakeup?: WakeupToolDeps;
@@ -42,7 +39,6 @@ export interface ChatToolBundleOptions {
     includeSearchConversations?: boolean;
     includeWorkItemTools?: boolean;
     includeTavilyWebSearch?: boolean;
-    includeMemoryReadTools?: boolean;
     includeScheduleWakeup?: boolean;
     includeExcalidrawTools?: boolean;
     excludeTools?: string[];
@@ -96,10 +92,6 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
         addons.push(buildTavilyWebSearchAddon(options.dataDir));
     }
 
-    if (options.includeMemoryReadTools !== false) {
-        addons.push(buildMemoryReadToolsAddon(options.dataDir, options.workspaceId));
-    }
-
     if (options.includeScheduleWakeup !== false) {
         addons.push(buildScheduleWakeupAddon(options.scheduleWakeup));
     }
@@ -110,10 +102,6 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
 
     if (options.includeExcalidrawTools !== false) {
         addons.push(buildExcalidrawToolsAddon(options.dataDir, options.workspaceId));
-    }
-
-    if (options.boundedMemory) {
-        addons.push(options.boundedMemory);
     }
 
     if (options.memoryV2) {

@@ -7,7 +7,6 @@
  *   const systemMessage = await systemMessageBuilder()
  *       .append(buildModeSystemMessage('ask')?.content)
  *       .withRepoInstructions(workingDirectory, 'ask')
- *       .appendMemory(boundedMemory)
  *       .appendAutoFolder(autoFolderContext)
  *       .build();
  *
@@ -23,7 +22,6 @@ import {
     loadInstructions,
     toForwardSlashes,
 } from '@plusplusoneplusplus/forge';
-import type { BoundedMemoryAddon } from './bounded-memory-addon';
 import type { MemoryV2Addon } from './memory-v2-addon';
 import type { ChatMode } from '../tasks/task-types';
 import { resolveInstructionMode } from '../tasks/task-types';
@@ -58,14 +56,6 @@ class SystemMessageBuilder {
     append(block: string | undefined): this {
         if (block) {
             this.steps.push({ kind: 'eager', block });
-        }
-        return this;
-    }
-
-    /** Append the bounded memory snapshot from an addon. No-op when the addon has no suffix. */
-    appendMemory(addon: BoundedMemoryAddon | undefined): this {
-        if (addon?.systemMessageSuffix) {
-            this.steps.push({ kind: 'eager', block: addon.systemMessageSuffix });
         }
         return this;
     }

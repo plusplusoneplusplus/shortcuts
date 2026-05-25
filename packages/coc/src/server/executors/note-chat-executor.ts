@@ -23,7 +23,6 @@ import type { ChatModeAIOptions, ChatModeExecutorOptions, ChatModeExecutionResul
 import { ChatBaseExecutor } from './chat-base-executor';
 import {
     buildFollowUpSuggestionsAddon,
-    buildMemoryReadToolsAddon,
     buildSearchConversationsAddon,
     buildTavilyWebSearchAddon,
     applyLlmToolPreferences,
@@ -121,8 +120,6 @@ export class NoteChatExecutor extends ChatBaseExecutor {
             );
         }
 
-        const boundedMemory = await this.buildMemoryAddon(wsId, this.buildCaptureContext(task), prompt);
-
         // Standard chat tools
         const followUp = buildFollowUpSuggestionsAddon(
             this.followUpSuggestions.enabled,
@@ -130,19 +127,17 @@ export class NoteChatExecutor extends ChatBaseExecutor {
         );
         const searchConversations = buildSearchConversationsAddon(this.store, wsId, toQueueProcessId(task.id));
         const tavilySearch = buildTavilyWebSearchAddon(this.dataDir);
-        const memoryReadTools = buildMemoryReadToolsAddon(this.dataDir, wsId);
 
         const disabledLlmTools = this.dataDir && wsId
             ? readEffectiveDisabledLlmTools(this.dataDir, wsId)
             : undefined;
 
         const { tools, toolGuidance } = applyLlmToolPreferences(
-            [followUp, searchConversations, tavilySearch, memoryReadTools, boundedMemory],
+            [followUp, searchConversations, tavilySearch],
             disabledLlmTools,
         );
 
         const systemMessage = await systemMessageBuilder()
-            .appendMemory(boundedMemory)
             .appendToolGuidance(toolGuidance)
             .appendAutoFolder(autoFolderContext)
             .build();
@@ -158,7 +153,7 @@ export class NoteChatExecutor extends ChatBaseExecutor {
             systemMessage,
             tools,
             effectivePrompt: prompt,
-            dispose: boundedMemory.dispose,
+            dispose: undefined,
         };
     }
 

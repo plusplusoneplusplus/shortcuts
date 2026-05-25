@@ -21,7 +21,6 @@ import type {
     AgentMode,
     Attachment,
     AutoFolderContext,
-    MemoryToolCaptureContext,
     ModelInfo,
     ISDKService,
     ProcessStore,
@@ -53,11 +52,9 @@ import { resolveDefaultModel } from '../preferences-handler';
 import { loadConfigFile } from '../../config';
 import {
     assertNoAskUserConflict,
-    buildBoundedMemoryAddon,
     buildModeSystemMessage,
     prependSelectedSkillsDirective,
 } from './prompt-builder';
-import type { BoundedMemoryAddon } from './bounded-memory-addon';
 import { buildMemoryV2Addon } from './memory-v2-addon';
 import type { MemoryV2Addon } from './memory-v2-addon';
 import { resolveAutoFolderContext } from './auto-folder-utils';
@@ -286,30 +283,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         workingDirectory: string | undefined,
     ): Promise<ChatModeAIOptions>;
 
-    // ========================================================================
-    // Shared helper — capture context for bounded memory addon
-    // ========================================================================
-
-    /**
-     * Build a MemoryToolCaptureContext from a queued task.
-     * Used by all chat-mode executors to activate capture mode.
-     */
-    protected buildCaptureContext(task: QueuedTask): MemoryToolCaptureContext {
-        return {
-            processId: toQueueProcessId(task.id),
-            turnIndex: 0,
-        };
-    }
-
-    /** Build bounded-memory wiring for a workspace. */
-    protected buildMemoryAddon(
-        workspaceId: string | undefined,
-        captureContext?: MemoryToolCaptureContext,
-        recallQuery?: string,
-    ): Promise<BoundedMemoryAddon> {
-        return buildBoundedMemoryAddon(this.dataDir, workspaceId, captureContext, recallQuery);
-    }
-
     /** Build Memory V2 addon (redesigned coc-memory system). */
     protected buildMemoryV2Addon(
         workspaceId: string | undefined,
@@ -357,7 +330,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             ? await this.buildAutoFolderContext(workingDirectory, payload.workspaceId, mode)
             : undefined;
 
-        const boundedMemory = await this.buildMemoryAddon(payload.workspaceId, this.buildCaptureContext(task), prompt);
         const processId = toQueueProcessId(task.id);
         const memoryV2 = await this.buildMemoryV2Addon(payload.workspaceId, prompt, processId);
         const notePath = payload.context?.noteChat?.notePath;
@@ -371,7 +343,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             processId,
             followUpSuggestions: this.followUpSuggestions,
             broadcastWorkItem,
-            boundedMemory,
             memoryV2,
             scheduleWakeup: loopDeps.scheduleWakeup,
             loopTools: loopDeps.loopTools,
@@ -403,7 +374,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         const systemMessage = await systemMessageBuilder()
             .append(buildModeSystemMessage(mode)?.content)
             .withRepoInstructions(workingDirectory, mode)
-            .appendMemory(boundedMemory)
             .appendMemoryV2(memoryV2)
             .appendToolGuidance(toolBundle.toolGuidance)
             .appendAutoFolder(autoFolderContext)
@@ -426,7 +396,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             tools: toolBundle.tools,
             effectivePrompt: prompt,
             dispose: () => {
-                boundedMemory.dispose();
                 memoryV2.dispose();
             },
         };

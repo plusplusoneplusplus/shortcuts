@@ -136,7 +136,6 @@ export class RalphExecutor extends ChatBaseExecutor {
             maxIterations: ralphCtx?.maxIterations,
         }, resolvedBaseInstructions);
 
-        const boundedMemory = await this.buildMemoryAddon(payload.workspaceId, this.buildCaptureContext(task), prompt);
         const processId = toQueueProcessId(task.id);
         const memoryV2 = await this.buildMemoryV2Addon(payload.workspaceId, prompt, processId);
 
@@ -150,7 +149,6 @@ export class RalphExecutor extends ChatBaseExecutor {
             broadcastWorkItem: this.getWsServerFn
                 ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
                 : undefined,
-            boundedMemory,
             memoryV2,
             scheduleWakeup: loopDeps.scheduleWakeup,
             loopTools: loopDeps.loopTools,
@@ -159,7 +157,6 @@ export class RalphExecutor extends ChatBaseExecutor {
         const systemMessage = await systemMessageBuilder()
             .append(ralphSystemPrompt)
             .withRepoInstructions(workingDirectory, 'ralph')
-            .appendMemory(boundedMemory)
             .appendMemoryV2(memoryV2)
             .appendToolGuidance(toolGuidance)
             .build();
@@ -170,7 +167,6 @@ export class RalphExecutor extends ChatBaseExecutor {
             tools,
             effectivePrompt: prompt,
             dispose: () => {
-                boundedMemory.dispose();
                 memoryV2.dispose();
             },
         };

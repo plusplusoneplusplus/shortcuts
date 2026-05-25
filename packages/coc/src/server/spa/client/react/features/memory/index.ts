@@ -1,9 +1,5 @@
-export { RepoMemorySection } from './RepoMemorySection';
-export { BoundedMemoryTab } from './BoundedMemoryTab';
-export { RawMemoryViewer } from './RawMemoryViewer';
 export { memoryApi } from './memoryApi';
 export type { MemoryStats, FeedItem, RawDbTableInfo, RawDbColumnInfo, RawDbTableData } from './memoryApi';
-export { PromotePanel } from './PromotePanel';
 export { ConsolidatedPanel } from './ConsolidatedPanel';
 export { AddNoteForm } from './AddNoteForm';
 export { FeedControls } from './FeedControls';
@@ -12,7 +8,6 @@ export { FeedItem as FeedItemComponent } from './FeedItem';
 export { MemoryHeader } from './MemoryHeader';
 export { PipelineStatusStrip } from './PipelineStatusStrip';
 export { MemoryView } from './MemoryView';
-export { BoundedMemoryPanel } from './BoundedMemoryPanel';
 export { MemoryConfigPanel } from './MemoryConfigPanel';
 export { ExploreCachePanel } from './ExploreCachePanel';
 export { ExploreCacheBrowserPanel } from './ExploreCacheBrowserPanel';

@@ -6,7 +6,6 @@ import {
   EventsClient,
   GitClient,
   HealthClient,
-  MemoryClient,
   ModelsClient,
   NotesClient,
   PreferencesClient,
@@ -102,7 +101,6 @@ describe('CocClient integration wiring', () => {
 
     expect(client.health).toBeInstanceOf(HealthClient);
     expect(client.git).toBeInstanceOf(GitClient);
-    expect(client.memory).toBeInstanceOf(MemoryClient);
     expect(client.models).toBeInstanceOf(ModelsClient);
     expect(client.notes).toBeInstanceOf(NotesClient);
     expect(client.preferences).toBeInstanceOf(PreferencesClient);
@@ -126,7 +124,6 @@ describe('CocClient integration wiring', () => {
     const httpDomains = [
       client.health,
       client.git,
-      client.memory,
       client.models,
       client.notes,
       client.preferences,
@@ -146,7 +143,6 @@ describe('CocClient integration wiring', () => {
 
     await client.health.get();
     await client.git.getBranchRange('repo-a');
-    await client.memory.getConfig();
     await client.models.list();
     await client.notes.getTree('repo-a');
     await client.preferences.getGlobal();
@@ -161,7 +157,6 @@ describe('CocClient integration wiring', () => {
     expect(requestSpy.mock.calls.map(call => call[0])).toEqual([
       '/health',
       '/workspaces/repo-a/git/branch-range',
-      '/memory/config',
       '/models',
       '/workspaces/repo-a/notes/tree',
       '/preferences',
@@ -379,7 +374,6 @@ function typeCheckPublicSurface(): string {
       CocClient,
       GitClient,
       HealthClient,
-      MemoryClient,
       ModelsClient,
       PreferencesClient,
       ProcessesClient,
@@ -429,7 +423,6 @@ function typeCheckPublicSurface(): string {
       CocClient,
       GitClient,
       HealthClient,
-      MemoryClient,
       ModelsClient,
       PreferencesClient,
       ProcessesClient,
