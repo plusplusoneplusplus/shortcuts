@@ -21,6 +21,7 @@ import type { RuntimeConfigService } from '../../config/runtime-config-service';
 import type { CodexAuthInfo } from '../codex-auth/codex-auth-store';
 import type { AgentProviderStatus, AgentProvidersResponse, AgentProvidersQuotaResponse, ProviderQuotaType } from '@plusplusoneplusplus/coc-client';
 import type { CopilotSDKService, IAvailabilityResult, CodexSDKService } from '@plusplusoneplusplus/forge';
+import { getInstallState } from '../providers/provider-install-routes';
 
 export interface AgentProvidersRouteContext {
     runtimeConfigService: RuntimeConfigService;
@@ -50,6 +51,10 @@ export async function buildAgentProvidersResponse(ctx: AgentProvidersRouteContex
         locked: true,
     };
 
+    // Resolve SDK install status for optional providers.
+    const codexInstallState = getInstallState('codex');
+    const claudeInstallState = getInstallState('claude');
+
     let codexProvider: AgentProviderStatus;
     if (!codexEnabled) {
         codexProvider = {
@@ -57,6 +62,7 @@ export async function buildAgentProvidersResponse(ctx: AgentProvidersRouteContex
             label: 'Codex',
             enabled: false,
             available: false,
+            installStatus: codexInstallState.status,
         };
     } else {
         const authInfo: CodexAuthInfo = ctx.getCodexAuthInfo();
@@ -67,6 +73,7 @@ export async function buildAgentProvidersResponse(ctx: AgentProvidersRouteContex
                 label: 'Codex',
                 enabled: true,
                 available: true,
+                installStatus: codexInstallState.status,
             };
         } else {
             const reason = authInfo.status === 'expired'
@@ -79,6 +86,7 @@ export async function buildAgentProvidersResponse(ctx: AgentProvidersRouteContex
                 available: false,
                 reason,
                 authUrl: `${ctx.serverBaseUrl}/api/codex-auth/start`,
+                installStatus: codexInstallState.status,
             };
         }
     }
@@ -90,6 +98,7 @@ export async function buildAgentProvidersResponse(ctx: AgentProvidersRouteContex
             label: 'Claude',
             enabled: false,
             available: false,
+            installStatus: claudeInstallState.status,
         };
     } else {
         const availability = await ctx.getClaudeAvailability();
@@ -99,6 +108,7 @@ export async function buildAgentProvidersResponse(ctx: AgentProvidersRouteContex
                 label: 'Claude',
                 enabled: true,
                 available: true,
+                installStatus: claudeInstallState.status,
             };
         } else {
             claudeProvider = {
@@ -107,6 +117,7 @@ export async function buildAgentProvidersResponse(ctx: AgentProvidersRouteContex
                 enabled: true,
                 available: false,
                 reason: availability.error ?? 'Claude Code SDK is not available.',
+                installStatus: claudeInstallState.status,
             };
         }
     }

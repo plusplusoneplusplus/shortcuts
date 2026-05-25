@@ -90,6 +90,7 @@ import { registerCodexAuthRoutes } from '../codex-auth';
 import type { CodexAuthManager } from '../codex-auth';
 import type { CodexAuthStore } from '../codex-auth';
 import { registerAgentProvidersRoutes } from '../agent-providers/agent-providers-routes';
+import { registerProviderInstallRoutes } from '../providers/provider-install-routes';
 import { registerDiagramRoutes } from '../diagrams/diagrams-handler';
 import { registerRuntimeConfigRoutes } from '../config/runtime-config-handler';
 import { registerSyncRoutes } from '../sync/sync-handler';
@@ -192,6 +193,18 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         connector: opts.remoteServerConnector ?? new DevTunnelConnector(),
     });
     registerProviderRoutes(routes, dataDir);
+    // Provider SDK install routes (on-demand install of @openai/codex-sdk and @anthropic-ai/claude-code).
+    // cocInstallDir is the package root so npm installs land in the same node_modules as coc.
+    registerProviderInstallRoutes(routes, {
+        // __dirname at runtime = dist/server/routes/; package root is 3 levels up.
+        cocInstallDir: path.join(__dirname, '../../..'),
+        getCodexAuthInfo: opts.codexAuthStore
+            ? () => {
+                const info = opts.codexAuthStore!.readInfo();
+                return { authenticated: info.status === 'authenticated' };
+            }
+            : undefined,
+    });
     registerProcessResumeRoutes(routes, store);
     registerFreshChatTerminalRoutes(routes, undefined, {
         getProvider: () => {
