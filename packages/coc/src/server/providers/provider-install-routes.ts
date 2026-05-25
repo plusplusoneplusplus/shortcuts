@@ -122,7 +122,7 @@ function runInstall(
     const isWindows = process.platform === 'win32';
     const npmCmd = isWindows ? 'npm.cmd' : 'npm';
 
-    const child = childProcess.spawn(npmCmd, ['install', pkg], {
+    const child = childProcess.spawn(npmCmd, ['install', pkg, '--legacy-peer-deps'], {
         cwd: installDir,
         stdio: ['ignore', 'pipe', 'pipe'],
         shell: false,
