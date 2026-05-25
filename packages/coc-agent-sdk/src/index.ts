@@ -87,8 +87,10 @@ export {
     sdkServiceRegistry,
     COPILOT_PROVIDER,
     CODEX_PROVIDER,
+    CLAUDE_PROVIDER,
     SDK_PROVIDER_COPILOT,
     SDK_PROVIDER_CODEX,
+    SDK_PROVIDER_CLAUDE,
 } from './sdk-service-registry';
 
 export {
@@ -100,6 +102,11 @@ export type {
     CodexAuthCheckResult,
     CodexAuthChecker,
 } from './codex-sdk-service';
+
+export {
+    ClaudeSDKService,
+    registerClaudeSDKService,
+} from './claude-sdk-service';
 
 export {
     SessionManager,

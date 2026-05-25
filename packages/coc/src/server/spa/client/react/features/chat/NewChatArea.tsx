@@ -128,12 +128,12 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         getSpaCocClient().preferences.getRepo(workspaceId)
             .then((prefs: any) => {
                 const last = prefs?.lastChatProvider;
-                if (last === 'codex' || last === 'copilot') {
-                    // Validate against live provider state: only accept codex if enabled+available
-                    if (last === 'codex') {
-                        const codexStatus = agentProviders.find(p => p.id === 'codex');
-                        if (codexStatus?.enabled && codexStatus?.available) {
-                            setSelectedProvider('codex');
+                if (last === 'codex' || last === 'claude' || last === 'copilot') {
+                    // Validate against live provider state: only accept non-copilot if enabled+available
+                    if (last === 'codex' || last === 'claude') {
+                        const providerStatus = agentProviders.find(p => p.id === last);
+                        if (providerStatus?.enabled && providerStatus?.available) {
+                            setSelectedProvider(last);
                             return;
                         }
                     }
@@ -147,11 +147,11 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             .catch(() => { setSelectedProvider('copilot'); });
     }, [workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // When agentProviders load and codex becomes unavailable, fall back to copilot
+    // When agentProviders load and selected provider becomes unavailable, fall back to copilot
     useEffect(() => {
-        if (selectedProvider !== 'codex') return;
-        const codexStatus = agentProviders.find(p => p.id === 'codex');
-        if (codexStatus && (!codexStatus.enabled || !codexStatus.available)) {
+        if (selectedProvider === 'copilot') return;
+        const providerStatus = agentProviders.find(p => p.id === selectedProvider);
+        if (providerStatus && (!providerStatus.enabled || !providerStatus.available)) {
             setSelectedProvider('copilot');
         }
     }, [agentProviders, selectedProvider]);

@@ -142,7 +142,7 @@ export interface ChatModeExecutorOptions {
     /** Late-bound MCP OAuth manager (getter to allow optional/feature-flagged wiring). */
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     /** Active AI provider. Used to detect provider mismatches on follow-up resume. */
-    provider?: 'copilot' | 'codex';
+    provider?: 'copilot' | 'codex' | 'claude';
     /**
      * Resolve an ISDKService for a given provider name, checking enablement and
      * availability. Throws with a user-facing message if the provider is disabled
@@ -190,7 +190,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly getLoopInfra?: () => LoopInfraDeps | undefined;
     protected readonly getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     /** Active AI provider — used to guard against provider mismatches on follow-up resume. */
-    protected readonly provider: 'copilot' | 'codex';
+    protected readonly provider: 'copilot' | 'codex' | 'claude';
     /** Resolves per-task SDK service by provider, checking enablement. Optional — falls back to sdkServiceRegistry. */
     protected readonly resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
 
@@ -505,7 +505,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
 
             const availability = await effectiveAiService.isAvailable();
             if (!availability.available) {
-                const label = taskProvider === 'codex' ? 'Codex' : 'Copilot';
+                const label = taskProvider === 'codex' ? 'Codex' : taskProvider === 'claude' ? 'Claude' : 'Copilot';
                 throw new Error(`${label} SDK not available: ${availability.error || 'unknown reason'}`);
             }
 

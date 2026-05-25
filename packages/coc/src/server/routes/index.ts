@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { Route } from '../types';
 import type { ProcessStore, TaskQueueManager, ISDKService, AIInvoker } from '@plusplusoneplusplus/forge';
-import { modelMetadataStore, sdkServiceRegistry, CopilotSDKService } from '@plusplusoneplusplus/forge';
+import { modelMetadataStore, sdkServiceRegistry, CopilotSDKService, SDK_PROVIDER_CLAUDE } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import type { SqliteQueuePersistence } from '../queue/sqlite-queue-persistence';
@@ -197,7 +197,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         getProvider: () => {
             const activeProvider = opts.runtimeConfigService?.config.activeProvider
                 ?? opts.resolvedConfig?.activeProvider;
-            return activeProvider === 'codex' ? 'codex' : 'copilot';
+            if (activeProvider === 'codex') return 'codex';
+            if (activeProvider === 'claude') return 'claude';
+            return 'copilot';
         },
     });
     registerTerminalRoutes(routes, store, opts.getTerminalSessionManager ?? (() => undefined), opts.resolvedConfig, opts.runtimeConfigService);
@@ -324,6 +326,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             getCodexAuthInfo: () => opts.codexAuthStore
                 ? opts.codexAuthStore.readInfo()
                 : { status: 'unauthenticated' },
+            getClaudeAvailability: async () => {
+                const svc = sdkServiceRegistry.get(SDK_PROVIDER_CLAUDE);
+                if (!svc) return { available: false, error: 'Claude SDK service not registered. Restart the server to enable Claude.' };
+                return svc.isAvailable();
+            },
             serverBaseUrl: `http://localhost:${opts.serverPort ?? 4000}`,
             getCopilotSdkService: () => CopilotSDKService.getInstance(),
         });

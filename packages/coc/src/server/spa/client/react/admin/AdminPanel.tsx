@@ -305,7 +305,8 @@ export function AdminPanel() {
     const [mcpOauthEnabled, setMcpOauthEnabled] = useState(false);
     const [focusedDiffEnabled, setFocusedDiffEnabled] = useState(false);
     const [codexEnabled, setCodexEnabled] = useState(false);
-    const [activeProvider, setActiveProvider] = useState<'copilot' | 'codex'>('copilot');
+    const [claudeEnabled, setClaudeEnabled] = useState(false);
+    const [activeProvider, setActiveProvider] = useState<'copilot' | 'codex' | 'claude'>('copilot');
     const [providerAvailability, setProviderAvailability] = useState<Record<string, { available: boolean; error?: string }>>({});
 
     // Preferences(theme, reposSidebarCollapsed, uiLayoutMode) — for Appearance card
@@ -333,7 +334,7 @@ export function AdminPanel() {
 
     // Snapshots for per-card dirty tracking (set when config/prefs loads)
     const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
-    const [activeProviderSnapshot, setActiveProviderSnapshot] = useState<{ provider: 'copilot' | 'codex'; codexEnabled: boolean }>({ provider: 'copilot', codexEnabled: false });
+    const [activeProviderSnapshot, setActiveProviderSnapshot] = useState<{ provider: 'copilot' | 'codex' | 'claude'; codexEnabled: boolean; claudeEnabled: boolean }>({ provider: 'copilot', codexEnabled: false, claudeEnabled: false });
     const [chatSnapshot, setChatSnapshot] = useState({ followUpEnabled: true, followUpCount: '3', askUserEnabled: false, showReportIntent: false, toolCompactness: 3 as 0 | 1 | 2 | 3 });
     const [appearanceSnapshot, setAppearanceSnapshot] = useState({
         theme: 'auto' as string,
@@ -458,11 +459,13 @@ export function AdminPanel() {
             setFocusedDiffEnabled(fde);
             const cxe = resolved.codex?.enabled ?? false;
             setCodexEnabled(cxe);
-            const ap = (resolved.activeProvider === 'codex' ? 'codex' : 'copilot') as 'copilot' | 'codex';
+            const cle = resolved.claude?.enabled ?? false;
+            setClaudeEnabled(cle);
+            const ap = (resolved.activeProvider === 'codex' ? 'codex' : resolved.activeProvider === 'claude' ? 'claude' : 'copilot') as 'copilot' | 'codex' | 'claude';
             setActiveProvider(ap);
             setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde });
             setAiExecSnapshot({ model: form.model, parallel: form.parallel, timeout: form.timeout, output: form.output });
-            setActiveProviderSnapshot({ provider: ap, codexEnabled: cxe });
+            setActiveProviderSnapshot({ provider: ap, codexEnabled: cxe, claudeEnabled: cle });
             const sgr = resolved.sync?.gitRemote ?? '';
             const sim = String(resolved.sync?.intervalMinutes ?? 5);
             setSyncGitRemote(sgr);
@@ -522,7 +525,7 @@ export function AdminPanel() {
         configForm.timeout !== aiExecSnapshot.timeout ||
         configForm.output !== aiExecSnapshot.output;
 
-    const activeProviderDirty = activeProvider !== activeProviderSnapshot.provider || codexEnabled !== activeProviderSnapshot.codexEnabled;
+    const activeProviderDirty = activeProvider !== activeProviderSnapshot.provider || codexEnabled !== activeProviderSnapshot.codexEnabled || claudeEnabled !== activeProviderSnapshot.claudeEnabled;
 
     const chatDirty = chatFollowUpEnabled !== chatSnapshot.followUpEnabled ||
         chatFollowUpCount !== chatSnapshot.followUpCount ||
@@ -598,19 +601,20 @@ export function AdminPanel() {
     const handleSaveActiveProvider = useCallback(async () => {
         setActiveProviderSaving(true);
         try {
-            await getSpaCocClient().admin.updateConfig({ activeProvider, 'codex.enabled': codexEnabled });
+            await getSpaCocClient().admin.updateConfig({ activeProvider, 'codex.enabled': codexEnabled, 'claude.enabled': claudeEnabled });
             addToast('Provider settings saved — restart required to apply changes', 'success');
-            setActiveProviderSnapshot({ provider: activeProvider, codexEnabled });
+            setActiveProviderSnapshot({ provider: activeProvider, codexEnabled, claudeEnabled });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setActiveProviderSaving(false);
         }
-    }, [activeProvider, codexEnabled, addToast]);
+    }, [activeProvider, codexEnabled, claudeEnabled, addToast]);
 
     const handleCancelActiveProvider = useCallback(() => {
         setActiveProvider(activeProviderSnapshot.provider);
         setCodexEnabled(activeProviderSnapshot.codexEnabled);
+        setClaudeEnabled(activeProviderSnapshot.claudeEnabled);
     }, [activeProviderSnapshot]);
 
     const handleRefreshQuota = useCallback(async () => {
@@ -1880,18 +1884,26 @@ export function AdminPanel() {
                                         <AdminToggle checked={codexEnabled} onChange={setCodexEnabled} data-testid="toggle-codex-enabled" />
                                     </AdminRow>
                                     <AdminRow
+                                        name={<>Claude Provider <span className="ar-badge ar-badge-accent">Experimental</span> <span className="ar-badge ar-badge-warning">Restart</span></>}
+                                        hint="Enable the optional @anthropic-ai/claude-code provider. Requires Claude Code to be installed and authenticated on the server."
+                                    >
+                                        <SourceBadge source={sources['claude.enabled']} />
+                                        <AdminToggle checked={claudeEnabled} onChange={setClaudeEnabled} data-testid="toggle-claude-enabled" />
+                                    </AdminRow>
+                                    <AdminRow
                                         name={<>Active Provider <span className="ar-badge ar-badge-warning">Restart</span></>}
-                                        hint="Switch to 'Codex' only after enabling the Codex provider above and completing ChatGPT sign-in. Requires a server restart."
+                                        hint="Switch to 'Codex' only after enabling the Codex provider above and completing ChatGPT sign-in. Switch to 'Claude' only after enabling the Claude provider above. Requires a server restart."
                                     >
                                         <select
                                             id="admin-config-active-provider"
                                             className="ar-select ar-med"
                                             value={activeProvider}
-                                            onChange={e => setActiveProvider(e.target.value as 'copilot' | 'codex')}
+                                            onChange={e => setActiveProvider(e.target.value as 'copilot' | 'codex' | 'claude')}
                                             data-testid="select-active-provider"
                                         >
                                             <option value="copilot">Copilot</option>
                                             <option value="codex">Codex</option>
+                                            <option value="claude">Claude</option>
                                         </select>
                                         <SourceBadge source={sources['activeProvider']} />
                                     </AdminRow>
@@ -1912,6 +1924,25 @@ export function AdminPanel() {
                                             }}
                                         >
                                             ⚠ {providerAvailability['codex'].error}
+                                        </div>
+                                    )}
+                                    {activeProvider === 'claude' && providerAvailability['claude'] && !providerAvailability['claude'].available && (
+                                        <div
+                                            data-testid="claude-sdk-unavailable-banner"
+                                            style={{
+                                                margin: '8px 0 4px',
+                                                padding: '8px 12px',
+                                                borderRadius: 4,
+                                                background: 'var(--ar-warn-bg, #fffbe6)',
+                                                border: '1px solid var(--ar-warn-border, #ffe58f)',
+                                                color: 'var(--ar-warn-text, #7c5200)',
+                                                fontSize: 12,
+                                                lineHeight: 1.5,
+                                                whiteSpace: 'pre-wrap',
+                                                fontFamily: 'inherit',
+                                            }}
+                                        >
+                                            ⚠ {providerAvailability['claude'].error}
                                         </div>
                                     )}
                                     {/* Quota section */}
@@ -1935,7 +1966,7 @@ export function AdminPanel() {
                                                 {quotaData.providers.map(provider => (
                                                     <div key={provider.id} style={{ marginBottom: 12 }}>
                                                         <div style={{ fontWeight: 600, fontSize: 12.5, marginBottom: 6, color: 'var(--ar-text-2)', textTransform: 'capitalize' }}>
-                                                            {provider.id === 'copilot' ? 'Copilot' : 'Codex'}
+                                                            {provider.id === 'copilot' ? 'Copilot' : provider.id === 'claude' ? 'Claude' : 'Codex'}
                                                         </div>
                                                         {provider.error ? (
                                                             <div style={{ fontSize: 12, color: 'var(--ar-danger)', display: 'flex', alignItems: 'center', gap: 6 }}>

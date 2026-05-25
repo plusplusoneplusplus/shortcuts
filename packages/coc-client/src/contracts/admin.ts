@@ -67,7 +67,8 @@ export interface AdminResolvedConfig {
   servers?: { enabled?: boolean };
   excalidraw?: { enabled?: boolean };
   codex?: { enabled?: boolean };
-  activeProvider?: 'copilot' | 'codex';
+  claude?: { enabled?: boolean };
+  activeProvider?: 'copilot' | 'codex' | 'claude';
   mcpOauth?: { enabled?: boolean };
   [key: string]: unknown;
 }
@@ -121,7 +122,8 @@ export interface AdminConfigUpdate {
   'excalidraw.enabled'?: boolean;
   'mcpOauth.enabled'?: boolean;
   'codex.enabled'?: boolean;
-  activeProvider?: 'copilot' | 'codex';
+  'claude.enabled'?: boolean;
+  activeProvider?: 'copilot' | 'codex' | 'claude';
   [key: string]: unknown;
 }
 
@@ -151,7 +153,8 @@ export interface RuntimeDashboardConfig {
     focusedDiffEnabled: boolean;
     containerDefaultAgentEnabled: boolean;
     codexEnabled: boolean;
-    activeProvider: 'copilot' | 'codex';
+    claudeEnabled: boolean;
+    activeProvider: 'copilot' | 'codex' | 'claude';
   };
   hostname?: string;
   bindAddress?: string;
@@ -272,7 +275,7 @@ export interface AdminStorageCancelMigrationResponse {
 // ── Agent Providers types ──────────────────────────────────────────
 
 /** Wire-format identifier for an AI agent provider. */
-export type AgentProviderId = 'copilot' | 'codex';
+export type AgentProviderId = 'copilot' | 'codex' | 'claude';
 
 /** Status of a single agent provider as returned by GET /api/agent-providers. */
 export interface AgentProviderStatus {

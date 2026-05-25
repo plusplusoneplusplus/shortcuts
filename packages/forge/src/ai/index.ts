@@ -92,11 +92,16 @@ export {
     SDK_PROVIDER_COPILOT,
     CODEX_PROVIDER,
     SDK_PROVIDER_CODEX,
+    CLAUDE_PROVIDER,
+    SDK_PROVIDER_CLAUDE,
     // Codex SDK Service and auth
     registerCodexSDKService,
     CodexSDKService,
     type CodexAuthCheckResult,
     type CodexAuthChecker,
+    // Claude SDK Service
+    ClaudeSDKService,
+    registerClaudeSDKService,
     // Model Metadata Store
     modelMetadataStore,
     resolveReasoningEffort,

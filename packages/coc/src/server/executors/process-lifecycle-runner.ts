@@ -179,15 +179,15 @@ async function notifyLoopTickComplete(
 export class ProcessLifecycleRunner extends BaseExecutor {
     private readonly onGenerateTitle: (processId: string, turns: ConversationTurn[]) => void;
     private readonly onBackgroundReview?: (processId: string, workspaceId: string, turns: ConversationTurn[]) => void;
-    /** Active AI provider recorded on new processes for attribution ('copilot' | 'codex'). */
-    private readonly provider: 'copilot' | 'codex';
+    /** Active AI provider recorded on new processes for attribution ('copilot' | 'codex' | 'claude'). */
+    private readonly provider: 'copilot' | 'codex' | 'claude';
 
     constructor(
         store: ProcessStore,
         dataDir: string | undefined,
         onGenerateTitle: (processId: string, turns: ConversationTurn[]) => void,
         onBackgroundReview?: (processId: string, workspaceId: string, turns: ConversationTurn[]) => void,
-        provider?: 'copilot' | 'codex',
+        provider?: 'copilot' | 'codex' | 'claude',
     ) {
         super(store, dataDir);
         this.onGenerateTitle = onGenerateTitle;

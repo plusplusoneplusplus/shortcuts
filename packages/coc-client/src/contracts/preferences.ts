@@ -42,7 +42,7 @@ export interface PerRepoPreferences {
   /** Max iterations a Ralph loop runs before stopping. Range 1..200. */
   maxRalphIterations?: number;
   /** Last agent provider selected for new chats in this workspace. Persisted per-repo. */
-  lastChatProvider?: 'copilot' | 'codex';
+  lastChatProvider?: 'copilot' | 'codex' | 'claude';
   boundedMemory?: {
     enabled?: boolean;
     charLimit?: number;

@@ -250,5 +250,52 @@ describe('ChatListPane provider badge', () => {
             expect(badges).toHaveLength(1);
             expect(badges[0].getAttribute('data-provider')).toBe('codex');
         });
+
+        it('shows badges for both codex and claude tasks in a mixed list', async () => {
+            const tasks = [
+                makeTask({ id: 'task-1', displayName: 'Copilot Chat', provider: 'copilot' }),
+                makeTask({ id: 'task-2', displayName: 'Codex Chat', provider: 'codex' }),
+                makeTask({ id: 'task-3', displayName: 'Claude Chat', provider: 'claude' }),
+            ];
+            await act(async () => {
+                render(<ChatListPane {...defaultProps} history={tasks} />);
+            });
+            const badges = screen.getAllByTestId('provider-badge');
+            expect(badges).toHaveLength(2);
+            const providers = badges.map(b => b.getAttribute('data-provider'));
+            expect(providers).toContain('codex');
+            expect(providers).toContain('claude');
+        });
+    });
+
+    describe('claude provider', () => {
+        it('shows provider-badge for task with provider="claude" at top level', async () => {
+            const tasks = [makeTask({ id: 'task-f', displayName: 'Claude Chat', provider: 'claude' })];
+            await act(async () => {
+                render(<ChatListPane {...defaultProps} history={tasks} />);
+            });
+            const badges = screen.getAllByTestId('provider-badge');
+            expect(badges.length).toBeGreaterThan(0);
+            expect(badges[0].getAttribute('data-provider')).toBe('claude');
+            expect(badges[0].textContent).toBe('Claude');
+        });
+
+        it('shows provider-badge for task with metadata.provider="claude"', async () => {
+            const tasks = [makeTask({ id: 'task-g', displayName: 'Claude Meta Chat', metadata: { provider: 'claude' } })];
+            await act(async () => {
+                render(<ChatListPane {...defaultProps} history={tasks} />);
+            });
+            const badges = screen.getAllByTestId('provider-badge');
+            expect(badges[0].getAttribute('data-provider')).toBe('claude');
+        });
+
+        it('shows provider-badge for task with payload.provider="claude"', async () => {
+            const tasks = [makeTask({ id: 'task-h', displayName: 'Claude Payload Chat', payload: { mode: 'ask', provider: 'claude' } })];
+            await act(async () => {
+                render(<ChatListPane {...defaultProps} history={tasks} />);
+            });
+            const badges = screen.getAllByTestId('provider-badge');
+            expect(badges[0].getAttribute('data-provider')).toBe('claude');
+        });
     });
 });

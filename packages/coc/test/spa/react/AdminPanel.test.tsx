@@ -1161,4 +1161,116 @@ describe('AdminPanel', () => {
             expect(screen.getByText(/Approve Permissions/)).toBeDefined();
         });
     });
+
+    describe('AI Provider tab — claude toggle', () => {
+        function mockConfigWithClaude(claudeEnabled: boolean, activeProvider: string) {
+            mockFetch.mockImplementation((url: string) => {
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            resolved: {
+                                model: 'gpt-4', parallel: 1, timeout: null, output: 'table',
+                                codex: { enabled: false },
+                                claude: { enabled: claudeEnabled },
+                                activeProvider,
+                            },
+                            sources: { 'claude.enabled': 'default', activeProvider: 'default' },
+                        }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+        }
+
+        it('renders claude provider toggle in the AI Provider tab', async () => {
+            mockConfigWithClaude(false, 'copilot');
+            await act(async () => { renderWithProviders(); });
+
+            // Navigate to AI Provider tab
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('admin-tab-agents'));
+            });
+
+            await waitFor(() => expect(screen.getByTestId('toggle-claude-enabled')).toBeDefined());
+            const toggle = screen.getByTestId('toggle-claude-enabled') as HTMLInputElement;
+            expect(toggle.checked).toBe(false);
+        });
+
+        it('claude toggle reflects enabled=true from config', async () => {
+            mockConfigWithClaude(true, 'claude');
+            await act(async () => { renderWithProviders(); });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('admin-tab-agents'));
+            });
+
+            await waitFor(() => expect(screen.getByTestId('toggle-claude-enabled')).toBeDefined());
+            const toggle = screen.getByTestId('toggle-claude-enabled') as HTMLInputElement;
+            expect(toggle.checked).toBe(true);
+        });
+
+        it('active provider select includes "claude" option', async () => {
+            mockConfigWithClaude(false, 'copilot');
+            await act(async () => { renderWithProviders(); });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('admin-tab-agents'));
+            });
+
+            await waitFor(() => expect(screen.getByTestId('select-active-provider')).toBeDefined());
+            const select = screen.getByTestId('select-active-provider') as HTMLSelectElement;
+            const options = Array.from(select.options).map(o => o.value);
+            expect(options).toContain('copilot');
+            expect(options).toContain('codex');
+            expect(options).toContain('claude');
+        });
+
+        it('saves claude.enabled when toggling and saving', async () => {
+            let capturedBody: Record<string, any> | null = null;
+            mockFetch.mockImplementation((url: string, options?: any) => {
+                if (url.includes('/admin/config') && options?.method === 'PUT') {
+                    capturedBody = JSON.parse(options.body);
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+                }
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            resolved: { model: 'gpt-4', codex: { enabled: false }, claude: { enabled: false }, activeProvider: 'copilot' },
+                            sources: {},
+                        }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+
+            await act(async () => { renderWithProviders(); });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('admin-tab-agents'));
+            });
+
+            await waitFor(() => expect(screen.getByTestId('toggle-claude-enabled')).toBeDefined());
+
+            // Toggle claude on
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('toggle-claude-enabled'));
+            });
+
+            // Save button should now be enabled
+            await waitFor(() => {
+                const saveBtn = screen.getByTestId('settings-active-provider-save') as HTMLButtonElement;
+                expect(saveBtn.disabled).toBe(false);
+            });
+
+            // Click Save
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('settings-active-provider-save'));
+            });
+
+            await waitFor(() => expect(capturedBody).not.toBeNull());
+            expect(capturedBody!['claude.enabled']).toBe(true);
+        });
+    });
 });

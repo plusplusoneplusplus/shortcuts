@@ -145,11 +145,16 @@ export interface CLIConfig {
     codex?: {
         enabled?: boolean;
     };
+    /** Claude Code SDK provider support. Disabled by default. */
+    claude?: {
+        enabled?: boolean;
+    };
     /**
-     * Active AI provider: 'copilot' (default) or 'codex'.
+     * Active AI provider: 'copilot' (default), 'codex', or 'claude'.
      * Switching to 'codex' requires codex.enabled = true.
+     * Switching to 'claude' requires claude.enabled = true.
      */
-    activeProvider?: 'copilot' | 'codex';
+    activeProvider?: 'copilot' | 'codex' | 'claude';
     /** Development feature flags. */
     features?: {
         autoMemoryPromotion?: boolean;
@@ -330,11 +335,16 @@ export interface ResolvedCLIConfig {
     codex: {
         enabled: boolean;
     };
+    /** Claude Code SDK provider support. Disabled by default. */
+    claude: {
+        enabled: boolean;
+    };
     /**
-     * Active AI provider: 'copilot' (default) or 'codex'.
+     * Active AI provider: 'copilot' (default), 'codex', or 'claude'.
      * Switching to 'codex' requires codex.enabled = true.
+     * Switching to 'claude' requires claude.enabled = true.
      */
-    activeProvider: 'copilot' | 'codex';
+    activeProvider: 'copilot' | 'codex' | 'claude';
     /** Development feature flags. */
     features: {
         autoMemoryPromotion: boolean;
@@ -469,6 +479,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
     },
     codex: {
+        enabled: false,
+    },
+    claude: {
         enabled: false,
     },
     activeProvider: 'copilot',
@@ -632,7 +645,7 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         toolCompactness: (override.toolCompactness ?? base.toolCompactness) as 0 | 1 | 2 | 3,
         taskCardDensity: (override.taskCardDensity ?? base.taskCardDensity) as 'compact' | 'dense',
         groupSingleLineMessages: override.groupSingleLineMessages ?? base.groupSingleLineMessages,
-        activeProvider: (override.activeProvider ?? base.activeProvider) as 'copilot' | 'codex',
+        activeProvider: (override.activeProvider ?? base.activeProvider) as 'copilot' | 'codex' | 'claude',
         ...mergeConfigNamespaces(base, override, DEFAULT_BUNDLED_SKILLS),
     };
 }

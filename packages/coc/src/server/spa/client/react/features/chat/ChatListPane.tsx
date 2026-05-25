@@ -1398,11 +1398,11 @@ export function ChatListPane({
                             );
                         })()}
                         {(() => {
-                            // Show provider badge only for codex — copilot is the default
-                            // and would add noise to every chat row if shown universally.
+                            // Show provider badge for non-default providers (codex, claude).
+                            // Copilot is the default and would add noise to every chat row.
                             const provider = task.provider ?? task.metadata?.provider ?? task.payload?.provider;
-                            if (provider !== 'codex') return null;
-                            return <ProviderBadge provider="codex" />;
+                            if (provider !== 'codex' && provider !== 'claude') return null;
+                            return <ProviderBadge provider={provider} />;
                         })()}
                     </span>
                     <span className={cn('flex items-center gap-1', isAwaitingInput ? 'text-amber-700 dark:text-amber-300 font-medium' : 'text-[#848484] dark:text-[#999]')}>
