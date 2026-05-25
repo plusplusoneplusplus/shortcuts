@@ -56,6 +56,7 @@ import { AutoPromoteScheduler } from './memory/auto-promote';
 import { setMemoryCandidateCapturedCallback } from './executors/bounded-memory-addon';
 import { pruneAllStaleClassifications } from './repos/classification-store';
 import { SyncEngine } from './sync/sync-engine';
+import { ContainerLinkClient } from './container-link/container-client';
 
 // ============================================================================
 // Close Handler Builder
@@ -85,6 +86,7 @@ interface CloseHandlerDeps {
     mcpOauthDispose?: () => void;
     codexAuthDispose?: () => void;
     syncEngines?: Map<string, SyncEngine>;
+    containerLink?: { stop(): void };
     activeSockets: Set<import('net').Socket>;
     server: http.Server;
 }
@@ -109,6 +111,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.mcpOauthDispose?.();
         deps.codexAuthDispose?.();
         deps.syncEngines?.forEach(e => e.stop());
+        deps.containerLink?.stop();
         gitInfoCache.dispose();
         deps.notesGitTimerManager.dispose();
         deps.autoPromoteScheduler?.dispose();
@@ -581,6 +584,18 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const activeSockets = new Set<import('net').Socket>();
     server.on('connection', (socket) => { activeSockets.add(socket); socket.on('close', () => activeSockets.delete(socket)); });
 
+    // Start container link if configured (call-home mode)
+    let containerLink: ContainerLinkClient | undefined;
+    if (options.containerUrl) {
+        containerLink = new ContainerLinkClient({
+            containerUrl: options.containerUrl,
+            agentName: options.containerAgentName,
+            localPort: actualPort,
+        });
+        containerLink.start();
+        process.stderr.write(`[container-link] Connecting to container at ${options.containerUrl}\n`);
+    }
+
     return {
         server, store, wsServer, port: actualPort, host, url,
         close: buildCloseHandler({
@@ -595,6 +610,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             mcpOauthDispose: mcpOauthInfra?.dispose,
             codexAuthDispose: codexAuthInfra.dispose,
             syncEngines,
+            containerLink,
             activeSockets, server,
         }),
     };

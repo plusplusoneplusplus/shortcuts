@@ -18,6 +18,7 @@ import { fetchAgentWorkspaces, addCachedWorkspace, type RemoteWorkspace } from '
 import { SSERelay } from '../proxy/sse-relay';
 import { WebSocketRelay } from '../proxy/ws-relay';
 import { AgentHealthMonitor } from './health-monitor';
+import { InboundAgentManager } from '../inbound';
 
 export interface ContainerServer {
     close(): void;
@@ -60,6 +61,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
     const tunnelBridge = new TunnelBridge({ basePort: config.tunnelBridgeBasePort });
     const sseRelay = new SSERelay();
     const wsRelay = new WebSocketRelay();
+    const inboundManager = new InboundAgentManager();
     const healthMonitor = new AgentHealthMonitor(agentStore, config.healthCheckIntervalMs, tunnelBridge);
 
     // Start health monitoring and SSE/WS connections for existing agents
@@ -75,6 +77,38 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
         sseRelay.connect(agent.id, agent.name, effectiveAddr);
         wsRelay.connect(agent.id, agent.name, effectiveAddr);
     }
+
+    // Inbound agent lifecycle — auto-register/deregister agents that call home
+    inboundManager.on('agent-connected', (agent: { id: string; name: string }) => {
+        // Add or update in agent store with a placeholder address (inbound agents don't expose a port)
+        const existing = agentStore.get(agent.id);
+        if (!existing) {
+            agentStore.add(`inbound://${agent.id}`, agent.name);
+            // Re-fetch to get the auto-generated ID and update with correct id
+            const added = agentStore.list().find(a => a.address === `inbound://${agent.id}`);
+            if (added && added.id !== agent.id) {
+                agentStore.remove(added.id);
+                // Manually insert with the correct agent ID
+                agentStore.add(`inbound://${agent.id}`, agent.name);
+            }
+        }
+        agentStore.updateStatus(existing?.id ?? agent.id, 'online');
+        console.log(`[inbound] Agent "${agent.name}" (${agent.id}) connected via call-home`);
+    });
+
+    inboundManager.on('agent-disconnected', (agentId: string, agentName: string) => {
+        const existing = agentStore.get(agentId);
+        if (existing) {
+            agentStore.updateStatus(existing.id, 'offline');
+        }
+        console.log(`[inbound] Agent "${agentName}" (${agentId}) disconnected`);
+    });
+
+    // Forward inbound agent WS events to browser clients (same path as wsRelay)
+    inboundManager.on('agent-event', (agentId: string, agentName: string, data: string) => {
+        wsRelay.emit('message', { agentId, agentName, data });
+    });
+
 
     // ── WhatsApp bridge (only when enabled) ─────────────
     let whatsappBridge: { stop(): Promise<void>; getWhatsAppStatus(): { enabled: boolean; status: string; qr: string | null; error: string | null; groupJid?: string; userName: string }; updateConfig(patch: { userName?: string; groupJid?: string }): Promise<void>; reconnect(): Promise<void>; listGroups(): Promise<Array<{ jid: string; name: string }>> } | undefined;
@@ -549,7 +583,34 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                     res.writeHead(404, { 'Content-Type': 'application/json' });
                     return res.end(JSON.stringify({ error: 'Agent not found' }));
                 }
-                // Use tunnel bridge local URL if available, otherwise direct address
+                // Prefer inbound channel if agent is connected via call-home
+                if (inboundManager.hasAgent(agentId)) {
+                    try {
+                        // Collect request body
+                        const bodyChunks: Buffer[] = [];
+                        for await (const chunk of req) {
+                            bodyChunks.push(chunk as Buffer);
+                        }
+                        const body = bodyChunks.length > 0 ? Buffer.concat(bodyChunks).toString('utf8') : undefined;
+                        const headers: Record<string, string> = {};
+                        for (const [key, value] of Object.entries(req.headers)) {
+                            if (typeof value === 'string') headers[key] = value;
+                        }
+                        const response = await inboundManager.proxyRequest(
+                            agentId,
+                            req.method ?? 'GET',
+                            `/api/${rest}${url.search}`,
+                            headers,
+                            body,
+                        );
+                        res.writeHead(response.status, response.headers);
+                        return res.end(response.body);
+                    } catch (err) {
+                        res.writeHead(502, { 'Content-Type': 'application/json' });
+                        return res.end(JSON.stringify({ error: 'Proxy via channel failed', message: (err as Error).message }));
+                    }
+                }
+                // Fallback: Use tunnel bridge local URL if available, otherwise direct address
                 const effectiveAddr = tunnelBridge.getLocalUrl(agentId) || agent.address;
                 return pipeRequest(effectiveAddr, req, res, `/api/${rest}${url.search}`);
             }
@@ -637,6 +698,15 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
             return;
         }
 
+        // Agent inbound WS at /ws/agent-link — call-home connection
+        if (url.pathname === '/ws/agent-link') {
+            const wss = new (require('ws').WebSocketServer)({ noServer: true });
+            wss.handleUpgrade(req, socket, head, (ws: import('ws').WebSocket) => {
+                inboundManager.handleConnection(ws);
+            });
+            return;
+        }
+
         socket.destroy();
     });
 
@@ -649,6 +719,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
             tunnelBridge.stopAll();
             sseRelay.disconnectAll();
             wsRelay.disconnectAll();
+            inboundManager.close();
             agentStore.close();
             server.close();
         },
