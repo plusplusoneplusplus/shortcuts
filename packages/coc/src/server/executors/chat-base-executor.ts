@@ -168,6 +168,8 @@ export interface ChatModeAIOptions {
     tools: Tool<unknown>[];
     /** Prompt with any mode-specific suffix already appended. */
     effectivePrompt: string;
+    /** Built-in tool names to suppress for this session. */
+    excludedTools?: string[];
     /** Clean up resources (e.g. raw memory DB handles) after execution. */
     dispose?: () => void;
 }
@@ -395,6 +397,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             systemMessage,
             tools: toolBundle.tools,
             effectivePrompt: prompt,
+            excludedTools: memoryV2.excludedBuiltinTools,
             dispose: () => {
                 memoryV2.dispose();
             },
@@ -425,7 +428,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         const payload = task.payload as unknown as ChatPayload;
         const workingDirectory = payload.workingDirectory || payload.folderPath || this.defaultWorkingDirectory;
 
-        let { agentMode, systemMessage, tools, effectivePrompt, dispose: modeDispose } = await this.buildModeOptions(task, prompt, workingDirectory);
+        let { agentMode, systemMessage, tools, effectivePrompt, excludedTools, dispose: modeDispose } = await this.buildModeOptions(task, prompt, workingDirectory);
 
         this.persistSystemPromptAsync(processId, task.type, systemMessage?.content);
 
@@ -557,6 +560,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 systemMessage,
                 skillDirectories,
                 disabledSkills,
+                ...(excludedTools && excludedTools.length > 0 ? { excludedTools } : {}),
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
                 onSessionCreated: (sessionId: string) => {
                     this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch(() => {

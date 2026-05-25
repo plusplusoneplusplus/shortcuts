@@ -166,6 +166,7 @@ export class RalphExecutor extends ChatBaseExecutor {
             systemMessage,
             tools,
             effectivePrompt: prompt,
+            excludedTools: memoryV2.excludedBuiltinTools,
             dispose: () => {
                 memoryV2.dispose();
             },

@@ -40,6 +40,8 @@ export interface MemoryV2Addon {
     tools: Tool<any>[];
     /** Tool guidance suffix for the system message. */
     suffix: string;
+    /** Built-in Copilot tools that should be excluded when memory V2 is active. */
+    excludedBuiltinTools: string[];
     /** Close open store connections. Safe to call multiple times. */
     dispose: () => void;
 }
@@ -55,6 +57,7 @@ const EMPTY_ADDON: MemoryV2Addon = Object.freeze({
     systemMessageSuffix: undefined,
     tools: [],
     suffix: '',
+    excludedBuiltinTools: [],
     dispose: () => {},
 });
 
@@ -191,6 +194,7 @@ export async function buildMemoryV2Addon(
             systemMessageSuffix,
             tools: [storeTool, recallTool],
             suffix: MEMORY_TOOL_SUFFIX,
+            excludedBuiltinTools: ['vote_memory'],
             dispose,
         };
     } catch {

@@ -88,6 +88,11 @@ describe('createMemoryStoreFactTool', () => {
         expect(tool.name).toBe('store_memory');
     });
 
+    it('sets overridesBuiltInTool: true to replace the built-in store_memory', () => {
+        const { tool } = createMemoryStoreFactTool(deps);
+        expect(tool.overridesBuiltInTool).toBe(true);
+    });
+
     it('stores a fact and returns ok=true with active status', async () => {
         const { tool } = createMemoryStoreFactTool(deps);
         const result = await tool.handler({ content: 'User prefers tabs over spaces' }) as MemoryStoreFactResult;

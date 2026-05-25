@@ -69,6 +69,7 @@ describe('buildMemoryV2Addon', () => {
         expect(addon.tools).toEqual([]);
         expect(addon.systemMessageSuffix).toBeUndefined();
         expect(addon.suffix).toBe('');
+        expect(addon.excludedBuiltinTools).toEqual([]);
         addon.dispose(); // safe to call
     });
 
@@ -77,12 +78,14 @@ describe('buildMemoryV2Addon', () => {
         expect(addon.tools).toEqual([]);
         expect(addon.systemMessageSuffix).toBeUndefined();
         expect(addon.suffix).toBe('');
+        expect(addon.excludedBuiltinTools).toEqual([]);
     });
 
     it('returns empty addon when no memory preferences are set', async () => {
         const addon = await buildMemoryV2Addon(tmpDir, WORKSPACE_ID);
         expect(addon.tools).toEqual([]);
         expect(addon.systemMessageSuffix).toBeUndefined();
+        expect(addon.excludedBuiltinTools).toEqual([]);
     });
 
     it('returns empty addon when both global and workspace memory are disabled', async () => {
@@ -91,6 +94,7 @@ describe('buildMemoryV2Addon', () => {
         const addon = await buildMemoryV2Addon(tmpDir, WORKSPACE_ID);
         expect(addon.tools).toEqual([]);
         expect(addon.systemMessageSuffix).toBeUndefined();
+        expect(addon.excludedBuiltinTools).toEqual([]);
     });
 
     // -----------------------------------------------------------------------
@@ -107,6 +111,7 @@ describe('buildMemoryV2Addon', () => {
             expect(toolNames).toContain(MEMORY_V2_STORE_TOOL_NAME);
             expect(toolNames).toContain(MEMORY_V2_RECALL_TOOL_NAME);
             expect(addon.suffix).toContain('memory');
+            expect(addon.excludedBuiltinTools).toEqual(['vote_memory']);
         } finally {
             addon.dispose();
         }
@@ -229,6 +234,37 @@ describe('buildMemoryV2Addon', () => {
     // -----------------------------------------------------------------------
     // Misc
     // -----------------------------------------------------------------------
+
+    it('excludedBuiltinTools is ["vote_memory"] when memory V2 is active (global only)', async () => {
+        enableGlobalMemory(tmpDir);
+        const addon = await buildMemoryV2Addon(tmpDir, WORKSPACE_ID, undefined, 'proc-1');
+        try {
+            expect(addon.excludedBuiltinTools).toEqual(['vote_memory']);
+        } finally {
+            addon.dispose();
+        }
+    });
+
+    it('excludedBuiltinTools is ["vote_memory"] when memory V2 is active (workspace only)', async () => {
+        enableWorkspaceMemory(tmpDir, WORKSPACE_ID);
+        const addon = await buildMemoryV2Addon(tmpDir, WORKSPACE_ID, undefined, 'proc-1');
+        try {
+            expect(addon.excludedBuiltinTools).toEqual(['vote_memory']);
+        } finally {
+            addon.dispose();
+        }
+    });
+
+    it('excludedBuiltinTools is ["vote_memory"] when both scopes are active', async () => {
+        enableGlobalMemory(tmpDir);
+        enableWorkspaceMemory(tmpDir, WORKSPACE_ID);
+        const addon = await buildMemoryV2Addon(tmpDir, WORKSPACE_ID, undefined, 'proc-1');
+        try {
+            expect(addon.excludedBuiltinTools).toEqual(['vote_memory']);
+        } finally {
+            addon.dispose();
+        }
+    });
 
     it('has no recall block when query is empty string', async () => {
         enableGlobalMemory(tmpDir);

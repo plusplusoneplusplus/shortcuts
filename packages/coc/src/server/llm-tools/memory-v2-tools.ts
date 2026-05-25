@@ -115,6 +115,7 @@ export { STORE_TOOL_NAME as MEMORY_V2_STORE_TOOL_NAME, RECALL_TOOL_NAME as MEMOR
 
 export function createMemoryStoreFactTool(deps: MemoryV2ToolDeps) {
     const tool = defineTool<MemoryStoreFactArgs>(STORE_TOOL_NAME, {
+        overridesBuiltInTool: true,
         description:
             'Store a new durable fact into the memory system. ' +
             'Use this to persist user preferences, conventions, environment details, ' +
