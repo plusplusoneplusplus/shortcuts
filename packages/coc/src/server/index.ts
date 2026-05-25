@@ -57,6 +57,7 @@ import { setMemoryCandidateCapturedCallback } from './executors/bounded-memory-a
 import { pruneAllStaleClassifications } from './repos/classification-store';
 import { SyncEngine } from './sync/sync-engine';
 import { ContainerLinkClient } from './container-link/container-client';
+import { registerContainerLinkRoutes } from './container-link/container-link-routes';
 
 // ============================================================================
 // Close Handler Builder
@@ -492,6 +493,35 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Restore auto-commit timers for all workspaces that had it enabled
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });
 
+    // Container link state (mutable — can be set/cleared via API)
+    let containerLink: ContainerLinkClient | undefined;
+    let containerLinkUrl: string | undefined = options.containerUrl;
+    let containerLinkAgentName: string | undefined = options.containerAgentName;
+
+    registerContainerLinkRoutes(routes, {
+        getContainerLink: () => containerLink,
+        getContainerUrl: () => containerLinkUrl,
+        getAgentName: () => containerLinkAgentName,
+        setContainerLink: (url: string, agentName?: string) => {
+            containerLink?.stop();
+            containerLinkUrl = url;
+            containerLinkAgentName = agentName ?? containerLinkAgentName;
+            containerLink = new ContainerLinkClient({
+                containerUrl: url,
+                agentName: containerLinkAgentName,
+                localPort: port,
+            });
+            containerLink.start();
+            process.stderr.write(`[container-link] Connecting to container at ${url}\n`);
+        },
+        clearContainerLink: () => {
+            containerLink?.stop();
+            containerLink = undefined;
+            containerLinkUrl = undefined;
+            process.stderr.write(`[container-link] Disconnected\n`);
+        },
+    });
+
     const rawHostname = os.hostname();
     const handler = createRequestHandler({
         routes, spaHtml: () => {
@@ -584,8 +614,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const activeSockets = new Set<import('net').Socket>();
     server.on('connection', (socket) => { activeSockets.add(socket); socket.on('close', () => activeSockets.delete(socket)); });
 
-    // Start container link if configured (call-home mode)
-    let containerLink: ContainerLinkClient | undefined;
+    // Start container link if configured via CLI (call-home mode)
     if (options.containerUrl) {
         containerLink = new ContainerLinkClient({
             containerUrl: options.containerUrl,

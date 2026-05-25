@@ -30,6 +30,7 @@ import { isContainerMode, isServersEnabled } from '../utils/config';
 const StorageSection = lazy(() => import('./StorageSection'));
 const AgentManagementPanel = lazy(() => import('../repos/AgentManagementPanel').then(m => ({ default: m.AgentManagementPanel })));
 const IMSettingsSection = lazy(() => import('./IMSettingsSection').then(m => ({ default: m.IMSettingsSection })));
+const ContainerLinkSection = lazy(() => import('./ContainerLinkSection').then(m => ({ default: m.ContainerLinkSection })));
 
 // Tool views embedded in the admin right panel. Keeping the imports here
 // (not in Router.tsx) means the admin shell owns their layout.
@@ -1818,6 +1819,22 @@ export function AdminPanel() {
                                 </AdminRow>
                             </div>
                         </section>
+
+                        {!isContainerMode() && (
+                            <section className="ar-card">
+                                <header className="ar-card-head">
+                                    <div className="min-w-0 flex-1">
+                                        <h3>Container Link</h3>
+                                        <p className="ar-card-desc">
+                                            Connect this agent to a container server using the call-home pattern. The agent connects outbound via WebSocket — no inbound port required.
+                                        </p>
+                                    </div>
+                                </header>
+                                <Suspense fallback={<div style={{ padding: 16 }}><Spinner size="sm" /></div>}>
+                                    <ContainerLinkSection onError={msg => addToast(msg, 'error')} />
+                                </Suspense>
+                            </section>
+                        )}
 
                         <section className="ar-card">
                             <header className="ar-card-head">
