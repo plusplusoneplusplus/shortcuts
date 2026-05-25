@@ -1,9 +1,9 @@
 /**
  * Tests for buildMemoryV2Addon (AC-05)
  *
- * Covers: disabled (feature flag off), enabled global mode, enabled isolated mode,
- *         frozen snapshot content, per-turn recall block, no-query no-recall,
- *         missing dataDir/workspaceId → empty addon, dispose is safe.
+ * Covers: disabled (neither scope enabled), only-global enabled, only-workspace
+ *         enabled, both scopes enabled (dual-scope reading), frozen snapshot,
+ *         per-turn recall, missing dataDir/workspaceId → empty addon, dispose.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
@@ -11,7 +11,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { createMemoryStores } from '@plusplusoneplusplus/coc-memory';
 import { buildMemoryV2Addon } from '../../../src/server/executors/memory-v2-addon';
-import { writeRepoPreferences } from '../../../src/server/preferences-handler';
+import { writeRepoPreferences, writePreferences } from '../../../src/server/preferences-handler';
 import { MEMORY_V2_STORE_TOOL_NAME, MEMORY_V2_RECALL_TOOL_NAME } from '../../../src/server/llm-tools/memory-v2-tools';
 
 // ============================================================================
@@ -35,6 +35,14 @@ async function seedFact(storeDir: string, content: string, tags: string[] = []):
     } finally {
         handle.close();
     }
+}
+
+function enableGlobalMemory(dataDir: string, enabled = true): void {
+    writePreferences(dataDir, { global: { memoryV2: { enabled } } });
+}
+
+function enableWorkspaceMemory(dataDir: string, workspaceId: string, enabled = true): void {
+    writeRepoPreferences(dataDir, workspaceId, { memoryV2: { enabled } });
 }
 
 // ============================================================================
@@ -71,46 +79,42 @@ describe('buildMemoryV2Addon', () => {
         expect(addon.suffix).toBe('');
     });
 
-    it('returns empty addon when memoryV2 preference is absent', async () => {
-        writeRepoPreferences(tmpDir, WORKSPACE_ID, {});
+    it('returns empty addon when no memory preferences are set', async () => {
         const addon = await buildMemoryV2Addon(tmpDir, WORKSPACE_ID);
         expect(addon.tools).toEqual([]);
         expect(addon.systemMessageSuffix).toBeUndefined();
     });
 
-    it('returns empty addon when memoryV2.enabled is false', async () => {
-        writeRepoPreferences(tmpDir, WORKSPACE_ID, { memoryV2: { enabled: false } });
+    it('returns empty addon when both global and workspace memory are disabled', async () => {
+        enableGlobalMemory(tmpDir, false);
+        enableWorkspaceMemory(tmpDir, WORKSPACE_ID, false);
         const addon = await buildMemoryV2Addon(tmpDir, WORKSPACE_ID);
         expect(addon.tools).toEqual([]);
         expect(addon.systemMessageSuffix).toBeUndefined();
     });
 
     // -----------------------------------------------------------------------
-    // Enabled — global mode
+    // Only global memory enabled
     // -----------------------------------------------------------------------
 
-    it('returns populated addon when enabled (global mode)', async () => {
-        writeRepoPreferences(tmpDir, WORKSPACE_ID, { memoryV2: { enabled: true } });
+    it('returns populated addon when only global memory is enabled', async () => {
+        enableGlobalMemory(tmpDir);
 
         const addon = await buildMemoryV2Addon(tmpDir, WORKSPACE_ID, 'test query', 'proc-1');
         try {
-            // Should have 2 tools
             expect(addon.tools).toHaveLength(2);
             const toolNames = addon.tools.map(t => t.name);
             expect(toolNames).toContain(MEMORY_V2_STORE_TOOL_NAME);
             expect(toolNames).toContain(MEMORY_V2_RECALL_TOOL_NAME);
-
-            // Should have non-empty tool guidance suffix
             expect(addon.suffix).toContain('memory');
         } finally {
             addon.dispose();
         }
     });
 
-    it('includes frozen snapshot block when active facts exist (global mode)', async () => {
-        writeRepoPreferences(tmpDir, WORKSPACE_ID, { memoryV2: { enabled: true } });
+    it('includes frozen snapshot block from global store when facts exist', async () => {
+        enableGlobalMemory(tmpDir);
 
-        // Seed a fact in the global store
         const globalDir = path.join(tmpDir, 'memory', 'global');
         await seedFact(globalDir, 'User prefers tabs over spaces', ['formatting']);
 
@@ -125,17 +129,15 @@ describe('buildMemoryV2Addon', () => {
         }
     });
 
-    it('includes per-turn recall block when query matches a fact', async () => {
-        writeRepoPreferences(tmpDir, WORKSPACE_ID, { memoryV2: { enabled: true } });
+    it('includes per-turn recall block when query matches a global fact', async () => {
+        enableGlobalMemory(tmpDir);
 
         const globalDir = path.join(tmpDir, 'memory', 'global');
         await seedFact(globalDir, 'Project uses Vitest for unit tests', ['testing']);
 
-        // Use simple query without special characters to avoid FTS5 parse errors
         const addon = await buildMemoryV2Addon(tmpDir, WORKSPACE_ID, 'vitest tests', 'proc-1');
         try {
             expect(addon.systemMessageSuffix).toBeTruthy();
-            // Should have both blocks
             expect(addon.systemMessageSuffix).toContain('<memory_snapshot>');
             expect(addon.systemMessageSuffix).toContain('<recalled_memory>');
         } finally {
@@ -143,15 +145,99 @@ describe('buildMemoryV2Addon', () => {
         }
     });
 
+    // -----------------------------------------------------------------------
+    // Only workspace memory enabled
+    // -----------------------------------------------------------------------
+
+    it('returns populated addon when only workspace memory is enabled', async () => {
+        enableWorkspaceMemory(tmpDir, WORKSPACE_ID);
+
+        const addon = await buildMemoryV2Addon(tmpDir, WORKSPACE_ID, undefined, 'proc-1');
+        try {
+            expect(addon.tools).toHaveLength(2);
+        } finally {
+            addon.dispose();
+        }
+    });
+
+    it('reads from workspace store when only workspace memory is enabled', async () => {
+        enableWorkspaceMemory(tmpDir, WORKSPACE_ID);
+
+        const wsDir = path.join(tmpDir, 'repos', WORKSPACE_ID, 'memory');
+        await seedFact(wsDir, 'Workspace-only fact', ['scope-test']);
+
+        const addon = await buildMemoryV2Addon(tmpDir, WORKSPACE_ID, undefined, 'proc-1');
+        try {
+            expect(addon.systemMessageSuffix).toContain('Workspace-only fact');
+        } finally {
+            addon.dispose();
+        }
+    });
+
+    it('does not read global facts when only workspace memory is enabled', async () => {
+        enableWorkspaceMemory(tmpDir, WORKSPACE_ID);
+
+        const globalDir = path.join(tmpDir, 'memory', 'global');
+        await seedFact(globalDir, 'Global-only fact', ['global']);
+
+        const addon = await buildMemoryV2Addon(tmpDir, WORKSPACE_ID, undefined, 'proc-1');
+        try {
+            if (addon.systemMessageSuffix) {
+                expect(addon.systemMessageSuffix).not.toContain('Global-only fact');
+            }
+        } finally {
+            addon.dispose();
+        }
+    });
+
+    // -----------------------------------------------------------------------
+    // Both scopes enabled (dual-scope)
+    // -----------------------------------------------------------------------
+
+    it('reads from both global and workspace stores when both are enabled', async () => {
+        enableGlobalMemory(tmpDir);
+        enableWorkspaceMemory(tmpDir, WORKSPACE_ID);
+
+        const globalDir = path.join(tmpDir, 'memory', 'global');
+        const wsDir = path.join(tmpDir, 'repos', WORKSPACE_ID, 'memory');
+
+        await seedFact(globalDir, 'Global architecture rule', ['arch']);
+        await seedFact(wsDir, 'Workspace-specific convention', ['ws']);
+
+        const addon = await buildMemoryV2Addon(tmpDir, WORKSPACE_ID, undefined, 'proc-1');
+        try {
+            expect(addon.systemMessageSuffix).toBeTruthy();
+            expect(addon.systemMessageSuffix).toContain('Global architecture rule');
+            expect(addon.systemMessageSuffix).toContain('Workspace-specific convention');
+        } finally {
+            addon.dispose();
+        }
+    });
+
+    it('exposes both stores to tools when both scopes enabled', async () => {
+        enableGlobalMemory(tmpDir);
+        enableWorkspaceMemory(tmpDir, WORKSPACE_ID);
+
+        const addon = await buildMemoryV2Addon(tmpDir, WORKSPACE_ID, undefined, 'proc-1');
+        try {
+            expect(addon.tools).toHaveLength(2);
+        } finally {
+            addon.dispose();
+        }
+    });
+
+    // -----------------------------------------------------------------------
+    // Misc
+    // -----------------------------------------------------------------------
+
     it('has no recall block when query is empty string', async () => {
-        writeRepoPreferences(tmpDir, WORKSPACE_ID, { memoryV2: { enabled: true } });
+        enableGlobalMemory(tmpDir);
 
         const globalDir = path.join(tmpDir, 'memory', 'global');
         await seedFact(globalDir, 'User prefers Vitest', ['testing']);
 
         const addon = await buildMemoryV2Addon(tmpDir, WORKSPACE_ID, '', 'proc-1');
         try {
-            // May have frozen snapshot but no recalled_memory block
             if (addon.systemMessageSuffix) {
                 expect(addon.systemMessageSuffix).not.toContain('<recalled_memory>');
             }
@@ -161,48 +247,10 @@ describe('buildMemoryV2Addon', () => {
     });
 
     it('has undefined systemMessageSuffix when no facts exist and no query', async () => {
-        writeRepoPreferences(tmpDir, WORKSPACE_ID, { memoryV2: { enabled: true } });
+        enableGlobalMemory(tmpDir);
         const addon = await buildMemoryV2Addon(tmpDir, WORKSPACE_ID, undefined, 'proc-1');
         try {
             expect(addon.systemMessageSuffix).toBeUndefined();
-        } finally {
-            addon.dispose();
-        }
-    });
-
-    // -----------------------------------------------------------------------
-    // Enabled — isolated workspace mode
-    // -----------------------------------------------------------------------
-
-    it('uses workspace-scoped store in isolated mode', async () => {
-        writeRepoPreferences(tmpDir, WORKSPACE_ID, { memoryV2: { enabled: true, isolated: true } });
-
-        // Seed a fact in workspace store (isolated mode uses workspace memory dir)
-        const workspaceDir = path.join(tmpDir, 'repos', WORKSPACE_ID, 'memory');
-        await seedFact(workspaceDir, 'Isolated workspace fact', ['scope-test']);
-
-        const addon = await buildMemoryV2Addon(tmpDir, WORKSPACE_ID, undefined, 'proc-1');
-        try {
-            expect(addon.tools).toHaveLength(2);
-            expect(addon.systemMessageSuffix).toContain('Isolated workspace fact');
-        } finally {
-            addon.dispose();
-        }
-    });
-
-    it('does not read global facts in isolated mode', async () => {
-        writeRepoPreferences(tmpDir, WORKSPACE_ID, { memoryV2: { enabled: true, isolated: true } });
-
-        // Only seed global facts — not workspace
-        const globalDir = path.join(tmpDir, 'memory', 'global');
-        await seedFact(globalDir, 'Global fact only', ['global']);
-
-        const addon = await buildMemoryV2Addon(tmpDir, WORKSPACE_ID, undefined, 'proc-1');
-        try {
-            // systemMessageSuffix should NOT contain the global fact
-            if (addon.systemMessageSuffix) {
-                expect(addon.systemMessageSuffix).not.toContain('Global fact only');
-            }
         } finally {
             addon.dispose();
         }
@@ -213,7 +261,7 @@ describe('buildMemoryV2Addon', () => {
     // -----------------------------------------------------------------------
 
     it('dispose is idempotent (safe to call twice)', async () => {
-        writeRepoPreferences(tmpDir, WORKSPACE_ID, { memoryV2: { enabled: true } });
+        enableGlobalMemory(tmpDir);
 
         const addon = await buildMemoryV2Addon(tmpDir, WORKSPACE_ID);
         expect(() => {
@@ -228,14 +276,12 @@ describe('buildMemoryV2Addon', () => {
     });
 
     // -----------------------------------------------------------------------
-    // AC-07: Legacy path guard — v2 enabled does not depend on bounded memory
+    // AC-07: V2 enabled provides tools without bounded memory
     // -----------------------------------------------------------------------
 
     describe('AC-07: V2 enabled provides tools without bounded memory', () => {
-        it('provides both store_memory and recall_memory tools independently of bounded memory state', async () => {
-            writeRepoPreferences(tmpDir, WORKSPACE_ID, {
-                memoryV2: { enabled: true },
-            });
+        it('provides both store_memory and recall_memory tools when only global enabled', async () => {
+            enableGlobalMemory(tmpDir);
 
             const addon = await buildMemoryV2Addon(tmpDir, WORKSPACE_ID);
             try {
@@ -249,7 +295,7 @@ describe('buildMemoryV2Addon', () => {
         });
 
         it('buildMemoryV2Addon is independent of forge bounded-memory modules', async () => {
-            writeRepoPreferences(tmpDir, WORKSPACE_ID, { memoryV2: { enabled: true } });
+            enableGlobalMemory(tmpDir);
 
             const globalDir = path.join(tmpDir, 'memory', 'global');
             await seedFact(globalDir, 'Architectural decision: TypeScript strict mode', ['arch']);

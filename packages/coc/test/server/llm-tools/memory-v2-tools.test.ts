@@ -2,7 +2,9 @@
  * Tests for memory-v2-tools.ts (AC-05)
  *
  * Covers: store_memory happy path, safety block, missing content,
- *         recall_memory happy path, no results, missing query, error recovery.
+ *         recall_memory happy path, no results, missing query, error recovery,
+ *         target parameter (global default vs explicit workspace),
+ *         multi-store recall merging.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
@@ -10,7 +12,6 @@ import * as os from 'os';
 import * as path from 'path';
 import {
     createMemoryStores,
-    type MemoryScope,
 } from '@plusplusoneplusplus/coc-memory';
 import type { SqliteFactStore } from '@plusplusoneplusplus/coc-memory';
 import {
@@ -27,15 +28,39 @@ import {
 // Helpers
 // ============================================================================
 
-function makeTestDeps(storeDir: string, scope: MemoryScope = 'global'): MemoryV2ToolDeps & { close: () => void } {
+function makeGlobalDeps(storeDir: string): MemoryV2ToolDeps & { close: () => void } {
     const handle = createMemoryStores(storeDir);
     return {
-        factStore: handle.facts as unknown as SqliteFactStore,
-        episodeStore: handle.episodes,
-        scope,
-        workspaceId: scope === 'workspace' ? 'ws-test' : undefined,
+        globalFactStore: handle.facts as unknown as SqliteFactStore,
+        globalEpisodeStore: handle.episodes,
+        workspaceId: 'ws-test',
         processId: 'proc-test',
         close: () => handle.close(),
+    };
+}
+
+function makeWorkspaceDeps(storeDir: string): MemoryV2ToolDeps & { close: () => void } {
+    const handle = createMemoryStores(storeDir);
+    return {
+        workspaceFactStore: handle.facts as unknown as SqliteFactStore,
+        workspaceEpisodeStore: handle.episodes,
+        workspaceId: 'ws-test',
+        processId: 'proc-test',
+        close: () => handle.close(),
+    };
+}
+
+function makeDualDeps(globalDir: string, wsDir: string): MemoryV2ToolDeps & { close: () => void } {
+    const globalHandle = createMemoryStores(globalDir);
+    const wsHandle = createMemoryStores(wsDir);
+    return {
+        globalFactStore: globalHandle.facts as unknown as SqliteFactStore,
+        globalEpisodeStore: globalHandle.episodes,
+        workspaceFactStore: wsHandle.facts as unknown as SqliteFactStore,
+        workspaceEpisodeStore: wsHandle.episodes,
+        workspaceId: 'ws-test',
+        processId: 'proc-test',
+        close: () => { globalHandle.close(); wsHandle.close(); },
     };
 }
 
@@ -45,11 +70,11 @@ function makeTestDeps(storeDir: string, scope: MemoryScope = 'global'): MemoryV2
 
 describe('createMemoryStoreFactTool', () => {
     let tmpDir: string;
-    let deps: ReturnType<typeof makeTestDeps>;
+    let deps: ReturnType<typeof makeGlobalDeps>;
 
     beforeEach(() => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mem-store-tool-'));
-        deps = makeTestDeps(tmpDir);
+        deps = makeGlobalDeps(tmpDir);
     });
 
     afterEach(() => {
@@ -121,6 +146,62 @@ describe('createMemoryStoreFactTool', () => {
             expect(result.code).toBe('blocked_by_safety');
         }
     });
+
+    it('defaults to global target when no target is specified', async () => {
+        const { tool } = createMemoryStoreFactTool(deps);
+        const result = await tool.handler({ content: 'Global default fact' }) as MemoryStoreFactResult;
+        expect(result.ok).toBe(true);
+    });
+
+    it('writes to workspace store when target=workspace', async () => {
+        const globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'global-store-'));
+        const wsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-store-'));
+        const dualDeps = makeDualDeps(globalDir, wsDir);
+
+        try {
+            const { tool } = createMemoryStoreFactTool(dualDeps);
+            const result = await tool.handler({
+                content: 'Workspace-specific convention',
+                target: 'workspace',
+            }) as MemoryStoreFactResult;
+
+            expect(result.ok).toBe(true);
+
+            // Verify the fact exists in workspace store
+            const facts = await dualDeps.workspaceFactStore!.listFacts({ statuses: ['active', 'review'] });
+            const globalFacts = await dualDeps.globalFactStore!.listFacts({ statuses: ['active', 'review'] });
+
+            expect(facts.length).toBeGreaterThan(0);
+            expect(globalFacts).toHaveLength(0); // not written to global
+        } finally {
+            dualDeps.close();
+            fs.rmSync(globalDir, { recursive: true, force: true });
+            fs.rmSync(wsDir, { recursive: true, force: true });
+        }
+    });
+
+    it('returns error when target=workspace but no workspace store available', async () => {
+        // deps has only global store
+        const { tool } = createMemoryStoreFactTool(deps);
+        const result = await tool.handler({
+            content: 'Should fail',
+            target: 'workspace',
+        }) as MemoryStoreFactResult;
+
+        expect(result.ok).toBe(false);
+        if (result.ok) throw new Error('Expected error');
+        expect(result.code).toBe('unexpected_error');
+    });
+
+    it('returns error when no store is available', async () => {
+        const emptyDeps: MemoryV2ToolDeps = { processId: 'proc-test' };
+        const { tool } = createMemoryStoreFactTool(emptyDeps);
+        const result = await tool.handler({ content: 'Some fact' }) as MemoryStoreFactResult;
+
+        expect(result.ok).toBe(false);
+        if (result.ok) throw new Error('Expected error');
+        expect(result.code).toBe('unexpected_error');
+    });
 });
 
 // ============================================================================
@@ -129,11 +210,11 @@ describe('createMemoryStoreFactTool', () => {
 
 describe('createMemoryRecallTool', () => {
     let tmpDir: string;
-    let deps: ReturnType<typeof makeTestDeps>;
+    let deps: ReturnType<typeof makeGlobalDeps>;
 
     beforeEach(async () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mem-recall-tool-'));
-        deps = makeTestDeps(tmpDir);
+        deps = makeGlobalDeps(tmpDir);
 
         // Seed some facts via the store tool
         const { tool: storeTool } = createMemoryStoreFactTool(deps);
@@ -218,5 +299,40 @@ describe('createMemoryRecallTool', () => {
         if (!result.ok) throw new Error(result.error);
         // Results can't exceed total stored facts (3 seeded)
         expect(result.results.length).toBeLessThanOrEqual(30);
+    });
+
+    it('merges results from both global and workspace stores', async () => {
+        const globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'global-recall-'));
+        const wsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-recall-'));
+        const dualDeps = makeDualDeps(globalDir, wsDir);
+
+        try {
+            // Seed a distinct fact in each store using a shared query term
+            const { tool: gStore } = createMemoryStoreFactTool({
+                globalFactStore: dualDeps.globalFactStore,
+                globalEpisodeStore: dualDeps.globalEpisodeStore,
+            });
+            await gStore.handler({ content: 'multistore global preference fact' });
+
+            const { tool: wStore } = createMemoryStoreFactTool({
+                workspaceFactStore: dualDeps.workspaceFactStore,
+                workspaceEpisodeStore: dualDeps.workspaceEpisodeStore,
+                workspaceId: 'ws-test',
+            });
+            await wStore.handler({ content: 'multistore workspace convention fact', target: 'workspace' });
+
+            const { tool: recallTool } = createMemoryRecallTool(dualDeps);
+            // "multistore" appears in both facts — should match from both stores
+            const result = await recallTool.handler({ query: 'multistore' }) as MemoryRecallResult;
+
+            expect(result.ok).toBe(true);
+            if (!result.ok) throw new Error(result.error);
+            // Both stores should contribute at least one match
+            expect(result.count).toBeGreaterThanOrEqual(2);
+        } finally {
+            dualDeps.close();
+            fs.rmSync(globalDir, { recursive: true, force: true });
+            fs.rmSync(wsDir, { recursive: true, force: true });
+        }
     });
 });

@@ -8,8 +8,9 @@
  *     prompt, based on the current prompt query.
  *   - Two AI-callable tools: store_memory and recall_memory.
  *
- * Gated by `prefs.memoryV2.enabled` — returns the empty addon when disabled,
- * unconfigured, or when any error occurs during store initialization.
+ * Reads from both Global memory (gated by globalPrefs.memoryV2.enabled) and
+ * Workspace memory (gated by repoPrefs.memoryV2.enabled). Returns the empty
+ * addon when neither scope is enabled or any error occurs.
  *
  * No VS Code dependencies — uses only Node.js built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -25,8 +26,8 @@ import {
     type MemoryFact,
     type MemorySearchResult,
 } from '@plusplusoneplusplus/coc-memory';
-import { readRepoPreferences } from '../preferences-handler';
-import { createMemoryStoreFactTool, createMemoryRecallTool } from '../llm-tools/memory-v2-tools';
+import { readGlobalPreferences, readRepoPreferences } from '../preferences-handler';
+import { createMemoryStoreFactTool, createMemoryRecallTool, type MemoryV2ToolDeps } from '../llm-tools/memory-v2-tools';
 
 // ============================================================================
 // Types
@@ -67,9 +68,13 @@ const MEMORY_TOOL_SUFFIX =
 /**
  * Build a MemoryV2Addon for a given workspace.
  *
+ * Opens enabled memory scopes:
+ * - Global store: gated by `globalPrefs.memoryV2.enabled`
+ * - Workspace store: gated by `repoPrefs.memoryV2.enabled`
+ *
  * Returns the empty addon when:
  * - `dataDir` or `workspaceId` is missing
- * - `prefs.memoryV2.enabled` is not `true`
+ * - neither global nor workspace memory is enabled
  * - any error occurs during store initialization or fact retrieval
  *
  * @param dataDir     CoC data root (e.g. `~/.coc`)
@@ -86,68 +91,111 @@ export async function buildMemoryV2Addon(
 ): Promise<MemoryV2Addon> {
     if (!dataDir || !workspaceId) return EMPTY_ADDON;
 
+    let globalHandle: ReturnType<typeof createMemoryStores> | undefined;
+    let workspaceHandle: ReturnType<typeof createMemoryStores> | undefined;
+
     try {
-        const prefs = readRepoPreferences(dataDir, workspaceId);
-        if (!prefs.memoryV2?.enabled) return EMPTY_ADDON;
+        const globalPrefs = readGlobalPreferences(dataDir);
+        const repoPrefs = readRepoPreferences(dataDir, workspaceId);
 
-        const isolated = prefs.memoryV2.isolated === true;
-        const frozenLimit = prefs.memoryV2.frozenSnapshotLimit ?? DEFAULT_FROZEN_SNAPSHOT_LIMIT;
-        const recallLimit = prefs.memoryV2.recallLimit ?? DEFAULT_RECALL_LIMIT;
-        const scope = isolated ? 'workspace' as const : 'global' as const;
+        const globalEnabled = globalPrefs.memoryV2?.enabled === true;
+        const workspaceEnabled = repoPrefs.memoryV2?.enabled === true;
 
-        const storeDir = isolated
-            ? path.join(dataDir, 'repos', workspaceId, WORKSPACE_MEMORY_SUBDIR)
-            : path.join(dataDir, GLOBAL_MEMORY_SUBDIR);
+        if (!globalEnabled && !workspaceEnabled) return EMPTY_ADDON;
 
-        const handle = createMemoryStores(storeDir);
-        const { facts: factStore, episodes: episodeStore } = handle;
+        const frozenLimit = globalPrefs.memoryV2?.frozenSnapshotLimit
+            ?? repoPrefs.memoryV2?.frozenSnapshotLimit
+            ?? DEFAULT_FROZEN_SNAPSHOT_LIMIT;
+        const recallLimit = globalPrefs.memoryV2?.recallLimit
+            ?? repoPrefs.memoryV2?.recallLimit
+            ?? DEFAULT_RECALL_LIMIT;
 
-        // Build frozen snapshot: top-N active facts by importance (sorted by store)
-        const frozenFacts = await factStore.listFacts({
-            statuses: ['active'],
-            limit: frozenLimit,
-        });
-        const frozenBlock = buildFrozenSnapshotBlock(frozenFacts);
+        // Open stores for enabled scopes
+        if (globalEnabled) {
+            const globalStoreDir = path.join(dataDir, GLOBAL_MEMORY_SUBDIR);
+            globalHandle = createMemoryStores(globalStoreDir);
+        }
+
+        if (workspaceEnabled) {
+            const wsStoreDir = path.join(dataDir, 'repos', workspaceId, WORKSPACE_MEMORY_SUBDIR);
+            workspaceHandle = createMemoryStores(wsStoreDir);
+        }
+
+        // Build frozen snapshot from all enabled scopes
+        const allFrozenFacts: MemoryFact[] = [];
+        if (globalHandle) {
+            const gFacts = await globalHandle.facts.listFacts({ statuses: ['active'], limit: frozenLimit });
+            allFrozenFacts.push(...gFacts);
+        }
+        if (workspaceHandle) {
+            const wFacts = await workspaceHandle.facts.listFacts({ statuses: ['active'], limit: frozenLimit });
+            allFrozenFacts.push(...wFacts);
+        }
+        const frozenBlock = buildFrozenSnapshotBlock(allFrozenFacts);
 
         // Build per-turn recall block (only when a query is provided)
         let recallBlock: string | undefined;
         if (query?.trim()) {
-            const engine = new HybridSearchEngine(factStore);
-            const recalled = await engine.search({
-                text: query,
-                limit: recallLimit,
-                statuses: ['active'],
-            });
-            // Record recall for the retrieved facts
-            const ids = recalled.map(r => r.fact.id);
-            if (ids.length > 0) {
-                await factStore.recordRecall(ids);
+            const allRecalled: MemorySearchResult[] = [];
+
+            if (globalHandle) {
+                const engine = new HybridSearchEngine(globalHandle.facts);
+                const results = await engine.search({ text: query, limit: recallLimit, statuses: ['active'] });
+                const ids = results.map(r => r.fact.id);
+                if (ids.length > 0) await globalHandle.facts.recordRecall(ids);
+                allRecalled.push(...results);
             }
-            recallBlock = buildRecallBlock(recalled);
+
+            if (workspaceHandle) {
+                const engine = new HybridSearchEngine(workspaceHandle.facts);
+                const results = await engine.search({ text: query, limit: recallLimit, statuses: ['active'] });
+                const ids = results.map(r => r.fact.id);
+                if (ids.length > 0) await workspaceHandle.facts.recordRecall(ids);
+                allRecalled.push(...results);
+            }
+
+            // Sort by score and deduplicate (facts can only appear in one store, but guard anyway)
+            const seen = new Set<string>();
+            const deduped = allRecalled
+                .sort((a, b) => b.score - a.score)
+                .filter(r => {
+                    if (seen.has(r.fact.id)) return false;
+                    seen.add(r.fact.id);
+                    return true;
+                })
+                .slice(0, recallLimit);
+
+            recallBlock = buildRecallBlock(deduped);
         }
 
         const systemMessageSuffix = assembleSystemSuffix(frozenBlock, recallBlock) || undefined;
 
         // Create LLM tools
-        const toolDeps = {
-            factStore,
-            episodeStore,
-            scope,
-            workspaceId: isolated ? workspaceId : undefined,
+        const toolDeps: MemoryV2ToolDeps = {
+            globalFactStore: globalHandle?.facts,
+            globalEpisodeStore: globalHandle?.episodes,
+            workspaceFactStore: workspaceHandle?.facts,
+            workspaceEpisodeStore: workspaceHandle?.episodes,
+            workspaceId,
             processId,
         };
         const { tool: storeTool } = createMemoryStoreFactTool(toolDeps);
         const { tool: recallTool } = createMemoryRecallTool(toolDeps);
 
+        const dispose = () => {
+            try { globalHandle?.close(); } catch { /* already closed */ }
+            try { workspaceHandle?.close(); } catch { /* already closed */ }
+        };
+
         return {
             systemMessageSuffix,
             tools: [storeTool, recallTool],
             suffix: MEMORY_TOOL_SUFFIX,
-            dispose: () => {
-                try { handle.close(); } catch { /* already closed */ }
-            },
+            dispose,
         };
     } catch {
+        try { globalHandle?.close(); } catch { /* ignore */ }
+        try { workspaceHandle?.close(); } catch { /* ignore */ }
         return EMPTY_ADDON;
     }
 }
