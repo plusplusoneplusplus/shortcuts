@@ -1,7 +1,7 @@
 /**
  * Tests for memory-v2-tools.ts (AC-05)
  *
- * Covers: store_memory happy path, safety block, missing content,
+ * Covers: save_memory happy path, safety block, missing content,
  *         recall_memory happy path, no results, missing query, error recovery,
  *         target parameter (global default vs explicit workspace),
  *         multi-store recall merging.
@@ -65,7 +65,7 @@ function makeDualDeps(globalDir: string, wsDir: string): MemoryV2ToolDeps & { cl
 }
 
 // ============================================================================
-// store_memory
+// save_memory
 // ============================================================================
 
 describe('createMemoryStoreFactTool', () => {
@@ -85,12 +85,12 @@ describe('createMemoryStoreFactTool', () => {
     it('has the correct tool name', () => {
         const { tool } = createMemoryStoreFactTool(deps);
         expect(tool.name).toBe(MEMORY_V2_STORE_TOOL_NAME);
-        expect(tool.name).toBe('store_memory');
+        expect(tool.name).toBe('save_memory');
     });
 
-    it('sets overridesBuiltInTool: true to replace the built-in store_memory', () => {
+    it('does not set overridesBuiltInTool (save_memory is not a built-in name)', () => {
         const { tool } = createMemoryStoreFactTool(deps);
-        expect(tool.overridesBuiltInTool).toBe(true);
+        expect(tool.overridesBuiltInTool).toBeUndefined();
     });
 
     it('stores a fact and returns ok=true with active status', async () => {

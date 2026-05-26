@@ -316,7 +316,7 @@ describe('buildMemoryV2Addon', () => {
     // -----------------------------------------------------------------------
 
     describe('AC-07: V2 enabled provides tools without bounded memory', () => {
-        it('provides both store_memory and recall_memory tools when only global enabled', async () => {
+        it('provides both save_memory and recall_memory tools when only global enabled', async () => {
             enableGlobalMemory(tmpDir);
 
             const addon = await buildMemoryV2Addon(tmpDir, WORKSPACE_ID);

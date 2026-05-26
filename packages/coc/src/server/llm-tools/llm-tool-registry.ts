@@ -69,8 +69,8 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         enabledByDefault: true,
     },
     {
-        name: 'store_memory',
-        label: 'Store Memory (V2)',
+        name: 'save_memory',
+        label: 'Save Memory (V2)',
         description: 'Explicitly stores a new fact in the redesigned memory system.',
         enabledByDefault: true,
     },

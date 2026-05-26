@@ -6,7 +6,7 @@
  *     for cache stability (top-N facts by importance, status='active').
  *   - Per-turn recalled context injected as a fenced block in the system
  *     prompt, based on the current prompt query.
- *   - Two AI-callable tools: store_memory and recall_memory.
+ *   - Two AI-callable tools: save_memory and recall_memory.
  *
  * Reads from both Global memory (gated by globalPrefs.memoryV2.enabled) and
  * Workspace memory (gated by repoPrefs.memoryV2.enabled). Returns the empty
@@ -36,7 +36,7 @@ import { createMemoryStoreFactTool, createMemoryRecallTool, type MemoryV2ToolDep
 export interface MemoryV2Addon {
     /** System message suffix containing frozen snapshot + per-turn recall block. */
     systemMessageSuffix: string | undefined;
-    /** The memory v2 LLM tools: store_memory + recall_memory. */
+    /** The memory v2 LLM tools: save_memory + recall_memory. */
     tools: Tool<any>[];
     /** Tool guidance suffix for the system message. */
     suffix: string;
