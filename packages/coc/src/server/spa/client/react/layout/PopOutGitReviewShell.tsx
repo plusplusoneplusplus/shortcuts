@@ -10,7 +10,7 @@
  *   PR:           `/?workspace=<wsId>&repo=<repoId>#popout/git-review/pr/<prId>`
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { AppProvider } from '../contexts/AppContext';
 import { QueueProvider } from '../contexts/QueueContext';
 import { ThemeProvider } from './ThemeProvider';
@@ -38,6 +38,7 @@ import { getHostname } from '../utils/config';
 import { extractFileStatsFromDiff } from '../features/git/diff/diffSource';
 import { useClassification } from '../features/git/diff/useClassification';
 import { usePrReviewProgress } from '../features/git/diff/usePrReviewProgress';
+import { pickPriorityFile } from '../features/git/diff/prPopoutPriority';
 import type { ClassificationKey } from '../features/git/diff/diffSource';
 import type { HunkCategory } from '../features/pull-requests/classification-types';
 import { HUNK_CATEGORIES, CATEGORY_LABELS } from '../features/pull-requests/classification-types';
@@ -375,6 +376,52 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
         classification.setFilters(new Set<HunkCategory>(HUNK_CATEGORIES));
     }, [classification]);
 
+    const classifyStatusForNav = classification.state.status;
+    const priorityNav = useMemo(() => {
+        if (classifyStatusForNav !== 'ready') {
+            return { prevPath: null as string | null, nextPath: null as string | null };
+        }
+        const ctx = {
+            getFileBadge: classification.getFileBadge,
+            reviewedFiles: reviewProgress.state.reviewedFiles,
+        };
+        const filters = classification.state.activeFilters;
+        const next = pickPriorityFile(fileList, ctx, {
+            currentPath: selectedFilePath,
+            direction: 'next',
+            activeFilters: filters,
+        });
+        const prev = pickPriorityFile(fileList, ctx, {
+            currentPath: selectedFilePath,
+            direction: 'prev',
+            activeFilters: filters,
+        });
+        return { prevPath: prev.path, nextPath: next.path };
+    }, [
+        classifyStatusForNav,
+        classification.getFileBadge,
+        classification.state.activeFilters,
+        reviewProgress.state.reviewedFiles,
+        fileList,
+        selectedFilePath,
+    ]);
+
+    const handleNextPriority = useCallback(() => {
+        if (priorityNav.nextPath) {
+            setSelectedFilePath(priorityNav.nextPath);
+            setHunkTarget('first');
+            reviewProgress.markVisited(priorityNav.nextPath);
+        }
+    }, [priorityNav.nextPath, reviewProgress]);
+
+    const handlePrevPriority = useCallback(() => {
+        if (priorityNav.prevPath) {
+            setSelectedFilePath(priorityNav.prevPath);
+            setHunkTarget('first');
+            reviewProgress.markVisited(priorityNav.prevPath);
+        }
+    }, [priorityNav.prevPath, reviewProgress]);
+
     useEffect(() => {
         setLoading(true);
         setError(null);
@@ -495,6 +542,10 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
                     onShowAll={classifyStatus === 'ready' ? handleShowAll : undefined}
                     reviewedFiles={reviewProgress.state.reviewedFiles}
                     visitedFiles={reviewProgress.state.visitedFiles}
+                    onPrevPriorityFile={classifyStatus === 'ready' ? handlePrevPriority : undefined}
+                    onNextPriorityFile={classifyStatus === 'ready' ? handleNextPriority : undefined}
+                    prevPriorityDisabled={priorityNav.prevPath === null}
+                    nextPriorityDisabled={priorityNav.nextPath === null}
                 />
                 <div className="flex-1 min-w-0 overflow-hidden">
                     {selectedFilePath ? (

@@ -327,5 +327,72 @@ describe('PopOutFilePanel', () => {
             expect(screen.queryByTestId('tree-file-reviewed-tests/old.ts')).toBeNull();
             expect(screen.queryByTestId('tree-file-visited-tests/old.ts')).toBeNull();
         });
+
+        describe('priority navigation controls', () => {
+            it('does not render priority nav when handlers are not provided', () => {
+                render(
+                    <PopOutFilePanel
+                        workspaceId="ws1"
+                        files={SAMPLE_FILES}
+                        selectedFilePath={null}
+                        onFileSelect={() => {}}
+                        getFileBadge={getFileBadge}
+                    />
+                );
+                expect(screen.queryByTestId('popout-file-panel-priority-nav')).toBeNull();
+                expect(screen.queryByTestId('popout-file-panel-prev-priority')).toBeNull();
+                expect(screen.queryByTestId('popout-file-panel-next-priority')).toBeNull();
+            });
+
+            it('renders Prev/Next priority buttons and fires handlers on click', () => {
+                const onPrev = vi.fn();
+                const onNext = vi.fn();
+                render(
+                    <PopOutFilePanel
+                        workspaceId="ws1"
+                        files={SAMPLE_FILES}
+                        selectedFilePath={null}
+                        onFileSelect={() => {}}
+                        getFileBadge={getFileBadge}
+                        onPrevPriorityFile={onPrev}
+                        onNextPriorityFile={onNext}
+                    />
+                );
+                const prev = screen.getByTestId('popout-file-panel-prev-priority') as HTMLButtonElement;
+                const next = screen.getByTestId('popout-file-panel-next-priority') as HTMLButtonElement;
+                expect(prev.disabled).toBe(false);
+                expect(next.disabled).toBe(false);
+                fireEvent.click(prev);
+                fireEvent.click(next);
+                expect(onPrev).toHaveBeenCalledOnce();
+                expect(onNext).toHaveBeenCalledOnce();
+            });
+
+            it('disables Prev/Next when no candidate exists', () => {
+                const onPrev = vi.fn();
+                const onNext = vi.fn();
+                render(
+                    <PopOutFilePanel
+                        workspaceId="ws1"
+                        files={SAMPLE_FILES}
+                        selectedFilePath={null}
+                        onFileSelect={() => {}}
+                        getFileBadge={getFileBadge}
+                        onPrevPriorityFile={onPrev}
+                        onNextPriorityFile={onNext}
+                        prevPriorityDisabled
+                        nextPriorityDisabled
+                    />
+                );
+                const prev = screen.getByTestId('popout-file-panel-prev-priority') as HTMLButtonElement;
+                const next = screen.getByTestId('popout-file-panel-next-priority') as HTMLButtonElement;
+                expect(prev.disabled).toBe(true);
+                expect(next.disabled).toBe(true);
+                fireEvent.click(prev);
+                fireEvent.click(next);
+                expect(onPrev).not.toHaveBeenCalled();
+                expect(onNext).not.toHaveBeenCalled();
+            });
+        });
     });
 });

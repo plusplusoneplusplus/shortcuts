@@ -47,6 +47,14 @@ export interface PopOutFilePanelProps {
     activeFilters?: ReadonlySet<HunkCategory>;
     /** Show-all reset handler. When omitted, the Show all button is hidden. */
     onShowAll?: () => void;
+    /** Move selection to the previous priority file. When omitted, the button is hidden. */
+    onPrevPriorityFile?: () => void;
+    /** Move selection to the next priority file. When omitted, the button is hidden. */
+    onNextPriorityFile?: () => void;
+    /** Disable Prev priority button (no candidate). */
+    prevPriorityDisabled?: boolean;
+    /** Disable Next priority button (no candidate). */
+    nextPriorityDisabled?: boolean;
 }
 
 const PANEL_STORAGE_KEY = 'coc.popoutFilePanel.width';
@@ -73,6 +81,10 @@ export function PopOutFilePanel({
     onTogglePrioritySort,
     activeFilters,
     onShowAll,
+    onPrevPriorityFile,
+    onNextPriorityFile,
+    prevPriorityDisabled = false,
+    nextPriorityDisabled = false,
 }: PopOutFilePanelProps) {
     const [collapsed, setCollapsed] = useState(loadCollapsed);
     const { mode, setMode } = useFilesViewMode(workspaceId);
@@ -221,6 +233,47 @@ export function PopOutFilePanel({
                                 >
                                     Show all
                                 </button>
+                            )}
+                            {(onPrevPriorityFile || onNextPriorityFile) && (
+                                <span
+                                    className="inline-flex items-center gap-0.5"
+                                    data-testid="popout-file-panel-priority-nav"
+                                >
+                                    {onPrevPriorityFile && (
+                                        <button
+                                            type="button"
+                                            onClick={onPrevPriorityFile}
+                                            disabled={prevPriorityDisabled}
+                                            className={
+                                                prevPriorityDisabled
+                                                    ? 'inline-flex h-5 items-center rounded border border-gray-200 bg-gray-50 px-1.5 text-[10px] font-medium text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-600 cursor-not-allowed'
+                                                    : 'inline-flex h-5 items-center rounded border border-gray-300 bg-white px-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+                                            }
+                                            title="Previous priority file"
+                                            aria-label="Previous priority file"
+                                            data-testid="popout-file-panel-prev-priority"
+                                        >
+                                            ◀ Prev
+                                        </button>
+                                    )}
+                                    {onNextPriorityFile && (
+                                        <button
+                                            type="button"
+                                            onClick={onNextPriorityFile}
+                                            disabled={nextPriorityDisabled}
+                                            className={
+                                                nextPriorityDisabled
+                                                    ? 'inline-flex h-5 items-center rounded border border-gray-200 bg-gray-50 px-1.5 text-[10px] font-medium text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-600 cursor-not-allowed'
+                                                    : 'inline-flex h-5 items-center rounded border border-gray-300 bg-white px-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+                                            }
+                                            title="Next priority file"
+                                            aria-label="Next priority file"
+                                            data-testid="popout-file-panel-next-priority"
+                                        >
+                                            Next ▶
+                                        </button>
+                                    )}
+                                </span>
                             )}
                         </div>
                     </div>
