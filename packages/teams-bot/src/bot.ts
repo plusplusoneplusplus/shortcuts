@@ -89,6 +89,9 @@ export class TeamsBot {
             } else if (this.mode === 'mcp' && !this.opts.teamId && this.transport instanceof McpTransport) {
                 const chatId = (this.transport as McpTransport).getChatId();
                 if (chatId) this._channelId = chatId;
+                // Track init probe message so polling skips it
+                const initMsgId = (this.transport as McpTransport).getInitMessageId();
+                if (initMsgId) this._sentMessageIds.add(initMsgId);
             }
 
             this.setStatus('connected');

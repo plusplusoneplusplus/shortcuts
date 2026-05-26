@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Runs `coccontainer serve` in a rebuild-restart loop.
     Hit POST /api/admin/restart from any browser/node to trigger a rebuild + restart.
