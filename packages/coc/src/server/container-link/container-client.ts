@@ -147,12 +147,16 @@ export class ContainerLinkClient extends EventEmitter {
     }
 
     private buildWsUrl(): string {
-        const base = this.options.containerUrl.replace(/\/$/, '');
+        let base = this.options.containerUrl.replace(/\/$/, '');
+        // Auto-prepend ws:// if no protocol is specified
+        if (!/^(wss?|https?):\/\//i.test(base)) {
+            base = `ws://${base}`;
+        }
         // If URL already includes path, use as-is; otherwise append default path
         if (base.includes('/ws/agent-link')) {
             return base;
         }
-        const wsBase = base.replace(/^http/, 'ws');
+        const wsBase = base.replace(/^http/i, 'ws');
         return `${wsBase}/ws/agent-link`;
     }
 
