@@ -232,13 +232,19 @@ export class ContainerLinkClient extends EventEmitter {
             return;
         }
 
+        // Strip accept-encoding to prevent gzip/br responses — the proxy
+        // reads the body as UTF-8 text, which corrupts binary-encoded data.
+        const fwdHeaders: Record<string, string> = {};
+        for (const [k, v] of Object.entries(payload.headers || {})) {
+            if (k.toLowerCase() !== 'accept-encoding') fwdHeaders[k] = v;
+        }
         const reqOptions: http.RequestOptions = {
             hostname: '127.0.0.1',
             port,
             path: payload.path,
             method: payload.method,
             headers: {
-                ...payload.headers,
+                ...fwdHeaders,
                 host: `127.0.0.1:${port}`,
             },
         };

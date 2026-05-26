@@ -607,7 +607,9 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                         const body = bodyChunks.length > 0 ? Buffer.concat(bodyChunks).toString('utf8') : undefined;
                         const headers: Record<string, string> = {};
                         for (const [key, value] of Object.entries(req.headers)) {
-                            if (typeof value === 'string') headers[key] = value;
+                            // Strip accept-encoding — the agent proxy reads responses as
+                            // UTF-8 text, so compressed (gzip/br) responses would be garbled.
+                            if (typeof value === 'string' && key.toLowerCase() !== 'accept-encoding') headers[key] = value;
                         }
                         const response = await inboundManager.proxyRequest(
                             inboundId,
