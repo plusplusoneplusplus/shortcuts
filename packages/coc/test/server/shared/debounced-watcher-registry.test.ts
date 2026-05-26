@@ -22,6 +22,7 @@ vi.mock('fs', async (importOriginal) => {
     return {
         ...actual,
         watch: vi.fn(actual.watch),
+        existsSync: vi.fn(actual.existsSync),
     };
 });
 
@@ -94,6 +95,7 @@ describe('DebouncedWatcherRegistry', () => {
     describe('API correctness', () => {
         beforeEach(() => {
             vi.mocked(fs.watch).mockRestore();
+            vi.mocked(fs.existsSync).mockRestore();
         });
 
         it('isWatching returns false before any watch call', () => {
@@ -207,10 +209,12 @@ describe('DebouncedWatcherRegistry', () => {
             vi.useFakeTimers();
             fakeWatcherA = createFakeWatcher();
             mockFsWatch([fakeWatcherA]);
+            vi.mocked(fs.existsSync).mockReturnValue(true);
         });
 
         afterEach(() => {
             vi.mocked(fs.watch).mockRestore();
+            vi.mocked(fs.existsSync).mockRestore();
             vi.useRealTimers();
         });
 
@@ -301,10 +305,12 @@ describe('DebouncedWatcherRegistry', () => {
             vi.useFakeTimers();
             fakeWatcherA = createFakeWatcher();
             mockFsWatch([fakeWatcherA]);
+            vi.mocked(fs.existsSync).mockReturnValue(true);
         });
 
         afterEach(() => {
             vi.mocked(fs.watch).mockRestore();
+            vi.mocked(fs.existsSync).mockRestore();
             vi.useRealTimers();
         });
 
@@ -354,10 +360,12 @@ describe('DebouncedWatcherRegistry', () => {
             fakeWatcherA = createFakeWatcher();
             fakeWatcherB = createFakeWatcher();
             mockFsWatch([fakeWatcherA, fakeWatcherB]);
+            vi.mocked(fs.existsSync).mockReturnValue(true);
         });
 
         afterEach(() => {
             vi.mocked(fs.watch).mockRestore();
+            vi.mocked(fs.existsSync).mockRestore();
             vi.useRealTimers();
         });
 

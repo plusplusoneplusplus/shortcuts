@@ -85,6 +85,10 @@ export class DebouncedWatcherRegistry<K extends string = string> {
         };
 
         try {
+            if (!fs.existsSync(watchPath)) {
+                throw new Error(`ENOENT: no such file or directory, watch '${watchPath}'`);
+            }
+
             let watcher: fs.FSWatcher;
             try {
                 watcher = fs.watch(watchPath, { recursive: true }, changeHandler);
