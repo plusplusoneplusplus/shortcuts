@@ -82,18 +82,13 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
 
     // Inbound agent lifecycle — auto-register/deregister agents that call home
     inboundManager.on('agent-connected', (agent: { id: string; name: string }) => {
-        // Remove stale entries with same name and inbound address (from prior connections with different IDs)
-        const stale = agentStore.list().filter(a =>
-            a.address.startsWith('inbound://') && a.name === agent.name && a.address !== `inbound://${agent.id}`
-        );
-        for (const s of stale) {
-            agentStore.remove(s.id);
-        }
-
         // Add or update in agent store with a placeholder address (inbound agents don't expose a port)
         const existing = agentStore.list().find(a => a.address === `inbound://${agent.id}`);
         if (!existing) {
             agentStore.add(`inbound://${agent.id}`, agent.name);
+        } else if (existing.name !== agent.name) {
+            // Agent reconnected with updated name — sync it
+            agentStore.update(existing.id, { name: agent.name });
         }
         const entry = agentStore.list().find(a => a.address === `inbound://${agent.id}`);
         if (entry) {
