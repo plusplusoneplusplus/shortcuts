@@ -7,17 +7,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { Dialog } from '../../ui/Dialog';
 import { Button } from '../../ui';
 import { getSpaCocClient } from '../../api/cocClient';
+import { ALLOWED_PARENT_TYPES } from '@plusplusoneplusplus/coc-client';
 import { TYPE_LABELS } from './WorkItemHierarchyNode';
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
-
-/** Maps each child type to its valid parent types. */
-const VALID_PARENT_TYPES: Record<WorkItemTypeLabel, WorkItemTypeLabel[]> = {
-    epic:        [],
-    feature:     ['epic'],
-    pbi:         ['feature'],
-    'work-item': ['pbi'],
-    bug:         ['pbi'],
-};
 
 const TYPE_PREFIX: Record<WorkItemTypeLabel, string> = {
     epic: 'E',
@@ -62,7 +54,7 @@ export function WorkItemParentPicker({
     const [error, setError] = useState<string | null>(null);
     const [selectedId, setSelectedId] = useState<string | null>(currentParentId ?? null);
 
-    const validParentTypes = VALID_PARENT_TYPES[itemType] ?? [];
+    const validParentTypes = ALLOWED_PARENT_TYPES[itemType] ?? [];
 
     const fetchCandidates = useCallback(async () => {
         if (validParentTypes.length === 0) return;
@@ -129,7 +121,7 @@ export function WorkItemParentPicker({
         setSaving(true);
         setError(null);
         try {
-            await getSpaCocClient().workItems.update(workspaceId, itemId, { parentId: null as any });
+            await getSpaCocClient().workItems.update(workspaceId, itemId, { parentId: null });
             onParentChanged(null);
             onClose();
         } catch (err: any) {

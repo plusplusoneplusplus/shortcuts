@@ -14,6 +14,31 @@ export type WorkItemPriority = 'high' | 'normal' | 'low';
 export type WorkItemSource = 'manual' | 'chat' | 'schedule';
 export type WorkItemType = 'work-item' | 'bug' | 'epic' | 'feature' | 'pbi';
 
+/**
+ * Allowed parent types for each work item type.
+ * An empty array means the type cannot have a parent (top-level only).
+ * Any item may be temporarily unparented (parentId absent) regardless of type.
+ */
+export const ALLOWED_PARENT_TYPES: Record<WorkItemType, readonly WorkItemType[]> = {
+  epic:        [],
+  feature:     ['epic'],
+  pbi:         ['feature'],
+  'work-item': ['pbi'],
+  bug:         ['pbi'],
+};
+
+/**
+ * Allowed child types for each work item type.
+ * An empty array means the type cannot have children.
+ */
+export const ALLOWED_CHILD_TYPES: Record<WorkItemType, readonly WorkItemType[]> = {
+  epic:        ['feature'],
+  feature:     ['pbi'],
+  pbi:         ['work-item', 'bug'],
+  'work-item': [],
+  bug:         [],
+};
+
 export interface WorkItemPlan {
   version: number;
   content: string;
