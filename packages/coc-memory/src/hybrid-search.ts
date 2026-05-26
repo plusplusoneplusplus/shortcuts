@@ -152,6 +152,7 @@ export class HybridSearchEngine {
         vectorHits: VectorHit[],
         limit: number,
     ): MemorySearchResult[] {
+        const nowMs = Date.now(); // capture once so all recency scores within a search are deterministic
         const hasBm25 = bm25Results.length > 0;
         const hasVec = vectorHits.length > 0;
         const weights =
@@ -180,7 +181,7 @@ export class HybridSearchEngine {
 
         const results: MemorySearchResult[] = [];
         for (const { fact, bm25Score, vectorScore } of map.values()) {
-            const rec = recencyScore(fact.createdAt);
+            const rec = recencyScore(fact.createdAt, undefined, nowMs);
             const score =
                 weights.lex * bm25Score +
                 weights.vec * (vectorScore ?? 0) +

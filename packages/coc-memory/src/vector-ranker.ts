@@ -73,7 +73,7 @@ export function normalise(values: number[]): number[] {
  * Recency decay score: `exp(-ageDays / halfLifeDays)`.
  * A fact created today scores 1.0; one created 90 days ago scores ~0.37.
  */
-export function recencyScore(createdAt: string, halfLifeDays = 90): number {
-    const ageDays = (Date.now() - new Date(createdAt).getTime()) / (1000 * 60 * 60 * 24);
+export function recencyScore(createdAt: string, halfLifeDays = 90, nowMs = Date.now()): number {
+    const ageDays = (nowMs - new Date(createdAt).getTime()) / (1000 * 60 * 60 * 24);
     return Math.exp(-ageDays / halfLifeDays);
 }
