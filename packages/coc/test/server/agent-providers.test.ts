@@ -416,6 +416,7 @@ describe('registerAgentProvidersRoutes — quota endpoint', () => {
         registerAgentProvidersRoutes(routes, {
             runtimeConfigService: svc,
             getCodexAuthInfo: () => ({ status: 'authenticated' }),
+            getClaudeAvailability: claudeUnavailable,
             serverBaseUrl: BASE_URL,
             getCopilotSdkService: () => mockCopilotService as any,
             getCodexSdkService: () => mockCodexService as any,
@@ -447,6 +448,7 @@ describe('registerAgentProvidersRoutes — quota endpoint', () => {
         registerAgentProvidersRoutes(routes, {
             runtimeConfigService: svc,
             getCodexAuthInfo: () => ({ status: 'authenticated' }),
+            getClaudeAvailability: claudeUnavailable,
             serverBaseUrl: BASE_URL,
             getCopilotSdkService: () => mockCopilotService as any,
             getCodexSdkService: () => mockCodexService as any,
@@ -459,6 +461,102 @@ describe('registerAgentProvidersRoutes — quota endpoint', () => {
         expect(codex).toBeDefined();
         expect(codex.error).toBe('Codex CLI not installed');
         expect(codex.quotaTypes).toHaveLength(0);
+    });
+
+    it('returns claude quota data when Claude service has rate-limit state', async () => {
+        const svc = makeService(false, true);
+        const routes: any[] = [];
+        const mockCopilotService = {
+            getAccountQuota: vi.fn().mockResolvedValue({ quotaSnapshots: {} }),
+        };
+        const mockClaudeService = {
+            getAccountQuota: vi.fn().mockResolvedValue({
+                quotaSnapshots: {
+                    five_hour: {
+                        isUnlimitedEntitlement: false,
+                        entitlementRequests: 100,
+                        usedRequests: 72,
+                        remainingPercentage: 0.28,
+                        usageAllowedWithExhaustedQuota: true,
+                        overage: 0,
+                        resetDate: '2025-06-01T00:00:00.000Z',
+                    },
+                },
+            }),
+        };
+        registerAgentProvidersRoutes(routes, {
+            runtimeConfigService: svc,
+            getCodexAuthInfo: () => ({ status: 'unauthenticated' }),
+            getClaudeAvailability: claudeAvailable,
+            serverBaseUrl: BASE_URL,
+            getCopilotSdkService: () => mockCopilotService as any,
+            getClaudeSdkService: () => mockClaudeService as any,
+        });
+        const quotaRoute = routes.find(r => r.pattern === '/api/agent-providers/quota');
+        const { res, getBody } = makeRes();
+        await quotaRoute.handler({} as any, res);
+        const body = JSON.parse(getBody());
+        const claude = body.providers.find((p: any) => p.id === 'claude');
+        expect(claude).toBeDefined();
+        expect(claude.quotaTypes).toHaveLength(1);
+        expect(claude.quotaTypes[0].type).toBe('five_hour');
+        expect(claude.quotaTypes[0].usedRequests).toBe(72);
+        expect(claude.quotaTypes[0].usageAllowedWithExhaustedQuota).toBe(true);
+        expect(claude.error).toBeUndefined();
+    });
+
+    it('still emits a claude entry (with empty quotaTypes) when no rate-limit or accountInfo snapshot is available', async () => {
+        const svc = makeService(false, true);
+        const routes: any[] = [];
+        const mockCopilotService = {
+            getAccountQuota: vi.fn().mockResolvedValue({ quotaSnapshots: {} }),
+        };
+        const mockClaudeService = {
+            getAccountQuota: vi.fn().mockResolvedValue({ quotaSnapshots: {} }),
+        };
+        registerAgentProvidersRoutes(routes, {
+            runtimeConfigService: svc,
+            getCodexAuthInfo: () => ({ status: 'unauthenticated' }),
+            getClaudeAvailability: claudeAvailable,
+            serverBaseUrl: BASE_URL,
+            getCopilotSdkService: () => mockCopilotService as any,
+            getClaudeSdkService: () => mockClaudeService as any,
+        });
+        const quotaRoute = routes.find(r => r.pattern === '/api/agent-providers/quota');
+        const { res, getBody } = makeRes();
+        await quotaRoute.handler({} as any, res);
+        const body = JSON.parse(getBody());
+        const claude = body.providers.find((p: any) => p.id === 'claude');
+        expect(claude).toBeDefined();
+        expect(claude.quotaTypes).toEqual([]);
+        expect(claude.error).toBeUndefined();
+    });
+
+    it('returns claude error when Claude quota lookup throws', async () => {
+        const svc = makeService(false, true);
+        const routes: any[] = [];
+        const mockCopilotService = {
+            getAccountQuota: vi.fn().mockResolvedValue({ quotaSnapshots: {} }),
+        };
+        const mockClaudeService = {
+            getAccountQuota: vi.fn().mockRejectedValue(new Error('Claude SDK error')),
+        };
+        registerAgentProvidersRoutes(routes, {
+            runtimeConfigService: svc,
+            getCodexAuthInfo: () => ({ status: 'unauthenticated' }),
+            getClaudeAvailability: claudeAvailable,
+            serverBaseUrl: BASE_URL,
+            getCopilotSdkService: () => mockCopilotService as any,
+            getClaudeSdkService: () => mockClaudeService as any,
+        });
+        const quotaRoute = routes.find(r => r.pattern === '/api/agent-providers/quota');
+        const { res, getBody } = makeRes();
+        await quotaRoute.handler({} as any, res);
+        const body = JSON.parse(getBody());
+        const claude = body.providers.find((p: any) => p.id === 'claude');
+        expect(claude).toBeDefined();
+        expect(claude.error).toBe('Claude SDK error');
+        expect(claude.quotaTypes).toHaveLength(0);
     });
 
     it('does not include codex provider when codex is disabled', async () => {

@@ -20,7 +20,8 @@ import { sendJson } from '../shared/router';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
 import type { CodexAuthInfo } from '../codex-auth/codex-auth-store';
 import type { AgentProviderStatus, AgentProvidersResponse, AgentProvidersQuotaResponse, ProviderQuotaType } from '@plusplusoneplusplus/coc-client';
-import type { CopilotSDKService, IAvailabilityResult, CodexSDKService } from '@plusplusoneplusplus/forge';
+import type { CopilotSDKService, IAvailabilityResult, CodexSDKService, ClaudeSDKService, IAccountQuotaResult } from '@plusplusoneplusplus/forge';
+import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import { getInstallState } from '../providers/provider-install-routes';
 
 export interface AgentProvidersRouteContext {
@@ -35,6 +36,23 @@ export interface AgentProvidersRouteContext {
     getCopilotSdkService?: () => CopilotSDKService;
     /** Optional: getter for Codex account quota. Used by the quota endpoint. */
     getCodexSdkService?: () => CodexSDKService | undefined;
+    /** Optional: getter for Claude account quota. Used by the quota endpoint. */
+    getClaudeSdkService?: () => ClaudeSDKService | undefined;
+}
+
+function quotaResultToProviderQuotaTypes(result: IAccountQuotaResult): ProviderQuotaType[] {
+    return Object.entries(result.quotaSnapshots).map(
+        ([type, snap]) => ({
+            type,
+            isUnlimitedEntitlement: snap.isUnlimitedEntitlement,
+            usedRequests: snap.usedRequests,
+            entitlementRequests: snap.entitlementRequests,
+            remainingPercentage: snap.remainingPercentage,
+            usageAllowedWithExhaustedQuota: snap.usageAllowedWithExhaustedQuota,
+            overage: snap.overage,
+            resetDate: snap.resetDate,
+        }),
+    );
 }
 
 /** Build the providers array from live config + auth/SDK state. Exported for unit testing. */
@@ -152,18 +170,7 @@ export function registerAgentProvidersRoutes(routes: Route[], ctx: AgentProvider
                     providers.push({ id: 'copilot', quotaTypes: [], error: 'Copilot SDK service not available' });
                 } else {
                     const result = await sdkService.getAccountQuota();
-                    const quotaTypes: ProviderQuotaType[] = Object.entries(result.quotaSnapshots).map(
-                        ([type, snap]) => ({
-                            type,
-                            isUnlimitedEntitlement: snap.isUnlimitedEntitlement,
-                            usedRequests: snap.usedRequests,
-                            entitlementRequests: snap.entitlementRequests,
-                            remainingPercentage: snap.remainingPercentage,
-                            usageAllowedWithExhaustedQuota: snap.usageAllowedWithExhaustedQuota,
-                            overage: snap.overage,
-                            resetDate: snap.resetDate,
-                        }),
-                    );
+                    const quotaTypes = quotaResultToProviderQuotaTypes(result);
                     providers.push({ id: 'copilot', quotaTypes });
                 }
             } catch (err: unknown) {
@@ -179,18 +186,7 @@ export function registerAgentProvidersRoutes(routes: Route[], ctx: AgentProvider
                         providers.push({ id: 'codex', quotaTypes: [] });
                     } else {
                         const result = await codexService.getAccountQuota();
-                        const quotaTypes: ProviderQuotaType[] = Object.entries(result.quotaSnapshots).map(
-                            ([type, snap]) => ({
-                                type,
-                                isUnlimitedEntitlement: snap.isUnlimitedEntitlement,
-                                usedRequests: snap.usedRequests,
-                                entitlementRequests: snap.entitlementRequests,
-                                remainingPercentage: snap.remainingPercentage,
-                                usageAllowedWithExhaustedQuota: snap.usageAllowedWithExhaustedQuota,
-                                overage: snap.overage,
-                                resetDate: snap.resetDate,
-                            }),
-                        );
+                        const quotaTypes = quotaResultToProviderQuotaTypes(result);
                         providers.push({ id: 'codex', quotaTypes });
                     }
                 } catch (err: unknown) {
@@ -199,17 +195,25 @@ export function registerAgentProvidersRoutes(routes: Route[], ctx: AgentProvider
                 }
             }
 
-            // Claude quota — SDK has no quota method; return empty or unavailable
+            // Claude quota uses cached `rate_limit_event` and `accountInfo()`
+            // signals — see `ClaudeSDKService.getAccountQuota()` for the full
+            // priority order. We always emit a `claude` entry when Claude is
+            // enabled so the UI consistently shows the provider; only a real
+            // SDK error pushes an entry with an `error` field.
             if (claudeEnabled) {
                 try {
-                    const availability = await ctx.getClaudeAvailability();
-                    if (availability.available) {
-                        providers.push({ id: 'claude', quotaTypes: [] });
-                    } else {
-                        providers.push({ id: 'claude', quotaTypes: [], error: availability.error ?? 'Claude not available' });
+                    const claudeService = ctx.getClaudeSdkService?.();
+                    if (claudeService) {
+                        const result = await claudeService.getAccountQuota();
+                        const quotaTypes = quotaResultToProviderQuotaTypes(result);
+                        providers.push({ id: 'claude', quotaTypes });
+                        if (quotaTypes.length === 0) {
+                            getLogger().debug(LogCategory.AI, '[ClaudeQuota] No quota snapshots to report — emitting claude entry with empty quotaTypes');
+                        }
                     }
                 } catch (err: unknown) {
                     const msg = err instanceof Error ? err.message : String(err);
+                    getLogger().warn(LogCategory.AI, `[ClaudeQuota] quota lookup failed: ${msg}`);
                     providers.push({ id: 'claude', quotaTypes: [], error: msg });
                 }
             }

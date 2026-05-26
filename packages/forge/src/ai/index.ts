@@ -80,6 +80,8 @@ export {
     resetCopilotSDKService,
     // Background Tasks Info
     BackgroundTasksInfo,
+    type IAccountQuotaResult,
+    type IAccountQuotaSnapshot,
     // ISDKService interface and provider-agnostic types
     ISDKService,
     IModelInfo,
@@ -102,6 +104,8 @@ export {
     // Claude SDK Service
     ClaudeSDKService,
     registerClaudeSDKService,
+    mapClaudeRateLimitInfoToQuota,
+    type ClaudeRateLimitInfo,
     // Model Metadata Store
     modelMetadataStore,
     resolveReasoningEffort,
