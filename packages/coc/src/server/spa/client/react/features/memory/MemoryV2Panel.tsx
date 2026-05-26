@@ -350,7 +350,7 @@ export function MemoryV2Panel({ initialTab = 'facts', initialScopeId, onInitialS
     }
 
     return (
-        <div className="flex h-full overflow-hidden" data-testid="memory-v2-panel">
+        <div id="view-memory" className="flex h-full overflow-hidden" data-testid="memory-v2-panel">
             {/* Left rail — scope sidebar */}
             <div className="w-[200px] flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] overflow-hidden">
                 <ScopeSidebar

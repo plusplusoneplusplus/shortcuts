@@ -88,16 +88,16 @@ Right-hand action cluster: `[Connected pill | NotificationBell | Admin | Theme]`
 
 The legacy "Tools" popover has been migrated into the Admin page's left
 sidebar, but there is no longer a generic Tools group. The Admin sidebar is
-grouped by user task: Configure, Connections, Operations, and Developer /
-Internals. Embedded tool rows keep the legacy ids (`skills-toggle`,
-`logs-toggle`, `stats-toggle`, `models-toggle`, `servers-toggle`) and
-`data-tab` still carries the matching dashboard route; Servers is shown only
-when `isServersEnabled()` is true.
+grouped by user task: Configure, Knowledge, Connections, Operations, and
+Developer / Internals. Embedded tool rows keep stable ids (`memory-toggle`,
+`skills-toggle`, `logs-toggle`, `stats-toggle`, `models-toggle`,
+`servers-toggle`) and `data-tab` still carries the matching dashboard route;
+Servers is shown only when `isServersEnabled()` is true.
 
 Clicking an embedded tool row dispatches `SET_ACTIVE_TAB` and updates
-`location.hash` to the corresponding top-level route (`#skills`, `#logs`,
-`#stats`, `#models`, `#servers`). The Router maps every embedded tool tab plus
-`'admin'` itself to a single `<AdminPanel />` render, so the admin shell
+`location.hash` to the corresponding top-level route (`#memory`, `#skills`,
+`#logs`, `#stats`, `#models`, `#servers`). The Router maps every embedded tool
+tab plus `'admin'` itself to a single `<AdminPanel />` render, so the admin shell
 (sidebar + breadcrumb + right pane) stays mounted across navigation.
 `AdminPanel` switches on `state.activeTab` — when it matches an embedded tool
 route, the right pane mounts the corresponding View embedded inside an
@@ -125,9 +125,9 @@ Each tool's internal sub-tab/hash scheme (e.g. `#skills/installed`,
 
 ## Memory Route
 
-The top-level `#memory` route renders `MemoryV2Panel` plus its feature tip. `MemorySubTab` values are `facts`, `review`, and `episodes`; hash links such as `#memory/review` select the matching V2 tab. Legacy bounded-memory/config/explore-cache panels are not rendered on the Memory route. Repo settings still use `RepoMemorySection` for repo-scoped bounded memory and raw memory inspection.
+The top-level `#memory` route is embedded in the Admin shell's Knowledge group and renders `MemoryV2Panel` in the right pane. The panel root owns the stable `#view-memory` id. `MemorySubTab` values are `facts`, `review`, `episodes`, and `settings`; hash links such as `#memory/review` and `#memory/settings` select the matching V2 tab. Legacy bounded-memory/config/explore-cache panels are not rendered on the Memory route. Repo settings still use `RepoMemorySection` for repo-scoped bounded memory and raw memory inspection.
 
-`MemoryV2Panel` reads `PerRepoPreferences.memoryV2` for enabled/isolated state, lets users enable Memory V2 for the selected workspace, toggles global vs isolated workspace scope, exports JSON, and wipes the active scope after confirmation. The tab content is split into `MemoryV2FactsTab`, `MemoryV2ReviewTab`, and `MemoryV2EpisodesTab`.
+`MemoryV2Panel` lists the global scope plus registered workspace scopes, lets users enable/disable the active scope from the Settings tab, exports JSON, and wipes the active scope after confirmation. The tab content is split into `MemoryV2FactsTab`, `MemoryV2ReviewTab`, `MemoryV2EpisodesTab`, and `MemoryV2SettingsTab`.
 
 ## Feature Flags
 

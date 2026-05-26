@@ -8,7 +8,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { createMemoryStores, GLOBAL_MEMORY_SUBDIR, type MemoryEpisode, type MemoryFact, type MemoryFactStatus } from '@plusplusoneplusplus/coc-memory';
+import { createMemoryStores, WORKSPACE_MEMORY_SUBDIR, type MemoryEpisode, type MemoryFact, type MemoryFactStatus } from '@plusplusoneplusplus/coc-memory';
 import { test, expect, type Page, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture } from './fixtures/repo-fixtures';
@@ -44,28 +44,37 @@ async function enableMemoryV2(
     expect(response.ok()).toBe(true);
 }
 
-async function openMemoryForWorkspace(page: Page, serverUrl: string, wsId: string, tab: 'facts' | 'review' | 'episodes' = 'facts'): Promise<void> {
+async function openMemoryForWorkspace(page: Page, serverUrl: string, wsId: string, tab: 'facts' | 'review' | 'episodes' | 'settings' = 'facts'): Promise<void> {
     await page.goto(`${serverUrl}/#repos/${encodeURIComponent(wsId)}`);
     await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10_000 });
 
-    const hash = tab === 'facts' ? '#memory' : `#memory/${tab}`;
-    await page.evaluate(nextHash => { window.location.hash = nextHash; }, hash);
+    await page.evaluate(() => { window.location.hash = '#memory'; });
     await expect(page.locator('#view-memory')).toBeVisible({ timeout: 10_000 });
+
+    const scopeRow = page.locator(`[data-testid="scope-row"][data-scope-id="workspace:${wsId}"]`);
+    await expect(scopeRow).toBeVisible({ timeout: 10_000 });
+    await scopeRow.click();
+
+    if (tab !== 'facts') {
+        await page.locator(`button[data-tab="${tab}"]`).click();
+    }
 }
 
-function getGlobalStoreDir(dataDir: string): string {
-    return path.join(dataDir, GLOBAL_MEMORY_SUBDIR);
+function getWorkspaceStoreDir(dataDir: string, wsId: string): string {
+    return path.join(dataDir, 'repos', wsId, WORKSPACE_MEMORY_SUBDIR);
 }
 
 async function seedFact(
     dataDir: string,
+    wsId: string,
     content: string,
     overrides: Partial<Pick<MemoryFact, 'status' | 'tags' | 'source' | 'sourceProcessId' | 'importance' | 'confidence'>> = {},
 ): Promise<MemoryFact> {
-    const handle = createMemoryStores(getGlobalStoreDir(dataDir));
+    const handle = createMemoryStores(getWorkspaceStoreDir(dataDir, wsId));
     try {
         return await handle.facts.addFact({
-            scope: 'global',
+            scope: 'workspace',
+            workspaceId: wsId,
             content,
             importance: overrides.importance ?? 0.75,
             confidence: overrides.confidence ?? 0.95,
@@ -79,8 +88,8 @@ async function seedFact(
     }
 }
 
-async function seedReviewFact(dataDir: string, content: string): Promise<MemoryFact> {
-    return seedFact(dataDir, content, {
+async function seedReviewFact(dataDir: string, wsId: string, content: string): Promise<MemoryFact> {
+    return seedFact(dataDir, wsId, content, {
         status: 'review' as MemoryFactStatus,
         source: 'auto-extracted',
         confidence: 0.35,
@@ -88,11 +97,12 @@ async function seedReviewFact(dataDir: string, content: string): Promise<MemoryF
     });
 }
 
-async function seedEpisode(dataDir: string, summary: string): Promise<MemoryEpisode> {
-    const handle = createMemoryStores(getGlobalStoreDir(dataDir));
+async function seedEpisode(dataDir: string, wsId: string, summary: string): Promise<MemoryEpisode> {
+    const handle = createMemoryStores(getWorkspaceStoreDir(dataDir, wsId));
     try {
         return await handle.episodes.addEpisode({
-            scope: 'global',
+            scope: 'workspace',
+            workspaceId: wsId,
             processId: 'proc-episode-123456',
             turnIndex: 1,
             summary,
@@ -105,11 +115,13 @@ async function seedEpisode(dataDir: string, summary: string): Promise<MemoryEpis
 }
 
 test.describe('Memory V2 route', () => {
-    test('shows the no-workspace state without legacy sub-tabs', async ({ page, serverUrl }) => {
+    test('shows the global disabled state without legacy sub-tabs', async ({ page, serverUrl }) => {
         await page.goto(`${serverUrl}/#memory`);
 
         await expect(page.locator('#view-memory')).toBeVisible({ timeout: 10_000 });
-        await expect(page.locator('[data-testid="no-workspace-msg"]')).toContainText('Select a workspace');
+        await expect(page.locator('[data-testid="scope-row"][data-scope-id="global"]')).toBeVisible({ timeout: 10_000 });
+        await expect(page.locator('[data-testid="scope-disabled"]')).toContainText('Global');
+        await expect(page.locator('[data-testid="enable-scope-btn"]')).toBeVisible();
         await expect(page.locator('[data-subtab="bounded"]')).toHaveCount(0);
         await expect(page.locator('[data-subtab="config"]')).toHaveCount(0);
         await expect(page.locator('[data-subtab="files"]')).toHaveCount(0);
@@ -120,9 +132,10 @@ test.describe('Memory V2 route', () => {
         try {
             await openMemoryForWorkspace(page, serverUrl, workspace.wsId);
 
-            await expect(page.locator('[data-testid="v2-disabled"]')).toBeVisible({ timeout: 10_000 });
-            await page.locator('[data-testid="enable-memory-v2-btn"]').click();
+            await expect(page.locator('[data-testid="scope-disabled"]')).toBeVisible({ timeout: 10_000 });
+            await page.locator('[data-testid="enable-scope-btn"]').click();
             await expect(page.locator('[data-testid="memory-v2-panel"]')).toBeVisible({ timeout: 10_000 });
+            await expect(page.locator('button[data-tab="facts"]')).toBeVisible({ timeout: 5_000 });
 
             const prefsResponse = await page.request.get(`${serverUrl}/api/workspaces/${workspace.wsId}/preferences`);
             const prefs = await prefsResponse.json();
@@ -136,11 +149,11 @@ test.describe('Memory V2 route', () => {
         const workspace = await setupWorkspace(serverUrl);
         try {
             await enableMemoryV2(page, serverUrl, workspace.wsId);
-            await seedFact(dataDir, 'Searchable memory detail from a source process', {
+            await seedFact(dataDir, workspace.wsId, 'Searchable memory detail from a source process', {
                 sourceProcessId: 'proc-facts-123456',
                 tags: ['searchable'],
             });
-            await seedFact(dataDir, 'Secondary memory detail for browse mode', { tags: ['secondary'] });
+            await seedFact(dataDir, workspace.wsId, 'Secondary memory detail for browse mode', { tags: ['secondary'] });
 
             await openMemoryForWorkspace(page, serverUrl, workspace.wsId);
             await expect(page.locator('[data-testid="memory-v2-panel"]')).toBeVisible({ timeout: 10_000 });
@@ -189,9 +202,9 @@ test.describe('Memory V2 route', () => {
         const workspace = await setupWorkspace(serverUrl);
         try {
             await enableMemoryV2(page, serverUrl, workspace.wsId);
-            await seedReviewFact(dataDir, 'Review fact to approve');
-            await seedReviewFact(dataDir, 'Review fact to reject');
-            await seedReviewFact(dataDir, 'Review fact to edit before approval');
+            await seedReviewFact(dataDir, workspace.wsId, 'Review fact to approve');
+            await seedReviewFact(dataDir, workspace.wsId, 'Review fact to reject');
+            await seedReviewFact(dataDir, workspace.wsId, 'Review fact to edit before approval');
 
             await openMemoryForWorkspace(page, serverUrl, workspace.wsId, 'review');
             await expect(page.locator('[data-testid="memory-v2-panel"]')).toBeVisible({ timeout: 10_000 });
@@ -225,7 +238,7 @@ test.describe('Memory V2 route', () => {
         const workspace = await setupWorkspace(serverUrl);
         try {
             await enableMemoryV2(page, serverUrl, workspace.wsId);
-            await seedEpisode(dataDir, 'Episode summary from a completed chat turn');
+            await seedEpisode(dataDir, workspace.wsId, 'Episode summary from a completed chat turn');
 
             await openMemoryForWorkspace(page, serverUrl, workspace.wsId, 'episodes');
             await expect(page.locator('[data-testid="episode-row"]')).toHaveCount(1, { timeout: 10_000 });
@@ -236,20 +249,20 @@ test.describe('Memory V2 route', () => {
         }
     });
 
-    test('toggles isolated scope for the workspace', async ({ page, serverUrl }) => {
+    test('settings tab toggles workspace memory enablement', async ({ page, serverUrl }) => {
         const workspace = await setupWorkspace(serverUrl);
         try {
             await enableMemoryV2(page, serverUrl, workspace.wsId, { isolated: false });
-            await openMemoryForWorkspace(page, serverUrl, workspace.wsId);
+            await openMemoryForWorkspace(page, serverUrl, workspace.wsId, 'settings');
 
-            await expect(page.locator('[data-testid="scope-pill"]')).toContainText('Global memory');
-            await page.locator('[data-testid="isolated-toggle"]').click();
-            await expect(page.locator('[data-testid="isolated-toggle"]')).toBeChecked({ timeout: 5_000 });
-            await expect(page.locator('[data-testid="scope-pill"]')).toContainText('Isolated workspace memory', { timeout: 5_000 });
+            await expect(page.locator('[data-testid="memory-settings-tab"]')).toBeVisible({ timeout: 5_000 });
+            await expect(page.locator('[data-testid="toggle-enabled-btn"]')).toHaveText('Disable');
+            await page.locator('[data-testid="toggle-enabled-btn"]').click();
+            await expect(page.locator('[data-testid="scope-disabled"]')).toBeVisible({ timeout: 5_000 });
 
             const prefsResponse = await page.request.get(`${serverUrl}/api/workspaces/${workspace.wsId}/preferences`);
             const prefs = await prefsResponse.json();
-            expect(prefs.memoryV2?.isolated).toBe(true);
+            expect(prefs.memoryV2?.enabled).toBe(false);
         } finally {
             safeRmSync(workspace.tmpDir);
         }
@@ -259,15 +272,16 @@ test.describe('Memory V2 route', () => {
         const workspace = await setupWorkspace(serverUrl);
         try {
             await enableMemoryV2(page, serverUrl, workspace.wsId);
-            await seedFact(dataDir, 'Fact exported and then wiped', { tags: ['export'] });
+            await seedFact(dataDir, workspace.wsId, 'Fact exported and then wiped', { tags: ['export'] });
 
             await openMemoryForWorkspace(page, serverUrl, workspace.wsId);
             await expect(page.getByText('Fact exported and then wiped')).toBeVisible({ timeout: 10_000 });
 
+            await page.locator('button[data-tab="settings"]').click();
             const downloadPromise = page.waitForEvent('download');
             await page.locator('[data-testid="export-btn"]').click();
             const download = await downloadPromise;
-            expect(download.suggestedFilename()).toMatch(/^coc-memory-export-\d{4}-\d{2}-\d{2}\.json$/);
+            expect(download.suggestedFilename()).toMatch(/^coc-memory-memory-v2-ws-\d{4}-\d{2}-\d{2}\.json$/);
             const exportPath = path.join(workspace.tmpDir, 'memory-export.json');
             await download.saveAs(exportPath);
             const exported = JSON.parse(fs.readFileSync(exportPath, 'utf8'));
@@ -275,10 +289,14 @@ test.describe('Memory V2 route', () => {
 
             await page.locator('[data-testid="wipe-btn"]').click();
             await page.locator('[data-testid="wipe-dialog-overlay"]').getByText('Cancel').click();
+            await expect(page.locator('[data-testid="wipe-dialog-overlay"]')).toHaveCount(0);
+            await page.locator('button[data-tab="facts"]').click();
             await expect(page.getByText('Fact exported and then wiped')).toBeVisible();
 
+            await page.locator('button[data-tab="settings"]').click();
             await page.locator('[data-testid="wipe-btn"]').click();
             await page.locator('[data-testid="wipe-confirm-btn"]').click();
+            await page.locator('button[data-tab="facts"]').click();
             await expect(page.locator('[data-testid="facts-empty"]')).toBeVisible({ timeout: 10_000 });
         } finally {
             safeRmSync(workspace.tmpDir);

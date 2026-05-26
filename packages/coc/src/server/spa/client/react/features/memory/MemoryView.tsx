@@ -21,7 +21,7 @@ export function MemoryView() {
     };
 
     return (
-        <div id="view-memory" className="flex flex-col h-full overflow-hidden">
+        <div className="flex flex-col h-full overflow-hidden">
             <FeatureTip tipId="memory-intro" className="mx-3 mt-2" />
 
             {/* Memory V2 panel — handles its own enabled/disabled state */}
