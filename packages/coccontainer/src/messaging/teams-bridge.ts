@@ -111,23 +111,30 @@ export class TeamsBridge {
             },
         });
 
-        // Start and wait for connection (needed so chatId is resolved in DM mode)
+        // Subscribe to event relays BEFORE waiting for bot connection.
+        // Events received before connection completes are harmlessly dropped
+        // (the handlers check bot.getStatus() === 'connected').
+        // This prevents a slow MCP server from blocking event subscription entirely.
+        this.wsHandler = (msg) => this.onWsMessage(msg);
+        this.opts.wsRelay.on('message', this.wsHandler);
+
+        this.sseHandler = (event) => this.onSSEEvent(event);
+        this.opts.sseRelay.on('event', this.sseHandler);
+
+        // Start and wait for connection (with timeout to avoid hanging on slow MCP server)
         try {
-            await this.bot.start();
-        } catch (err) {
-            console.error('[teams-bridge] Start failed:', err);
+            await Promise.race([
+                this.bot.start(),
+                new Promise<void>((_, reject) => setTimeout(() => reject(new Error('Bot start timed out after 30s')), 30_000)),
+            ]);
+        } catch (err: any) {
+            console.error(`[teams-bridge] Start failed: ${err.message ?? err}`);
         }
 
         // Set the configured channel for polling (if not already set by DM mode)
         if (this.opts.config.channelId && !this.bot.getChannelId()) {
             this.bot.setChannelId(this.opts.config.channelId);
         }
-
-        this.wsHandler = (msg) => this.onWsMessage(msg);
-        this.opts.wsRelay.on('message', this.wsHandler);
-
-        this.sseHandler = (event) => this.onSSEEvent(event);
-        this.opts.sseRelay.on('event', this.sseHandler);
     }
 
     async stop(): Promise<void> {
