@@ -82,8 +82,11 @@ export function createAgentStore(dataDir: string): AgentStore {
 
     return {
         add(address: string, name?: string, tunnelId?: string): Agent {
-            // Normalize address: strip trailing slash
-            const normalizedAddress = address.replace(/\/+$/, '');
+            // Normalize address: strip trailing slash, ensure protocol
+            let normalizedAddress = address.replace(/\/+$/, '');
+            if (!/^(https?|wss?):\/\//i.test(normalizedAddress) && !normalizedAddress.startsWith('inbound://')) {
+                normalizedAddress = `http://${normalizedAddress}`;
+            }
 
             // Check for duplicate address
             const existing = selectByAddressStmt.get(normalizedAddress) as Record<string, unknown> | undefined;

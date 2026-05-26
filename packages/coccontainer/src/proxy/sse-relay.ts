@@ -29,7 +29,11 @@ export class SSERelay extends EventEmitter {
             this.disconnect(agentId);
         }
 
-        const url = new URL(path, agentAddress);
+        let normalizedAddr = agentAddress;
+        if (!/^(https?|wss?):\/\//i.test(normalizedAddr)) {
+            normalizedAddr = `http://${normalizedAddr}`;
+        }
+        const url = new URL(path, normalizedAddr);
         const isHttps = url.protocol === 'https:';
         const transport = isHttps ? https : http;
 
