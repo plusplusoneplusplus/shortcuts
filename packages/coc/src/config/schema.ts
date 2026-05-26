@@ -143,6 +143,11 @@ export const CLIConfigSchema = z.object({
         autoUpdate: z.boolean().optional(),
         defaultSkills: z.array(z.string()).optional(),
     }).passthrough().optional(),
+    workItems: z.object({
+        hierarchy: z.object({
+            enabled: z.boolean().optional(),
+        }).passthrough().optional(),
+    }).passthrough().optional(),
 }).passthrough();
 
 /**

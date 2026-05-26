@@ -85,6 +85,18 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.ralphEnabled).toBe(true);
     });
 
+    it('defaults workItemsHierarchyEnabled to false', () => {
+        const svc = createMockRuntimeConfigService();
+        const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
+        expect(result.features.workItemsHierarchyEnabled).toBe(false);
+    });
+
+    it('reflects workItems.hierarchy.enabled = true from config', () => {
+        const svc = createMockRuntimeConfigService({ workItems: { hierarchy: { enabled: true } } } as any);
+        const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
+        expect(result.features.workItemsHierarchyEnabled).toBe(true);
+    });
+
     it('uses serve.serverName for hostname when set', () => {
         const svc = createMockRuntimeConfigService({ serve: { serverName: 'custom-name' } } as any);
         const result = buildRuntimeDashboardConfig(svc, 'raw-hostname.local', '127.0.0.1');
@@ -106,6 +118,41 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(json).not.toContain('test-model');
     });
 });
+
+describe('AC-01: workItems.hierarchy.enabled live enablement end-to-end', () => {
+    it('workItems.hierarchy.enabled update through service is reflected in runtime dashboard config', async () => {
+        const fs = await import('fs');
+        const path = await import('path');
+        const os = await import('os');
+        const { RuntimeConfigService } = await import('../../../src/config/runtime-config-service');
+
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-ac01-'));
+        try {
+            const configPath = path.join(tmpDir, 'config.yaml');
+            const svc = new RuntimeConfigService({ configPath });
+
+            // Initial state: hierarchy disabled by default
+            const before = buildRuntimeDashboardConfig(svc, 'test-host', '127.0.0.1');
+            expect(before.features.workItemsHierarchyEnabled).toBe(false);
+
+            // Admin update enables hierarchy
+            const updateResult = await svc.updateConfig({ 'workItems.hierarchy.enabled': true });
+            expect(updateResult.config.workItems.hierarchy.enabled).toBe(true);
+
+            // Runtime dashboard config now reflects hierarchy enabled
+            const after = buildRuntimeDashboardConfig(svc, 'test-host', '127.0.0.1');
+            expect(after.features.workItemsHierarchyEnabled).toBe(true);
+
+            // Verify the effect classifies the field as live
+            const effect = updateResult.effects.find((e: { field: string }) => e.field === 'workItems.hierarchy.enabled');
+            expect(effect).toBeDefined();
+            expect(effect!.runtime).toBe('live');
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+});
+
 
 describe('AC-05: ralph.enabled live enablement end-to-end', () => {
     it('ralph.enabled update through service is reflected in runtime dashboard config', async () => {

@@ -42,6 +42,7 @@ export type ResolvedConfigNamespaceValues = Pick<
     | 'store'
     | 'monitoring'
     | 'skills'
+    | 'workItems'
 >;
 
 const CHAT_FOLLOW_UP_SOURCE_KEYS = [
@@ -78,6 +79,7 @@ const CONTAINER_DEFAULT_AGENT_SOURCE_KEYS = ['containerDefaultAgent.enabled'] as
 const CODEX_SOURCE_KEYS = ['codex.enabled'] as const;
 const CLAUDE_SOURCE_KEYS = ['claude.enabled'] as const;
 const FEATURES_SOURCE_KEYS = ['features.autoMemoryPromotion', 'features.focusedDiff'] as const;
+const WORK_ITEMS_HIERARCHY_SOURCE_KEYS = ['workItems.hierarchy.enabled'] as const;
 
 const MEMORY_PROMOTION_SOURCE_KEYS = [
     'memoryPromotion.batchSize',
@@ -114,6 +116,7 @@ export const CONFIG_NAMESPACE_SOURCE_KEYS = [
     ...FEATURES_SOURCE_KEYS,
     ...MEMORY_PROMOTION_SOURCE_KEYS,
     ...MEMORY_PROMOTION_AI_NORMALIZATION_SOURCE_KEYS,
+    ...WORK_ITEMS_HIERARCHY_SOURCE_KEYS,
 ] as const;
 
 const source = (
@@ -346,6 +349,17 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
                 skills: {
                     autoUpdate: override?.skills?.autoUpdate ?? base.skills?.autoUpdate ?? true,
                     defaultSkills: override?.skills?.defaultSkills ?? base.skills?.defaultSkills ?? [...defaultBundledSkills],
+                },
+            }),
+        },
+        {
+            name: 'workItems',
+            sourceDescriptors: [source('workItems.hierarchy.', ['workItems', 'hierarchy'], WORK_ITEMS_HIERARCHY_SOURCE_KEYS)],
+            merge: (base, override) => ({
+                workItems: {
+                    hierarchy: {
+                        enabled: override?.workItems?.hierarchy?.enabled ?? base.workItems?.hierarchy?.enabled ?? false,
+                    },
                 },
             }),
         },
