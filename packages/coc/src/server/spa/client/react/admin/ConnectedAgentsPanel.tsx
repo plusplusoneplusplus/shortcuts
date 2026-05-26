@@ -27,7 +27,7 @@ function AgentStatusDot({ status }: { status: string }) {
 }
 
 export function ConnectedAgentsPanel() {
-    const { agents, loading, refresh } = useContainerAgents();
+    const { agents, loading, refresh, removeAgent } = useContainerAgents();
 
     if (loading) {
         return (
@@ -86,8 +86,19 @@ export function ConnectedAgentsPanel() {
                                         {agent.address.startsWith('inbound://') ? 'Call-home (WebSocket)' : agent.address}
                                     </div>
                                 </div>
-                                <div style={{ fontSize: 11, color: 'var(--color-muted, #888)', textAlign: 'right' }}>
-                                    {agent.status}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <span style={{ fontSize: 11, color: 'var(--color-muted, #888)' }}>
+                                        {agent.status}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        className="ar-btn ar-btn-secondary ar-btn-sm"
+                                        style={{ fontSize: 11, padding: '2px 8px' }}
+                                        onClick={() => removeAgent(agent.id)}
+                                        title="Unregister this agent"
+                                    >
+                                        Unregister
+                                    </button>
                                 </div>
                             </div>
                         ))}
