@@ -135,6 +135,8 @@ export function createProgram(): Command {
         .option('--log-level <level>', 'Log level: trace, debug, info, warn, error, fatal', 'info')
         .option('--log-dir <path>', 'Directory for .ndjson log files (default: <data-dir>/logs)')
         .option('--no-color', 'Disable colored output')
+        .option('--container-url <url>', 'Connect to container in call-home mode (agent registers to container)')
+        .option('--container-agent-name <name>', 'Agent name for container registration (default: hostname)')
         .action(async (opts: Record<string, unknown>) => {
             const config = resolveConfig();
             applyGlobalOptions(opts);

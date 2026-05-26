@@ -42,6 +42,10 @@ export interface ServeCommandOptions {
     logDir?: string;
     /** Exit code to use when a restart is requested via POST /api/admin/restart (default: 75). */
     restartExitCode?: number;
+    /** Container URL for call-home mode (agent connects outbound to container). */
+    containerUrl?: string;
+    /** Agent name announced to container during registration (defaults to hostname). */
+    containerAgentName?: string;
 }
 
 /** Options for the wiki module within the execution server. */
@@ -70,6 +74,10 @@ export interface ExecutionServerOptions {
     theme?: 'auto' | 'light' | 'dark';
     /** Options for the wiki module. */
     wiki?: WikiServerOptions;
+    /** Container URL for call-home mode. When set, agent connects outbound to container via WS. */
+    containerUrl?: string;
+    /** Agent name announced to container during registration. */
+    containerAgentName?: string;
     /** Optional AI service injection (for testing). If not provided, uses sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT). */
     aiService?: ISDKService;
     /** Optional config file path override (for tests). When absent, uses getConfigFilePath(). */

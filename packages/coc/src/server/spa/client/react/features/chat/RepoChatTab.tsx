@@ -9,6 +9,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { cn } from '../../ui';
 import { getSpaCocClient } from '../../api/cocClient';
+import { isContainerMode } from '../../utils/config';
 import { useQueue } from '../../contexts/QueueContext';
 import { useApp } from '../../contexts/AppContext';
 import { useRepos } from '../../contexts/ReposContext';
@@ -140,6 +141,9 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     }, [workspaceId, queueDispatch]);
 
     const fetchQueueAndHistory = useCallback(async () => {
+        // In container mode, skip fetch if agent hasn't been resolved yet —
+        // the effect will re-fire once currentAgentId is set.
+        if (isContainerMode() && !appState.currentAgentId) return;
         try {
             const [queueData, historyData] = await Promise.all([
                 getSpaCocClient().queue.list({ repoId: workspaceId }).catch(() => null),
@@ -183,7 +187,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             // defensive. Deliberately do NOT clear local lists — keep the cached view.
         }
         setLoading(false);
-    }, [workspaceId, queueDispatch]);
+    }, [workspaceId, queueDispatch, appState.currentAgentId]);
 
     const fetchQueue = fetchQueueAndHistory;
 

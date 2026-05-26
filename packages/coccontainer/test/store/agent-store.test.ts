@@ -91,4 +91,29 @@ describe('AgentStore', () => {
         expect(updated?.status).toBe('offline');
         expect(updated?.lastSeenAt).toBe(seenAt);
     });
+
+    it('should auto-prepend http:// when address has no protocol', () => {
+        const agent = store.add('localhost:4000', 'no-proto');
+        expect(agent.address).toBe('http://localhost:4000');
+    });
+
+    it('should auto-prepend http:// for bare IP:port', () => {
+        const agent = store.add('192.168.1.5:3000', 'ip-agent');
+        expect(agent.address).toBe('http://192.168.1.5:3000');
+    });
+
+    it('should not double-prepend protocol when http:// already present', () => {
+        const agent = store.add('http://myhost:9000', 'has-proto');
+        expect(agent.address).toBe('http://myhost:9000');
+    });
+
+    it('should preserve https:// protocol', () => {
+        const agent = store.add('https://secure.host:443', 'secure');
+        expect(agent.address).toBe('https://secure.host:443');
+    });
+
+    it('should not prepend protocol for inbound:// addresses', () => {
+        const agent = store.add('inbound://agent-123', 'inbound-agent');
+        expect(agent.address).toBe('inbound://agent-123');
+    });
 });

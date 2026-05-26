@@ -28,7 +28,11 @@ export class WebSocketRelay extends EventEmitter {
         }
 
         this.agentMeta.set(agentId, { name: agentName, address: agentAddress, wsPath });
-        const wsUrl = agentAddress.replace(/^http/, 'ws') + wsPath;
+        let normalizedAddr = agentAddress;
+        if (!/^(wss?|https?):\/\//i.test(normalizedAddr)) {
+            normalizedAddr = `ws://${normalizedAddr}`;
+        }
+        const wsUrl = normalizedAddr.replace(/^http/i, 'ws') + wsPath;
         const ws = new WebSocket.WebSocket(wsUrl);
 
         ws.on('open', () => {

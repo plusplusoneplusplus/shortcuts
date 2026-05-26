@@ -54,6 +54,8 @@ import { DevTunnelConnector } from './servers/devtunnel-connector';
 import { RemoteServerStore } from './servers/remote-server-store';
 import { pruneAllStaleClassifications } from './repos/classification-store';
 import { SyncEngine } from './sync/sync-engine';
+import { ContainerLinkClient } from './container-link/container-client';
+import { registerContainerLinkRoutes } from './container-link/container-link-routes';
 
 // ============================================================================
 // Close Handler Builder
@@ -82,6 +84,7 @@ interface CloseHandlerDeps {
     mcpOauthDispose?: () => void;
     codexAuthDispose?: () => void;
     syncEngines?: Map<string, SyncEngine>;
+    containerLink?: { stop(): void };
     activeSockets: Set<import('net').Socket>;
     server: http.Server;
 }
@@ -106,6 +109,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.mcpOauthDispose?.();
         deps.codexAuthDispose?.();
         deps.syncEngines?.forEach(e => e.stop());
+        deps.containerLink?.stop();
         gitInfoCache.dispose();
         deps.notesGitTimerManager.dispose();
 
@@ -483,6 +487,69 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Restore auto-commit timers for all workspaces that had it enabled
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });
 
+    // Container link persistence helpers
+    const containerLinkConfigPath = path.join(dataDir, 'container-link.json');
+    function saveContainerLinkConfig(url: string | undefined, agentName: string | undefined): void {
+        try {
+            if (url) {
+                fs.writeFileSync(containerLinkConfigPath, JSON.stringify({ containerUrl: url, agentName: agentName ?? null }));
+            } else {
+                if (fs.existsSync(containerLinkConfigPath)) fs.unlinkSync(containerLinkConfigPath);
+            }
+        } catch { /* best-effort */ }
+    }
+    function loadContainerLinkConfig(): { containerUrl: string; agentName?: string } | null {
+        try {
+            if (fs.existsSync(containerLinkConfigPath)) {
+                const raw = JSON.parse(fs.readFileSync(containerLinkConfigPath, 'utf8'));
+                if (raw?.containerUrl) return raw;
+            }
+        } catch { /* ignore corrupt file */ }
+        return null;
+    }
+
+    // Container link state (mutable — can be set/cleared via API)
+    let containerLink: ContainerLinkClient | undefined;
+    let containerLinkBroadcastUnsub: (() => void) | undefined;
+    // CLI flag takes priority; otherwise load persisted config
+    const savedLinkConfig = !options.containerUrl ? loadContainerLinkConfig() : null;
+    let containerLinkUrl: string | undefined = options.containerUrl ?? savedLinkConfig?.containerUrl;
+    let containerLinkAgentName: string | undefined = options.containerAgentName ?? savedLinkConfig?.agentName;
+
+    registerContainerLinkRoutes(routes, {
+        getContainerLink: () => containerLink,
+        getContainerUrl: () => containerLinkUrl,
+        getAgentName: () => containerLinkAgentName,
+        setContainerLink: (url: string, agentName?: string) => {
+            containerLink?.stop();
+            containerLinkBroadcastUnsub?.();
+            containerLinkUrl = url;
+            containerLinkAgentName = agentName ?? containerLinkAgentName;
+            saveContainerLinkConfig(containerLinkUrl, containerLinkAgentName);
+            containerLink = new ContainerLinkClient({
+                containerUrl: url,
+                agentName: containerLinkAgentName,
+                localPort: port,
+                getWorkspaces: async () => {
+                    const ws = await store.getWorkspaces();
+                    return ws.map(w => ({ id: w.id, name: w.name, rootPath: w.rootPath }));
+                },
+            });
+            containerLink.start();
+            containerLinkBroadcastUnsub = wsServer.onBroadcast(data => containerLink?.forwardEvent(data));
+            process.stderr.write(`[container-link] Connecting to container at ${url}\n`);
+        },
+        clearContainerLink: () => {
+            containerLink?.stop();
+            containerLinkBroadcastUnsub?.();
+            containerLink = undefined;
+            containerLinkBroadcastUnsub = undefined;
+            containerLinkUrl = undefined;
+            saveContainerLinkConfig(undefined, undefined);
+            process.stderr.write(`[container-link] Disconnected\n`);
+        },
+    });
+
     const rawHostname = os.hostname();
     const handler = createRequestHandler({
         routes, spaHtml: () => {
@@ -566,6 +633,22 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const activeSockets = new Set<import('net').Socket>();
     server.on('connection', (socket) => { activeSockets.add(socket); socket.on('close', () => activeSockets.delete(socket)); });
 
+    // Start container link if configured via CLI or persisted config (call-home mode)
+    if (containerLinkUrl) {
+        containerLink = new ContainerLinkClient({
+            containerUrl: containerLinkUrl,
+            agentName: containerLinkAgentName,
+            localPort: actualPort,
+            getWorkspaces: async () => {
+                const ws = await store.getWorkspaces();
+                return ws.map(w => ({ id: w.id, name: w.name, rootPath: w.rootPath }));
+            },
+        });
+        containerLink.start();
+        containerLinkBroadcastUnsub = wsServer.onBroadcast(data => containerLink?.forwardEvent(data));
+        process.stderr.write(`[container-link] Connecting to container at ${containerLinkUrl}\n`);
+    }
+
     return {
         server, store, wsServer, port: actualPort, host, url,
         close: buildCloseHandler({
@@ -579,6 +662,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             mcpOauthDispose: mcpOauthInfra?.dispose,
             codexAuthDispose: codexAuthInfra.dispose,
             syncEngines,
+            containerLink,
             activeSockets, server,
         }),
     };

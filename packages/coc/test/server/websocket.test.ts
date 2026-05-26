@@ -1014,4 +1014,85 @@ describe('WebSocket Server', () => {
             conn.ws.close();
         });
     });
+
+    // ========================================================================
+    // onBroadcast listener
+    // ========================================================================
+
+    describe('onBroadcast', () => {
+        it('should notify broadcast listeners on broadcastProcessEvent', async () => {
+            const srv = await startServer();
+            const received: string[] = [];
+            srv.wsServer.onBroadcast(data => received.push(data));
+
+            srv.wsServer.broadcastProcessEvent({
+                type: 'process-added',
+                process: { id: 'p1', promptPreview: 'Hi', status: 'running', startTime: new Date().toISOString() },
+            });
+
+            expect(received).toHaveLength(1);
+            const parsed = JSON.parse(received[0]);
+            expect(parsed.type).toBe('process-added');
+            expect(parsed.process.id).toBe('p1');
+        });
+
+        it('should notify broadcast listeners on broadcastGitChanged', async () => {
+            const srv = await startServer();
+            const received: string[] = [];
+            srv.wsServer.onBroadcast(data => received.push(data));
+
+            srv.wsServer.broadcastGitChanged('ws-123', 'test-trigger');
+
+            expect(received).toHaveLength(1);
+            const parsed = JSON.parse(received[0]);
+            expect(parsed.type).toBe('git-changed');
+            expect(parsed.workspaceId).toBe('ws-123');
+        });
+
+        it('should notify broadcast listeners on broadcastWikiEvent', async () => {
+            const srv = await startServer();
+            const received: string[] = [];
+            srv.wsServer.onBroadcast(data => received.push(data));
+
+            srv.wsServer.broadcastWikiEvent({ type: 'wiki-updated', wikiId: 'w1' } as any);
+
+            expect(received).toHaveLength(1);
+            const parsed = JSON.parse(received[0]);
+            expect(parsed.type).toBe('wiki-updated');
+        });
+
+        it('should stop notifying after unsubscribe', async () => {
+            const srv = await startServer();
+            const received: string[] = [];
+            const unsub = srv.wsServer.onBroadcast(data => received.push(data));
+
+            srv.wsServer.broadcastProcessEvent({
+                type: 'process-added',
+                process: { id: 'p1', promptPreview: 'Hi', status: 'running', startTime: new Date().toISOString() },
+            });
+            expect(received).toHaveLength(1);
+
+            unsub();
+
+            srv.wsServer.broadcastProcessEvent({
+                type: 'process-added',
+                process: { id: 'p2', promptPreview: 'Hi2', status: 'running', startTime: new Date().toISOString() },
+            });
+            expect(received).toHaveLength(1); // no new messages
+        });
+
+        it('should not throw if a listener errors', async () => {
+            const srv = await startServer();
+            srv.wsServer.onBroadcast(() => { throw new Error('boom'); });
+            const received: string[] = [];
+            srv.wsServer.onBroadcast(data => received.push(data));
+
+            // Should not throw, second listener still called
+            srv.wsServer.broadcastProcessEvent({
+                type: 'process-added',
+                process: { id: 'p1', promptPreview: 'Hi', status: 'running', startTime: new Date().toISOString() },
+            });
+            expect(received).toHaveLength(1);
+        });
+    });
 });

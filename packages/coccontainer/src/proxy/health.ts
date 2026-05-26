@@ -13,7 +13,11 @@ import { URL } from 'url';
 export async function checkAgentHealth(agentAddress: string, timeoutMs: number = 5000): Promise<boolean> {
     return new Promise((resolve) => {
         try {
-            const url = new URL('/api/health', agentAddress);
+            let normalizedAddr = agentAddress;
+            if (!/^(https?|wss?):\/\//i.test(normalizedAddr)) {
+                normalizedAddr = `http://${normalizedAddr}`;
+            }
+            const url = new URL('/api/health', normalizedAddr);
             const isHttps = url.protocol === 'https:';
             const transport = isHttps ? https : http;
 

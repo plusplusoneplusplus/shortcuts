@@ -74,6 +74,8 @@ export function resolveServeOptions(
         queueRestartDelay: (opts.queueRestartDelay as number | undefined) ?? config.queue?.restartPickupDelayMs,
         logLevel: opts.logLevel as string | undefined,
         logDir: opts.logDir as string | undefined,
+        containerUrl: opts.containerUrl as string | undefined,
+        containerAgentName: opts.containerAgentName as string | undefined,
     };
 }
 
