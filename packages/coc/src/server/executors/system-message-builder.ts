@@ -74,7 +74,7 @@ class SystemMessageBuilder {
     /**
      * Append the aggregated LLM-tool-guidance block (concatenated `suffix`
      * strings from each enabled addon, as produced by
-     * `applyLlmToolPreferences` / `buildChatToolBundle`).
+     * `buildChatTurnContext` (via `chatCtx.toolGuidance`).
      *
      * Lives in the system message rather than appended to the user prompt
      * so the prose is sent exactly once at session creation instead of

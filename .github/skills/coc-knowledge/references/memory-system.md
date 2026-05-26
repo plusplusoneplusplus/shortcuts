@@ -110,8 +110,15 @@ The dashboard Memory route uses `MemoryV2Panel` with Facts, Review, and Episodes
 - Resolves global vs isolated workspace scope from `PerRepoPreferences.memoryV2`
 - Opens Memory V2 fact/episode stores for each request and closes them after use
 - Builds frozen fact snapshots and recall blocks for prompt injection
-- Registers Memory V2 write/capture tools
+- Registers Memory V2 write/capture tools (`save_memory`, `recall_memory`)
 - Returns the empty addon when dataDir, workspaceId, or `memoryV2.enabled` is missing
+
+`buildChatTurnContext()` in `executors/chat-turn-context-builder.ts` (preferred integration point for all executor paths):
+- Single assembly point for tools, toolGuidance, Memory V2, SDK built-in exclusions, ask-user handles, and disposal
+- Calls `buildMemoryV2Addon()` internally; callers do not coordinate addon wiring separately
+- Returns `excludedTools: ['vote_memory', 'store_memory']` when Memory V2 is active (suppresses Copilot SDK built-ins)
+- Accepts `includeMemoryV2: false` for explicit opt-out (e.g. `AutopilotExecutor`)
+- Used by `ChatBaseExecutor.buildStandardModeOptions`, `RalphExecutor.buildModeOptions`, `FollowUpExecutor.executeFollowUp`, and `AutopilotExecutor.buildModeOptions`
 
 `registerMemoryV2Routes()` in `server/memory/memory-v2-routes.ts` exposes workspace-scoped Memory V2 REST endpoints under `/api/workspaces/:id/memory/v2/*`. The shared `@plusplusoneplusplus/coc-client` package exposes the matching typed `MemoryV2Client` as `coc.memoryV2`.
 

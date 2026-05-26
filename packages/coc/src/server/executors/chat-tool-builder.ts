@@ -55,6 +55,17 @@ export interface ChatToolBundle {
     askUser?: AskUserAddon;
 }
 
+/**
+ * Low-level tool assembly for a single chat turn.
+ *
+ * **Prefer `buildChatTurnContext()` for executor code.** That wrapper calls
+ * this function internally and additionally wires Memory V2 tools, Memory V2
+ * prompt context, SDK built-in exclusions, and resource disposal into one
+ * cohesive object so callers do not have to coordinate those artifacts manually.
+ *
+ * Use `buildChatToolBundle` directly only in `buildChatTurnContext` itself and
+ * in its unit tests.
+ */
 export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBundle {
     const addons: ToolAddon[] = [];
 

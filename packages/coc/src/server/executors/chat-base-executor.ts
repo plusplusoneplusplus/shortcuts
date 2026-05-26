@@ -233,7 +233,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     /**
      * Build per-request loop tool deps from the late-bound loop infrastructure.
      * Returns `scheduleWakeup` deps (always) and `loopTools` deps (always,
-     * but gated by skill activation in buildChatToolBundle).
+     * but gated by skill activation in buildChatTurnContext).
      */
     protected buildLoopToolDeps(processId: string): {
         scheduleWakeup?: import('../llm-tools/loop-tools').WakeupToolDeps;
