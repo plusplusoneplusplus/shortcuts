@@ -77,8 +77,10 @@ Inside `WhisperCollapsedGroup`, tool calls render as compact "whisper-row" varia
 
 Stacked layout with:
 1. `RichTextInput` (contenteditable)
-2. Toolbar: ModePillSelector → model picker → ctool buttons → AgentSelectorChip / QueueFollowUpButton
-3. `ComposerMetaStrip`: cwd chip + context-window fuel gauge + provider badge for non-Copilot sessions
+2. Toolbar reads as five ownership zones separated by 1 px vertical dividers (`chat-toolbar-divider-*`):
+   - **New chat (`NewChatArea`)**: `AgentSelectorChip` → divider → `ModePillSelector` → divider → model picker → spacer → ctool buttons (`/`, `@`, attach) → divider → send
+   - **Follow-up (`FollowUpInputArea`)**: `ModePillSelector` → divider → model picker → spacer → ctool buttons → `ComposerMetaStrip` → divider → `QueueFollowUpButton`. Provider isn't switchable on a follow-up (locked to the session), so the row starts at the mode zone.
+3. `ComposerMetaStrip`: cwd chip + context-window fuel gauge + provider badge for non-Copilot sessions. In the follow-up toolbar it sits between the tools zone and the send divider so its info reads as status next to send.
 
 Focus indicator propagates mode-colored ring from contenteditable to parent card.
 

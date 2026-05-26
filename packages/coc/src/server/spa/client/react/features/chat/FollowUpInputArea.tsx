@@ -584,6 +584,16 @@ export function FollowUpInputArea({
                                     />
                                 </div>
                             )}
+                            {/* Divider between the mode zone and the model zone.
+                                 Mirrors the OpenDesign provider-first composer:
+                                 "provider · mode · model · tools · send" reads
+                                 as four discrete ownership zones. The provider
+                                 isn't switchable on a follow-up (it's locked to
+                                 the session), so this composer starts at the
+                                 mode zone. */}
+                            {!hideModeSelector && modelCommand && (
+                                <span aria-hidden="true" data-testid="chat-toolbar-divider-mode" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
+                            )}
                             {/* Model selector chip — shows the active model
                                  (override or session). Clicking opens the
                                  picker; the chip is the single source of
@@ -632,6 +642,10 @@ export function FollowUpInputArea({
                                     )}
                                 </button>
                             )}
+                            <div className="flex-1 min-w-0" />
+                            {/* Tools zone — slash/mention/attach live on the
+                                 right of the spacer (matches the OpenDesign
+                                 composer ordering: mode · model · tools · send). */}
                             <button
                                 type="button"
                                 className="ctool shrink-0 inline-flex items-center gap-0.5 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
@@ -677,16 +691,18 @@ export function FollowUpInputArea({
                                     />
                                 </svg>
                             </button>
-                            <div className="flex-1 min-w-0" />
-                            {/* Live metadata: cwd + context-window fuel gauge */}
+                            {/* Live metadata: cwd + context-window fuel gauge.
+                                 Sits next to send so its provider/cwd/ctx info
+                                 reads as status, not as an interactive chip. */}
                             <ComposerMetaStrip
-                                className="mr-1"
+                                className="mx-1"
                                 workingDirectory={workingDirectory}
                                 sessionTokenLimit={sessionTokenLimit}
                                 sessionCurrentTokens={sessionCurrentTokens}
                                 sessionModel={sessionModel}
                                 activeProvider={activeProvider}
                             />
+                            <span aria-hidden="true" data-testid="chat-toolbar-divider-send" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                             {isActiveGeneration ? stopButton : (
                                 <QueueFollowUpButton
                                     disabled={inputDisabled || sending}

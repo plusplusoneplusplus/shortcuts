@@ -440,6 +440,18 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         className="flex flex-wrap items-center gap-x-px gap-y-0.5 pl-2 pr-1.5 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
                         data-testid="chat-input-toolbar"
                     >
+                        {/* Provider selector — leftmost: reads as "who's running this".
+                             Followed by a divider that separates the provider zone
+                             from the mode + model + tools zones (matches the
+                             OpenDesign provider-first composer reference). */}
+                        <AgentSelectorChip
+                            providers={agentProviders}
+                            loading={providersLoading}
+                            selected={selectedProvider}
+                            onChange={handleProviderChange}
+                            disabled={sending}
+                        />
+                        <span aria-hidden="true" data-testid="chat-toolbar-divider-provider" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                         <div data-testid="mode-selector" className="shrink-0 mr-0.5">
                             <ModePillSelector
                                 options={isRalphEnabled()
@@ -449,6 +461,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                 onChange={setSelectedMode}
                             />
                         </div>
+                        <span aria-hidden="true" data-testid="chat-toolbar-divider-mode" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                         <button
                             type="button"
                             className="ctool shrink-0 inline-flex items-center gap-1 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 min-w-0 max-w-[40vw] sm:max-w-[180px] transition-colors"
@@ -497,6 +510,10 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                 >✕</span>
                             )}
                         </button>
+                        <div className="flex-1 min-w-0" />
+                        {/* Tools zone — slash/mention/attach live on the right of
+                             the spacer (matches the OpenDesign composer ordering:
+                             provider · mode · model · tools · send). */}
                         <button
                             type="button"
                             className="ctool shrink-0 inline-flex items-center gap-0.5 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
@@ -542,15 +559,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                 />
                             </svg>
                         </button>
-                        <div className="flex-1 min-w-0" />
-                        {/* Agent provider selector */}
-                        <AgentSelectorChip
-                            providers={agentProviders}
-                            loading={providersLoading}
-                            selected={selectedProvider}
-                            onChange={handleProviderChange}
-                            disabled={sending}
-                        />
+                        <span aria-hidden="true" data-testid="chat-toolbar-divider-send" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                         {sending ? (
                             <button
                                 type="button"
