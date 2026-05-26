@@ -4,7 +4,28 @@
  *
  * Ported from Hermes Agent's _scan_memory_content and _MEMORY_THREAT_PATTERNS.
  */
-import type { MemoryScanResult, ThreatPatternId } from './bounded-memory-types';
+
+export type ThreatPatternId =
+    | 'prompt_injection'
+    | 'role_hijack'
+    | 'deception_hide'
+    | 'sys_prompt_override'
+    | 'disregard_rules'
+    | 'bypass_restrictions'
+    | 'exfil_curl'
+    | 'exfil_wget'
+    | 'read_secrets'
+    | 'ssh_backdoor'
+    | 'ssh_access'
+    | 'hermes_env';
+
+export interface MemoryScanResult {
+    blocked: boolean;
+    /** null if not blocked */
+    reason: string | null;
+    /** The matched pattern ID */
+    patternId: ThreatPatternId | 'invisible_unicode' | null;
+}
 
 const THREAT_PATTERNS: Array<{ pattern: RegExp; id: ThreatPatternId }> = [
     // Prompt injection

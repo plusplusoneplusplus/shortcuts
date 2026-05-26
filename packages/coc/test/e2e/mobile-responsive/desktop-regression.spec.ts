@@ -80,7 +80,7 @@ test.describe('Desktop Regression', () => {
         await page.goto(serverUrl);
 
         // Memory remains directly routable, but its topbar icon is hidden by default.
-        await expect(page.locator('[data-tab="memory"]')).toHaveCount(0);
+        await expect(page.locator('header [data-tab="memory"]')).toHaveCount(0);
         // Skills lives inside the Admin Tools sidebar — open admin first.
         await page.click('#admin-toggle');
         await expect(page.locator('#view-admin')).toBeVisible({ timeout: 10000 });

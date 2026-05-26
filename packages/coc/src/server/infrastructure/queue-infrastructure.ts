@@ -21,7 +21,6 @@ import { SqliteQueuePersistence } from '../queue/sqlite-queue-persistence';
 import { defaultIsExclusive } from '../queue/queue-executor-bridge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { ExecutionServerOptions } from '../types';
-import type { MemoryPromoteConfig } from '../memory/memory-promote';
 
 // ============================================================================
 // Types
@@ -60,7 +59,6 @@ export function createQueueInfrastructure(
     followUpSuggestions: { enabled: boolean; count: number } | undefined,
     askUser: { enabled: boolean } | undefined,
     getWsServer: () => ProcessWebSocketServer,
-    memoryPromotion: MemoryPromoteConfig | undefined,
     getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined,
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined,
     provider?: 'copilot' | 'codex' | 'claude',
@@ -91,7 +89,6 @@ export function createQueueInfrastructure(
         followUpSuggestions,
         askUser,
         getWsServer,
-        memoryPromotion,
         provider,
         resolveAiServiceForProvider,
         initialDelayMs: options.queue?.restartPickupDelayMs,

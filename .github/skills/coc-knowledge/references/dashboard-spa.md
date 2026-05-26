@@ -20,6 +20,7 @@ spa/client/react/
 ├── layout/             # Layout (Router, TopBar, BottomNav, ThemeProvider)
 ├── features/
 │   ├── chat/           # Chat UI: ChatDetail, ChatListPane, ConversationArea
+│   ├── memory/         # Memory V2 route, facts/review/episodes tabs, repo memory settings section
 │   ├── notes/          # Notes UI: NoteEditor, sidebar, multi-root dropdown (useNotesRoots)
 │   ├── pull-requests/  # PR dashboard: attention groups, BatchCommandPanel
 │   └── terminal/       # Terminal UI: TerminalView, pin/unpin
@@ -87,16 +88,16 @@ Right-hand action cluster: `[Connected pill | NotificationBell | Admin | Theme]`
 
 The legacy "Tools" popover has been migrated into the Admin page's left
 sidebar, but there is no longer a generic Tools group. The Admin sidebar is
-grouped by user task: Configure, Connections, Operations, and Developer /
-Internals. Embedded tool rows keep the legacy ids (`skills-toggle`,
-`logs-toggle`, `stats-toggle`, `models-toggle`, `servers-toggle`) and
-`data-tab` still carries the matching dashboard route; Servers is shown only
-when `isServersEnabled()` is true.
+grouped by user task: Configure, Knowledge, Connections, Operations, and
+Developer / Internals. Embedded tool rows keep stable ids (`memory-toggle`,
+`skills-toggle`, `logs-toggle`, `stats-toggle`, `models-toggle`,
+`servers-toggle`) and `data-tab` still carries the matching dashboard route;
+Servers is shown only when `isServersEnabled()` is true.
 
 Clicking an embedded tool row dispatches `SET_ACTIVE_TAB` and updates
-`location.hash` to the corresponding top-level route (`#skills`, `#logs`,
-`#stats`, `#models`, `#servers`). The Router maps every embedded tool tab plus
-`'admin'` itself to a single `<AdminPanel />` render, so the admin shell
+`location.hash` to the corresponding top-level route (`#memory`, `#skills`,
+`#logs`, `#stats`, `#models`, `#servers`). The Router maps every embedded tool
+tab plus `'admin'` itself to a single `<AdminPanel />` render, so the admin shell
 (sidebar + breadcrumb + right pane) stays mounted across navigation.
 `AdminPanel` switches on `state.activeTab` — when it matches an embedded tool
 route, the right pane mounts the corresponding View embedded inside an
@@ -122,13 +123,19 @@ Each tool's internal sub-tab/hash scheme (e.g. `#skills/installed`,
 - Search box
 - Selection persists in `localStorage['coc-activity-scope']`
 
+## Memory Route
+
+The top-level `#memory` route is embedded in the Admin shell's Knowledge group and renders `MemoryV2Panel` in the right pane. The panel root owns the stable `#view-memory` id. `MemorySubTab` values are `facts`, `review`, `episodes`, and `settings`; hash links such as `#memory/review` and `#memory/settings` select the matching V2 tab. Legacy bounded-memory/config/explore-cache panels are not rendered on the Memory route. Repo settings still use `RepoMemorySection` for repo-scoped bounded memory and raw memory inspection.
+
+`MemoryV2Panel` lists the global scope plus registered workspace scopes, lets users enable/disable the active scope from the Settings tab, exports JSON, and wipes the active scope after confirmation. The tab content is split into `MemoryV2FactsTab`, `MemoryV2ReviewTab`, `MemoryV2EpisodesTab`, and `MemoryV2SettingsTab`.
+
 ## Feature Flags
 
 `featureFlags.ts` defines compile-time flags (e.g., `SHOW_WELCOME_TUTORIAL`). Features gated by flags are disabled by default.
 
 ## coc-client Integration
 
-The SPA consumes `@plusplusoneplusplus/coc-client` for typed REST transport. Domain clients: admin, processes, queue, schedules, tasks, notes, workflows, wiki, memory, skills, preferences, seen-state, work-items, models, git.
+The SPA consumes `@plusplusoneplusplus/coc-client` for typed REST transport. Domain clients: admin, processes, queue, schedules, tasks, notes, workflows, wiki, memory, memoryV2, skills, preferences, seen-state, work-items, models, git.
 
 Local React hooks (`fetchApi`, `useWebSocket`, `seenStateApi`) wrap the client for React state management.
 

@@ -1,6 +1,6 @@
 # Monorepo Layout, Build, and Release
 
-All four published packages plus a frozen VS Code extension live in one npm workspaces monorepo. This file documents the cross-package contract, build/test commands, package management, and conventions enforced across the whole tree. Load it when planning multi-package changes, debugging build/release issues, or wiring new conventions.
+The published Node packages plus a frozen VS Code extension live in one npm workspaces monorepo. This file documents the cross-package contract, build/test commands, package management, and conventions enforced across the whole tree. Load it when planning multi-package changes, debugging build/release issues, or wiring new conventions.
 
 ## Products & Shared Packages
 
@@ -15,15 +15,18 @@ All four published packages plus a frozen VS Code extension live in one npm work
 |----------------|----------|-------------|
 | **forge** | `packages/forge/` | Core AI/pipeline engine: imports AI SDK from `coc-agent-sdk`, DAG workflow engine (`executeWorkflow`, `compileToWorkflow`), task queue, runtime policies, process store, git CLI, utilities |
 | **coc-agent-sdk** | `packages/coc-agent-sdk/` | Provider-agnostic AI agent SDK: `CopilotSDKService`, `CodexSDKService`, `SDKServiceRegistry`, session lifecycle, streaming state machine, MCP config, model registry |
+| **coc-memory** | `packages/coc-memory/` | Memory V2 core package: SQLite-backed fact/episode stores, hybrid search, embedding provider abstraction, capture service, safety scanning |
 | **whatsapp-bot** | `packages/whatsapp-bot/` | Standalone WhatsApp bot via Baileys — no CoC/forge deps. Used by `coccontainer` when `messaging.whatsapp.enabled` is true |
 
 **Architectural boundary:** Pure Node.js logic lives in packages (no VS Code deps). VS Code-specific wrappers live in `packages/vscode-extension/src/shortcuts/`. Example: `forge/src/ai/` = pure AI SDK; `packages/vscode-extension/src/shortcuts/ai-service/` = VS Code UI wrapper. **`packages/vscode-extension/` is frozen — do not read, edit, or reason about its code.**
 
 ## Package Management & Publishing
 
-All published packages (`forge`, `coc`, `coc-client`, `deep-wiki`) are published to npm under the `@plusplusoneplusplus` scope with public access. Versioning and publishing are coordinated via **`@changesets/cli`** with an independent versioning strategy.
+Published workspaces (`coc`, `forge`, `coc-agent-sdk`, `coc-memory`, `coc-client`, `deep-wiki`, `coccontainer`, `whatsapp-bot`, `teams-bot`) are published to npm under the `@plusplusoneplusplus` scope with public access. Versioning and publishing are coordinated via **`@changesets/cli`** with an independent versioning strategy.
 
-**How forge is consumed:** `coc` and `deep-wiki` depend on the published `@plusplusoneplusplus/forge` package via a caret range (`^1.0.0`). During local development, npm workspaces symlink forge automatically. There is no bundling or copying of forge into consumer packages — forge is resolved from `node_modules` at runtime.
+**How workspace packages are consumed:** `coc` and `deep-wiki` depend on published workspace packages via caret ranges. During local development, npm workspaces symlink them automatically. There is no bundling or copying into consumer packages — packages are resolved from `node_modules` at runtime.
+
+**CoC build order:** any workflow that builds/tests `packages/coc` directly must build `packages/coc-memory` before `packages/coc`, because `@plusplusoneplusplus/coc-memory` exports its compiled `dist/index.js`.
 
 **Versioning workflow:**
 1. Add a changeset: `npm run changeset` (interactive prompt for affected packages and semver bump)

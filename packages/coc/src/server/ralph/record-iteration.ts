@@ -104,8 +104,12 @@ export async function recordRalphIteration(
             next.terminalReason = terminalReason;
         }
         const existing = next.iterations.find(i => i.iteration === input.iteration);
+        const currentLoopIndex = next.loops && next.loops.length > 0
+            ? next.loops[next.loops.length - 1].loopIndex
+            : 1;
         const entry: RalphIterationRecord = {
             iteration: input.iteration,
+            loopIndex: existing?.loopIndex ?? currentLoopIndex,
             taskId: input.taskId,
             processId: input.processId,
             startedAt: existing?.startedAt ?? now,

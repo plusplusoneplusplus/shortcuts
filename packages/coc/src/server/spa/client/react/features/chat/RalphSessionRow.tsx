@@ -14,6 +14,7 @@ import { useState } from 'react';
 import { cn } from '../../ui/cn';
 import { formatRelativeTime } from '../../utils/format';
 import type { RalphSession } from './ralph-session-grouping';
+import { RALPH_MULTI_LOOP } from '../../featureFlags';
 
 interface RalphSessionRowProps {
     session: RalphSession;
@@ -71,7 +72,15 @@ export function RalphSessionRow({
     const subCount = (session.grillingProcess ? 1 : 0) + iterCount;
 
     // Short muted suffix that fits inside the truncating title cell.
-    const subLabel = session.phase === 'grilling' ? 'Clarifying' : `${iterCount} iter`;
+    // When multi-loop is enabled and there are multiple loops, prefix with the loop count.
+    let subLabel: string;
+    if (session.phase === 'grilling') {
+        subLabel = 'Clarifying';
+    } else if (RALPH_MULTI_LOOP && session.loopCount > 1) {
+        subLabel = `${session.loopCount} loops · ${iterCount} iter`;
+    } else {
+        subLabel = `${iterCount} iter`;
+    }
 
     const timestamp = session.latestTimestamp
         ? formatRelativeTime(new Date(session.latestTimestamp).toISOString())

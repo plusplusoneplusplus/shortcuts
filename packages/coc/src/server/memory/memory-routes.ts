@@ -24,7 +24,6 @@ import {
 import type { Route } from '../types';
 import { sendJson, send400, send404, send500 } from '../router';
 import { handleGetMemoryConfig, handlePutMemoryConfig, readMemoryConfig } from './memory-config-handler';
-import { registerBoundedMemoryRoutes } from './bounded-memory-routes';
 
 // ============================================================================
 // Types
@@ -264,8 +263,4 @@ export function registerMemoryRoutes(routes: Route[], dataDir: string, options?:
             }
         },
     });
-
-    // -- Bounded memory endpoints ---------------------------------------------
-
-    registerBoundedMemoryRoutes(routes, dataDir);
 }

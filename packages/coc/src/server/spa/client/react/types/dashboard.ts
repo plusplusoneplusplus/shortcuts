@@ -49,7 +49,7 @@ export type WikiProjectTab = typeof WIKI_PROJECT_TAB_VALUES[number];
 
 export const WIKI_ADMIN_TAB_VALUES = ['generate', 'seeds', 'config', 'delete'] as const;
 export type WikiAdminTab = typeof WIKI_ADMIN_TAB_VALUES[number];
-export type MemorySubTab = 'bounded' | 'config' | 'files';
+export type MemorySubTab = 'facts' | 'review' | 'episodes' | 'settings';
 export type SkillsSubTab = 'installed' | 'gallery' | 'config';
 export type AdminSubTab = 'settings' | 'providers' | 'data' | 'server' | 'prompts' | 'database' | 'agents' | 'messaging';
 

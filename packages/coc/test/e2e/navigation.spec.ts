@@ -90,12 +90,12 @@ test.describe('Navigation', () => {
         await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
     });
 
-    test('Memory topbar icon is hidden', async ({ page, serverUrl }) => {
+    test('Memory is available from the Admin Knowledge group, not the topbar', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
 
-        // Memory has no surface in the topbar or the Admin Tools sidebar.
+        // Memory is an Admin sidebar tool; it is not a standalone topbar tab.
         await openAdminTools(page);
-        await expect(page.locator('#memory-toggle')).toHaveCount(0);
+        await expect(page.locator('#memory-toggle')).toBeVisible();
         await expect(page.locator('header [data-tab="memory"]')).toHaveCount(0);
     });
 
@@ -158,7 +158,8 @@ test.describe('Navigation', () => {
     test('hash navigation routes to Memory tab', async ({ page, serverUrl }) => {
         await page.goto(`${serverUrl}/#memory`);
 
-        await expect(page.locator('#memory-toggle')).toHaveCount(0);
+        await expect(page.locator('#memory-toggle')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('header [data-tab="memory"]')).toHaveCount(0);
         await expect(page.locator('#view-memory')).toBeVisible({ timeout: 10000 });
     });
 
@@ -178,11 +179,17 @@ test.describe('Navigation', () => {
         await expect(page.locator('#view-admin')).toBeVisible({ timeout: 10000 });
     });
 
-    test('memory sub-tab deep link #memory/config activates config sub-tab', async ({ page, serverUrl }) => {
-        await page.goto(`${serverUrl}/#memory/config`);
+    test('memory sub-tab deep link #memory/settings activates settings sub-tab', async ({ page, serverUrl }) => {
+        const response = await page.request.patch(`${serverUrl}/api/preferences`, {
+            data: { memoryV2: { enabled: true } },
+        });
+        expect(response.ok()).toBe(true);
+
+        await page.goto(`${serverUrl}/#memory/settings`);
 
         await expect(page.locator('#view-memory')).toBeVisible({ timeout: 10000 });
-        await expect(page.locator('[data-subtab="config"]')).toBeVisible();
+        await expect(page.locator('button[data-tab="settings"]')).toBeVisible();
+        await expect(page.locator('[data-testid="memory-settings-tab"]')).toBeVisible({ timeout: 10000 });
     });
 
     test('legacy hash #tasks routes to Repos tab', async ({ page, serverUrl }) => {

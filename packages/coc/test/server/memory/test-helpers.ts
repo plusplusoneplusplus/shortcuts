@@ -108,6 +108,7 @@ export function createTestRouter(routes: Route[]) {
         get: (url: string) => dispatch('GET', url),
         put: (url: string, body?: any) => dispatch('PUT', url, body),
         post: (url: string, body?: any) => dispatch('POST', url, body),
-        delete: (url: string) => dispatch('DELETE', url),
+        delete: (url: string, body?: any) => dispatch('DELETE', url, body),
+        patch: (url: string, body?: any) => dispatch('PATCH', url, body),
     };
 }

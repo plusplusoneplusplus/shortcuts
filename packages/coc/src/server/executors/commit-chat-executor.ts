@@ -29,7 +29,6 @@ import { ChatBaseExecutor } from './chat-base-executor';
 import {
     buildModeSystemMessage,
     buildFollowUpSuggestionsAddon,
-    buildMemoryReadToolsAddon,
     buildSearchConversationsAddon,
     buildTavilyWebSearchAddon,
     applyLlmToolPreferences,
@@ -77,8 +76,6 @@ export class CommitChatExecutor extends ChatBaseExecutor {
             );
         }
 
-        const boundedMemory = await this.buildMemoryAddon(wsId, this.buildCaptureContext(task), prompt);
-
         // Build tools first so we can route the aggregated tool-guidance prose
         // into the system message via `.appendToolGuidance()`.
         const tools: Tool<unknown>[] = [];
@@ -106,14 +103,13 @@ export class CommitChatExecutor extends ChatBaseExecutor {
         );
         const searchConversations = buildSearchConversationsAddon(this.store, wsId, toQueueProcessId(task.id));
         const tavilySearch = buildTavilyWebSearchAddon(this.dataDir);
-        const memoryReadTools = buildMemoryReadToolsAddon(this.dataDir, wsId);
 
         const disabledLlmTools = this.dataDir && wsId
             ? readEffectiveDisabledLlmTools(this.dataDir, wsId)
             : undefined;
 
         const { tools: filteredTools, toolGuidance: filteredGuidance } = applyLlmToolPreferences(
-            [followUp, searchConversations, tavilySearch, memoryReadTools, boundedMemory],
+            [followUp, searchConversations, tavilySearch],
             disabledLlmTools,
         );
 
@@ -123,7 +119,6 @@ export class CommitChatExecutor extends ChatBaseExecutor {
         const systemMessage = await systemMessageBuilder()
             .append(buildModeSystemMessage('ask')?.content)
             .withRepoInstructions(workingDirectory, 'ask')
-            .appendMemory(boundedMemory)
             .appendToolGuidance(toolGuidance)
             .appendAutoFolder(autoFolderContext)
             .build();
@@ -133,7 +128,7 @@ export class CommitChatExecutor extends ChatBaseExecutor {
             systemMessage,
             tools,
             effectivePrompt: prompt,
-            dispose: boundedMemory.dispose,
+            dispose: undefined,
         };
     }
 }

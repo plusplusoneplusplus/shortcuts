@@ -1229,7 +1229,7 @@ describe('ProcessLifecycleRunner — provider attribution', () => {
     });
 
     it('sets metadata.provider to "copilot" when explicitly constructed with copilot', async () => {
-        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), undefined, 'copilot');
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'copilot');
         const task = makeTask();
         await runner.run(task, makeOpts());
 
@@ -1238,7 +1238,7 @@ describe('ProcessLifecycleRunner — provider attribution', () => {
     });
 
     it('sets metadata.provider to "codex" when constructed with codex provider', async () => {
-        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), undefined, 'codex');
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'codex');
         const task = makeTask();
         await runner.run(task, makeOpts());
 
@@ -1247,7 +1247,7 @@ describe('ProcessLifecycleRunner — provider attribution', () => {
     });
 
     it('records codex provider for run-script tasks too', async () => {
-        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), undefined, 'codex');
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'codex');
         const task = makeTask({
             type: 'run-script',
             displayName: 'npm test',
@@ -1261,7 +1261,7 @@ describe('ProcessLifecycleRunner — provider attribution', () => {
 
     it('uses payload.provider over runner-level provider when payload.provider is set', async () => {
         // Runner is constructed with copilot but payload explicitly requests codex.
-        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), undefined, 'copilot');
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'copilot');
         const task = makeTask({
             payload: {
                 kind: 'chat',
@@ -1278,7 +1278,7 @@ describe('ProcessLifecycleRunner — provider attribution', () => {
 
     it('falls back to runner-level provider when payload.provider is absent', async () => {
         // Runner is codex; payload omits provider — should use codex.
-        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), undefined, 'codex');
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'codex');
         const task = makeTask({
             payload: {
                 kind: 'chat',
@@ -1294,7 +1294,7 @@ describe('ProcessLifecycleRunner — provider attribution', () => {
     });
 
     it('payload.provider copilot wins over runner-level codex', async () => {
-        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), undefined, 'codex');
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'codex');
         const task = makeTask({
             payload: {
                 kind: 'chat',

@@ -13,11 +13,13 @@ import { cn } from '../../ui/cn';
 import { formatRelativeTime } from '../../utils/format';
 import type {
     ParsedProgressSection,
+    RalphLoopRecord,
     RalphSessionRecord,
     RalphTerminalReason,
 } from '@plusplusoneplusplus/coc-client';
 import { RalphWorkflowNode } from './RalphWorkflowNode';
 import { getSpaCocClient } from '../../api/cocClient';
+import { RALPH_MULTI_LOOP } from '../../featureFlags';
 
 /** Combined view fetched from the server. */
 export interface RalphSessionView {
@@ -42,6 +44,10 @@ export interface RalphWorkflowPaneProps {
     continueDefaultIterations?: number;
     /** Override the continue handler (used by tests). */
     onContinue?: (additionalIterations: number) => Promise<void>;
+    /** Default additional iterations for "New Loop". Falls back to continueDefaultIterations or 20. */
+    newLoopDefaultIterations?: number;
+    /** Override the new-loop handler (used by tests). When omitted, falls back to the API call. */
+    onNewLoop?: (newGoal: string, additionalIterations: number) => Promise<void>;
 }
 
 const PHASE_BADGE: Record<RalphSessionRecord['phase'], { label: string; cls: string }> = {
@@ -71,10 +77,16 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
         onClose,
         continueDefaultIterations = 20,
         onContinue,
+        newLoopDefaultIterations,
+        onNewLoop,
     } = props;
 
     const [continueState, setContinueState] = useState<'idle' | 'confirm' | 'submitting'>('idle');
     const [continueError, setContinueError] = useState<string | null>(null);
+
+    const [newLoopState, setNewLoopState] = useState<'idle' | 'confirm' | 'submitting'>('idle');
+    const [newLoopGoal, setNewLoopGoal] = useState('');
+    const [newLoopError, setNewLoopError] = useState<string | null>(null);
 
     if (view === undefined) {
         return (
@@ -119,6 +131,9 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
             || (record.terminalReason === 'NO_SIGNAL'
                 && record.currentIteration >= record.maxIterations));
 
+    const isRalphComplete = record.phase === 'complete'
+        && record.terminalReason === 'RALPH_COMPLETE';
+
     const handleContinueConfirmed = async () => {
         setContinueState('submitting');
         setContinueError(null);
@@ -136,6 +151,39 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
             setContinueState('confirm');
         }
     };
+
+    const resolvedNewLoopIterations = newLoopDefaultIterations ?? continueDefaultIterations;
+
+    const handleNewLoopConfirmed = async () => {
+        const trimmed = newLoopGoal.trim();
+        if (!trimmed) return;
+        setNewLoopState('submitting');
+        setNewLoopError(null);
+        try {
+            if (onNewLoop) {
+                await onNewLoop(trimmed, resolvedNewLoopIterations);
+            } else {
+                await getSpaCocClient().workspaces.startNewRalphLoop(workspaceId, sessionId, {
+                    newGoal: trimmed,
+                    additionalIterations: resolvedNewLoopIterations,
+                });
+            }
+            setNewLoopState('idle');
+            setNewLoopGoal('');
+        } catch (err) {
+            setNewLoopError(err instanceof Error ? err.message : String(err));
+            setNewLoopState('confirm');
+        }
+    };
+
+    // Build a map of loop-start iterations → loop record for dividers.
+    // Only populated when multi-loop is enabled and there are multiple loops.
+    const loopStartMap = new Map<number, RalphLoopRecord>();
+    if (RALPH_MULTI_LOOP && record.loops && record.loops.length > 1) {
+        for (const loop of record.loops) {
+            if (loop.loopIndex > 1) loopStartMap.set(loop.startIteration, loop);
+        }
+    }
 
     return (
         <div
@@ -160,6 +208,11 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
                         <span data-testid="ralph-workflow-iteration-count">
                             Iteration {record.currentIteration} / {record.maxIterations}
                         </span>
+                        {RALPH_MULTI_LOOP && record.loops && record.loops.length > 1 && (
+                            <span data-testid="ralph-workflow-loop-count">
+                                Loop {record.loops.length}
+                            </span>
+                        )}
                         <span>Started {formatRelativeTime(record.startedAt)}</span>
                         {record.completedAt && record.terminalReason && (
                             <span data-testid="ralph-workflow-terminal-reason">
@@ -175,6 +228,16 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
                                 className="rounded border border-blue-500 bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700 hover:bg-blue-100 dark:border-blue-400 dark:bg-blue-900/30 dark:text-blue-200 dark:hover:bg-blue-900/50"
                             >
                                 ↻ Continue loop
+                            </button>
+                        )}
+                        {RALPH_MULTI_LOOP && isRalphComplete && newLoopState === 'idle' && (
+                            <button
+                                type="button"
+                                onClick={() => { setNewLoopError(null); setNewLoopGoal(''); setNewLoopState('confirm'); }}
+                                data-testid="ralph-workflow-new-loop"
+                                className="rounded border border-violet-500 bg-violet-50 px-2 py-0.5 text-[11px] text-violet-700 hover:bg-violet-100 dark:border-violet-400 dark:bg-violet-900/30 dark:text-violet-200 dark:hover:bg-violet-900/50"
+                            >
+                                ＋ New loop
                             </button>
                         )}
                     </div>
@@ -243,23 +306,87 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
                         </div>
                     </div>
                 )}
+                {RALPH_MULTI_LOOP && isRalphComplete && newLoopState !== 'idle' && (
+                    <div
+                        className="mb-3 rounded border border-violet-300 bg-violet-50 p-3 text-xs dark:border-violet-700 dark:bg-violet-950/40"
+                        data-testid="ralph-workflow-new-loop-confirm"
+                    >
+                        <p className="mb-2 font-semibold text-violet-900 dark:text-violet-100">
+                            Start a new loop with a different goal?
+                        </p>
+                        <p className="mb-2 text-violet-800 dark:text-violet-200">
+                            The session journal and all prior iterations are preserved. Budget: {resolvedNewLoopIterations} iterations.
+                        </p>
+                        <textarea
+                            rows={3}
+                            placeholder="Describe the new goal…"
+                            value={newLoopGoal}
+                            onChange={e => setNewLoopGoal(e.target.value)}
+                            disabled={newLoopState === 'submitting'}
+                            data-testid="ralph-workflow-new-loop-goal"
+                            className="mb-2 w-full resize-none rounded border border-violet-300 bg-white px-2 py-1 text-xs text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-violet-400 disabled:opacity-50 dark:border-violet-600 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+                        />
+                        {newLoopError && (
+                            <p className="mb-2 text-red-700 dark:text-red-300" data-testid="ralph-workflow-new-loop-error">
+                                {newLoopError}
+                            </p>
+                        )}
+                        <div className="flex justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => { setNewLoopState('idle'); setNewLoopError(null); setNewLoopGoal(''); }}
+                                disabled={newLoopState === 'submitting'}
+                                className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                                data-testid="ralph-workflow-new-loop-cancel"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleNewLoopConfirmed}
+                                disabled={newLoopState === 'submitting' || !newLoopGoal.trim()}
+                                className="rounded border border-violet-500 bg-violet-600 px-2 py-1 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+                                data-testid="ralph-workflow-new-loop-confirm-button"
+                            >
+                                {newLoopState === 'submitting' ? 'Starting…' : 'Start new loop'}
+                            </button>
+                        </div>
+                    </div>
+                )}
                 {allIters.length === 0 ? (
                     <div className="text-xs italic text-zinc-500 dark:text-zinc-400">
                         Waiting for the first iteration to complete…
                     </div>
                 ) : (
                     <ol className="flex flex-col gap-2">
-                        {allIters.map(iter => (
-                            <li key={iter}>
-                                <RalphWorkflowNode
-                                    iteration={iter}
-                                    record={recordByIter.get(iter)}
-                                    section={sectionByIter.get(iter)}
-                                    isCurrent={record.phase === 'executing' && iter === record.currentIteration}
-                                    onClick={onSelectIteration}
-                                />
-                            </li>
-                        ))}
+                        {allIters.map(iter => {
+                            const loopDivider = loopStartMap.get(iter);
+                            return (
+                                <li key={iter}>
+                                    {loopDivider && (
+                                        <div
+                                            className="mb-2 mt-3 flex items-center gap-2"
+                                            data-testid={`ralph-loop-divider-${loopDivider.loopIndex}`}
+                                        >
+                                            <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-400">
+                                                Loop {loopDivider.loopIndex}
+                                            </span>
+                                            <span className="min-w-0 truncate text-[10px] text-zinc-500 dark:text-zinc-400">
+                                                {singleLine(loopDivider.goal, 100)}
+                                            </span>
+                                            <span className="h-px flex-1 bg-violet-200 dark:bg-violet-800" />
+                                        </div>
+                                    )}
+                                    <RalphWorkflowNode
+                                        iteration={iter}
+                                        record={recordByIter.get(iter)}
+                                        section={sectionByIter.get(iter)}
+                                        isCurrent={record.phase === 'executing' && iter === record.currentIteration}
+                                        onClick={onSelectIteration}
+                                    />
+                                </li>
+                            );
+                        })}
                     </ol>
                 )}
             </div>

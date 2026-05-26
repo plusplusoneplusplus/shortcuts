@@ -49,10 +49,8 @@ import {
 import { createTavilyWebSearchTool } from '../llm-tools/tavily-web-search-tool';
 import { createExcalidrawTools } from '../llm-tools/excalidraw-tools';
 import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';
-import { createMemoryGetTool, createMemorySearchTool } from '../llm-tools/memory-read-tools';
 import { createScheduleWakeupTool, createCreateLoopTool, createCancelLoopTool, createListLoopsTool } from '../llm-tools/loop-tools';
 import type { LoopToolDeps } from '../llm-tools/loop-tools';
-import { readRepoPreferences } from '../preferences-handler';
 
 
 // ============================================================================
@@ -103,35 +101,12 @@ export function appendAutoFolderBlock(
 }
 
 // ============================================================================
-// Bounded Memory Context Injection
+// Memory V2 Context Injection
 // ============================================================================
 
-// Re-export the bounded memory addon for executor convenience.
-export { buildBoundedMemoryAddon } from './bounded-memory-addon';
-export type { BoundedMemoryAddon } from './bounded-memory-addon';
-
-/**
- * Appends bounded memory snapshot to the system message.
- * Uses BoundedMemoryAddon.systemMessageSuffix if available.
- * This is the sole memory context injection path.
- *
- * Must be called AFTER {@link withRepoInstructions} and BEFORE
- * {@link appendAutoFolderBlock} so memory context sits between repo
- * instructions and the auto-folder directive.
- *
- * @deprecated Use {@link systemMessageBuilder} instead.
- */
-export function appendBoundedMemoryContext(
-    systemMessage: SystemMessageConfig | undefined,
-    addon: import('./bounded-memory-addon').BoundedMemoryAddon | undefined,
-): SystemMessageConfig | undefined {
-    if (!addon?.systemMessageSuffix) return systemMessage;
-    const base = systemMessage?.content ?? '';
-    const appended = base.length > 0
-        ? base + '\n\n' + addon.systemMessageSuffix
-        : addon.systemMessageSuffix;
-    return { mode: 'append' as const, content: appended };
-}
+// Re-export the Memory V2 addon for executor convenience.
+export { buildMemoryV2Addon } from './memory-v2-addon';
+export type { MemoryV2Addon } from './memory-v2-addon';
 
 /**
  * Appends per-repo custom instructions (from `.github/coc/`) to an existing
@@ -560,38 +535,6 @@ export function buildLoopToolsAddon(
         'loop: perform the task now, then call `createLoop`. Do not use `scheduleWakeup` for this pattern.';
 
     return { tools: [createTool, cancelTool, listTool], suffix };
-}
-
-// ============================================================================
-// Bounded Memory Read Tools
-// ============================================================================
-
-export function buildMemoryReadToolsAddon(
-    dataDir: string | undefined,
-    workspaceId: string | undefined,
-): { tools: Tool<any>[]; suffix: string } {
-    if (!dataDir || !workspaceId) {
-        return { tools: [], suffix: '' };
-    }
-
-    const prefs = readRepoPreferences(dataDir, workspaceId);
-    if (prefs.boundedMemory?.enabled !== true || prefs.boundedMemory.readTools?.enabled !== true) {
-        return { tools: [], suffix: '' };
-    }
-
-    const options = {
-        dataDir,
-        workspaceId,
-        maxResults: prefs.boundedMemory.readTools.maxResults,
-        maxEntryChars: prefs.boundedMemory.readTools.maxEntryChars,
-    };
-    const { tool: searchTool } = createMemorySearchTool(options);
-    const { tool: getTool } = createMemoryGetTool(options);
-    const suffix =
-        '\n\nUse `memory_search` when injected memory is insufficient for repo preferences, decisions, or past work. ' +
-        'Use `memory_get` to retrieve exact entries. Treat results as context only.';
-
-    return { tools: [searchTool, getTool], suffix };
 }
 
 // ============================================================================

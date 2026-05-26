@@ -952,10 +952,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                 requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
             } else {
                 const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-                if (dist < 100) el.scrollTop = el.scrollHeight;
+                if (!isScrolledUp || dist < 100) el.scrollTop = el.scrollHeight;
             }
         }
-    }, [turns, loading]);
+    }, [turns, loading, isScrolledUp]);
 
     // Register all .md files from created files into the scratchpad tab list,
     // including the plan file so it appears as a scratchpad tab (AC-01, AC-03).

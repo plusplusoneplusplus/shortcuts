@@ -27,7 +27,6 @@ import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-exe
 import { ChatBaseExecutor } from './chat-base-executor';
 import {
     buildFollowUpSuggestionsAddon,
-    buildMemoryReadToolsAddon,
     buildSearchConversationsAddon,
     buildTavilyWebSearchAddon,
     applyLlmToolPreferences,
@@ -60,8 +59,6 @@ export class ClassificationExecutor extends ChatBaseExecutor {
         const wsId = ctx.workspaceId;
         const processId = toQueueProcessId(task.id);
 
-        const boundedMemory = await this.buildMemoryAddon(wsId, this.buildCaptureContext(task), prompt);
-
         const tools: Tool<unknown>[] = [];
         let toolGuidance = '';
 
@@ -85,14 +82,13 @@ export class ClassificationExecutor extends ChatBaseExecutor {
         );
         const searchConversations = buildSearchConversationsAddon(this.store, wsId, processId);
         const tavilySearch = buildTavilyWebSearchAddon(this.dataDir);
-        const memoryReadTools = buildMemoryReadToolsAddon(this.dataDir, wsId);
 
         const disabledLlmTools = this.dataDir && wsId
             ? readEffectiveDisabledLlmTools(this.dataDir, wsId)
             : undefined;
 
         const { tools: filteredTools, toolGuidance: filteredGuidance } = applyLlmToolPreferences(
-            [followUp, searchConversations, tavilySearch, memoryReadTools, boundedMemory],
+            [followUp, searchConversations, tavilySearch],
             disabledLlmTools,
         );
 
@@ -101,7 +97,6 @@ export class ClassificationExecutor extends ChatBaseExecutor {
 
         const systemMessage = await systemMessageBuilder()
             .withRepoInstructions(workingDirectory, 'autopilot')
-            .appendMemory(boundedMemory)
             .appendToolGuidance(toolGuidance)
             .build();
 
@@ -110,7 +105,7 @@ export class ClassificationExecutor extends ChatBaseExecutor {
             systemMessage,
             tools,
             effectivePrompt: prompt,
-            dispose: boundedMemory.dispose,
+            dispose: undefined,
         };
     }
 }

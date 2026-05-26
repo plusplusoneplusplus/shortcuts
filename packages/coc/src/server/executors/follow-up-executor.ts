@@ -41,9 +41,9 @@ import { readNoteContent, appendNoteEditSnapshot, SNAPSHOT_SIZE_LIMIT } from './
 import { emitMessageSteering } from '../streaming/sse-handler';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
-import { flushMemories } from '../memory/pre-compression-flush';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
-import { buildChatToolBundle } from './chat-tool-builder';
+import { buildChatTurnContext } from './chat-turn-context-builder';
+import type { ChatTurnContext } from './chat-turn-context-builder';
 // ============================================================================
 // Types
 // ============================================================================
@@ -86,31 +86,6 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         _workingDirectory: string | undefined,
     ): Promise<ChatModeAIOptions> {
         throw new Error('FollowUpExecutor executes existing processes via executeFollowUp');
-    }
-
-    /**
-     * Resolve a BoundedMemoryStore for pre-compression flush.
-     * Returns undefined if memory is not enabled for the workspace.
-     */
-    private async resolveMemoryStoreForFlush(wsId: string | undefined): Promise<import('@plusplusoneplusplus/forge').BoundedMemoryStore | undefined> {
-        if (!this.dataDir || !wsId) return undefined;
-        try {
-            const { readRepoPreferences } = await import('../preferences-handler');
-            const { getRepoDataPath } = await import('../paths');
-            const { BoundedMemoryStore } = await import('@plusplusoneplusplus/forge');
-            const prefs = readRepoPreferences(this.dataDir, wsId);
-            if (!prefs.boundedMemory?.enabled) return undefined;
-            const memoryPath = getRepoDataPath(this.dataDir, wsId, 'memory/MEMORY.md');
-            const store = new BoundedMemoryStore({
-                filePath: memoryPath,
-                ...(prefs.boundedMemory.charLimit ? { charLimit: prefs.boundedMemory.charLimit } : {}),
-            });
-            await store.load();
-            return store;
-        } catch (err) {
-            getLogger().debug(LogCategory.AI, `[FollowUp] resolveMemoryStoreForFlush failed for workspace ${wsId}: ${err instanceof Error ? err.message : String(err)}`);
-            return undefined;
-        }
     }
 
     /**
@@ -199,10 +174,6 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 currentMode === 'plan' ? 'plan' : 'ask',
             );
         }
-        const boundedMemory = await this.buildMemoryAddon(wsId, {
-            processId,
-            turnIndex: process.conversationTurns?.length ?? 0,
-        }, message);
         const notePath = process.metadata?.notePath as string | undefined;
 
         // Capture pre-edit note content for snapshot (note-chat follow-ups only)
@@ -216,38 +187,14 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
         const canResumeSession = !!process.sdkSessionId;
 
-        // Pre-compression flush: if the previous session cannot be resumed
-        // and it used most of its context, flush memories before the context
-        // is discarded and rebuilt from history.
-        if (!canResumeSession && boundedMemory.tools.length > 0) {
-            const tokenLimit = process.tokenLimit;
-            const currentTokens = process.currentTokens;
-            if (tokenLimit && currentTokens && currentTokens / tokenLimit > 0.80) {
-                try {
-                    const memoryStore = boundedMemory.tools[0]
-                        ? await this.resolveMemoryStoreForFlush(wsId)
-                        : undefined;
-                    if (memoryStore) {
-                        await flushMemories({
-                            turns: process.conversationTurns ?? [],
-                            memoryStore,
-                            aiService: followUpAiService,
-                            minTurns: 0,
-                            timeoutMs: 30_000,
-                        });
-                    }
-                } catch (err) {
-                    logger.warn(LogCategory.AI, `[FollowUp] Pre-compression memory flush failed for ${processId} — context may be lost: ${err instanceof Error ? err.message : String(err)}`);
-                }
-            }
-        }
-
         const historyContext = canResumeSession
             ? undefined
             : buildConversationHistoryContext(process.conversationTurns);
 
         this.getOrCreateSession(processId).outputBuffer = '';
         this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
+
+        let chatCtx: ChatTurnContext | undefined;
 
         try {
             // User turn is already persisted by the POST /message route handler
@@ -272,16 +219,16 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             }
 
             const loopDeps = this.buildLoopToolDeps(processId);
-            const toolBundle = buildChatToolBundle({
+            chatCtx = await buildChatTurnContext({
                 dataDir: this.dataDir,
                 store: this.store,
                 workspaceId: wsId,
                 processId,
+                query: message,
                 followUpSuggestions: this.followUpSuggestions,
                 broadcastWorkItem: this.getWsServerFn
                     ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
                     : undefined,
-                boundedMemory,
                 scheduleWakeup: loopDeps.scheduleWakeup,
                 loopTools: loopDeps.loopTools,
                 askUser: {
@@ -300,14 +247,14 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     },
                 },
             });
-            const filteredTools = toolBundle.tools;
+            const filteredTools = chatCtx.tools;
             const session = this.getOrCreateSession(processId);
             session.pendingAskUser = {
-                answerQuestion: toolBundle.askUser!.answerQuestion,
-                skipQuestion: toolBundle.askUser!.skipQuestion,
-                answerQuestions: toolBundle.askUser!.answerQuestions,
-                cancelAll: toolBundle.askUser!.cancelAll,
-                hasPending: toolBundle.askUser!.hasPending,
+                answerQuestion: chatCtx.askUser!.answerQuestion,
+                skipQuestion: chatCtx.askUser!.skipQuestion,
+                answerQuestions: chatCtx.askUser!.answerQuestions,
+                cancelAll: chatCtx.askUser!.cancelAll,
+                hasPending: chatCtx.askUser!.hasPending,
             };
 
             // Build the system message AFTER the tool bundle so the
@@ -317,8 +264,8 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             const systemMessage = await systemMessageBuilder()
                 .append(buildModeSystemMessage(currentMode)?.content)
                 .withRepoInstructions(workingDirectory, currentMode)
-                .appendMemory(boundedMemory)
-                .appendToolGuidance(toolBundle.toolGuidance)
+                .appendMemoryV2(chatCtx.memoryV2)
+                .appendToolGuidance(chatCtx.toolGuidance)
                 .appendAutoFolder(autoFolderContextForFollowUp)
                 .appendNoteFile(notePath)
                 .build();
@@ -367,6 +314,9 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 attachments,
                 deliveryMode: resolvedDeliveryMode,
                 tools: filteredTools.length > 0 ? filteredTools : undefined,
+                ...(chatCtx.excludedTools.length > 0
+                    ? { excludedTools: chatCtx.excludedTools }
+                    : {}),
                 skillDirectories,
                 disabledSkills,
                 onSessionCreated: (sessionId: string) => {
@@ -527,7 +477,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             );
             this.store.emitProcessComplete(processId, 'failed', `${duration}ms`);
         } finally {
-            boundedMemory.dispose?.();
+            chatCtx?.dispose();
             const buffer = this.sessions.get(processId)?.outputBuffer ?? '';
             this.cleanupSession(processId);
             this.store.unregisterFlushHandler?.(processId);

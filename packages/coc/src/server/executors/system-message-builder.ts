@@ -7,7 +7,6 @@
  *   const systemMessage = await systemMessageBuilder()
  *       .append(buildModeSystemMessage('ask')?.content)
  *       .withRepoInstructions(workingDirectory, 'ask')
- *       .appendMemory(boundedMemory)
  *       .appendAutoFolder(autoFolderContext)
  *       .build();
  *
@@ -23,7 +22,7 @@ import {
     loadInstructions,
     toForwardSlashes,
 } from '@plusplusoneplusplus/forge';
-import type { BoundedMemoryAddon } from './bounded-memory-addon';
+import type { MemoryV2Addon } from './memory-v2-addon';
 import type { ChatMode } from '../tasks/task-types';
 import { resolveInstructionMode } from '../tasks/task-types';
 
@@ -61,8 +60,11 @@ class SystemMessageBuilder {
         return this;
     }
 
-    /** Append the bounded memory snapshot from an addon. No-op when the addon has no suffix. */
-    appendMemory(addon: BoundedMemoryAddon | undefined): this {
+    /**
+     * Append the redesigned coc-memory v2 context (frozen snapshot + per-turn recall).
+     * No-op when the addon has no system message suffix (feature disabled or no facts).
+     */
+    appendMemoryV2(addon: MemoryV2Addon | undefined): this {
         if (addon?.systemMessageSuffix) {
             this.steps.push({ kind: 'eager', block: addon.systemMessageSuffix });
         }
@@ -72,7 +74,7 @@ class SystemMessageBuilder {
     /**
      * Append the aggregated LLM-tool-guidance block (concatenated `suffix`
      * strings from each enabled addon, as produced by
-     * `applyLlmToolPreferences` / `buildChatToolBundle`).
+     * `buildChatTurnContext` (via `chatCtx.toolGuidance`).
      *
      * Lives in the system message rather than appended to the user prompt
      * so the prose is sent exactly once at session creation instead of

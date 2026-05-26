@@ -33,7 +33,7 @@ test.describe('Tablet Layout', () => {
         await page.click('#admin-toggle');
         await expect(page.locator('#view-admin')).toBeVisible({ timeout: 10000 });
         await expect(page.locator('#skills-toggle')).toBeVisible({ timeout: 10000 });
-        await expect(page.locator('[data-tab="memory"]')).toHaveCount(0);
+        await expect(page.locator('header [data-tab="memory"]')).toHaveCount(0);
     });
 
     test('tablet: no bottom navigation visible', async ({ page, serverUrl }) => {

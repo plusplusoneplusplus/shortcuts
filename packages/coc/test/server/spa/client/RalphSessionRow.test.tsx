@@ -19,6 +19,13 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     formatRelativeTime: (iso: string) => `rel(${iso})`,
 }));
 
+vi.mock('../../../../src/server/spa/client/react/featureFlags', () => ({
+    RALPH_MULTI_LOOP: false,
+    SHOW_WELCOME_TUTORIAL: true,
+    SHOW_FOCUSED_DIFF: true,
+    SHOW_EXCALIDRAW_DIAGRAMS: true,
+}));
+
 // ---------------------------------------------------------------------------
 // Component under test
 // ---------------------------------------------------------------------------
@@ -41,6 +48,7 @@ function makeSession(overrides: Partial<RalphSession> = {}): RalphSession {
         latestTimestamp: FIXED_TS,
         hasUnseen: false,
         phase: 'grilling',
+        loopCount: 1,
         ...overrides,
     };
 }
@@ -277,5 +285,16 @@ describe('RalphSessionRow', () => {
         render(<RalphSessionRow session={makeSession()} {...defaultProps} />);
         // Should not throw
         fireEvent.contextMenu(screen.getByTestId('ralph-session-body'));
+    });
+
+    it('shows plain "{N} iter" sub-label when RALPH_MULTI_LOOP is false, even with loopCount > 1', () => {
+        const { container } = render(
+            <RalphSessionRow
+                session={makeSession({ phase: 'executing', iterations: [{ id: 'i1' }], loopCount: 3 })}
+                {...defaultProps}
+            />,
+        );
+        expect(container.textContent).toContain('1 iter');
+        expect(container.textContent).not.toContain('loops');
     });
 });

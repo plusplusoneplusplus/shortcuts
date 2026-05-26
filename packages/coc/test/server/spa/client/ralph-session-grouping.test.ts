@@ -518,4 +518,44 @@ describe('groupByRalphSession', () => {
         // Latest end-time across iterations, *not* the bumped lastActivityAt on i1.
         expect(session.latestTimestamp).toBe(T3);
     });
+
+    // ---------------------------------------------------------------------
+    // loopCount
+    // ---------------------------------------------------------------------
+
+    it('loopCount defaults to 1 for a single-loop session (no loopIndex on tasks)', () => {
+        const g = makeGrillingTask('sess-lc', { createdAt: 1000 });
+        const i1 = makeIterationTask('sess-lc', 1, { createdAt: 2000 });
+        const result = groupByRalphSession([g, i1]);
+        const session = result[0] as RalphSession;
+        expect(session.loopCount).toBe(1);
+    });
+
+    it('loopCount reflects the max loopIndex across all session tasks', () => {
+        const i1 = makeIterationTask('sess-ml', 1, {
+            createdAt: 1000,
+            payload: { mode: 'ralph', context: { ralph: { sessionId: 'sess-ml', phase: 'executing', currentIteration: 1, loopIndex: 1 } } },
+        });
+        const i2 = makeIterationTask('sess-ml', 2, {
+            createdAt: 2000,
+            payload: { mode: 'ralph', context: { ralph: { sessionId: 'sess-ml', phase: 'executing', currentIteration: 2, loopIndex: 2 } } },
+        });
+        const i3 = makeIterationTask('sess-ml', 3, {
+            createdAt: 3000,
+            payload: { mode: 'ralph', context: { ralph: { sessionId: 'sess-ml', phase: 'executing', currentIteration: 3, loopIndex: 2 } } },
+        });
+        const result = groupByRalphSession([i1, i2, i3]);
+        const session = result[0] as RalphSession;
+        expect(session.loopCount).toBe(2);
+    });
+
+    it('loopCount reads loopIndex from history-item top-level ralph field', () => {
+        const i1 = makeIterationHistoryItem('sess-hl', 1, {
+            createdAt: 1000,
+            ralph: { sessionId: 'sess-hl', phase: 'executing', currentIteration: 1, loopIndex: 3 },
+        });
+        const result = groupByRalphSession([i1]);
+        const session = result[0] as RalphSession;
+        expect(session.loopCount).toBe(3);
+    });
 });

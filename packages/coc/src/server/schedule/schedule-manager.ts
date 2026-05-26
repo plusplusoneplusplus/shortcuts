@@ -95,6 +95,8 @@ export class ScheduleManager extends EventEmitter {
         for (const [repoId, entries] of allSchedules) {
             const map = new Map<string, ScheduleEntry>();
             for (const entry of entries) {
+                // Purge orphan memory-promote schedules from V1 system
+                if ((entry as any).targetType === 'memory-promote') continue;
                 map.set(entry.id, entry);
                 if (entry.status === 'active') {
                     this.scheduleNextRun(repoId, entry);

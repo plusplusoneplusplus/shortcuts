@@ -20,6 +20,12 @@ export interface GlobalPreferences {
       includeGlobalHistory?: boolean;
     };
   };
+  /** Global Memory V2 settings — independent of any workspace. */
+  memoryV2?: {
+    enabled?: boolean;
+    frozenSnapshotLimit?: number;
+    recallLimit?: number;
+  };
   [key: string]: unknown;
 }
 
@@ -43,28 +49,6 @@ export interface PerRepoPreferences {
   maxRalphIterations?: number;
   /** Last agent provider selected for new chats in this workspace. Persisted per-repo. */
   lastChatProvider?: 'copilot' | 'codex' | 'claude';
-  boundedMemory?: {
-    enabled?: boolean;
-    charLimit?: number;
-    writeFrequency?: 'low' | 'medium' | 'high';
-    readTools?: {
-      enabled?: boolean;
-      maxResults?: number;
-      maxEntryChars?: number;
-    };
-    autoPromote?: {
-      mode: 'off' | 'threshold' | 'cron' | 'cron+threshold';
-      cron?: string;
-      timezone?: string;
-      thresholdCount?: number;
-      minIntervalMs?: number;
-      gates?: {
-        minScore?: number;
-        minRecallCount?: number;
-        minUniqueQueries?: number;
-      };
-    };
-  };
   /** Git-based notes sync settings (only for my_work / my_life virtual workspaces). */
   sync?: {
     gitRemote?: string;

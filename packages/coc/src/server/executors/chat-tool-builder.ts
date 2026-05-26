@@ -4,7 +4,7 @@ import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { WakeupToolDeps, LoopToolDeps } from '../llm-tools/loop-tools';
 import { DEFAULT_DISABLED_LLM_TOOLS } from '../llm-tools/llm-tool-registry';
 import { readEffectiveDisabledLlmTools } from '../preferences-handler';
-import type { BoundedMemoryAddon } from './bounded-memory-addon';
+import type { MemoryV2Addon } from './memory-v2-addon';
 import {
     applyLlmToolPreferences,
     buildAskUserAddon,
@@ -12,7 +12,6 @@ import {
     buildExcalidrawToolsAddon,
     buildFollowUpSuggestionsAddon,
     buildLoopToolsAddon,
-    buildMemoryReadToolsAddon,
     buildScheduleWakeupAddon,
     buildSearchConversationsAddon,
     buildTavilyWebSearchAddon,
@@ -32,14 +31,14 @@ export interface ChatToolBundleOptions {
         deps: AskUserToolDeps;
     };
     broadcastWorkItem?: BroadcastWorkItemFn;
-    boundedMemory?: BoundedMemoryAddon;
+    /** Memory V2 addon (redesigned coc-memory system). */
+    memoryV2?: MemoryV2Addon;
     scheduleWakeup?: WakeupToolDeps;
     loopTools?: LoopToolDeps;
     includeFollowUpSuggestions?: boolean;
     includeSearchConversations?: boolean;
     includeWorkItemTools?: boolean;
     includeTavilyWebSearch?: boolean;
-    includeMemoryReadTools?: boolean;
     includeScheduleWakeup?: boolean;
     includeExcalidrawTools?: boolean;
     excludeTools?: string[];
@@ -56,6 +55,17 @@ export interface ChatToolBundle {
     askUser?: AskUserAddon;
 }
 
+/**
+ * Low-level tool assembly for a single chat turn.
+ *
+ * **Prefer `buildChatTurnContext()` for executor code.** That wrapper calls
+ * this function internally and additionally wires Memory V2 tools, Memory V2
+ * prompt context, SDK built-in exclusions, and resource disposal into one
+ * cohesive object so callers do not have to coordinate those artifacts manually.
+ *
+ * Use `buildChatToolBundle` directly only in `buildChatTurnContext` itself and
+ * in its unit tests.
+ */
 export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBundle {
     const addons: ToolAddon[] = [];
 
@@ -93,10 +103,6 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
         addons.push(buildTavilyWebSearchAddon(options.dataDir));
     }
 
-    if (options.includeMemoryReadTools !== false) {
-        addons.push(buildMemoryReadToolsAddon(options.dataDir, options.workspaceId));
-    }
-
     if (options.includeScheduleWakeup !== false) {
         addons.push(buildScheduleWakeupAddon(options.scheduleWakeup));
     }
@@ -109,8 +115,8 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
         addons.push(buildExcalidrawToolsAddon(options.dataDir, options.workspaceId));
     }
 
-    if (options.boundedMemory) {
-        addons.push(options.boundedMemory);
+    if (options.memoryV2) {
+        addons.push(options.memoryV2);
     }
 
     const disabledLlmTools = options.dataDir && options.workspaceId

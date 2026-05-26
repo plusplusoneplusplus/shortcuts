@@ -15,7 +15,7 @@
 import * as crypto from 'crypto';
 import type { TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
-import { TaskDefs, type MemoryPromotePayload } from '../tasks/task-types';
+import { TaskDefs } from '../tasks/task-types';
 import { getErrorMessage } from '../shared/fs-utils';
 import { resolveDefaultModel } from '../preferences-handler';
 import type {
@@ -144,35 +144,6 @@ export class ScheduleExecutor {
             run.taskId = taskId;
             run.processId = toQueueProcessId(taskId);
             return;
-        }
-
-        if (schedule.targetType === 'memory-promote') {
-            const target = schedule.params?.target === 'system' ? 'system' : 'memory';
-            const existing = this.queueManager.getAll().find(task => {
-                if (task.type !== TaskDefs.memoryPromote.kind) return false;
-                if (task.status !== 'queued' && task.status !== 'running') return false;
-                const payload = task.payload as Partial<MemoryPromotePayload>;
-                return payload.workspaceId === repoId && payload.target === target;
-            });
-            const model = schedule.model
-                || (this.dataDir ? resolveDefaultModel(this.dataDir, repoId, 'memory') : undefined)
-                || undefined;
-            const taskId = existing?.id ?? this.queueManager.enqueue({
-                type: TaskDefs.memoryPromote.kind,
-                priority: 'low',
-                payload: {
-                    kind: TaskDefs.memoryPromote.kind,
-                    workspaceId: repoId,
-                    target,
-                    trigger: 'auto-cron',
-                    ...(schedule.params?.gates ? { gates: JSON.parse(schedule.params.gates) } : {}),
-                } as MemoryPromotePayload as unknown as Record<string, unknown>,
-                config: { model },
-                displayName: `[Schedule] ${schedule.name}`,
-                repoId,
-            });
-            run.taskId = taskId;
-            run.processId = toQueueProcessId(taskId);
         }
     }
 }

@@ -21,7 +21,6 @@ import type {
     AgentMode,
     Attachment,
     AutoFolderContext,
-    MemoryToolCaptureContext,
     ModelInfo,
     ISDKService,
     ProcessStore,
@@ -53,14 +52,14 @@ import { resolveDefaultModel } from '../preferences-handler';
 import { loadConfigFile } from '../../config';
 import {
     assertNoAskUserConflict,
-    buildBoundedMemoryAddon,
     buildModeSystemMessage,
     prependSelectedSkillsDirective,
 } from './prompt-builder';
-import type { BoundedMemoryAddon } from './bounded-memory-addon';
+import { buildMemoryV2Addon } from './memory-v2-addon';
+import type { MemoryV2Addon } from './memory-v2-addon';
 import { resolveAutoFolderContext } from './auto-folder-utils';
 import { systemMessageBuilder } from './system-message-builder';
-import { buildChatToolBundle } from './chat-tool-builder';
+import { buildChatTurnContext } from './chat-turn-context-builder';
 import { getPromptOverride } from '../admin/ralph-prompt-overrides';
 
 // ============================================================================
@@ -169,6 +168,8 @@ export interface ChatModeAIOptions {
     tools: Tool<unknown>[];
     /** Prompt with any mode-specific suffix already appended. */
     effectivePrompt: string;
+    /** Built-in tool names to suppress for this session. */
+    excludedTools?: string[];
     /** Clean up resources (e.g. raw memory DB handles) after execution. */
     dispose?: () => void;
 }
@@ -232,7 +233,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     /**
      * Build per-request loop tool deps from the late-bound loop infrastructure.
      * Returns `scheduleWakeup` deps (always) and `loopTools` deps (always,
-     * but gated by skill activation in buildChatToolBundle).
+     * but gated by skill activation in buildChatTurnContext).
      */
     protected buildLoopToolDeps(processId: string): {
         scheduleWakeup?: import('../llm-tools/loop-tools').WakeupToolDeps;
@@ -284,28 +285,13 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         workingDirectory: string | undefined,
     ): Promise<ChatModeAIOptions>;
 
-    // ========================================================================
-    // Shared helper — capture context for bounded memory addon
-    // ========================================================================
-
-    /**
-     * Build a MemoryToolCaptureContext from a queued task.
-     * Used by all chat-mode executors to activate capture mode.
-     */
-    protected buildCaptureContext(task: QueuedTask): MemoryToolCaptureContext {
-        return {
-            processId: toQueueProcessId(task.id),
-            turnIndex: 0,
-        };
-    }
-
-    /** Build bounded-memory wiring for a workspace. */
-    protected buildMemoryAddon(
+    /** Build Memory V2 addon (redesigned coc-memory system). */
+    protected buildMemoryV2Addon(
         workspaceId: string | undefined,
-        captureContext?: MemoryToolCaptureContext,
-        recallQuery?: string,
-    ): Promise<BoundedMemoryAddon> {
-        return buildBoundedMemoryAddon(this.dataDir, workspaceId, captureContext, recallQuery);
+        query?: string,
+        processId?: string,
+    ): Promise<MemoryV2Addon> {
+        return buildMemoryV2Addon(this.dataDir, workspaceId, query, processId);
     }
 
     // ========================================================================
@@ -346,20 +332,19 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             ? await this.buildAutoFolderContext(workingDirectory, payload.workspaceId, mode)
             : undefined;
 
-        const boundedMemory = await this.buildMemoryAddon(payload.workspaceId, this.buildCaptureContext(task), prompt);
+        const processId = toQueueProcessId(task.id);
         const notePath = payload.context?.noteChat?.notePath;
 
-        const processId = toQueueProcessId(task.id);
         const loopDeps = this.buildLoopToolDeps(processId);
 
-        const toolBundle = buildChatToolBundle({
+        const ctx = await buildChatTurnContext({
             dataDir: this.dataDir,
             store: this.store,
             workspaceId: payload.workspaceId,
             processId,
+            query: prompt,
             followUpSuggestions: this.followUpSuggestions,
             broadcastWorkItem,
-            boundedMemory,
             scheduleWakeup: loopDeps.scheduleWakeup,
             loopTools: loopDeps.loopTools,
             askUser: {
@@ -380,18 +365,18 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         });
         const session = this.getOrCreateSession(processId);
         session.pendingAskUser = {
-            answerQuestion: toolBundle.askUser!.answerQuestion,
-            skipQuestion: toolBundle.askUser!.skipQuestion,
-            answerQuestions: toolBundle.askUser!.answerQuestions,
-            cancelAll: toolBundle.askUser!.cancelAll,
-            hasPending: toolBundle.askUser!.hasPending,
+            answerQuestion: ctx.askUser!.answerQuestion,
+            skipQuestion: ctx.askUser!.skipQuestion,
+            answerQuestions: ctx.askUser!.answerQuestions,
+            cancelAll: ctx.askUser!.cancelAll,
+            hasPending: ctx.askUser!.hasPending,
         };
 
         const systemMessage = await systemMessageBuilder()
             .append(buildModeSystemMessage(mode)?.content)
             .withRepoInstructions(workingDirectory, mode)
-            .appendMemory(boundedMemory)
-            .appendToolGuidance(toolBundle.toolGuidance)
+            .appendMemoryV2(ctx.memoryV2)
+            .appendToolGuidance(ctx.toolGuidance)
             .appendAutoFolder(autoFolderContext)
             .appendNoteFile(notePath)
             .build();
@@ -409,9 +394,10 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         return {
             agentMode: mode === 'plan' ? 'plan' as AgentMode : 'interactive' as AgentMode,
             systemMessage,
-            tools: toolBundle.tools,
+            tools: ctx.tools,
             effectivePrompt: prompt,
-            dispose: boundedMemory.dispose,
+            excludedTools: ctx.excludedTools,
+            dispose: ctx.dispose,
         };
     }
 
@@ -439,7 +425,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         const payload = task.payload as unknown as ChatPayload;
         const workingDirectory = payload.workingDirectory || payload.folderPath || this.defaultWorkingDirectory;
 
-        let { agentMode, systemMessage, tools, effectivePrompt, dispose: modeDispose } = await this.buildModeOptions(task, prompt, workingDirectory);
+        let { agentMode, systemMessage, tools, effectivePrompt, excludedTools, dispose: modeDispose } = await this.buildModeOptions(task, prompt, workingDirectory);
 
         this.persistSystemPromptAsync(processId, task.type, systemMessage?.content);
 
@@ -571,6 +557,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 systemMessage,
                 skillDirectories,
                 disabledSkills,
+                ...(excludedTools && excludedTools.length > 0 ? { excludedTools } : {}),
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
                 onSessionCreated: (sessionId: string) => {
                     this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch(() => {

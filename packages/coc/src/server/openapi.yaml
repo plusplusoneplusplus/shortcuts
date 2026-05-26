@@ -1285,24 +1285,6 @@ components:
           description: Repo-wide default model used when no explicit model is provided.
         defaultModels:
           $ref: '#/components/schemas/DefaultModelsByMode'
-        boundedMemory:
-          type: object
-          description: >-
-            Bounded memory settings (replaces old memoryExtraction).
-            When enabled, injects a frozen snapshot of MEMORY.md into prompts and
-            provides the AI with a `memory` tool for writing new observations.
-          properties:
-            enabled: { type: boolean }
-            charLimit:
-              type: integer
-              minimum: 1024
-              default: 16384
-              description: Max characters for MEMORY.md content.
-            writeFrequency:
-              type: string
-              enum: [low, medium, high]
-              default: medium
-              description: Controls how aggressively the AI writes memory entries.
         htmlEmbed:
           type: object
           description: Sandboxed inline previews for local .html/.htm links whose markdown title is "embed".

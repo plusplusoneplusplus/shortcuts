@@ -178,7 +178,6 @@ async function notifyLoopTickComplete(
 
 export class ProcessLifecycleRunner extends BaseExecutor {
     private readonly onGenerateTitle: (processId: string, turns: ConversationTurn[]) => void;
-    private readonly onBackgroundReview?: (processId: string, workspaceId: string, turns: ConversationTurn[]) => void;
     /** Active AI provider recorded on new processes for attribution ('copilot' | 'codex' | 'claude'). */
     private readonly provider: 'copilot' | 'codex' | 'claude';
 
@@ -186,12 +185,10 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         store: ProcessStore,
         dataDir: string | undefined,
         onGenerateTitle: (processId: string, turns: ConversationTurn[]) => void,
-        onBackgroundReview?: (processId: string, workspaceId: string, turns: ConversationTurn[]) => void,
         provider?: 'copilot' | 'codex' | 'claude',
     ) {
         super(store, dataDir);
         this.onGenerateTitle = onGenerateTitle;
-        this.onBackgroundReview = onBackgroundReview;
         this.provider = provider ?? 'copilot';
     }
 
@@ -515,18 +512,6 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     })();
                 } else {
                     setTimeout(() => this.onGenerateTitle(processId, combinedTurns), 0);
-                }
-
-                // Queue background memory review if conversation was substantial
-                if (this.onBackgroundReview) {
-                    const wsId = (task.payload as any)?.workspaceId as string | undefined;
-                    if (wsId) {
-                        try {
-                            this.onBackgroundReview(processId, wsId, combinedTurns);
-                        } catch (err) {
-                            logger.debug(LogCategory.AI, `[QueueExecutor] Failed to queue background review for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
-                        }
-                    }
                 }
             } catch (err) {
                 logger.error(LogCategory.AI, `[QueueExecutor] Failed to persist conversation turn for ${processId} — turn may be lost: ${err instanceof Error ? err.message : String(err)}`);

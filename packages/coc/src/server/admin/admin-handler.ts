@@ -9,7 +9,7 @@
  */
 
 import type { ProcessStore, TaskQueueManager, SDKServiceRegistry } from '@plusplusoneplusplus/forge';
-import { MEMORY_GUIDANCE, MEMORY_SCHEMA, READ_ONLY_SYSTEM_MESSAGE, SECURITY_PATTERNS_DESCRIPTION } from '@plusplusoneplusplus/forge';
+import { MEMORY_SCHEMA, READ_ONLY_SYSTEM_MESSAGE, SECURITY_PATTERNS_DESCRIPTION } from '@plusplusoneplusplus/forge';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -1000,14 +1000,6 @@ The plan file should include:
             source: 'forge/memory/memory-tool.ts',
             description: 'Tool definition with add/replace/remove actions, capacity-awareness, and proactive-save guidance',
             text: MEMORY_SCHEMA,
-        },
-        'memory-system-prompt': {
-            id: 'memory-system-prompt',
-            title: 'Memory — System Prompt Injection',
-            group: 'Memory',
-            source: 'forge/memory/memory-prompt.ts',
-            description: 'Frozen snapshot format and behavioral guidance injected at session start',
-            text: MEMORY_GUIDANCE,
         },
         'memory-security-patterns': {
             id: 'memory-security-patterns',

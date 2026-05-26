@@ -39,6 +39,7 @@ const { items } = await coc.workItems.list(workspaceId);
 | Work items | `coc.workItems` | list, grouped list, create, get, update, delete, plan, execute |
 | Workspaces/repos | `coc.workspaces`, `coc.repos` | list, register, discover, update, delete, git info, history deletion |
 | Preferences | `coc.preferences` | global and per-repo preferences, skill usage |
+| Memory | `coc.memory`, `coc.memoryV2` | bounded memory, explore cache, Memory V2 facts, review queue, episodes, export, wipe |
 | Realtime | `coc.events` | process WebSocket connection helper |
 
 ## Examples

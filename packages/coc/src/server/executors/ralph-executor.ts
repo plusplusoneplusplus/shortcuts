@@ -21,18 +21,14 @@
 
 import * as os from 'os';
 import * as path from 'path';
-import type {
-    AgentMode,
-    ProcessStore,
-    QueuedTask,
-} from '@plusplusoneplusplus/forge';
+import type { AgentMode, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { systemMessageBuilder } from './system-message-builder';
 import type { ChatPayload } from '../tasks/task-types';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
-import { buildChatToolBundle } from './chat-tool-builder';
+import { buildChatTurnContext } from './chat-turn-context-builder';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
 import { getPromptOverride } from '../admin/ralph-prompt-overrides';
 
@@ -140,20 +136,19 @@ export class RalphExecutor extends ChatBaseExecutor {
             maxIterations: ralphCtx?.maxIterations,
         }, resolvedBaseInstructions);
 
-        const boundedMemory = await this.buildMemoryAddon(payload.workspaceId, this.buildCaptureContext(task), prompt);
-
         const processId = toQueueProcessId(task.id);
         const loopDeps = this.buildLoopToolDeps(processId);
-        const { tools, toolGuidance } = buildChatToolBundle({
+
+        const ctx = await buildChatTurnContext({
             dataDir: this.dataDir,
             store: this.store,
             workspaceId: payload.workspaceId,
             processId,
+            query: prompt,
             followUpSuggestions: this.followUpSuggestions,
             broadcastWorkItem: this.getWsServerFn
                 ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
                 : undefined,
-            boundedMemory,
             scheduleWakeup: loopDeps.scheduleWakeup,
             loopTools: loopDeps.loopTools,
         });
@@ -161,16 +156,17 @@ export class RalphExecutor extends ChatBaseExecutor {
         const systemMessage = await systemMessageBuilder()
             .append(ralphSystemPrompt)
             .withRepoInstructions(workingDirectory, 'ralph')
-            .appendMemory(boundedMemory)
-            .appendToolGuidance(toolGuidance)
+            .appendMemoryV2(ctx.memoryV2)
+            .appendToolGuidance(ctx.toolGuidance)
             .build();
 
         return {
             agentMode: 'autopilot' as AgentMode,
             systemMessage,
-            tools,
+            tools: ctx.tools,
             effectivePrompt: prompt,
-            dispose: boundedMemory.dispose,
+            excludedTools: ctx.excludedTools,
+            dispose: ctx.dispose,
         };
     }
 

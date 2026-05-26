@@ -52,8 +52,6 @@ import { migrateWorkspaceRegistryIfNeeded } from './storage/startup-workspace-mi
 import { migrateProcessHistoryIfNeeded } from './storage/startup-process-migration';
 import { DevTunnelConnector } from './servers/devtunnel-connector';
 import { RemoteServerStore } from './servers/remote-server-store';
-import { AutoPromoteScheduler } from './memory/auto-promote';
-import { setMemoryCandidateCapturedCallback } from './executors/bounded-memory-addon';
 import { pruneAllStaleClassifications } from './repos/classification-store';
 import { SyncEngine } from './sync/sync-engine';
 
@@ -79,7 +77,6 @@ interface CloseHandlerDeps {
     terminalWsServer?: { closeAll(): void };
     terminalSessionManager?: { destroyAll(): void };
     remoteServerConnector: { dispose(): void };
-    autoPromoteScheduler?: { dispose(): void };
     loopExecutor?: { shutdownAll(): void };
     loopInfraDispose?: () => void;
     mcpOauthDispose?: () => void;
@@ -111,8 +108,6 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.syncEngines?.forEach(e => e.stop());
         gitInfoCache.dispose();
         deps.notesGitTimerManager.dispose();
-        deps.autoPromoteScheduler?.dispose();
-        setMemoryCandidateCapturedCallback(undefined);
 
         let drainOutcome: 'completed' | 'timeout' | undefined;
         if (closeOptions?.drain) {
@@ -271,7 +266,6 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const { registry, bridge, queuePersistence, queueFacade } = createQueueInfrastructure(
         store, dataDir, { ...options, aiService: resolvedAiService }, defaultTimeoutMs,
         resolvedConfig.chat.followUpSuggestions, resolvedConfig.chat.askUser, () => wsServer,
-        resolvedConfig.memoryPromotion,
         () => {
             if (!loopInfra) return undefined;
             return {
@@ -529,15 +523,6 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     terminalInfra = createTerminalInfrastructure(store, resolvedConfig);
 
     wsServer = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager, terminalInfra?.terminalWsServer);
-    const autoPromoteScheduler = new AutoPromoteScheduler({
-        dataDir,
-        queueManager: queueFacade,
-        scheduleManager,
-        enabled: resolvedConfig.features.autoMemoryPromotion,
-        wsServer,
-    });
-    autoPromoteScheduler.start(allWorkspaces.map(workspace => workspace.id));
-    setMemoryCandidateCapturedCallback(event => autoPromoteScheduler.handleCandidateCaptured(event));
     const { taskWatcher, pipelineWatcher, templateWatcher, notesWatcher } =
         await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
 
@@ -589,7 +574,6 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             terminalWsServer: terminalInfra?.terminalWsServer,
             terminalSessionManager: terminalInfra?.terminalSessionManager,
             remoteServerConnector,
-            autoPromoteScheduler,
             loopExecutor: loopInfra?.loopExecutor,
             loopInfraDispose: loopInfra?.dispose,
             mcpOauthDispose: mcpOauthInfra?.dispose,

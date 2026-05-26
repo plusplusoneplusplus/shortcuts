@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
-import { SqliteProcessStore, FileProcessStore, MemoryCandidateStore } from '@plusplusoneplusplus/forge';
+import { SqliteProcessStore, FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '../../src/server/index';
 
 // ============================================================================
@@ -98,11 +98,7 @@ describe('DB Browser Handler', () => {
 
             const body = JSON.parse(res.body);
             const processDb = body.sources.find((s: any) => s.id === 'process-db');
-            const rawMemoryDb = body.sources.find((s: any) => s.id === 'repo-raw-memory-db');
             expect(processDb.capabilities.updateRows).toBe(true);
-            expect(rawMemoryDb.requiredParams).toContain('repoId');
-            expect(rawMemoryDb.capabilities.readonly).toBe(true);
-            expect(rawMemoryDb.capabilities.updateRows).toBe(false);
         });
     });
 
@@ -1010,85 +1006,4 @@ describe('DB Browser Handler', () => {
         });
     });
 
-    describe('repo-raw-memory-db source', () => {
-        function rawTableUrl(baseUrl: string, table = 'memory_candidates', query = ''): string {
-            const suffix = query ? `&${query}` : '';
-            return `${baseUrl}/api/db-browser/repo-raw-memory-db/tables/${table}?repoId=ws-test${suffix}`;
-        }
-
-        function rawRowsUrl(baseUrl: string, table = 'memory_candidates'): string {
-            return `${baseUrl}/api/db-browser/repo-raw-memory-db/tables/${table}/rows?repoId=ws-test`;
-        }
-
-        it('returns empty table list when repo raw-memory.db does not exist', async () => {
-            const srv = await startSqliteServer();
-            const res = await request(`${srv.url}/api/db-browser/repo-raw-memory-db/tables?repoId=ws-test`);
-            expect(res.status).toBe(200);
-
-            const body = JSON.parse(res.body);
-            expect(body.tables).toEqual([]);
-        });
-
-        it('requires repoId for repo raw-memory source', async () => {
-            const srv = await startSqliteServer();
-            const res = await request(`${srv.url}/api/db-browser/repo-raw-memory-db/tables`);
-            expect(res.status).toBe(400);
-
-            const body = JSON.parse(res.body);
-            expect(body.error).toMatch(/repoId/i);
-        });
-
-        it('lists and reads memory candidate tables through the generic API', async () => {
-            const srv = await startSqliteServer();
-            const dbPath = path.join(dataDir, 'repos', 'ws-test', 'memory', 'raw-memory.db');
-            const candidateStore = new MemoryCandidateStore({ dbPath });
-            await candidateStore.upsertCandidate({ target: 'repo', content: 'alpha', source: 'test', workspaceId: 'ws-test' });
-            await candidateStore.upsertCandidate({ target: 'repo', content: 'zeta', source: 'test', workspaceId: 'ws-test' });
-            candidateStore.close();
-
-            const tablesRes = await request(`${srv.url}/api/db-browser/repo-raw-memory-db/tables?repoId=ws-test`);
-            expect(tablesRes.status).toBe(200);
-            const tablesBody = JSON.parse(tablesRes.body);
-            expect(tablesBody.tables.find((t: any) => t.name === 'memory_candidates').rowCount).toBe(2);
-
-            const tableRes = await request(rawTableUrl(srv.url, 'memory_candidates', 'sort=content&order=asc&page=1&pageSize=1'));
-            expect(tableRes.status).toBe(200);
-            const tableBody = JSON.parse(tableRes.body);
-            expect(tableBody.table).toBe('memory_candidates');
-            expect(tableBody.rows).toHaveLength(1);
-            expect(tableBody.rows[0].content).toBe('alpha');
-            expect(tableBody.total).toBe(2);
-            expect(tableBody.totalPages).toBe(2);
-        });
-
-        it('returns not found for raw table reads when raw-memory.db does not exist', async () => {
-            const srv = await startSqliteServer();
-            const res = await request(rawTableUrl(srv.url));
-            expect(res.status).toBe(404);
-        });
-
-        it('rejects mutations for the read-only raw memory source', async () => {
-            const srv = await startSqliteServer();
-            const dbPath = path.join(dataDir, 'repos', 'ws-test', 'memory', 'raw-memory.db');
-            const candidateStore = new MemoryCandidateStore({ dbPath });
-            await candidateStore.upsertCandidate({ target: 'repo', content: 'alpha', source: 'test', workspaceId: 'ws-test' });
-            candidateStore.close();
-
-            const res = await request(rawRowsUrl(srv.url), {
-                method: 'PUT',
-                body: JSON.stringify({ pkColumns: { id: 'r1' }, updates: { content: 'updated' } }),
-                headers: { 'Content-Type': 'application/json' },
-            });
-            expect(res.status).toBe(403);
-
-            const body = JSON.parse(res.body);
-            expect(body.error).toMatch(/read-only/i);
-        });
-
-        it('rejects unregistered source IDs', async () => {
-            const srv = await startSqliteServer();
-            const res = await request(`${srv.url}/api/db-browser/other-db/tables`);
-            expect(res.status).toBe(404);
-        });
-    });
 });

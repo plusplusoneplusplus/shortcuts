@@ -27,7 +27,7 @@ import { registerTaskCommentsRoutes } from '../tasks/comments/task-comments-hand
 import { registerDiffCommentsRoutes } from '../tasks/comments/diff-comments-handler';
 import { registerWikiRoutes } from '../wiki';
 import { registerMemoryRoutes } from '../memory/memory-routes';
-import { registerRepoMemoryRoutes } from '../memory/repo-memory-handler';
+import { registerMemoryV2Routes } from '../memory/memory-v2-routes';
 import { registerRepoRoutes } from '../repos/repo-routes';
 import { registerInstructionRoutes } from '../skills/instruction-handler';
 import { registerProviderRoutes } from '../providers/provider-routes';
@@ -79,6 +79,7 @@ import { DevTunnelConnector } from '../servers/devtunnel-connector';
 import { registerRalphRoutes } from './queue-ralph-routes';
 import { registerRalphSessionRoutes } from './ralph-session-routes';
 import { registerRalphContinueRoutes } from './ralph-continue-routes';
+import { registerRalphNewLoopRoutes } from './ralph-new-loop-routes';
 import { registerRalphPromoteRoutes } from './ralph-promote-routes';
 import { registerRalphLaunchRoutes } from './ralph-launch-routes';
 import { registerLoopRoutes } from '../loops/loop-handler';
@@ -359,11 +360,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     registerMemoryRoutes(routes, dataDir);
 
-    registerRepoMemoryRoutes(routes, dataDir, {
-        store,
-        queueManager: queueFacade,
-        scheduleManager,
-    });
+    registerMemoryV2Routes(routes, dataDir, store);
 
     registerModelRoutes(routes, modelMetadataStore, {
         configPath,
@@ -429,6 +426,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerRalphRoutes(routes, { bridge, store, dataDir });
     registerRalphSessionRoutes(routes, { dataDir });
     registerRalphContinueRoutes(routes, { bridge, store, dataDir });
+    registerRalphNewLoopRoutes(routes, { bridge, store, dataDir });
     registerRalphPromoteRoutes(routes, { bridge, store, dataDir });
     registerRalphLaunchRoutes(routes, { bridge, dataDir });
 
