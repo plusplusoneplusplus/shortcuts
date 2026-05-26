@@ -1,5 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { notesApi, type NoteTreeNode } from '../notesApi';
+import {
+    notesApi,
+    type CreateNoteNodeResponse,
+    type NoteTreeNode,
+    type RenameNoteNodeResponse,
+} from '../notesApi';
 
 export interface UseNotesTreeResult {
     tree: NoteTreeNode[] | null;
@@ -8,8 +13,8 @@ export interface UseNotesTreeResult {
     loading: boolean;
     error: string | null;
     refresh: () => void;
-    createNode: (parentPath: string, name: string, type: 'notebook' | 'section' | 'page') => Promise<void>;
-    renameNode: (oldPath: string, newPath: string) => Promise<void>;
+    createNode: (parentPath: string, name: string, type: 'notebook' | 'section' | 'page') => Promise<CreateNoteNodeResponse>;
+    renameNode: (oldPath: string, newPath: string) => Promise<RenameNoteNodeResponse>;
     deleteNode: (path: string) => Promise<void>;
     reorderNodes: (parentPath: string, order: string[]) => Promise<void>;
 }
@@ -52,13 +57,15 @@ export function useNotesTree(workspaceId: string, root?: string): UseNotesTreeRe
 
     const createNode = useCallback(async (parentPath: string, name: string, type: 'notebook' | 'section' | 'page') => {
         const nodePath = parentPath ? `${parentPath}/${name}` : name;
-        await notesApi.createNode(workspaceId, nodePath, type, root);
+        const created = await notesApi.createNode(workspaceId, nodePath, type, root);
         await fetchTree();
+        return created;
     }, [workspaceId, root, fetchTree]);
 
     const renameNode = useCallback(async (oldPath: string, newPath: string) => {
-        await notesApi.renameNode(workspaceId, oldPath, newPath, root);
+        const renamed = await notesApi.renameNode(workspaceId, oldPath, newPath, root);
         await fetchTree();
+        return renamed;
     }, [workspaceId, root, fetchTree]);
 
     const deleteNode = useCallback(async (path: string) => {

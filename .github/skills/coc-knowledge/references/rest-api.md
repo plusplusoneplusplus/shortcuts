@@ -94,6 +94,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 ## Notes
 
 All read/write/comment/search/image endpoints accept an optional `root` query or body param to scope operations to a specific notes root. Omit `root` for the default managed root.
+Page create and rename operations normalize page filenames by appending `.md` when the requested page path has no `.md` suffix; mutation responses return the effective path.
 
 | Method | Path | Description |
 |--------|------|-------------|

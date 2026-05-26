@@ -381,16 +381,15 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     }, [workspaceId, refresh, onSelectPage, onNoteCreated]);
 
     const handleCreateNode = useCallback(async (parentPath: string, name: string, type: 'notebook' | 'section' | 'page') => {
-        await createNode(parentPath, name, type);
+        const created = await createNode(parentPath, name, type);
         if (type === 'page') {
-            const newPath = parentPath ? `${parentPath}/${name}.md` : `${name}.md`;
-            onNoteCreated?.(newPath);
+            onNoteCreated?.(created.path);
         }
     }, [createNode, onNoteCreated]);
 
     const handleRenameNode = useCallback(async (oldPath: string, newPath: string) => {
-        await renameNode(oldPath, newPath);
-        onNoteRenamed?.(oldPath, newPath);
+        const renamed = await renameNode(oldPath, newPath);
+        onNoteRenamed?.(renamed.oldPath, renamed.newPath);
     }, [renameNode, onNoteRenamed]);
 
     const handleDeleteNode = useCallback(async (path: string) => {
@@ -434,8 +433,8 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
 
             const newPath = `${target.path}/${dragged.name}`;
             try {
-                await renameNode(dragged.path, newPath);
-                onNoteRenamed?.(dragged.path, newPath);
+                const renamed = await renameNode(dragged.path, newPath);
+                onNoteRenamed?.(renamed.oldPath, renamed.newPath);
             } catch {
                 // Rename failed — tree already refreshed by renameNode
             }
@@ -489,8 +488,8 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
             // Cross-parent move: place dragged into target's parent directory
             const newPath = targetParent ? `${targetParent}/${dragged.name}` : dragged.name;
             try {
-                await renameNode(dragged.path, newPath);
-                onNoteRenamed?.(dragged.path, newPath);
+                const renamed = await renameNode(dragged.path, newPath);
+                onNoteRenamed?.(renamed.oldPath, renamed.newPath);
             } catch {
                 // Rename failed
             }

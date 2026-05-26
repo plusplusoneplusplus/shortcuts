@@ -4,6 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, waitFor, act, screen } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import type { NoteTreeNode } from '../../../src/server/spa/client/react/features/notes/notesApi';
 
 // ── Mocks ──────────────────────────────────────────────────────────────
@@ -67,9 +68,13 @@ const SAMPLE_TREE: NoteTreeNode[] = [
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-function renderSidebar(selectedPath: string | null = null, onSelectPage = vi.fn()) {
+function renderSidebar(
+    selectedPath: string | null = null,
+    onSelectPage = vi.fn(),
+    extraProps: Partial<ComponentProps<typeof NotesSidebar>> = {},
+) {
     return render(
-        <NotesSidebar workspaceId="ws1" selectedPath={selectedPath} onSelectPage={onSelectPage} />,
+        <NotesSidebar workspaceId="ws1" selectedPath={selectedPath} onSelectPage={onSelectPage} {...extraProps} />,
     );
 }
 
@@ -278,8 +283,10 @@ describe('NotesSidebar', () => {
         });
     });
 
-    it('creates a page via dialog and refreshes tree', async () => {
-        const { findByTestId } = renderSidebar();
+    it('creates a page via dialog and reports the server-returned path', async () => {
+        mockCreateNode.mockResolvedValueOnce({ path: 'Notebook1/NewPage.md', type: 'page' });
+        const onNoteCreated = vi.fn();
+        const { findByTestId } = renderSidebar(null, vi.fn(), { onNoteCreated });
         const nb1 = await findByTestId('notes-tree-item-Notebook1');
 
         // Open context menu → Create Page
@@ -303,6 +310,7 @@ describe('NotesSidebar', () => {
 
         await waitFor(() => {
             expect(mockCreateNode).toHaveBeenCalledWith('ws1', 'Notebook1/NewPage', 'page', undefined);
+            expect(onNoteCreated).toHaveBeenCalledWith('Notebook1/NewPage.md');
         });
 
         // Tree should refresh (getTree called again)
@@ -381,8 +389,13 @@ describe('NotesSidebar', () => {
         });
     });
 
-    it('renames a node and refreshes tree', async () => {
-        const { findByTestId } = renderSidebar();
+    it('renames a node and reports the server-returned path', async () => {
+        mockRenameNode.mockResolvedValueOnce({
+            oldPath: 'Notebook1/TopPage',
+            newPath: 'Notebook1/RenamedPage.md',
+        });
+        const onNoteRenamed = vi.fn();
+        const { findByTestId } = renderSidebar(null, vi.fn(), { onNoteRenamed });
 
         const nb1 = await findByTestId('notes-tree-item-Notebook1');
         fireEvent.click(nb1);
@@ -407,6 +420,7 @@ describe('NotesSidebar', () => {
 
         await waitFor(() => {
             expect(mockRenameNode).toHaveBeenCalledWith('ws1', 'Notebook1/TopPage', 'Notebook1/RenamedPage', undefined);
+            expect(onNoteRenamed).toHaveBeenCalledWith('Notebook1/TopPage', 'Notebook1/RenamedPage.md');
         });
     });
 

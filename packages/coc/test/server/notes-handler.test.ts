@@ -515,6 +515,36 @@ describe('Notes Handler', () => {
             expect(JSON.parse(newRes.body).content).toBe('# Old Name');
         });
 
+        it('should auto-append .md when renaming a page without extension', async () => {
+            const srv = await startServer();
+            const sidecarData = JSON.stringify({ threads: { t1: { id: 't1' } } });
+            createNoteFiles({
+                'old-name.md': '# Old Name',
+                'old-name.md.comments.json': sidecarData,
+            });
+            await registerWorkspace(srv, workspaceDir);
+
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/notes/path`, {
+                oldPath: 'old-name.md',
+                newPath: 'new-name',
+            });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.oldPath).toBe('old-name.md');
+            expect(body.newPath).toBe('new-name.md');
+
+            const oldRes = await request(`${srv.url}/api/workspaces/${wsId}/notes/content?path=old-name.md`);
+            expect(oldRes.status).toBe(404);
+
+            const newRes = await request(`${srv.url}/api/workspaces/${wsId}/notes/content?path=new-name.md`);
+            expect(newRes.status).toBe(200);
+            expect(JSON.parse(newRes.body).content).toBe('# Old Name');
+
+            const notesDir = getRepoDataPath(dataDir, wsId, 'notes');
+            expect(fs.existsSync(path.join(notesDir, 'new-name.md.comments.json'))).toBe(true);
+            expect(fs.existsSync(path.join(notesDir, 'old-name.md.comments.json'))).toBe(false);
+        });
+
         it('should rename directory', async () => {
             const srv = await startServer();
             createNoteFiles({
@@ -551,6 +581,26 @@ describe('Notes Handler', () => {
             expect(res.status).toBe(409);
             const body = JSON.parse(res.body);
             expect(body.error).toContain('already exists');
+        });
+
+        it('should return 409 when an implicit .md rename destination already exists', async () => {
+            const srv = await startServer();
+            createNoteFiles({
+                'file-a.md': '# A',
+                'file-b.md': '# B',
+            });
+            await registerWorkspace(srv, workspaceDir);
+
+            const res = await patchJSON(`${srv.url}/api/workspaces/${wsId}/notes/path`, {
+                oldPath: 'file-a.md',
+                newPath: 'file-b',
+            });
+            expect(res.status).toBe(409);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('already exists');
+
+            const originalRes = await request(`${srv.url}/api/workspaces/${wsId}/notes/content?path=file-a.md`);
+            expect(originalRes.status).toBe(200);
         });
 
         it('should allow renaming a file when only casing changes', async () => {
