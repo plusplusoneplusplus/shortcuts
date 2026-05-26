@@ -91,6 +91,7 @@ export class InboundAgentManager extends EventEmitter {
                         const agent = this.agents.get(agentId);
                         if (agent) {
                             const payload = msg.payload as EventPayload;
+                            console.log(`[InboundAgentManager] Received event from ${agent.name} (${agentId}): ${(payload.data ?? '').substring(0, 120)}`);
                             this.emit('agent-event', agentId, agent.name, payload.data);
                         }
                     }

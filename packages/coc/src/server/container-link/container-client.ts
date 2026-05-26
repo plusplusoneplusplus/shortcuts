@@ -101,7 +101,18 @@ export class ContainerLinkClient extends EventEmitter {
      * Forward a WebSocket broadcast event to the container.
      */
     forwardEvent(data: string): void {
-        if (this._status !== 'registered') return;
+        if (this._status !== 'registered') {
+            process.stderr.write(`[container-link] forwardEvent skipped (status=${this._status})\n`);
+            return;
+        }
+        try {
+            const parsed = JSON.parse(data);
+            const eventType = parsed.type ?? 'unknown';
+            const processId = parsed.process?.id ?? '';
+            process.stderr.write(`[container-link] Broadcasting event: type=${eventType} processId=${processId}\n`);
+        } catch {
+            process.stderr.write(`[container-link] Broadcasting event (unparseable)\n`);
+        }
         const payload: EventPayload = { data };
         this.send(createMessage('event', payload));
     }

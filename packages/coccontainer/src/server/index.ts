@@ -112,6 +112,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
 
     // Forward inbound agent WS events to browser clients (same path as wsRelay)
     inboundManager.on('agent-event', (agentId: string, agentName: string, data: string) => {
+        console.log(`[container] Forwarding agent-event to wsRelay from ${agentName}: ${data.substring(0, 120)}`);
         wsRelay.emit('message', { agentId, agentName, data });
     });
 

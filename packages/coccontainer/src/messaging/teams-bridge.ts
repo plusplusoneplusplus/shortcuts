@@ -359,6 +359,7 @@ export class TeamsBridge {
      * where data contains { type: "process-updated", process: ProcessSummary }
      */
     private async onWsMessage(msg: WSRelayMessage): Promise<void> {
+        console.log(`[teams-bridge] onWsMessage called: bot=${!!this.bot} store=${!!this.store} agentId=${msg.agentId} data=${(msg.data ?? '').substring(0, 100)}`);
         if (!this.bot) return;
         if (!this.store) return;
 
