@@ -159,13 +159,23 @@ export class InboundAgentManager extends EventEmitter {
         const payload: RequestPayload = { requestId, method, path, headers, body };
         const msg = createMessage('request', payload);
 
+        process.stderr.write(`[inbound-mgr] Sending request to agent "${agent.name}" (${agentId}): ${method} ${path}\n`);
+
         return new Promise<ResponsePayload>((resolve, reject) => {
             const timer = setTimeout(() => {
                 this.pendingRequests.delete(requestId);
+                process.stderr.write(`[inbound-mgr] Request TIMEOUT: ${method} ${path} (agent=${agentId})\n`);
                 reject(new Error(`Request to agent ${agentId} timed out after ${this.requestTimeoutMs}ms`));
             }, this.requestTimeoutMs);
 
-            this.pendingRequests.set(requestId, { resolve, reject, timer });
+            this.pendingRequests.set(requestId, {
+                resolve: (resp) => {
+                    process.stderr.write(`[inbound-mgr] Got response from agent "${agent.name}": ${method} ${path} → ${resp.status} (bodyLen=${resp.body?.length ?? 0})\n`);
+                    resolve(resp);
+                },
+                reject,
+                timer,
+            });
             agent.ws.send(JSON.stringify(msg));
         });
     }

@@ -225,7 +225,9 @@ export class ContainerLinkClient extends EventEmitter {
     private handleRequest(payload: RequestPayload): void {
         // Proxy request to local HTTP server
         const port = this.options.localPort;
+        process.stderr.write(`[container-link] Incoming request: ${payload.method} ${payload.path} (requestId=${payload.requestId})\n`);
         if (!port) {
+            process.stderr.write(`[container-link] Agent not ready (no localPort)\n`);
             this.sendResponse(payload.requestId, 503, {}, 'Agent not ready');
             return;
         }
@@ -254,11 +256,13 @@ export class ContainerLinkClient extends EventEmitter {
                         headers[key] = value.join(', ');
                     }
                 }
+                process.stderr.write(`[container-link] Response: ${payload.method} ${payload.path} → ${proxyRes.statusCode} (bodyLen=${body.length})\n`);
                 this.sendResponse(payload.requestId, proxyRes.statusCode ?? 500, headers, body);
             });
         });
 
-        proxyReq.on('error', () => {
+        proxyReq.on('error', (err) => {
+            process.stderr.write(`[container-link] Proxy error: ${payload.method} ${payload.path} → ${(err as Error).message}\n`);
             this.sendResponse(payload.requestId, 502, {}, 'Proxy error');
         });
 
