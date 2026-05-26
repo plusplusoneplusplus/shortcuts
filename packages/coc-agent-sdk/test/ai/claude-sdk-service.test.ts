@@ -328,6 +328,27 @@ describe('ClaudeSDKService.sendMessage', () => {
         expect(callArgs.options?.model).toBeUndefined();
     });
 
+    it('normalizes dotted CoC Claude model IDs to Claude Code model IDs', async () => {
+        queryFn.mockReturnValue(makeMessages([
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        await svc.sendMessage({ prompt: 'test', model: 'claude-sonnet-4.6' });
+        expect(queryFn).toHaveBeenLastCalledWith(
+            expect.objectContaining({ options: expect.objectContaining({ model: 'claude-sonnet-4-6' }) }),
+        );
+
+        await svc.sendMessage({ prompt: 'test', model: 'claude-haiku-4.5' });
+        expect(queryFn).toHaveBeenLastCalledWith(
+            expect.objectContaining({ options: expect.objectContaining({ model: 'claude-haiku-4-5' }) }),
+        );
+
+        await svc.sendMessage({ prompt: 'test', model: 'claude-opus-4.6' });
+        expect(queryFn).toHaveBeenLastCalledWith(
+            expect.objectContaining({ options: expect.objectContaining({ model: 'claude-opus-4-6' }) }),
+        );
+    });
+
     it('captures rate_limit_event messages for quota reporting', async () => {
         queryFn.mockReturnValueOnce(makeMessages([
             {

@@ -114,6 +114,8 @@ If neither signal is available the result is `{ quotaSnapshots: {} }`.
 
 `accountInfo()` is cached as a side-effect of every real `sendMessage()` call: after obtaining the query handle, `ClaudeSDKService` fires `handle.accountInfo?.()` as a fire-and-forget promise that writes to `lastAccountInfo` on resolution. No separate probe subprocess is spawned.
 
+Claude Code expects hyphenated model IDs for version aliases (for example, `claude-sonnet-4-6`). `ClaudeSDKService` normalizes CoC's shared dotted Claude registry IDs (`claude-sonnet-4.6`, `claude-haiku-4.5`, `claude-opus-4.6`) to that Claude Code form before passing `options.model` to the SDK. Non-Claude model IDs and `claude-provider-default` are omitted so Claude Code can use its configured default.
+
 ## RequestRunner — sendMessage() Flow (Copilot)
 
 ```

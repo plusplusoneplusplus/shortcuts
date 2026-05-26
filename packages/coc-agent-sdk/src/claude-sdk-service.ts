@@ -459,17 +459,29 @@ export class ClaudeSDKService implements ISDKService {
     }
 
     /**
-     * Normalize model ID for Claude: pass through Claude-looking model IDs,
-     * use provider default for missing or non-Claude model IDs.
+     * Normalize model ID for Claude Code.
+     *
+     * CoC's shared model registry uses dotted marketing IDs such as
+     * `claude-sonnet-4.6`, while Claude Code expects the CLI model form
+     * `claude-sonnet-4-6`. Translate that narrow alias shape at the provider
+     * boundary so stored process metadata and UI preferences can remain
+     * provider-agnostic.
      */
     private normalizeClaudeModel(model: string | undefined): string | undefined {
         if (!model) return undefined;
-        const normalized = model.toLowerCase();
+        const trimmed = model.trim();
+        if (!trimmed) return undefined;
+        const normalized = trimmed.toLowerCase();
         if (normalized === 'claude-provider-default' || normalized === 'provider-default') {
             return undefined;
         }
+        const dottedMarketingId = normalized.match(/^claude-(sonnet|opus|haiku)-(\d+)\.(\d+)$/);
+        if (dottedMarketingId) {
+            const [, family, major, minor] = dottedMarketingId;
+            return `claude-${family}-${major}-${minor}`;
+        }
         // Only pass through Claude model IDs; reject Copilot/Codex model IDs.
-        if (normalized.startsWith('claude')) return model;
+        if (normalized.startsWith('claude')) return trimmed;
         return undefined;
     }
 
