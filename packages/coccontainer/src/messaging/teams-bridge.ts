@@ -18,6 +18,7 @@ import type { WebSocketRelay, WSRelayMessage } from '../proxy/ws-relay';
 import type { SSERelay, SSEEvent } from '../proxy/sse-relay';
 import type { AgentStore } from '../store/agent-store';
 import type { TunnelBridge } from '../proxy/tunnel-bridge';
+import type { InboundAgentManager } from '../inbound/inbound-agent-manager';
 import type { ResolvedTeamsConfig } from '../config';
 import { MessagingStore } from './messaging-store';
 
@@ -28,6 +29,7 @@ export interface TeamsBridgeOptions {
     sseRelay: SSERelay;
     agentStore: AgentStore;
     tunnelBridge: TunnelBridge;
+    inboundManager: InboundAgentManager;
 }
 
 export interface TeamsStatus {
@@ -445,16 +447,16 @@ export class TeamsBridge {
         msg: WSRelayMessage,
         proc: Record<string, unknown>,
     ): Promise<void> {
-        const agentAddr = this.getAgentAddress(msg.agentId);
-        if (!agentAddr) return;
+        const agentId = msg.agentId;
+        if (!agentId) return;
         if (!this.bot || this.bot.getStatus() !== 'connected') return;
 
         const workspaceId = (proc.workspaceId ?? proc.workspace) as string || '';
 
         try {
-            const url = `${agentAddr}/api/processes/${processId}?workspaceId=${encodeURIComponent(workspaceId)}`;
-            console.log(`[teams-bridge] 🔍 Fetching process: ${url}`);
-            const res = await fetch(url);
+            const apiPath = `/api/processes/${processId}?workspaceId=${encodeURIComponent(workspaceId)}`;
+            console.log(`[teams-bridge] 🔍 Fetching process: ${apiPath} (agent=${agentId})`);
+            const res = await this.fetchFromAgent(agentId, apiPath);
             if (!res.ok) {
                 console.log(`[teams-bridge] ⚠️ Fetch failed: ${res.status}`);
                 return;
@@ -532,16 +534,16 @@ export class TeamsBridge {
         msg: WSRelayMessage,
         proc: Record<string, unknown>,
     ): Promise<void> {
-        const agentAddr = this.getAgentAddress(msg.agentId);
-        if (!agentAddr) return;
+        const agentId = msg.agentId;
+        if (!agentId) return;
         if (!this.bot || this.bot.getStatus() !== 'connected') return;
 
         const workspaceId = (proc.workspaceId ?? proc.workspace) as string || '';
 
         try {
-            const url = `${agentAddr}/api/processes/${processId}?workspaceId=${encodeURIComponent(workspaceId)}`;
+            const apiPath = `/api/processes/${processId}?workspaceId=${encodeURIComponent(workspaceId)}`;
             console.log(`[teams-bridge] 🏁 Completion: fetching process ${processId}`);
-            const res = await fetch(url);
+            const res = await this.fetchFromAgent(agentId, apiPath);
             if (!res.ok) {
                 console.log(`[teams-bridge] ⚠️ Completion fetch failed: ${res.status}`);
                 return;
@@ -673,14 +675,13 @@ export class TeamsBridge {
 
         if (this.bot.getStatus() !== 'connected') return;
 
-        const agentAddr = this.getAgentAddress(agentId);
-        const repoName = await this.resolveWorkspaceName(undefined, undefined, workspaceId, agentAddr || '');
+        const repoName = await this.resolveWorkspaceName(undefined, undefined, workspaceId, agentId);
 
         // Fetch process title
         let title = '';
-        if (agentAddr) {
+        if (agentId) {
             try {
-                const res = await fetch(`${agentAddr}/api/processes/${processId}?workspaceId=${encodeURIComponent(workspaceId)}`);
+                const res = await this.fetchFromAgent(agentId, `/api/processes/${processId}?workspaceId=${encodeURIComponent(workspaceId)}`);
                 if (res.ok) {
                     const body = await res.json() as Record<string, unknown>;
                     const pd = (body.process ?? body) as Record<string, unknown>;
@@ -764,7 +765,7 @@ export class TeamsBridge {
         wsEventName: string | undefined,
         metadataName: string | undefined,
         workspaceId: string,
-        agentAddr: string,
+        agentId: string,
     ): Promise<string> {
         if (wsEventName) return wsEventName;
         if (metadataName) return metadataName;
@@ -773,8 +774,9 @@ export class TeamsBridge {
         const cached = this._workspaceNameCache.get(workspaceId);
         if (cached) return cached;
 
+        if (!agentId) return workspaceId;
         try {
-            const res = await fetch(`${agentAddr}/api/workspaces`);
+            const res = await this.fetchFromAgent(agentId, '/api/workspaces');
             if (res.ok) {
                 const data = await res.json() as { workspaces?: Array<{ id: string; name: string }> };
                 for (const ws of data.workspaces ?? []) {
@@ -878,9 +880,8 @@ export class TeamsBridge {
             isFollowUp = false;
         }
 
-        const agentAddr = this.getAgentAddress(agentId);
-        if (!agentAddr) {
-            console.error(`[teams-bridge] No address for agent ${agentId}`);
+        if (!agentId) {
+            console.error(`[teams-bridge] No agent resolved for message`);
             return;
         }
 
@@ -892,8 +893,8 @@ export class TeamsBridge {
         try {
             if (isFollowUp) {
                 const wsParam = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : '';
-                const url = `${agentAddr}/api/processes/${processId}/message${wsParam}`;
-                const res = await fetch(url, {
+                const apiPath = `/api/processes/${processId}/message${wsParam}`;
+                const res = await this.fetchFromAgent(agentId, apiPath, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ content: msg.text }),
@@ -920,10 +921,7 @@ export class TeamsBridge {
             ?? this.opts.agentStore.list().find(a => a.status === 'online')?.id;
         if (!agentId) throw new Error('No online agent available for global session');
 
-        const agentAddr = this.getAgentAddress(agentId);
-        if (!agentAddr) throw new Error(`No address for agent ${agentId}`);
-
-        const res = await fetch(`${agentAddr}/api/queue`, {
+        const res = await this.fetchFromAgent(agentId, '/api/queue', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -940,6 +938,54 @@ export class TeamsBridge {
         const localUrl = this.opts.tunnelBridge.getLocalUrl(agentId);
         if (localUrl) return localUrl;
         return this.opts.agentStore.get(agentId)?.address;
+    }
+
+    /**
+     * Fetch from an agent — routes through inbound WS proxy for call-home agents,
+     * or uses direct HTTP fetch for tunnel/direct agents.
+     */
+    private async fetchFromAgent(agentId: string, apiPath: string, options?: { method?: string; body?: string; headers?: Record<string, string> }): Promise<{ ok: boolean; status: number; json: () => Promise<any>; text: () => Promise<string> }> {
+        const agent = this.opts.agentStore.get(agentId);
+        if (!agent) {
+            return { ok: false, status: 404, json: async () => ({ error: 'Agent not found' }), text: async () => 'Agent not found' };
+        }
+
+        // For inbound agents, proxy through the WebSocket channel
+        if (agent.address.startsWith('inbound://')) {
+            const inboundId = agent.address.replace('inbound://', '');
+            if (!this.opts.inboundManager.hasAgent(inboundId)) {
+                return { ok: false, status: 503, json: async () => ({ error: 'Agent not connected' }), text: async () => 'Agent not connected' };
+            }
+            try {
+                const resp = await this.opts.inboundManager.proxyRequest(
+                    inboundId,
+                    options?.method ?? 'GET',
+                    apiPath,
+                    options?.headers ?? {},
+                    options?.body,
+                );
+                const ok = resp.status >= 200 && resp.status < 300;
+                return {
+                    ok,
+                    status: resp.status,
+                    json: async () => JSON.parse(resp.body || '{}'),
+                    text: async () => resp.body || '',
+                };
+            } catch (err) {
+                return { ok: false, status: 502, json: async () => ({ error: (err as Error).message }), text: async () => (err as Error).message };
+            }
+        }
+
+        // Direct HTTP fetch for tunnel/direct agents
+        const localUrl = this.opts.tunnelBridge.getLocalUrl(agentId);
+        const baseUrl = localUrl || agent.address;
+        const url = `${baseUrl}${apiPath}`;
+        const res = await fetch(url, {
+            method: options?.method ?? 'GET',
+            headers: options?.headers ? { ...options.headers } : undefined,
+            body: options?.body,
+        });
+        return res;
     }
 }
 

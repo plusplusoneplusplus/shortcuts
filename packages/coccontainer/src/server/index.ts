@@ -144,6 +144,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
             sseRelay,
             agentStore,
             tunnelBridge,
+            inboundManager,
         });
         await bridge.start();
         teamsBridge = bridge;
@@ -519,6 +520,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                                 sseRelay,
                                 agentStore,
                                 tunnelBridge,
+                                inboundManager,
                             });
                             await bridge.start();
                             teamsBridge = bridge;
