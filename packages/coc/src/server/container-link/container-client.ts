@@ -162,26 +162,21 @@ export class ContainerLinkClient extends EventEmitter {
         return `${wsBase}/ws/agent-link`;
     }
 
-    private sendRegister(): void {
+    private async sendRegister(): Promise<void> {
         const payload: RegisterPayload = {
             name: this.options.agentName ?? os.hostname(),
             agentId: this._assignedAgentId ?? this.options.agentId,
         };
-        // Send initial register without workspaces, then update with workspace list
-        this.send(createMessage('register', payload));
-        // Async: fetch workspaces and send updated register if available
+        // Fetch workspaces before sending register so they're included in the first message
         if (this.options.getWorkspaces) {
-            this.options.getWorkspaces().then(workspaces => {
-                if (workspaces.length > 0 && this._status === 'registered') {
-                    const updatedPayload: RegisterPayload = {
-                        ...payload,
-                        agentId: this._assignedAgentId ?? payload.agentId,
-                        workspaces,
-                    };
-                    this.send(createMessage('register', updatedPayload));
+            try {
+                const workspaces = await this.options.getWorkspaces();
+                if (workspaces.length > 0) {
+                    payload.workspaces = workspaces;
                 }
-            }).catch(() => { /* best-effort */ });
+            } catch { /* best-effort — register without workspaces */ }
         }
+        this.send(createMessage('register', payload));
     }
 
     private startHeartbeat(): void {
