@@ -488,6 +488,8 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                     ? `Default: ${defaultModelLabel} (click to override)`
                                     : 'Pick a model'}
                             data-testid="model-picker-chip"
+                            aria-haspopup="listbox"
+                            aria-expanded={modelCommand.modelMenuVisible}
                         >
                             <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
                                 <polygon
@@ -497,28 +499,22 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                     strokeLinejoin="round"
                                 />
                             </svg>
-                            <span className={cn(
-                                'truncate font-mono text-[10.5px] font-medium',
-                                modelCommand.modelOverride
-                                    ? 'text-[#1e1e1e] dark:text-[#cccccc]'
-                                    : 'text-[#848484] dark:text-[#999]',
-                            )}>
+                            <span className="truncate font-mono text-[10.5px] font-medium text-[#848484] dark:text-[#999]">
                                 {modelCommand.modelOverride || defaultModelLabel || 'model'}
                             </span>
-                            {modelCommand.modelOverride && (
-                                <span
-                                    role="button"
-                                    tabIndex={-1}
-                                    className="shrink-0 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] cursor-pointer text-[10px]"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        modelCommand.setModelOverride(null);
-                                    }}
-                                    aria-label="Clear model override"
-                                    title="Clear model override"
-                                    data-testid="model-picker-chip-clear"
-                                >✕</span>
-                            )}
+                            {/* Mirrors AgentSelectorChip: chevron only, no
+                                 inline ✕ clear. The override is cleared via
+                                 the "Use default" entry that ModelCommandMenu
+                                 renders at the top when an override is set. */}
+                            <svg
+                                width="7" height="7"
+                                viewBox="0 0 8 6"
+                                fill="none"
+                                aria-hidden="true"
+                                className="shrink-0 opacity-60"
+                            >
+                                <path d="M1 1l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
                         </button>
                         {/* Effort pill — picks `task.config.reasoningEffort` for
                              models that support extended thinking. `null`
@@ -649,6 +645,9 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         visible={modelCommand.modelMenuVisible}
                         highlightIndex={modelCommand.modelHighlightIndex}
                         currentModelId={modelCommand.modelOverride ?? defaultModelId}
+                        onClearOverride={modelCommand.modelOverride
+                            ? () => modelCommand.setModelOverride(null)
+                            : undefined}
                     />
                 </div>
                 </div>

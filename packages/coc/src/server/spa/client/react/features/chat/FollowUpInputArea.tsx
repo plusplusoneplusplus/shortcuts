@@ -508,6 +508,9 @@ export function FollowUpInputArea({
                                 visible={modelCommand.modelMenuVisible}
                                 highlightIndex={modelCommand.modelHighlightIndex}
                                 currentModelId={modelCommand.modelOverride || sessionModel}
+                                onClearOverride={modelCommand.modelOverride
+                                    ? () => modelCommand.setModelOverride(null)
+                                    : undefined}
                             />
                         )}
                     </div>
@@ -627,6 +630,8 @@ export function FollowUpInputArea({
                                         ? `Override active: ${modelCommand.modelOverride} (click to change or clear)`
                                         : (sessionModel ? `Session model: ${sessionModel}` : 'Pick a model')}
                                     data-testid="model-picker-chip"
+                                    aria-haspopup="listbox"
+                                    aria-expanded={modelCommand.modelMenuVisible}
                                 >
                                     <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
                                         <polygon
@@ -636,23 +641,24 @@ export function FollowUpInputArea({
                                             strokeLinejoin="round"
                                         />
                                     </svg>
-                                    <span className="truncate font-mono text-[10.5px] font-medium text-[#1e1e1e] dark:text-[#cccccc]">
+                                    <span className="truncate font-mono text-[10.5px] font-medium text-[#848484] dark:text-[#999]">
                                         {modelCommand.modelOverride || sessionModel || 'model'}
                                     </span>
-                                    {modelCommand.modelOverride && (
-                                        <span
-                                            role="button"
-                                            tabIndex={-1}
-                                            className="shrink-0 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] cursor-pointer text-[10px]"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                modelCommand.setModelOverride(null);
-                                            }}
-                                            aria-label="Clear model override"
-                                            title="Clear model override"
-                                            data-testid="model-picker-chip-clear"
-                                        >✕</span>
-                                    )}
+                                    {/* Mirrors AgentSelectorChip: chevron
+                                         only, no inline ✕ clear. The
+                                         override is cleared via the "Use
+                                         default" entry rendered at the top
+                                         of ModelCommandMenu when an
+                                         override is set. */}
+                                    <svg
+                                        width="7" height="7"
+                                        viewBox="0 0 8 6"
+                                        fill="none"
+                                        aria-hidden="true"
+                                        className="shrink-0 opacity-60"
+                                    >
+                                        <path d="M1 1l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                    </svg>
                                 </button>
                             )}
                             {/* Effort pill — picks the per-turn
@@ -759,6 +765,9 @@ export function FollowUpInputArea({
                                 visible={modelCommand.modelMenuVisible}
                                 highlightIndex={modelCommand.modelHighlightIndex}
                                 currentModelId={modelCommand.modelOverride || sessionModel}
+                                onClearOverride={modelCommand.modelOverride
+                                    ? () => modelCommand.setModelOverride(null)
+                                    : undefined}
                             />
                         )}
                     </div>

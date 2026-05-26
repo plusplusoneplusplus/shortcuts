@@ -469,16 +469,20 @@ describe('NewChatArea', () => {
             expect(screen.queryByTestId('new-chat-model-badge')).toBeNull();
         });
 
-        it('exposes a clear-override (✕) inside the chip when modelOverride is set', () => {
+        it('drops the inline ✕ in favour of a chevron — matches AgentSelectorChip', () => {
             mockModelCommand.modelOverride = 'gpt-5.4';
             render(<NewChatArea workspaceId="ws-1" />);
-            expect(screen.getByTestId('model-picker-chip-clear')).toBeTruthy();
+            const chip = screen.getByTestId('model-picker-chip');
+            expect(chip).toBeTruthy();
+            expect(screen.queryByTestId('model-picker-chip-clear')).toBeNull();
         });
 
         it('does not render a separate model badge when modelOverride is null', () => {
             mockModelCommand.modelOverride = null;
             render(<NewChatArea workspaceId="ws-1" />);
             expect(screen.queryByTestId('new-chat-model-badge')).toBeNull();
+            // The inline ✕ clear is gone in either state — clearing happens
+            // via the "Use default" entry in the dropdown menu.
             expect(screen.queryByTestId('model-picker-chip-clear')).toBeNull();
         });
 
@@ -527,7 +531,9 @@ describe('NewChatArea', () => {
             render(<NewChatArea workspaceId="ws-1" />);
             const chip = screen.getByTestId('model-picker-chip');
             expect(chip.textContent).toContain('Claude Opus 4.7');
-            // Should not show the clear button for default models
+            // The inline ✕ clear is gone entirely now (mirrors the agent
+            // provider chip). Override is cleared via the dropdown menu's
+            // "Use default" entry.
             expect(screen.queryByTestId('model-picker-chip-clear')).toBeNull();
         });
 

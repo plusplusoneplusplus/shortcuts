@@ -369,9 +369,9 @@ describe('Composer provider-first ordering', () => {
             render(<NewChatArea workspaceId="ws-1" />);
             const effort = screen.getByTestId('effort-pill-selector');
             expect(effort.getAttribute('data-effort-value')).toBe('auto');
-            expect(screen.getByTestId('effort-pill-low').getAttribute('data-selected')).toBe('false');
-            expect(screen.getByTestId('effort-pill-medium').getAttribute('data-selected')).toBe('false');
-            expect(screen.getByTestId('effort-pill-high').getAttribute('data-selected')).toBe('false');
+            const trigger = screen.getByTestId('effort-pill-trigger-btn');
+            expect(trigger.textContent).toContain('Auto');
+            expect(trigger.getAttribute('aria-expanded')).toBe('false');
         });
     });
 
@@ -432,13 +432,12 @@ describe('Composer provider-first ordering', () => {
             expect(screen.queryByTestId('effort-pill-selector')).toBeNull();
         });
 
-        it('shows the effort pill in the pressed state for the supplied override', () => {
+        it('shows the effort pill labelled with the supplied override', () => {
             render(<FollowUpInputArea {...defaultFollowUpProps({ onEffortChange: vi.fn(), effortOverride: 'high' })} />);
             const effort = screen.getByTestId('effort-pill-selector');
             expect(effort.getAttribute('data-effort-value')).toBe('high');
-            expect(screen.getByTestId('effort-pill-high').getAttribute('data-selected')).toBe('true');
-            expect(screen.getByTestId('effort-pill-low').getAttribute('data-selected')).toBe('false');
-            expect(screen.getByTestId('effort-pill-medium').getAttribute('data-selected')).toBe('false');
+            const trigger = screen.getByTestId('effort-pill-trigger-btn');
+            expect(trigger.textContent).toContain('High');
         });
     });
 });

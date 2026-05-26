@@ -423,16 +423,23 @@ describe('FollowUpInputArea — stacked input card layout', () => {
         expect(chip.textContent).toContain('gpt-5.4');
     });
 
-    it('chip exposes an inline clear (✕) when modelOverride is set', () => {
-        const setModelOverride = vi.fn();
+    it('chip no longer renders an inline ✕ — clearing happens via the menu (mirrors AgentSelectorChip)', () => {
+        // Now the chip exposes a chevron only, matching AgentSelectorChip.
+        // The override is cleared via the "Use default" entry that
+        // ModelCommandMenu renders at the top when an override is set.
         render(<FollowUpInputArea {...makeFollowUpProps({
-            modelCommand: makeModelCommand({ modelOverride: 'gpt-5.4', setModelOverride }),
+            modelCommand: makeModelCommand({ modelOverride: 'gpt-5.4' }),
         })} />);
-        const clear = screen.getByTestId('model-picker-chip-clear');
-        expect(clear).toBeTruthy();
-        fireEvent.click(clear);
-        expect(setModelOverride).toHaveBeenCalledWith(null);
+        const chip = screen.getByTestId('model-picker-chip');
+        expect(chip).toBeTruthy();
+        expect(screen.queryByTestId('model-picker-chip-clear')).toBeNull();
     });
+
+    // The "Use default" entry that replaces the inline ✕ lives inside
+    // ModelCommandMenu and is exercised in its own component test file
+    // (ModelCommandMenu.test.tsx). This suite mocks ModelCommandMenu out
+    // to keep the chip-layout tests focused, so we don't re-test the
+    // menu contents here.
 
     it('Send button keyboard shortcut hint is hidden on small screens (sm:inline-flex)', () => {
         render(<FollowUpInputArea {...makeFollowUpProps()} />);
