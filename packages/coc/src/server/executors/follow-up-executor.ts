@@ -43,6 +43,7 @@ import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-exe
 import { ChatBaseExecutor } from './chat-base-executor';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { buildChatToolBundle } from './chat-tool-builder';
+import type { MemoryV2Addon } from './memory-v2-addon';
 // ============================================================================
 // Types
 // ============================================================================
@@ -193,6 +194,8 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         this.getOrCreateSession(processId).outputBuffer = '';
         this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
 
+        let memoryV2: MemoryV2Addon | undefined;
+
         try {
             // User turn is already persisted by the POST /message route handler
             // (atomically with the status: 'running' update) so the executor
@@ -215,6 +218,8 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 );
             }
 
+            memoryV2 = await this.buildMemoryV2Addon(wsId, message, processId);
+
             const loopDeps = this.buildLoopToolDeps(processId);
             const toolBundle = buildChatToolBundle({
                 dataDir: this.dataDir,
@@ -225,6 +230,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 broadcastWorkItem: this.getWsServerFn
                     ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
                     : undefined,
+                memoryV2,
                 scheduleWakeup: loopDeps.scheduleWakeup,
                 loopTools: loopDeps.loopTools,
                 askUser: {
@@ -260,6 +266,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             const systemMessage = await systemMessageBuilder()
                 .append(buildModeSystemMessage(currentMode)?.content)
                 .withRepoInstructions(workingDirectory, currentMode)
+                .appendMemoryV2(memoryV2)
                 .appendToolGuidance(toolBundle.toolGuidance)
                 .appendAutoFolder(autoFolderContextForFollowUp)
                 .appendNoteFile(notePath)
@@ -309,6 +316,9 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 attachments,
                 deliveryMode: resolvedDeliveryMode,
                 tools: filteredTools.length > 0 ? filteredTools : undefined,
+                ...(memoryV2 && memoryV2.excludedBuiltinTools.length > 0
+                    ? { excludedTools: memoryV2.excludedBuiltinTools }
+                    : {}),
                 skillDirectories,
                 disabledSkills,
                 onSessionCreated: (sessionId: string) => {
@@ -469,6 +479,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             );
             this.store.emitProcessComplete(processId, 'failed', `${duration}ms`);
         } finally {
+            memoryV2?.dispose();
             const buffer = this.sessions.get(processId)?.outputBuffer ?? '';
             this.cleanupSession(processId);
             this.store.unregisterFlushHandler?.(processId);

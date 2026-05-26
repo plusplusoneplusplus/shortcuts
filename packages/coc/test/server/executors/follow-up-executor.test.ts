@@ -97,6 +97,11 @@ vi.mock('../../../src/server/executors/chat-tool-builder', () => ({
     buildChatToolBundle: (...args: any[]) => mockBuildChatToolBundle(...args),
 }));
 
+const mockBuildMemoryV2Addon = vi.fn();
+vi.mock('../../../src/server/executors/memory-v2-addon', () => ({
+    buildMemoryV2Addon: (...args: any[]) => mockBuildMemoryV2Addon(...args),
+}));
+
 const mockEmitMessageSteering = vi.fn();
 vi.mock('../../../src/server/streaming/sse-handler', () => ({
     emitMessageSteering: (...args: any[]) => mockEmitMessageSteering(...args),
@@ -171,6 +176,14 @@ describe('FollowUpExecutor', () => {
         mockWithRepoInstructions.mockReset().mockImplementation(async (sm: any) => sm);
         mockBuildModeSystemMessage.mockReset().mockReturnValue({ mode: 'replace', content: 'system' });
         mockReadNoteContent.mockReset().mockResolvedValue(undefined);
+        // Default: return the empty addon so most tests are unaffected by Memory V2.
+        mockBuildMemoryV2Addon.mockReset().mockResolvedValue({
+            systemMessageSuffix: undefined,
+            tools: [],
+            suffix: '',
+            excludedBuiltinTools: [],
+            dispose: vi.fn(),
+        });
     });
 
     // -------------------------------------------------------------------------
@@ -975,5 +988,139 @@ describe('FollowUpExecutor', () => {
         } catch { /* expected */ }
 
         expect(sdkMocks.mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    // -------------------------------------------------------------------------
+    // Memory V2 parity — follow-up turns must behave like initial turns
+    // -------------------------------------------------------------------------
+
+    it('passes memoryV2 addon to buildChatToolBundle on follow-up turns', async () => {
+        const mockAddon = {
+            systemMessageSuffix: '<memory_snapshot>test facts</memory_snapshot>',
+            tools: [{ name: 'save_memory' }, { name: 'recall_memory' }],
+            suffix: '\n\nYou have a persistent `memory` tool.',
+            excludedBuiltinTools: ['vote_memory', 'store_memory'],
+            dispose: vi.fn(),
+        };
+        mockBuildMemoryV2Addon.mockResolvedValue(mockAddon);
+
+        const proc = makeProcess({
+            id: 'proc-memv2-bundle',
+            metadata: { type: 'chat', workspaceId: 'ws-memv2' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, {}, '/data');
+        await executor.executeFollowUp('proc-memv2-bundle', 'remember this');
+
+        expect(mockBuildChatToolBundle).toHaveBeenCalledWith(
+            expect.objectContaining({ memoryV2: mockAddon }),
+        );
+    });
+
+    it('passes excludedTools to sendMessage when Memory V2 is active', async () => {
+        const mockDispose = vi.fn();
+        mockBuildMemoryV2Addon.mockResolvedValue({
+            systemMessageSuffix: undefined,
+            tools: [{ name: 'save_memory' }, { name: 'recall_memory' }],
+            suffix: '',
+            excludedBuiltinTools: ['vote_memory', 'store_memory'],
+            dispose: mockDispose,
+        });
+
+        const proc = makeProcess({
+            id: 'proc-memv2-excluded',
+            metadata: { type: 'chat', workspaceId: 'ws-excl' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, {}, '/data');
+        await executor.executeFollowUp('proc-memv2-excluded', 'follow-up');
+
+        const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callArg.excludedTools).toEqual(['vote_memory', 'store_memory']);
+    });
+
+    it('does not add excludedTools when Memory V2 is disabled (empty addon)', async () => {
+        // Default beforeEach: mockBuildMemoryV2Addon returns empty addon (excludedBuiltinTools: [])
+        const proc = makeProcess({
+            id: 'proc-memv2-disabled',
+            metadata: { type: 'chat', workspaceId: 'ws-disabled' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-memv2-disabled', 'follow-up');
+
+        const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callArg.excludedTools).toBeUndefined();
+    });
+
+    it('appends Memory V2 systemMessageSuffix to the system message on follow-up turns', async () => {
+        mockBuildMemoryV2Addon.mockResolvedValue({
+            systemMessageSuffix: '<memory_snapshot>High-priority: prefer TypeScript</memory_snapshot>',
+            tools: [],
+            suffix: '',
+            excludedBuiltinTools: [],
+            dispose: vi.fn(),
+        });
+
+        const proc = makeProcess({
+            id: 'proc-memv2-sysmsg',
+            metadata: { type: 'chat', workspaceId: 'ws-sysmsg' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, {}, '/data');
+        await executor.executeFollowUp('proc-memv2-sysmsg', 'follow-up');
+
+        const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callArg.systemMessage.content).toContain('<memory_snapshot>');
+        expect(callArg.systemMessage.content).toContain('High-priority: prefer TypeScript');
+    });
+
+    it('disposes Memory V2 addon in finally after successful follow-up', async () => {
+        const mockDispose = vi.fn();
+        mockBuildMemoryV2Addon.mockResolvedValue({
+            systemMessageSuffix: undefined,
+            tools: [],
+            suffix: '',
+            excludedBuiltinTools: [],
+            dispose: mockDispose,
+        });
+
+        const proc = makeProcess({
+            id: 'proc-memv2-dispose-ok',
+            metadata: { type: 'chat', workspaceId: 'ws-dispose' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, {}, '/data');
+        await executor.executeFollowUp('proc-memv2-dispose-ok', 'follow-up');
+
+        expect(mockDispose).toHaveBeenCalledTimes(1);
+    });
+
+    it('disposes Memory V2 addon in finally even when sendMessage throws', async () => {
+        const mockDispose = vi.fn();
+        mockBuildMemoryV2Addon.mockResolvedValue({
+            systemMessageSuffix: undefined,
+            tools: [],
+            suffix: '',
+            excludedBuiltinTools: [],
+            dispose: mockDispose,
+        });
+        sdkMocks.mockSendMessage.mockRejectedValue(new Error('network failure'));
+
+        const proc = makeProcess({
+            id: 'proc-memv2-dispose-err',
+            metadata: { type: 'chat', workspaceId: 'ws-dispose-err' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, {}, '/data');
+        await executor.executeFollowUp('proc-memv2-dispose-err', 'follow-up');
+
+        expect(mockDispose).toHaveBeenCalledTimes(1);
     });
 });
