@@ -34,6 +34,7 @@ export function ContainerLinkSection({ onError }: { onError?: (msg: string) => v
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [urlInput, setUrlInput] = useState('');
+    const [nameInput, setNameInput] = useState('');
 
     const fetchStatus = useCallback(async () => {
         try {
@@ -42,6 +43,7 @@ export function ContainerLinkSection({ onError }: { onError?: (msg: string) => v
             const data: ContainerLinkStatus = await res.json();
             setStatus(data);
             if (data.containerUrl) setUrlInput(data.containerUrl);
+            if (data.agentName) setNameInput(data.agentName);
         } catch (err) {
             onError?.(`Failed to fetch container link status: ${(err as Error).message}`);
         } finally {
@@ -68,7 +70,10 @@ export function ContainerLinkSection({ onError }: { onError?: (msg: string) => v
             const res = await fetch('/api/config/container', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ containerUrl: urlInput.trim() }),
+                body: JSON.stringify({
+                    containerUrl: urlInput.trim(),
+                    agentName: nameInput.trim() || undefined,
+                }),
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data: ContainerLinkStatus = await res.json();
@@ -92,6 +97,7 @@ export function ContainerLinkSection({ onError }: { onError?: (msg: string) => v
             const data: ContainerLinkStatus = await res.json();
             setStatus(data);
             setUrlInput('');
+            setNameInput('');
         } catch (err) {
             onError?.(`Failed to disconnect: ${(err as Error).message}`);
         } finally {
@@ -122,6 +128,18 @@ export function ContainerLinkSection({ onError }: { onError?: (msg: string) => v
                             (Agent ID: {status.agentId})
                         </span>
                     )}
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                    <input
+                        type="text"
+                        placeholder="Agent name (shown on container)"
+                        value={nameInput}
+                        onChange={e => setNameInput(e.target.value)}
+                        disabled={isConnected || saving}
+                        className="ar-input"
+                        style={{ width: 200 }}
+                    />
                 </div>
 
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
