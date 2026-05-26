@@ -87,9 +87,6 @@ import type { LoopStore } from '../loops/loop-store';
 import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
 import { registerMcpOauthRoutes } from '../mcp-oauth';
 import type { McpOauthManager } from '../mcp-oauth';
-import { registerCodexAuthRoutes } from '../codex-auth';
-import type { CodexAuthManager } from '../codex-auth';
-import type { CodexAuthStore } from '../codex-auth';
 import { registerAgentProvidersRoutes } from '../agent-providers/agent-providers-routes';
 import { registerProviderInstallRoutes } from '../providers/provider-install-routes';
 import { registerDiagramRoutes } from '../diagrams/diagrams-handler';
@@ -144,11 +141,6 @@ export interface RegisterRoutesOptions {
     loopStore?: LoopStore;
     loopExecutor?: LoopExecutor;
     mcpOauthManager?: McpOauthManager;
-    codexAuthManager?: CodexAuthManager;
-    /** Codex auth store used for provider status without requiring auth manager. */
-    codexAuthStore?: CodexAuthStore;
-    /** HTTP port the server is listening on (used for authUrl in agent-providers). */
-    serverPort?: number;
     loopEmit?: LoopEventEmit;
     hostname?: string;
     bindAddress?: string;
@@ -199,12 +191,6 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerProviderInstallRoutes(routes, {
         // __dirname at runtime = dist/server/routes/; package root is 3 levels up.
         cocInstallDir: path.join(__dirname, '../../..'),
-        getCodexAuthInfo: opts.codexAuthStore
-            ? () => {
-                const info = opts.codexAuthStore!.readInfo();
-                return { authenticated: info.status === 'authenticated' };
-            }
-            : undefined,
     });
     registerProcessResumeRoutes(routes, store);
     registerFreshChatTerminalRoutes(routes, undefined, {
@@ -324,28 +310,20 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         });
     }
 
-    // Codex Auth routes — always registered so auth flow works regardless of current
-    // codex.enabled state (user may need to authenticate before enabling).
-    if (opts.codexAuthManager) {
-        registerCodexAuthRoutes(routes, {
-            manager: opts.codexAuthManager,
-            autoOpenBrowser: true,
-        });
-    }
-
-    // Agent providers route — always registered, reads live config + auth state.
+    // Agent providers route — always registered, reads live config + SDK state.
     if (opts.runtimeConfigService) {
         registerAgentProvidersRoutes(routes, {
             runtimeConfigService: opts.runtimeConfigService,
-            getCodexAuthInfo: () => opts.codexAuthStore
-                ? opts.codexAuthStore.readInfo()
-                : { status: 'unauthenticated' },
+            getCodexAvailability: async () => {
+                const svc = sdkServiceRegistry.get(SDK_PROVIDER_CODEX);
+                if (!svc) return { available: false, error: 'Codex SDK service not registered. Restart the server to enable Codex.' };
+                return svc.isAvailable();
+            },
             getClaudeAvailability: async () => {
                 const svc = sdkServiceRegistry.get(SDK_PROVIDER_CLAUDE);
                 if (!svc) return { available: false, error: 'Claude SDK service not registered. Restart the server to enable Claude.' };
                 return svc.isAvailable();
             },
-            serverBaseUrl: `http://localhost:${opts.serverPort ?? 4000}`,
             getCopilotSdkService: () => CopilotSDKService.getInstance(),
             getCodexSdkService: () => {
                 const svc = sdkServiceRegistry.get(SDK_PROVIDER_CODEX);

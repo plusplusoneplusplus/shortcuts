@@ -89,11 +89,11 @@ Codex quota and model catalog lookups spawn the `@openai/codex` CLI that ships a
 
 **Thread ↔ session mapping:** Every CoC session ID maps to exactly one Codex thread. The mapping is created on the first `sendMessage()` call for a session and removed on abort or dispose.
 
-**Auth checker injection:** An optional `CodexAuthChecker` callback can be injected to gate requests. When not authenticated, `sendMessage()` returns an error with `authUrl` so callers can surface a sign-in link.
+**Authentication:** CoC does not own a Codex auth store or `/api/codex-auth/*` routes. Codex authentication is handled by the Codex SDK/CLI; hosts may still inject an optional `CodexAuthChecker` if they need a preflight gate before loading the SDK.
 
 ```ts
-registerCodexSDKService();            // registers under SDK_PROVIDER_CODEX
-// or:
+registerCodexSDKService();            // registers under SDK_PROVIDER_CODEX with SDK/CLI-owned auth
+// Optional host preflight gate:
 const svc = new CodexSDKService();
 svc.setAuthChecker(() => ({ authenticated: true }));
 sdkServiceRegistry.register(SDK_PROVIDER_CODEX, svc);

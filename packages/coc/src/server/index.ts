@@ -33,7 +33,6 @@ import { ensureMyLifeWorkspace } from './workspaces/my-life-workspace';
 import { createScheduleInfrastructure } from './infrastructure/schedule-infrastructure';
 import { createLoopInfrastructure } from './infrastructure/loop-infrastructure';
 import { createMcpOauthInfrastructure } from './mcp-oauth';
-import { createCodexAuthInfrastructure } from './codex-auth';
 import type { LoopInfrastructure } from './infrastructure/loop-infrastructure';
 import { createCleanupInfrastructure } from './infrastructure/cleanup-infrastructure';
 import { createWebSocketInfrastructure } from './infrastructure/websocket-infrastructure';
@@ -82,7 +81,6 @@ interface CloseHandlerDeps {
     loopExecutor?: { shutdownAll(): void };
     loopInfraDispose?: () => void;
     mcpOauthDispose?: () => void;
-    codexAuthDispose?: () => void;
     syncEngines?: Map<string, SyncEngine>;
     containerLink?: { stop(): void };
     activeSockets: Set<import('net').Socket>;
@@ -107,7 +105,6 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.loopExecutor?.shutdownAll();
         deps.loopInfraDispose?.();
         deps.mcpOauthDispose?.();
-        deps.codexAuthDispose?.();
         deps.syncEngines?.forEach(e => e.stop());
         deps.containerLink?.stop();
         gitInfoCache.dispose();
@@ -197,21 +194,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const mcpOauthEnabled = resolvedConfig.mcpOauth?.enabled ?? true;
     const mcpOauthInfra = mcpOauthEnabled ? createMcpOauthInfrastructure() : undefined;
 
-    // Codex Auth infra — always created so the auth system is ready for live
-    // enablement via admin config. Previously gated on codex.enabled at startup;
-    // the /api/agent-providers endpoint and per-chat provider routing need it
-    // available regardless of the current enabled flag.
-    const codexAuthInfra = createCodexAuthInfrastructure({ dataDir });
-    // Register the Codex provider unconditionally with an auth checker that
-    // gates sendMessage. This allows per-chat routing to resolve Codex even
-    // when it was enabled after startup.
-    registerCodexSDKService(() => {
-        const info = codexAuthInfra.store.readInfo();
-        return {
-            authenticated: info.status === 'authenticated',
-            authUrl: 'http://localhost:' + (options.port ?? 4000) + '/api/codex-auth/start',
-        };
-    });
+    // Register the Codex provider unconditionally so per-chat routing can resolve
+    // Codex even when it was enabled after startup. Codex authentication is owned
+    // by the Codex SDK/CLI rather than the CoC server.
+    registerCodexSDKService();
 
     // Register the Claude provider unconditionally so the /api/agent-providers
     // endpoint and per-chat routing can check availability regardless of whether
@@ -493,12 +479,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         loopStore: loopInfra?.loopStore,
         loopExecutor: loopInfra?.loopExecutor,
         mcpOauthManager: mcpOauthInfra?.manager,
-        codexAuthManager: codexAuthInfra.manager,
-        codexAuthStore: codexAuthInfra.store,
         loopEmit: loopInfra?.emit,
         hostname: os.hostname(),
         bindAddress: host,
-        serverPort: port,
         syncEngines,
     });
     // Restore auto-commit timers for all workspaces that had it enabled
@@ -677,7 +660,6 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             loopExecutor: loopInfra?.loopExecutor,
             loopInfraDispose: loopInfra?.dispose,
             mcpOauthDispose: mcpOauthInfra?.dispose,
-            codexAuthDispose: codexAuthInfra.dispose,
             syncEngines,
             containerLink,
             activeSockets, server,

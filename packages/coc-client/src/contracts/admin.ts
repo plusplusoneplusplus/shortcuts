@@ -288,14 +288,12 @@ export interface AgentProviderStatus {
   label: string;
   /** Whether the provider is enabled by admin config. Copilot is always true. */
   enabled: boolean;
-  /** Whether the provider is actually usable right now (enabled + auth OK). */
+  /** Whether the provider is actually usable right now (enabled + SDK available). */
   available: boolean;
   /** When true the provider cannot be disabled by the admin. Copilot only. */
   locked?: boolean;
-  /** Human-readable reason when enabled but not available (e.g. auth required). */
+  /** Human-readable reason when enabled but not available. */
   reason?: string;
-  /** URL to start the auth flow when auth is required or expired. */
-  authUrl?: string;
   /**
    * SDK package install status for optional providers (codex, claude).
    * Absent for Copilot (always bundled). Populated by the server using

@@ -34,7 +34,7 @@ const CODEX_UNAVAILABLE: AgentProviderStatus = {
     label: 'Codex',
     enabled: true,
     available: false,
-    reason: 'Codex authentication required.',
+    reason: 'Codex SDK is not installed.',
 };
 
 describe('AgentSelectorChip', () => {
@@ -167,7 +167,7 @@ describe('AgentSelectorChip', () => {
             expect(codexOption).toBeDisabled();
         });
 
-        it('Codex option is disabled when unavailable (auth required)', () => {
+        it('Codex option is disabled when unavailable', () => {
             render(
                 <AgentSelectorChip
                     providers={[COPILOT, CODEX_UNAVAILABLE]}
@@ -191,7 +191,7 @@ describe('AgentSelectorChip', () => {
                 />
             );
             fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
-            expect(screen.getByTestId('agent-option-codex').textContent).toContain('authentication required');
+            expect(screen.getByTestId('agent-option-codex').textContent).toContain('SDK is not installed');
         });
 
         it('does not call onChange when clicking disabled Codex option', () => {

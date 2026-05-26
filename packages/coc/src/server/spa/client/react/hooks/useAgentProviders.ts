@@ -1,6 +1,6 @@
 /**
  * useAgentProviders — fetches live agent provider status from GET /api/agent-providers.
- * Copilot is always available; Codex availability depends on admin config + auth state.
+ * Copilot is always available; optional providers depend on admin config + SDK availability.
  */
 import { useState, useEffect, useCallback } from 'react';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';

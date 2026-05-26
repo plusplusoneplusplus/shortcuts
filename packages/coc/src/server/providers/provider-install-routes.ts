@@ -23,7 +23,6 @@ import { createRequire } from 'module';
 import type { Route } from '../types';
 import { sendJson, send400, send404, send500 } from '../shared/router';
 import { registerCodexSDKService, registerClaudeSDKService } from '@plusplusoneplusplus/forge';
-import type { CodexAuthCheckResult } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Provider → package name mapping
@@ -64,6 +63,19 @@ const installStates = new Map<string, ProviderInstallState>();
 /** Exported for use in tests and other handlers that need to read install state. */
 export function getInstallState(provider: string): ProviderInstallState {
     return installStates.get(provider) ?? { status: 'not-installed' };
+}
+
+/** Returns explicit install state, falling back to runtime package detection. */
+export function getResolvedInstallState(provider: string): ProviderInstallState {
+    const memState = installStates.get(provider);
+    if (memState?.status === 'installing' || memState?.status === 'install-failed') {
+        return memState;
+    }
+    if (memState?.status === 'installed') {
+        return { status: 'installed' };
+    }
+
+    return { status: isPackageInstalled(provider) ? 'installed' : 'not-installed' };
 }
 
 /** Clears the in-memory install state. Used by tests only. */
@@ -109,16 +121,11 @@ function packageJsonExists(pkg: string): boolean {
 
 /**
  * Re-registers the provider's SDK service in the live registry so it can be
- * used without a full server restart. If a `getCodexAuthInfo` callback is
- * supplied it is forwarded to the Codex service; Claude has no such requirement.
+ * used without a full server restart.
  */
-function reRegisterProvider(
-    provider: string,
-    getCodexAuthInfo?: () => CodexAuthCheckResult,
-): void {
+function reRegisterProvider(provider: string): void {
     if (provider === 'codex') {
-        const authChecker = getCodexAuthInfo ?? (() => ({ authenticated: false }));
-        registerCodexSDKService(authChecker);
+        registerCodexSDKService();
     } else if (provider === 'claude') {
         registerClaudeSDKService();
     }
@@ -136,7 +143,6 @@ function runInstall(
     provider: string,
     pkg: string,
     installDir: string,
-    getCodexAuthInfo?: () => CodexAuthCheckResult,
 ): void {
     installStates.set(provider, {
         status: 'installing',
@@ -174,7 +180,7 @@ function runInstall(
             });
             // Re-register the provider so the running server picks it up live.
             try {
-                reRegisterProvider(provider, getCodexAuthInfo);
+                reRegisterProvider(provider);
             } catch {
                 // Re-registration failure is non-fatal; the install itself succeeded.
             }
@@ -201,11 +207,6 @@ export interface ProviderInstallRouteContext {
      * Typically the root directory of the `@plusplusoneplusplus/coc` package.
      */
     cocInstallDir: string;
-    /**
-     * Optional callback used after a successful Codex install to provide
-     * authenticated status to the newly created service instance.
-     */
-    getCodexAuthInfo?: () => CodexAuthCheckResult;
 }
 
 // ============================================================================
@@ -216,7 +217,7 @@ export interface ProviderInstallRouteContext {
  * Registers the provider SDK install endpoints on the shared route table.
  *
  * @param routes  - Shared route table (mutated in place)
- * @param ctx     - Runtime dependencies (install dir, optional auth checker)
+ * @param ctx     - Runtime dependencies (install dir)
  */
 export function registerProviderInstallRoutes(routes: Route[], ctx: ProviderInstallRouteContext): void {
 
@@ -232,22 +233,7 @@ export function registerProviderInstallRoutes(routes: Route[], ctx: ProviderInst
                 return;
             }
 
-            // If we have an explicit in-memory state (installing or install-failed), use it.
-            const memState = installStates.get(provider);
-            if (memState && (memState.status === 'installing' || memState.status === 'install-failed')) {
-                sendJson(res, memState);
-                return;
-            }
-
-            // If an explicit 'installed' state is in memory, use it.
-            if (memState?.status === 'installed') {
-                sendJson(res, { status: 'installed' });
-                return;
-            }
-
-            // Fall back to runtime package detection.
-            const installed = isPackageInstalled(provider);
-            sendJson(res, { status: installed ? 'installed' : 'not-installed' });
+            sendJson(res, getResolvedInstallState(provider));
         },
     });
 
@@ -281,6 +267,11 @@ export function registerProviderInstallRoutes(routes: Route[], ctx: ProviderInst
             // If already installed, return 200 to be idempotent.
             if (isPackageInstalled(provider)) {
                 installStates.set(provider, { status: 'installed' });
+                try {
+                    reRegisterProvider(provider);
+                } catch {
+                    // Re-registration failure is non-fatal; the package is present.
+                }
                 sendJson(res, { status: 'installed', message: `${pkg} is already installed` });
                 return;
             }
@@ -293,7 +284,7 @@ export function registerProviderInstallRoutes(routes: Route[], ctx: ProviderInst
             }
 
             // Start the install asynchronously; respond 202 immediately.
-            runInstall(provider, pkg, installDir, ctx.getCodexAuthInfo);
+            runInstall(provider, pkg, installDir);
             sendJson(res, {
                 status: 'installing',
                 message: `Installing ${pkg} in ${path.basename(installDir)}`,
