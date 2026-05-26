@@ -199,3 +199,52 @@ export interface WorkItemChange {
   prUrl?: string;
   prStatus?: 'open' | 'merged' | 'closed' | string;
 }
+
+// ============================================================================
+// Hierarchy tree types
+// ============================================================================
+
+/** Descendant count roll-up for a hierarchy tree node. */
+export interface WorkItemRollup {
+  descendantCount: number;
+  byType: {
+    epic: number;
+    feature: number;
+    pbi: number;
+    'work-item': number;
+    bug: number;
+  };
+  byStatus: {
+    created: number;
+    planning: number;
+    readyToExecute: number;
+    executing: number;
+    aiDone: number;
+    aiFailed: number;
+    done: number;
+    failed: number;
+  };
+}
+
+/** A node in the work item hierarchy tree. */
+export interface WorkItemTreeNode {
+  item: WorkItem;
+  children: WorkItemTreeNode[];
+  rollup: WorkItemRollup;
+}
+
+/** Response from the work item tree endpoint. */
+export interface WorkItemTreeResponse {
+  roots: WorkItemTreeNode[];
+  total: number;
+  /** True when the hierarchy feature flag is disabled. */
+  disabled?: boolean;
+}
+
+/** Filter options for the tree endpoint. */
+export interface WorkItemTreeFilter {
+  q?: string;
+  type?: WorkItemType;
+  status?: WorkItemStatus;
+  includeArchived?: boolean;
+}
