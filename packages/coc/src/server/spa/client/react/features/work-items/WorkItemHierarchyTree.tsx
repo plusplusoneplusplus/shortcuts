@@ -12,17 +12,9 @@ import { WorkItemHierarchyNode } from './WorkItemHierarchyNode';
 import { WorkItemParentPicker } from './WorkItemParentPicker';
 import { ContextMenu } from '../../tasks/comments/ContextMenu';
 import type { ContextMenuItem } from '../../tasks/comments/ContextMenu';
+import { ALLOWED_CHILD_TYPES } from '@plusplusoneplusplus/coc-client';
 import type { WorkItemTreeNode, WorkItemTreeResponse } from '@plusplusoneplusplus/coc-client';
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
-
-/** Valid child types for each container type. */
-const ALLOWED_CHILD_TYPES: Record<WorkItemTypeLabel, WorkItemTypeLabel[]> = {
-    epic:        ['feature'],
-    feature:     ['pbi'],
-    pbi:         ['work-item', 'bug'],
-    'work-item': [],
-    bug:         [],
-};
 
 const TYPE_CHILD_LABELS: Record<WorkItemTypeLabel, string> = {
     epic:        'Feature',
@@ -198,7 +190,7 @@ export function WorkItemHierarchyTree({
                     icon: '🔓',
                     onClick: async () => {
                         try {
-                            await getSpaCocClient().workItems.update(workspaceId, node.item.id, { parentId: null as any });
+                            await getSpaCocClient().workItems.update(workspaceId, node.item.id, { parentId: null });
                             fetchTree();
                         } catch (err: any) {
                             alert(err.message ?? 'Failed to unlink');
