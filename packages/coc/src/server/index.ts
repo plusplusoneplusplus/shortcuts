@@ -493,11 +493,34 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Restore auto-commit timers for all workspaces that had it enabled
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });
 
+    // Container link persistence helpers
+    const containerLinkConfigPath = path.join(dataDir, 'container-link.json');
+    function saveContainerLinkConfig(url: string | undefined, agentName: string | undefined): void {
+        try {
+            if (url) {
+                fs.writeFileSync(containerLinkConfigPath, JSON.stringify({ containerUrl: url, agentName: agentName ?? null }));
+            } else {
+                if (fs.existsSync(containerLinkConfigPath)) fs.unlinkSync(containerLinkConfigPath);
+            }
+        } catch { /* best-effort */ }
+    }
+    function loadContainerLinkConfig(): { containerUrl: string; agentName?: string } | null {
+        try {
+            if (fs.existsSync(containerLinkConfigPath)) {
+                const raw = JSON.parse(fs.readFileSync(containerLinkConfigPath, 'utf8'));
+                if (raw?.containerUrl) return raw;
+            }
+        } catch { /* ignore corrupt file */ }
+        return null;
+    }
+
     // Container link state (mutable — can be set/cleared via API)
     let containerLink: ContainerLinkClient | undefined;
     let containerLinkBroadcastUnsub: (() => void) | undefined;
-    let containerLinkUrl: string | undefined = options.containerUrl;
-    let containerLinkAgentName: string | undefined = options.containerAgentName;
+    // CLI flag takes priority; otherwise load persisted config
+    const savedLinkConfig = !options.containerUrl ? loadContainerLinkConfig() : null;
+    let containerLinkUrl: string | undefined = options.containerUrl ?? savedLinkConfig?.containerUrl;
+    let containerLinkAgentName: string | undefined = options.containerAgentName ?? savedLinkConfig?.agentName;
 
     registerContainerLinkRoutes(routes, {
         getContainerLink: () => containerLink,
@@ -508,6 +531,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             containerLinkBroadcastUnsub?.();
             containerLinkUrl = url;
             containerLinkAgentName = agentName ?? containerLinkAgentName;
+            saveContainerLinkConfig(containerLinkUrl, containerLinkAgentName);
             containerLink = new ContainerLinkClient({
                 containerUrl: url,
                 agentName: containerLinkAgentName,
@@ -527,6 +551,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             containerLink = undefined;
             containerLinkBroadcastUnsub = undefined;
             containerLinkUrl = undefined;
+            saveContainerLinkConfig(undefined, undefined);
             process.stderr.write(`[container-link] Disconnected\n`);
         },
     });
@@ -623,11 +648,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const activeSockets = new Set<import('net').Socket>();
     server.on('connection', (socket) => { activeSockets.add(socket); socket.on('close', () => activeSockets.delete(socket)); });
 
-    // Start container link if configured via CLI (call-home mode)
-    if (options.containerUrl) {
+    // Start container link if configured via CLI or persisted config (call-home mode)
+    if (containerLinkUrl) {
         containerLink = new ContainerLinkClient({
-            containerUrl: options.containerUrl,
-            agentName: options.containerAgentName,
+            containerUrl: containerLinkUrl,
+            agentName: containerLinkAgentName,
             localPort: actualPort,
             getWorkspaces: async () => {
                 const ws = await store.getWorkspaces();
@@ -636,7 +661,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         });
         containerLink.start();
         containerLinkBroadcastUnsub = wsServer.onBroadcast(data => containerLink?.forwardEvent(data));
-        process.stderr.write(`[container-link] Connecting to container at ${options.containerUrl}\n`);
+        process.stderr.write(`[container-link] Connecting to container at ${containerLinkUrl}\n`);
     }
 
     return {
