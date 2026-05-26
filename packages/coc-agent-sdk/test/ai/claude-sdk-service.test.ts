@@ -310,6 +310,51 @@ describe('ClaudeSDKService.sendMessage', () => {
         );
     });
 
+    it('uses Claude bypass permissions for autopilot mode', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        await svc.sendMessage({ prompt: 'do the work', mode: 'autopilot' });
+
+        expect(queryFn).toHaveBeenCalledWith(
+            expect.objectContaining({
+                options: expect.objectContaining({
+                    permissionMode: 'bypassPermissions',
+                    allowDangerouslySkipPermissions: true,
+                }),
+            }),
+        );
+    });
+
+    it('uses Claude plan permission mode for plan mode', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        await svc.sendMessage({ prompt: 'make a plan', mode: 'plan' });
+
+        expect(queryFn).toHaveBeenCalledWith(
+            expect.objectContaining({
+                options: expect.objectContaining({
+                    permissionMode: 'plan',
+                }),
+            }),
+        );
+        expect(queryFn.mock.calls[0][0].options.allowDangerouslySkipPermissions).toBeUndefined();
+    });
+
+    it('does not set Claude permission mode for interactive mode', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        await svc.sendMessage({ prompt: 'answer this', mode: 'interactive' });
+
+        expect(queryFn.mock.calls[0][0].options.permissionMode).toBeUndefined();
+        expect(queryFn.mock.calls[0][0].options.allowDangerouslySkipPermissions).toBeUndefined();
+    });
+
     it('passes Claude model IDs through but drops Copilot model IDs', async () => {
         queryFn.mockReturnValue(makeMessages([
             { type: 'result', subtype: 'success' },

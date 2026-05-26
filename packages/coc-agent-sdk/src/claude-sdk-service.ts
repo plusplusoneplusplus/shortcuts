@@ -104,6 +104,7 @@ interface ClaudeRateLimitEvent {
 }
 
 type ClaudeSDKMessage = ClaudeAssistantMessage | ClaudeResultMessage | ClaudeSystemMessage | ClaudeRateLimitEvent | Record<string, unknown>;
+type ClaudePermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | 'auto';
 
 interface ClaudeQueryOptions {
     prompt: string;
@@ -113,6 +114,8 @@ interface ClaudeQueryOptions {
         model?: string;
         customSystemPrompt?: string;
         appendSystemPrompt?: string;
+        permissionMode?: ClaudePermissionMode;
+        allowDangerouslySkipPermissions?: boolean;
     };
 }
 
@@ -307,6 +310,7 @@ export class ClaudeSDKService implements ISDKService {
 
         try {
             const model = this.normalizeClaudeModel(options.model);
+            const permissionOptions = this.resolveClaudePermissionOptions(options.mode);
             const queryOptions: ClaudeQueryOptions = {
                 prompt: options.prompt ?? '',
                 abortController,
@@ -315,6 +319,7 @@ export class ClaudeSDKService implements ISDKService {
                     ...(model ? { model } : {}),
                     ...(options.systemMessage?.mode === 'append' ? { appendSystemPrompt: options.systemMessage.content } : {}),
                     ...(options.systemMessage?.mode === 'replace' ? { customSystemPrompt: options.systemMessage.content } : {}),
+                    ...permissionOptions,
                 },
             };
 
@@ -483,6 +488,21 @@ export class ClaudeSDKService implements ISDKService {
         // Only pass through Claude model IDs; reject Copilot/Codex model IDs.
         if (normalized.startsWith('claude')) return trimmed;
         return undefined;
+    }
+
+    private resolveClaudePermissionOptions(
+        mode: SendMessageOptions['mode'],
+    ): Pick<NonNullable<ClaudeQueryOptions['options']>, 'permissionMode' | 'allowDangerouslySkipPermissions'> {
+        if (mode === 'autopilot') {
+            return {
+                permissionMode: 'bypassPermissions',
+                allowDangerouslySkipPermissions: true,
+            };
+        }
+        if (mode === 'plan') {
+            return { permissionMode: 'plan' };
+        }
+        return {};
     }
 
     public async transform<T = string>(
