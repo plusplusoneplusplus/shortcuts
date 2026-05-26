@@ -36,6 +36,7 @@ It consists of three packages (`coc`, `forge`, `deep-wiki`) plus a shared client
 | Workflow Engine | [workflow-engine.md](references/workflow-engine.md) | DAG executor, compiler, node types, concurrency, skill resolution |
 | Deep Wiki | [deep-wiki.md](references/deep-wiki.md) | Six-phase pipeline, caching, themes, CLI commands, core concepts |
 | REST API | [rest-api.md](references/rest-api.md) | Endpoint catalog organized by domain |
+| Streaming & Real-Time | [streaming-architecture.md](references/streaming-architecture.md) | SSE, WebSocket, ProcessStore event channels, container relay |
 | Dashboard SPA | [dashboard-spa.md](references/dashboard-spa.md) | React component tree, hooks, contexts, feature modules |
 | Prompt Autocomplete | [prompt-autocomplete.md](references/prompt-autocomplete.md) | Inline ghost-text, AI/history modes, caching, REST API, privacy |
 | Chat Prompt History | [chat-prompt-history.md](references/chat-prompt-history.md) | Up/Down arrow navigation, workspace-scoped history, REST API |
