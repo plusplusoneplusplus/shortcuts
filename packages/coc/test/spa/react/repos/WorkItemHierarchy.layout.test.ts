@@ -150,7 +150,7 @@ describe('WorkItemParentPicker — structure', () => {
     });
 
     it('filters candidates by valid parent types', () => {
-        expect(src).toContain('VALID_PARENT_TYPES');
+        expect(src).toContain('validParentTypes');
     });
 
     it('has a cancel button to dismiss without selecting', () => {

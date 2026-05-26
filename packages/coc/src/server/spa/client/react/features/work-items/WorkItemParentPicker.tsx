@@ -36,6 +36,12 @@ export interface WorkItemParentPickerProps {
     currentParentId?: string;
     /** Called with null to unlink, or with newParentId to re-parent. */
     onParentChanged: (newParentId: string | null) => void;
+    /**
+     * When true, the dialog only selects a new parent without making API calls,
+     * and does not offer an unlink action. The caller is responsible for persisting
+     * the chosen parent.
+     */
+    onlyPick?: boolean;
 }
 
 export function WorkItemParentPicker({
@@ -46,6 +52,7 @@ export function WorkItemParentPicker({
     itemType,
     currentParentId,
     onParentChanged,
+    onlyPick = false,
 }: WorkItemParentPickerProps) {
     const [searchQuery, setSearchQuery] = useState('');
     const [candidates, setCandidates] = useState<ParentCandidate[]>([]);
@@ -104,6 +111,11 @@ export function WorkItemParentPicker({
     }, [searchQuery, fetchCandidates, open]);
 
     const handleConfirm = async () => {
+        if (onlyPick) {
+            onParentChanged(selectedId);
+            onClose();
+            return;
+        }
         setSaving(true);
         setError(null);
         try {
@@ -155,7 +167,7 @@ export function WorkItemParentPicker({
             title="Change Parent"
             footer={
                 <>
-                    {currentParentId && (
+                    {currentParentId && !onlyPick && (
                         <Button variant="ghost" size="sm" onClick={handleUnlink} disabled={saving} className="mr-auto text-red-500">
                             Unlink Parent
                         </Button>
