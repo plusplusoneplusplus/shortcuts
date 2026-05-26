@@ -169,6 +169,7 @@ export class ProcessWebSocketServer {
     private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
     private wss: WebSocketServer;
     private gitChangedListeners: Array<(workspaceId: string) => void> = [];
+    private broadcastListeners: Array<(data: string) => void> = [];
 
     constructor() {
         this.wss = new WebSocketServer({ noServer: true });
@@ -283,6 +284,10 @@ export class ProcessWebSocketServer {
                 client.send(data);
             }
         }
+        // Notify external listeners (e.g. container-link forwarding)
+        for (const listener of this.broadcastListeners) {
+            try { listener(data); } catch { /* listener errors are non-fatal */ }
+        }
     }
 
     /**
@@ -291,6 +296,19 @@ export class ProcessWebSocketServer {
      */
     onGitChanged(listener: (workspaceId: string) => void): void {
         this.gitChangedListeners.push(listener);
+    }
+
+    /**
+     * Register a listener that receives the serialized JSON of every broadcast event.
+     * Used by the container-link to forward events to a remote container.
+     * Returns an unsubscribe function.
+     */
+    onBroadcast(listener: (data: string) => void): () => void {
+        this.broadcastListeners.push(listener);
+        return () => {
+            const idx = this.broadcastListeners.indexOf(listener);
+            if (idx >= 0) this.broadcastListeners.splice(idx, 1);
+        };
     }
 
     /**
@@ -312,6 +330,9 @@ export class ProcessWebSocketServer {
         for (const listener of this.gitChangedListeners) {
             try { listener(workspaceId); } catch { /* listener errors are non-fatal */ }
         }
+        for (const listener of this.broadcastListeners) {
+            try { listener(data); } catch { /* non-fatal */ }
+        }
     }
 
     /**
@@ -332,6 +353,9 @@ export class ProcessWebSocketServer {
             }
             // Clients with no wiki subscription get all wiki events
             client.send(data);
+        }
+        for (const listener of this.broadcastListeners) {
+            try { listener(data); } catch { /* non-fatal */ }
         }
     }
 

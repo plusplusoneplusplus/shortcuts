@@ -495,6 +495,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     // Container link state (mutable — can be set/cleared via API)
     let containerLink: ContainerLinkClient | undefined;
+    let containerLinkBroadcastUnsub: (() => void) | undefined;
     let containerLinkUrl: string | undefined = options.containerUrl;
     let containerLinkAgentName: string | undefined = options.containerAgentName;
 
@@ -504,6 +505,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         getAgentName: () => containerLinkAgentName,
         setContainerLink: (url: string, agentName?: string) => {
             containerLink?.stop();
+            containerLinkBroadcastUnsub?.();
             containerLinkUrl = url;
             containerLinkAgentName = agentName ?? containerLinkAgentName;
             containerLink = new ContainerLinkClient({
@@ -512,11 +514,14 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 localPort: port,
             });
             containerLink.start();
+            containerLinkBroadcastUnsub = wsServer.onBroadcast(data => containerLink?.forwardEvent(data));
             process.stderr.write(`[container-link] Connecting to container at ${url}\n`);
         },
         clearContainerLink: () => {
             containerLink?.stop();
+            containerLinkBroadcastUnsub?.();
             containerLink = undefined;
+            containerLinkBroadcastUnsub = undefined;
             containerLinkUrl = undefined;
             process.stderr.write(`[container-link] Disconnected\n`);
         },
@@ -622,6 +627,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             localPort: actualPort,
         });
         containerLink.start();
+        containerLinkBroadcastUnsub = wsServer.onBroadcast(data => containerLink?.forwardEvent(data));
         process.stderr.write(`[container-link] Connecting to container at ${options.containerUrl}\n`);
     }
 
