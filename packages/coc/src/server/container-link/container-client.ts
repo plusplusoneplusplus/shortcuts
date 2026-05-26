@@ -379,6 +379,8 @@ export class ContainerLinkClient extends EventEmitter {
     private send(msg: ChannelMessage): void {
         if (this.ws?.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify(msg));
+        } else {
+            process.stderr.write(`[container-link] ⚠️ send() dropped: ws not OPEN (readyState=${this.ws?.readyState ?? 'null'}, type=${msg.type})\n`);
         }
     }
 

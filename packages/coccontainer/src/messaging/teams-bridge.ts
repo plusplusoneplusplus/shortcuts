@@ -504,8 +504,14 @@ export class TeamsBridge {
         proc: Record<string, unknown>,
     ): Promise<void> {
         const agentId = msg.agentId;
-        if (!agentId) return;
-        if (!this.bot || this.bot.getStatus() !== 'connected') return;
+        if (!agentId) {
+            console.warn(`[teams-bridge] ⚠️ handleRunning skipped: no agentId for process ${processId}`);
+            return;
+        }
+        if (!this.bot || this.bot.getStatus() !== 'connected') {
+            console.warn(`[teams-bridge] ⚠️ handleRunning skipped for process ${processId}: bot ${!this.bot ? 'not initialized' : `status=${this.bot.getStatus()}`}`);
+            return;
+        }
 
         const workspaceId = (proc.workspaceId ?? proc.workspace) as string || '';
 
@@ -591,8 +597,14 @@ export class TeamsBridge {
         proc: Record<string, unknown>,
     ): Promise<void> {
         const agentId = msg.agentId;
-        if (!agentId) return;
-        if (!this.bot || this.bot.getStatus() !== 'connected') return;
+        if (!agentId) {
+            console.warn(`[teams-bridge] ⚠️ handleCompletion skipped: no agentId for process ${processId}`);
+            return;
+        }
+        if (!this.bot || this.bot.getStatus() !== 'connected') {
+            console.warn(`[teams-bridge] ⚠️ handleCompletion skipped for process ${processId}: bot ${!this.bot ? 'not initialized' : `status=${this.bot.getStatus()}`}`);
+            return;
+        }
 
         const workspaceId = (proc.workspaceId ?? proc.workspace) as string || '';
 
@@ -721,15 +733,21 @@ export class TeamsBridge {
         agentName: string,
         workspaceId: string,
     ): Promise<void> {
-        if (!this.bot || !this.store) return;
-
-        let target = this.bot.getChannelId() ?? this.opts.config.channelId;
-        if (!target) {
-            console.warn('[teams-bridge] No target (chatId/channelId) available — skipping');
+        if (!this.bot || !this.store) {
+            console.warn(`[teams-bridge] ⚠️ sendToTeams skipped for process ${processId}: ${!this.bot ? 'bot not initialized' : 'store not initialized'}`);
             return;
         }
 
-        if (this.bot.getStatus() !== 'connected') return;
+        let target = this.bot.getChannelId() ?? this.opts.config.channelId;
+        if (!target) {
+            console.warn(`[teams-bridge] ⚠️ sendToTeams skipped for process ${processId}: no target (chatId/channelId) available`);
+            return;
+        }
+
+        if (this.bot.getStatus() !== 'connected') {
+            console.warn(`[teams-bridge] ⚠️ sendToTeams skipped for process ${processId}: bot status=${this.bot.getStatus()}`);
+            return;
+        }
 
         const repoName = await this.resolveWorkspaceName(undefined, undefined, workspaceId, agentId);
 
