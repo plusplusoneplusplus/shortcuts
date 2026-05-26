@@ -68,7 +68,7 @@ export interface AdminResolvedConfig {
   excalidraw?: { enabled?: boolean };
   codex?: { enabled?: boolean };
   claude?: { enabled?: boolean };
-  activeProvider?: 'copilot' | 'codex' | 'claude';
+  defaultProvider?: 'copilot' | 'codex' | 'claude';
   mcpOauth?: { enabled?: boolean };
   [key: string]: unknown;
 }
@@ -123,7 +123,7 @@ export interface AdminConfigUpdate {
   'mcpOauth.enabled'?: boolean;
   'codex.enabled'?: boolean;
   'claude.enabled'?: boolean;
-  activeProvider?: 'copilot' | 'codex' | 'claude';
+  defaultProvider?: 'copilot' | 'codex' | 'claude';
   [key: string]: unknown;
 }
 
@@ -154,7 +154,7 @@ export interface RuntimeDashboardConfig {
     containerDefaultAgentEnabled: boolean;
     codexEnabled: boolean;
     claudeEnabled: boolean;
-    activeProvider: 'copilot' | 'codex' | 'claude';
+    defaultProvider: 'copilot' | 'codex' | 'claude';
   };
   hostname?: string;
   bindAddress?: string;

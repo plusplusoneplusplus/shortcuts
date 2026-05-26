@@ -30,7 +30,7 @@ import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
 import { useChatPromptHistory } from '../../hooks/useChatPromptHistory';
-import { isRalphEnabled, isLoopsEnabled } from '../../utils/config';
+import { getDefaultProvider, isRalphEnabled, isLoopsEnabled } from '../../utils/config';
 import { getDraft, setDraft, clearDraft, newChatDraftKey } from './hooks/useDraftStore';
 import { useAgentProviders } from '../../hooks/useAgentProviders';
 import { AgentSelectorChip } from './AgentSelectorChip';
@@ -41,6 +41,16 @@ export interface NewChatAreaProps {
     onBack?: () => void;
 }
 
+function isChatProvider(value: unknown): value is ChatProvider {
+    return value === 'copilot' || value === 'codex' || value === 'claude';
+}
+
+function isSelectableProvider(provider: ChatProvider, providers: Array<{ id: string; enabled: boolean; available: boolean }>): boolean {
+    if (provider === 'copilot') return true;
+    const status = providers.find(p => p.id === provider);
+    return status?.enabled === true && status?.available === true;
+}
+
 export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const [input, setInput] = useState('');
     const [cursorPos, setCursorPos] = useState(0);
@@ -48,7 +58,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [skills, setSkills] = useState<SkillItem[]>([]);
-    const [selectedProvider, setSelectedProvider] = useState<ChatProvider>('copilot');
+    const [selectedProvider, setSelectedProvider] = useState<ChatProvider>(() => getDefaultProvider());
     const richTextRef = useRef<RichTextInputHandle>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -118,41 +128,41 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             .catch(() => { /* ignore */ });
     }, [workspaceId]);
 
+    const getSelectableDefaultProvider = () => {
+        const configuredDefault = getDefaultProvider();
+        return isSelectableProvider(configuredDefault, agentProviders) ? configuredDefault : 'copilot';
+    };
+
     // Load last-used provider preference for this workspace on mount / workspace switch.
-    // Falls back to Copilot when unset, disabled, or unavailable.
+    // Falls back to the configured default provider when unset, disabled, or unavailable.
     useEffect(() => {
+        const fallbackProvider = getSelectableDefaultProvider();
+        let cancelled = false;
         if (!workspaceId) {
-            setSelectedProvider('copilot');
+            setSelectedProvider(fallbackProvider);
             return;
         }
         getSpaCocClient().preferences.getRepo(workspaceId)
             .then((prefs: any) => {
+                if (cancelled) return;
                 const last = prefs?.lastChatProvider;
-                if (last === 'codex' || last === 'claude' || last === 'copilot') {
-                    // Validate against live provider state: only accept non-copilot if enabled+available
-                    if (last === 'codex' || last === 'claude') {
-                        const providerStatus = agentProviders.find(p => p.id === last);
-                        if (providerStatus?.enabled && providerStatus?.available) {
-                            setSelectedProvider(last);
-                            return;
-                        }
-                    }
-                    if (last === 'copilot') {
-                        setSelectedProvider('copilot');
-                        return;
-                    }
+                if (isChatProvider(last) && isSelectableProvider(last, agentProviders)) {
+                    setSelectedProvider(last);
+                    return;
                 }
-                setSelectedProvider('copilot');
+                setSelectedProvider(fallbackProvider);
             })
-            .catch(() => { setSelectedProvider('copilot'); });
-    }, [workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+            .catch(() => {
+                if (!cancelled) setSelectedProvider(fallbackProvider);
+            });
+        return () => { cancelled = true; };
+    }, [workspaceId, agentProviders]);
 
-    // When agentProviders load and selected provider becomes unavailable, fall back to copilot
+    // When agentProviders load and selected provider becomes unavailable, fall back to the default provider.
     useEffect(() => {
         if (selectedProvider === 'copilot') return;
-        const providerStatus = agentProviders.find(p => p.id === selectedProvider);
-        if (providerStatus && (!providerStatus.enabled || !providerStatus.available)) {
-            setSelectedProvider('copilot');
+        if (!isSelectableProvider(selectedProvider, agentProviders)) {
+            setSelectedProvider(getSelectableDefaultProvider());
         }
     }, [agentProviders, selectedProvider]);
 

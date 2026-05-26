@@ -60,7 +60,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isRalphEnabled: () => false,
     isLoopsEnabled: () => false,
     isCodexEnabled: () => false,
-    getActiveProvider: () => 'copilot',
+    getDefaultProvider: () => 'copilot',
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({

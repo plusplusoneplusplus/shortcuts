@@ -77,10 +77,12 @@ Inside `WhisperCollapsedGroup`, tool calls render as compact "whisper-row" varia
 
 Stacked layout with:
 1. `RichTextInput` (contenteditable)
-2. Toolbar: ModePillSelector → model picker → ctool buttons → QueueFollowUpButton
-3. `ComposerMetaStrip`: cwd chip + context-window fuel gauge
+2. Toolbar: ModePillSelector → model picker → ctool buttons → AgentSelectorChip / QueueFollowUpButton
+3. `ComposerMetaStrip`: cwd chip + context-window fuel gauge + provider badge for non-Copilot sessions
 
 Focus indicator propagates mode-colored ring from contenteditable to parent card.
+
+New chats use `AgentSelectorChip` to choose a per-chat provider. The initial selection comes from the workspace's `lastChatProvider` preference when that provider is enabled and available; otherwise it falls back to the configured `defaultProvider` from runtime config, and then to Copilot if the configured default provider cannot be selected. Follow-up inputs show the provider stored on the process metadata so existing chats continue using their original provider.
 
 ## Top Bar
 

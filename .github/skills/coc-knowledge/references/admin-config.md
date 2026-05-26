@@ -18,6 +18,8 @@ To expose a new config field via the admin API, add ONE entry to `ADMIN_CONFIG_F
 
 The `spaHtml` function in `packages/coc/src/server/index.ts` re-reads the config file on every page request, so feature-flag changes (e.g. `terminal.enabled`) take effect on the next browser reload — no server restart required.
 
+The AI provider admin card stores `defaultProvider` as a top-level config key. The UI labels it "Default Provider" because it preselects the provider for new chats and tasks; individual chat payloads can still set `payload.provider`, and follow-ups continue with the provider recorded on the original process. The field is classified as `restartRequired` because the server-level default provider is wired into queue infrastructure at `coc serve` startup for API-created tasks that omit `payload.provider`.
+
 ## Namespaced Config Merge & Source Tracking
 
 Namespaced config merge/source tracking is registered in `packages/coc/src/config/namespace-registry.ts`; add namespace fields there instead of expanding branch lists in `config.ts`. Default process store backend is SQLite. CLI flags > config file > defaults.

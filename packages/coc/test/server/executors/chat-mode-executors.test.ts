@@ -107,6 +107,52 @@ function makeChatTask(mode: 'ask' | 'plan' | 'autopilot', id = 'task-1'): Queued
 }
 
 // ============================================================================
+// Provider routing
+// ============================================================================
+
+describe('ChatBaseExecutor provider routing', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'AI answer',
+            sessionId: 'sess-1',
+            toolCalls: [],
+        });
+    });
+
+    it('uses the server default provider when payload.provider is omitted', async () => {
+        const resolveAiServiceForProvider = vi.fn().mockReturnValue(sdkMocks.service as any);
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            provider: 'codex',
+            resolveAiServiceForProvider,
+        }));
+
+        await executor.execute(makeChatTask('ask', 'task-default-provider'), 'Hello');
+
+        expect(resolveAiServiceForProvider).toHaveBeenCalledWith('codex');
+    });
+
+    it('uses payload.provider over the server default provider when present', async () => {
+        const resolveAiServiceForProvider = vi.fn().mockReturnValue(sdkMocks.service as any);
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            provider: 'codex',
+            resolveAiServiceForProvider,
+        }));
+        const task = makeChatTask('ask', 'task-provider-override');
+        task.payload = { ...(task.payload as any), provider: 'claude' } as any;
+
+        await executor.execute(task, 'Hello');
+
+        expect(resolveAiServiceForProvider).toHaveBeenCalledWith('claude');
+    });
+});
+
+// ============================================================================
 // Shared behaviour — parameterised per executor
 // ============================================================================
 

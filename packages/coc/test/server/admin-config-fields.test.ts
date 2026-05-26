@@ -44,7 +44,7 @@ describe('ADMIN_EDITABLE_KEYS', () => {
             'excalidraw.enabled',
             'mcpOauth.enabled',
             'codex.enabled',
-            'activeProvider',
+            'defaultProvider',
         ];
         for (const k of expected) {
             expect(ADMIN_EDITABLE_KEYS).toContain(k);
@@ -180,21 +180,21 @@ describe('validate()', () => {
         });
     });
 
-    describe('activeProvider', () => {
+    describe('defaultProvider', () => {
         it('accepts "copilot"', () => {
-            expect(fieldFor('activeProvider').validate('copilot')).toBeUndefined();
+            expect(fieldFor('defaultProvider').validate('copilot')).toBeUndefined();
         });
         it('accepts "codex"', () => {
-            expect(fieldFor('activeProvider').validate('codex')).toBeUndefined();
+            expect(fieldFor('defaultProvider').validate('codex')).toBeUndefined();
         });
         it('accepts "claude"', () => {
-            expect(fieldFor('activeProvider').validate('claude')).toBeUndefined();
+            expect(fieldFor('defaultProvider').validate('claude')).toBeUndefined();
         });
         it('rejects other strings', () => {
-            expect(fieldFor('activeProvider').validate('unknown')).toMatch(/copilot.*codex/);
+            expect(fieldFor('defaultProvider').validate('unknown')).toMatch(/copilot.*codex/);
         });
         it('rejects non-string', () => {
-            expect(fieldFor('activeProvider').validate(true)).toMatch(/copilot.*codex/);
+            expect(fieldFor('defaultProvider').validate(true)).toMatch(/copilot.*codex/);
         });
     });
 
@@ -368,16 +368,16 @@ describe('apply()', () => {
         });
     });
 
-    describe('activeProvider', () => {
+    describe('defaultProvider', () => {
         it('sets copilot', () => {
             const cfg: CLIConfig = {};
-            fieldFor('activeProvider').apply(cfg, 'copilot');
-            expect(cfg.activeProvider).toBe('copilot');
+            fieldFor('defaultProvider').apply(cfg, 'copilot');
+            expect(cfg.defaultProvider).toBe('copilot');
         });
         it('sets codex', () => {
             const cfg: CLIConfig = {};
-            fieldFor('activeProvider').apply(cfg, 'codex');
-            expect(cfg.activeProvider).toBe('codex');
+            fieldFor('defaultProvider').apply(cfg, 'codex');
+            expect(cfg.defaultProvider).toBe('codex');
         });
     });
 
@@ -402,8 +402,8 @@ describe('runtime classification', () => {
         expect(fieldFor('codex.enabled').runtime).toBe('live');
     });
 
-    it('marks activeProvider as live', () => {
-        expect(fieldFor('activeProvider').runtime).toBe('live');
+    it('marks defaultProvider as restartRequired', () => {
+        expect(fieldFor('defaultProvider').runtime).toBe('restartRequired');
     });
 
     const liveFeatures = [
@@ -440,4 +440,3 @@ describe('getAdminFieldMetadata()', () => {
         expect(meta['mcpOauth.enabled'].runtime).toBe('restartRequired');
     });
 });
-

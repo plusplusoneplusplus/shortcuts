@@ -49,7 +49,7 @@ export function buildRuntimeDashboardConfig(
             containerDefaultAgentEnabled: config.containerDefaultAgent?.enabled ?? false,
             codexEnabled: config.codex?.enabled ?? false,
             claudeEnabled: config.claude?.enabled ?? false,
-            activeProvider: (config.activeProvider ?? 'copilot') as 'copilot' | 'codex' | 'claude',
+            defaultProvider: (config.defaultProvider ?? 'copilot') as 'copilot' | 'codex' | 'claude',
         },
         hostname: config.serve?.serverName || shortenHostname(hostname),
         bindAddress,

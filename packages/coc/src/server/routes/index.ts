@@ -195,10 +195,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerProcessResumeRoutes(routes, store);
     registerFreshChatTerminalRoutes(routes, undefined, {
         getProvider: () => {
-            const activeProvider = opts.runtimeConfigService?.config.activeProvider
-                ?? opts.resolvedConfig?.activeProvider;
-            if (activeProvider === 'codex') return 'codex';
-            if (activeProvider === 'claude') return 'claude';
+            const defaultProvider = opts.runtimeConfigService?.config.defaultProvider
+                ?? opts.resolvedConfig?.defaultProvider;
+            if (defaultProvider === 'codex') return 'codex';
+            if (defaultProvider === 'claude') return 'claude';
             return 'copilot';
         },
     });

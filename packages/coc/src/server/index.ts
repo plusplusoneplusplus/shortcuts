@@ -204,8 +204,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // claude.enabled was set at startup. Live config gates actual usage.
     registerClaudeSDKService();
 
-    const requestedProvider = resolvedConfig.activeProvider === 'codex' ? 'codex'
-        : resolvedConfig.activeProvider === 'claude' ? 'claude'
+    const requestedProvider = resolvedConfig.defaultProvider === 'codex' ? 'codex'
+        : resolvedConfig.defaultProvider === 'claude' ? 'claude'
         : 'copilot';
     const effectiveProvider = requestedProvider === 'codex' && sdkServiceRegistry.has(SDK_PROVIDER_CODEX)
         ? 'codex'
@@ -213,10 +213,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             ? 'claude'
             : 'copilot';
     if (requestedProvider === 'codex' && effectiveProvider !== 'codex') {
-        process.stderr.write('[ExecutionServer] activeProvider=codex requested, but Codex provider is not registered; falling back to Copilot\n');
+        process.stderr.write('[ExecutionServer] defaultProvider=codex requested, but Codex provider is not registered; falling back to Copilot\n');
     }
     if (requestedProvider === 'claude' && effectiveProvider !== 'claude') {
-        process.stderr.write('[ExecutionServer] activeProvider=claude requested, but Claude provider is not registered; falling back to Copilot\n');
+        process.stderr.write('[ExecutionServer] defaultProvider=claude requested, but Claude provider is not registered; falling back to Copilot\n');
     }
     const resolvedAiService = options.aiService ?? sdkServiceRegistry.getOrThrow(
         effectiveProvider === 'codex' ? SDK_PROVIDER_CODEX

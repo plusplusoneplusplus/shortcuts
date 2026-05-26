@@ -131,6 +131,7 @@ output: table
 approvePermissions: false
 mcpConfig: ~/.copilot/mcp-config.json  # global MCP; repo .vscode/mcp.json is also loaded per workspace
 timeout: 1800
+defaultProvider: copilot  # default for new chats/tasks when payload.provider is omitted
 
 serve:
   port: 4000
@@ -152,6 +153,12 @@ terminal:
 
 workflows:
   enabled: true
+
+codex:
+  enabled: false
+
+claude:
+  enabled: false
 ```
 
 Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT.
@@ -162,6 +169,7 @@ Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT.
 2. Auto-migrations: workspace registry JSON → SQLite, file-based process history → SQLite
 3. Chat/follow-up executors initialize model metadata on demand if task starts before cache warm
 4. Variant models with `capabilities.family` base preserved in process metadata but sent to SDK as base model + reasoning effort
+5. `defaultProvider` is resolved at startup and wired into queue infrastructure; chat payloads with `payload.provider` override it, while follow-ups use the provider recorded on the original process
 
 ## Storage Layout
 
