@@ -34,11 +34,52 @@ export type WorkItemSource = 'manual' | 'chat' | 'schedule';
 /** Priority levels for work items. */
 export type WorkItemPriority = 'high' | 'normal' | 'low';
 
-/** Work item type — distinguishes bugs from regular work items. */
-export type WorkItemType = 'work-item' | 'bug';
+/**
+ * Work item type.
+ * - `work-item`, `bug`: leaf types that can be planned and executed.
+ * - `epic`, `feature`, `pbi`: hierarchy container types (planning only).
+ */
+export type WorkItemType = 'work-item' | 'bug' | 'epic' | 'feature' | 'pbi';
 
 /** All valid work item types (useful for validation). */
-export const WORK_ITEM_TYPES: readonly WorkItemType[] = Object.freeze(['work-item', 'bug']);
+export const WORK_ITEM_TYPES: readonly WorkItemType[] = Object.freeze([
+    'work-item', 'bug', 'epic', 'feature', 'pbi',
+]);
+
+/** Container types — hierarchy planning containers, not directly executable. */
+export const HIERARCHY_CONTAINER_TYPES: ReadonlySet<WorkItemType> = new Set<WorkItemType>([
+    'epic', 'feature', 'pbi',
+]);
+
+/** Leaf types — executable items that support plan/execution flows. */
+export const LEAF_WORK_ITEM_TYPES: ReadonlySet<WorkItemType> = new Set<WorkItemType>([
+    'work-item', 'bug',
+]);
+
+/**
+ * Allowed parent types for each work item type.
+ * An empty array means the type cannot have a parent (top-level only).
+ * Any item may be temporarily unparented (parentId absent) regardless of type.
+ */
+export const ALLOWED_PARENT_TYPES: Record<WorkItemType, readonly WorkItemType[]> = {
+    epic:        [],
+    feature:     ['epic'],
+    pbi:         ['feature'],
+    'work-item': ['pbi'],
+    bug:         ['pbi'],
+};
+
+/**
+ * Allowed child types for each work item type.
+ * An empty array means the type cannot have children.
+ */
+export const ALLOWED_CHILD_TYPES: Record<WorkItemType, readonly WorkItemType[]> = {
+    epic:        ['feature'],
+    feature:     ['pbi'],
+    pbi:         ['work-item', 'bug'],
+    'work-item': [],
+    bug:         [],
+};
 
 // ============================================================================
 // Plan Types
@@ -167,8 +208,10 @@ export interface WorkItem {
     description: string;
     /** Current lifecycle status. */
     status: WorkItemStatus;
-    /** Work item type — 'work-item' (default) or 'bug'. */
+    /** Work item type — 'work-item' (default), 'bug', 'epic', 'feature', or 'pbi'. */
     type?: WorkItemType;
+    /** Parent work item ID (hierarchy). Only set when hierarchy is enabled. */
+    parentId?: string;
     /** ISO timestamp when the work item was created. */
     createdAt: string;
     /** ISO timestamp of last modification. */
@@ -248,6 +291,8 @@ export interface WorkItemIndexEntry {
     description?: string;
     status: WorkItemStatus;
     type?: WorkItemType;
+    /** Parent work item ID (hierarchy). Only set when hierarchy is enabled. */
+    parentId?: string;
     source: WorkItemSource;
     priority?: WorkItemPriority;
     planVersion?: number;
@@ -312,6 +357,8 @@ export interface WorkItemStore {
     listWorkItems(filter?: WorkItemFilter): Promise<WorkItemListResult>;
     /** List work items grouped by status with per-group pagination. */
     listWorkItemsGrouped(filter?: WorkItemFilter): Promise<WorkItemGroupedResult>;
+    /** List direct children of a work item within a repo. */
+    listChildren(parentId: string, repoId: string): Promise<WorkItemIndexEntry[]>;
 
     // Plan versioning
     getPlanVersions(workItemId: string): Promise<WorkItemPlanVersion[]>;
@@ -385,6 +432,7 @@ export function toIndexEntry(item: WorkItem): WorkItemIndexEntry {
         description: item.description || undefined,
         status: item.status,
         type: item.type,
+        parentId: item.parentId,
         source: item.source,
         priority: item.priority,
         planVersion: item.plan?.version,
@@ -396,4 +444,36 @@ export function toIndexEntry(item: WorkItem): WorkItemIndexEntry {
         lastRunAt: getLastRunTime(item.executionHistory),
         tags: item.tags,
     };
+}
+
+// ============================================================================
+// Hierarchy Helpers
+// ============================================================================
+
+/**
+ * Returns the effective type for an item, defaulting to 'work-item' for
+ * existing data that pre-dates the type field.
+ */
+export function getEffectiveType(type?: WorkItemType): WorkItemType {
+    return type ?? 'work-item';
+}
+
+/** Returns true if the type is a hierarchy container (epic, feature, pbi). */
+export function isContainerType(type: WorkItemType): boolean {
+    return HIERARCHY_CONTAINER_TYPES.has(type);
+}
+
+/** Returns true if the type is an executable leaf (work-item, bug). */
+export function isLeafType(type: WorkItemType): boolean {
+    return LEAF_WORK_ITEM_TYPES.has(type);
+}
+
+/**
+ * Returns true if `parentType` is a valid parent for `childType`.
+ * Note: being unparented (no parentId) is always valid; this function
+ * only validates when a parentId is present.
+ */
+export function isValidParentChildTypes(childType: WorkItemType, parentType: WorkItemType): boolean {
+    const allowed = ALLOWED_PARENT_TYPES[childType] as readonly WorkItemType[];
+    return allowed.includes(parentType);
 }

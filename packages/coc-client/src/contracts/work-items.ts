@@ -12,7 +12,7 @@ export type WorkItemStatus =
   | string;
 export type WorkItemPriority = 'high' | 'normal' | 'low';
 export type WorkItemSource = 'manual' | 'chat' | 'schedule';
-export type WorkItemType = 'work-item' | 'bug';
+export type WorkItemType = 'work-item' | 'bug' | 'epic' | 'feature' | 'pbi';
 
 export interface WorkItemPlan {
   version: number;
@@ -52,6 +52,8 @@ export interface WorkItem {
   description: string;
   status: WorkItemStatus;
   type?: WorkItemType;
+  /** Parent work item ID (hierarchy). Only set when hierarchy is enabled. */
+  parentId?: string;
   createdAt: string;
   updatedAt: string;
   completedAt?: string;
@@ -100,6 +102,8 @@ export interface CreateWorkItemRequest {
   title: string;
   description?: string;
   type?: WorkItemType;
+  /** Parent work item ID (hierarchy). Only accepted when hierarchy flag is enabled. */
+  parentId?: string;
   source?: WorkItemSource;
   sourceId?: string;
   priority?: WorkItemPriority;
@@ -121,6 +125,8 @@ export interface CreateWorkItemFromChatRequest extends JsonObject {
 export interface UpdateWorkItemRequest extends Partial<Pick<WorkItem, 'title' | 'description' | 'status' | 'priority' | 'tags' | 'autoExecute'>> {
   completedAt?: string;
   reviewComments?: unknown[];
+  /** Update parent link (hierarchy). Only accepted when hierarchy flag is enabled. */
+  parentId?: string | null;
 }
 
 export interface ExecuteWorkItemRequest extends JsonObject {
