@@ -109,6 +109,13 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         selectedSkillNames?: string[],
         model?: string,
         turnSource?: TurnSource,
+        /**
+         * Per-turn reasoning-effort override. Takes priority over the
+         * persisted per-model preference. Silently ignored when the active
+         * model doesn't support reasoning (the SDK resolver throws otherwise,
+         * but we let it surface as a clear error rather than swallowing).
+         */
+        reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh',
     ): Promise<void> {
         const logger = getLogger();
         const startTime = Date.now();
@@ -292,13 +299,18 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 const { resolveDefaultModel } = await import('../preferences-handler');
                 reasoningModel = resolveDefaultModel(this.dataDir, wsId, 'followUp');
             }
-            // Resolve reasoning effort: persisted per-model preference > SDK default
-            let requestedEffort: Parameters<typeof resolveReasoningSelection>[0]['requestedEffort'];
-            if (reasoningModel) {
+            // Resolve reasoning effort: per-turn override > persisted per-model preference > SDK default.
+            // The per-turn override is supplied by the UI's EffortPillSelector
+            // (or any caller of executeFollowUp) and wins over the user's
+            // persisted default — this matches the chat-base executor's
+            // precedence so new chats and follow-ups behave identically.
+            type _RequestedEffort = Parameters<typeof resolveReasoningSelection>[0]['requestedEffort'];
+            let requestedEffort: _RequestedEffort = reasoningEffort;
+            if (!requestedEffort && reasoningModel) {
                 const { loadConfigFile } = await import('../../config');
                 const cfg = loadConfigFile();
                 const persisted = cfg?.models?.reasoningEfforts?.[reasoningModel];
-                if (persisted) requestedEffort = persisted as typeof requestedEffort;
+                if (persisted) requestedEffort = persisted as _RequestedEffort;
             }
             const reasoningSelection = resolveReasoningSelection({
                 modelId: reasoningModel,

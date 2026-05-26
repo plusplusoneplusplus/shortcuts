@@ -136,6 +136,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [processDetails, setProcessDetails] = useState<any>(null);
     const [copied, setCopied] = useState(false);
     const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
+    const [effortOverride, setEffortOverride] = useState<'low' | 'medium' | 'high' | null>(null);
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [sessionTokenLimit, setSessionTokenLimit] = useState<number | undefined>(undefined);
     const [sessionCurrentTokens, setSessionCurrentTokens] = useState<number | undefined>(undefined);
@@ -562,6 +563,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         getAttachedContext: attachedContext.getItems,
         clearAttachedContext: attachedContext.clear,
         modelOverride: modelCommand.modelOverride,
+        effortOverride,
         workspaceId,
         // After a successful Ralph promotion the follow-up area's `allowedModes`
         // recomputes (the chat now has a ralph context) and the Ralph pill
@@ -1393,6 +1395,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             sessionTokenLimit={sessionTokenLimit}
                             sessionCurrentTokens={sessionCurrentTokens}
                             activeProvider={sessionProvider}
+                            effortOverride={effortOverride}
+                            onEffortChange={setEffortOverride}
                         />
                     )}
                 </div>
@@ -1500,6 +1504,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     workingDirectory={workingDirectory}
                     sessionTokenLimit={sessionTokenLimit}
                     sessionCurrentTokens={sessionCurrentTokens}
+                    activeProvider={sessionProvider}
+                    effortOverride={effortOverride}
+                    onEffortChange={setEffortOverride}
                 />
             )}
             {isMobileScratchpad && (

@@ -26,6 +26,8 @@ import { useModelCommand } from './hooks/useModelCommand';
 import { SlashCommandMenu, getMetaSkillItems, mergeSkillsWithMeta, type SkillItem } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
 import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION } from './ModePillSelector';
+import { EffortPillSelector } from './EffortPillSelector';
+import type { EffortLevel } from './EffortPillSelector';
 import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
@@ -59,6 +61,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const [error, setError] = useState<string | null>(null);
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [selectedProvider, setSelectedProvider] = useState<ChatProvider>(() => getDefaultProvider());
+    const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
     const richTextRef = useRef<RichTextInputHandle>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -96,10 +99,16 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             if (draft.modelOverride) {
                 modelCommand.setModelOverride(draft.modelOverride);
             }
+            if (draft.effortOverride === 'low' || draft.effortOverride === 'medium' || draft.effortOverride === 'high') {
+                setEffortOverride(draft.effortOverride);
+            } else {
+                setEffortOverride(null);
+            }
         } else {
             setInput('');
             setCursorPos(0);
             setSelectedMode('ask');
+            setEffortOverride(null);
         }
     }, [draftKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -108,10 +117,10 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     useEffect(() => {
         if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
         saveTimerRef.current = setTimeout(() => {
-            setDraft(draftKey, input, selectedMode, modelCommand.modelOverride);
+            setDraft(draftKey, input, selectedMode, modelCommand.modelOverride, effortOverride);
         }, 300);
         return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-    }, [draftKey, input, selectedMode, modelCommand.modelOverride]);
+    }, [draftKey, input, selectedMode, modelCommand.modelOverride, effortOverride]);
 
     // Fetch skills when workspaceId changes
     useEffect(() => {
@@ -251,6 +260,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                     ...(contextOverride ? { context: contextOverride } : {}),
                     ...(attachmentPayload.length > 0 ? { attachments: attachmentPayload } : {}),
                     ...(modelCommand.modelOverride ? { model: modelCommand.modelOverride } : {}),
+                    ...(effortOverride ? { reasoningEffort: effortOverride } : {}),
                     provider: selectedProvider,
                 } as any,
             });
@@ -510,6 +520,16 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                 >✕</span>
                             )}
                         </button>
+                        {/* Effort pill — picks `task.config.reasoningEffort` for
+                             models that support extended thinking. `null`
+                             (no button selected) leaves the override unset
+                             and lets the executor fall back to the model's
+                             persisted/SDK default. */}
+                        <EffortPillSelector
+                            value={effortOverride}
+                            onChange={setEffortOverride}
+                            className="ml-0.5"
+                        />
                         <div className="flex-1 min-w-0" />
                         {/* Tools zone — slash/mention/attach live on the right of
                              the spacer (matches the OpenDesign composer ordering:

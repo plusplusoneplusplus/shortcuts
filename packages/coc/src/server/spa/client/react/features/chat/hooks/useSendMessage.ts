@@ -51,6 +51,12 @@ export interface UseSendMessageOptions {
     /** Optional model override to include in the POST body. */
     modelOverride?: string | null;
     /**
+     * Optional per-turn reasoning-effort override to include in the POST body.
+     * `null` (or omitted) means no override — the executor falls back to the
+     * persisted per-model effort, then the SDK default.
+     */
+    effortOverride?: 'low' | 'medium' | 'high' | null;
+    /**
      * Workspace ID used for the Ralph promotion endpoint when `selectedMode === 'ralph'`.
      * Without it the server falls back to the workspaceId stored on the process.
      */
@@ -92,6 +98,7 @@ export function useSendMessage({
     getAttachedContext,
     clearAttachedContext,
     modelOverride,
+    effortOverride,
     workspaceId,
     onPromotedToRalph,
 }: UseSendMessageOptions): {
@@ -111,7 +118,8 @@ export function useSendMessage({
         deliveryMode,
         ...(skillNames.length > 0 ? { skillNames } : {}),
         ...(modelOverride ? { model: modelOverride } : {}),
-    }), [images, modelOverride, selectedMode, toPayload]);
+        ...(effortOverride ? { reasoningEffort: effortOverride } : {}),
+    }), [images, modelOverride, effortOverride, selectedMode, toPayload]);
 
     const closeFollowUpStream = useCallback(() => {
         if (followUpEventSourceRef.current) {

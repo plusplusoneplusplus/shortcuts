@@ -595,6 +595,16 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             // Validate optional model override
             const modelOverride: string | undefined = typeof body.model === 'string' && body.model.trim().length > 0 ? body.model.trim() : undefined;
 
+            // Validate optional per-turn reasoning-effort override. Accepted
+            // values mirror the SDK contract: low | medium | high | xhigh.
+            // Unknown values are silently dropped so a stale client never
+            // breaks an otherwise-valid follow-up.
+            const VALID_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
+            const effortOverride: 'low' | 'medium' | 'high' | 'xhigh' | undefined =
+                typeof body.reasoningEffort === 'string' && VALID_EFFORTS.has(body.reasoningEffort)
+                    ? (body.reasoningEffort as 'low' | 'medium' | 'high' | 'xhigh')
+                    : undefined;
+
             // Pass content through as-is — /skill tokens are kept in the prompt
             // so the AI SDK receives the full user intent (e.g. "/impl fix the bug").
             const messageContent = (body.content as string);
@@ -619,6 +629,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                     ...(validatedImages ? { images: validatedImages } : {}),
                     ...(isPasteExternalized ? { pasteExternalized: true } : {}),
                     ...(modelOverride ? { model: modelOverride } : {}),
+                    ...(effortOverride ? { reasoningEffort: effortOverride } : {}),
                     ...(modeOverride ? { mode: modeOverride } : {}),
                     ...(attachments ? { attachments } : {}),
                     ...(imageTempDir ? { imageTempDir } : {}),
@@ -677,14 +688,19 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                                 ...(selectedSkillNames && selectedSkillNames.length > 0 ? { context: { skills: selectedSkillNames } } : {}),
                                 ...(modeOverride ? { mode: modeOverride } : {}),
                                 ...(modelOverride ? { model: modelOverride } : {}),
+                                ...(effortOverride ? { reasoningEffort: effortOverride } : {}),
                                 deliveryMode,
                             },
-                            config: {},
+                            // Mirror the per-turn reasoning-effort into
+                            // config so executors that inspect
+                            // `task.config.reasoningEffort` (e.g. chat-base
+                            // executor for non-follow-up forks) see it too.
+                            config: effortOverride ? { reasoningEffort: effortOverride } : {},
                             displayName,
                         });
                     }
                 } else {
-                    bridge.executeFollowUp(id, messageContentWithContext ?? messageContent, attachments, modeOverride, deliveryMode, validatedImages, selectedSkillNames, modelOverride).catch(() => {
+                    bridge.executeFollowUp(id, messageContentWithContext ?? messageContent, attachments, modeOverride, deliveryMode, validatedImages, selectedSkillNames, modelOverride, undefined, effortOverride).catch(() => {
                     }).finally(() => {
                         if (imageTempDir) { cleanupTempDir(imageTempDir); }
                     });

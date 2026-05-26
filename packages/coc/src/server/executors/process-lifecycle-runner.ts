@@ -124,6 +124,8 @@ export interface LifecycleRunnerOptions {
         selectedSkillNames?: string[],
         model?: string,
         turnSource?: TurnSource,
+        /** Per-turn reasoning-effort override, when provided by the caller. */
+        reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh',
     ) => Promise<void>;
     /** Dispatch execution by task type (chat/workflow/script). */
     executeByTypeFn: (task: QueuedTask, prompt: string) => Promise<unknown>;
@@ -254,6 +256,15 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 return { success: false, error: err instanceof Error ? err : new Error(errorMsg), durationMs: Date.now() - startTime };
             }
             try {
+                // Per-turn reasoning effort flows in via the follow-up payload
+                // (see queue-shared.validateAndParseTask) but follow-up tasks
+                // are dispatched to the follow-up executor by *parameter*, not
+                // task.config — mirror the `model` pattern and pass it
+                // explicitly. `task.config.reasoningEffort` is also populated,
+                // so executors that need it for restart/fork scenarios still
+                // find it there.
+                const followUpEffort = (followUpPayload as any).reasoningEffort
+                    ?? task.config.reasoningEffort;
                 await opts.executeFollowUpFn(
                     followUpPayload.processId!,
                     followUpPayload.prompt,
@@ -264,6 +275,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     followUpPayload.context?.skills,
                     (followUpPayload as any).model,
                     turnSource,
+                    followUpEffort,
                 );
                 const duration = Date.now() - startTime;
                 logger.debug(LogCategory.AI, `[QueueExecutor] Follow-up task ${task.id} completed in ${duration}ms`);

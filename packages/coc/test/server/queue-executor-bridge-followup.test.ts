@@ -134,7 +134,8 @@ describe('execute() short-circuit for chat-followup tasks', () => {
 
         await executor.execute(task);
 
-        expect(spy).toHaveBeenCalledWith('proc-1', 'follow up', attachments, undefined, undefined, undefined, undefined, undefined, undefined);
+        // 10th arg = per-turn reasoningEffort override (undefined when payload has no override)
+        expect(spy).toHaveBeenCalledWith('proc-1', 'follow up', attachments, undefined, undefined, undefined, undefined, undefined, undefined, undefined);
 
         spy.mockRestore();
     });

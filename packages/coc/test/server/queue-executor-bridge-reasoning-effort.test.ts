@@ -106,15 +106,21 @@ function chatTask(reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', model?:
     };
 }
 
-function followUpTask(processId: string, model?: string): QueuedTask {
+function followUpTask(processId: string, model?: string, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'): QueuedTask {
     return {
         id: 'fu-task-re-1',
         type: 'chat',
         priority: 'normal',
         status: 'running',
         createdAt: Date.now(),
-        payload: { kind: 'chat', processId, prompt: 'follow up', ...(model ? { model } : {}) },
-        config: {},
+        payload: {
+            kind: 'chat',
+            processId,
+            prompt: 'follow up',
+            ...(model ? { model } : {}),
+            ...(reasoningEffort ? { reasoningEffort } : {}),
+        },
+        config: { ...(reasoningEffort ? { reasoningEffort } : {}) },
         displayName: 'follow up',
     };
 }
@@ -310,5 +316,29 @@ describe('reasoningEffort wiring in queue executor bridge', () => {
         const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
         expect(call.model).toBe('claude-opus-4.7');
         expect(call.reasoningEffort).toBe('high');
+    });
+
+    // -------------------------------------------------------------------------
+    it('executeFollowUp() honours payload.reasoningEffort as a per-turn override', async () => {
+        // Active model supports both `low` and `high`; per-turn override must
+        // win over the model's default and any persisted preference.
+        getModelSpy.mockImplementation((id: string) =>
+            id === 'multi-effort-model'
+                ? modelInfo(id, { supportedEfforts: ['low', 'medium', 'high'], defaultEffort: 'medium' })
+                : undefined,
+        );
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const proc = createCompletedProcessWithSession('proc-re-2', 'sess-re-2');
+        proc.metadata = { type: 'chat', model: 'multi-effort-model' };
+        await store.addProcess(proc);
+
+        const task = followUpTask('proc-re-2', 'multi-effort-model', 'low');
+        await executor.execute(task);
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
+        expect(call.model).toBe('multi-effort-model');
+        expect(call.reasoningEffort).toBe('low');
     });
 });

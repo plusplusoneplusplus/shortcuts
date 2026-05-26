@@ -112,6 +112,13 @@ export interface ProcessMessageRequest {
   images?: string[];
   skillNames?: string[];
   model?: string;
+  /**
+   * Optional per-turn reasoning-effort override. One of
+   * `'low' | 'medium' | 'high' | 'xhigh'`. When omitted, the executor
+   * falls back to the per-model persisted preference, then the SDK
+   * default. Sent as `body.reasoningEffort` to `POST /api/processes/:id/message`.
+   */
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
   [key: string]: unknown;
 }
 
@@ -123,6 +130,11 @@ export interface PendingProcessMessage {
   displayContent?: string;
   mode?: 'ask' | 'plan' | 'autopilot' | string;
   model?: string;
+  /**
+   * Optional per-turn reasoning-effort override captured at message-buffer
+   * time, replayed when the message is drained as a follow-up.
+   */
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
   images?: string[];
   pasteExternalized?: boolean;
   attachments?: unknown[];

@@ -37,7 +37,7 @@ export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
     initialDelayMs?: number;
 }
 export interface QueueExecutorBridge {
-    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource): Promise<void>;
+    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'): Promise<void>;
     isSessionAlive(processId: string): Promise<boolean>;
     cancelProcess?(processId: string): Promise<void>;
     steerProcess?(processId: string, message: string): Promise<boolean>;
@@ -262,7 +262,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         try {
             return await this.executors.runner.run(task, {
                 cancelledTasks: this.cancelledTasks,
-                executeFollowUpFn: (pid, msg, att, mode, dm, imgs, skills, mdl, ts) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs, skills, mdl, ts),
+                executeFollowUpFn: (pid, msg, att, mode, dm, imgs, skills, mdl, ts, re) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs, skills, mdl, ts, re),
                 executeByTypeFn: (t, p) => this.executors.dispatch(t, p),
                 getWorkingDirectoryFn: (t) => this.executors.getWorkingDirectory(t),
                 onDrainPendingMessages: (processId, taskId) => this.drainPendingMessages(processId, taskId),
@@ -345,8 +345,8 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         return resolved;
     }
 
-    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource): Promise<void> {
-        return this.executors.followUpExecutor.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource);
+    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'): Promise<void> {
+        return this.executors.followUpExecutor.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource, reasoningEffort);
     }
 
     /**
@@ -383,7 +383,10 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         );
 
         // Enqueue follow-up first — only remove pending message after success
-        // to prevent data loss if enqueue fails.
+        // to prevent data loss if enqueue fails. Per-turn reasoning-effort
+        // (captured when the message was buffered) is carried through to the
+        // replayed task so the follow-up executor honours it.
+        const pendingEffort = (nextMsg as { reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh' }).reasoningEffort;
         this.queueManager.enqueue({
             processId,
             type: 'chat',
@@ -394,13 +397,14 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 prompt: nextMsg.content,
                 ...(nextMsg.mode ? { mode: nextMsg.mode } : {}),
                 ...(nextMsg.model ? { model: nextMsg.model } : {}),
+                ...(pendingEffort ? { reasoningEffort: pendingEffort } : {}),
                 ...(nextMsg.attachments ? { attachments: nextMsg.attachments } : {}),
                 ...(nextMsg.imageTempDir ? { imageTempDir: nextMsg.imageTempDir } : {}),
                 ...(nextMsg.images ? { images: nextMsg.images } : {}),
                 ...(nextMsg.fileAttachmentMeta ? { fileAttachmentMeta: nextMsg.fileAttachmentMeta } : {}),
                 ...(nextMsg.skillNames && nextMsg.skillNames.length > 0 ? { context: { skills: nextMsg.skillNames } } : {}),
             },
-            config: {},
+            config: pendingEffort ? { reasoningEffort: pendingEffort } : {},
             displayName: nextMsg.content.trim().substring(0, 57) + (nextMsg.content.trim().length > 57 ? '...' : ''),
         });
         await this.store.updateProcess(processId, { pendingMessages: rest });

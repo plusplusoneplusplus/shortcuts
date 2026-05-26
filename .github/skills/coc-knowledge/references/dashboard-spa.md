@@ -77,14 +77,16 @@ Inside `WhisperCollapsedGroup`, tool calls render as compact "whisper-row" varia
 
 Stacked layout with:
 1. `RichTextInput` (contenteditable)
-2. Toolbar reads as five ownership zones separated by 1 px vertical dividers (`chat-toolbar-divider-*`):
-   - **New chat (`NewChatArea`)**: `AgentSelectorChip` → divider → `ModePillSelector` → divider → model picker → spacer → ctool buttons (`/`, `@`, attach) → divider → send
-   - **Follow-up (`FollowUpInputArea`)**: `ModePillSelector` → divider → model picker → spacer → ctool buttons → `ComposerMetaStrip` → divider → `QueueFollowUpButton`. Provider isn't switchable on a follow-up (locked to the session), so the row starts at the mode zone.
+2. Toolbar reads as ownership zones separated by 1 px vertical dividers (`chat-toolbar-divider-*`):
+   - **New chat (`NewChatArea`)**: `AgentSelectorChip` → divider → `ModePillSelector` → divider → model picker → `EffortPillSelector` → spacer → ctool buttons (`/`, `@`, attach) → divider → send
+   - **Follow-up (`FollowUpInputArea`)**: `ModePillSelector` → divider → model picker → `EffortPillSelector` (rendered only when the parent supplies `onEffortChange`) → spacer → ctool buttons → `ComposerMetaStrip` → divider → `QueueFollowUpButton`. Provider isn't switchable on a follow-up (locked to the session), so the row starts at the mode zone.
 3. `ComposerMetaStrip`: cwd chip + context-window fuel gauge + provider badge for non-Copilot sessions. In the follow-up toolbar it sits between the tools zone and the send divider so its info reads as status next to send.
 
 Focus indicator propagates mode-colored ring from contenteditable to parent card.
 
 New chats use `AgentSelectorChip` to choose a per-chat provider. The initial selection comes from the workspace's `lastChatProvider` preference when that provider is enabled and available; otherwise it falls back to the configured `defaultProvider` from runtime config, and then to Copilot if the configured default provider cannot be selected. Follow-up inputs show the provider stored on the process metadata so existing chats continue using their original provider.
+
+`EffortPillSelector` drives the per-turn `reasoningEffort` override (Low/Medium/High; `null` = no override, falls back to the persisted per-model effort then the SDK default). New chats persist the selection alongside the draft (`useDraftStore` → `Draft.effortOverride`). Follow-ups thread the choice through `useSendMessage → ProcessMessageRequest.reasoningEffort → POST /api/processes/:id/message` and into either `bridge.enqueue` (queued) or `bridge.executeFollowUp` (direct/buffered). The server mirrors the value into `task.config.reasoningEffort` via `queue-shared.validateAndParseTask`, so executors see it from a single canonical location.
 
 ## Top Bar
 

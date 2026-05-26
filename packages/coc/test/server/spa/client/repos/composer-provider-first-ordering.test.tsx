@@ -355,6 +355,24 @@ describe('Composer provider-first ordering', () => {
             expect(indexInParent(attach)).toBeLessThan(indexInParent(divider));
             expect(indexInParent(divider)).toBeLessThan(indexInParent(send));
         });
+
+        it('renders the effort pill after the model picker and before the tools zone', () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            const model = screen.getByTestId('model-picker-chip');
+            const effort = screen.getByTestId('effort-pill-selector');
+            const slash = screen.getByTestId('chat-toolbar-slash-btn');
+            expect(indexInParent(model)).toBeLessThan(indexInParent(effort));
+            expect(indexInParent(effort)).toBeLessThan(indexInParent(slash));
+        });
+
+        it('renders the effort pill in the unselected (auto) state by default', () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            const effort = screen.getByTestId('effort-pill-selector');
+            expect(effort.getAttribute('data-effort-value')).toBe('auto');
+            expect(screen.getByTestId('effort-pill-low').getAttribute('data-selected')).toBe('false');
+            expect(screen.getByTestId('effort-pill-medium').getAttribute('data-selected')).toBe('false');
+            expect(screen.getByTestId('effort-pill-high').getAttribute('data-selected')).toBe('false');
+        });
     });
 
     describe('FollowUpInputArea stacked toolbar', () => {
@@ -398,6 +416,29 @@ describe('Composer provider-first ordering', () => {
             render(<FollowUpInputArea {...defaultFollowUpProps({ hideModeSelector: true })} />);
             expect(screen.queryByTestId('mode-selector')).toBeNull();
             expect(screen.queryByTestId('chat-toolbar-divider-mode')).toBeNull();
+        });
+
+        it('renders the effort pill after the model picker when onEffortChange is wired', () => {
+            render(<FollowUpInputArea {...defaultFollowUpProps({ onEffortChange: vi.fn(), effortOverride: null })} />);
+            const model = screen.getByTestId('model-picker-chip');
+            const effort = screen.getByTestId('effort-pill-selector');
+            const slash = screen.getByTestId('chat-toolbar-slash-btn');
+            expect(indexInParent(model)).toBeLessThan(indexInParent(effort));
+            expect(indexInParent(effort)).toBeLessThan(indexInParent(slash));
+        });
+
+        it('hides the effort pill when onEffortChange is not wired (legacy callers unchanged)', () => {
+            render(<FollowUpInputArea {...defaultFollowUpProps()} />);
+            expect(screen.queryByTestId('effort-pill-selector')).toBeNull();
+        });
+
+        it('shows the effort pill in the pressed state for the supplied override', () => {
+            render(<FollowUpInputArea {...defaultFollowUpProps({ onEffortChange: vi.fn(), effortOverride: 'high' })} />);
+            const effort = screen.getByTestId('effort-pill-selector');
+            expect(effort.getAttribute('data-effort-value')).toBe('high');
+            expect(screen.getByTestId('effort-pill-high').getAttribute('data-selected')).toBe('true');
+            expect(screen.getByTestId('effort-pill-low').getAttribute('data-selected')).toBe('false');
+            expect(screen.getByTestId('effort-pill-medium').getAttribute('data-selected')).toBe('false');
         });
     });
 });

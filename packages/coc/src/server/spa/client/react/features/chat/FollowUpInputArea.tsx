@@ -10,6 +10,8 @@ import { SlashCommandMenu } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
 import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION } from './ModePillSelector';
 import type { ModePillOption } from './ModePillSelector';
+import { EffortPillSelector } from './EffortPillSelector';
+import type { EffortLevel } from './EffortPillSelector';
 import { ComposerMetaStrip } from './ComposerMetaStrip';
 import { useModifierKey } from '../../hooks/ui/useModifierKey';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
@@ -105,6 +107,15 @@ export interface FollowUpInputAreaProps {
     sessionCurrentTokens?: number;
     /** Active AI provider — shown as a read-only badge in the toolbar when set to 'codex' or 'claude'. */
     activeProvider?: 'copilot' | 'codex' | 'claude';
+    /**
+     * Current per-turn reasoning-effort override (`'low' | 'medium' | 'high'`).
+     * `null` means no override — the executor falls back to the persisted
+     * per-model effort, then the SDK default. When omitted, the effort pill
+     * is rendered as an unselected control. Wired via `onEffortChange`.
+     */
+    effortOverride?: EffortLevel | null;
+    /** Called when the user picks (or clears) a reasoning-effort level. */
+    onEffortChange?: (value: EffortLevel | null) => void;
 }
 
 export function FollowUpInputArea({
@@ -143,6 +154,8 @@ export function FollowUpInputArea({
     sessionTokenLimit,
     sessionCurrentTokens,
     activeProvider,
+    effortOverride = null,
+    onEffortChange,
 }: FollowUpInputAreaProps) {
     const inputWrapperRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -641,6 +654,18 @@ export function FollowUpInputArea({
                                         >✕</span>
                                     )}
                                 </button>
+                            )}
+                            {/* Effort pill — picks the per-turn
+                                 `reasoningEffort` sent with this follow-up.
+                                 Hidden when the parent has not wired
+                                 `onEffortChange`, so legacy callers (e.g.
+                                 the side-panel commit chat) render unchanged. */}
+                            {onEffortChange && (
+                                <EffortPillSelector
+                                    value={effortOverride}
+                                    onChange={onEffortChange}
+                                    className="ml-0.5"
+                                />
                             )}
                             <div className="flex-1 min-w-0" />
                             {/* Tools zone — slash/mention/attach live on the

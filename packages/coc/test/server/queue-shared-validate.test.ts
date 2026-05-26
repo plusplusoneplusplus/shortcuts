@@ -188,6 +188,74 @@ describe('validateAndParseTask – payload.model promotion to config.model', () 
 });
 
 // ============================================================================
+// payload.reasoningEffort → config.reasoningEffort
+// ============================================================================
+
+describe('validateAndParseTask – payload.reasoningEffort mapping', () => {
+    it('maps payload.reasoningEffort to config.reasoningEffort for chat tasks', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'Hello', mode: 'ask', reasoningEffort: 'high' },
+        });
+
+        expect(result.valid).toBe(true);
+        expect(result.input!.config.reasoningEffort).toBe('high');
+    });
+
+    it('keeps reasoningEffort in payload alongside the config copy', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'Hello', mode: 'ask', reasoningEffort: 'medium' },
+        });
+
+        expect(result.valid).toBe(true);
+        expect((result.input!.payload as any).reasoningEffort).toBe('medium');
+        expect(result.input!.config.reasoningEffort).toBe('medium');
+    });
+
+    it('prefers config.reasoningEffort over payload.reasoningEffort when both are set', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'Hello', mode: 'ask', reasoningEffort: 'low' },
+            config: { reasoningEffort: 'high' },
+        });
+
+        expect(result.valid).toBe(true);
+        expect(result.input!.config.reasoningEffort).toBe('high');
+    });
+
+    it('omits config.reasoningEffort when not provided in payload or config', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'Hello', mode: 'ask' },
+        });
+
+        expect(result.valid).toBe(true);
+        expect(result.input!.config.reasoningEffort).toBeUndefined();
+    });
+
+    it('drops invalid reasoningEffort values silently', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'Hello', mode: 'ask', reasoningEffort: 'super-duper' },
+        });
+
+        expect(result.valid).toBe(true);
+        expect(result.input!.config.reasoningEffort).toBeUndefined();
+    });
+
+    it('accepts xhigh as a valid per-turn effort', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'Hello', mode: 'ask', reasoningEffort: 'xhigh' },
+        });
+
+        expect(result.valid).toBe(true);
+        expect(result.input!.config.reasoningEffort).toBe('xhigh');
+    });
+});
+
+// ============================================================================
 // Dispatch correctness end-to-end guard check
 // ============================================================================
 
