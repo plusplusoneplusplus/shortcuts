@@ -308,6 +308,17 @@ export class FileWorkItemStore implements WorkItemStore {
             const repoId = await this.findRepoForItem(id);
             if (!repoId) return;
 
+            const index = await this.readIndex(repoId);
+
+            // Block deletion if children exist
+            const childCount = index.filter(e => e.parentId === id).length;
+            if (childCount > 0) {
+                throw new Error(
+                    `Cannot delete work item: it has ${childCount} child item(s). ` +
+                    `Move, unlink, or delete children first.`,
+                );
+            }
+
             // Remove item file
             try {
                 await fs.unlink(this.itemPath(repoId, id));
@@ -319,7 +330,6 @@ export class FileWorkItemStore implements WorkItemStore {
             } catch { /* ignore */ }
 
             // Remove from index
-            const index = await this.readIndex(repoId);
             const filtered = index.filter(e => e.id !== id);
             await this.writeIndex(repoId, filtered);
 
@@ -539,6 +549,15 @@ export class FileWorkItemStore implements WorkItemStore {
         if (!repoId) return [];
         const item = await this.readItem(repoId, workItemId);
         return item?.changes ?? [];
+    }
+
+    /**
+     * List all index entries whose parentId matches the given id.
+     * Used by hierarchy routes to enumerate direct children.
+     */
+    async listChildren(parentId: string, repoId: string): Promise<WorkItemIndexEntry[]> {
+        const index = await this.readIndex(repoId);
+        return index.filter(e => e.parentId === parentId);
     }
 
     // ── Internal helpers ────────────────────────────────────────
