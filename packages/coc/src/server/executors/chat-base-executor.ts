@@ -59,7 +59,7 @@ import { buildMemoryV2Addon } from './memory-v2-addon';
 import type { MemoryV2Addon } from './memory-v2-addon';
 import { resolveAutoFolderContext } from './auto-folder-utils';
 import { systemMessageBuilder } from './system-message-builder';
-import { buildChatToolBundle } from './chat-tool-builder';
+import { buildChatTurnContext } from './chat-turn-context-builder';
 import { getPromptOverride } from '../admin/ralph-prompt-overrides';
 
 // ============================================================================
@@ -333,19 +333,18 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             : undefined;
 
         const processId = toQueueProcessId(task.id);
-        const memoryV2 = await this.buildMemoryV2Addon(payload.workspaceId, prompt, processId);
         const notePath = payload.context?.noteChat?.notePath;
 
         const loopDeps = this.buildLoopToolDeps(processId);
 
-        const toolBundle = buildChatToolBundle({
+        const ctx = await buildChatTurnContext({
             dataDir: this.dataDir,
             store: this.store,
             workspaceId: payload.workspaceId,
             processId,
+            query: prompt,
             followUpSuggestions: this.followUpSuggestions,
             broadcastWorkItem,
-            memoryV2,
             scheduleWakeup: loopDeps.scheduleWakeup,
             loopTools: loopDeps.loopTools,
             askUser: {
@@ -366,18 +365,18 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         });
         const session = this.getOrCreateSession(processId);
         session.pendingAskUser = {
-            answerQuestion: toolBundle.askUser!.answerQuestion,
-            skipQuestion: toolBundle.askUser!.skipQuestion,
-            answerQuestions: toolBundle.askUser!.answerQuestions,
-            cancelAll: toolBundle.askUser!.cancelAll,
-            hasPending: toolBundle.askUser!.hasPending,
+            answerQuestion: ctx.askUser!.answerQuestion,
+            skipQuestion: ctx.askUser!.skipQuestion,
+            answerQuestions: ctx.askUser!.answerQuestions,
+            cancelAll: ctx.askUser!.cancelAll,
+            hasPending: ctx.askUser!.hasPending,
         };
 
         const systemMessage = await systemMessageBuilder()
             .append(buildModeSystemMessage(mode)?.content)
             .withRepoInstructions(workingDirectory, mode)
-            .appendMemoryV2(memoryV2)
-            .appendToolGuidance(toolBundle.toolGuidance)
+            .appendMemoryV2(ctx.memoryV2)
+            .appendToolGuidance(ctx.toolGuidance)
             .appendAutoFolder(autoFolderContext)
             .appendNoteFile(notePath)
             .build();
@@ -395,12 +394,10 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         return {
             agentMode: mode === 'plan' ? 'plan' as AgentMode : 'interactive' as AgentMode,
             systemMessage,
-            tools: toolBundle.tools,
+            tools: ctx.tools,
             effectivePrompt: prompt,
-            excludedTools: memoryV2.excludedBuiltinTools,
-            dispose: () => {
-                memoryV2.dispose();
-            },
+            excludedTools: ctx.excludedTools,
+            dispose: ctx.dispose,
         };
     }
 

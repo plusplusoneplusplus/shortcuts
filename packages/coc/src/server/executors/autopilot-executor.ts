@@ -23,7 +23,7 @@ import { systemMessageBuilder } from './system-message-builder';
 import type { ChatPayload } from '../tasks/task-types';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
-import { buildChatToolBundle } from './chat-tool-builder';
+import { buildChatTurnContext } from './chat-turn-context-builder';
 
 // ============================================================================
 // AutopilotExecutor
@@ -50,29 +50,34 @@ export class AutopilotExecutor extends ChatBaseExecutor {
 
         const processId = toQueueProcessId(task.id);
         const loopDeps = this.buildLoopToolDeps(processId);
-        const { tools, toolGuidance } = buildChatToolBundle({
+
+        // Autopilot explicitly opts out of Memory V2 — it operates in full-access
+        // mode without per-session memory scoping.
+        const ctx = await buildChatTurnContext({
             dataDir: this.dataDir,
             store: this.store,
             workspaceId: payload.workspaceId,
             processId,
+            query: prompt,
             followUpSuggestions: this.followUpSuggestions,
             broadcastWorkItem: this.getWsServerFn
                 ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
                 : undefined,
             scheduleWakeup: loopDeps.scheduleWakeup,
             loopTools: loopDeps.loopTools,
+            includeMemoryV2: false,
         });
 
         const systemMessage = await systemMessageBuilder()
-            .appendToolGuidance(toolGuidance)
+            .appendToolGuidance(ctx.toolGuidance)
             .build();
 
         return {
             agentMode: 'autopilot' as AgentMode,
             systemMessage,
-            tools,
+            tools: ctx.tools,
             effectivePrompt: prompt,
-            dispose: undefined,
+            dispose: ctx.dispose,
         };
     }
 }

@@ -42,8 +42,8 @@ import { emitMessageSteering } from '../streaming/sse-handler';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
-import { buildChatToolBundle } from './chat-tool-builder';
-import type { MemoryV2Addon } from './memory-v2-addon';
+import { buildChatTurnContext } from './chat-turn-context-builder';
+import type { ChatTurnContext } from './chat-turn-context-builder';
 // ============================================================================
 // Types
 // ============================================================================
@@ -194,7 +194,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         this.getOrCreateSession(processId).outputBuffer = '';
         this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
 
-        let memoryV2: MemoryV2Addon | undefined;
+        let chatCtx: ChatTurnContext | undefined;
 
         try {
             // User turn is already persisted by the POST /message route handler
@@ -218,19 +218,17 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 );
             }
 
-            memoryV2 = await this.buildMemoryV2Addon(wsId, message, processId);
-
             const loopDeps = this.buildLoopToolDeps(processId);
-            const toolBundle = buildChatToolBundle({
+            chatCtx = await buildChatTurnContext({
                 dataDir: this.dataDir,
                 store: this.store,
                 workspaceId: wsId,
                 processId,
+                query: message,
                 followUpSuggestions: this.followUpSuggestions,
                 broadcastWorkItem: this.getWsServerFn
                     ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
                     : undefined,
-                memoryV2,
                 scheduleWakeup: loopDeps.scheduleWakeup,
                 loopTools: loopDeps.loopTools,
                 askUser: {
@@ -249,14 +247,14 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     },
                 },
             });
-            const filteredTools = toolBundle.tools;
+            const filteredTools = chatCtx.tools;
             const session = this.getOrCreateSession(processId);
             session.pendingAskUser = {
-                answerQuestion: toolBundle.askUser!.answerQuestion,
-                skipQuestion: toolBundle.askUser!.skipQuestion,
-                answerQuestions: toolBundle.askUser!.answerQuestions,
-                cancelAll: toolBundle.askUser!.cancelAll,
-                hasPending: toolBundle.askUser!.hasPending,
+                answerQuestion: chatCtx.askUser!.answerQuestion,
+                skipQuestion: chatCtx.askUser!.skipQuestion,
+                answerQuestions: chatCtx.askUser!.answerQuestions,
+                cancelAll: chatCtx.askUser!.cancelAll,
+                hasPending: chatCtx.askUser!.hasPending,
             };
 
             // Build the system message AFTER the tool bundle so the
@@ -266,8 +264,8 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             const systemMessage = await systemMessageBuilder()
                 .append(buildModeSystemMessage(currentMode)?.content)
                 .withRepoInstructions(workingDirectory, currentMode)
-                .appendMemoryV2(memoryV2)
-                .appendToolGuidance(toolBundle.toolGuidance)
+                .appendMemoryV2(chatCtx.memoryV2)
+                .appendToolGuidance(chatCtx.toolGuidance)
                 .appendAutoFolder(autoFolderContextForFollowUp)
                 .appendNoteFile(notePath)
                 .build();
@@ -316,8 +314,8 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 attachments,
                 deliveryMode: resolvedDeliveryMode,
                 tools: filteredTools.length > 0 ? filteredTools : undefined,
-                ...(memoryV2 && memoryV2.excludedBuiltinTools.length > 0
-                    ? { excludedTools: memoryV2.excludedBuiltinTools }
+                ...(chatCtx.excludedTools.length > 0
+                    ? { excludedTools: chatCtx.excludedTools }
                     : {}),
                 skillDirectories,
                 disabledSkills,
@@ -479,7 +477,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             );
             this.store.emitProcessComplete(processId, 'failed', `${duration}ms`);
         } finally {
-            memoryV2?.dispose();
+            chatCtx?.dispose();
             const buffer = this.sessions.get(processId)?.outputBuffer ?? '';
             this.cleanupSession(processId);
             this.store.unregisterFlushHandler?.(processId);

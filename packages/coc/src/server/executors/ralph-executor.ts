@@ -28,7 +28,7 @@ import { systemMessageBuilder } from './system-message-builder';
 import type { ChatPayload } from '../tasks/task-types';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
-import { buildChatToolBundle } from './chat-tool-builder';
+import { buildChatTurnContext } from './chat-turn-context-builder';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
 import { getPromptOverride } from '../admin/ralph-prompt-overrides';
 
@@ -137,19 +137,18 @@ export class RalphExecutor extends ChatBaseExecutor {
         }, resolvedBaseInstructions);
 
         const processId = toQueueProcessId(task.id);
-        const memoryV2 = await this.buildMemoryV2Addon(payload.workspaceId, prompt, processId);
-
         const loopDeps = this.buildLoopToolDeps(processId);
-        const { tools, toolGuidance } = buildChatToolBundle({
+
+        const ctx = await buildChatTurnContext({
             dataDir: this.dataDir,
             store: this.store,
             workspaceId: payload.workspaceId,
             processId,
+            query: prompt,
             followUpSuggestions: this.followUpSuggestions,
             broadcastWorkItem: this.getWsServerFn
                 ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
                 : undefined,
-            memoryV2,
             scheduleWakeup: loopDeps.scheduleWakeup,
             loopTools: loopDeps.loopTools,
         });
@@ -157,19 +156,17 @@ export class RalphExecutor extends ChatBaseExecutor {
         const systemMessage = await systemMessageBuilder()
             .append(ralphSystemPrompt)
             .withRepoInstructions(workingDirectory, 'ralph')
-            .appendMemoryV2(memoryV2)
-            .appendToolGuidance(toolGuidance)
+            .appendMemoryV2(ctx.memoryV2)
+            .appendToolGuidance(ctx.toolGuidance)
             .build();
 
         return {
             agentMode: 'autopilot' as AgentMode,
             systemMessage,
-            tools,
+            tools: ctx.tools,
             effectivePrompt: prompt,
-            excludedTools: memoryV2.excludedBuiltinTools,
-            dispose: () => {
-                memoryV2.dispose();
-            },
+            excludedTools: ctx.excludedTools,
+            dispose: ctx.dispose,
         };
     }
 
