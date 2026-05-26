@@ -594,7 +594,8 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                     return res.end(JSON.stringify({ error: 'Agent not found' }));
                 }
                 // Prefer inbound channel if agent is connected via call-home
-                if (inboundManager.hasAgent(agentId)) {
+                const inboundId = agent.address.startsWith('inbound://') ? agent.address.replace('inbound://', '') : undefined;
+                if (inboundId && inboundManager.hasAgent(inboundId)) {
                     try {
                         // Collect request body
                         const bodyChunks: Buffer[] = [];
@@ -607,7 +608,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                             if (typeof value === 'string') headers[key] = value;
                         }
                         const response = await inboundManager.proxyRequest(
-                            agentId,
+                            inboundId,
                             req.method ?? 'GET',
                             `/api/${rest}${url.search}`,
                             headers,
