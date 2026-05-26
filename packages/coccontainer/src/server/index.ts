@@ -62,6 +62,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
     const sseRelay = new SSERelay();
     const wsRelay = new WebSocketRelay();
     const inboundManager = new InboundAgentManager();
+    inboundManager.startHeartbeatCheck(30_000);
     const healthMonitor = new AgentHealthMonitor(agentStore, config.healthCheckIntervalMs, tunnelBridge, inboundManager);
 
     // Start health monitoring and SSE/WS connections for existing agents
@@ -164,13 +165,15 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
             // ── Container-level APIs ──────────────────────────────
             if (url.pathname === '/api/container/agents' && req.method === 'GET') {
                 // Augment agent list with bridge info and workspaces from inbound connections
+                // For offline agents, use cached data from disconnectedAgents
                 const list = agentStore.list().map(agent => {
                     const inboundId = agent.address.startsWith('inbound://') ? agent.address.replace('inbound://', '') : undefined;
                     const inbound = inboundId ? inboundManager.getAgent(inboundId) : undefined;
+                    const disconnected = inboundId ? inboundManager.getDisconnectedAgent(inboundId) : undefined;
                     return {
                         ...agent,
                         bridgeUrl: tunnelBridge.getLocalUrl(agent.id) || undefined,
-                        workspaces: inbound?.workspaces ?? [],
+                        workspaces: inbound?.workspaces ?? disconnected?.workspaces ?? [],
                     };
                 });
                 return sendJson(res, list);
@@ -785,8 +788,33 @@ async function proxyToAgent(
 async function aggregateWorkspaces(agents: Agent[], bridge: TunnelBridge, inboundMgr: InboundAgentManager): Promise<RemoteWorkspace[]> {
     const results = await Promise.all(
         agents
-            .filter(a => a.status !== 'offline')
             .map(async (agent) => {
+                // For offline agents, return cached workspace data
+                if (agent.status === 'offline') {
+                    const cached = workspaceCache.get(agent.address) || [];
+                    if (cached.length > 0) {
+                        return cached.map(ws => ({
+                            ...ws,
+                            agentId: agent.id,
+                            agentName: agent.name,
+                            agentAddress: agent.address,
+                            agentOffline: true,
+                        }));
+                    }
+                    // Fall back to disconnected agent metadata from InboundAgentManager
+                    const inboundId = agent.address.startsWith('inbound://') ? agent.address.replace('inbound://', '') : undefined;
+                    const disconnected = inboundId ? inboundMgr.getDisconnectedAgent(inboundId) : undefined;
+                    if (disconnected?.workspaces?.length) {
+                        return disconnected.workspaces.map(ws => ({
+                            ...ws,
+                            agentId: agent.id,
+                            agentName: agent.name,
+                            agentAddress: agent.address,
+                            agentOffline: true,
+                        }));
+                    }
+                    return [];
+                }
                 try {
                     const resp = await proxyToAgent(agent, inboundMgr, bridge, 'GET', '/api/workspaces');
                     if (resp.status !== 200) return workspaceCache.get(agent.address) || [];
