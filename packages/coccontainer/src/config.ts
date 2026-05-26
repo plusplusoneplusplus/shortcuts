@@ -116,7 +116,7 @@ const DEFAULT_DATA_DIR = path.join(os.homedir(), '.coccontainer');
 const DEFAULTS: ResolvedContainerConfig = {
     serve: {
         port: 5000,
-        host: 'localhost',
+        host: '127.0.0.1',
         dataDir: DEFAULT_DATA_DIR,
     },
     healthCheckIntervalMs: 30_000,

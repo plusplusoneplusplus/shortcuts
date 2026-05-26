@@ -22,7 +22,7 @@ describe('config', () => {
     it('should return defaults when no overrides', () => {
         const config = resolveConfig();
         expect(config.serve.port).toBe(5000);
-        expect(config.serve.host).toBe('localhost');
+        expect(config.serve.host).toBe('127.0.0.1');
         expect(config.healthCheckIntervalMs).toBe(30_000);
     });
 
