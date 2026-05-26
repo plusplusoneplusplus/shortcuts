@@ -39,9 +39,9 @@ Use this skill when the user asks you to **implement** a change in the codebase 
 
 6. **Verify build and tests pass before committing**
    - Run the repo's actual build command to confirm there are no compilation errors. Use only scripts that exist in `package.json` or are documented by the repository; do not invent root-level commands.
-   - Run the full test suite and ensure all tests pass.
-   - If the repo uses a monorepo/workspace structure, also run the build and tests for any sub-packages that contain changed code.
-   - **Do not proceed to commit until the build is clean and all tests pass.**
+   - Run only the tests likely impacted by your changes (e.g. tests in the same package or files that import the changed modules). Do **not** run the full test suite unless there is no way to scope the run.
+   - If the repo uses a monorepo/workspace structure, run the build and tests for the specific sub-packages that contain changed code — not all packages.
+   - **Do not proceed to commit until the build is clean and all impacted tests pass.**
    - If tests are flaky or OS-dependent, fix them to be deterministic before committing.
 
 7. **Update `AGENTS.md` files**
