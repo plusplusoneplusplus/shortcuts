@@ -127,6 +127,45 @@ describe('Work Item Execution Routes', () => {
             const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/nonexistent/execute`, {});
             expect(res.status).toBe(404);
         });
+
+        it('rejects execution of epic (container type)', async () => {
+            const epicId = `epic-test-${Date.now()}`;
+            await store.addWorkItem({
+                id: epicId, repoId: REPO_ID, title: 'My epic', type: 'epic',
+                description: '', status: 'readyToExecute', source: 'manual',
+                createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+            });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${epicId}/execute`, {});
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('planning container');
+        });
+
+        it('rejects execution of feature (container type)', async () => {
+            const featureId = `feature-test-${Date.now()}`;
+            await store.addWorkItem({
+                id: featureId, repoId: REPO_ID, title: 'My feature', type: 'feature',
+                description: '', status: 'readyToExecute', source: 'manual',
+                createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+            });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${featureId}/execute`, {});
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('planning container');
+        });
+
+        it('rejects execution of pbi (container type)', async () => {
+            const pbiId = `pbi-test-${Date.now()}`;
+            await store.addWorkItem({
+                id: pbiId, repoId: REPO_ID, title: 'My pbi', type: 'pbi',
+                description: '', status: 'readyToExecute', source: 'manual',
+                createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+            });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${pbiId}/execute`, {});
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('planning container');
+        });
     });
 
     describe('POST /execute with skillNames', () => {
@@ -417,6 +456,23 @@ describe('Work Item Execution Routes', () => {
                 type: 'plan',
             });
             expect(res.status).toBe(404);
+        });
+
+        it('rejects resolve-comments on container types (epic, feature, pbi)', async () => {
+            for (const containerType of ['epic', 'feature', 'pbi'] as const) {
+                const itemId = `${containerType}-resolve-test-${Date.now()}`;
+                await store.addWorkItem({
+                    id: itemId, repoId: REPO_ID, title: `Container ${containerType}`, type: containerType,
+                    description: '', status: 'created', source: 'manual',
+                    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+                });
+
+                const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${itemId}/resolve-comments`, {
+                    type: 'plan',
+                });
+                expect(res.status).toBe(400);
+                expect(res.body.error).toContain('planning container');
+            }
         });
 
         it('rejects missing type field', async () => {

@@ -16,6 +16,7 @@ import { execGit } from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody } from '../core/api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
 import type { WorkItemStore, WorkItem } from '../work-items/types';
+import { HIERARCHY_CONTAINER_TYPES } from '../work-items/types';
 import { executeWorkItem, resolveWorkItemComments, type EnqueueFunction } from '../work-items/work-item-executor';
 import { upsertWorkItemTaskFile } from '../work-items/work-item-task-file';
 import { buildPlanFromContext } from '../work-items/plan-template';
@@ -55,6 +56,12 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
             const item = await workItemStore.getWorkItem(workItemId, repoId);
             if (!item) {
                 return handleAPIError(res, notFound('Work item'));
+            }
+
+            // Only leaf types (work-item, bug) can be executed.
+            const effectiveType = item.type ?? 'work-item';
+            if (HIERARCHY_CONTAINER_TYPES.has(effectiveType)) {
+                return handleAPIError(res, badRequest(`Only WorkItem and Bug items can be executed. "${effectiveType}" is a planning container.`));
             }
 
             let body: any;
@@ -132,6 +139,12 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
             const item = await workItemStore.getWorkItem(workItemId, repoId);
             if (!item) {
                 return handleAPIError(res, notFound('Work item'));
+            }
+
+            // Only leaf types (work-item, bug) can run resolve-comments.
+            const effectiveResolveType = item.type ?? 'work-item';
+            if (HIERARCHY_CONTAINER_TYPES.has(effectiveResolveType)) {
+                return handleAPIError(res, badRequest(`Only WorkItem and Bug items can have comments resolved. "${effectiveResolveType}" is a planning container.`));
             }
 
             let body: any;

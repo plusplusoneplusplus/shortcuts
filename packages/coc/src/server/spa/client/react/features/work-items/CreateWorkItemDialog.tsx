@@ -2,6 +2,17 @@ import { useState, useEffect, useCallback } from 'react';
 import { Dialog } from '../../ui/Dialog';
 import { Button } from '../../ui';
 import { getSpaCocClient } from '../../api/cocClient';
+import { isWorkItemsHierarchyEnabled } from '../../utils/config';
+
+type WorkItemTypeAll = 'work-item' | 'bug' | 'epic' | 'feature' | 'pbi';
+
+const TYPE_LABELS: Record<WorkItemTypeAll, string> = {
+    epic:        'Epic',
+    feature:     'Feature',
+    pbi:         'PBI / Story',
+    'work-item': 'Work Item',
+    bug:         'Bug',
+};
 
 export interface CreateWorkItemDialogProps {
     open: boolean;
@@ -10,17 +21,21 @@ export interface CreateWorkItemDialogProps {
     onCreated?: (item: any) => void;
     /** Pre-fill from a chat session */
     fromChatId?: string;
-    /** Work item type — 'work-item' (default) or 'bug'. */
-    itemType?: 'work-item' | 'bug';
+    /** Work item type — 'work-item' (default), 'bug', or hierarchy types when enabled. */
+    itemType?: WorkItemTypeAll;
+    /** Parent work item ID (hierarchy). Only used when hierarchy is enabled. */
+    parentId?: string;
 }
 
-export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fromChatId, itemType = 'work-item' }: CreateWorkItemDialogProps) {
+export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fromChatId, itemType = 'work-item', parentId }: CreateWorkItemDialogProps) {
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [priority, setPriority] = useState<'normal' | 'high' | 'low'>('normal');
     const [tags, setTags] = useState('');
+    const [selectedType, setSelectedType] = useState<WorkItemTypeAll>(itemType);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const hierarchyEnabled = isWorkItemsHierarchyEnabled();
 
     useEffect(() => {
         if (open) {
@@ -28,10 +43,11 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
             setDescription('');
             setPriority('normal');
             setTags('');
+            setSelectedType(itemType);
             setLoading(false);
             setError(null);
         }
-    }, [open]);
+    }, [open, itemType]);
 
     const handleSubmit = useCallback(async () => {
         if (!fromChatId && !title.trim()) {
@@ -52,7 +68,8 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
                     priority,
                     tags: parsedTags.length > 0 ? parsedTags : undefined,
                     source: 'manual',
-                    type: itemType,
+                    type: selectedType,
+                    parentId: (hierarchyEnabled && parentId) ? parentId : undefined,
                 });
             }
             onCreated?.(data);
@@ -62,11 +79,15 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
         } finally {
             setLoading(false);
         }
-    }, [workspaceId, fromChatId, title, description, priority, tags, itemType, onCreated, onClose]);
+    }, [workspaceId, fromChatId, title, description, priority, tags, selectedType, hierarchyEnabled, parentId, onCreated, onClose]);
 
-    const isBug = itemType === 'bug';
-    const dialogTitle = isBug ? 'Create Bug' : 'Create Work Item';
-    const titlePlaceholder = isBug ? 'Bug title' : 'Work item title';
+    const effectiveType = selectedType;
+    const isBug = effectiveType === 'bug';
+    const isContainer = ['epic', 'feature', 'pbi'].includes(effectiveType);
+    const dialogTitle = hierarchyEnabled
+        ? `Create ${TYPE_LABELS[effectiveType]}`
+        : (isBug ? 'Create Bug' : 'Create Work Item');
+    const titlePlaceholder = isBug ? 'Bug title' : isContainer ? `${TYPE_LABELS[effectiveType]} title` : 'Work item title';
 
     return (
         <Dialog
@@ -91,6 +112,25 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
             )}
             {!fromChatId && (
                 <div className="space-y-3">
+                    {/* Type selector — only shown when hierarchy is enabled */}
+                    {hierarchyEnabled && (
+                        <div>
+                            <label className="block text-xs font-medium text-[#848484] dark:text-[#999] mb-1">Type</label>
+                            <select
+                                className="w-full rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-sm text-[#1e1e1e] dark:text-[#cccccc] p-2 focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
+                                value={selectedType}
+                                onChange={e => setSelectedType(e.target.value as WorkItemTypeAll)}
+                                disabled={loading}
+                                data-testid="create-work-item-type"
+                            >
+                                <option value="epic">Epic</option>
+                                <option value="feature">Feature</option>
+                                <option value="pbi">PBI / Story</option>
+                                <option value="work-item">Work Item</option>
+                                <option value="bug">Bug</option>
+                            </select>
+                        </div>
+                    )}
                     <div>
                         <label className="block text-xs font-medium text-[#848484] dark:text-[#999] mb-1">Title *</label>
                         <input
