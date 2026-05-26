@@ -7,11 +7,11 @@
  *
  * Session mapping
  * ─────────────────────────
- * Each CoC session ID maps to an AbortController used to cancel an in-flight
- * query. Claude Code SDK does not expose a persistent session/thread object
- * above the single-query boundary, so sessions cannot be resumed via the SDK.
- * The sessionId reported back is a CoC-generated UUID that stays stable across
- * the adapter boundary.
+ * CoC persists Claude Code session IDs returned by the SDK. New sessions are
+ * created with a caller-visible UUID, and follow-up calls pass that UUID back to
+ * Claude Code via `resume` so the transcript is restored by the provider.
+ * Active sessions also map to an AbortController used to cancel in-flight
+ * queries.
  *
  * Optional peer dependency
  * ─────────────────────────
@@ -63,6 +63,7 @@ interface ClaudeAssistantMessage {
     message: {
         content: ClaudeContentBlock[];
     };
+    session_id?: string;
 }
 
 interface ClaudeResultMessage {
@@ -79,11 +80,13 @@ interface ClaudeResultMessage {
         cache_creation_input_tokens?: number;
         cache_read_input_tokens?: number;
     };
+    session_id?: string;
 }
 
 interface ClaudeSystemMessage {
     type: 'system';
     subtype: string;
+    session_id?: string;
     [key: string]: unknown;
 }
 
@@ -101,6 +104,7 @@ export interface ClaudeRateLimitInfo {
 interface ClaudeRateLimitEvent {
     type: 'rate_limit_event';
     rate_limit_info: ClaudeRateLimitInfo;
+    session_id?: string;
 }
 
 type ClaudeSDKMessage = ClaudeAssistantMessage | ClaudeResultMessage | ClaudeSystemMessage | ClaudeRateLimitEvent | Record<string, unknown>;
@@ -116,6 +120,10 @@ interface ClaudeQueryOptions {
         appendSystemPrompt?: string;
         permissionMode?: ClaudePermissionMode;
         allowDangerouslySkipPermissions?: boolean;
+        /** Resume a persisted Claude Code transcript session. */
+        resume?: string;
+        /** Use a stable UUID for a newly-created Claude Code transcript session. */
+        sessionId?: string;
     };
 }
 
@@ -143,8 +151,10 @@ interface ClaudeQueryHandle extends AsyncIterable<ClaudeSDKMessage> {
 
 interface ClaudeSDKModule {
     query?: (options: ClaudeQueryOptions) => ClaudeQueryHandle;
+    forkSession?: (sessionId: string, options?: { dir?: string }) => Promise<{ sessionId: string }>;
     default?: {
         query?: (options: ClaudeQueryOptions) => ClaudeQueryHandle;
+        forkSession?: (sessionId: string, options?: { dir?: string }) => Promise<{ sessionId: string }>;
     } | ((options: ClaudeQueryOptions) => ClaudeQueryHandle);
 }
 
@@ -173,6 +183,7 @@ const CLAUDE_AGENT_SDK_PACKAGE = '@anthropic-ai/claude-agent-sdk';
 export class ClaudeSDKService implements ISDKService {
     private availabilityCache: IAvailabilityResult | null = null;
     private queryFn: ((options: ClaudeQueryOptions) => ClaudeQueryHandle) | null = null;
+    private forkSessionFn: ((sessionId: string, options?: { dir?: string }) => Promise<{ sessionId: string }>) | null = null;
     private lastRateLimitInfo: ClaudeRateLimitInfo | null = null;
     private lastAccountInfo: ClaudeAccountInfo | null = null;
     private disposed = false;
@@ -197,6 +208,7 @@ export class ClaudeSDKService implements ISDKService {
                 );
             }
             this.queryFn = queryFn;
+            this.forkSessionFn = this.resolveForkSessionFn(mod) ?? null;
             this.availabilityCache = { available: true };
         } catch (err) {
             const isNotInstalled = err instanceof Error && (
@@ -236,9 +248,20 @@ export class ClaudeSDKService implements ISDKService {
         return undefined;
     }
 
+    private resolveForkSessionFn(
+        mod: ClaudeSDKModule,
+    ): ((sessionId: string, options?: { dir?: string }) => Promise<{ sessionId: string }>) | undefined {
+        if (typeof mod.forkSession === 'function') return mod.forkSession;
+        if (mod.default && typeof mod.default !== 'function' && typeof mod.default.forkSession === 'function') {
+            return mod.default.forkSession;
+        }
+        return undefined;
+    }
+
     public clearAvailabilityCache(): void {
         this.availabilityCache = null;
         this.queryFn = null;
+        this.forkSessionFn = null;
         this.lastRateLimitInfo = null;
         this.lastAccountInfo = null;
     }
@@ -289,6 +312,7 @@ export class ClaudeSDKService implements ISDKService {
 
         const queryFn = this.queryFn!;
         const sessionId = options.sessionId ?? crypto.randomUUID();
+        let currentSessionId = sessionId;
         const abortController = new AbortController();
 
         // Propagate caller's AbortSignal into our internal controller.
@@ -308,6 +332,18 @@ export class ClaudeSDKService implements ISDKService {
         const toolCalls = new Map<string, ToolCall>();
         const startedToolCalls = new Set<string>();
 
+        const publishProviderSessionId = (providerSessionId: string | undefined) => {
+            if (!providerSessionId || providerSessionId === currentSessionId) return;
+            const active = this.sessions.get(currentSessionId);
+            if (active) {
+                this.sessions.delete(currentSessionId);
+                active.sessionId = providerSessionId;
+                this.sessions.set(providerSessionId, active);
+            }
+            currentSessionId = providerSessionId;
+            options.onSessionCreated?.(providerSessionId);
+        };
+
         try {
             const model = this.normalizeClaudeModel(options.model);
             const permissionOptions = this.resolveClaudePermissionOptions(options.mode);
@@ -319,6 +355,7 @@ export class ClaudeSDKService implements ISDKService {
                     ...(model ? { model } : {}),
                     ...(options.systemMessage?.mode === 'append' ? { appendSystemPrompt: options.systemMessage.content } : {}),
                     ...(options.systemMessage?.mode === 'replace' ? { customSystemPrompt: options.systemMessage.content } : {}),
+                    ...(options.sessionId ? { resume: options.sessionId } : { sessionId }),
                     ...permissionOptions,
                 },
             };
@@ -327,6 +364,7 @@ export class ClaudeSDKService implements ISDKService {
             handle.accountInfo?.().then(info => { this.lastAccountInfo = info; }).catch(() => {});
             for await (const msg of handle) {
                 if (abortController.signal.aborted) break;
+                publishProviderSessionId(this.extractSessionId(msg));
                 if (this.isAssistantMessage(msg)) {
                     for (const block of msg.message.content) {
                         if (block.type === 'text') {
@@ -344,7 +382,7 @@ export class ClaudeSDKService implements ISDKService {
                         return {
                             success: false,
                             error: errText,
-                            sessionId,
+                            sessionId: currentSessionId,
                         };
                     }
                     // If the result contains text not yet emitted, add it.
@@ -369,16 +407,23 @@ export class ClaudeSDKService implements ISDKService {
             return {
                 success: true,
                 response: chunks.join(''),
-                sessionId,
+                sessionId: currentSessionId,
                 ...(toolCalls.size > 0 ? { toolCalls: Array.from(toolCalls.values()) } : {}),
             } as IInvocationResult;
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            return { success: false, error: message, sessionId };
+            return { success: false, error: message, sessionId: currentSessionId };
         } finally {
             signalCleanup?.();
-            this.sessions.delete(sessionId);
+            this.sessions.delete(currentSessionId);
+            if (currentSessionId !== sessionId) this.sessions.delete(sessionId);
         }
+    }
+
+    private extractSessionId(msg: ClaudeSDKMessage): string | undefined {
+        if (typeof msg !== 'object' || msg === null) return undefined;
+        const sessionId = (msg as Record<string, unknown>).session_id;
+        return typeof sessionId === 'string' && sessionId.trim() ? sessionId : undefined;
     }
 
     private isAssistantMessage(msg: ClaudeSDKMessage): msg is ClaudeAssistantMessage {
@@ -522,11 +567,18 @@ export class ClaudeSDKService implements ISDKService {
 
     // ── Session management ────────────────────────────────────────────────────
 
-    public async forkSession(_sessionId: string): Promise<string> {
-        throw new Error(
-            'ClaudeSDKService does not support session forking. ' +
-            `The ${CLAUDE_AGENT_SDK_PACKAGE} SDK does not expose fork semantics.`,
-        );
+    public async forkSession(sessionId: string): Promise<string> {
+        if (this.disposed) throw new Error('ClaudeSDKService has been disposed');
+        const avail = await this.isAvailable();
+        if (!avail.available) throw new Error(avail.error ?? 'Claude Code SDK is not available');
+        if (!this.forkSessionFn) {
+            throw new Error(
+                'ClaudeSDKService cannot fork sessions because the installed ' +
+                `${CLAUDE_AGENT_SDK_PACKAGE} package does not export forkSession.`,
+            );
+        }
+        const result = await this.forkSessionFn(sessionId);
+        return result.sessionId;
     }
 
     public async abortSession(sessionId: string): Promise<boolean> {
@@ -564,6 +616,7 @@ export class ClaudeSDKService implements ISDKService {
         this.sessions.clear();
         this.availabilityCache = null;
         this.queryFn = null;
+        this.forkSessionFn = null;
         this.lastRateLimitInfo = null;
         this.lastAccountInfo = null;
     }

@@ -43,3 +43,6 @@ all have their own `references/*.md`.
 - **Follow-up enqueue sites** must call `resolveFollowUpMode(...)` and set
   `payload.mode`. `FollowUpExecutor.executeFollowUp` fail-loud warns + defaults
   to `'ask'` if missing.
+- **Direct package builds** use `scripts/prebuild.mjs` to build
+  `@plusplusoneplusplus/coc-memory` before `tsc` and to generate
+  `src/server/core/build-info.ts`; keep this script cross-platform.

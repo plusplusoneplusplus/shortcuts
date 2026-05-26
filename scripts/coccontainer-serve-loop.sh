@@ -72,6 +72,12 @@ build_coccontainer() {
         rm -rf "$forge_link"
     fi
 
+    # Re-run npm install after npm link steps — npm link inside workspace packages
+    # prunes optional peer deps (@openai/codex-sdk, @anthropic-ai/claude-agent-sdk)
+    # from root node_modules. A second install restores them from the local cache.
+    cd "$REPO_ROOT"
+    npm install || { echo -e "\033[31mPost-link npm install failed\033[0m"; return 1; }
+
     cd "$REPO_ROOT"
     echo -e "\033[32mBuild succeeded.\033[0m"
     return 0

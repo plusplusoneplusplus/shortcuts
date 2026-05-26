@@ -255,6 +255,14 @@ function Build-Coc {
             Write-Log "Build failed with exit code $LASTEXITCODE" -Color Red
             return $false
         }
+        # Re-run npm install after coc:link — npm link in workspace packages prunes
+        # optional peer deps (@openai/codex-sdk, @anthropic-ai/claude-agent-sdk) from
+        # root node_modules. A second install restores them cheaply from the local cache.
+        npm install 2>&1 | ForEach-Object { Write-Host $_ }
+        if ($LASTEXITCODE -ne 0) {
+            Write-Log "Post-link npm install failed with exit code $LASTEXITCODE" -Color Red
+            return $false
+        }
         Write-Log 'Build succeeded.' -Color Green
         return $true
     } finally {

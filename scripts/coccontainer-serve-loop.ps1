@@ -66,6 +66,18 @@ function Build-CocContainer {
         if (Test-Path $forgeLink) { Remove-Item $forgeLink -Recurse -Force }
         Pop-Location
 
+        # Re-run npm install after npm link steps -- npm link in workspace packages prunes
+        # optional peer deps (@openai/codex-sdk, @anthropic-ai/claude-agent-sdk) from
+        # root node_modules. A second install restores them from the local cache.
+        Push-Location $repoRoot
+        npm install
+        $installCode = $LASTEXITCODE
+        Pop-Location
+        if ($installCode -ne 0) {
+            Write-Host "Post-link npm install failed with exit code $installCode" -ForegroundColor Red
+            return $false
+        }
+
         Write-Host "Build succeeded." -ForegroundColor Green
         return $true
     } finally {

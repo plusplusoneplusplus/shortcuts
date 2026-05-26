@@ -68,6 +68,15 @@ build_coc() {
     fi
     echo -e "\033[36m=== Building coc packages ===\033[0m"
     if npm run coc:link; then
+        # Re-run npm install after coc:link because npm link inside workspace packages
+        # (packages/forge, packages/coc) triggers a workspace tree re-evaluation that
+        # prunes optional peer dependencies (@openai/codex-sdk, @anthropic-ai/claude-agent-sdk)
+        # from root node_modules. A second install restores them from the local cache.
+        if ! npm install; then
+            echo -e "\033[31mPost-link npm install failed with exit code $?.\033[0m"
+            popd > /dev/null
+            return 1
+        fi
         echo -e "\033[32mBuild succeeded.\033[0m"
         popd > /dev/null
         return 0
