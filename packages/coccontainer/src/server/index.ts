@@ -98,7 +98,8 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
     });
 
     inboundManager.on('agent-disconnected', (agentId: string, agentName: string) => {
-        const existing = agentStore.get(agentId);
+        // Look up agent by inbound:// address, not by agentId (which is the WebSocket ID, not the store UUID)
+        const existing = agentStore.list().find(a => a.address === `inbound://${agentId}`);
         if (existing) {
             agentStore.updateStatus(existing.id, 'offline');
         }
