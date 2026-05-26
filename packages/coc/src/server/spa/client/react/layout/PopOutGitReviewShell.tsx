@@ -338,6 +338,7 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
     const [prTitle, setPrTitle] = useState<string | undefined>(undefined);
     const [headSha, setHeadSha] = useState<string | undefined>(undefined);
     const [chatOpen, setChatOpen] = useState(false);
+    const [prioritySort, setPrioritySort] = useState(false);
 
     // Classification hook for PR diff
     const classificationKey: ClassificationKey | undefined =
@@ -358,6 +359,14 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
         setSelectedFilePath(null);
         setHunkTarget(undefined);
     }, []);
+
+    const handleTogglePrioritySort = useCallback(() => {
+        setPrioritySort(prev => !prev);
+    }, []);
+
+    const handleShowAll = useCallback(() => {
+        classification.setFilters(new Set<HunkCategory>(HUNK_CATEGORIES));
+    }, [classification]);
 
     useEffect(() => {
         setLoading(true);
@@ -472,6 +481,11 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
                     selectedFilePath={selectedFilePath}
                     onFileSelect={handleFileSelect}
                     isFileDimmed={classifyStatus === 'ready' ? classification.isFileDimmed : undefined}
+                    getFileBadge={classifyStatus === 'ready' ? classification.getFileBadge : undefined}
+                    prioritySort={prioritySort}
+                    onTogglePrioritySort={classifyStatus === 'ready' ? handleTogglePrioritySort : undefined}
+                    activeFilters={classifyStatus === 'ready' ? classification.state.activeFilters : undefined}
+                    onShowAll={classifyStatus === 'ready' ? handleShowAll : undefined}
                 />
                 <div className="flex-1 min-w-0 overflow-hidden">
                     {selectedFilePath ? (
