@@ -181,7 +181,7 @@ describe('AgentSelectorChip', () => {
             expect(codexOption).toBeDisabled();
         });
 
-        it('shows reason text for unavailable Codex', () => {
+        it('exposes the reason via the title tooltip (no inline subtitle) for unavailable Codex', () => {
             render(
                 <AgentSelectorChip
                     providers={[COPILOT, CODEX_UNAVAILABLE]}
@@ -191,7 +191,27 @@ describe('AgentSelectorChip', () => {
                 />
             );
             fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
-            expect(screen.getByTestId('agent-option-codex').textContent).toContain('SDK is not installed');
+            const codexOption = screen.getByTestId('agent-option-codex');
+            // Reason lives on the tooltip, not in the inline label — keeps the
+            // menu compact while preserving discoverability on hover.
+            expect(codexOption.getAttribute('title')).toContain('SDK is not installed');
+            expect(codexOption.textContent).not.toContain('SDK is not installed');
+            expect(codexOption.textContent).not.toContain('Disabled by admin');
+        });
+
+        it('falls back to a "disabled by admin" title when no reason is supplied', () => {
+            render(
+                <AgentSelectorChip
+                    providers={[COPILOT, CODEX_DISABLED]}
+                    loading={false}
+                    selected="copilot"
+                    onChange={vi.fn()}
+                />
+            );
+            fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+            const codexOption = screen.getByTestId('agent-option-codex');
+            expect(codexOption.getAttribute('title')).toContain('disabled by admin');
+            expect(codexOption.textContent).not.toContain('Disabled by admin');
         });
 
         it('does not call onChange when clicking disabled Codex option', () => {

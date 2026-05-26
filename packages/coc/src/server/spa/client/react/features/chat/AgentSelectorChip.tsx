@@ -145,7 +145,10 @@ export function AgentSelectorChip({ providers, loading, selected, onChange, disa
                                         setOpen(false);
                                     }
                                 }}
-                                title={isDisabled ? (provider.reason ?? `${provider.label} is unavailable`) : undefined}
+                                title={isDisabled
+                                    ? (provider.reason
+                                        ?? (!provider.enabled ? `${provider.label} is disabled by admin` : `${provider.label} is unavailable`))
+                                    : undefined}
                                 className={cn(
                                     'w-full flex items-start gap-1.5 px-2 py-1.5 text-left text-[12px]',
                                     'transition-colors',
@@ -162,19 +165,12 @@ export function AgentSelectorChip({ providers, loading, selected, onChange, disa
                                 <span className="mt-0.5 shrink-0">
                                     <ProviderIcon id={provider.id} />
                                 </span>
-                                <span className="flex flex-col min-w-0">
-                                    <span className="font-medium leading-tight">{provider.label}</span>
-                                    {isDisabled && provider.reason && (
-                                        <span className="text-[10px] text-[#848484] dark:text-[#999] leading-tight mt-0.5 truncate">
-                                            {provider.reason}
-                                        </span>
-                                    )}
-                                    {!provider.enabled && !provider.reason && (
-                                        <span className="text-[10px] text-[#848484] dark:text-[#999] leading-tight mt-0.5">
-                                            Disabled by admin
-                                        </span>
-                                    )}
-                                </span>
+                                {/* Disabled providers rely on the grey opacity-50
+                                     row and the title-attribute tooltip (set
+                                     above) to convey the reason. The inline
+                                     "Disabled by admin" subtitle is intentionally
+                                     omitted so the menu stays compact. */}
+                                <span className="font-medium leading-tight min-w-0 truncate">{provider.label}</span>
                                 {isSelected && (
                                     <svg width="10" height="10" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0 ml-auto mt-0.5 text-[#0078d4] dark:text-[#3794ff]">
                                         <path d="M3 8l4 4 6-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
