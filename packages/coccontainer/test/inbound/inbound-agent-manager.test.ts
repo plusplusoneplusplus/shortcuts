@@ -165,6 +165,52 @@ describe('InboundAgentManager', () => {
             expect(handler.mock.calls[0][0].id).toBe('ev-1');
             expect(handler.mock.calls[0][0].name).toBe('ev-agent');
         });
+
+        it('re-register on same WS updates workspaces without closing connection', () => {
+            const ws = new MockWebSocket();
+            const handler = vi.fn();
+            manager.on('agent-connected', handler);
+            manager.handleConnection(ws as any);
+
+            // Initial register without workspaces
+            ws.simulateMessage(createMessage('register', { name: 'ws-agent', agentId: 'ws-1' }));
+            expect(handler).toHaveBeenCalledOnce();
+
+            // Second register on same WS with workspaces (simulating workspace update)
+            ws.simulateMessage(createMessage('register', {
+                name: 'ws-agent',
+                agentId: 'ws-1',
+                workspaces: [{ id: 'repo1', name: 'my-repo', rootPath: '/home/user/repo' }],
+            }));
+
+            // Should NOT emit agent-connected again (same WS)
+            expect(handler).toHaveBeenCalledOnce();
+            // Should NOT close the WS
+            expect(ws.readyState).not.toBe(3); // 3 = CLOSED
+            // Workspaces should be updated
+            const agent = manager.getAgent('ws-1');
+            expect(agent?.workspaces).toEqual([{ id: 'repo1', name: 'my-repo', rootPath: '/home/user/repo' }]);
+        });
+
+        it('reconnection from different WS closes old connection', () => {
+            const ws1 = new MockWebSocket();
+            const ws2 = new MockWebSocket();
+            const handler = vi.fn();
+            manager.on('agent-connected', handler);
+            manager.handleConnection(ws1 as any);
+            manager.handleConnection(ws2 as any);
+
+            ws1.simulateMessage(createMessage('register', { name: 'a', agentId: 'reconn-1' }));
+            ws2.simulateMessage(createMessage('register', { name: 'a', agentId: 'reconn-1' }));
+
+            // Should emit agent-connected twice (different WS)
+            expect(handler).toHaveBeenCalledTimes(2);
+            // Old WS should be closed
+            expect(ws1.readyState).toBe(3); // CLOSED
+            // New WS should be active
+            const agent = manager.getAgent('reconn-1');
+            expect(agent?.ws).toBe(ws2);
+        });
     });
 
     describe('agent disconnection', () => {

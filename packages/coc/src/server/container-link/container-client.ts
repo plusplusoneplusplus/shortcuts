@@ -165,7 +165,7 @@ export class ContainerLinkClient extends EventEmitter {
     private sendRegister(): void {
         const payload: RegisterPayload = {
             name: this.options.agentName ?? os.hostname(),
-            agentId: this.options.agentId,
+            agentId: this._assignedAgentId ?? this.options.agentId,
         };
         // Send initial register without workspaces, then update with workspace list
         this.send(createMessage('register', payload));
@@ -173,7 +173,11 @@ export class ContainerLinkClient extends EventEmitter {
         if (this.options.getWorkspaces) {
             this.options.getWorkspaces().then(workspaces => {
                 if (workspaces.length > 0 && this._status === 'registered') {
-                    const updatedPayload: RegisterPayload = { ...payload, workspaces };
+                    const updatedPayload: RegisterPayload = {
+                        ...payload,
+                        agentId: this._assignedAgentId ?? payload.agentId,
+                        workspaces,
+                    };
                     this.send(createMessage('register', updatedPayload));
                 }
             }).catch(() => { /* best-effort */ });

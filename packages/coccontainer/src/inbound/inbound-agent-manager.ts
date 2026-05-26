@@ -216,13 +216,13 @@ export class InboundAgentManager extends EventEmitter {
 
     private registerAgent(ws: WebSocket.WebSocket, payload: RegisterPayload): string {
         const agentId = payload.agentId ?? randomUUID();
-        const reconnected = this.agents.has(agentId);
+        const existing = this.agents.get(agentId);
+        const reconnected = !!existing;
 
-        // If reconnecting, close old connection
-        if (reconnected) {
-            const old = this.agents.get(agentId)!;
-            old.ws.removeAllListeners();
-            old.ws.close();
+        if (reconnected && existing!.ws !== ws) {
+            // Different WebSocket — true reconnection; close old connection
+            existing!.ws.removeAllListeners();
+            existing!.ws.close();
         }
 
         const agent: InboundAgent = {
@@ -230,7 +230,7 @@ export class InboundAgentManager extends EventEmitter {
             name: payload.name,
             ws,
             lastHeartbeat: Date.now(),
-            workspaces: payload.workspaces ?? [],
+            workspaces: payload.workspaces ?? existing?.workspaces ?? [],
         };
 
         this.agents.set(agentId, agent);
@@ -239,7 +239,10 @@ export class InboundAgentManager extends EventEmitter {
         const confirmedPayload: RegisteredPayload = { agentId, reconnected };
         ws.send(JSON.stringify(createMessage('registered', confirmedPayload)));
 
-        this.emit('agent-connected', agent);
+        // Only emit agent-connected on first registration or true reconnection (different ws)
+        if (!existing || existing.ws !== ws) {
+            this.emit('agent-connected', agent);
+        }
         return agentId;
     }
 
