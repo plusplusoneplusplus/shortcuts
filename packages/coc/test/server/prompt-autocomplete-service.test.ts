@@ -73,6 +73,18 @@ describe('PromptAutocompleteService', () => {
         expect(store.getBestPromptCompletion).not.toHaveBeenCalled();
     });
 
+    it('returns null when promptAutocomplete preference is absent (disabled by default)', async () => {
+        // No writePrefs() call — preferences file is missing entirely.
+        const store = makeStore();
+        store.getBestPromptCompletion.mockReturnValue({ completion: 'queue test', source: 'initial' });
+
+        const service = new PromptAutocompleteService({ store: store as any, dataDir: tmpDir });
+        const result = await service.getCompletion({ prefix: 'fix the ', workspaceId: 'ws1' });
+
+        expect(result).toEqual({ completion: null });
+        expect(store.getBestPromptCompletion).not.toHaveBeenCalled();
+    });
+
     it('returns valid AI suffix when AI is enabled and grounded context exists', async () => {
         await writePrefs({ enabled: true, ai: { enabled: true } });
         const store = makeStore();
@@ -179,6 +191,7 @@ describe('PromptAutocompleteService', () => {
     });
 
     it('treats mode=ai as an explicit AI opt-in when AI preferences are absent', async () => {
+        await writePrefs({ enabled: true });
         const store = makeStore();
         store.getBestPromptCompletion.mockReturnValue(null);
         store.getPromptAutocompleteContext.mockReturnValue({
@@ -227,6 +240,7 @@ describe('PromptAutocompleteService', () => {
     });
 
     it('uses AI from the prefix when the store has no history-context method', async () => {
+        await writePrefs({ enabled: true });
         const store = {
             getBestPromptCompletion: vi.fn().mockReturnValue(null),
         };
@@ -244,9 +258,9 @@ describe('PromptAutocompleteService', () => {
         expect(aiService.sendMessage).toHaveBeenCalledTimes(1);
     });
 
-    it('fires AI in hybrid mode by default when no preferences are configured', async () => {
-        // Reproduces the user-reported scenario: prefix is "<Hello, please rebas>",
-        // mode=hybrid, no preferences file. AI should still be called and return a completion.
+    it('fires AI in hybrid mode when enabled and no ai config is set', async () => {
+        // Master toggle on; `ai` section absent so DEFAULT_AI_CONFIG applies.
+        await writePrefs({ enabled: true });
         const store = makeStore();
         store.getBestPromptCompletion.mockReturnValue(null);
         store.getPromptAutocompleteContext.mockReturnValue({
@@ -275,7 +289,8 @@ describe('PromptAutocompleteService', () => {
         expect(aiService.sendMessage).toHaveBeenCalledTimes(1);
     });
 
-    it('fires AI in hybrid mode by default even without workspaceId', async () => {
+    it('fires AI in hybrid mode when enabled even without workspaceId', async () => {
+        await writePrefs({ enabled: true });
         const store = makeStore();
         store.getBestPromptCompletion.mockReturnValue(null);
         const aiService = {

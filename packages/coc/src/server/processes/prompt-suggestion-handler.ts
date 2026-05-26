@@ -8,8 +8,8 @@
  * Route: GET /api/prompt-suggestions?prefix=<encoded>
  * Response: { completion: string | null, source?: 'ai' | 'history', historySource?: 'initial' | 'follow-up' }
  *
- * Suggestions are silently disabled (returns null) when the global
- * preference `promptAutocomplete.enabled` is explicitly set to false.
+ * Suggestions are silently disabled (returns null) unless the global
+ * preference `promptAutocomplete.enabled` is explicitly set to true.
  */
 
 import * as url from 'url';
@@ -59,17 +59,23 @@ export function registerPromptSuggestionRoutes(
         pattern: /^\/api\/prompt-suggestions$/,
         handler: async (req, res) => {
             try {
-                // Silent no-op when feature is disabled via global preferences.
+                // Silent no-op unless feature is explicitly enabled via global preferences.
                 if (dataDir) {
                     try {
                         const prefs = readGlobalPreferences(dataDir);
-                        if (prefs.promptAutocomplete?.enabled === false) {
+                        if (prefs.promptAutocomplete?.enabled !== true) {
                             sendJSON(res, 200, { completion: null });
                             return;
                         }
                     } catch {
-                        // Bad preferences file shouldn't break autocomplete; fall through.
+                        // Bad preferences file shouldn't break autocomplete — treat as disabled.
+                        sendJSON(res, 200, { completion: null });
+                        return;
                     }
+                } else {
+                    // No dataDir means no way to read the opt-in preference: stay disabled.
+                    sendJSON(res, 200, { completion: null });
+                    return;
                 }
 
                 const parsed = url.parse(req.url || '', true);

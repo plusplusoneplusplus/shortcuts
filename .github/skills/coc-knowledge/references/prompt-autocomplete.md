@@ -89,8 +89,10 @@ The `mode` query parameter (`hybrid` | `ai` | `history`) selects strategy:
 
 1. **Reject trivial inputs.** Trim leading whitespace; require length in
    `[3, 500]`.
-2. **Honor global disable.** If `promptAutocomplete.enabled === false`,
-   return `{ completion: null }` and do nothing else.
+2. **Honor global gate.** If `promptAutocomplete.enabled !== true`,
+   return `{ completion: null }` and do nothing else. The feature is **off by
+   default** and must be explicitly opted into via the Admin → Appearance
+   "Prompt ghost text" toggle (or by setting the preference directly).
 3. **Compute deterministic history fallback.** Skipped when `mode === 'ai'`;
    short-circuited as the response when `mode === 'history'`.
 4. **Resolve effective AI config** from preferences with defaults applied.
@@ -267,7 +269,7 @@ Stored under `~/.coc/preferences.json`:
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| `enabled` | `true` | Master switch for **all** ghost text. `false` short-circuits the server. |
+| `enabled` | `false` | Master switch for **all** ghost text. The feature is opt-in; the server short-circuits unless this is explicitly `true`. |
 | `ai.enabled` | `true` | When `false`, only deterministic history is used. |
 | `ai.model` | `"gpt-4.1"` | Any model id accepted by the Copilot SDK. Benchmarked alternatives: `gpt-5.4-mini` (~6 s, OK), `claude-haiku-4.5` (does not honor JSON, returns null), `gpt-5-mini` (~12 s, hidden reasoning). |
 | `ai.debounceMs` | `500` (server-side) | Note: client uses 150 ms via `usePromptAutocomplete`. The server-side value is reserved for future server-driven tuning. |

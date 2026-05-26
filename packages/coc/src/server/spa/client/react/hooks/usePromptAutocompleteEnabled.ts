@@ -6,14 +6,14 @@
  *   - Fetches `GET /api/preferences` exactly once at startup.
  *   - All hook instances stay in sync.
  *
- * Default is enabled (true). Server-side preference `promptAutocomplete.enabled`
- * may set it to false to disable suggestions across all inputs.
+ * Default is disabled (false). Server-side preference `promptAutocomplete.enabled`
+ * must be set to true to enable suggestions across the relevant inputs.
  */
 
 import { useEffect, useSyncExternalStore } from 'react';
 import { getSpaCocClient } from '../api/cocClient';
 
-let currentEnabled = true;
+let currentEnabled = false;
 let serverFetched = false;
 const listeners = new Set<() => void>();
 
@@ -32,7 +32,7 @@ function getSnapshot(): boolean {
 
 /** @internal Reset module-level state for testing. */
 export function __resetForTesting(): void {
-    currentEnabled = true;
+    currentEnabled = false;
     serverFetched = false;
     listeners.clear();
 }
@@ -54,7 +54,7 @@ export function usePromptAutocompleteEnabled(): boolean {
                     }
                 }
             } catch {
-                // Server unavailable — keep default (enabled).
+                // Server unavailable — keep default (disabled).
             }
         })();
     }, []);
