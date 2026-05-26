@@ -151,6 +151,7 @@ interface CodexSDKModule {
 interface CodexStartThreadOptions {
     model?: string;
     workingDirectory?: string;
+    additionalDirectories?: string[];
     skipGitRepoCheck?: boolean;
     sandboxMode?: 'read-only' | 'workspace-write' | 'danger-full-access';
     approvalPolicy?: 'never' | 'on-request' | 'on-failure' | 'untrusted';
@@ -728,6 +729,7 @@ export class CodexSDKService implements ISDKService {
         return {
             ...(model ? { model } : {}),
             ...(options.workingDirectory ? { workingDirectory: options.workingDirectory } : {}),
+            ...(options.skillDirectories?.length ? { additionalDirectories: options.skillDirectories } : {}),
             skipGitRepoCheck: true,
             approvalPolicy: 'never',
             sandboxMode: 'danger-full-access',

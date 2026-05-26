@@ -35,6 +35,7 @@ import {
     buildModeSystemMessage,
     buildConversationHistoryContext,
     prependSelectedSkillsDirective,
+    resolveSelectedSkillReferences,
 } from './prompt-builder';
 import { systemMessageBuilder } from './system-message-builder';
 import { readNoteContent, appendNoteEditSnapshot, SNAPSHOT_SIZE_LIMIT } from './note-chat-executor';
@@ -272,7 +273,11 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
             this.persistSystemPromptAsync(processId, 'chat', systemMessage?.content);
 
-            const followUpMessage = prependSelectedSkillsDirective(message, selectedSkillNames);
+            const followUpMessage = prependSelectedSkillsDirective(
+                message,
+                selectedSkillNames,
+                resolveSelectedSkillReferences(selectedSkillNames, skillDirectories, disabledSkills),
+            );
             const agentMode = toAgentMode(currentMode);
 
             const historySystemMessage: SystemMessageConfig | undefined = historyContext

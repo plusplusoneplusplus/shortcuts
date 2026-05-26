@@ -698,6 +698,40 @@ describe('ChatBaseExecutor selected skills', () => {
         expect(call.prompt).not.toContain('<skill name=');
     });
 
+    it('adds resolved SKILL.md paths for selected skills when directories are available', async () => {
+        const skillsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-selected-skills-'));
+        try {
+            fs.mkdirSync(path.join(skillsDir, 'impl'), { recursive: true });
+            fs.writeFileSync(path.join(skillsDir, 'impl', 'SKILL.md'), '# Impl skill');
+            const executor = new ChatExecutor(store, makeOptions(store, {
+                resolveSkillConfig: vi.fn().mockResolvedValue({ skillDirectories: [skillsDir], disabledSkills: undefined }),
+            }));
+            const task: QueuedTask = {
+                id: 'task-skill-path',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'chat',
+                    mode: 'ask',
+                    prompt: 'Do work',
+                    workingDirectory: '/fake/ws',
+                    context: { skills: ['impl'] },
+                },
+                config: {},
+                displayName: 'skill path test',
+            };
+
+            await executor.execute(task, 'Do work');
+
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            expect(call.prompt).toContain(`- impl: ${path.join(skillsDir, 'impl', 'SKILL.md')}`);
+        } finally {
+            fs.rmSync(skillsDir, { recursive: true, force: true });
+        }
+    });
+
     it('preserves explicit user intent even when a selected skill might not exist locally', async () => {
         const executor = new ChatExecutor(store, makeOptions(store));
         const task: QueuedTask = {

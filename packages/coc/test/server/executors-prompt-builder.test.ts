@@ -73,6 +73,7 @@ import {
     extractPrompt,
     applySkillContent,
     prependSelectedSkillsDirective,
+    resolveSelectedSkillReferences,
     buildConversationHistoryContext,
     buildFollowUpSuggestionsAddon,
     buildSearchConversationsAddon,
@@ -430,6 +431,51 @@ describe('prependSelectedSkillsDirective', () => {
     it('deduplicates repeated skill names', () => {
         const result = prependSelectedSkillsDirective('Do work', ['impl', 'impl', 'review']);
         expect(result).toContain('The user explicitly selected these skills: impl, review.');
+    });
+
+    it('includes selected skill file paths when references are available', () => {
+        const result = prependSelectedSkillsDirective('Do work', ['impl'], [
+            { name: 'impl', skillFilePath: '/repo/.github/skills/impl/SKILL.md' },
+        ]);
+        expect(result).toContain('Load the selected skill instructions from these SKILL.md files before proceeding:');
+        expect(result).toContain('- impl: /repo/.github/skills/impl/SKILL.md');
+        expect(result).not.toContain('<skill name=');
+    });
+});
+
+describe('resolveSelectedSkillReferences', () => {
+    beforeEach(() => {
+        (fs.existsSync as ReturnType<typeof vi.fn>).mockReset();
+        (fs.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(false);
+    });
+
+    it('returns the first matching SKILL.md path in directory order', () => {
+        (fs.existsSync as ReturnType<typeof vi.fn>).mockImplementation((candidate: string) =>
+            candidate === path.join('/global/skills', 'impl', 'SKILL.md'),
+        );
+
+        const result = resolveSelectedSkillReferences(
+            ['impl'],
+            ['/repo/.github/skills', '/global/skills'],
+        );
+
+        expect(result).toEqual([
+            { name: 'impl', skillFilePath: path.join('/global/skills', 'impl', 'SKILL.md') },
+        ]);
+    });
+
+    it('deduplicates selected skills and skips disabled skills', () => {
+        (fs.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(true);
+
+        const result = resolveSelectedSkillReferences(
+            ['impl', 'impl', 'draft'],
+            ['/skills'],
+            ['draft'],
+        );
+
+        expect(result).toEqual([
+            { name: 'impl', skillFilePath: path.join('/skills', 'impl', 'SKILL.md') },
+        ]);
     });
 });
 
