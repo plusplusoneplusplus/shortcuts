@@ -310,6 +310,61 @@ describe('ClaudeSDKService.sendMessage', () => {
         );
     });
 
+    it('creates new Claude sessions with the caller-visible sessionId', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        let createdSessionId = '';
+        const result = await svc.sendMessage({
+            prompt: 'start session',
+            onSessionCreated: (id) => { createdSessionId = id; },
+        });
+
+        const callOptions = queryFn.mock.calls[0][0].options;
+        expect(result.success).toBe(true);
+        expect(createdSessionId).toBeTruthy();
+        expect(callOptions.sessionId).toBe(createdSessionId);
+        expect(callOptions.resume).toBeUndefined();
+        expect(result.sessionId).toBe(createdSessionId);
+    });
+
+    it('resumes existing Claude sessions instead of starting a fresh transcript', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'result', subtype: 'success', session_id: 'existing-session' },
+        ]));
+
+        const result = await svc.sendMessage({
+            prompt: 'follow up',
+            sessionId: 'existing-session',
+        });
+
+        const callOptions = queryFn.mock.calls[0][0].options;
+        expect(result.success).toBe(true);
+        expect(callOptions.resume).toBe('existing-session');
+        expect(callOptions.sessionId).toBeUndefined();
+        expect(result.sessionId).toBe('existing-session');
+    });
+
+    it('persists the provider-emitted session_id when Claude returns one', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'system', subtype: 'init', session_id: 'provider-session' },
+            { type: 'result', subtype: 'success', session_id: 'provider-session' },
+        ]));
+
+        const createdSessionIds: string[] = [];
+        const result = await svc.sendMessage({
+            prompt: 'start session',
+            onSessionCreated: (id) => { createdSessionIds.push(id); },
+        });
+
+        expect(result.success).toBe(true);
+        expect(createdSessionIds).toHaveLength(2);
+        expect(createdSessionIds[0]).toBeTruthy();
+        expect(createdSessionIds[1]).toBe('provider-session');
+        expect(result.sessionId).toBe('provider-session');
+    });
+
     it('uses Claude bypass permissions for autopilot mode', async () => {
         queryFn.mockReturnValueOnce(makeMessages([
             { type: 'result', subtype: 'success' },
@@ -544,24 +599,41 @@ describe('mapClaudeAccountInfoToQuota', () => {
 });
 
 // ============================================================================
-// Unsupported operations
+// Session operations
 // ============================================================================
 
-describe('ClaudeSDKService unsupported operations', () => {
+describe('ClaudeSDKService session operations', () => {
     let svc: ClaudeSDKService;
+    const forkSessionFn = vi.fn();
 
     beforeEach(() => {
         svc = new ClaudeSDKService();
         mockDynamicImport.mockReset();
-        mockDynamicImport.mockResolvedValue({ query: vi.fn() });
+        forkSessionFn.mockReset();
+        mockDynamicImport.mockResolvedValue({ query: vi.fn(), forkSession: forkSessionFn });
     });
 
     afterEach(() => {
         svc.dispose();
     });
 
-    it('forkSession throws an explicit unsupported error', async () => {
-        await expect(svc.forkSession('any-id')).rejects.toThrow(/does not support session forking/);
+    it('forkSession delegates to the Claude SDK forkSession export', async () => {
+        forkSessionFn.mockResolvedValueOnce({ sessionId: 'forked-id' });
+
+        const result = await svc.forkSession('source-id');
+
+        expect(forkSessionFn).toHaveBeenCalledWith('source-id');
+        expect(result).toBe('forked-id');
+    });
+
+    it('forkSession throws an explicit error when the installed SDK lacks fork support', async () => {
+        mockDynamicImport.mockReset();
+        mockDynamicImport.mockResolvedValue({ query: vi.fn() });
+        const unsupportedSvc = new ClaudeSDKService();
+
+        await expect(unsupportedSvc.forkSession('any-id')).rejects.toThrow(/does not export forkSession/);
+
+        unsupportedSvc.dispose();
     });
 
     it('steerSession returns false (unsupported, not silent success)', async () => {
