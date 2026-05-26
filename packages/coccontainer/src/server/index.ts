@@ -590,11 +590,13 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 const [, agentId, rest] = agentProxyMatch;
                 const agent = agentStore.get(agentId);
                 if (!agent) {
+                    process.stderr.write(`[agent-proxy] Agent not found: ${agentId}\n`);
                     res.writeHead(404, { 'Content-Type': 'application/json' });
                     return res.end(JSON.stringify({ error: 'Agent not found' }));
                 }
                 // Prefer inbound channel if agent is connected via call-home
                 const inboundId = agent.address.startsWith('inbound://') ? agent.address.replace('inbound://', '') : undefined;
+                process.stderr.write(`[agent-proxy] ${req.method} /api/${rest} → agent=${agent.name} inboundId=${inboundId ?? 'none'} hasAgent=${inboundId ? inboundManager.hasAgent(inboundId) : false}\n`);
                 if (inboundId && inboundManager.hasAgent(inboundId)) {
                     try {
                         // Collect request body
@@ -614,7 +616,18 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                             headers,
                             body,
                         );
-                        res.writeHead(response.status, response.headers);
+                        process.stderr.write(`[agent-proxy] Response: status=${response.status} bodyLen=${response.body?.length ?? 0}\n`);
+                        // Filter hop-by-hop headers that must not be forwarded
+                        const fwdHeaders: Record<string, string> = {};
+                        const hopByHop = new Set(['transfer-encoding', 'connection', 'keep-alive', 'upgrade']);
+                        for (const [k, v] of Object.entries(response.headers)) {
+                            if (!hopByHop.has(k.toLowerCase())) fwdHeaders[k] = v;
+                        }
+                        // Ensure content-length matches actual body
+                        if (response.body) {
+                            fwdHeaders['content-length'] = String(Buffer.byteLength(response.body, 'utf8'));
+                        }
+                        res.writeHead(response.status, fwdHeaders);
                         return res.end(response.body);
                     } catch (err) {
                         res.writeHead(502, { 'Content-Type': 'application/json' });
