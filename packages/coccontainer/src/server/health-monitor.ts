@@ -2,11 +2,13 @@
  * Agent Health Monitor
  *
  * Periodically checks agent health and updates status in the store.
+ * Health is determined solely by WebSocket connection status via InboundAgentManager.
+ * Agents are online only if they have an active call-home WebSocket connection.
  */
 
 import type { AgentStore } from '../store';
 import type { TunnelBridge } from '../proxy/tunnel-bridge';
-import { checkAgentHealth } from '../proxy/health';
+import type { InboundAgentManager } from '../inbound/inbound-agent-manager';
 
 export class AgentHealthMonitor {
     private intervalHandle: ReturnType<typeof setInterval> | null = null;
@@ -14,7 +16,8 @@ export class AgentHealthMonitor {
     constructor(
         private store: AgentStore,
         private intervalMs: number = 30_000,
-        private tunnelBridge?: TunnelBridge
+        private tunnelBridge?: TunnelBridge,
+        private inboundManager?: InboundAgentManager
     ) {}
 
     start(): void {
@@ -31,13 +34,19 @@ export class AgentHealthMonitor {
 
     private async check(): Promise<void> {
         const agents = this.store.list();
-        await Promise.all(
-            agents.map(async (agent) => {
-                // Use tunnel bridge local URL if available
-                const effectiveAddr = this.tunnelBridge?.getLocalUrl(agent.id) || agent.address;
-                const healthy = await checkAgentHealth(effectiveAddr);
-                this.store.updateStatus(agent.id, healthy ? 'online' : 'offline');
-            })
-        );
+        for (const agent of agents) {
+            // For inbound agents, check by stored agent ID
+            if (agent.address.startsWith('inbound://')) {
+                const agentId = agent.address.replace('inbound://', '');
+                const connected = this.inboundManager?.hasAgent(agentId) ?? false;
+                this.store.updateStatus(agent.id, connected ? 'online' : 'offline');
+                continue;
+            }
+            // Legacy outbound agents: check if they happen to have a call-home
+            // WebSocket connection (by matching name). Otherwise mark offline.
+            const inboundAgents = this.inboundManager?.listAgents() ?? [];
+            const matchByName = inboundAgents.find(a => a.name === agent.name);
+            this.store.updateStatus(agent.id, matchByName ? 'online' : 'offline');
+        }
     }
 }

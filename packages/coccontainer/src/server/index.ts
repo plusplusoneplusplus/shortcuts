@@ -62,7 +62,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
     const sseRelay = new SSERelay();
     const wsRelay = new WebSocketRelay();
     const inboundManager = new InboundAgentManager();
-    const healthMonitor = new AgentHealthMonitor(agentStore, config.healthCheckIntervalMs, tunnelBridge);
+    const healthMonitor = new AgentHealthMonitor(agentStore, config.healthCheckIntervalMs, tunnelBridge, inboundManager);
 
     // Start health monitoring and SSE/WS connections for existing agents
     const agents = agentStore.list();
