@@ -10,6 +10,8 @@ import { useMemo, useEffect, useState, useCallback, useRef, forwardRef, useImper
 import { getLanguageFromFileName, highlightLine } from '../hooks/useSyntaxHighlight';
 import { DiffContextMenu } from '../../../tasks/comments/DiffContextMenu';
 import type { DiffCommentSelection, DiffComment } from '../../../../comments/diff-comment-types';
+import type { HunkCategory, HunkClassification } from '../../pull-requests/classification-types';
+import { CATEGORY_LABELS } from '../../pull-requests/classification-types';
 
 export interface UnifiedDiffViewerProps {
     diff: string;
@@ -34,6 +36,66 @@ export interface UnifiedDiffViewerProps {
         selectedText: string,
     ) => void;
     onCommentClick?: (comment: DiffComment, event: React.MouseEvent) => void;
+    /**
+     * Optional classification integration for AC-02. When the trio
+     * (filePath, getHunkClassification, activeFilters) is provided, hunks
+     * whose category is not in activeFilters collapse into a single summary
+     * row with category, intensity, reason, changed-line count, and an
+     * expand control. Reviewer can expand an individual collapsed hunk
+     * without resetting filters; setting activeFilters to all four
+     * categories ("Show all") also restores all hunks.
+     */
+    filePath?: string;
+    getHunkClassification?: (filePath: string, hunkIndex: number) => HunkClassification | undefined;
+    activeFilters?: Set<HunkCategory>;
+}
+
+/** Per-hunk metadata used to drive AC-02 collapsed summary rows. */
+export interface HunkRange {
+    /** 0-based hunk index within this file. */
+    hunkIndex: number;
+    /** Index of the `@@` header line in the unified diff. */
+    startIdx: number;
+    /** Exclusive end index (next hunk header or end of diff). */
+    endIdx: number;
+    /** Approximate changed-line count (added + removed lines in body). */
+    changedLines: number;
+    classification?: HunkClassification;
+}
+
+/**
+ * Walk diffLines and produce one HunkRange per `@@` hunk header.
+ * If filePath/getHunkClassification are omitted, returns ranges without
+ * classifications so callers can use the geometry without filtering.
+ */
+export function computeHunkRanges(
+    diffLines: DiffLine[],
+    filePath?: string,
+    getHunkClassification?: (filePath: string, hunkIndex: number) => HunkClassification | undefined,
+): HunkRange[] {
+    const result: HunkRange[] = [];
+    let hi = -1;
+    let start = -1;
+    let changed = 0;
+    const flush = (endIdx: number) => {
+        if (start < 0) return;
+        const classification = filePath && getHunkClassification
+            ? getHunkClassification(filePath, hi)
+            : undefined;
+        result.push({ hunkIndex: hi, startIdx: start, endIdx, changedLines: changed, classification });
+    };
+    for (let i = 0; i < diffLines.length; i++) {
+        if (diffLines[i].type === 'hunk-header') {
+            flush(i);
+            hi += 1;
+            start = i;
+            changed = 0;
+        } else if (start >= 0 && (diffLines[i].type === 'added' || diffLines[i].type === 'removed')) {
+            changed += 1;
+        }
+    }
+    flush(diffLines.length);
+    return result;
 }
 
 type LineType = 'added' | 'removed' | 'hunk-header' | 'meta' | 'context';
@@ -455,7 +517,7 @@ function getScrollableAncestor(el: HTMLElement): HTMLElement {
     return document.documentElement as HTMLElement;
 }
 
-export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiffViewerProps>(function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enableComments, showLineNumbers, onLinesReady, onAddComment, onAskAI, onCopyAsContext, comments, onCommentClick }, ref) {
+export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiffViewerProps>(function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enableComments, showLineNumbers, onLinesReady, onAddComment, onAskAI, onCopyAsContext, comments, onCommentClick, filePath, getHunkClassification, activeFilters }, ref) {
     const lines = useMemo(() => diff.split('\n'), [diff]);
     const languages = useMemo(() => getLanguagesForLines(lines, fileName), [lines, fileName]);
     const diffLines = useMemo(() => computeDiffLines(lines), [lines]);
@@ -466,6 +528,59 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
         () => (comments ? buildLineCommentMap(comments) : new Map<number, DiffComment[]>()),
         [comments]
     );
+
+    // ── AC-02: classification-driven hunk collapse ──────────────────
+    // Hunks whose category is not in activeFilters render as compact
+    // summary rows (category, intensity, reason, changed-line count, and
+    // an expand control) instead of disappearing. expandedHunks tracks
+    // per-hunk overrides so a reviewer can expand one collapsed hunk
+    // without resetting all filters.
+    const [expandedHunks, setExpandedHunks] = useState<Set<number>>(new Set());
+
+    const hunkRanges = useMemo(
+        () => computeHunkRanges(diffLines, filePath, getHunkClassification),
+        [diffLines, filePath, getHunkClassification],
+    );
+
+    const collapsedByStart = useMemo(() => {
+        const map = new Map<number, HunkRange>();
+        if (!activeFilters || !filePath || !getHunkClassification) return map;
+        for (const h of hunkRanges) {
+            if (!h.classification) continue;
+            if (activeFilters.has(h.classification.category)) continue;
+            if (expandedHunks.has(h.hunkIndex)) continue;
+            map.set(h.startIdx, h);
+        }
+        return map;
+    }, [hunkRanges, activeFilters, expandedHunks, filePath, getHunkClassification]);
+
+    const skipIndices = useMemo(() => {
+        const set = new Set<number>();
+        for (const h of collapsedByStart.values()) {
+            // Skip every line inside the collapsed hunk except the start
+            // (we render a summary row in place of the @@ header line).
+            for (let k = h.startIdx + 1; k < h.endIdx; k++) set.add(k);
+        }
+        return set;
+    }, [collapsedByStart]);
+
+    // When the active-filter set becomes the full set (Show all), clear
+    // any per-hunk overrides so subsequent filter changes start fresh.
+    useEffect(() => {
+        if (!activeFilters) return;
+        if (activeFilters.size >= 4) {
+            setExpandedHunks(prev => (prev.size === 0 ? prev : new Set()));
+        }
+    }, [activeFilters]);
+
+    const expandHunk = useCallback((hunkIndex: number) => {
+        setExpandedHunks(prev => {
+            if (prev.has(hunkIndex)) return prev;
+            const next = new Set(prev);
+            next.add(hunkIndex);
+            return next;
+        });
+    }, []);
 
     const containerRef = useRef<HTMLDivElement>(null);
     const currentHunkIndexRef = useRef<number>(-1);
@@ -647,6 +762,45 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
         >
             {lines.map((line, i) => {
                 const { type, oldLine, newLine } = diffLines[i];
+                if (skipIndices.has(i)) return null;
+                const collapsedHunk = collapsedByStart.get(i);
+                if (collapsedHunk && collapsedHunk.classification) {
+                    const c = collapsedHunk.classification;
+                    return (
+                        <div
+                            key={i}
+                            className="whitespace-pre-wrap break-words flex items-center gap-2 px-2 py-1 bg-[#f0f4f8] dark:bg-[#252b33] text-[#0550ae] dark:text-[#79c0ff] border-y border-[#e0e0e0] dark:border-[#3c3c3c] cursor-default"
+                            data-collapsed-hunk-index={collapsedHunk.hunkIndex}
+                            data-testid="collapsed-hunk-summary"
+                        >
+                            <span
+                                className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${c.intensity === 'high' ? 'bg-[#ffd8b2] text-[#b94a00] dark:bg-[#5a2e00] dark:text-[#ffb380]' : 'bg-[#e0e7ff] text-[#3730a3] dark:bg-[#1e293b] dark:text-[#93c5fd]'}`}
+                            >
+                                {CATEGORY_LABELS[c.category]}
+                            </span>
+                            <span className="text-[10px] uppercase tracking-wide text-[#6e7681] dark:text-[#8b949e]">
+                                {c.intensity}
+                            </span>
+                            <span
+                                className="flex-1 min-w-0 truncate text-[#24292f] dark:text-[#c9d1d9]"
+                                title={c.reason}
+                            >
+                                {c.reason}
+                            </span>
+                            <span className="shrink-0 text-[10px] text-[#6e7681] dark:text-[#8b949e] whitespace-nowrap">
+                                ~{collapsedHunk.changedLines} line{collapsedHunk.changedLines === 1 ? '' : 's'}
+                            </span>
+                            <button
+                                type="button"
+                                className="shrink-0 text-[11px] px-2 py-0.5 rounded bg-white dark:bg-[#1f2937] border border-[#d0d7de] dark:border-[#3c3c3c] text-[#24292f] dark:text-[#c9d1d9] hover:bg-[#f3f4f6] dark:hover:bg-[#2a3340]"
+                                onClick={() => expandHunk(collapsedHunk.hunkIndex)}
+                                data-testid="collapsed-hunk-expand"
+                            >
+                                Expand
+                            </button>
+                        </div>
+                    );
+                }
                 if ((type === 'added' || type === 'removed' || type === 'context') && line.length > 0) {
                     const content = line.slice(1);
                     const intraParts = (type === 'added' || type === 'removed') ? intraLinePartsMap.get(i) : undefined;

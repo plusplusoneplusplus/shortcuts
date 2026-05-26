@@ -48,6 +48,13 @@ export interface FileDiffPanelProps {
     /** When provided, render a Mark reviewed toggle in the toolbar. */
     isReviewed?: boolean;
     onToggleReviewed?: () => void;
+    /**
+     * Optional classification props (AC-02). Forwarded to the unified diff
+     * viewer so filtered-out hunks render as compact summary rows instead
+     * of disappearing.
+     */
+    getHunkClassification?: (filePath: string, hunkIndex: number) => import('../../pull-requests/classification-types').HunkClassification | undefined;
+    hunkActiveFilters?: Set<import('../../pull-requests/classification-types').HunkCategory>;
 }
 
 type PopupState = {
@@ -68,6 +75,8 @@ export function FileDiffPanel({
     showSourceLabel = true,
     isReviewed,
     onToggleReviewed,
+    getHunkClassification,
+    hunkActiveFilters,
 }: FileDiffPanelProps) {
     const { dispatch: queueDispatch } = useQueue();
 
@@ -405,6 +414,9 @@ export function FileDiffPanel({
                                     onAskAI={handleAskAIDiff}
                                     onCopyAsContext={handleCopyAsContext}
                                     onCommentClick={handleCommentClick}
+                                    filePath={filePath}
+                                    getHunkClassification={getHunkClassification}
+                                    activeFilters={hunkActiveFilters}
                                     data-testid="file-diff-content"
                                 />
                             )}

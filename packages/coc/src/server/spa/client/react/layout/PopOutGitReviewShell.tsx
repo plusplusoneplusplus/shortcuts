@@ -565,6 +565,8 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
                             showSourceLabel={false}
                             isReviewed={reviewProgress.isReviewed(selectedFilePath)}
                             onToggleReviewed={() => reviewProgress.toggleReviewed(selectedFilePath)}
+                            getHunkClassification={classifyStatus === 'ready' ? classification.getHunkClassification : undefined}
+                            hunkActiveFilters={classifyStatus === 'ready' ? classification.state.activeFilters : undefined}
                         />
                     ) : (
                         <div className="flex flex-col items-center justify-center flex-1 gap-2 text-xs text-[#848484]">
