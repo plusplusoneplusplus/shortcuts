@@ -1,6 +1,6 @@
 # CoC Agent SDK (`coc-agent-sdk`)
 
-Provider-agnostic AI agent SDK for CoC. Manages AI session lifecycle, MCP server configuration, model registry and metadata, reasoning-effort resolution, and folder trust. Supports **Copilot** (via `@github/copilot-sdk`) and **Codex** (via the optional `@openai/codex-sdk`) backends through a common `ISDKService` interface.
+Provider-agnostic AI agent SDK for CoC. Manages AI session lifecycle, MCP server configuration, model registry and metadata, reasoning-effort resolution, folder trust, and provider quota snapshots where the backend exposes them. Supports **Copilot** (via `@github/copilot-sdk`), **Codex** (via the optional `@openai/codex-sdk` plus the bundled `@openai/codex` CLI for quota/model catalog RPCs), and **Claude** (via the optional `@anthropic-ai/claude-agent-sdk`) backends through a common `ISDKService` interface.
 
 Package: `@plusplusoneplusplus/coc-agent-sdk`  
 Location: `packages/coc-agent-sdk/src/`
@@ -13,6 +13,7 @@ Location: `packages/coc-agent-sdk/src/`
 |------|---------|
 | `copilot-sdk-service.ts` | `CopilotSDKService` facade singleton — Copilot backend |
 | `codex-sdk-service.ts` | `CodexSDKService` — optional Codex backend (`@openai/codex-sdk`) |
+| `claude-sdk-service.ts` | `ClaudeSDKService` — optional Claude backend (`@anthropic-ai/claude-agent-sdk`) |
 | `sdk-service-interface.ts` | `ISDKService` provider-agnostic contract |
 | `sdk-service-registry.ts` | `SDKServiceRegistry` — named-provider registry |
 | `request-runner.ts` | `sendMessage`/`transform` execution: session creation, MCP wiring, permission handler, streaming routing |
@@ -84,6 +85,8 @@ Each `sendMessage()` call creates its **own `CopilotClient`** child process — 
 
 `CodexSDKService` implements `ISDKService` backed by the **optional** `@openai/codex-sdk` peer dependency. When the package is not installed, `isAvailable()` returns `{ available: false }` and `sendMessage()` returns an error result rather than throwing.
 
+Codex quota and model catalog lookups spawn the `@openai/codex` CLI that ships as a dependency of `@openai/codex-sdk`; the bin path is resolved at runtime relative to `coc-agent-sdk`.
+
 **Thread ↔ session mapping:** Every CoC session ID maps to exactly one Codex thread. The mapping is created on the first `sendMessage()` call for a session and removed on abort or dispose.
 
 **Auth checker injection:** An optional `CodexAuthChecker` callback can be injected to gate requests. When not authenticated, `sendMessage()` returns an error with `authUrl` so callers can surface a sign-in link.
@@ -97,6 +100,23 @@ sdkServiceRegistry.register(SDK_PROVIDER_CODEX, svc);
 ```
 
 **Lazy loading:** No SDK module is loaded until the first `isAvailable()` or `sendMessage()` call.
+
+## ClaudeSDKService Architecture
+
+`ClaudeSDKService` implements `ISDKService` backed by the **optional** `@anthropic-ai/claude-agent-sdk` peer dependency. It lazy-loads the SDK's `query` export, streams Claude messages into the common invocation result shape, and reports `{ available: false }` with install guidance when the package cannot be imported.
+
+Claude Agent SDK does **not** expose a direct quota RPC equivalent to Copilot `account.getQuota` or Codex `account/rateLimits/read`. `ClaudeSDKService.getAccountQuota()` surfaces, in priority order:
+
+1. The most recent structured `rate_limit_event` emitted during a Claude session (concrete per-limit usage, mapped via `mapClaudeRateLimitInfoToQuota`).
+2. A synthesized "subscription active, well under all thresholds" snapshot derived from `accountInfo()` (mapped via `mapClaudeAccountInfoToQuota`, keyed by `subscriptionType` like `Claude Pro` / `Claude Max` / `team` / `enterprise`, falling back to a non-`firstParty` `apiProvider` such as `bedrock` / `vertex`, then to `subscription`). Used when no rate-limit event has fired yet (the common case for healthy users).
+
+If neither signal is available the result is `{ quotaSnapshots: {} }`.
+
+`accountInfo()` is cached as a side-effect of every real `sendMessage()` call: after obtaining the query handle, `ClaudeSDKService` fires `handle.accountInfo?.()` as a fire-and-forget promise that writes to `lastAccountInfo` on resolution. No separate probe subprocess is spawned.
+
+Claude Code expects hyphenated model IDs for version aliases (for example, `claude-sonnet-4-6`). `ClaudeSDKService` normalizes CoC's shared dotted Claude registry IDs (`claude-sonnet-4.6`, `claude-haiku-4.5`, `claude-opus-4.6`) to that Claude Code form before passing `options.model` to the SDK. Non-Claude model IDs and `claude-provider-default` are omitted so Claude Code can use its configured default.
+
+Claude Code permission mode is mapped at the provider boundary: CoC `autopilot` sends `permissionMode: 'bypassPermissions'` plus `allowDangerouslySkipPermissions: true`, while CoC `plan` sends `permissionMode: 'plan'`. Interactive/ask mode leaves Claude Code's default permission behavior in place.
 
 ## RequestRunner — sendMessage() Flow (Copilot)
 

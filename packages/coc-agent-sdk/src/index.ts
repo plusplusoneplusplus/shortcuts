@@ -96,6 +96,7 @@ export {
 export {
     CodexSDKService,
     registerCodexSDKService,
+    mapCodexRateLimitsToQuota,
 } from './codex-sdk-service';
 
 export type {
@@ -106,6 +107,13 @@ export type {
 export {
     ClaudeSDKService,
     registerClaudeSDKService,
+    mapClaudeRateLimitInfoToQuota,
+    mapClaudeAccountInfoToQuota,
+} from './claude-sdk-service';
+
+export type {
+    ClaudeRateLimitInfo,
+    ClaudeAccountInfo,
 } from './claude-sdk-service';
 
 export {

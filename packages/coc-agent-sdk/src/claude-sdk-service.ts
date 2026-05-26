@@ -1,7 +1,7 @@
 /**
  * Claude SDK Service
  *
- * Implements ISDKService backed by the optional `@anthropic-ai/claude-code` package.
+ * Implements ISDKService backed by the optional `@anthropic-ai/claude-agent-sdk` package.
  * When the package is not installed the service reports itself as unavailable
  * and all method calls return appropriate error results rather than throwing.
  *
@@ -15,14 +15,14 @@
  *
  * Optional peer dependency
  * ─────────────────────────
- * `@anthropic-ai/claude-code` is declared as an optional peer dependency.
+ * `@anthropic-ai/claude-agent-sdk` is declared as an optional peer dependency.
  * The module is loaded lazily with a try/catch so the rest of the SDK works
  * fine without it.
  *
  * Authentication detection
  * ─────────────────────────
  * Claude credentials are managed entirely outside CoC (via the `claude` CLI or
- * the `@anthropic-ai/claude-code` SDK's own auth mechanism). CoC does not store
+ * the `@anthropic-ai/claude-agent-sdk` SDK's own auth mechanism). CoC does not store
  * or retrieve any Anthropic API key or OAuth token. Availability checks detect
  * whether Claude auth exists on the server without touching the credentials
  * themselves.
@@ -31,13 +31,15 @@
 import type { SendMessageOptions } from './types';
 import type { ToolEvent } from './types';
 import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult } from './sdk-service-interface';
+import type { IAccountQuotaResult, IAccountQuotaSnapshot } from './copilot-sdk-service';
 import type { ToolCall } from './tool-call';
 import { sdkServiceRegistry, CLAUDE_PROVIDER } from './sdk-service-registry';
 import { dynamicImportModule } from './sdk-esm-loader';
+import { getSDKLogger } from './logger';
 import * as crypto from 'crypto';
 
 // ============================================================================
-// @anthropic-ai/claude-code type stubs
+// @anthropic-ai/claude-agent-sdk type stubs
 // These mirror the streaming query API published by the package.
 // Kept here so the file compiles without the optional peer dependency.
 // ============================================================================
@@ -85,7 +87,24 @@ interface ClaudeSystemMessage {
     [key: string]: unknown;
 }
 
-type ClaudeSDKMessage = ClaudeAssistantMessage | ClaudeResultMessage | ClaudeSystemMessage | Record<string, unknown>;
+export interface ClaudeRateLimitInfo {
+    status: 'allowed' | 'allowed_warning' | 'rejected';
+    resetsAt?: number;
+    rateLimitType?: 'five_hour' | 'seven_day' | 'seven_day_opus' | 'seven_day_sonnet' | 'overage' | string;
+    utilization?: number;
+    overageStatus?: 'allowed' | 'allowed_warning' | 'rejected';
+    overageResetsAt?: number;
+    isUsingOverage?: boolean;
+    surpassedThreshold?: number;
+}
+
+interface ClaudeRateLimitEvent {
+    type: 'rate_limit_event';
+    rate_limit_info: ClaudeRateLimitInfo;
+}
+
+type ClaudeSDKMessage = ClaudeAssistantMessage | ClaudeResultMessage | ClaudeSystemMessage | ClaudeRateLimitEvent | Record<string, unknown>;
+type ClaudePermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | 'auto';
 
 interface ClaudeQueryOptions {
     prompt: string;
@@ -95,14 +114,38 @@ interface ClaudeQueryOptions {
         model?: string;
         customSystemPrompt?: string;
         appendSystemPrompt?: string;
+        permissionMode?: ClaudePermissionMode;
+        allowDangerouslySkipPermissions?: boolean;
     };
 }
 
+/**
+ * Account information returned by the SDK's accountInfo() control method.
+ * Available on the Query handle returned by the claude-agent-sdk query() function.
+ */
+export interface ClaudeAccountInfo {
+    email?: string;
+    organization?: string;
+    subscriptionType?: string;
+    tokenSource?: string;
+    apiKeySource?: string;
+    apiProvider?: string;
+}
+
+/**
+ * The real SDK's query() return value extends AsyncGenerator with extra control
+ * methods (accountInfo, interrupt, etc.).
+ */
+interface ClaudeQueryHandle extends AsyncIterable<ClaudeSDKMessage> {
+    accountInfo?(): Promise<ClaudeAccountInfo>;
+    return?(value?: unknown): Promise<{ done: true; value: unknown }>;
+}
+
 interface ClaudeSDKModule {
-    query?: (options: ClaudeQueryOptions) => AsyncIterable<ClaudeSDKMessage>;
+    query?: (options: ClaudeQueryOptions) => ClaudeQueryHandle;
     default?: {
-        query?: (options: ClaudeQueryOptions) => AsyncIterable<ClaudeSDKMessage>;
-    } | ((options: ClaudeQueryOptions) => AsyncIterable<ClaudeSDKMessage>);
+        query?: (options: ClaudeQueryOptions) => ClaudeQueryHandle;
+    } | ((options: ClaudeQueryOptions) => ClaudeQueryHandle);
 }
 
 // ============================================================================
@@ -118,8 +161,10 @@ interface ActiveClaudeSession {
 // ClaudeSDKService
 // ============================================================================
 
+const CLAUDE_AGENT_SDK_PACKAGE = '@anthropic-ai/claude-agent-sdk';
+
 /**
- * Provider for the optional `@anthropic-ai/claude-code` package.
+ * Provider for the optional `@anthropic-ai/claude-agent-sdk` package.
  * Registered under the `'claude'` key in `SDKServiceRegistry`.
  *
  * Construction is cheap — no SDK is loaded until the first call to
@@ -127,7 +172,9 @@ interface ActiveClaudeSession {
  */
 export class ClaudeSDKService implements ISDKService {
     private availabilityCache: IAvailabilityResult | null = null;
-    private queryFn: ((options: ClaudeQueryOptions) => AsyncIterable<ClaudeSDKMessage>) | null = null;
+    private queryFn: ((options: ClaudeQueryOptions) => ClaudeQueryHandle) | null = null;
+    private lastRateLimitInfo: ClaudeRateLimitInfo | null = null;
+    private lastAccountInfo: ClaudeAccountInfo | null = null;
     private disposed = false;
 
     /** sessionId → active session metadata (request/active-session state only) */
@@ -140,13 +187,13 @@ export class ClaudeSDKService implements ISDKService {
         if (this.availabilityCache) return this.availabilityCache;
 
         try {
-            const mod = await dynamicImportModule<ClaudeSDKModule>('@anthropic-ai/claude-code');
+            const mod = await dynamicImportModule<ClaudeSDKModule>(CLAUDE_AGENT_SDK_PACKAGE);
             const queryFn = this.resolveQueryFn(mod);
             if (!queryFn) {
                 throw new Error(
-                    '@anthropic-ai/claude-code loaded but did not export a `query` function. ' +
+                    `${CLAUDE_AGENT_SDK_PACKAGE} loaded but did not export a \`query\` function. ` +
                     'Ensure you have a compatible version installed:\n' +
-                    '  npm install -g @anthropic-ai/claude-code',
+                    `  npm install ${CLAUDE_AGENT_SDK_PACKAGE}`,
                 );
             }
             this.queryFn = queryFn;
@@ -160,16 +207,16 @@ export class ClaudeSDKService implements ISDKService {
                 this.availabilityCache = {
                     available: false,
                     error:
-                        'Claude Code SDK not installed. To enable Claude, run:\n' +
-                        '  npm install -g @anthropic-ai/claude-code\n' +
+                        'Claude Agent SDK not installed. To enable Claude, run:\n' +
+                        `  npm install ${CLAUDE_AGENT_SDK_PACKAGE}\n` +
                         'Then authenticate with `claude` and restart CoC.',
                 };
             } else {
                 const msg = err instanceof Error ? err.message : String(err);
                 this.availabilityCache = {
                     available: false,
-                    error: `Claude Code SDK failed to load: ${msg}\n` +
-                        'Ensure @anthropic-ai/claude-code is installed and `claude` is authenticated.',
+                    error: `Claude Agent SDK failed to load: ${msg}\n` +
+                        `Ensure ${CLAUDE_AGENT_SDK_PACKAGE} is installed and \`claude\` is authenticated.`,
                 };
             }
         }
@@ -178,13 +225,13 @@ export class ClaudeSDKService implements ISDKService {
 
     private resolveQueryFn(
         mod: ClaudeSDKModule,
-    ): ((options: ClaudeQueryOptions) => AsyncIterable<ClaudeSDKMessage>) | undefined {
+    ): ((options: ClaudeQueryOptions) => ClaudeQueryHandle) | undefined {
         if (typeof mod.query === 'function') return mod.query;
         if (typeof mod.default === 'function') {
-            return mod.default as (options: ClaudeQueryOptions) => AsyncIterable<ClaudeSDKMessage>;
+            return mod.default as unknown as (options: ClaudeQueryOptions) => ClaudeQueryHandle;
         }
         if (mod.default && typeof (mod.default as { query?: unknown }).query === 'function') {
-            return (mod.default as { query: (options: ClaudeQueryOptions) => AsyncIterable<ClaudeSDKMessage> }).query;
+            return (mod.default as { query: (options: ClaudeQueryOptions) => ClaudeQueryHandle }).query;
         }
         return undefined;
     }
@@ -192,6 +239,8 @@ export class ClaudeSDKService implements ISDKService {
     public clearAvailabilityCache(): void {
         this.availabilityCache = null;
         this.queryFn = null;
+        this.lastRateLimitInfo = null;
+        this.lastAccountInfo = null;
     }
 
     // ── Model discovery ───────────────────────────────────────────────────────
@@ -211,6 +260,17 @@ export class ClaudeSDKService implements ISDKService {
             { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
             { id: 'claude-provider-default', name: 'Claude Provider Default' },
         ];
+    }
+
+    // ── Account quota from Claude rate-limit events ───────────────────────────
+
+    public async getAccountQuota(): Promise<IAccountQuotaResult> {
+        if (this.disposed) throw new Error('ClaudeSDKService has been disposed');
+        const avail = await this.isAvailable();
+        if (!avail.available) throw new Error(avail.error ?? 'Claude Code SDK is not available');
+        if (this.lastRateLimitInfo) return mapClaudeRateLimitInfoToQuota(this.lastRateLimitInfo);
+        if (this.lastAccountInfo) return mapClaudeAccountInfoToQuota(this.lastAccountInfo);
+        return { quotaSnapshots: {} };
     }
 
     // ── Message dispatch ──────────────────────────────────────────────────────
@@ -250,6 +310,7 @@ export class ClaudeSDKService implements ISDKService {
 
         try {
             const model = this.normalizeClaudeModel(options.model);
+            const permissionOptions = this.resolveClaudePermissionOptions(options.mode);
             const queryOptions: ClaudeQueryOptions = {
                 prompt: options.prompt ?? '',
                 abortController,
@@ -258,10 +319,13 @@ export class ClaudeSDKService implements ISDKService {
                     ...(model ? { model } : {}),
                     ...(options.systemMessage?.mode === 'append' ? { appendSystemPrompt: options.systemMessage.content } : {}),
                     ...(options.systemMessage?.mode === 'replace' ? { customSystemPrompt: options.systemMessage.content } : {}),
+                    ...permissionOptions,
                 },
             };
 
-            for await (const msg of queryFn(queryOptions)) {
+            const handle = queryFn(queryOptions);
+            handle.accountInfo?.().then(info => { this.lastAccountInfo = info; }).catch(() => {});
+            for await (const msg of handle) {
                 if (abortController.signal.aborted) break;
                 if (this.isAssistantMessage(msg)) {
                     for (const block of msg.message.content) {
@@ -288,6 +352,14 @@ export class ClaudeSDKService implements ISDKService {
                         chunks.push(msg.result);
                         options.onStreamingChunk?.(msg.result);
                     }
+                } else if (this.isRateLimitEvent(msg)) {
+                    getSDKLogger().debug(
+                        '[ClaudeQuota] session rate_limit_event — status=%s type=%s utilization=%s',
+                        msg.rate_limit_info.status,
+                        msg.rate_limit_info.rateLimitType ?? '(none)',
+                        msg.rate_limit_info.utilization ?? msg.rate_limit_info.surpassedThreshold ?? '(none)',
+                    );
+                    this.lastRateLimitInfo = msg.rate_limit_info;
                 }
             }
 
@@ -324,6 +396,16 @@ export class ClaudeSDKService implements ISDKService {
             typeof msg === 'object' &&
             msg !== null &&
             (msg as Record<string, unknown>).type === 'result'
+        );
+    }
+
+    private isRateLimitEvent(msg: ClaudeSDKMessage): msg is ClaudeRateLimitEvent {
+        return (
+            typeof msg === 'object' &&
+            msg !== null &&
+            (msg as Record<string, unknown>).type === 'rate_limit_event' &&
+            typeof (msg as ClaudeRateLimitEvent).rate_limit_info === 'object' &&
+            (msg as ClaudeRateLimitEvent).rate_limit_info !== null
         );
     }
 
@@ -382,18 +464,45 @@ export class ClaudeSDKService implements ISDKService {
     }
 
     /**
-     * Normalize model ID for Claude: pass through Claude-looking model IDs,
-     * use provider default for missing or non-Claude model IDs.
+     * Normalize model ID for Claude Code.
+     *
+     * CoC's shared model registry uses dotted marketing IDs such as
+     * `claude-sonnet-4.6`, while Claude Code expects the CLI model form
+     * `claude-sonnet-4-6`. Translate that narrow alias shape at the provider
+     * boundary so stored process metadata and UI preferences can remain
+     * provider-agnostic.
      */
     private normalizeClaudeModel(model: string | undefined): string | undefined {
         if (!model) return undefined;
-        const normalized = model.toLowerCase();
+        const trimmed = model.trim();
+        if (!trimmed) return undefined;
+        const normalized = trimmed.toLowerCase();
         if (normalized === 'claude-provider-default' || normalized === 'provider-default') {
             return undefined;
         }
+        const dottedMarketingId = normalized.match(/^claude-(sonnet|opus|haiku)-(\d+)\.(\d+)$/);
+        if (dottedMarketingId) {
+            const [, family, major, minor] = dottedMarketingId;
+            return `claude-${family}-${major}-${minor}`;
+        }
         // Only pass through Claude model IDs; reject Copilot/Codex model IDs.
-        if (normalized.startsWith('claude')) return model;
+        if (normalized.startsWith('claude')) return trimmed;
         return undefined;
+    }
+
+    private resolveClaudePermissionOptions(
+        mode: SendMessageOptions['mode'],
+    ): Pick<NonNullable<ClaudeQueryOptions['options']>, 'permissionMode' | 'allowDangerouslySkipPermissions'> {
+        if (mode === 'autopilot') {
+            return {
+                permissionMode: 'bypassPermissions',
+                allowDangerouslySkipPermissions: true,
+            };
+        }
+        if (mode === 'plan') {
+            return { permissionMode: 'plan' };
+        }
+        return {};
     }
 
     public async transform<T = string>(
@@ -416,7 +525,7 @@ export class ClaudeSDKService implements ISDKService {
     public async forkSession(_sessionId: string): Promise<string> {
         throw new Error(
             'ClaudeSDKService does not support session forking. ' +
-            'The @anthropic-ai/claude-code SDK does not expose fork semantics.',
+            `The ${CLAUDE_AGENT_SDK_PACKAGE} SDK does not expose fork semantics.`,
         );
     }
 
@@ -455,6 +564,8 @@ export class ClaudeSDKService implements ISDKService {
         this.sessions.clear();
         this.availabilityCache = null;
         this.queryFn = null;
+        this.lastRateLimitInfo = null;
+        this.lastAccountInfo = null;
     }
 
     public dispose(): void {
@@ -478,4 +589,90 @@ export function registerClaudeSDKService(): ClaudeSDKService {
     const svc = new ClaudeSDKService();
     sdkServiceRegistry.register(CLAUDE_PROVIDER, svc);
     return svc;
+}
+
+export function mapClaudeRateLimitInfoToQuota(info: ClaudeRateLimitInfo): IAccountQuotaResult {
+    const quotaType = info.rateLimitType && info.rateLimitType.trim() ? info.rateLimitType : 'claude';
+    return {
+        quotaSnapshots: {
+            [quotaType]: mapClaudeRateLimitSnapshot(info),
+        },
+    };
+}
+
+/**
+ * Build a synthetic "subscription active, well under all thresholds" snapshot
+ * from Claude's `accountInfo()`. Used as a fallback when no `rate_limit_event`
+ * has been observed yet (i.e. the user is comfortably under every utilisation
+ * threshold), so the UI still shows Claude as a real provider instead of
+ * hiding it entirely.
+ *
+ * The snapshot key is derived from `subscriptionType` (e.g. `pro`, `max`,
+ * `team`, `enterprise`, `claude_pro`, `claude_max`, `free`) and falls back to
+ * the API provider for 3P-auth setups (`bedrock`, `vertex`, etc.). When
+ * neither is known the generic `subscription` key is used.
+ *
+ * The numeric fields encode "0 of 100 used, 100% remaining" so the UI shows a
+ * full-green bar — accurate, since the absence of a `rate_limit_event`
+ * implies utilisation is below every warning threshold.
+ */
+export function mapClaudeAccountInfoToQuota(info: ClaudeAccountInfo): IAccountQuotaResult {
+    const subscription = info.subscriptionType?.trim();
+    const provider = info.apiProvider?.trim();
+    const quotaType = subscription && subscription.length > 0
+        ? subscription
+        : provider && provider.length > 0 && provider !== 'firstParty'
+            ? provider
+            : 'subscription';
+    return {
+        quotaSnapshots: {
+            [quotaType]: {
+                isUnlimitedEntitlement: false,
+                entitlementRequests: 100,
+                usedRequests: 0,
+                usageAllowedWithExhaustedQuota: false,
+                remainingPercentage: 1,
+                overage: 0,
+            },
+        },
+    };
+}
+
+function mapClaudeRateLimitSnapshot(info: ClaudeRateLimitInfo): IAccountQuotaSnapshot {
+    const utilization = normalizeUtilization(info.utilization ?? info.surpassedThreshold, info.status);
+    const entitlementRequests = 100;
+    const usedRequests = Math.round(utilization * entitlementRequests);
+    const resetDate = toResetDate(info.resetsAt);
+    const usageAllowedWithExhaustedQuota = info.isUsingOverage === true
+        || info.overageStatus === 'allowed'
+        || info.overageStatus === 'allowed_warning';
+    return {
+        isUnlimitedEntitlement: false,
+        entitlementRequests,
+        usedRequests,
+        usageAllowedWithExhaustedQuota,
+        remainingPercentage: clamp01(1 - utilization),
+        overage: Math.max(0, usedRequests - entitlementRequests),
+        ...(resetDate ? { resetDate } : {}),
+    };
+}
+
+function normalizeUtilization(value: number | undefined, status: ClaudeRateLimitInfo['status']): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return status === 'rejected' ? 1 : 0;
+    }
+    return clamp01(value > 1 ? value / 100 : value);
+}
+
+function clamp01(value: number): number {
+    if (value < 0) return 0;
+    if (value > 1) return 1;
+    return value;
+}
+
+function toResetDate(value: number | undefined): string | undefined {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined;
+    const millis = value < 10_000_000_000 ? value * 1000 : value;
+    const date = new Date(millis);
+    return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }

@@ -16,5 +16,6 @@ export function withDefaults<T extends z.ZodTypeAny>(
   schema: T,
   defaults: z.infer<T>
 ): z.ZodDefault<T> {
-  return schema.default(defaults);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return schema.default(defaults as any);
 }

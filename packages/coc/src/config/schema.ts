@@ -159,8 +159,8 @@ export function validateConfigWithSchema(config: unknown): CLIConfigFromSchema {
         return CLIConfigSchema.parse(config);
     } catch (error) {
         if (error instanceof z.ZodError) {
-            const messages = error.errors.map(e =>
-                `  - ${e.path.join('.')}: ${e.message}`
+            const messages = error.issues.map(e =>
+                `  - ${(e.path as (string | number)[]).join('.')}: ${e.message}`
             ).join('\n');
             throw new Error(`Invalid config file:\n${messages}`);
         }

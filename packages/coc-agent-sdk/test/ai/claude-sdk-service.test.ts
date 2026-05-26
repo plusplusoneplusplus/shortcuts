@@ -12,7 +12,12 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { ClaudeSDKService, registerClaudeSDKService } from '../../src/claude-sdk-service';
+import {
+    ClaudeSDKService,
+    mapClaudeAccountInfoToQuota,
+    mapClaudeRateLimitInfoToQuota,
+    registerClaudeSDKService,
+} from '../../src/claude-sdk-service';
 import {
     CLAUDE_PROVIDER,
     SDK_PROVIDER_CLAUDE,
@@ -20,7 +25,7 @@ import {
 } from '../../src/sdk-service-registry';
 
 // ============================================================================
-// Module mock for @anthropic-ai/claude-code
+// Module mock for @anthropic-ai/claude-agent-sdk
 // ============================================================================
 
 // The mock factory is hoisted; we control what dynamicImportModule returns.
@@ -39,6 +44,16 @@ async function* makeMessages(messages: object[]): AsyncIterable<object> {
     for (const msg of messages) {
         yield msg;
     }
+}
+
+/** Wraps a message array as a query handle with an optional accountInfo spy. */
+function makeQueryHandle(messages: object[], accountInfoFn?: () => Promise<object>) {
+    const handle = {
+        [Symbol.asyncIterator]() { return makeMessages(messages)[Symbol.asyncIterator](); },
+        accountInfo: accountInfoFn ?? vi.fn<[], Promise<object>>().mockResolvedValue({}),
+        return: vi.fn(async (value?: unknown) => ({ done: true as const, value })),
+    };
+    return handle;
 }
 
 // ============================================================================
@@ -93,11 +108,18 @@ describe('ClaudeSDKService.isAvailable', () => {
     });
 
     it('returns unavailable with install guidance when SDK is not installed', async () => {
-        mockDynamicImport.mockRejectedValueOnce(new Error("Cannot find module '@anthropic-ai/claude-code'"));
+        mockDynamicImport.mockRejectedValueOnce(new Error("Cannot find module '@anthropic-ai/claude-agent-sdk'"));
         const result = await svc.isAvailable();
         expect(result.available).toBe(false);
-        expect(result.error).toMatch(/@anthropic-ai\/claude-code/);
+        expect(result.error).toMatch(/@anthropic-ai\/claude-agent-sdk/);
         expect(result.error).toMatch(/npm install/);
+    });
+
+    it('imports the Claude Agent SDK package name', async () => {
+        const queryFn = vi.fn();
+        mockDynamicImport.mockResolvedValueOnce({ query: queryFn });
+        await svc.isAvailable();
+        expect(mockDynamicImport).toHaveBeenCalledWith('@anthropic-ai/claude-agent-sdk');
     });
 
     it('returns unavailable when SDK does not export query', async () => {
@@ -268,7 +290,7 @@ describe('ClaudeSDKService.sendMessage', () => {
     }, 5000);
 
     it('returns unavailable error when SDK is not installed', async () => {
-        mockDynamicImport.mockRejectedValueOnce(new Error("Cannot find module '@anthropic-ai/claude-code'"));
+        mockDynamicImport.mockRejectedValueOnce(new Error("Cannot find module '@anthropic-ai/claude-agent-sdk'"));
         const result = await svc.sendMessage({ prompt: 'hi' });
         expect(result.success).toBe(false);
         expect(result.error).toMatch(/npm install/);
@@ -288,6 +310,51 @@ describe('ClaudeSDKService.sendMessage', () => {
         );
     });
 
+    it('uses Claude bypass permissions for autopilot mode', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        await svc.sendMessage({ prompt: 'do the work', mode: 'autopilot' });
+
+        expect(queryFn).toHaveBeenCalledWith(
+            expect.objectContaining({
+                options: expect.objectContaining({
+                    permissionMode: 'bypassPermissions',
+                    allowDangerouslySkipPermissions: true,
+                }),
+            }),
+        );
+    });
+
+    it('uses Claude plan permission mode for plan mode', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        await svc.sendMessage({ prompt: 'make a plan', mode: 'plan' });
+
+        expect(queryFn).toHaveBeenCalledWith(
+            expect.objectContaining({
+                options: expect.objectContaining({
+                    permissionMode: 'plan',
+                }),
+            }),
+        );
+        expect(queryFn.mock.calls[0][0].options.allowDangerouslySkipPermissions).toBeUndefined();
+    });
+
+    it('does not set Claude permission mode for interactive mode', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        await svc.sendMessage({ prompt: 'answer this', mode: 'interactive' });
+
+        expect(queryFn.mock.calls[0][0].options.permissionMode).toBeUndefined();
+        expect(queryFn.mock.calls[0][0].options.allowDangerouslySkipPermissions).toBeUndefined();
+    });
+
     it('passes Claude model IDs through but drops Copilot model IDs', async () => {
         queryFn.mockReturnValue(makeMessages([
             { type: 'result', subtype: 'success' },
@@ -304,6 +371,175 @@ describe('ClaudeSDKService.sendMessage', () => {
         await svc.sendMessage({ prompt: 'test', model: 'gpt-4.1' });
         const callArgs = queryFn.mock.calls[0][0];
         expect(callArgs.options?.model).toBeUndefined();
+    });
+
+    it('normalizes dotted CoC Claude model IDs to Claude Code model IDs', async () => {
+        queryFn.mockReturnValue(makeMessages([
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        await svc.sendMessage({ prompt: 'test', model: 'claude-sonnet-4.6' });
+        expect(queryFn).toHaveBeenLastCalledWith(
+            expect.objectContaining({ options: expect.objectContaining({ model: 'claude-sonnet-4-6' }) }),
+        );
+
+        await svc.sendMessage({ prompt: 'test', model: 'claude-haiku-4.5' });
+        expect(queryFn).toHaveBeenLastCalledWith(
+            expect.objectContaining({ options: expect.objectContaining({ model: 'claude-haiku-4-5' }) }),
+        );
+
+        await svc.sendMessage({ prompt: 'test', model: 'claude-opus-4.6' });
+        expect(queryFn).toHaveBeenLastCalledWith(
+            expect.objectContaining({ options: expect.objectContaining({ model: 'claude-opus-4-6' }) }),
+        );
+    });
+
+    it('captures rate_limit_event messages for quota reporting', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'rate_limit_event',
+                rate_limit_info: {
+                    status: 'allowed_warning',
+                    rateLimitType: 'five_hour',
+                    utilization: 0.72,
+                    resetsAt: 1700000000,
+                    overageStatus: 'allowed',
+                },
+            },
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        const result = await svc.sendMessage({ prompt: 'test' });
+        const quota = await svc.getAccountQuota();
+
+        expect(result.success).toBe(true);
+        expect(quota.quotaSnapshots).toHaveProperty('five_hour');
+        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(72);
+        expect(quota.quotaSnapshots.five_hour.remainingPercentage).toBeCloseTo(0.28);
+        expect(quota.quotaSnapshots.five_hour.resetDate).toBe(new Date(1700000000 * 1000).toISOString());
+        expect(quota.quotaSnapshots.five_hour.usageAllowedWithExhaustedQuota).toBe(true);
+    });
+});
+
+// ============================================================================
+// getAccountQuota
+// ============================================================================
+
+describe('ClaudeSDKService.getAccountQuota', () => {
+    let svc: ClaudeSDKService;
+    const queryFn = vi.fn();
+
+    beforeEach(() => {
+        svc = new ClaudeSDKService();
+        mockDynamicImport.mockReset();
+        queryFn.mockReset();
+        mockDynamicImport.mockResolvedValue({ query: queryFn });
+    });
+
+    afterEach(() => {
+        svc.dispose();
+    });
+
+    it('returns empty quota snapshots before Claude emits rate-limit info or accountInfo is observed', async () => {
+        const quota = await svc.getAccountQuota();
+        expect(quota).toEqual({ quotaSnapshots: {} });
+    });
+
+    it('caches accountInfo() from a real sendMessage() call so getAccountQuota returns a snapshot', async () => {
+        const accountInfoFn = vi.fn().mockResolvedValue({ subscriptionType: 'pro' });
+        queryFn.mockReturnValueOnce(makeQueryHandle([
+            { type: 'result', subtype: 'success' },
+        ], accountInfoFn));
+
+        await svc.sendMessage({ prompt: 'hello' });
+        const quota = await svc.getAccountQuota();
+        expect(accountInfoFn).toHaveBeenCalled();
+        expect(quota.quotaSnapshots).toHaveProperty('pro');
+        expect(quota.quotaSnapshots.pro.remainingPercentage).toBe(1);
+    });
+
+    it('throws an availability error when the Claude SDK cannot be loaded', async () => {
+        mockDynamicImport.mockRejectedValueOnce(new Error("Cannot find module '@anthropic-ai/claude-agent-sdk'"));
+        await expect(svc.getAccountQuota()).rejects.toThrow(/Claude Agent SDK not installed/);
+    });
+});
+
+describe('mapClaudeRateLimitInfoToQuota', () => {
+    it('maps Claude rate-limit utilization into the common quota shape', () => {
+        const result = mapClaudeRateLimitInfoToQuota({
+            status: 'allowed_warning',
+            rateLimitType: 'seven_day_sonnet',
+            utilization: 86,
+            resetsAt: 1700500000000,
+        });
+
+        const snap = result.quotaSnapshots.seven_day_sonnet;
+        expect(snap.isUnlimitedEntitlement).toBe(false);
+        expect(snap.entitlementRequests).toBe(100);
+        expect(snap.usedRequests).toBe(86);
+        expect(snap.remainingPercentage).toBeCloseTo(0.14);
+        expect(snap.resetDate).toBe(new Date(1700500000000).toISOString());
+    });
+
+    it('treats rejected events without utilization as exhausted quota', () => {
+        const result = mapClaudeRateLimitInfoToQuota({
+            status: 'rejected',
+        });
+
+        const snap = result.quotaSnapshots.claude;
+        expect(snap.usedRequests).toBe(100);
+        expect(snap.remainingPercentage).toBe(0);
+    });
+
+    it('clamps out-of-range utilization values', () => {
+        const result = mapClaudeRateLimitInfoToQuota({
+            status: 'allowed',
+            rateLimitType: 'five_hour',
+            utilization: 120,
+        });
+
+        const snap = result.quotaSnapshots.five_hour;
+        expect(snap.usedRequests).toBe(100);
+        expect(snap.remainingPercentage).toBe(0);
+    });
+});
+
+describe('mapClaudeAccountInfoToQuota', () => {
+    it('keys the snapshot off subscriptionType when present', () => {
+        const result = mapClaudeAccountInfoToQuota({ subscriptionType: 'pro' });
+        expect(Object.keys(result.quotaSnapshots)).toEqual(['pro']);
+        const snap = result.quotaSnapshots.pro;
+        expect(snap.isUnlimitedEntitlement).toBe(false);
+        expect(snap.entitlementRequests).toBe(100);
+        expect(snap.usedRequests).toBe(0);
+        expect(snap.remainingPercentage).toBe(1);
+        expect(snap.overage).toBe(0);
+        expect(snap.usageAllowedWithExhaustedQuota).toBe(false);
+    });
+
+    it('passes through claude-prefixed subscription tiers like claude_max', () => {
+        const result = mapClaudeAccountInfoToQuota({ subscriptionType: 'claude_max' });
+        expect(Object.keys(result.quotaSnapshots)).toEqual(['claude_max']);
+    });
+
+    it('keys the snapshot off apiProvider for 3P providers when no subscription is set', () => {
+        const result = mapClaudeAccountInfoToQuota({ apiProvider: 'vertex' });
+        expect(Object.keys(result.quotaSnapshots)).toEqual(['vertex']);
+    });
+
+    it('ignores firstParty apiProvider and falls back to the generic "subscription" key', () => {
+        const result = mapClaudeAccountInfoToQuota({ apiProvider: 'firstParty' });
+        expect(Object.keys(result.quotaSnapshots)).toEqual(['subscription']);
+    });
+
+    it('falls back to the generic "subscription" key when accountInfo is empty', () => {
+        const result = mapClaudeAccountInfoToQuota({});
+        expect(Object.keys(result.quotaSnapshots)).toEqual(['subscription']);
+    });
+
+    it('trims whitespace-only subscriptionType values', () => {
+        const result = mapClaudeAccountInfoToQuota({ subscriptionType: '   ' });
+        expect(Object.keys(result.quotaSnapshots)).toEqual(['subscription']);
     });
 });
 
@@ -415,7 +651,7 @@ describe('ClaudeSDKService.transform', () => {
     });
 
     it('throws when sendMessage fails', async () => {
-        mockDynamicImport.mockRejectedValueOnce(new Error("Cannot find module '@anthropic-ai/claude-code'"));
+        mockDynamicImport.mockRejectedValueOnce(new Error("Cannot find module '@anthropic-ai/claude-agent-sdk'"));
         await expect(svc.transform('fail')).rejects.toThrow();
     });
 });

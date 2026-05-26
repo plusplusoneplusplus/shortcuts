@@ -277,6 +277,9 @@ export interface AdminStorageCancelMigrationResponse {
 /** Wire-format identifier for an AI agent provider. */
 export type AgentProviderId = 'copilot' | 'codex' | 'claude';
 
+/** SDK package install status for optional providers (Codex, Claude). */
+export type ProviderInstallStatus = 'not-installed' | 'installing' | 'installed' | 'install-failed';
+
 /** Status of a single agent provider as returned by GET /api/agent-providers. */
 export interface AgentProviderStatus {
   /** Provider identifier. */
@@ -293,6 +296,12 @@ export interface AgentProviderStatus {
   reason?: string;
   /** URL to start the auth flow when auth is required or expired. */
   authUrl?: string;
+  /**
+   * SDK package install status for optional providers (codex, claude).
+   * Absent for Copilot (always bundled). Populated by the server using
+   * in-memory install state or runtime require.resolve detection.
+   */
+  installStatus?: ProviderInstallStatus;
 }
 
 /** Response from GET /api/agent-providers. */

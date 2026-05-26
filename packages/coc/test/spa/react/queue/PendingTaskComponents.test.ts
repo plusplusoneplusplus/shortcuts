@@ -118,6 +118,26 @@ describe('PendingTaskPayload (standalone)', () => {
         expect(source).toContain('ctx.resolveComments');
     });
 
+    it('shows resolve-comments prompt directly as Full Prompt (not collapsed)', () => {
+        expect(source).toContain('Full Prompt');
+        // The prompt is shown under a heading, NOT inside a collapsible <details>/<summary>
+        const rcBlock = source.slice(source.indexOf('ctx.resolveComments'), source.indexOf('// Standard chat'));
+        // The main prompt section must use a heading element, not a <summary>
+        expect(rcBlock).toContain('>Full Prompt<');
+        // Any <details> in the rcBlock must be for documentContent (Document Snapshot), not for prompt
+        if (rcBlock.includes('<details')) {
+            const detailsIdx = rcBlock.indexOf('<details');
+            const promptPreIdx = rcBlock.indexOf('payload.prompt');
+            // <details> must appear AFTER payload.prompt (it's for documentContent)
+            expect(detailsIdx).toBeGreaterThan(promptPreIdx);
+        }
+    });
+
+    it('shows Document Snapshot section for documentContent in resolve comments', () => {
+        expect(source).toContain('rc.documentContent');
+        expect(source).toContain('Document Snapshot');
+    });
+
     it('handles standard chat with skills and files context', () => {
         expect(source).toContain('ctx.skills');
         expect(source).toContain('ctx.files');

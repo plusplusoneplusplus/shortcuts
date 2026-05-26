@@ -197,6 +197,103 @@ describe('PendingTaskPayload resolve comments', () => {
         expect(screen.getByText('Comments')).toBeTruthy();
         expect(screen.getByText('3 (c-1, c-2, c-3)')).toBeTruthy();
     });
+
+    it('shows prompt directly without collapsing (full transparency)', () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: 'Resolve the review comments and update the code accordingly.',
+                context: {
+                    resolveComments: {
+                        filePath: 'src/utils.ts',
+                        commentIds: ['c-10'],
+                    },
+                },
+            },
+        });
+
+        const { container } = render(<PendingTaskPayload task={task} />);
+
+        // Prompt text is directly visible (not inside a <details> wrapper)
+        expect(screen.getByText('Full Prompt')).toBeTruthy();
+        expect(screen.getByText('Resolve the review comments and update the code accordingly.')).toBeTruthy();
+        // The prompt should NOT be wrapped in a collapsed <details> element
+        const details = container.querySelector('details');
+        // If details exist they must be for document snapshot, not the main prompt
+        if (details) {
+            expect(details.querySelector('pre')?.textContent).not.toBe(
+                'Resolve the review comments and update the code accordingly.',
+            );
+        }
+    });
+
+    it('shows documentUri when filePath is absent', () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: 'Fix it',
+                context: {
+                    resolveComments: {
+                        documentUri: 'vscode://notes/my-note.md',
+                        commentIds: ['c-5'],
+                    },
+                },
+            },
+        });
+
+        render(<PendingTaskPayload task={task} />);
+
+        expect(screen.getByText('Document')).toBeTruthy();
+        expect(screen.getByText('vscode://notes/my-note.md')).toBeTruthy();
+    });
+
+    it('renders Document Snapshot section (collapsed) when documentContent is present', () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: 'Address review',
+                context: {
+                    resolveComments: {
+                        filePath: 'docs/guide.md',
+                        commentIds: ['c-7'],
+                        documentContent: '# Guide\n\nSome content here.',
+                    },
+                },
+            },
+        });
+
+        const { container } = render(<PendingTaskPayload task={task} />);
+
+        // Document Snapshot should be inside a <details> (collapsed by default)
+        const details = container.querySelector('details');
+        expect(details).toBeTruthy();
+        const summary = details?.querySelector('summary');
+        expect(summary?.textContent).toBe('Document Snapshot');
+        expect(details?.querySelector('pre')?.textContent).toBe('# Guide\n\nSome content here.');
+    });
+
+    it('does not render Document Snapshot section when documentContent is absent', () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: 'Fix it',
+                context: {
+                    resolveComments: {
+                        filePath: 'src/main.ts',
+                        commentIds: ['c-9'],
+                    },
+                },
+            },
+        });
+
+        const { container } = render(<PendingTaskPayload task={task} />);
+
+        expect(container.querySelector('details')).toBeNull();
+    });
 });
 
 // ── PendingTaskPayload: image gallery ──────────────────────────────────

@@ -314,6 +314,13 @@ describe('SPA Enhanced Detail Rendering', () => {
         expect(bundle).toContain('resolveComments');
     });
 
+    it('includes resolve-comments full prompt transparency', () => {
+        const bundle = getClientBundle();
+        expect(bundle).toContain('Full Prompt');
+        expect(bundle).toContain('Document Snapshot');
+        expect(bundle).toContain('documentContent');
+    });
+
     it('includes follow-up message rendering', () => {
         const bundle = getClientBundle();
         expect(bundle).toContain('Follow-up Message');

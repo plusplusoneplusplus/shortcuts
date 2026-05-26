@@ -1,9 +1,8 @@
 /**
  * Tests for CodexSDKService and SDK_PROVIDER_CODEX constant.
  *
- * Because `@openai/codex-sdk` is an optional peer dependency that is not
- * installed in this repo, all tests exercise the "SDK not available" branch
- * unless a mock is injected via module mocking.
+ * Tests inject explicit availability state so unavailable-path coverage remains
+ * deterministic even when the optional `@openai/codex-sdk` peer is installed.
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
@@ -101,6 +100,19 @@ function makeCodexSdkMock(overrides?: {
     };
 }
 
+function forceCodexUnavailable(svc: CodexSDKService): void {
+    // @ts-expect-error — accessing private field in test
+    svc['sdk'] = null;
+    // @ts-expect-error — bypass real optional dependency resolution in test
+    svc['availabilityCache'] = {
+        available: false,
+        error:
+            'Codex SDK not installed (~239 MB). To enable Codex, run:\n' +
+            '  npm install @openai/codex-sdk --no-save  # run from the repo root\n' +
+            'Then restart CoC.',
+    };
+}
+
 // ---------------------------------------------------------------------------
 // Unit tests — SDK not installed (default)
 // ---------------------------------------------------------------------------
@@ -110,6 +122,7 @@ describe('CodexSDKService — SDK not available', () => {
 
     beforeEach(() => {
         svc = new CodexSDKService();
+        forceCodexUnavailable(svc);
     });
 
     afterEach(() => {
@@ -133,9 +146,10 @@ describe('CodexSDKService — SDK not available', () => {
     it('clearAvailabilityCache resets the cache', async () => {
         await svc.isAvailable();
         svc.clearAvailabilityCache();
-        const result = await svc.isAvailable();
-        // Should re-check; still unavailable
-        expect(result.available).toBe(false);
+        // @ts-expect-error — private cache check for deterministic reset coverage
+        expect(svc['availabilityCache']).toBeNull();
+        // @ts-expect-error — private SDK cache check for deterministic reset coverage
+        expect(svc['sdk']).toBeNull();
     });
 
     it('sendMessage returns failure when SDK is not available', async () => {
@@ -603,13 +617,14 @@ describe('CodexSDKService — auth checker (AC-08)', () => {
 
     beforeEach(() => {
         svc = new CodexSDKService();
+        forceCodexUnavailable(svc);
     });
 
     afterEach(() => {
         svc.dispose();
     });
 
-    it('sendMessage succeeds when no auth checker is set', async () => {
+    it('sendMessage falls through to SDK availability when no auth checker is set', async () => {
         // No checker → unauthenticated path still falls through to SDK availability check
         const result = await svc.sendMessage({ prompt: 'test' });
         // The SDK is not installed, so this returns an SDK-unavailable error — not an auth error

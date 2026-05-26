@@ -23,6 +23,7 @@ import {
 } from '../logger';
 import { createCLIPinoLogger, pinoAdapterForPipelineCore } from '../pino-setup';
 import { setLogger, initAIServiceLogger } from '@plusplusoneplusplus/forge';
+import { initSDKLogger } from '@plusplusoneplusplus/coc-agent-sdk';
 import { resolveLoggingConfig, loadConfigFile, createProcessStore } from '../config';
 import { setServerLogger, getServerLogger } from '../server/logging/server-logger';
 import type { ServeCommandOptions } from '../server/types';
@@ -58,6 +59,9 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
     // derived from getServerLogger() are also routed through the ring buffer.
     setServerLogger(coc);
     initAIServiceLogger(getServerLogger().child({ component: 'ai-service' }));
+    // Route coc-agent-sdk getSDKLogger() through the same capture chain so
+    // Claude SDK debug logs appear in the dashboard log stream.
+    initSDKLogger(getServerLogger().child({ component: 'claude-sdk' }));
     // Route forge getLogger() through the same capture chain so MCP/AI debug
     // logs (LogCategory.MCP, LogCategory.AI) appear in the /api/logs/stream
     // dashboard view.

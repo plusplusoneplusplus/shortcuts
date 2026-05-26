@@ -1273,4 +1273,147 @@ describe('AdminPanel', () => {
             expect(capturedBody!['claude.enabled']).toBe(true);
         });
     });
+
+    describe('AI Provider tab — SDK install buttons and badges', () => {
+        function mockWithInstallStatuses(
+            codexInstallStatus: string,
+            claudeInstallStatus: string,
+        ) {
+            mockFetch.mockImplementation((url: string) => {
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            resolved: {
+                                model: 'gpt-4', parallel: 1, timeout: null, output: 'table',
+                                codex: { enabled: false },
+                                claude: { enabled: false },
+                                activeProvider: 'copilot',
+                            },
+                            sources: {},
+                        }),
+                    });
+                }
+                // Agent providers list endpoint — returns installStatus per provider.
+                if (url.includes('/agent-providers') && !url.includes('quota')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            providers: [
+                                { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+                                { id: 'codex', label: 'Codex', enabled: false, available: false, installStatus: codexInstallStatus },
+                                { id: 'claude', label: 'Claude', enabled: false, available: false, installStatus: claudeInstallStatus },
+                            ],
+                        }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+        }
+
+        it('shows Install buttons when both providers are not-installed', async () => {
+            mockWithInstallStatuses('not-installed', 'not-installed');
+            await act(async () => { renderWithProviders(); });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('admin-tab-agents'));
+            });
+
+            await waitFor(() => {
+                expect(screen.getByTestId('btn-install-codex')).toBeDefined();
+                expect(screen.getByTestId('btn-install-claude')).toBeDefined();
+            });
+        });
+
+        it('shows not-installed badge when codex status is not-installed', async () => {
+            mockWithInstallStatuses('not-installed', 'not-installed');
+            await act(async () => { renderWithProviders(); });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('admin-tab-agents'));
+            });
+
+            await waitFor(() => {
+                expect(screen.getAllByTestId('sdk-install-badge-not-installed').length).toBeGreaterThan(0);
+            });
+        });
+
+        it('shows installed badge and hides Install button when codex is installed', async () => {
+            mockWithInstallStatuses('installed', 'not-installed');
+            await act(async () => { renderWithProviders(); });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('admin-tab-agents'));
+            });
+
+            await waitFor(() => {
+                expect(screen.queryByTestId('btn-install-codex')).toBeNull();
+                expect(screen.getByTestId('sdk-install-badge-installed')).toBeDefined();
+            });
+        });
+
+        it('shows install-failed badge and Install button when install failed', async () => {
+            mockWithInstallStatuses('install-failed', 'not-installed');
+            await act(async () => { renderWithProviders(); });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('admin-tab-agents'));
+            });
+
+            await waitFor(() => {
+                expect(screen.getByTestId('btn-install-codex')).toBeDefined();
+                expect(screen.getByTestId('sdk-install-badge-install-failed')).toBeDefined();
+            });
+        });
+
+        it('clicking Install triggers POST to provider install endpoint', async () => {
+            const postCalls: string[] = [];
+            mockFetch.mockImplementation((url: string, options?: RequestInit) => {
+                if (options?.method === 'POST' && url.includes('/providers/sdk/codex/install')) {
+                    postCalls.push(url);
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({ status: 'installing', message: 'Installing…' }),
+                    });
+                }
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            resolved: { model: 'gpt-4', parallel: 1, timeout: null, output: 'table', codex: { enabled: false }, claude: { enabled: false }, activeProvider: 'copilot' },
+                            sources: {},
+                        }),
+                    });
+                }
+                if (url.includes('/agent-providers') && !url.includes('quota')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            providers: [
+                                { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+                                { id: 'codex', label: 'Codex', enabled: false, available: false, installStatus: 'not-installed' },
+                                { id: 'claude', label: 'Claude', enabled: false, available: false, installStatus: 'not-installed' },
+                            ],
+                        }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+
+            await act(async () => { renderWithProviders(); });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('admin-tab-agents'));
+            });
+
+            await waitFor(() => expect(screen.getByTestId('btn-install-codex')).toBeDefined());
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('btn-install-codex'));
+            });
+
+            await waitFor(() => expect(postCalls.length).toBeGreaterThan(0));
+            expect(postCalls[0]).toContain('/providers/sdk/codex/install');
+        });
+    });
 });
