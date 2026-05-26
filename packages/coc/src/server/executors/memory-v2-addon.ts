@@ -194,7 +194,7 @@ export async function buildMemoryV2Addon(
             systemMessageSuffix,
             tools: [storeTool, recallTool],
             suffix: MEMORY_TOOL_SUFFIX,
-            excludedBuiltinTools: ['vote_memory'],
+            excludedBuiltinTools: ['vote_memory', 'store_memory'],
             dispose,
         };
     } catch {
