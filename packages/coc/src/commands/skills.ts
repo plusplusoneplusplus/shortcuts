@@ -47,6 +47,10 @@ function getGlobalSkillsDir(): string {
     return path.join(dataDir, 'skills');
 }
 
+function getDataDir(): string {
+    return process.env.COC_DATA_DIR || path.join(os.homedir(), '.coc');
+}
+
 function getInstallPath(workspaceRoot: string, installPathOverride?: string): string {
     return path.join(workspaceRoot, installPathOverride || DEFAULT_SKILLS_SETTINGS.installPath);
 }

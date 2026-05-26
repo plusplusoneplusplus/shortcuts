@@ -416,6 +416,23 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         }).catch(() => { /* best-effort — never block startup */ });
     }
 
+    // Mirror installed bundled skills to Codex when Codex is enabled (non-blocking on errors).
+    // This happens once on server startup to ensure Codex has access to all globally installed
+    // bundled skills without needing to read from ~/.coc/skills directly.
+    if (resolvedConfig.codex?.enabled) {
+        const globalSkillsDir = path.join(dataDir, 'skills');
+        import('./skills/codex-skill-mirror').then(({ syncInstalledSkillsToCodex }) => {
+            return syncInstalledSkillsToCodex(globalSkillsDir);
+        }).then(result => {
+            if (result.synced.length > 0) {
+                process.stderr.write(`[skills] Synced ${result.synced.length} skill(s) to Codex\n`);
+            }
+            for (const e of result.errors) {
+                process.stderr.write(`[skills] Failed to sync "${e.name}" to Codex: ${e.error}\n`);
+            }
+        }).catch(() => { /* best-effort — never block startup */ });
+    }
+
     const globalWorkspace = await ensureGlobalWorkspace(dataDir, store);
     bridge.registerRepoId(globalWorkspace.id, globalWorkspace.rootPath);
 
