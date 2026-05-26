@@ -9,6 +9,7 @@ export interface WorkItemSummary {
     description?: string;
     status: string;
     type?: string;
+    parentId?: string;
     priority?: string;
     source?: string;
     createdAt: string;

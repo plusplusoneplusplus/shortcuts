@@ -332,6 +332,7 @@ export function AdminPanel() {
     const [excalidrawEnabled, setExcalidrawEnabled] = useState(false);
     const [mcpOauthEnabled, setMcpOauthEnabled] = useState(false);
     const [focusedDiffEnabled, setFocusedDiffEnabled] = useState(false);
+    const [workItemsHierarchyEnabled, setWorkItemsHierarchyEnabled] = useState(false);
     const [codexEnabled, setCodexEnabled] = useState(false);
     const [claudeEnabled, setClaudeEnabled] = useState(false);
     const [activeProvider, setActiveProvider] = useState<'copilot' | 'codex' | 'claude'>('copilot');
@@ -377,7 +378,7 @@ export function AdminPanel() {
         taskCardDensity: 'compact' as 'compact' | 'dense',
         historyGrouping: true,
     });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false, workItemsHierarchy: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -488,13 +489,15 @@ export function AdminPanel() {
             setMcpOauthEnabled(moae);
             const fde = resolved.features?.focusedDiff ?? false;
             setFocusedDiffEnabled(fde);
+            const wihe = resolved.workItems?.hierarchy?.enabled ?? false;
+            setWorkItemsHierarchyEnabled(wihe);
             const cxe = resolved.codex?.enabled ?? false;
             setCodexEnabled(cxe);
             const cle = resolved.claude?.enabled ?? false;
             setClaudeEnabled(cle);
             const ap = (resolved.activeProvider === 'codex' ? 'codex' : resolved.activeProvider === 'claude' ? 'claude' : 'copilot') as 'copilot' | 'codex' | 'claude';
             setActiveProvider(ap);
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde });
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde, workItemsHierarchy: wihe });
             setAiExecSnapshot({ model: form.model, parallel: form.parallel, timeout: form.timeout, output: form.output });
             setActiveProviderSnapshot({ provider: ap, codexEnabled: cxe, claudeEnabled: cle });
             const sgr = resolved.sync?.gitRemote ?? '';
@@ -605,7 +608,8 @@ export function AdminPanel() {
         loopsEnabled !== featuresSnapshot.loops ||
         excalidrawEnabled !== featuresSnapshot.excalidraw ||
         mcpOauthEnabled !== featuresSnapshot.mcpOauth ||
-        focusedDiffEnabled !== featuresSnapshot.focusedDiff;
+        focusedDiffEnabled !== featuresSnapshot.focusedDiff ||
+        workItemsHierarchyEnabled !== featuresSnapshot.workItemsHierarchy;
 
     // ── AI & Execution card ──
     const handleSaveAiExec = useCallback(async () => {
@@ -829,16 +833,17 @@ export function AdminPanel() {
                 'excalidraw.enabled': excalidrawEnabled,
                 'mcpOauth.enabled': mcpOauthEnabled,
                 'features.focusedDiff': focusedDiffEnabled,
+                'workItems.hierarchy.enabled': workItemsHierarchyEnabled,
             });
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled });
+            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled, workItemsHierarchy: workItemsHierarchyEnabled });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, workItemsHierarchyEnabled, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setTerminalEnabled(featuresSnapshot.terminal);
@@ -857,6 +862,7 @@ export function AdminPanel() {
         setExcalidrawEnabled(featuresSnapshot.excalidraw);
         setMcpOauthEnabled(featuresSnapshot.mcpOauth);
         setFocusedDiffEnabled(featuresSnapshot.focusedDiff);
+        setWorkItemsHierarchyEnabled(featuresSnapshot.workItemsHierarchy);
     }, [featuresSnapshot]);
 
     const handleSaveServerName = useCallback(async () => {
@@ -1667,6 +1673,13 @@ export function AdminPanel() {
                                     >
                                         <SourceBadge source={sources['features.focusedDiff']} />
                                         <AdminToggle checked={focusedDiffEnabled} onChange={setFocusedDiffEnabled} data-testid="toggle-focused-diff-enabled" />
+                                    </AdminRow>
+                                    <AdminRow
+                                        name="Work Items Hierarchy Board"
+                                        hint="Extends the Work Items tab into an Epic → Feature → PBI → Work Item / Bug hierarchy board. Disabled by default."
+                                    >
+                                        <SourceBadge source={sources['workItems.hierarchy.enabled']} />
+                                        <AdminToggle checked={workItemsHierarchyEnabled} onChange={setWorkItemsHierarchyEnabled} data-testid="toggle-work-items-hierarchy-enabled" />
                                     </AdminRow>
                                 </SettingsCard>
                                 )}

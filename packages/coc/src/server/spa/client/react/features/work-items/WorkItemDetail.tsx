@@ -53,6 +53,8 @@ interface WorkItemDetailProps {
 
 interface WorkItemFull {
     id: string; workItemNumber?: number; title: string; description: string; status: string;
+    type?: string;
+    parentId?: string;
     priority?: string; source?: string; sourceId?: string;
     createdAt: string; updatedAt: string; completedAt?: string;
     pinnedAt?: string; archivedAt?: string;
@@ -302,10 +304,12 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
 
     if (!item) return null;
 
+    const effectiveType = item.type ?? 'work-item';
+    const isContainer = ['epic', 'feature', 'pbi'].includes(effectiveType);
     const statusCfg = STATUS_LABELS[item.status] || STATUS_LABELS.created;
-    const canExecute = item.status === 'readyToExecute';
-    const canEditPlan = ['created', 'planning', 'readyToExecute'].includes(item.status);
-    const isAiDone = item.status === 'aiDone';
+    const canExecute = !isContainer && item.status === 'readyToExecute';
+    const canEditPlan = !isContainer && ['created', 'planning', 'readyToExecute'].includes(item.status);
+    const isAiDone = !isContainer && item.status === 'aiDone';
     const validNextStatuses = VALID_TRANSITIONS[item.status] ?? [];
 
     return (
@@ -320,7 +324,18 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                         {item.workItemNumber != null && (
-                            <span className="text-xs text-[#848484] dark:text-[#999] font-mono shrink-0" data-testid="work-item-detail-number">WI-{item.workItemNumber}</span>
+                            <span className="text-xs text-[#848484] dark:text-[#999] font-mono shrink-0" data-testid="work-item-detail-number">
+                                {effectiveType === 'epic' ? 'E'
+                                    : effectiveType === 'feature' ? 'F'
+                                    : effectiveType === 'pbi' ? 'PBI'
+                                    : effectiveType === 'bug' ? 'BUG'
+                                    : 'WI'}-{item.workItemNumber}
+                            </span>
+                        )}
+                        {isContainer && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 font-medium">
+                                {effectiveType === 'epic' ? 'Epic' : effectiveType === 'feature' ? 'Feature' : 'PBI / Story'}
+                            </span>
                         )}
                         <h2 className="text-sm font-semibold truncate" title={item.title}>{item.title}</h2>
                     </div>
@@ -359,32 +374,36 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                         <span>{formatRelativeTime(item.updatedAt)}</span>
                     </div>
                 </div>
-                {/* Execute + Actions in header */}
+                {/* Execute + Actions in header — leaf items only */}
                 <div className="flex items-center gap-2 shrink-0">
-                    <label className="flex items-center gap-1 text-[10px] cursor-pointer" title="Auto-execute when status reaches Ready to Execute" data-testid="work-item-auto-execute-toggle">
-                        <input
-                            type="checkbox"
-                            checked={item.autoExecute ?? false}
-                            onChange={async (e) => {
-                                try {
-                                    await getSpaCocClient().workItems.update(workspaceId, workItemId, { autoExecute: e.target.checked });
-                                    await fetchItem();
-                                } catch (err: any) {
-                                    setError(err.message || 'Failed to update');
-                                }
-                            }}
-                            className="rounded"
-                        />
-                        Auto
-                    </label>
-                    <Button
-                        variant="primary" size="sm"
-                        onClick={() => setShowExecuteDialog(true)}
-                        disabled={!canExecute}
-                        data-testid="work-item-execute-btn"
-                    >
-                        ⚡ Start Implementing
-                    </Button>
+                    {!isContainer && (
+                        <>
+                            <label className="flex items-center gap-1 text-[10px] cursor-pointer" title="Auto-execute when status reaches Ready to Execute" data-testid="work-item-auto-execute-toggle">
+                                <input
+                                    type="checkbox"
+                                    checked={item.autoExecute ?? false}
+                                    onChange={async (e) => {
+                                        try {
+                                            await getSpaCocClient().workItems.update(workspaceId, workItemId, { autoExecute: e.target.checked });
+                                            await fetchItem();
+                                        } catch (err: any) {
+                                            setError(err.message || 'Failed to update');
+                                        }
+                                    }}
+                                    className="rounded"
+                                />
+                                Auto
+                            </label>
+                            <Button
+                                variant="primary" size="sm"
+                                onClick={() => setShowExecuteDialog(true)}
+                                disabled={!canExecute}
+                                data-testid="work-item-execute-btn"
+                            >
+                                ⚡ Start Implementing
+                            </Button>
+                        </>
+                    )}
                     <Button variant="ghost" size="sm" data-testid="work-item-pin-btn"
                         title={item.pinnedAt ? 'Unpin' : 'Pin'}
                         onClick={async () => {
@@ -430,6 +449,16 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     </div>
                 )}
 
+                {/* Parent info row (shown when parentId is set) */}
+                {item.parentId && (
+                    <section data-testid="work-item-parent-info">
+                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Part Of</h3>
+                        <div className="text-xs text-[#3c3c3c] dark:text-[#cccccc]">
+                            <span className="font-mono text-[#848484]">{item.parentId}</span>
+                        </div>
+                    </section>
+                )}
+
                 {/* Description */}
                 <section>
                     <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Description</h3>
@@ -438,7 +467,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     </div>
                 </section>
 
-                {/* Plan */}
+                {/* Plan — leaf items only */}
+                {!isContainer && (
                 <section>
                     <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-2">
                         Detail Plan {item.plan ? <span className="text-[#848484] normal-case">(v{item.plan.version})</span> : ''}
@@ -453,6 +483,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                         onNavigateToTasksTab={onNavigateToTasksTab}
                     />
                 </section>
+                )}
 
                 {/* AI Review section (aiDone only) */}
                 {isAiDone && (
@@ -492,8 +523,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     </section>
                 )}
 
-                {/* Execution session entry — shown when a task has been queued/run */}
-                {item.taskId && (onViewTask || onNavigateToTasksTab) && ['executing', 'aiDone', 'aiFailed'].includes(item.status) && (
+                {/* Execution session entry — shown when a task has been queued/run (leaf items only) */}
+                {!isContainer && item.taskId && (onViewTask || onNavigateToTasksTab) && ['executing', 'aiDone', 'aiFailed'].includes(item.status) && (
                     <section>
                         <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Execution Session</h3>
                         {item.status === 'aiDone' && onNavigateToTasksTab ? (
@@ -547,10 +578,9 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                 )}
 
                 {/* Execution history */}
-                {((item.executionHistory && item.executionHistory.length > 0) || (item.changes && item.changes.some(c => !c.taskId || !item.executionHistory?.some(e => e.taskId === c.taskId)))) && (
+                {!isContainer && ((item.executionHistory && item.executionHistory.length > 0) || (item.changes && item.changes.some(c => !c.taskId || !item.executionHistory?.some(e => e.taskId === c.taskId)))) && (
                     <section>
-                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Execution History</h3>
-                        <div className="space-y-2">
+                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Execution History</h3><div className="space-y-2">
                             {item.executionHistory?.map((exec, i) => {
                                 const matchingChange = item.changes?.find(c => c.taskId === exec.taskId);
                                 const commits = matchingChange?.commits ?? [];

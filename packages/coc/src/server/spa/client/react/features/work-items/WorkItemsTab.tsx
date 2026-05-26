@@ -11,6 +11,7 @@ import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { WorkItemSection } from './WorkItemSection';
 import { WorkItemDetail } from './WorkItemDetail';
 import { WorkItemExecutionSession } from './WorkItemExecutionSession';
+import { WorkItemHierarchyTree } from './WorkItemHierarchyTree';
 import { CommitDetail } from '../git/commits/CommitDetail';
 import { FileDiffPanel } from '../git/diff/FileDiffPanel';
 import { createCommitDiffSource } from '../git/diff/diffSource';
@@ -22,6 +23,8 @@ import { buildFileTree, compactFolders, FileTreeView } from '../git/diff/FileTre
 import { useFileCommentCounts } from '../git/hooks/useFileCommentCounts';
 import { computeDiffCommentKey } from '../../../comments/diff-comment-utils';
 import { buildWorkItemHash, buildWorkItemSessionHash, buildWorkItemCommitHash } from '../../layout/Router';
+import { isWorkItemsHierarchyEnabled } from '../../utils/config';
+import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
 
 export interface WorkItemsTabProps {
     workspaceId: string;
@@ -38,12 +41,14 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
     const [commitFilesLoading, setCommitFilesLoading] = useState(false);
     const [hunkTarget, setHunkTarget] = useState<'first' | 'last' | undefined>(undefined);
     const [showCreateDialog, setShowCreateDialog] = useState(false);
-    const [createDialogType, setCreateDialogType] = useState<'work-item' | 'bug'>('work-item');
+    const [createDialogType, setCreateDialogType] = useState<WorkItemTypeLabel>('work-item');
+    const [createDialogParentId, setCreateDialogParentId] = useState<string | undefined>(undefined);
     const [mobileShowDetail, setMobileShowDetail] = useState(false);
     const { isMobile, isTablet } = useBreakpoint();
     const { dispatch } = useWorkItems();
     const { state: appState } = useApp();
     const deepLinkConsumedRef = useRef(false);
+    const hierarchyEnabled = isWorkItemsHierarchyEnabled();
     const { width: leftPanelWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
         initialWidth: isTablet ? 280 : 340,
         minWidth: 200,
@@ -208,12 +213,21 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
         dispatch({ type: 'SET_LOADING', repoId: workspaceId, loading: true });
     }, [dispatch, workspaceId]);
 
-    const openCreateDialog = useCallback((type: 'work-item' | 'bug') => {
+    const openCreateDialog = useCallback((type: WorkItemTypeLabel, parentId?: string) => {
         setCreateDialogType(type);
+        setCreateDialogParentId(parentId);
         setShowCreateDialog(true);
     }, []);
 
-    const listPane = (
+    const listPane = hierarchyEnabled ? (
+        <WorkItemHierarchyTree
+            workspaceId={workspaceId}
+            selectedWorkItemId={selectedWorkItemId}
+            onSelectWorkItem={handleSelectWorkItem}
+            onCreated={handleCreated}
+            onCreateItem={openCreateDialog}
+        />
+    ) : (
         <div className="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
             <div className="flex items-center justify-between">
                 <h2 className="text-sm font-medium">Work Items</h2>
@@ -358,6 +372,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                     workspaceId={workspaceId}
                     onCreated={handleCreated}
                     itemType={createDialogType}
+                    parentId={createDialogParentId}
                 />
             </>
         );
@@ -389,6 +404,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                 workspaceId={workspaceId}
                 onCreated={handleCreated}
                 itemType={createDialogType}
+                parentId={createDialogParentId}
             />
         </>
     );
