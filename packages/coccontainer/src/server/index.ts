@@ -159,11 +159,16 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
         try {
             // ── Container-level APIs ──────────────────────────────
             if (url.pathname === '/api/container/agents' && req.method === 'GET') {
-                // Augment agent list with bridge info
-                const list = agentStore.list().map(agent => ({
-                    ...agent,
-                    bridgeUrl: tunnelBridge.getLocalUrl(agent.id) || undefined,
-                }));
+                // Augment agent list with bridge info and workspaces from inbound connections
+                const list = agentStore.list().map(agent => {
+                    const inboundId = agent.address.startsWith('inbound://') ? agent.address.replace('inbound://', '') : undefined;
+                    const inbound = inboundId ? inboundManager.getAgent(inboundId) : undefined;
+                    return {
+                        ...agent,
+                        bridgeUrl: tunnelBridge.getLocalUrl(agent.id) || undefined,
+                        workspaces: inbound?.workspaces ?? [],
+                    };
+                });
                 return sendJson(res, list);
             }
 

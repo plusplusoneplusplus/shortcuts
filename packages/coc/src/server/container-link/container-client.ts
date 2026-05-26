@@ -43,6 +43,8 @@ export interface ContainerLinkOptions {
     localServer?: http.Server;
     /** Local server port (for constructing internal requests). */
     localPort?: number;
+    /** Callback to get current workspace list for registration. */
+    getWorkspaces?: () => Promise<Array<{ id: string; name: string; rootPath: string }>>;
 }
 
 export type ContainerLinkStatus = 'disconnected' | 'connecting' | 'connected' | 'registered';
@@ -165,7 +167,17 @@ export class ContainerLinkClient extends EventEmitter {
             name: this.options.agentName ?? os.hostname(),
             agentId: this.options.agentId,
         };
+        // Send initial register without workspaces, then update with workspace list
         this.send(createMessage('register', payload));
+        // Async: fetch workspaces and send updated register if available
+        if (this.options.getWorkspaces) {
+            this.options.getWorkspaces().then(workspaces => {
+                if (workspaces.length > 0 && this._status === 'registered') {
+                    const updatedPayload: RegisterPayload = { ...payload, workspaces };
+                    this.send(createMessage('register', updatedPayload));
+                }
+            }).catch(() => { /* best-effort */ });
+        }
     }
 
     private startHeartbeat(): void {

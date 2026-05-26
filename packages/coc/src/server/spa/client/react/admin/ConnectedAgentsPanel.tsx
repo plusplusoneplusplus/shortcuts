@@ -85,6 +85,21 @@ export function ConnectedAgentsPanel() {
                                     <div style={{ fontSize: 11, color: 'var(--color-muted, #888)', marginTop: 2 }}>
                                         {agent.address.startsWith('inbound://') ? 'Call-home (WebSocket)' : agent.address}
                                     </div>
+                                    {agent.workspaces && agent.workspaces.length > 0 && (
+                                        <div style={{ fontSize: 11, color: 'var(--color-muted, #888)', marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                            {agent.workspaces.map(ws => (
+                                                <span key={ws.id} style={{
+                                                    padding: '1px 6px',
+                                                    borderRadius: 3,
+                                                    background: 'var(--ar-badge-bg, #f0f0f0)',
+                                                    border: '1px solid var(--ar-border, #e0e0e0)',
+                                                    fontSize: 10,
+                                                }}>
+                                                    {ws.name}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                     <span style={{ fontSize: 11, color: 'var(--color-muted, #888)' }}>

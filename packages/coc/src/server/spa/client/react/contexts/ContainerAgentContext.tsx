@@ -32,6 +32,7 @@ export interface ContainerAgent {
     status: 'online' | 'offline' | 'unknown';
     addedAt?: number;
     lastHealthCheck?: number;
+    workspaces?: Array<{ id: string; name: string; rootPath: string }>;
 }
 
 export interface ContainerAgentContextValue {

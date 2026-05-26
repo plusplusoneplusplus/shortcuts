@@ -6,7 +6,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo, useContext, type DragEvent as ReactDragEvent } from 'react';
 import { AddRepoDialog } from '../../repos/AddRepoDialog';
 import { AddFolderDialog } from '../../repos/AddFolderDialog';
-import { AddAgentDialog } from '../../repos/AddAgentDialog';
 import type { RepoData, RepoGroup } from '../../repos/repoGrouping';
 import { groupReposByRemote, groupReposByAgent, applyGroupOrder } from '../../repos/repoGrouping';
 import { moveRepoTabOrder, moveRepoTabOrderToIndex, resolveRepoTabOrder, sanitizeRepoTabOrder } from '../../repos/repoOrder';
@@ -252,7 +251,6 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [addOpen, setAddOpen] = useState(false);
     const [addFolderOpen, setAddFolderOpen] = useState(false);
-    const [addAgentOpen, setAddAgentOpen] = useState(false);
     const containerAgentCtx = useContainerAgents();
     const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
     const [editRepoId, setEditRepoId] = useState<string | null>(null);
@@ -1232,19 +1230,6 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                     >
                         ＋ Add specific repository
                     </button>
-                    {isContainerMode() && (
-                        <>
-                            <hr className="my-1 border-[#e0e0e0] dark:border-[#3c3c3c]" />
-                            <button
-                                data-testid="repo-tab-add-agent-option"
-                                className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
-                                role="menuitem"
-                                onClick={() => { setDropdownOpen(false); setAddAgentOpen(true); }}
-                            >
-                                🔗 Add agent
-                            </button>
-                        </>
-                    )}
                 </div>
             )}
         </div>
@@ -1270,13 +1255,6 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
             onClose={() => setAddFolderOpen(false)}
             onAdded={() => { setAddFolderOpen(false); onRefresh(); }}
         />
-        {isContainerMode() && (
-            <AddAgentDialog
-                open={addAgentOpen}
-                onClose={() => setAddAgentOpen(false)}
-                onAdd={async (address, name) => { await containerAgentCtx.addAgent(address, name); setAddAgentOpen(false); containerAgentCtx.refreshAgents(); onRefresh(); }}
-            />
-        )}
         <AddRepoDialog
             open={editRepoId !== null}
             onClose={() => setEditRepoId(null)}

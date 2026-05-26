@@ -512,6 +512,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 containerUrl: url,
                 agentName: containerLinkAgentName,
                 localPort: port,
+                getWorkspaces: async () => {
+                    const ws = await store.getWorkspaces();
+                    return ws.map(w => ({ id: w.id, name: w.name, rootPath: w.rootPath }));
+                },
             });
             containerLink.start();
             containerLinkBroadcastUnsub = wsServer.onBroadcast(data => containerLink?.forwardEvent(data));
@@ -625,6 +629,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             containerUrl: options.containerUrl,
             agentName: options.containerAgentName,
             localPort: actualPort,
+            getWorkspaces: async () => {
+                const ws = await store.getWorkspaces();
+                return ws.map(w => ({ id: w.id, name: w.name, rootPath: w.rootPath }));
+            },
         });
         containerLink.start();
         containerLinkBroadcastUnsub = wsServer.onBroadcast(data => containerLink?.forwardEvent(data));
