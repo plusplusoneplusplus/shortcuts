@@ -45,6 +45,9 @@ export interface FileDiffPanelProps {
     backTestId?: string;
     /** Whether to display source.label in the toolbar. Defaults to true. */
     showSourceLabel?: boolean;
+    /** When provided, render a Mark reviewed toggle in the toolbar. */
+    isReviewed?: boolean;
+    onToggleReviewed?: () => void;
 }
 
 type PopupState = {
@@ -63,6 +66,8 @@ export function FileDiffPanel({
     backLabel = 'All files',
     backTestId = 'file-diff-back-btn',
     showSourceLabel = true,
+    isReviewed,
+    onToggleReviewed,
 }: FileDiffPanelProps) {
     const { dispatch: queueDispatch } = useQueue();
 
@@ -309,6 +314,21 @@ export function FileDiffPanel({
                         <span className="text-xs text-[#616161] dark:text-[#999] flex-shrink-0">
                             {source.label}
                         </span>
+                    )}
+                    {onToggleReviewed && (
+                        <button
+                            onClick={onToggleReviewed}
+                            title={isReviewed ? 'Unmark reviewed' : 'Mark reviewed'}
+                            className={
+                                isReviewed
+                                    ? 'inline-flex h-6 items-center gap-1 rounded border border-green-500 bg-green-50 px-2 text-[11px] font-medium text-green-700 hover:bg-green-100 dark:border-green-500 dark:bg-green-900/30 dark:text-green-200 dark:hover:bg-green-900/50'
+                                    : 'inline-flex h-6 items-center gap-1 rounded border border-gray-300 bg-white px-2 text-[11px] font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                            }
+                            data-testid="mark-reviewed-btn"
+                            aria-pressed={!!isReviewed}
+                        >
+                            {isReviewed ? '✓ Reviewed' : 'Mark reviewed'}
+                        </button>
                     )}
                     <button
                         onClick={() => setSidebarOpen(o => !o)}

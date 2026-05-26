@@ -37,6 +37,7 @@ import {
 import { getHostname } from '../utils/config';
 import { extractFileStatsFromDiff } from '../features/git/diff/diffSource';
 import { useClassification } from '../features/git/diff/useClassification';
+import { usePrReviewProgress } from '../features/git/diff/usePrReviewProgress';
 import type { ClassificationKey } from '../features/git/diff/diffSource';
 import type { HunkCategory } from '../features/pull-requests/classification-types';
 import { HUNK_CATEGORIES, CATEGORY_LABELS } from '../features/pull-requests/classification-types';
@@ -344,16 +345,22 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
     const classificationKey: ClassificationKey | undefined =
         headSha ? { type: 'pr', repoId, identifier: `${prId}:${headSha}` } : undefined;
     const classification = useClassification(classificationKey);
+    const reviewProgress = usePrReviewProgress(headSha);
 
     const handleFileSelect = useCallback((filePath: string) => {
         setHunkTarget(undefined);
-        setSelectedFilePath(prev => prev === filePath ? null : filePath);
-    }, []);
+        setSelectedFilePath(prev => {
+            const next = prev === filePath ? null : filePath;
+            if (next) reviewProgress.markVisited(next);
+            return next;
+        });
+    }, [reviewProgress]);
 
     const handleNavigateToFile = useCallback((filePath: string, target: 'first' | 'last') => {
         setSelectedFilePath(filePath);
         setHunkTarget(target);
-    }, []);
+        reviewProgress.markVisited(filePath);
+    }, [reviewProgress]);
 
     const handleBack = useCallback(() => {
         setSelectedFilePath(null);
@@ -486,6 +493,8 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
                     onTogglePrioritySort={classifyStatus === 'ready' ? handleTogglePrioritySort : undefined}
                     activeFilters={classifyStatus === 'ready' ? classification.state.activeFilters : undefined}
                     onShowAll={classifyStatus === 'ready' ? handleShowAll : undefined}
+                    reviewedFiles={reviewProgress.state.reviewedFiles}
+                    visitedFiles={reviewProgress.state.visitedFiles}
                 />
                 <div className="flex-1 min-w-0 overflow-hidden">
                     {selectedFilePath ? (
@@ -503,6 +512,8 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
                             onBack={handleBack}
                             backLabel="All files"
                             showSourceLabel={false}
+                            isReviewed={reviewProgress.isReviewed(selectedFilePath)}
+                            onToggleReviewed={() => reviewProgress.toggleReviewed(selectedFilePath)}
                         />
                     ) : (
                         <div className="flex flex-col items-center justify-center flex-1 gap-2 text-xs text-[#848484]">

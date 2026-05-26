@@ -332,6 +332,47 @@ describe('FileDiffPanel', () => {
         expect(screen.queryByText('Branch diff')).toBeNull();
     });
 
+    // ── Mark reviewed toolbar action (AC-03) ──
+
+    it('does not render Mark reviewed when onToggleReviewed is not provided', () => {
+        render(<FileDiffPanel workspaceId="ws1" filePath="src/foo.ts" source={makeBranchSource()} />);
+
+        expect(screen.queryByTestId('mark-reviewed-btn')).toBeNull();
+    });
+
+    it('renders Mark reviewed button when onToggleReviewed is provided and reflects isReviewed', () => {
+        const onToggle = vi.fn();
+        const { rerender } = render(
+            <FileDiffPanel
+                workspaceId="ws1"
+                filePath="src/foo.ts"
+                source={makeBranchSource()}
+                isReviewed={false}
+                onToggleReviewed={onToggle}
+            />,
+        );
+
+        const btn = screen.getByTestId('mark-reviewed-btn');
+        expect(btn.textContent).toContain('Mark reviewed');
+        expect(btn.getAttribute('aria-pressed')).toBe('false');
+
+        fireEvent.click(btn);
+        expect(onToggle).toHaveBeenCalledTimes(1);
+
+        rerender(
+            <FileDiffPanel
+                workspaceId="ws1"
+                filePath="src/foo.ts"
+                source={makeBranchSource()}
+                isReviewed={true}
+                onToggleReviewed={onToggle}
+            />,
+        );
+        const btn2 = screen.getByTestId('mark-reviewed-btn');
+        expect(btn2.textContent).toContain('Reviewed');
+        expect(btn2.getAttribute('aria-pressed')).toBe('true');
+    });
+
     // ── Comment sidebar toggle ──
 
     it('toggles comment sidebar on button click', () => {
