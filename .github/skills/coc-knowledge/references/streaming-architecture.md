@@ -153,8 +153,8 @@ Container receives WebSocket JSON from agent and re-serves to its browser:
 │  │               │   │                                          │     │
 │  │ onProcess     │   │       broadcastProcessEvent(msg)         │     │
 │  │  Output()  ───┼──→│  (also fed by store.onProcessChange)     │     │
-│  │               │   └──────────────────┬───────────────────────┘     │
-│  │ onProcess     │                      │                             │
+│  │               │   │                                          │     │
+│  │ onProcess     │   │       onBroadcast() → Container Link     │     │
 │  │  Change() ────┼──────────────────────┘                             │
 │  └───────┬───────┘                      │                             │
 │          │                              │                             │
@@ -200,3 +200,14 @@ Container receives WebSocket JSON from agent and re-serves to its browser:
 | `packages/coccontainer/src/inbound/inbound-agent-manager.ts` | Container-side WS handler |
 | `packages/coc/src/server/spa/client/react/hooks/useWebSocket.ts` | SPA WebSocket hook |
 | `packages/coc/src/server/spa/client/react/features/chat/hooks/useChatSSE.ts` | SPA SSE hook |
+
+## Container Link Event Forwarding
+
+When a container link is active, broadcast events are forwarded via `wsServer.onBroadcast()`:
+
+1. `ProcessWebSocketServer.broadcastProcessEvent()` / `broadcastGitChanged()` / `broadcastWikiEvent()` sends to local browser WebSocket clients
+2. The same serialized data is passed to registered `onBroadcast` listeners
+3. In `server/index.ts`, the container link subscribes: `wsServer.onBroadcast(data => containerLink.forwardEvent(data))`
+4. `ContainerLinkClient.forwardEvent()` wraps the data in `{type:"event", payload:{data}}` and sends over the call-home WebSocket
+5. Container's `InboundAgentManager` receives the `event` message and emits `agent-event`
+6. Container relays to its browser WebSocket clients via `wsRelay.emit('message', ...)`
