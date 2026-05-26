@@ -66,7 +66,7 @@ function Build-CocContainer {
         if (Test-Path $forgeLink) { Remove-Item $forgeLink -Recurse -Force }
         Pop-Location
 
-        # Re-run npm install after npm link steps — npm link in workspace packages prunes
+        # Re-run npm install after npm link steps -- npm link in workspace packages prunes
         # optional peer deps (@openai/codex-sdk, @anthropic-ai/claude-agent-sdk) from
         # root node_modules. A second install restores them from the local cache.
         Push-Location $repoRoot

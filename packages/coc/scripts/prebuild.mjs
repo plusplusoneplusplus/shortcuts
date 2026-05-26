@@ -19,6 +19,7 @@ export function buildCocMemory({
     run(npmExecutable, ['run', 'build', '-w', '@plusplusoneplusplus/coc-memory'], {
         cwd: rootDir,
         stdio: 'inherit',
+        ...(npmExecutable.endsWith('.cmd') ? { shell: true } : {}),
     });
 }
 

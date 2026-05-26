@@ -27,13 +27,13 @@ describe('prebuild script', () => {
     });
 
     it('builds the coc-memory workspace from the repository root', () => {
-        const calls: Array<{ command: string; args: string[]; cwd: string }> = [];
+        const calls: Array<{ command: string; args: string[]; cwd: string; shell?: boolean }> = [];
 
         script.buildCocMemory({
             rootDir: '/repo/root',
             npmExecutable: 'npm-test',
-            run: (command: string, args: string[], options: { cwd: string }) => {
-                calls.push({ command, args, cwd: options.cwd });
+            run: (command: string, args: string[], options: { cwd: string; shell?: boolean }) => {
+                calls.push({ command, args, cwd: options.cwd, shell: options.shell });
             },
         });
 
@@ -42,6 +42,28 @@ describe('prebuild script', () => {
                 command: 'npm-test',
                 args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-memory'],
                 cwd: '/repo/root',
+                shell: undefined,
+            },
+        ]);
+    });
+
+    it('passes shell:true when using npm.cmd (Windows)', () => {
+        const calls: Array<{ command: string; args: string[]; cwd: string; shell?: boolean }> = [];
+
+        script.buildCocMemory({
+            rootDir: '/repo/root',
+            npmExecutable: 'npm.cmd',
+            run: (command: string, args: string[], options: { cwd: string; shell?: boolean }) => {
+                calls.push({ command, args, cwd: options.cwd, shell: options.shell });
+            },
+        });
+
+        expect(calls).toEqual([
+            {
+                command: 'npm.cmd',
+                args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-memory'],
+                cwd: '/repo/root',
+                shell: true,
             },
         ]);
     });
