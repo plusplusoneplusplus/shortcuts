@@ -49,12 +49,32 @@ function Build-CocContainer {
             Write-Host "npm install failed with exit code $LASTEXITCODE" -ForegroundColor Red
             return $false
         }
-        Write-Host "`n=== Building coccontainer packages ===" -ForegroundColor Cyan
-        # Build forge -> coccontainer, then npm link
+        Write-Host "`n=== Building all packages (coc-memory → forge → teams-bot → whatsapp-bot → coc → coccontainer) ===" -ForegroundColor Cyan
+
+        Push-Location (Join-Path $repoRoot "packages\coc-memory")
+        npm run build
+        if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Host "coc-memory build failed" -ForegroundColor Red; return $false }
+        Pop-Location
+
         Push-Location (Join-Path $repoRoot "packages\forge")
         npm run build
         if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Host "forge build failed" -ForegroundColor Red; return $false }
         npm link
+        Pop-Location
+
+        Push-Location (Join-Path $repoRoot "packages\teams-bot")
+        npm run build
+        if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Host "teams-bot build failed" -ForegroundColor Red; return $false }
+        Pop-Location
+
+        Push-Location (Join-Path $repoRoot "packages\whatsapp-bot")
+        npm run build
+        if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Host "whatsapp-bot build failed" -ForegroundColor Red; return $false }
+        Pop-Location
+
+        Push-Location (Join-Path $repoRoot "packages\coc")
+        npm run build
+        if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Host "coc build failed" -ForegroundColor Red; return $false }
         Pop-Location
 
         Push-Location (Join-Path $repoRoot "packages\coccontainer")
