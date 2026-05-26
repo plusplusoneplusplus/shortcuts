@@ -346,7 +346,9 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
     const classificationKey: ClassificationKey | undefined =
         headSha ? { type: 'pr', repoId, identifier: `${prId}:${headSha}` } : undefined;
     const classification = useClassification(classificationKey);
-    const reviewProgress = usePrReviewProgress(headSha);
+    const reviewProgress = usePrReviewProgress(headSha, {
+        persistence: { workspaceId, repoId, prId },
+    });
 
     const handleFileSelect = useCallback((filePath: string) => {
         setHunkTarget(undefined);
@@ -440,6 +442,12 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
             .catch((err: Error) => setError(err.message))
             .finally(() => setLoading(false));
     }, [repoId, prId]);
+
+    // Sync the current selection into the persistence snapshot so reloads
+    // remember which file the reviewer was on.
+    useEffect(() => {
+        reviewProgress.setLastSelectedFile(selectedFilePath);
+    }, [selectedFilePath, reviewProgress]);
 
     const filePaths = fileList.map(f => f.path);
 
