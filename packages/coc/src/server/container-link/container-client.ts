@@ -174,9 +174,15 @@ export class ContainerLinkClient extends EventEmitter {
     }
 
     private async sendRegister(): Promise<void> {
+        const name = this.options.agentName ?? os.hostname();
+        // Derive a stable agentId from name + port so that agents on the same
+        // machine with different ports are uniquely identified.
+        const stableId = this.options.localPort
+            ? `${name}:${this.options.localPort}`
+            : name;
         const payload: RegisterPayload = {
-            name: this.options.agentName ?? os.hostname(),
-            agentId: this._assignedAgentId ?? this.options.agentId,
+            name,
+            agentId: this._assignedAgentId ?? this.options.agentId ?? stableId,
         };
         // Fetch workspaces before sending register so they're included in the first message
         if (this.options.getWorkspaces) {
