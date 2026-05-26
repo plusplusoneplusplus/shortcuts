@@ -50,6 +50,7 @@ export class TeamsBridge {
     private transport: TeamsTransport;
     private wsHandler: ((msg: WSRelayMessage) => void) | null = null;
     private sseHandler: ((event: SSEEvent) => void) | null = null;
+    private reconnectHandler: ((agent: { id: string; name: string }) => void) | null = null;
     private _completionSent = new Set<string>();
     /** Track latest assistant content per process (updated on each WS event) */
     private _lastAssistantContent = new Map<string, string>();
@@ -121,6 +122,10 @@ export class TeamsBridge {
         this.sseHandler = (event) => this.onSSEEvent(event);
         this.opts.sseRelay.on('event', this.sseHandler);
 
+        // On agent reconnection, poll for missed completions
+        this.reconnectHandler = (agent) => this.onAgentReconnected(agent);
+        this.opts.inboundManager.on('agent-connected', this.reconnectHandler);
+
         // Start and wait for connection (with timeout to avoid hanging on slow MCP server)
         try {
             await Promise.race([
@@ -145,6 +150,10 @@ export class TeamsBridge {
         if (this.sseHandler) {
             this.opts.sseRelay.off('event', this.sseHandler);
             this.sseHandler = null;
+        }
+        if (this.reconnectHandler) {
+            this.opts.inboundManager.off('agent-connected', this.reconnectHandler);
+            this.reconnectHandler = null;
         }
         await this.bot?.stop();
         this.bot = null;
@@ -338,6 +347,45 @@ export class TeamsBridge {
             console.log(`[teams-bridge] Saved config to ${configPath}`);
         } catch (err) {
             console.error('[teams-bridge] Failed to persist config:', err);
+        }
+    }
+
+    // ── Reconnection catchup: poll agent for missed completions ──
+
+    /**
+     * When an agent reconnects after a WebSocket gap, poll it for any
+     * recently-completed processes whose completion event we missed.
+     */
+    private async onAgentReconnected(agent: { id: string; name: string }): Promise<void> {
+        if (!this.bot || !this.store) return;
+        if (this.bot.getStatus() !== 'connected') return;
+
+        const agentId = agent.id;
+        const recentProcesses = this.store.getRecentProcesses(agentId);
+        if (recentProcesses.length === 0) return;
+
+        console.log(`[teams-bridge] 🔄 Agent "${agent.name}" reconnected — checking ${recentProcesses.length} recent process(es) for missed completions`);
+
+        for (const { processId, workspaceId } of recentProcesses) {
+            if (this._completionSent.has(processId)) continue;
+
+            try {
+                const wsParam = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : '';
+                const res = await this.fetchFromAgent(agentId, `/api/processes/${processId}${wsParam}`);
+                if (!res.ok) continue;
+
+                const body = await res.json() as Record<string, unknown>;
+                const processData = (body.process ?? body) as Record<string, unknown>;
+                const status = processData.status as string;
+
+                if (status !== 'completed') continue;
+
+                console.log(`[teams-bridge] 🔄 Missed completion detected for process ${processId} — sending to Teams`);
+                const msg: WSRelayMessage = { agentId, agentName: agent.name, data: JSON.stringify({ type: 'process-updated', process: processData }) };
+                await this.handleCompletion(processId, msg, processData);
+            } catch (err) {
+                console.error(`[teams-bridge] 🔄 Error checking process ${processId} on reconnect:`, err);
+            }
         }
     }
 

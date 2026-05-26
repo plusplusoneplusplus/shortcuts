@@ -155,6 +155,17 @@ export class MessagingStore {
         ).run(processId, lastTurnIndex);
     }
 
+    /** Get distinct recent processes for a given agent (last 1 hour by default). */
+    getRecentProcesses(agentId: string, maxAgeSec: number = 3600): Array<{ processId: string; workspaceId?: string }> {
+        const cutoff = Math.floor(Date.now() / 1000) - maxAgeSec;
+        const rows = this.db.prepare(
+            `SELECT DISTINCT process_id, workspace_id FROM wa_message_map
+             WHERE agent_id = ? AND created_at >= ?
+             ORDER BY created_at DESC`
+        ).all(agentId, cutoff) as Array<{ process_id: string; workspace_id: string | null }>;
+        return rows.map(r => ({ processId: r.process_id, workspaceId: r.workspace_id ?? undefined }));
+    }
+
     /** Close the database. */
     close(): void {
         this.db.close();

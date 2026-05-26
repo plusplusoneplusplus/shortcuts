@@ -110,6 +110,7 @@ describe('TeamsBridge', () => {
     let tmpDir: string;
     let wsRelay: EventEmitter & { on: any; off: any; emit: any };
     let sseRelay: EventEmitter & { on: any; off: any; emit: any };
+    let inboundManager: EventEmitter & { on: any; off: any; emit: any; hasAgent: ReturnType<typeof vi.fn>; proxyRequest: ReturnType<typeof vi.fn>; listAgents: ReturnType<typeof vi.fn> };
     let agentStore: ReturnType<typeof createMockAgentStore>;
     let tunnelBridge: ReturnType<typeof createMockTunnelBridge>;
 
@@ -118,6 +119,12 @@ describe('TeamsBridge', () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-bridge-test-'));
         wsRelay = new EventEmitter() as any;
         sseRelay = new EventEmitter() as any;
+        const emitter = new EventEmitter();
+        inboundManager = Object.assign(emitter, {
+            hasAgent: vi.fn().mockReturnValue(false),
+            proxyRequest: vi.fn().mockResolvedValue({ status: 200, body: '{}', headers: {} }),
+            listAgents: vi.fn().mockReturnValue([]),
+        }) as any;
         agentStore = createMockAgentStore();
         tunnelBridge = createMockTunnelBridge();
     });
@@ -151,6 +158,7 @@ describe('TeamsBridge', () => {
             sseRelay: sseRelay as any,
             agentStore: agentStore as any,
             tunnelBridge: tunnelBridge as any,
+            inboundManager: inboundManager as any,
         });
     }
 
@@ -1257,6 +1265,189 @@ describe('TeamsBridge', () => {
 
             vi.unstubAllGlobals();
             await bridge.stop();
+        });
+    });
+
+    describe('reconnection catchup', () => {
+        it('should poll agent for missed completions on reconnection', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            // Simulate a completed process via normal WS flow first (to populate messaging store)
+            const mockFetch1 = vi.fn().mockImplementation(() => {
+                return Promise.resolve({
+                    ok: true,
+                    json: async () => ({
+                        process: {
+                            id: 'proc-sent',
+                            status: 'completed',
+                            workspaceId: 'ws-1',
+                            conversationTurns: [
+                                { role: 'user', content: 'hello' },
+                                { role: 'assistant', content: 'Sent response', toolCalls: [
+                                    { name: 'task_complete', args: { summary: 'Sent response' }, status: 'completed' },
+                                ] },
+                            ],
+                        },
+                    }),
+                });
+            });
+            vi.stubGlobal('fetch', mockFetch1);
+
+            // Emit a completion and let it send to Teams (creates message binding in store)
+            // This sends both user turn forwarding + assistant completion = 2 bot.send calls
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-sent', status: 'completed', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 50));
+            expect(lastBot().send).toHaveBeenCalledTimes(2);
+
+            // Manually create a message binding for proc-missed (simulates that the inbound
+            // message was sent before disconnection, but completion event was lost)
+            const { MessagingStore } = await import('../../src/messaging/messaging-store');
+            const store = new MessagingStore(tmpDir);
+            store.bindMessage('teams-msg-for-missed', 'proc-missed', 'agent-a', 'Agent-A:repo', 'ws-1');
+            store.close();
+
+            // Now mock fetch to return the correct process based on URL
+            const mockFetch2 = vi.fn().mockImplementation((url: string) => {
+                if (url.includes('proc-sent')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: async () => ({
+                            process: { id: 'proc-sent', status: 'completed', workspaceId: 'ws-1',
+                                conversationTurns: [
+                                    { role: 'user', content: 'hello' },
+                                    { role: 'assistant', content: 'Sent response' },
+                                ],
+                            },
+                        }),
+                    });
+                }
+                // proc-missed
+                return Promise.resolve({
+                    ok: true,
+                    json: async () => ({
+                        process: { id: 'proc-missed', status: 'completed', workspaceId: 'ws-1',
+                            conversationTurns: [
+                                { role: 'user', content: 'question' },
+                                { role: 'assistant', content: 'Catchup response', toolCalls: [
+                                    { name: 'task_complete', args: { summary: 'Catchup response' }, status: 'completed' },
+                                ] },
+                            ],
+                        },
+                    }),
+                });
+            });
+            vi.stubGlobal('fetch', mockFetch2);
+
+            // Simulate agent reconnection
+            lastBot().send.mockClear();
+            inboundManager.emit('agent-connected', { id: 'agent-a', name: 'Agent-A' });
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Should have sent the missed completion (proc-sent is in _completionSent)
+            // handleCompletion sends user turn forwarding + assistant response = 2 calls
+            expect(lastBot().send).toHaveBeenCalledTimes(2);
+            const sentTexts = lastBot().send.mock.calls.map((c: any) => c[1] as string);
+            expect(sentTexts.some((t: string) => t.includes('Catchup response'))).toBe(true);
+
+            vi.unstubAllGlobals();
+            await bridge.stop();
+        });
+
+        it('should not re-send completions already sent', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            const mockFetch = vi.fn().mockImplementation(() => {
+                return Promise.resolve({
+                    ok: true,
+                    json: async () => ({
+                        process: {
+                            id: 'proc-already-sent',
+                            status: 'completed',
+                            workspaceId: 'ws-1',
+                            conversationTurns: [
+                                { role: 'user', content: 'test' },
+                                { role: 'assistant', content: 'Already sent', toolCalls: [
+                                    { name: 'task_complete', args: { summary: 'Already sent' }, status: 'completed' },
+                                ] },
+                            ],
+                        },
+                    }),
+                });
+            });
+            vi.stubGlobal('fetch', mockFetch);
+
+            // Send via normal WS flow — this adds proc-already-sent to _completionSent
+            // (also sends user turn forwarding, so expect 2 bot.send calls: user + assistant)
+            emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
+                type: 'process-updated',
+                process: { id: 'proc-already-sent', status: 'completed', workspaceId: 'ws-1' },
+            });
+            await new Promise(resolve => setTimeout(resolve, 50));
+            // User turn forwarding + assistant completion = 2 sends
+            expect(lastBot().send).toHaveBeenCalledTimes(2);
+
+            // Simulate reconnection — should NOT re-send since _completionSent tracks it
+            lastBot().send.mockClear();
+            inboundManager.emit('agent-connected', { id: 'agent-a', name: 'Agent-A' });
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            expect(lastBot().send).not.toHaveBeenCalled();
+
+            vi.unstubAllGlobals();
+            await bridge.stop();
+        });
+
+        it('should skip processes that are still running', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            // Create a binding for a process that is still running
+            const { MessagingStore } = await import('../../src/messaging/messaging-store');
+            const store = new MessagingStore(tmpDir);
+            store.bindMessage('teams-msg-running', 'proc-running', 'agent-a', 'Agent-A:repo', 'ws-1');
+            store.close();
+
+            const mockFetch = vi.fn().mockImplementation(() => {
+                return Promise.resolve({
+                    ok: true,
+                    json: async () => ({
+                        process: {
+                            id: 'proc-running',
+                            status: 'running',
+                            workspaceId: 'ws-1',
+                            conversationTurns: [
+                                { role: 'user', content: 'still working' },
+                            ],
+                        },
+                    }),
+                });
+            });
+            vi.stubGlobal('fetch', mockFetch);
+
+            inboundManager.emit('agent-connected', { id: 'agent-a', name: 'Agent-A' });
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Should not send anything for running processes
+            expect(lastBot().send).not.toHaveBeenCalled();
+
+            vi.unstubAllGlobals();
+            await bridge.stop();
+        });
+
+        it('should unsubscribe from inboundManager on stop', async () => {
+            const bridge = createBridge();
+            await bridge.start();
+
+            expect(inboundManager.listenerCount('agent-connected')).toBe(1);
+
+            await bridge.stop();
+
+            expect(inboundManager.listenerCount('agent-connected')).toBe(0);
         });
     });
 });
