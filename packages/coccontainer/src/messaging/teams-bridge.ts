@@ -946,35 +946,28 @@ export class TeamsBridge {
      * or uses direct HTTP fetch for tunnel/direct agents.
      */
     private async fetchFromAgent(agentId: string, apiPath: string, options?: { method?: string; body?: string; headers?: Record<string, string> }): Promise<{ ok: boolean; status: number; json: () => Promise<any>; text: () => Promise<string> }> {
-        const agent = this.opts.agentStore.get(agentId);
+        // First: check if agentId IS the inbound registration ID directly
+        if (this.opts.inboundManager?.hasAgent(agentId)) {
+            return this.proxyViaInbound(agentId, apiPath, options);
+        }
+
+        // Second: look up in agent store (agentId may be the store UUID)
+        let agent = this.opts.agentStore.get(agentId);
+        if (!agent) {
+            // Fallback: look up by address pattern (event agentId = inbound registration ID)
+            agent = this.opts.agentStore.list().find(a => a.address === `inbound://${agentId}`);
+        }
         if (!agent) {
             return { ok: false, status: 404, json: async () => ({ error: 'Agent not found' }), text: async () => 'Agent not found' };
         }
 
-        // For inbound agents, proxy through the WebSocket channel
+        // For inbound agents found in store, extract inboundId and proxy
         if (agent.address.startsWith('inbound://')) {
             const inboundId = agent.address.replace('inbound://', '');
-            if (!this.opts.inboundManager.hasAgent(inboundId)) {
+            if (!this.opts.inboundManager?.hasAgent(inboundId)) {
                 return { ok: false, status: 503, json: async () => ({ error: 'Agent not connected' }), text: async () => 'Agent not connected' };
             }
-            try {
-                const resp = await this.opts.inboundManager.proxyRequest(
-                    inboundId,
-                    options?.method ?? 'GET',
-                    apiPath,
-                    options?.headers ?? {},
-                    options?.body,
-                );
-                const ok = resp.status >= 200 && resp.status < 300;
-                return {
-                    ok,
-                    status: resp.status,
-                    json: async () => JSON.parse(resp.body || '{}'),
-                    text: async () => resp.body || '',
-                };
-            } catch (err) {
-                return { ok: false, status: 502, json: async () => ({ error: (err as Error).message }), text: async () => (err as Error).message };
-            }
+            return this.proxyViaInbound(inboundId, apiPath, options);
         }
 
         // Direct HTTP fetch for tunnel/direct agents
@@ -987,6 +980,27 @@ export class TeamsBridge {
             body: options?.body,
         });
         return res;
+    }
+
+    private async proxyViaInbound(inboundId: string, apiPath: string, options?: { method?: string; body?: string; headers?: Record<string, string> }): Promise<{ ok: boolean; status: number; json: () => Promise<any>; text: () => Promise<string> }> {
+        try {
+            const resp = await this.opts.inboundManager!.proxyRequest(
+                inboundId,
+                options?.method ?? 'GET',
+                apiPath,
+                options?.headers ?? {},
+                options?.body,
+            );
+            const ok = resp.status >= 200 && resp.status < 300;
+            return {
+                ok,
+                status: resp.status,
+                json: async () => JSON.parse(resp.body || '{}'),
+                text: async () => resp.body || '',
+            };
+        } catch (err) {
+            return { ok: false, status: 502, json: async () => ({ error: (err as Error).message }), text: async () => (err as Error).message };
+        }
     }
 }
 
