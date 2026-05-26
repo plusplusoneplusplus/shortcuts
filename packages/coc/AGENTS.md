@@ -30,6 +30,10 @@ all have their own `references/*.md`.
 
 - **627+ Vitest test files** live under `packages/coc/test/server/`. Any
   server change should add or update tests there.
+- **Codex skill mirroring** runs once at server startup (when
+  `resolvedConfig.codex?.enabled === true`), not per-install. The
+  `syncInstalledSkillsToCodex` function copies all globally installed bundled
+  skills from `~/.coc/skills` to `~/.codex/skills` (`$CODEX_HOME/skills`).
 - **Adding an editable config field** is a single registry entry — do not
   modify `admin-handler.ts` (see [admin-config.md](../../.github/skills/coc-knowledge/references/admin-config.md)).
 - **Adding a namespaced config field** must update
