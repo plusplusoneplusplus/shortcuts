@@ -20,13 +20,14 @@ import { execGit } from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody } from '../core/api-handler';
 import { handleAPIError, missingFields, notFound, badRequest, conflict } from '../errors';
 import type { WorkItemStore, WorkItemFilter, WorkItemStatus, WorkItemSource, WorkItemPriority, WorkItemType, WorkItem } from '../work-items/types';
-import { WORK_ITEM_STATUSES, WORK_ITEM_TYPES, isValidTransition } from '../work-items/types';
+import { WORK_ITEM_STATUSES, WORK_ITEM_TYPES, isValidTransition, HIERARCHY_CONTAINER_TYPES, isValidParentChildTypes, getEffectiveType } from '../work-items/types';
 import { executeWorkItem, type EnqueueFunction } from '../work-items/work-item-executor';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 
 const VALID_SOURCES: Set<string> = new Set(['manual', 'chat', 'schedule']);
 const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);
-const VALID_TYPES: Set<string> = new Set(['work-item', 'bug']);
+/** Types allowed when hierarchy is disabled (legacy behavior). */
+const LEAF_VALID_TYPES: Set<string> = new Set(['work-item', 'bug']);
 
 export interface WorkItemRouteContext {
     routes: Route[];
@@ -34,10 +35,15 @@ export interface WorkItemRouteContext {
     processStore: ProcessStore;
     enqueue?: EnqueueFunction;
     getWsServer?: () => ProcessWebSocketServer;
+    /** Returns true when the workItems.hierarchy feature flag is enabled. */
+    getHierarchyEnabled?: () => boolean;
 }
 
 export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
     const { routes, workItemStore, processStore, enqueue, getWsServer } = ctx;
+    const isHierarchyEnabled = () => ctx.getHierarchyEnabled?.() ?? false;
+    // All valid types when hierarchy is enabled
+    const ALL_VALID_TYPES = new Set<string>(WORK_ITEM_TYPES);
 
     // GET /api/workspaces/:id/work-items — List with optional filters
     routes.push({
@@ -66,7 +72,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             if (typeof query.tags === 'string' && query.tags) {
                 filter.tags = query.tags.split(',');
             }
-            if (typeof query.type === 'string' && VALID_TYPES.has(query.type)) {
+            if (typeof query.type === 'string' && ALL_VALID_TYPES.has(query.type)) {
                 filter.type = query.type as WorkItemType;
             }
             if (typeof query.q === 'string' && query.q.trim()) {
@@ -106,7 +112,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             if (typeof query.tags === 'string' && query.tags) {
                 filter.tags = query.tags.split(',');
             }
-            if (typeof query.type === 'string' && VALID_TYPES.has(query.type)) {
+            if (typeof query.type === 'string' && ALL_VALID_TYPES.has(query.type)) {
                 filter.type = query.type as WorkItemType;
             }
             if (typeof query.q === 'string' && query.q.trim()) {
@@ -151,13 +157,55 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             }
 
             const now = new Date().toISOString();
+            const hierarchyEnabled = isHierarchyEnabled();
+
+            // Validate type: hierarchy-only types require the flag to be enabled
+            let resolvedType: WorkItemType | undefined;
+            if (body.type) {
+                if (ALL_VALID_TYPES.has(body.type)) {
+                    if (HIERARCHY_CONTAINER_TYPES.has(body.type as WorkItemType) && !hierarchyEnabled) {
+                        return handleAPIError(res, badRequest(
+                            `Type '${body.type}' requires the workItems.hierarchy feature flag to be enabled`,
+                        ));
+                    }
+                    resolvedType = body.type as WorkItemType;
+                }
+                // Unknown types are silently ignored (treated as work-item)
+            }
+
+            // Validate parentId: only allowed when hierarchy is enabled
+            if (body.parentId && !hierarchyEnabled) {
+                return handleAPIError(res, badRequest(
+                    'parentId requires the workItems.hierarchy feature flag to be enabled',
+                ));
+            }
+
+            // Validate parent-child type relationship when parentId is provided
+            if (body.parentId && hierarchyEnabled) {
+                const parentItem = await workItemStore.getWorkItem(body.parentId, repoId);
+                if (!parentItem) {
+                    return handleAPIError(res, badRequest(`Parent work item not found: ${body.parentId}`));
+                }
+                if (parentItem.repoId !== repoId) {
+                    return handleAPIError(res, badRequest('Parent work item must be in the same workspace'));
+                }
+                const childType = resolvedType ?? 'work-item';
+                const parentType = getEffectiveType(parentItem.type);
+                if (!isValidParentChildTypes(childType, parentType)) {
+                    return handleAPIError(res, badRequest(
+                        `Invalid parent-child type combination: '${parentType}' cannot be a parent of '${childType}'`,
+                    ));
+                }
+            }
+
             const item: WorkItem = {
                 id: body.id || crypto.randomUUID(),
                 repoId,
                 title: body.title,
                 description: body.description || '',
                 status: 'created',
-                type: VALID_TYPES.has(body.type) ? body.type : undefined,
+                type: resolvedType,
+                parentId: hierarchyEnabled && body.parentId ? String(body.parentId) : undefined,
                 createdAt: now,
                 updatedAt: now,
                 source: VALID_SOURCES.has(body.source) ? body.source : 'manual',
@@ -246,6 +294,43 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             if (body.autoExecute !== undefined) updates.autoExecute = body.autoExecute;
             if (body.completedAt !== undefined) updates.completedAt = body.completedAt;
             if (body.reviewComments !== undefined) updates.reviewComments = body.reviewComments;
+
+            // Handle parentId reparenting when hierarchy is enabled
+            if ('parentId' in body) {
+                if (!isHierarchyEnabled()) {
+                    return handleAPIError(res, badRequest(
+                        'parentId requires the workItems.hierarchy feature flag to be enabled',
+                    ));
+                }
+                if (body.parentId === null || body.parentId === '') {
+                    // Unlink parent
+                    updates.parentId = undefined;
+                } else if (typeof body.parentId === 'string') {
+                    // Validate new parent
+                    if (body.parentId === workItemId) {
+                        return handleAPIError(res, badRequest('A work item cannot be its own parent'));
+                    }
+                    const newParent = await workItemStore.getWorkItem(body.parentId, repoId);
+                    if (!newParent) {
+                        return handleAPIError(res, badRequest(`Parent work item not found: ${body.parentId}`));
+                    }
+                    if (newParent.repoId !== repoId) {
+                        return handleAPIError(res, badRequest('Parent work item must be in the same workspace'));
+                    }
+                    // Fetch the current item to know its type for parent-child validation
+                    const currentForType = await workItemStore.getWorkItem(workItemId, repoId);
+                    if (currentForType) {
+                        const childType = getEffectiveType(currentForType.type);
+                        const parentType = getEffectiveType(newParent.type);
+                        if (!isValidParentChildTypes(childType, parentType)) {
+                            return handleAPIError(res, badRequest(
+                                `Invalid parent-child type combination: '${parentType}' cannot be a parent of '${childType}'`,
+                            ));
+                        }
+                    }
+                    updates.parentId = body.parentId;
+                }
+            }
 
             const updated = await workItemStore.updateWorkItem(workItemId, updates);
             if (!updated) {

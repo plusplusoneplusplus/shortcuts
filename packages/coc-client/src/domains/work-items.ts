@@ -16,6 +16,8 @@ import type {
   WorkItemPlanResponse,
   WorkItemPlanUpdateResponse,
   WorkItemPlanVersion,
+  WorkItemTreeFilter,
+  WorkItemTreeResponse,
 } from '../contracts';
 import type { RequestAdapter } from '../types';
 import { encodePathSegment } from '../url';
@@ -130,5 +132,14 @@ export class WorkItemsClient {
       method: 'POST',
       body: { ...request },
     });
+  }
+
+  tree(workspaceId: string, filter?: WorkItemTreeFilter): Promise<WorkItemTreeResponse> {
+    const query: Record<string, string | number | boolean | undefined> = {};
+    if (filter?.q) query.q = filter.q;
+    if (filter?.type) query.type = filter.type;
+    if (filter?.status) query.status = filter.status;
+    if (filter?.includeArchived !== undefined) query.includeArchived = filter.includeArchived;
+    return this.transport.request<WorkItemTreeResponse>(path(workspaceId, '/tree'), { query });
   }
 }
