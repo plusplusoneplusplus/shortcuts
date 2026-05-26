@@ -14,7 +14,7 @@ import type { ResolvedContainerConfig } from '../config';
 import { createAgentStore, type Agent } from '../store';
 import { pipeRequest } from '../proxy/http';
 import { TunnelBridge } from '../proxy/tunnel-bridge';
-import { fetchAgentWorkspaces, addCachedWorkspace, type RemoteWorkspace } from '../proxy/workspaces';
+import { addCachedWorkspace, type RemoteWorkspace } from '../proxy/workspaces';
 import { SSERelay } from '../proxy/sse-relay';
 import { WebSocketRelay } from '../proxy/ws-relay';
 import { AgentHealthMonitor } from './health-monitor';
@@ -73,6 +73,8 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
         if (agent.tunnelId) {
             await tunnelBridge.start(agent.id, agent.tunnelId, agent.address).catch(() => {});
         }
+        // Skip SSE/WS relay for inbound agents — they use the WebSocket channel
+        if (agent.address.startsWith('inbound://')) continue;
         const effectiveAddr = tunnelBridge.getLocalUrl(agent.id) || agent.address;
         sseRelay.connect(agent.id, agent.name, effectiveAddr);
         wsRelay.connect(agent.id, agent.name, effectiveAddr);
@@ -224,7 +226,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
             // Aggregated workspaces from all agents
             if (url.pathname === '/api/workspaces' && req.method === 'GET') {
                 const allAgents = agentStore.list();
-                const workspaces = await aggregateWorkspaces(allAgents, tunnelBridge);
+                const workspaces = await aggregateWorkspaces(allAgents, tunnelBridge, inboundManager);
                 return sendJson(res, { workspaces });
             }
 
@@ -234,10 +236,9 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 const results = await Promise.all(
                     allAgents.map(async (agent) => {
                         try {
-                            const effectiveAddr = tunnelBridge.getLocalUrl(agent.id) || agent.address;
-                            const resp = await fetch(`${effectiveAddr}/api/processes/summaries${url.search}`);
-                            if (!resp.ok) return [];
-                            const data = await resp.json() as any;
+                            const resp = await proxyToAgent(agent, inboundManager, tunnelBridge, 'GET', `/api/processes/summaries${url.search}`);
+                            if (resp.status !== 200) return [];
+                            const data = JSON.parse(resp.body);
                             const summaries = data?.summaries || data?.processes || (Array.isArray(data) ? data : []);
                             return summaries.map((p: any) => ({ ...p, agentId: agent.id, agentName: agent.name }));
                         } catch { return []; }
@@ -621,6 +622,10 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 }
                 // Fallback: Use tunnel bridge local URL if available, otherwise direct address
                 const effectiveAddr = tunnelBridge.getLocalUrl(agentId) || agent.address;
+                if (effectiveAddr.startsWith('inbound://')) {
+                    res.writeHead(503, { 'Content-Type': 'application/json' });
+                    return res.end(JSON.stringify({ error: 'Agent not connected via WebSocket channel' }));
+                }
                 return pipeRequest(effectiveAddr, req, res, `/api/${rest}${url.search}`);
             }
 
@@ -737,23 +742,75 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
 
 // ── Helpers ──────────────────────────────────────────────
 
-async function aggregateWorkspaces(agents: Agent[], bridge: TunnelBridge): Promise<RemoteWorkspace[]> {
+/**
+ * Proxy a request to an agent — uses WebSocket channel for inbound agents,
+ * falls back to HTTP for legacy agents.
+ */
+async function proxyToAgent(
+    agent: Agent,
+    inboundMgr: InboundAgentManager,
+    bridge: TunnelBridge,
+    method: string,
+    apiPath: string,
+): Promise<{ status: number; body: string; headers: Record<string, string> }> {
+    // For inbound agents, use the WebSocket channel
+    const inboundId = agent.address.startsWith('inbound://') ? agent.address.replace('inbound://', '') : undefined;
+    if (inboundId && inboundMgr.hasAgent(inboundId)) {
+        return inboundMgr.proxyRequest(inboundId, method, apiPath);
+    }
+    // Legacy: direct HTTP fetch
+    const effectiveAddr = bridge.getLocalUrl(agent.id) || agent.address;
+    const resp = await fetch(`${effectiveAddr}${apiPath}`);
+    const body = await resp.text();
+    const headers: Record<string, string> = {};
+    resp.headers.forEach((v, k) => { headers[k] = v; });
+    return { status: resp.status, body, headers };
+}
+
+async function aggregateWorkspaces(agents: Agent[], bridge: TunnelBridge, inboundMgr: InboundAgentManager): Promise<RemoteWorkspace[]> {
     const results = await Promise.all(
         agents
             .filter(a => a.status !== 'offline')
             .map(async (agent) => {
-                const effectiveAddr = bridge.getLocalUrl(agent.id) || agent.address;
-                const workspaces = await fetchAgentWorkspaces(effectiveAddr);
-                return workspaces.map(ws => ({
-                    ...ws,
-                    agentId: agent.id,
-                    agentName: agent.name,
-                    agentAddress: agent.address,
-                }));
+                try {
+                    const resp = await proxyToAgent(agent, inboundMgr, bridge, 'GET', '/api/workspaces');
+                    if (resp.status !== 200) return workspaceCache.get(agent.address) || [];
+                    const result = JSON.parse(resp.body);
+                    let workspaces: RemoteWorkspace[] = [];
+                    if (Array.isArray(result)) {
+                        workspaces = result;
+                    } else if (result && typeof result === 'object' && 'workspaces' in result) {
+                        workspaces = result.workspaces;
+                    } else {
+                        return workspaceCache.get(agent.address) || [];
+                    }
+                    // Merge with cached (preserve just-registered workspaces)
+                    const cached = workspaceCache.get(agent.address) || [];
+                    const freshIds = new Set(workspaces.map(w => w.id));
+                    const extraCached = cached.filter(w => !freshIds.has(w.id));
+                    const merged = [...workspaces, ...extraCached];
+                    workspaceCache.set(agent.address, merged);
+                    return merged.map(ws => ({
+                        ...ws,
+                        agentId: agent.id,
+                        agentName: agent.name,
+                        agentAddress: agent.address,
+                    }));
+                } catch {
+                    return (workspaceCache.get(agent.address) || []).map(ws => ({
+                        ...ws,
+                        agentId: agent.id,
+                        agentName: agent.name,
+                        agentAddress: agent.address,
+                    }));
+                }
             })
     );
     return results.flat();
 }
+
+/** Per-agent workspace cache (survives transient failures). */
+const workspaceCache = new Map<string, RemoteWorkspace[]>();
 
 function sendJson(res: http.ServerResponse, data: unknown, status: number = 200): void {
     res.writeHead(status, { 'Content-Type': 'application/json' });
