@@ -19,6 +19,7 @@ import { createRouter } from '../../../src/server/shared/router';
 import { registerWorkItemHierarchyRoutes } from '../../../src/server/routes/work-item-hierarchy-routes';
 import { registerWorkItemRoutes } from '../../../src/server/routes/work-item-routes';
 import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
+import { WORK_ITEM_TYPES, WORK_ITEM_STATUSES } from '../../../src/server/work-items/types';
 
 const REPO_ID = 'hierarchy-test-repo';
 
@@ -302,6 +303,74 @@ describe('Work Item Hierarchy Routes', () => {
 
             const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items/tree`);
             expect(res.body.total).toBe(2);
+        });
+
+        it('rollup byType and byStatus contain every canonical key with correct counts', async () => {
+            // Create one item of each type under a common root epic so the epic's rollup
+            // captures all of them.  The epic itself is the root and is not included in its
+            // own rollup, so we only need the remaining four types.
+            const epicRes = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Root Epic',
+                type: 'epic',
+            });
+            const epicId = epicRes.body.id;
+
+            const featRes = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Feature',
+                type: 'feature',
+                parentId: epicId,
+            });
+            const featId = featRes.body.id;
+
+            const pbiRes = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'PBI',
+                type: 'pbi',
+                parentId: featId,
+            });
+            const pbiId = pbiRes.body.id;
+
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Task',
+                type: 'work-item',
+                parentId: pbiId,
+            });
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Bug',
+                type: 'bug',
+                parentId: pbiId,
+            });
+
+            const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items/tree`);
+            expect(res.status).toBe(200);
+            const epicRollup = res.body.roots[0].rollup;
+
+            // Every type key from the canonical array must be present (including 'epic' which counts 0)
+            for (const t of WORK_ITEM_TYPES) {
+                expect(epicRollup.byType).toHaveProperty(t);
+                expect(typeof epicRollup.byType[t]).toBe('number');
+            }
+
+            // Every status key from the canonical array must be present
+            for (const s of WORK_ITEM_STATUSES) {
+                expect(epicRollup.byStatus).toHaveProperty(s);
+                expect(typeof epicRollup.byStatus[s]).toBe('number');
+            }
+
+            // Spot-check expected counts
+            expect(epicRollup.byType.feature).toBe(1);
+            expect(epicRollup.byType.pbi).toBe(1);
+            expect(epicRollup.byType['work-item']).toBe(1);
+            expect(epicRollup.byType.bug).toBe(1);
+            // epic itself is the root — not counted in its own rollup
+            expect(epicRollup.byType.epic).toBe(0);
+            // all items start with status 'created'
+            expect(epicRollup.byStatus.created).toBe(4);
+            // all other statuses should be 0
+            for (const s of WORK_ITEM_STATUSES) {
+                if (s !== 'created') {
+                    expect(epicRollup.byStatus[s]).toBe(0);
+                }
+            }
         });
     });
 
