@@ -124,6 +124,52 @@ export function clearPrDetailCache(): void {
 }
 
 // ============================================================================
+// PR diff cache (in-memory, no TTL — invalidated by PR force-refresh only)
+// ============================================================================
+
+// Keyed by repoId|prId. No TTL: the combined diff for a PR is stable until
+// the reviewer explicitly refreshes (force=true on the detail endpoint).
+
+const prDiffCache = new Map<string, string>();
+
+function makePrDiffCacheKey(repoId: string, prId: string): string {
+    return `${repoId}|${prId}`;
+}
+
+/** Clear all cached PR diff entries. Exported for testing. */
+export function clearPrDiffCache(): void {
+    prDiffCache.clear();
+}
+
+/** Clear the cached diff for one specific PR (used by force-refresh). */
+function clearPrDiffCacheEntry(repoId: string, prId: string): void {
+    prDiffCache.delete(makePrDiffCacheKey(repoId, prId));
+}
+
+/**
+ * Return the combined diff for a PR, fetching it once and caching the result.
+ * Both the full-diff and per-file-diff endpoints call this so only one
+ * provider round-trip occurs per PR per cache lifetime.
+ */
+async function getCachedCombinedDiff(
+    repoId: string,
+    prId: string,
+    getDiff: (repoId: string, prId: string) => Promise<string>,
+): Promise<string> {
+    const key = makePrDiffCacheKey(repoId, prId);
+    const hit = prDiffCache.get(key);
+    if (hit !== undefined) {
+        console.debug(`[pr-diff-cache] hit key=${key}`);
+        return hit;
+    }
+    console.debug(`[pr-diff-cache] miss key=${key}`);
+    const diff = await getDiff(repoId, prId);
+    prDiffCache.set(key, diff);
+    console.debug(`[pr-diff-cache] set key=${key}`);
+    return diff;
+}
+
+// ============================================================================
 // Registration
 // ============================================================================
 
@@ -353,6 +399,8 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 // Serve from cache if valid and not forced
                 if (force) {
                     prDetailCache.delete(cacheKey);
+                    // Also evict the diff cache so the next diff request refetches.
+                    clearPrDiffCacheEntry(repoId, prId);
                     console.debug(`[pr-detail-cache] bypass key=${cacheKey}`);
                 }
 
@@ -579,7 +627,11 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                     return sendJson(res, { diff: '' });
                 }
 
-                const combinedDiff = await prSvc.getDiff(repoId, prId);
+                const combinedDiff = await getCachedCombinedDiff(
+                    repoId,
+                    prId,
+                    prSvc.getDiff.bind(prSvc),
+                );
                 const fileDiff = extractFileDiffFromCombined(combinedDiff, filePath);
                 sendJson(res, { diff: fileDiff ?? '' });
             } catch (err) {
@@ -623,7 +675,11 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                     return;
                 }
 
-                const diff = await prSvc.getDiff(repoId, prId);
+                const diff = await getCachedCombinedDiff(
+                    repoId,
+                    prId,
+                    prSvc.getDiff.bind(prSvc),
+                );
                 res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
                 res.end(diff);
             } catch (err) {
