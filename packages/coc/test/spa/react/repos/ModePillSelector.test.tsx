@@ -170,7 +170,13 @@ describe('ModePillSelector', () => {
         expect(selected.className).toContain('bg-[#f3f3f3]');
     });
 
-    it('container uses compact p-0.5 (not p-1)', () => {
+    it('container is height-leveled at 22px with p-px so it matches the sibling chips', () => {
+        // The composer toolbar places the mode pill next to the agent, model
+        // and effort chips, which are all h-[22px] ghost buttons. Keep the
+        // mode pill container at the same 22px height (h-[22px] + p-px) so
+        // the four elements line up on the same baseline. The older
+        // p-0.5 / p-1 paddings rendered ~24px tall and looked bulkier than
+        // the surrounding chips.
         render(
             <ModePillSelector
                 options={DEFAULT_MODE_PILL_OPTIONS}
@@ -180,7 +186,9 @@ describe('ModePillSelector', () => {
         );
         const group = screen.getByRole('radiogroup');
         const tokens = group.className.split(/\s+/);
-        expect(tokens).toContain('p-0.5');
+        expect(tokens).toContain('h-[22px]');
+        expect(tokens).toContain('p-px');
+        expect(tokens).not.toContain('p-0.5');
         expect(tokens).not.toContain('p-1');
     });
 

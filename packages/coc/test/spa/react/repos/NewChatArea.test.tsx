@@ -68,6 +68,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getConfig: () => ({ apiBasePath: '/api' }),
     isRalphEnabled: () => mockRalphEnabled.value,
     isLoopsEnabled: () => false,
+    getDefaultProvider: () => 'copilot' as const,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -745,6 +746,7 @@ describe('NewChatArea', () => {
                 'new-chat:ws-1',
                 'Hello draft',
                 'ask',
+                null,
                 null,
             );
             vi.useRealTimers();
