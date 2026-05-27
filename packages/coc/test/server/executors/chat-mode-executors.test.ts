@@ -107,6 +107,52 @@ function makeChatTask(mode: 'ask' | 'plan' | 'autopilot', id = 'task-1'): Queued
 }
 
 // ============================================================================
+// Provider routing
+// ============================================================================
+
+describe('ChatBaseExecutor provider routing', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'AI answer',
+            sessionId: 'sess-1',
+            toolCalls: [],
+        });
+    });
+
+    it('uses the server default provider when payload.provider is omitted', async () => {
+        const resolveAiServiceForProvider = vi.fn().mockReturnValue(sdkMocks.service as any);
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            provider: 'codex',
+            resolveAiServiceForProvider,
+        }));
+
+        await executor.execute(makeChatTask('ask', 'task-default-provider'), 'Hello');
+
+        expect(resolveAiServiceForProvider).toHaveBeenCalledWith('codex');
+    });
+
+    it('uses payload.provider over the server default provider when present', async () => {
+        const resolveAiServiceForProvider = vi.fn().mockReturnValue(sdkMocks.service as any);
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            provider: 'codex',
+            resolveAiServiceForProvider,
+        }));
+        const task = makeChatTask('ask', 'task-provider-override');
+        task.payload = { ...(task.payload as any), provider: 'claude' } as any;
+
+        await executor.execute(task, 'Hello');
+
+        expect(resolveAiServiceForProvider).toHaveBeenCalledWith('claude');
+    });
+});
+
+// ============================================================================
 // Shared behaviour — parameterised per executor
 // ============================================================================
 
@@ -650,6 +696,40 @@ describe('ChatBaseExecutor selected skills', () => {
         expect(call.prompt).toContain('<commit>abc123</commit>');
         expect(call.prompt.indexOf('<selected_skills>')).toBeLessThan(call.prompt.indexOf('<commit>'));
         expect(call.prompt).not.toContain('<skill name=');
+    });
+
+    it('adds resolved SKILL.md paths for selected skills when directories are available', async () => {
+        const skillsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-selected-skills-'));
+        try {
+            fs.mkdirSync(path.join(skillsDir, 'impl'), { recursive: true });
+            fs.writeFileSync(path.join(skillsDir, 'impl', 'SKILL.md'), '# Impl skill');
+            const executor = new ChatExecutor(store, makeOptions(store, {
+                resolveSkillConfig: vi.fn().mockResolvedValue({ skillDirectories: [skillsDir], disabledSkills: undefined }),
+            }));
+            const task: QueuedTask = {
+                id: 'task-skill-path',
+                type: 'chat',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'chat',
+                    mode: 'ask',
+                    prompt: 'Do work',
+                    workingDirectory: '/fake/ws',
+                    context: { skills: ['impl'] },
+                },
+                config: {},
+                displayName: 'skill path test',
+            };
+
+            await executor.execute(task, 'Do work');
+
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            expect(call.prompt).toContain(`- impl: ${path.join(skillsDir, 'impl', 'SKILL.md')}`);
+        } finally {
+            fs.rmSync(skillsDir, { recursive: true, force: true });
+        }
     });
 
     it('preserves explicit user intent even when a selected skill might not exist locally', async () => {

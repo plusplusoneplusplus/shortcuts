@@ -813,7 +813,7 @@ timeout: 300
                 '  enabled: true',
                 'claude:',
                 '  enabled: true',
-                'activeProvider: codex',
+                'defaultProvider: codex',
                 'features:',
                 '  autoMemoryPromotion: true',
                 '  focusedDiff: true',
@@ -933,7 +933,6 @@ timeout: 300
             }).toMatchInlineSnapshot(`
               {
                 "resolved": {
-                  "activeProvider": "copilot",
                   "approvePermissions": true,
                   "chat": {
                     "askUser": {
@@ -953,6 +952,7 @@ timeout: 300
                   "containerDefaultAgent": {
                     "enabled": false,
                   },
+                  "defaultProvider": "copilot",
                   "excalidraw": {
                     "enabled": false,
                   },
@@ -1067,7 +1067,6 @@ timeout: 300
                   },
                 },
                 "sources": {
-                  "activeProvider": "default",
                   "approvePermissions": "file",
                   "chat.askUser.enabled": "file",
                   "chat.followUpSuggestions.count": "file",
@@ -1075,6 +1074,7 @@ timeout: 300
                   "claude.enabled": "default",
                   "codex.enabled": "default",
                   "containerDefaultAgent.enabled": "default",
+                  "defaultProvider": "default",
                   "excalidraw.enabled": "default",
                   "features.autoMemoryPromotion": "file",
                   "features.focusedDiff": "file",
@@ -1428,4 +1428,3 @@ timeout: 300
         });
     });
 });
-

@@ -324,6 +324,8 @@ describe('CLITaskExecutor executor dispatch', () => {
                 undefined,
                 undefined,
                 undefined,
+                // 10th arg = per-turn reasoningEffort override
+                undefined,
             );
         });
 

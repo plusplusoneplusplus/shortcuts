@@ -67,7 +67,13 @@ export function ModePillSelector({
             role="radiogroup"
             aria-label="Chat mode"
             className={cn(
-                'inline-flex items-center gap-0 rounded-md border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] p-0.5',
+                // h-[22px] + p-px keeps the segmented container at the same
+                // 22px height as the sibling ghost chips (agent / model /
+                // effort), so all four toolbar elements share one baseline
+                // and visual row-height. Without this the bordered
+                // container previously rendered ~24px tall and looked
+                // bulkier than the adjacent chips.
+                'inline-flex items-center gap-0 h-[22px] rounded-md border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] p-px',
                 className,
             )}
             data-testid={testId}

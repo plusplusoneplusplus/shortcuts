@@ -257,11 +257,55 @@ export function applySkillContent(prompt: string, _task: QueuedTask): string {
     return prompt;
 }
 
+export interface SelectedSkillReference {
+    name: string;
+    skillFilePath: string;
+}
+
+/**
+ * Resolve selected skill names to concrete SKILL.md file paths without reading
+ * the skill bodies into the prompt. The first matching skill directory wins,
+ * matching the search order passed to the SDK.
+ */
+export function resolveSelectedSkillReferences(
+    selectedSkills?: string[],
+    skillDirectories?: string[],
+    disabledSkills?: string[],
+): SelectedSkillReference[] {
+    if (!selectedSkills || selectedSkills.length === 0 || !skillDirectories || skillDirectories.length === 0) {
+        return [];
+    }
+
+    const disabled = new Set((disabledSkills ?? []).filter(skill => typeof skill === 'string'));
+    const uniqueSkills = [...new Set(selectedSkills.filter(skill => typeof skill === 'string' && skill.trim().length > 0))];
+    const references: SelectedSkillReference[] = [];
+
+    for (const name of uniqueSkills) {
+        if (disabled.has(name)) {
+            continue;
+        }
+        for (const dir of skillDirectories) {
+            const skillFilePath = path.join(dir, name, 'SKILL.md');
+            if (fs.existsSync(skillFilePath)) {
+                references.push({ name, skillFilePath });
+                break;
+            }
+        }
+    }
+
+    return references;
+}
+
 /**
  * Preserve explicit slash-selected skill intent without eagerly injecting
- * the skill bodies. The native runtime still resolves the skill content on demand.
+ * the skill bodies. When paths are available, point the agent at SKILL.md files
+ * so providers without a native skill registry can still load the instructions.
  */
-export function prependSelectedSkillsDirective(prompt: string, selectedSkills?: string[]): string {
+export function prependSelectedSkillsDirective(
+    prompt: string,
+    selectedSkills?: string[],
+    selectedSkillReferences?: SelectedSkillReference[],
+): string {
     if (!selectedSkills || selectedSkills.length === 0) {
         return prompt;
     }
@@ -274,6 +318,12 @@ export function prependSelectedSkillsDirective(prompt: string, selectedSkills?: 
     const directive = [
         '<selected_skills>',
         `The user explicitly selected these skills: ${uniqueSkills.join(', ')}.`,
+        ...(selectedSkillReferences && selectedSkillReferences.length > 0
+            ? [
+                'Load the selected skill instructions from these SKILL.md files before proceeding:',
+                ...selectedSkillReferences.map(ref => `- ${ref.name}: ${ref.skillFilePath}`),
+            ]
+            : []),
         '</selected_skills>',
     ].join('\n');
 

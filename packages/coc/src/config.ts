@@ -150,11 +150,10 @@ export interface CLIConfig {
         enabled?: boolean;
     };
     /**
-     * Active AI provider: 'copilot' (default), 'codex', or 'claude'.
-     * Switching to 'codex' requires codex.enabled = true.
-     * Switching to 'claude' requires claude.enabled = true.
+     * Default AI provider for new chats/tasks: 'copilot' (default), 'codex', or 'claude'.
+     * Per-chat provider selection overrides this value.
      */
-    activeProvider?: 'copilot' | 'codex' | 'claude';
+    defaultProvider?: 'copilot' | 'codex' | 'claude';
     /** Development feature flags. */
     features?: {
         autoMemoryPromotion?: boolean;
@@ -340,11 +339,10 @@ export interface ResolvedCLIConfig {
         enabled: boolean;
     };
     /**
-     * Active AI provider: 'copilot' (default), 'codex', or 'claude'.
-     * Switching to 'codex' requires codex.enabled = true.
-     * Switching to 'claude' requires claude.enabled = true.
+     * Default AI provider for new chats/tasks: 'copilot' (default), 'codex', or 'claude'.
+     * Per-chat provider selection overrides this value.
      */
-    activeProvider: 'copilot' | 'codex' | 'claude';
+    defaultProvider: 'copilot' | 'codex' | 'claude';
     /** Development feature flags. */
     features: {
         autoMemoryPromotion: boolean;
@@ -484,7 +482,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     claude: {
         enabled: false,
     },
-    activeProvider: 'copilot',
+    defaultProvider: 'copilot',
     features: {
         autoMemoryPromotion: false,
         focusedDiff: false,
@@ -524,7 +522,7 @@ export type ConfigFieldSource = 'default' | 'file';
 const TOP_LEVEL_CONFIG_SOURCE_KEYS = [
     'model', 'parallel', 'output', 'approvePermissions', 'mcpConfig',
     'timeout', 'persist', 'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages',
-    'activeProvider',
+    'defaultProvider',
 ] as const;
 
 /**
@@ -645,7 +643,7 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
         toolCompactness: (override.toolCompactness ?? base.toolCompactness) as 0 | 1 | 2 | 3,
         taskCardDensity: (override.taskCardDensity ?? base.taskCardDensity) as 'compact' | 'dense',
         groupSingleLineMessages: override.groupSingleLineMessages ?? base.groupSingleLineMessages,
-        activeProvider: (override.activeProvider ?? base.activeProvider) as 'copilot' | 'codex' | 'claude',
+        defaultProvider: (override.defaultProvider ?? base.defaultProvider) as 'copilot' | 'codex' | 'claude',
         ...mergeConfigNamespaces(base, override, DEFAULT_BUNDLED_SKILLS),
     };
 }

@@ -32,8 +32,8 @@ interface DashboardConfig {
     bindAddress?: string;
     /** Whether the Codex SDK provider is enabled (feature flag). */
     codexEnabled?: boolean;
-    /** Active AI provider ('copilot' | 'codex'). */
-    activeProvider?: 'copilot' | 'codex';
+    /** Default AI provider for new chats/tasks. */
+    defaultProvider?: 'copilot' | 'codex' | 'claude';
 }
 
 /** Cached runtime config loaded from the API. */
@@ -93,7 +93,7 @@ async function _doLoadRuntimeConfig(): Promise<void> {
             focusedDiffEnabled: data.features.focusedDiffEnabled,
             containerDefaultAgentEnabled: data.features.containerDefaultAgentEnabled,
             codexEnabled: data.features.codexEnabled,
-            activeProvider: data.features.activeProvider,
+            defaultProvider: data.features.defaultProvider,
             hostname: data.hostname ?? bootstrap.hostname,
             bindAddress: data.bindAddress ?? bootstrap.bindAddress,
         };
@@ -226,9 +226,9 @@ export function isCodexEnabled(): boolean {
     return getConfig().codexEnabled === true;
 }
 
-/** Returns the currently configured active AI provider ('copilot' by default). */
-export function getActiveProvider(): 'copilot' | 'codex' {
-    return getConfig().activeProvider ?? 'copilot';
+/** Returns the configured default AI provider for new chats/tasks. */
+export function getDefaultProvider(): 'copilot' | 'codex' | 'claude' {
+    return getConfig().defaultProvider ?? 'copilot';
 }
 
 /** Returns the raw bind address the server is listening on (e.g., '0.0.0.0'), if known. */

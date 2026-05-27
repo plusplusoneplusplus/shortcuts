@@ -87,6 +87,7 @@ vi.mock('../../../src/server/executors/prompt-builder', () => ({
     buildFollowUpSuggestionsAddon: (...args: any[]) => mockBuildFollowUpSuggestionsAddon(...args),
     applyLlmToolPreferences: (...args: any[]) => mockApplyLlmToolPreferences(...args),
     assertNoAskUserConflict: () => {},
+    resolveSelectedSkillReferences: () => [],
     prependSelectedSkillsDirective: (prompt: string, selectedSkills?: string[]) =>
         selectedSkills && selectedSkills.length > 0
             ? `<selected_skills>\nThe user explicitly selected these skills: ${selectedSkills.join(', ')}.\nUse the native skill system and invoke each selected skill immediately before proceeding with the request.\nDo not inline or restate the skill bodies yourself.\n</selected_skills>\n\n${prompt}`

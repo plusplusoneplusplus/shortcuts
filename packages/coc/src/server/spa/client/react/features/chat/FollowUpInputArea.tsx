@@ -10,6 +10,8 @@ import { SlashCommandMenu } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
 import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION } from './ModePillSelector';
 import type { ModePillOption } from './ModePillSelector';
+import { EffortPillSelector } from './EffortPillSelector';
+import type { EffortLevel } from './EffortPillSelector';
 import { ComposerMetaStrip } from './ComposerMetaStrip';
 import { useModifierKey } from '../../hooks/ui/useModifierKey';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
@@ -105,6 +107,15 @@ export interface FollowUpInputAreaProps {
     sessionCurrentTokens?: number;
     /** Active AI provider — shown as a read-only badge in the toolbar when set to 'codex' or 'claude'. */
     activeProvider?: 'copilot' | 'codex' | 'claude';
+    /**
+     * Current per-turn reasoning-effort override (`'low' | 'medium' | 'high'`).
+     * `null` means no override — the executor falls back to the persisted
+     * per-model effort, then the SDK default. When omitted, the effort pill
+     * is rendered as an unselected control. Wired via `onEffortChange`.
+     */
+    effortOverride?: EffortLevel | null;
+    /** Called when the user picks (or clears) a reasoning-effort level. */
+    onEffortChange?: (value: EffortLevel | null) => void;
 }
 
 export function FollowUpInputArea({
@@ -143,6 +154,8 @@ export function FollowUpInputArea({
     sessionTokenLimit,
     sessionCurrentTokens,
     activeProvider,
+    effortOverride = null,
+    onEffortChange,
 }: FollowUpInputAreaProps) {
     const inputWrapperRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -495,6 +508,9 @@ export function FollowUpInputArea({
                                 visible={modelCommand.modelMenuVisible}
                                 highlightIndex={modelCommand.modelHighlightIndex}
                                 currentModelId={modelCommand.modelOverride || sessionModel}
+                                onClearOverride={modelCommand.modelOverride
+                                    ? () => modelCommand.setModelOverride(null)
+                                    : undefined}
                             />
                         )}
                     </div>
@@ -584,6 +600,16 @@ export function FollowUpInputArea({
                                     />
                                 </div>
                             )}
+                            {/* Divider between the mode zone and the model zone.
+                                 Mirrors the OpenDesign provider-first composer:
+                                 "provider · mode · model · tools · send" reads
+                                 as four discrete ownership zones. The provider
+                                 isn't switchable on a follow-up (it's locked to
+                                 the session), so this composer starts at the
+                                 mode zone. */}
+                            {!hideModeSelector && modelCommand && (
+                                <span aria-hidden="true" data-testid="chat-toolbar-divider-mode" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
+                            )}
                             {/* Model selector chip — shows the active model
                                  (override or session). Clicking opens the
                                  picker; the chip is the single source of
@@ -604,6 +630,8 @@ export function FollowUpInputArea({
                                         ? `Override active: ${modelCommand.modelOverride} (click to change or clear)`
                                         : (sessionModel ? `Session model: ${sessionModel}` : 'Pick a model')}
                                     data-testid="model-picker-chip"
+                                    aria-haspopup="listbox"
+                                    aria-expanded={modelCommand.modelMenuVisible}
                                 >
                                     <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
                                         <polygon
@@ -613,25 +641,42 @@ export function FollowUpInputArea({
                                             strokeLinejoin="round"
                                         />
                                     </svg>
-                                    <span className="truncate font-mono text-[10.5px] font-medium text-[#1e1e1e] dark:text-[#cccccc]">
+                                    <span className="truncate font-mono text-[10.5px] font-medium text-[#848484] dark:text-[#999]">
                                         {modelCommand.modelOverride || sessionModel || 'model'}
                                     </span>
-                                    {modelCommand.modelOverride && (
-                                        <span
-                                            role="button"
-                                            tabIndex={-1}
-                                            className="shrink-0 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] cursor-pointer text-[10px]"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                modelCommand.setModelOverride(null);
-                                            }}
-                                            aria-label="Clear model override"
-                                            title="Clear model override"
-                                            data-testid="model-picker-chip-clear"
-                                        >✕</span>
-                                    )}
+                                    {/* Mirrors AgentSelectorChip: chevron
+                                         only, no inline ✕ clear. The
+                                         override is cleared via the "Use
+                                         default" entry rendered at the top
+                                         of ModelCommandMenu when an
+                                         override is set. */}
+                                    <svg
+                                        width="7" height="7"
+                                        viewBox="0 0 8 6"
+                                        fill="none"
+                                        aria-hidden="true"
+                                        className="shrink-0 opacity-60"
+                                    >
+                                        <path d="M1 1l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                    </svg>
                                 </button>
                             )}
+                            {/* Effort pill — picks the per-turn
+                                 `reasoningEffort` sent with this follow-up.
+                                 Hidden when the parent has not wired
+                                 `onEffortChange`, so legacy callers (e.g.
+                                 the side-panel commit chat) render unchanged. */}
+                            {onEffortChange && (
+                                <EffortPillSelector
+                                    value={effortOverride}
+                                    onChange={onEffortChange}
+                                    className="ml-0.5"
+                                />
+                            )}
+                            <div className="flex-1 min-w-0" />
+                            {/* Tools zone — slash/mention/attach live on the
+                                 right of the spacer (matches the OpenDesign
+                                 composer ordering: mode · model · tools · send). */}
                             <button
                                 type="button"
                                 className="ctool shrink-0 inline-flex items-center gap-0.5 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
@@ -677,16 +722,18 @@ export function FollowUpInputArea({
                                     />
                                 </svg>
                             </button>
-                            <div className="flex-1 min-w-0" />
-                            {/* Live metadata: cwd + context-window fuel gauge */}
+                            {/* Live metadata: cwd + context-window fuel gauge.
+                                 Sits next to send so its provider/cwd/ctx info
+                                 reads as status, not as an interactive chip. */}
                             <ComposerMetaStrip
-                                className="mr-1"
+                                className="mx-1"
                                 workingDirectory={workingDirectory}
                                 sessionTokenLimit={sessionTokenLimit}
                                 sessionCurrentTokens={sessionCurrentTokens}
                                 sessionModel={sessionModel}
                                 activeProvider={activeProvider}
                             />
+                            <span aria-hidden="true" data-testid="chat-toolbar-divider-send" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                             {isActiveGeneration ? stopButton : (
                                 <QueueFollowUpButton
                                     disabled={inputDisabled || sending}
@@ -718,6 +765,9 @@ export function FollowUpInputArea({
                                 visible={modelCommand.modelMenuVisible}
                                 highlightIndex={modelCommand.modelHighlightIndex}
                                 currentModelId={modelCommand.modelOverride || sessionModel}
+                                onClearOverride={modelCommand.modelOverride
+                                    ? () => modelCommand.setModelOverride(null)
+                                    : undefined}
                             />
                         )}
                     </div>

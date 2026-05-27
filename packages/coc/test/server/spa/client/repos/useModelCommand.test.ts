@@ -9,7 +9,7 @@
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useModelCommand, isModelCommandPrefix } from '../../../../../src/server/spa/client/react/features/chat/hooks/useModelCommand';
+import { useModelCommand, isModelCommandPrefix, selectPickableModels } from '../../../../../src/server/spa/client/react/features/chat/hooks/useModelCommand';
 import type { ModelInfo } from '../../../../../src/server/spa/client/react/hooks/useModels';
 
 const MODELS: ModelInfo[] = [
@@ -148,6 +148,49 @@ describe('useModelCommand', () => {
             act(() => { result.current.handleModelKeyDown(makeKeyEvent('Escape')); });
             expect(result.current.modelMenuVisible).toBe(false);
         });
+    });
+});
+
+// ============================================================================
+// selectPickableModels — fallback when no models are enabled
+// ============================================================================
+
+describe('selectPickableModels', () => {
+    const ENABLED_A: ModelInfo = { id: 'a', name: 'A', tokenLimit: 0, enabled: true, supportedReasoningEfforts: [] };
+    const ENABLED_B: ModelInfo = { id: 'b', name: 'B', tokenLimit: 0, enabled: true, supportedReasoningEfforts: [] };
+    const DISABLED_C: ModelInfo = { id: 'c', name: 'C', tokenLimit: 0, enabled: false, supportedReasoningEfforts: [] };
+    const DISABLED_D: ModelInfo = { id: 'd', name: 'D', tokenLimit: 0, enabled: false, supportedReasoningEfforts: [] };
+
+    it('returns just the enabled subset when at least one model is enabled', () => {
+        const result = selectPickableModels([ENABLED_A, DISABLED_C, ENABLED_B]);
+        expect(result.map(m => m.id)).toEqual(['a', 'b']);
+    });
+
+    it('falls back to the FULL list when zero models are enabled (regression)', () => {
+        // Regression for: clicking the model picker chip rendered nothing
+        // because every model came back from Copilot as `enabled: false`,
+        // collapsing the picker into an empty list. With the fallback the
+        // dropdown still has rows to render.
+        const result = selectPickableModels([DISABLED_C, DISABLED_D]);
+        expect(result.map(m => m.id)).toEqual(['c', 'd']);
+    });
+
+    it('returns an empty list when given an empty input (no fallback to invent rows)', () => {
+        expect(selectPickableModels([])).toEqual([]);
+    });
+
+    it('preserves the input order in both branches', () => {
+        const enabledOnly = selectPickableModels([ENABLED_B, DISABLED_C, ENABLED_A]);
+        expect(enabledOnly.map(m => m.id)).toEqual(['b', 'a']);
+        const fallback = selectPickableModels([DISABLED_D, DISABLED_C]);
+        expect(fallback.map(m => m.id)).toEqual(['d', 'c']);
+    });
+
+    it('does not mutate the input array', () => {
+        const input = [ENABLED_A, DISABLED_C];
+        const copy = [...input];
+        selectPickableModels(input);
+        expect(input).toEqual(copy);
     });
 });
 

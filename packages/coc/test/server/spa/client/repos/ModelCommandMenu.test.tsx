@@ -119,7 +119,7 @@ describe('ModelCommandMenu', () => {
         expect(onSelect).toHaveBeenCalledWith('gpt-5.4');
     });
 
-    it('shows checkmark for current model', () => {
+    it('marks the current model with aria-selected and data-current', () => {
         render(
             <ModelCommandMenu
                 models={MODELS}
@@ -131,12 +131,15 @@ describe('ModelCommandMenu', () => {
                 currentModelId="gpt-5.4"
             />
         );
-        // The checkmark should appear for GPT model
         const menu = screen.getByTestId('model-command-menu');
-        expect(menu.textContent).toContain('✓');
+        const rows = menu.querySelectorAll('[data-menu-item]');
+        const current = Array.from(rows).find(r => r.getAttribute('data-current') === 'true') as HTMLElement;
+        expect(current).toBeTruthy();
+        expect(current.textContent).toContain('GPT-5.4');
+        expect(current.getAttribute('aria-selected')).toBe('true');
     });
 
-    it('does not show checkmark when no current model matches', () => {
+    it('does not mark any row as current when no current model matches', () => {
         render(
             <ModelCommandMenu
                 models={MODELS}
@@ -148,8 +151,9 @@ describe('ModelCommandMenu', () => {
                 currentModelId="unknown-model"
             />
         );
-        const menu = screen.getByTestId('model-command-menu');
-        expect(menu.textContent).not.toContain('✓');
+        const rows = screen.getByTestId('model-command-menu').querySelectorAll('[data-menu-item]');
+        const current = Array.from(rows).find(r => r.getAttribute('data-current') === 'true');
+        expect(current).toBeUndefined();
     });
 
     it('filters models by prefix', () => {
@@ -165,5 +169,58 @@ describe('ModelCommandMenu', () => {
         );
         expect(screen.queryByText('GPT-5.4')).toBeNull();
         expect(screen.getByText('Claude Sonnet 4.6')).toBeTruthy();
+    });
+
+    it('renders a "Use default" entry when onClearOverride is wired and a current model is set', () => {
+        const onClearOverride = vi.fn();
+        const onDismiss = vi.fn();
+        render(
+            <ModelCommandMenu
+                models={MODELS}
+                filter=""
+                onSelect={vi.fn()}
+                onDismiss={onDismiss}
+                visible={true}
+                highlightIndex={0}
+                currentModelId="gpt-5.4"
+                onClearOverride={onClearOverride}
+            />
+        );
+        const clearRow = screen.getByTestId('model-command-menu-clear');
+        expect(clearRow).toBeTruthy();
+        expect(clearRow.textContent).toContain('Use default');
+        fireEvent.mouseDown(clearRow);
+        expect(onClearOverride).toHaveBeenCalledTimes(1);
+        expect(onDismiss).toHaveBeenCalledTimes(1);
+    });
+
+    it('omits the "Use default" entry when onClearOverride is not wired', () => {
+        render(
+            <ModelCommandMenu
+                models={MODELS}
+                filter=""
+                onSelect={vi.fn()}
+                onDismiss={vi.fn()}
+                visible={true}
+                highlightIndex={0}
+                currentModelId="gpt-5.4"
+            />
+        );
+        expect(screen.queryByTestId('model-command-menu-clear')).toBeNull();
+    });
+
+    it('omits the "Use default" entry when no current model is set, even if onClearOverride is provided', () => {
+        render(
+            <ModelCommandMenu
+                models={MODELS}
+                filter=""
+                onSelect={vi.fn()}
+                onDismiss={vi.fn()}
+                visible={true}
+                highlightIndex={0}
+                onClearOverride={vi.fn()}
+            />
+        );
+        expect(screen.queryByTestId('model-command-menu-clear')).toBeNull();
     });
 });

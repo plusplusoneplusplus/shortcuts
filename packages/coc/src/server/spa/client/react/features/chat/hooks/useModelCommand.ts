@@ -35,6 +35,20 @@ export interface UseModelCommandResult {
     setModelFilter: (filter: string) => void;
 }
 
+/**
+ * Resolve the list of models the chat composer's `/model` picker should
+ * surface. Prefers the user-enabled subset, but falls back to the full
+ * model list when nothing is enabled — otherwise the dropdown silently
+ * renders nothing on accounts where Copilot returns every model as
+ * `enabled: false` (fresh installs, accounts that haven't opted into the
+ * per-model admin toggles, etc.). Mirrors the same fallback used by
+ * EnqueueDialog/RunScriptDialog/etc.
+ */
+export function selectPickableModels(availableModels: ModelInfo[]): ModelInfo[] {
+    const enabled = availableModels.filter(m => m.enabled);
+    return enabled.length > 0 ? enabled : availableModels;
+}
+
 export function useModelCommand(
     enabledModels: ModelInfo[],
 ): UseModelCommandResult {

@@ -115,6 +115,8 @@ describe('POST /api/processes/:id/message — deliveryMode', () => {
             undefined,
             undefined,
             undefined,
+            undefined, // turnSource
+            undefined, // reasoningEffort
         );
     });
 
@@ -134,6 +136,8 @@ describe('POST /api/processes/:id/message — deliveryMode', () => {
             undefined,
             undefined,
             undefined,
+            undefined, // turnSource
+            undefined, // reasoningEffort
         );
     });
 
@@ -153,6 +157,8 @@ describe('POST /api/processes/:id/message — deliveryMode', () => {
             undefined,
             undefined,
             undefined,
+            undefined, // turnSource
+            undefined, // reasoningEffort
         );
     });
 

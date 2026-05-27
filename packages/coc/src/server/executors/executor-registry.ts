@@ -32,7 +32,7 @@ export interface ExecutorRegistryOptions {
     defaultTimeoutMs: number;
     followUpSuggestions: { enabled: boolean; count: number };
     askUser?: { enabled: boolean };
-    /** Active AI provider name recorded on each process for attribution. Defaults to 'copilot'. */
+    /** Default AI provider name recorded on new processes when the task has no provider override. */
     provider?: 'copilot' | 'codex' | 'claude';
     /**
      * Resolve an ISDKService for a given provider, checking enablement.

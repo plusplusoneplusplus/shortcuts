@@ -13,6 +13,8 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | GET | `/api/logs` | Server log ring buffer |
 | GET | `/api/stats` | Token usage + cost stats |
 | GET | `/api/models` | Available AI models |
+| GET | `/api/agent-providers` | Copilot/Codex/Claude enabled + SDK availability status. Codex auth is handled by the Codex SDK/CLI, not CoC routes |
+| GET | `/api/agent-providers/quota` | Provider quota snapshots where supported |
 
 ## Workspace Management
 
@@ -34,7 +36,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | GET | `/api/processes` | List processes (with search/filter) |
 | GET | `/api/processes/:id` | Process detail |
 | DELETE | `/api/processes/:id` | Delete process |
-| POST | `/api/processes/:id/message` | Follow-up message |
+| POST | `/api/processes/:id/message` | Follow-up message. Body accepts `content`, optional `mode`, `deliveryMode`, `images`, `skillNames`, `model`, and `reasoningEffort` (`'low'\|'medium'\|'high'\|'xhigh'`) for a per-turn override. |
 | POST | `/api/processes/:id/cancel` | Cancel running process |
 | POST | `/api/processes/:id/promote-to-ralph` | Promote completed ask-mode chat to Ralph session (see [ralph.md](ralph.md)) |
 | PATCH | `/api/processes/:id/pin` | Pin/unpin process |

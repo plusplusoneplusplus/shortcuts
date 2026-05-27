@@ -76,7 +76,7 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.mcpOauthEnabled).toBe(false);
         expect(result.features.focusedDiffEnabled).toBe(false);
         expect(result.features.codexEnabled).toBe(false);
-        expect(result.features.activeProvider).toBe('copilot');
+        expect(result.features.defaultProvider).toBe('copilot');
     });
 
     it('reflects ralph.enabled = true from config', () => {

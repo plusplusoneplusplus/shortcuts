@@ -68,7 +68,7 @@ export interface AdminResolvedConfig {
   excalidraw?: { enabled?: boolean };
   codex?: { enabled?: boolean };
   claude?: { enabled?: boolean };
-  activeProvider?: 'copilot' | 'codex' | 'claude';
+  defaultProvider?: 'copilot' | 'codex' | 'claude';
   mcpOauth?: { enabled?: boolean };
   [key: string]: unknown;
 }
@@ -123,7 +123,7 @@ export interface AdminConfigUpdate {
   'mcpOauth.enabled'?: boolean;
   'codex.enabled'?: boolean;
   'claude.enabled'?: boolean;
-  activeProvider?: 'copilot' | 'codex' | 'claude';
+  defaultProvider?: 'copilot' | 'codex' | 'claude';
   [key: string]: unknown;
 }
 
@@ -154,7 +154,7 @@ export interface RuntimeDashboardConfig {
     containerDefaultAgentEnabled: boolean;
     codexEnabled: boolean;
     claudeEnabled: boolean;
-    activeProvider: 'copilot' | 'codex' | 'claude';
+    defaultProvider: 'copilot' | 'codex' | 'claude';
   };
   hostname?: string;
   bindAddress?: string;
@@ -288,14 +288,12 @@ export interface AgentProviderStatus {
   label: string;
   /** Whether the provider is enabled by admin config. Copilot is always true. */
   enabled: boolean;
-  /** Whether the provider is actually usable right now (enabled + auth OK). */
+  /** Whether the provider is actually usable right now (enabled + SDK available). */
   available: boolean;
   /** When true the provider cannot be disabled by the admin. Copilot only. */
   locked?: boolean;
-  /** Human-readable reason when enabled but not available (e.g. auth required). */
+  /** Human-readable reason when enabled but not available. */
   reason?: string;
-  /** URL to start the auth flow when auth is required or expired. */
-  authUrl?: string;
   /**
    * SDK package install status for optional providers (codex, claude).
    * Absent for Copilot (always bundled). Populated by the server using

@@ -334,7 +334,7 @@ export function AdminPanel() {
     const [focusedDiffEnabled, setFocusedDiffEnabled] = useState(false);
     const [codexEnabled, setCodexEnabled] = useState(false);
     const [claudeEnabled, setClaudeEnabled] = useState(false);
-    const [activeProvider, setActiveProvider] = useState<'copilot' | 'codex' | 'claude'>('copilot');
+    const [defaultProvider, setDefaultProvider] = useState<'copilot' | 'codex' | 'claude'>('copilot');
     const [providerAvailability, setProviderAvailability] = useState<Record<string, { available: boolean; error?: string }>>({});
     const [sdkInstallStatuses, setSdkInstallStatuses] = useState<Record<string, ProviderInstallStatus>>({});
     const [sdkInstallErrors, setSdkInstallErrors] = useState<Record<string, string | undefined>>({});
@@ -356,7 +356,7 @@ export function AdminPanel() {
     const [chatSaving, setChatSaving] = useState(false);
     const [appearanceSaving, setAppearanceSaving] = useState(false);
     const [featuresSaving, setFeaturesSaving] = useState(false);
-    const [activeProviderSaving, setActiveProviderSaving] = useState(false);
+    const [defaultProviderSaving, setDefaultProviderSaving] = useState(false);
 
     // Quota state
     const [quotaData, setQuotaData] = useState<import('@plusplusoneplusplus/coc-client').AgentProvidersQuotaResponse | null>(null);
@@ -365,7 +365,7 @@ export function AdminPanel() {
 
     // Snapshots for per-card dirty tracking (set when config/prefs loads)
     const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
-    const [activeProviderSnapshot, setActiveProviderSnapshot] = useState<{ provider: 'copilot' | 'codex' | 'claude'; codexEnabled: boolean; claudeEnabled: boolean }>({ provider: 'copilot', codexEnabled: false, claudeEnabled: false });
+    const [defaultProviderSnapshot, setDefaultProviderSnapshot] = useState<{ provider: 'copilot' | 'codex' | 'claude'; codexEnabled: boolean; claudeEnabled: boolean }>({ provider: 'copilot', codexEnabled: false, claudeEnabled: false });
     const [chatSnapshot, setChatSnapshot] = useState({ followUpEnabled: true, followUpCount: '3', askUserEnabled: false, showReportIntent: false, toolCompactness: 3 as 0 | 1 | 2 | 3 });
     const [appearanceSnapshot, setAppearanceSnapshot] = useState({
         theme: 'auto' as string,
@@ -492,11 +492,11 @@ export function AdminPanel() {
             setCodexEnabled(cxe);
             const cle = resolved.claude?.enabled ?? false;
             setClaudeEnabled(cle);
-            const ap = (resolved.activeProvider === 'codex' ? 'codex' : resolved.activeProvider === 'claude' ? 'claude' : 'copilot') as 'copilot' | 'codex' | 'claude';
-            setActiveProvider(ap);
+            const dp = (resolved.defaultProvider === 'codex' ? 'codex' : resolved.defaultProvider === 'claude' ? 'claude' : 'copilot') as 'copilot' | 'codex' | 'claude';
+            setDefaultProvider(dp);
             setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde });
             setAiExecSnapshot({ model: form.model, parallel: form.parallel, timeout: form.timeout, output: form.output });
-            setActiveProviderSnapshot({ provider: ap, codexEnabled: cxe, claudeEnabled: cle });
+            setDefaultProviderSnapshot({ provider: dp, codexEnabled: cxe, claudeEnabled: cle });
             const sgr = resolved.sync?.gitRemote ?? '';
             const sim = String(resolved.sync?.intervalMinutes ?? 5);
             setSyncGitRemote(sgr);
@@ -573,7 +573,7 @@ export function AdminPanel() {
         configForm.timeout !== aiExecSnapshot.timeout ||
         configForm.output !== aiExecSnapshot.output;
 
-    const activeProviderDirty = activeProvider !== activeProviderSnapshot.provider || codexEnabled !== activeProviderSnapshot.codexEnabled || claudeEnabled !== activeProviderSnapshot.claudeEnabled;
+    const defaultProviderDirty = defaultProvider !== defaultProviderSnapshot.provider || codexEnabled !== defaultProviderSnapshot.codexEnabled || claudeEnabled !== defaultProviderSnapshot.claudeEnabled;
 
     const chatDirty = chatFollowUpEnabled !== chatSnapshot.followUpEnabled ||
         chatFollowUpCount !== chatSnapshot.followUpCount ||
@@ -645,25 +645,25 @@ export function AdminPanel() {
         setConfigForm({ ...aiExecSnapshot });
     }, [aiExecSnapshot]);
 
-    // ── Active Provider card (Agents tab) ──
-    const handleSaveActiveProvider = useCallback(async () => {
-        setActiveProviderSaving(true);
+    // ── Default Provider card (Agents tab) ──
+    const handleSaveDefaultProvider = useCallback(async () => {
+        setDefaultProviderSaving(true);
         try {
-            await getSpaCocClient().admin.updateConfig({ activeProvider, 'codex.enabled': codexEnabled, 'claude.enabled': claudeEnabled });
-            addToast('Provider settings saved — restart required to apply changes', 'success');
-            setActiveProviderSnapshot({ provider: activeProvider, codexEnabled, claudeEnabled });
+            await getSpaCocClient().admin.updateConfig({ defaultProvider, 'codex.enabled': codexEnabled, 'claude.enabled': claudeEnabled });
+            addToast('Default provider settings saved — restart required to apply changes', 'success');
+            setDefaultProviderSnapshot({ provider: defaultProvider, codexEnabled, claudeEnabled });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
-            setActiveProviderSaving(false);
+            setDefaultProviderSaving(false);
         }
-    }, [activeProvider, codexEnabled, claudeEnabled, addToast]);
+    }, [defaultProvider, codexEnabled, claudeEnabled, addToast]);
 
-    const handleCancelActiveProvider = useCallback(() => {
-        setActiveProvider(activeProviderSnapshot.provider);
-        setCodexEnabled(activeProviderSnapshot.codexEnabled);
-        setClaudeEnabled(activeProviderSnapshot.claudeEnabled);
-    }, [activeProviderSnapshot]);
+    const handleCancelDefaultProvider = useCallback(() => {
+        setDefaultProvider(defaultProviderSnapshot.provider);
+        setCodexEnabled(defaultProviderSnapshot.codexEnabled);
+        setClaudeEnabled(defaultProviderSnapshot.claudeEnabled);
+    }, [defaultProviderSnapshot]);
 
     // ── SDK install status helpers ──
 
@@ -1991,13 +1991,13 @@ export function AdminPanel() {
                         {activeTab === 'agents' && !isContainerMode() && (
                             <>
                                 <SettingsCard
-                                    title="Active Provider"
-                                    description="AI provider used for all chat and task requests."
-                                    dirty={activeProviderDirty}
-                                    saving={activeProviderSaving}
-                                    onSave={handleSaveActiveProvider}
-                                    onCancel={handleCancelActiveProvider}
-                                    data-testid="settings-active-provider"
+                                    title="Default Provider"
+                                    description="Provider preselected for new chats and tasks unless an individual chat overrides it."
+                                    dirty={defaultProviderDirty}
+                                    saving={defaultProviderSaving}
+                                    onSave={handleSaveDefaultProvider}
+                                    onCancel={handleCancelDefaultProvider}
+                                    data-testid="settings-default-provider"
                                 >
                                     <AdminRow
                                         name={<>Codex Provider <span className="ar-badge ar-badge-accent">Experimental</span> <span className="ar-badge ar-badge-warning">Restart</span></>}
@@ -2054,23 +2054,23 @@ export function AdminPanel() {
                                         </div>
                                     )}
                                     <AdminRow
-                                        name={<>Active Provider <span className="ar-badge ar-badge-warning">Restart</span></>}
-                                        hint="Switch to 'Codex' only after enabling the Codex provider above and completing ChatGPT sign-in. Switch to 'Claude' only after enabling the Claude provider above. Requires a server restart."
+                                        name={<>Default Provider <span className="ar-badge ar-badge-warning">Restart</span></>}
+                                        hint="Provider preselected for new chats and tasks. Individual chats can override this. Existing chats continue using the provider they started with. Requires a server restart for API-created tasks that do not set a provider."
                                     >
                                         <select
-                                            id="admin-config-active-provider"
+                                            id="admin-config-default-provider"
                                             className="ar-select ar-med"
-                                            value={activeProvider}
-                                            onChange={e => setActiveProvider(e.target.value as 'copilot' | 'codex' | 'claude')}
-                                            data-testid="select-active-provider"
+                                            value={defaultProvider}
+                                            onChange={e => setDefaultProvider(e.target.value as 'copilot' | 'codex' | 'claude')}
+                                            data-testid="select-default-provider"
                                         >
                                             <option value="copilot">Copilot</option>
                                             <option value="codex">Codex</option>
                                             <option value="claude">Claude</option>
                                         </select>
-                                        <SourceBadge source={sources['activeProvider']} />
+                                        <SourceBadge source={sources['defaultProvider']} />
                                     </AdminRow>
-                                    {activeProvider === 'codex' && providerAvailability['codex'] && !providerAvailability['codex'].available && (
+                                    {defaultProvider === 'codex' && providerAvailability['codex'] && !providerAvailability['codex'].available && (
                                         <div
                                             data-testid="codex-sdk-unavailable-banner"
                                             style={{
@@ -2089,7 +2089,7 @@ export function AdminPanel() {
                                             ⚠ {providerAvailability['codex'].error}
                                         </div>
                                     )}
-                                    {activeProvider === 'claude' && providerAvailability['claude'] && !providerAvailability['claude'].available && (
+                                    {defaultProvider === 'claude' && providerAvailability['claude'] && !providerAvailability['claude'].available && (
                                         <div
                                             data-testid="claude-sdk-unavailable-banner"
                                             style={{

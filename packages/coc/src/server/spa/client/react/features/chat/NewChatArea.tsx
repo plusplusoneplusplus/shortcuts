@@ -22,15 +22,17 @@ import { isQueueProcessId, toQueueProcessId } from '../../utils/queue-process-id
 import { useModels } from '../../hooks/useModels';
 import { useDefaultModelForMode } from '../../hooks/useDefaultModelForMode';
 import { useSlashCommands } from './hooks/useSlashCommands';
-import { useModelCommand } from './hooks/useModelCommand';
+import { useModelCommand, selectPickableModels } from './hooks/useModelCommand';
 import { SlashCommandMenu, getMetaSkillItems, mergeSkillsWithMeta, type SkillItem } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
 import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION } from './ModePillSelector';
+import { EffortPillSelector } from './EffortPillSelector';
+import type { EffortLevel } from './EffortPillSelector';
 import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
 import { useChatPromptHistory } from '../../hooks/useChatPromptHistory';
-import { isRalphEnabled, isLoopsEnabled } from '../../utils/config';
+import { getDefaultProvider, isRalphEnabled, isLoopsEnabled } from '../../utils/config';
 import { getDraft, setDraft, clearDraft, newChatDraftKey } from './hooks/useDraftStore';
 import { useAgentProviders } from '../../hooks/useAgentProviders';
 import { AgentSelectorChip } from './AgentSelectorChip';
@@ -41,6 +43,16 @@ export interface NewChatAreaProps {
     onBack?: () => void;
 }
 
+function isChatProvider(value: unknown): value is ChatProvider {
+    return value === 'copilot' || value === 'codex' || value === 'claude';
+}
+
+function isSelectableProvider(provider: ChatProvider, providers: Array<{ id: string; enabled: boolean; available: boolean }>): boolean {
+    if (provider === 'copilot') return true;
+    const status = providers.find(p => p.id === provider);
+    return status?.enabled === true && status?.available === true;
+}
+
 export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const [input, setInput] = useState('');
     const [cursorPos, setCursorPos] = useState(0);
@@ -48,7 +60,8 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [skills, setSkills] = useState<SkillItem[]>([]);
-    const [selectedProvider, setSelectedProvider] = useState<ChatProvider>('copilot');
+    const [selectedProvider, setSelectedProvider] = useState<ChatProvider>(() => getDefaultProvider());
+    const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
     const richTextRef = useRef<RichTextInputHandle>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -64,10 +77,10 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
 
     // Model command support
     const { models: availableModels } = useModels();
-    const enabledModels = availableModels.filter(m => m.enabled);
+    const pickableModels = selectPickableModels(availableModels);
     const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isLoopsEnabled())), [skills]);
     const slashCommands = useSlashCommands(augmentedSkills);
-    const modelCommand = useModelCommand(enabledModels);
+    const modelCommand = useModelCommand(pickableModels);
     const { effectiveModel: defaultModelId, effectiveModelName: defaultModelLabel } = useDefaultModelForMode(workspaceId, selectedMode, availableModels);
 
     const VALID_MODES: ChatMode[] = ['ask', 'plan', 'autopilot', 'ralph'];
@@ -86,10 +99,16 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             if (draft.modelOverride) {
                 modelCommand.setModelOverride(draft.modelOverride);
             }
+            if (draft.effortOverride === 'low' || draft.effortOverride === 'medium' || draft.effortOverride === 'high') {
+                setEffortOverride(draft.effortOverride);
+            } else {
+                setEffortOverride(null);
+            }
         } else {
             setInput('');
             setCursorPos(0);
             setSelectedMode('ask');
+            setEffortOverride(null);
         }
     }, [draftKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -98,10 +117,10 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     useEffect(() => {
         if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
         saveTimerRef.current = setTimeout(() => {
-            setDraft(draftKey, input, selectedMode, modelCommand.modelOverride);
+            setDraft(draftKey, input, selectedMode, modelCommand.modelOverride, effortOverride);
         }, 300);
         return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-    }, [draftKey, input, selectedMode, modelCommand.modelOverride]);
+    }, [draftKey, input, selectedMode, modelCommand.modelOverride, effortOverride]);
 
     // Fetch skills when workspaceId changes
     useEffect(() => {
@@ -118,41 +137,41 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             .catch(() => { /* ignore */ });
     }, [workspaceId]);
 
+    const getSelectableDefaultProvider = () => {
+        const configuredDefault = getDefaultProvider();
+        return isSelectableProvider(configuredDefault, agentProviders) ? configuredDefault : 'copilot';
+    };
+
     // Load last-used provider preference for this workspace on mount / workspace switch.
-    // Falls back to Copilot when unset, disabled, or unavailable.
+    // Falls back to the configured default provider when unset, disabled, or unavailable.
     useEffect(() => {
+        const fallbackProvider = getSelectableDefaultProvider();
+        let cancelled = false;
         if (!workspaceId) {
-            setSelectedProvider('copilot');
+            setSelectedProvider(fallbackProvider);
             return;
         }
         getSpaCocClient().preferences.getRepo(workspaceId)
             .then((prefs: any) => {
+                if (cancelled) return;
                 const last = prefs?.lastChatProvider;
-                if (last === 'codex' || last === 'claude' || last === 'copilot') {
-                    // Validate against live provider state: only accept non-copilot if enabled+available
-                    if (last === 'codex' || last === 'claude') {
-                        const providerStatus = agentProviders.find(p => p.id === last);
-                        if (providerStatus?.enabled && providerStatus?.available) {
-                            setSelectedProvider(last);
-                            return;
-                        }
-                    }
-                    if (last === 'copilot') {
-                        setSelectedProvider('copilot');
-                        return;
-                    }
+                if (isChatProvider(last) && isSelectableProvider(last, agentProviders)) {
+                    setSelectedProvider(last);
+                    return;
                 }
-                setSelectedProvider('copilot');
+                setSelectedProvider(fallbackProvider);
             })
-            .catch(() => { setSelectedProvider('copilot'); });
-    }, [workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+            .catch(() => {
+                if (!cancelled) setSelectedProvider(fallbackProvider);
+            });
+        return () => { cancelled = true; };
+    }, [workspaceId, agentProviders]);
 
-    // When agentProviders load and selected provider becomes unavailable, fall back to copilot
+    // When agentProviders load and selected provider becomes unavailable, fall back to the default provider.
     useEffect(() => {
         if (selectedProvider === 'copilot') return;
-        const providerStatus = agentProviders.find(p => p.id === selectedProvider);
-        if (providerStatus && (!providerStatus.enabled || !providerStatus.available)) {
-            setSelectedProvider('copilot');
+        if (!isSelectableProvider(selectedProvider, agentProviders)) {
+            setSelectedProvider(getSelectableDefaultProvider());
         }
     }, [agentProviders, selectedProvider]);
 
@@ -241,6 +260,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                     ...(contextOverride ? { context: contextOverride } : {}),
                     ...(attachmentPayload.length > 0 ? { attachments: attachmentPayload } : {}),
                     ...(modelCommand.modelOverride ? { model: modelCommand.modelOverride } : {}),
+                    ...(effortOverride ? { reasoningEffort: effortOverride } : {}),
                     provider: selectedProvider,
                 } as any,
             });
@@ -430,6 +450,18 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         className="flex flex-wrap items-center gap-x-px gap-y-0.5 pl-2 pr-1.5 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
                         data-testid="chat-input-toolbar"
                     >
+                        {/* Provider selector — leftmost: reads as "who's running this".
+                             Followed by a divider that separates the provider zone
+                             from the mode + model + tools zones (matches the
+                             OpenDesign provider-first composer reference). */}
+                        <AgentSelectorChip
+                            providers={agentProviders}
+                            loading={providersLoading}
+                            selected={selectedProvider}
+                            onChange={handleProviderChange}
+                            disabled={sending}
+                        />
+                        <span aria-hidden="true" data-testid="chat-toolbar-divider-provider" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                         <div data-testid="mode-selector" className="shrink-0 mr-0.5">
                             <ModePillSelector
                                 options={isRalphEnabled()
@@ -439,6 +471,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                 onChange={setSelectedMode}
                             />
                         </div>
+                        <span aria-hidden="true" data-testid="chat-toolbar-divider-mode" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                         <button
                             type="button"
                             className="ctool shrink-0 inline-flex items-center gap-1 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 min-w-0 max-w-[40vw] sm:max-w-[180px] transition-colors"
@@ -455,6 +488,8 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                     ? `Default: ${defaultModelLabel} (click to override)`
                                     : 'Pick a model'}
                             data-testid="model-picker-chip"
+                            aria-haspopup="listbox"
+                            aria-expanded={modelCommand.modelMenuVisible}
                         >
                             <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
                                 <polygon
@@ -464,29 +499,37 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                     strokeLinejoin="round"
                                 />
                             </svg>
-                            <span className={cn(
-                                'truncate font-mono text-[10.5px] font-medium',
-                                modelCommand.modelOverride
-                                    ? 'text-[#1e1e1e] dark:text-[#cccccc]'
-                                    : 'text-[#848484] dark:text-[#999]',
-                            )}>
+                            <span className="truncate font-mono text-[10.5px] font-medium text-[#848484] dark:text-[#999]">
                                 {modelCommand.modelOverride || defaultModelLabel || 'model'}
                             </span>
-                            {modelCommand.modelOverride && (
-                                <span
-                                    role="button"
-                                    tabIndex={-1}
-                                    className="shrink-0 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] cursor-pointer text-[10px]"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        modelCommand.setModelOverride(null);
-                                    }}
-                                    aria-label="Clear model override"
-                                    title="Clear model override"
-                                    data-testid="model-picker-chip-clear"
-                                >✕</span>
-                            )}
+                            {/* Mirrors AgentSelectorChip: chevron only, no
+                                 inline ✕ clear. The override is cleared via
+                                 the "Use default" entry that ModelCommandMenu
+                                 renders at the top when an override is set. */}
+                            <svg
+                                width="7" height="7"
+                                viewBox="0 0 8 6"
+                                fill="none"
+                                aria-hidden="true"
+                                className="shrink-0 opacity-60"
+                            >
+                                <path d="M1 1l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
                         </button>
+                        {/* Effort pill — picks `task.config.reasoningEffort` for
+                             models that support extended thinking. `null`
+                             (no button selected) leaves the override unset
+                             and lets the executor fall back to the model's
+                             persisted/SDK default. */}
+                        <EffortPillSelector
+                            value={effortOverride}
+                            onChange={setEffortOverride}
+                            className="ml-0.5"
+                        />
+                        <div className="flex-1 min-w-0" />
+                        {/* Tools zone — slash/mention/attach live on the right of
+                             the spacer (matches the OpenDesign composer ordering:
+                             provider · mode · model · tools · send). */}
                         <button
                             type="button"
                             className="ctool shrink-0 inline-flex items-center gap-0.5 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 transition-colors"
@@ -532,15 +575,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                 />
                             </svg>
                         </button>
-                        <div className="flex-1 min-w-0" />
-                        {/* Agent provider selector */}
-                        <AgentSelectorChip
-                            providers={agentProviders}
-                            loading={providersLoading}
-                            selected={selectedProvider}
-                            onChange={handleProviderChange}
-                            disabled={sending}
-                        />
+                        <span aria-hidden="true" data-testid="chat-toolbar-divider-send" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                         {sending ? (
                             <button
                                 type="button"
@@ -610,6 +645,9 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         visible={modelCommand.modelMenuVisible}
                         highlightIndex={modelCommand.modelHighlightIndex}
                         currentModelId={modelCommand.modelOverride ?? defaultModelId}
+                        onClearOverride={modelCommand.modelOverride
+                            ? () => modelCommand.setModelOverride(null)
+                            : undefined}
                     />
                 </div>
                 </div>

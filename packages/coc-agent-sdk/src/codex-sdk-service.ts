@@ -151,6 +151,7 @@ interface CodexSDKModule {
 interface CodexStartThreadOptions {
     model?: string;
     workingDirectory?: string;
+    additionalDirectories?: string[];
     skipGitRepoCheck?: boolean;
     sandboxMode?: 'read-only' | 'workspace-write' | 'danger-full-access';
     approvalPolicy?: 'never' | 'on-request' | 'on-failure' | 'untrusted';
@@ -235,8 +236,8 @@ export class CodexSDKService implements ISDKService {
      * Inject an auth checker. When set, `sendMessage` calls it before each
      * request and returns an auth-required error when not authenticated.
      *
-     * Called once during server startup by the codex-auth infrastructure
-     * when `codex.enabled` is true.
+     * Host applications can use this to block calls before the Codex SDK is
+     * loaded. CoC itself does not inject a checker; Codex CLI/SDK auth is used.
      */
     public setAuthChecker(checker: CodexAuthChecker): void {
         this.authChecker = checker;
@@ -460,7 +461,7 @@ export class CodexSDKService implements ISDKService {
             if (!authResult.authenticated) {
                 const authMsg = authResult.authUrl
                     ? `Codex (ChatGPT) authentication required. Sign in at: ${authResult.authUrl}`
-                    : 'Codex (ChatGPT) authentication required. Use POST /api/codex-auth/start to sign in.';
+                    : 'Codex (ChatGPT) authentication required. Run the Codex executable sign-in flow.';
                 return {
                     success: false,
                     error: authMsg,
@@ -728,6 +729,7 @@ export class CodexSDKService implements ISDKService {
         return {
             ...(model ? { model } : {}),
             ...(options.workingDirectory ? { workingDirectory: options.workingDirectory } : {}),
+            ...(options.skillDirectories?.length ? { additionalDirectories: options.skillDirectories } : {}),
             skipGitRepoCheck: true,
             approvalPolicy: 'never',
             sandboxMode: 'danger-full-access',
@@ -863,11 +865,11 @@ export function mapCodexRateLimitsToQuota(result: CodexRateLimitsResult): IAccou
 
 /**
  * Register a new `CodexSDKService` instance under `'codex'` in the module-
- * level `sdkServiceRegistry`. Call this once during server startup when the
- * `codex.enabled` feature flag is true.
+ * level `sdkServiceRegistry`. CoC registers this at server startup so live
+ * config can enable Codex without recreating server infrastructure.
  *
- * @param authChecker Optional auth checker injected by the codex-auth
- *   infrastructure (AC-08). When provided, sendMessage gates on auth status.
+ * @param authChecker Optional host-provided auth checker. When provided,
+ *   sendMessage gates on auth status before loading the Codex SDK.
  * @returns The newly created service instance.
  */
 export function registerCodexSDKService(authChecker?: CodexAuthChecker): CodexSDKService {

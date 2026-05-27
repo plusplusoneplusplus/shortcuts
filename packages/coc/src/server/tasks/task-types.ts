@@ -270,8 +270,8 @@ export interface ChatPayload {
     images?: string[];
     /**
      * AI provider to use for this chat task.
-     * Defaults to 'copilot' when omitted.
-     * Supported values: 'copilot' | 'codex'.
+     * Defaults to the server-level default provider when omitted.
+     * Supported values: 'copilot' | 'codex' | 'claude'.
      */
     provider?: ChatProvider;
 }

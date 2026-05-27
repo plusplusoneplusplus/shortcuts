@@ -8,7 +8,7 @@ import type { RichTextInputHandle } from '../../../shared/RichTextInput';
 import { NoteContextBanner } from './NoteContextBanner';
 import { useModels } from '../../../hooks/useModels';
 import { useSlashCommands } from '../../chat/hooks/useSlashCommands';
-import { useModelCommand } from '../../chat/hooks/useModelCommand';
+import { useModelCommand, selectPickableModels } from '../../chat/hooks/useModelCommand';
 import { SlashCommandMenu, getMetaSkillItems, mergeSkillsWithMeta, type SkillItem } from '../../chat/SlashCommandMenu';
 import { ModelCommandMenu } from '../../chat/ModelCommandMenu';
 import { NoteReferenceChips } from './NoteReferenceChips';
@@ -53,11 +53,11 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
     const { attachments, addFromPaste, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
 
     const { models: availableModels } = useModels();
-    const enabledModels = availableModels.filter(m => m.enabled);
+    const pickableModels = selectPickableModels(availableModels);
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isLoopsEnabled())), [skills]);
     const slashCommands = useSlashCommands(augmentedSkills);
-    const modelCommand = useModelCommand(enabledModels);
+    const modelCommand = useModelCommand(pickableModels);
 
     useEffect(() => {
         onHasChatChange?.(!!taskId);

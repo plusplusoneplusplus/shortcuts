@@ -326,6 +326,20 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         ? taskSpec.displayName.trim()
         : generateDisplayName(taskSpec.type, payload);
 
+    // Per-turn reasoning-effort override flows in via `payload.reasoningEffort`
+    // and is normalised into `config.reasoningEffort` so the chat-base executor
+    // can read it from a single canonical location alongside `config.model`.
+    // Follow-up executions also read it from `task.config.reasoningEffort`
+    // (see follow-up-executor.ts).
+    const VALID_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
+    const payloadEffort = typeof payload.reasoningEffort === 'string' && VALID_EFFORTS.has(payload.reasoningEffort)
+        ? (payload.reasoningEffort as 'low' | 'medium' | 'high' | 'xhigh')
+        : undefined;
+    const configEffort = typeof taskSpec.config?.reasoningEffort === 'string' && VALID_EFFORTS.has(taskSpec.config.reasoningEffort)
+        ? (taskSpec.config.reasoningEffort as 'low' | 'medium' | 'high' | 'xhigh')
+        : undefined;
+    const resolvedEffort = configEffort ?? payloadEffort;
+
     const input: CreateTaskInput = {
         type: taskSpec.type,
         priority,
@@ -336,6 +350,7 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
             retryOnFailure: taskSpec.config?.retryOnFailure ?? false,
             retryAttempts: taskSpec.config?.retryAttempts,
             retryDelayMs: taskSpec.config?.retryDelayMs,
+            ...(resolvedEffort ? { reasoningEffort: resolvedEffort } : {}),
         },
         displayName,
     };

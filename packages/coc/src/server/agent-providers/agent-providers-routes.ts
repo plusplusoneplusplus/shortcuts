@@ -9,7 +9,7 @@
  * Copilot is always enabled, available, and locked.
  * Codex status is derived from:
  *   - `codex.enabled` in live runtime config (enabled flag)
- *   - Codex auth store (available flag; requires authenticated status)
+ *   - `@openai/codex-sdk` SDK availability check (available flag)
  * Claude status is derived from:
  *   - `claude.enabled` in live runtime config (enabled flag)
  *   - `@anthropic-ai/claude-agent-sdk` SDK availability check (available flag)
@@ -18,20 +18,17 @@
 import type { Route } from '../types';
 import { sendJson } from '../shared/router';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
-import type { CodexAuthInfo } from '../codex-auth/codex-auth-store';
 import type { AgentProviderStatus, AgentProvidersResponse, AgentProvidersQuotaResponse, ProviderQuotaType } from '@plusplusoneplusplus/coc-client';
 import type { CopilotSDKService, IAvailabilityResult, CodexSDKService, ClaudeSDKService, IAccountQuotaResult } from '@plusplusoneplusplus/forge';
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
-import { getInstallState } from '../providers/provider-install-routes';
+import { getResolvedInstallState } from '../providers/provider-install-routes';
 
 export interface AgentProvidersRouteContext {
     runtimeConfigService: RuntimeConfigService;
-    /** Reads current Codex auth info. Returns unauthenticated info if Codex infra is absent. */
-    getCodexAuthInfo: () => CodexAuthInfo;
+    /** Checks Codex SDK availability. Resolved per-request; the service caches the result. */
+    getCodexAvailability: () => Promise<IAvailabilityResult>;
     /** Checks Claude SDK availability. Resolved per-request; the service caches the result. */
     getClaudeAvailability: () => Promise<IAvailabilityResult>;
-    /** The base URL prefix used to build authUrl (e.g. 'http://localhost:4000'). */
-    serverBaseUrl: string;
     /** Optional: getter for Copilot account quota. Used by the quota endpoint. */
     getCopilotSdkService?: () => CopilotSDKService;
     /** Optional: getter for Codex account quota. Used by the quota endpoint. */
@@ -55,7 +52,7 @@ function quotaResultToProviderQuotaTypes(result: IAccountQuotaResult): ProviderQ
     );
 }
 
-/** Build the providers array from live config + auth/SDK state. Exported for unit testing. */
+/** Build the providers array from live config + SDK state. Exported for unit testing. */
 export async function buildAgentProvidersResponse(ctx: AgentProvidersRouteContext): Promise<AgentProvidersResponse> {
     const config = ctx.runtimeConfigService.config;
     const codexEnabled = config.codex?.enabled ?? false;
@@ -70,8 +67,8 @@ export async function buildAgentProvidersResponse(ctx: AgentProvidersRouteContex
     };
 
     // Resolve SDK install status for optional providers.
-    const codexInstallState = getInstallState('codex');
-    const claudeInstallState = getInstallState('claude');
+    const codexInstallState = getResolvedInstallState('codex');
+    const claudeInstallState = getResolvedInstallState('claude');
 
     let codexProvider: AgentProviderStatus;
     if (!codexEnabled) {
@@ -83,9 +80,8 @@ export async function buildAgentProvidersResponse(ctx: AgentProvidersRouteContex
             installStatus: codexInstallState.status,
         };
     } else {
-        const authInfo: CodexAuthInfo = ctx.getCodexAuthInfo();
-        const authenticated = authInfo.status === 'authenticated';
-        if (authenticated) {
+        const availability = await ctx.getCodexAvailability();
+        if (availability.available) {
             codexProvider = {
                 id: 'codex',
                 label: 'Codex',
@@ -94,16 +90,12 @@ export async function buildAgentProvidersResponse(ctx: AgentProvidersRouteContex
                 installStatus: codexInstallState.status,
             };
         } else {
-            const reason = authInfo.status === 'expired'
-                ? 'Codex authentication has expired.'
-                : 'Codex authentication required.';
             codexProvider = {
                 id: 'codex',
                 label: 'Codex',
                 enabled: true,
                 available: false,
-                reason,
-                authUrl: `${ctx.serverBaseUrl}/api/codex-auth/start`,
+                reason: availability.error ?? 'Codex SDK is not available.',
                 installStatus: codexInstallState.status,
             };
         }

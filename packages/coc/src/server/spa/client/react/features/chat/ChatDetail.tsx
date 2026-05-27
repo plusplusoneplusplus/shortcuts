@@ -17,7 +17,7 @@ import { useFileAttachments } from './hooks/useFileAttachments';
 import { useTextPaste } from './hooks/useTextPaste';
 import { useAttachedContext } from './hooks/useAttachedContext';
 import { useSlashCommands } from './hooks/useSlashCommands';
-import { useModelCommand } from './hooks/useModelCommand';
+import { useModelCommand, selectPickableModels } from './hooks/useModelCommand';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { getMetaSkillItems, mergeSkillsWithMeta, type SkillItem } from './SlashCommandMenu';
 import { scanTurnsForCreatedFiles } from '../../utils/conversationScan';
@@ -49,7 +49,7 @@ import { ScratchpadPanel } from './scratchpad/ScratchpadPanel';
 import { MobileScratchpadTabBar } from './scratchpad/MobileScratchpadTabBar';
 import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
 import { isChatMode, resolveLoadedTaskMode } from './chatMode';
-import { isRalphEnabled, isLoopsEnabled, getActiveProvider } from '../../utils/config';
+import { isRalphEnabled, isLoopsEnabled, getDefaultProvider } from '../../utils/config';
 import type { ChatMode } from '../../repos/modeConfig';
 import { RalphStartPanel } from './RalphStartPanel';
 import { ImplementPlanCard } from './ImplementPlanCard';
@@ -136,6 +136,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [processDetails, setProcessDetails] = useState<any>(null);
     const [copied, setCopied] = useState(false);
     const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
+    const [effortOverride, setEffortOverride] = useState<'low' | 'medium' | 'high' | null>(null);
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [sessionTokenLimit, setSessionTokenLimit] = useState<number | undefined>(undefined);
     const [sessionCurrentTokens, setSessionCurrentTokens] = useState<number | undefined>(undefined);
@@ -170,8 +171,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const lastRefreshVersionRef = useRef(queueState.refreshVersion);
     const { state: appState, dispatch: appDispatch } = useApp();
     const { models: availableModels } = useModels();
-    const enabledModels = availableModels.filter(m => m.enabled);
-    const modelCommand = useModelCommand(enabledModels);
+    const pickableModels = selectPickableModels(availableModels);
+    const modelCommand = useModelCommand(pickableModels);
     const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isLoopsEnabled())), [skills]);
     const slashCommands = useSlashCommands(augmentedSkills);
 
@@ -224,6 +225,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         || metadataProcess?.payload?.workingDirectory
         || metadataProcess?.metadata?.workingDirectory
         || undefined;
+    const rawSessionProvider = metadataProcess?.metadata?.provider;
+    const sessionProvider = rawSessionProvider === 'codex' || rawSessionProvider === 'claude' || rawSessionProvider === 'copilot'
+        ? rawSessionProvider
+        : getDefaultProvider();
     const createdFiles = useMemo(() => scanTurnsForCreatedFiles(turns), [turns]);
 
     // Compute the follow-up mode pill set, optionally appending Ralph when
@@ -558,6 +563,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         getAttachedContext: attachedContext.getItems,
         clearAttachedContext: attachedContext.clear,
         modelOverride: modelCommand.modelOverride,
+        effortOverride,
         workspaceId,
         // After a successful Ralph promotion the follow-up area's `allowedModes`
         // recomputes (the chat now has a ralph context) and the Ralph pill
@@ -1388,7 +1394,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             workingDirectory={workingDirectory}
                             sessionTokenLimit={sessionTokenLimit}
                             sessionCurrentTokens={sessionCurrentTokens}
-                            activeProvider={getActiveProvider()}
+                            activeProvider={sessionProvider}
+                            effortOverride={effortOverride}
+                            onEffortChange={setEffortOverride}
                         />
                     )}
                 </div>
@@ -1496,6 +1504,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     workingDirectory={workingDirectory}
                     sessionTokenLimit={sessionTokenLimit}
                     sessionCurrentTokens={sessionCurrentTokens}
+                    activeProvider={sessionProvider}
+                    effortOverride={effortOverride}
+                    onEffortChange={setEffortOverride}
                 />
             )}
             {isMobileScratchpad && (

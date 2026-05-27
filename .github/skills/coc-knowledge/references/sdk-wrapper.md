@@ -87,13 +87,15 @@ Each `sendMessage()` call creates its **own `CopilotClient`** child process — 
 
 Codex quota and model catalog lookups spawn the `@openai/codex` CLI that ships as a dependency of `@openai/codex-sdk`; the bin path is resolved at runtime relative to `coc-agent-sdk`.
 
+Codex SDK thread options do not expose Copilot's native `skillDirectories` or `disabledSkills` fields. CoC maps resolved skill directories to Codex `additionalDirectories` so external/global skill folders are available to the Codex process. For explicitly selected skills, CoC keeps prompts path-based by adding the resolved `SKILL.md` file paths to the `<selected_skills>` directive rather than inlining skill bodies.
+
 **Thread ↔ session mapping:** Every CoC session ID maps to exactly one Codex thread. The mapping is created on the first `sendMessage()` call for a session and removed on abort or dispose.
 
-**Auth checker injection:** An optional `CodexAuthChecker` callback can be injected to gate requests. When not authenticated, `sendMessage()` returns an error with `authUrl` so callers can surface a sign-in link.
+**Authentication:** CoC does not own a Codex auth store or `/api/codex-auth/*` routes. Codex authentication is handled by the Codex SDK/CLI; hosts may still inject an optional `CodexAuthChecker` if they need a preflight gate before loading the SDK.
 
 ```ts
-registerCodexSDKService();            // registers under SDK_PROVIDER_CODEX
-// or:
+registerCodexSDKService();            // registers under SDK_PROVIDER_CODEX with SDK/CLI-owned auth
+// Optional host preflight gate:
 const svc = new CodexSDKService();
 svc.setAuthChecker(() => ({ authenticated: true }));
 sdkServiceRegistry.register(SDK_PROVIDER_CODEX, svc);

@@ -645,7 +645,9 @@ describe('CodexSDKService — auth checker (AC-08)', () => {
         const result = await svc.sendMessage({ prompt: 'hello' });
         expect(result.success).toBe(false);
         expect(result.error).toContain('authentication required');
-        expect(result.error).toContain('/api/codex-auth/start');
+        // No authUrl → message describes the sign-in flow instead of linking to a URL
+        expect(result.error).toContain('sign-in flow');
+        expect(result.error).not.toContain('http');
     });
 
     it('sendMessage does not call auth checker when disposed', async () => {

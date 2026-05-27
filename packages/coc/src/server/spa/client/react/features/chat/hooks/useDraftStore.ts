@@ -16,6 +16,12 @@ export interface Draft {
     updatedAt: number;
     /** Optional model override persisted alongside the draft. */
     modelOverride?: string | null;
+    /**
+     * Optional reasoning-effort override persisted alongside the draft.
+     * One of `'low' | 'medium' | 'high'`. When unset, the executor falls
+     * back to the per-model persisted preference, then the SDK default.
+     */
+    effortOverride?: 'low' | 'medium' | 'high' | null;
 }
 
 type DraftMap = Record<string, Draft>;
@@ -51,13 +57,25 @@ export function getDraft(taskId: string): Draft | null {
  * Persist a draft for the given taskId.
  * If text is empty, delegates to clearDraft instead.
  */
-export function setDraft(taskId: string, text: string, mode: string, modelOverride?: string | null): void {
+export function setDraft(
+    taskId: string,
+    text: string,
+    mode: string,
+    modelOverride?: string | null,
+    effortOverride?: 'low' | 'medium' | 'high' | null,
+): void {
     if (!text) {
         clearDraft(taskId);
         return;
     }
     const map = readMap();
-    map[taskId] = { text, mode, updatedAt: Date.now(), ...(modelOverride ? { modelOverride } : {}) };
+    map[taskId] = {
+        text,
+        mode,
+        updatedAt: Date.now(),
+        ...(modelOverride ? { modelOverride } : {}),
+        ...(effortOverride ? { effortOverride } : {}),
+    };
     writeMap(map);
 }
 

@@ -13,6 +13,13 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 const mockQueueDispatch = vi.fn();
 const mockAppDispatch = vi.fn();
 const mockEnqueueTask = vi.fn();
+let mockDefaultProvider: 'copilot' | 'codex' | 'claude' = 'copilot';
+let mockRepoPreferences: Record<string, unknown> = {};
+let mockAgentProviders: any[] = [
+    { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+    { id: 'codex', label: 'Codex', enabled: false, available: false },
+    { id: 'claude', label: 'Claude', enabled: false, available: false },
+];
 
 vi.mock('../../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({
@@ -36,6 +43,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => 'http://localhost:4000/api',
     isRalphEnabled: () => false,
     isLoopsEnabled: () => false,
+    getDefaultProvider: () => mockDefaultProvider,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -43,14 +51,11 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
         queue: { enqueue: mockEnqueueTask },
         preferences: {
             patchGlobal: vi.fn().mockResolvedValue({}),
-            getRepo: vi.fn().mockResolvedValue({}),
+            getRepo: vi.fn().mockResolvedValue(mockRepoPreferences),
             patchRepo: vi.fn().mockResolvedValue({}),
         },
         skills: { listAllWorkspace: vi.fn().mockResolvedValue({ merged: [] }) },
-        agentProviders: { list: vi.fn().mockResolvedValue({ providers: [
-            { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
-            { id: 'codex', label: 'Codex', enabled: false, available: false },
-        ] }) },
+        agentProviders: { list: vi.fn().mockResolvedValue({ providers: mockAgentProviders }) },
     }),
     getSpaCocClientErrorMessage: (err: any, fallback: string) =>
         (err instanceof Error ? err.message : undefined) || fallback,
@@ -147,6 +152,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useModel
         handleModelKeyDown: vi.fn(() => false),
         setModelFilter: vi.fn(),
     }),
+    selectPickableModels: (models: unknown[]) => models,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/useDefaultModelForMode', () => ({
@@ -193,6 +199,13 @@ async function clickSend() {
 describe('NewChatArea – queue_ prefix in handleSend', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockDefaultProvider = 'copilot';
+        mockRepoPreferences = {};
+        mockAgentProviders = [
+            { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+            { id: 'codex', label: 'Codex', enabled: false, available: false },
+            { id: 'claude', label: 'Claude', enabled: false, available: false },
+        ];
         mockEnqueueTask.mockResolvedValue({ task: { id: 'default-task' } });
     });
 
@@ -262,6 +275,52 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'queue_123' } });
 
         renderNewChatArea();
+        typeInInput('Hello');
+        await clickSend();
+
+        await waitFor(() => {
+            expect(mockEnqueueTask).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    payload: expect.objectContaining({ provider: 'copilot' }),
+                })
+            );
+        });
+    });
+
+    it('uses configured default provider when no last-used provider is saved', async () => {
+        mockDefaultProvider = 'codex';
+        mockAgentProviders = [
+            { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+            { id: 'codex', label: 'Codex', enabled: true, available: true },
+            { id: 'claude', label: 'Claude', enabled: false, available: false },
+        ];
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'queue_123' } });
+
+        renderNewChatArea();
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Codex'));
+        typeInInput('Hello');
+        await clickSend();
+
+        await waitFor(() => {
+            expect(mockEnqueueTask).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    payload: expect.objectContaining({ provider: 'codex' }),
+                })
+            );
+        });
+    });
+
+    it('falls back to copilot when configured default provider is unavailable', async () => {
+        mockDefaultProvider = 'codex';
+        mockAgentProviders = [
+            { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+            { id: 'codex', label: 'Codex', enabled: true, available: false, reason: 'Sign in required' },
+            { id: 'claude', label: 'Claude', enabled: false, available: false },
+        ];
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'queue_123' } });
+
+        renderNewChatArea();
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Copilot'));
         typeInInput('Hello');
         await clickSend();
 

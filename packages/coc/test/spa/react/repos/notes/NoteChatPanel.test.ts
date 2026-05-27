@@ -202,7 +202,12 @@ describe('NoteChatPanel', () => {
         it('wires model command hooks', () => {
             expect(source).toContain('useModels()');
             expect(source).toContain('useSlashCommands(augmentedSkills)');
-            expect(source).toContain('useModelCommand(enabledModels)');
+            // NoteChatPanel routes the picker through selectPickableModels so
+            // it falls back to availableModels when nothing is enabled (the
+            // same pattern used by NewChatArea / ChatDetail). The hook call
+            // therefore receives `pickableModels`, not `enabledModels`.
+            expect(source).toContain('useModelCommand(pickableModels)');
+            expect(source).toContain('selectPickableModels');
         });
 
         it('renders SlashCommandMenu in empty state input', () => {

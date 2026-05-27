@@ -224,12 +224,12 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         cfg.claude.enabled = v;
     }),
     {
-        key: 'activeProvider',
-        runtime: 'live',
+        key: 'defaultProvider',
+        runtime: 'restartRequired',
         validate: (v) => v === 'copilot' || v === 'codex' || v === 'claude'
             ? undefined
-            : 'activeProvider must be "copilot", "codex", or "claude"',
-        apply: (cfg, v) => { cfg.activeProvider = v as 'copilot' | 'codex' | 'claude'; },
+            : 'defaultProvider must be "copilot", "codex", or "claude"',
+        apply: (cfg, v) => { cfg.defaultProvider = v as 'copilot' | 'codex' | 'claude'; },
     },
 
     bool('features.focusedDiff', (cfg, v) => {

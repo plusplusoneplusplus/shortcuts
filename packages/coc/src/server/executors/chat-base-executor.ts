@@ -54,6 +54,7 @@ import {
     assertNoAskUserConflict,
     buildModeSystemMessage,
     prependSelectedSkillsDirective,
+    resolveSelectedSkillReferences,
 } from './prompt-builder';
 import { buildMemoryV2Addon } from './memory-v2-addon';
 import type { MemoryV2Addon } from './memory-v2-addon';
@@ -484,9 +485,9 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 }
             }
 
-            // Resolve the AI service for this specific chat task's provider.
-            // Falls back to this.aiService when no resolveAiServiceForProvider callback is set.
-            const taskProvider: ChatProvider = payload.provider ?? 'copilot';
+            // Resolve the AI service for this chat task's selected provider, or
+            // the server-level default provider when the task does not override it.
+            const taskProvider: ChatProvider = payload.provider ?? this.provider;
             const effectiveAiService: ISDKService = this.getAiServiceForProvider(taskProvider);
 
             const availability = await effectiveAiService.isAvailable();
@@ -498,9 +499,11 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             const timeoutMs = task.config.timeoutMs || this.defaultTimeoutMs;
             const taskWorkspaceId = payload.workspaceId;
             const { skillDirectories, disabledSkills } = await this.resolveSkillConfigFn(taskWorkspaceId, workingDirectory);
+            const selectedSkillNames = (payload as ChatPayload).context?.skills;
             effectivePrompt = prependSelectedSkillsDirective(
                 effectivePrompt,
-                (payload as ChatPayload).context?.skills,
+                selectedSkillNames,
+                resolveSelectedSkillReferences(selectedSkillNames, skillDirectories, disabledSkills),
             );
 
             let captureHandler: ((event: ToolEvent) => void) | undefined;

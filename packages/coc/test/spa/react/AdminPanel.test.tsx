@@ -1163,7 +1163,7 @@ describe('AdminPanel', () => {
     });
 
     describe('AI Provider tab — claude toggle', () => {
-        function mockConfigWithClaude(claudeEnabled: boolean, activeProvider: string) {
+        function mockConfigWithClaude(claudeEnabled: boolean, defaultProvider: string) {
             mockFetch.mockImplementation((url: string) => {
                 if (url.includes('/admin/config')) {
                     return Promise.resolve({
@@ -1173,9 +1173,9 @@ describe('AdminPanel', () => {
                                 model: 'gpt-4', parallel: 1, timeout: null, output: 'table',
                                 codex: { enabled: false },
                                 claude: { enabled: claudeEnabled },
-                                activeProvider,
+                                defaultProvider,
                             },
-                            sources: { 'claude.enabled': 'default', activeProvider: 'default' },
+                            sources: { 'claude.enabled': 'default', defaultProvider: 'default' },
                         }),
                     });
                 }
@@ -1210,7 +1210,7 @@ describe('AdminPanel', () => {
             expect(toggle.checked).toBe(true);
         });
 
-        it('active provider select includes "claude" option', async () => {
+        it('default provider select includes "claude" option', async () => {
             mockConfigWithClaude(false, 'copilot');
             await act(async () => { renderWithProviders(); });
 
@@ -1218,8 +1218,8 @@ describe('AdminPanel', () => {
                 fireEvent.click(screen.getByTestId('admin-tab-agents'));
             });
 
-            await waitFor(() => expect(screen.getByTestId('select-active-provider')).toBeDefined());
-            const select = screen.getByTestId('select-active-provider') as HTMLSelectElement;
+            await waitFor(() => expect(screen.getByTestId('select-default-provider')).toBeDefined());
+            const select = screen.getByTestId('select-default-provider') as HTMLSelectElement;
             const options = Array.from(select.options).map(o => o.value);
             expect(options).toContain('copilot');
             expect(options).toContain('codex');
@@ -1237,7 +1237,7 @@ describe('AdminPanel', () => {
                     return Promise.resolve({
                         ok: true,
                         json: () => Promise.resolve({
-                            resolved: { model: 'gpt-4', codex: { enabled: false }, claude: { enabled: false }, activeProvider: 'copilot' },
+                            resolved: { model: 'gpt-4', codex: { enabled: false }, claude: { enabled: false }, defaultProvider: 'copilot' },
                             sources: {},
                         }),
                     });
@@ -1260,13 +1260,13 @@ describe('AdminPanel', () => {
 
             // Save button should now be enabled
             await waitFor(() => {
-                const saveBtn = screen.getByTestId('settings-active-provider-save') as HTMLButtonElement;
+                const saveBtn = screen.getByTestId('settings-default-provider-save') as HTMLButtonElement;
                 expect(saveBtn.disabled).toBe(false);
             });
 
             // Click Save
             await act(async () => {
-                fireEvent.click(screen.getByTestId('settings-active-provider-save'));
+                fireEvent.click(screen.getByTestId('settings-default-provider-save'));
             });
 
             await waitFor(() => expect(capturedBody).not.toBeNull());
@@ -1288,7 +1288,7 @@ describe('AdminPanel', () => {
                                 model: 'gpt-4', parallel: 1, timeout: null, output: 'table',
                                 codex: { enabled: false },
                                 claude: { enabled: false },
-                                activeProvider: 'copilot',
+                                defaultProvider: 'copilot',
                             },
                             sources: {},
                         }),
@@ -1380,7 +1380,7 @@ describe('AdminPanel', () => {
                     return Promise.resolve({
                         ok: true,
                         json: () => Promise.resolve({
-                            resolved: { model: 'gpt-4', parallel: 1, timeout: null, output: 'table', codex: { enabled: false }, claude: { enabled: false }, activeProvider: 'copilot' },
+                            resolved: { model: 'gpt-4', parallel: 1, timeout: null, output: 'table', codex: { enabled: false }, claude: { enabled: false }, defaultProvider: 'copilot' },
                             sources: {},
                         }),
                     });
