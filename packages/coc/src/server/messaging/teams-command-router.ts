@@ -211,17 +211,17 @@ export class TeamsCommandRouter {
 
         if (!repoId) {
             await this.deps.sendReply(
-                '❌ No repo selected. Use `select repo <name>` first.',
+                '❌ No repo selected. Use `/select repo <name>` first.',
                 msg.messageId,
             );
             return;
         }
 
-        const taskId = await this.deps.enqueueChat(repoId, '(New topic created from Teams)');
-        this.userState.update(userKey, { selectedTopic: taskId, lastActiveTopic: taskId });
+        // Clear topic selection — the next message will auto-create a new chat
+        this.userState.update(userKey, { selectedTopic: null, lastActiveTopic: null });
 
         await this.deps.sendReply(
-            `✅ Created new chat topic: \`${taskId.slice(0, 8)}\`\nSend your first message to continue.`,
+            '✅ Ready for a new topic. Send your first message to start.',
             msg.messageId,
         );
     }

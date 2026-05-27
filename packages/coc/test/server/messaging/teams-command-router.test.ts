@@ -232,13 +232,13 @@ describe('TeamsCommandRouter', () => {
 
     // ── create topic ──────────────────────────────────────────
 
-    it('creates topic when repo is selected', async () => {
+    it('creates topic (clears selection for next message)', async () => {
         await router.handle(makeMsg('/select repo ProjectA'));
         sendReplySpy.mockClear();
 
         await router.handle(makeMsg('/create topic'));
-        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', '(New topic created from Teams)');
-        expect(sendReplySpy.mock.calls[0][0]).toContain('Created new chat topic');
+        expect(deps.enqueueChat).not.toHaveBeenCalled();
+        expect(sendReplySpy.mock.calls[0][0]).toContain('Ready for a new topic');
     });
 
     it('errors on create topic without repo', async () => {
@@ -336,8 +336,8 @@ describe('TeamsCommandRouter', () => {
         await router.handle(makeMsg('/select repo ProjectB', { senderAadId: 'user-B' }));
         sendReplySpy.mockClear();
 
-        // user-A creates topic in ProjectA
-        await router.handle(makeMsg('/create topic', { senderAadId: 'user-A' }));
-        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', expect.any(String));
+        // user-A sends a message — should enqueue in ProjectA (ws-1), not ProjectB
+        await router.handle(makeMsg('Fix the bug', { senderAadId: 'user-A' }));
+        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'Fix the bug');
     });
 });
