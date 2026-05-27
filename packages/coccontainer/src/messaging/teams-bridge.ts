@@ -858,6 +858,14 @@ export class TeamsBridge {
             const messageId = await this.bot.send(target, teamsText, { mentions });
             console.log(`[teams-bridge] ✅ Sent message ${messageId} for process ${processId} (role=${role}, ${content.length} chars)`);
             this.store.bindMessage(messageId, processId, agentId, `${agentName}:${repoName}`, workspaceId);
+
+            // Reset forceNewTopic for the sender — agent has responded, session is active
+            if (sender?.senderAadId && this.commandExecutor) {
+                const state = this.commandExecutor.getUserState(sender.senderAadId);
+                if (state.forceNewTopic) {
+                    this.commandExecutor.updateUserState(sender.senderAadId, { forceNewTopic: false });
+                }
+            }
         } catch (err: any) {
             if (err?.message?.includes('NotFound') && this.opts.config.teamName) {
                 console.warn(`[teams-bridge] Channel NotFound — re-resolving...`);
