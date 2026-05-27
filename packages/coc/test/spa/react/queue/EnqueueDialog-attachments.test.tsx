@@ -144,8 +144,8 @@ describe('EnqueueDialog — Attachments', () => {
         fetchSpy = vi.fn();
         global.fetch = fetchSpy;
         fetchSpy.mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             // Default: return a valid response for any URL (preferences, onboarding, etc.)
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -384,8 +384,8 @@ describe('EnqueueDialog — Attachments', () => {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
@@ -435,8 +435,8 @@ describe('EnqueueDialog — Attachments', () => {
             if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
@@ -493,8 +493,8 @@ describe('EnqueueDialog — Attachments', () => {
                     resolvePost = () => resolve({ ok: true, json: () => Promise.resolve({}) });
                 });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });

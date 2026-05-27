@@ -18,6 +18,7 @@ import { useGlobalToast } from '../contexts/ToastContext';
 import { useMinimizedDialog } from '../contexts/MinimizedDialogsContext';
 import { type TaskFolder, filterGitMetadataFolders } from './hooks/useTaskTree';
 import { getSpaCocClient } from '../api/cocClient';
+import { getActiveProvider } from '../utils/config';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -152,9 +153,9 @@ export function GenerateTaskDialog({
     // --- fetch models on mount ---
     useEffect(() => {
         let cancelled = false;
-        getSpaCocClient().models.list()
+        getSpaCocClient().agentProviders.listModels(getActiveProvider())
             .then((data) => {
-                if (!cancelled) { setModels(data.map((m) => m.id)); }
+                if (!cancelled) { setModels((data.models ?? []).map((m: any) => m.id)); }
             })
             .catch(() => {});
         return () => { cancelled = true; };

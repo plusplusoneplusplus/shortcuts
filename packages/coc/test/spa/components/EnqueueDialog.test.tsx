@@ -24,7 +24,7 @@ beforeEach(() => {
     // Default responses for inner fetches (models, preferences, templates, etc.)
     mockFetch.mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
+        json: () => Promise.resolve({ provider: 'copilot', models: [{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }] }),
     });
 });
 
@@ -148,7 +148,7 @@ describe('EnqueueDialog', () => {
     it('submits the typed queue task payload with the correct prompt', async () => {
         // Setup fetch: models, preferences GET, templates GET, then queue tasks POST
         mockFetch
-            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]) }) // /api/models
+            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }] }) }) // /models
             .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) }); // preferences/others
 
         renderDialog();
@@ -182,10 +182,10 @@ describe('EnqueueDialog', () => {
             if (url.includes('/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve([
+                    json: () => Promise.resolve({ provider: 'copilot', models: [
                         { id: 'gpt-4', name: 'gpt-4', enabled: true, capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } },
                         { id: 'gpt-3.5', name: 'gpt-3.5', enabled: false, capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } },
-                    ]),
+                    ] }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -210,10 +210,10 @@ describe('EnqueueDialog', () => {
             if (url.includes('/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve([
+                    json: () => Promise.resolve({ provider: 'copilot', models: [
                         { id: 'gpt-4', name: 'gpt-4', enabled: false, capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } },
                         { id: 'gpt-3.5', name: 'gpt-3.5', enabled: false, capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } },
-                    ]),
+                    ] }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -239,7 +239,7 @@ describe('EnqueueDialog', () => {
         const TEMPLATE = { id: 'tmpl-1', name: 'My Template', model: 'gpt-4', mode: 'task' as const, skills: [] };
         mockFetch.mockImplementation((url: string) => {
             if (url.includes('/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]) });
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }] }) });
             }
             if (url.includes('/preferences')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ skillTemplates: [TEMPLATE] }) });
@@ -264,7 +264,7 @@ describe('EnqueueDialog', () => {
         const TEMPLATE = { id: 'tmpl-2', name: 'My Template', model: 'gpt-4', mode: 'task' as const, skills: [] };
         mockFetch.mockImplementation((url: string) => {
             if (url.includes('/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]) });
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }] }) });
             }
             if (url.includes('/preferences')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ skillTemplates: [TEMPLATE] }) });

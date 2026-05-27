@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getActiveProvider } from '../../utils/config';
 import { getConversationTurns } from './conversation/chatConversationUtils';
 import { getSessionIdFromProcess } from './conversation/ConversationMetadataPopover';
 import { useQueue } from '../../contexts/QueueContext';
@@ -457,10 +458,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // a value already received via SSE (conversation-snapshot / token-usage).
     useEffect(() => {
         if (!sessionModel || sessionTokenLimit !== undefined) return;
-        getSpaCocClient().models.list()
-            .then((data: ModelInfo[]) => {
-                if (!Array.isArray(data)) return;
-                const info = data.find(m => m.id === sessionModel);
+        getSpaCocClient().agentProviders.listModels(getActiveProvider())
+            .then((data) => {
+                const models = data.models;
+                if (!Array.isArray(models)) return;
+                const info = models.find((m: ModelInfo) => m.id === sessionModel);
                 if (info?.tokenLimit && info.tokenLimit > 0) {
                     setSessionTokenLimit(info.tokenLimit);
                 }

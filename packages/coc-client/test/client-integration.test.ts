@@ -6,7 +6,6 @@ import {
   EventsClient,
   GitClient,
   HealthClient,
-  ModelsClient,
   NotesClient,
   PreferencesClient,
   ProcessesClient,
@@ -64,7 +63,6 @@ describe('CocClient integration wiring', () => {
     mock.on('GET', '/custom-api/health', {
       body: { status: 'ok', uptime: 1, processCount: 0 },
     });
-    mock.on('GET', '/custom-api/models', { body: [] });
     mock.on('GET', '/custom-api/workspaces', { body: { workspaces: [] } });
     const client = new CocClient({
       baseUrl: mock.url,
@@ -77,12 +75,10 @@ describe('CocClient integration wiring', () => {
     });
 
     await client.health.get();
-    await client.models.list();
     await client.workspaces.list();
 
     expect(mock.requests.map(request => request.path)).toEqual([
       '/custom-api/health',
-      '/custom-api/models',
       '/custom-api/workspaces',
     ]);
     for (const request of mock.requests) {
@@ -101,7 +97,6 @@ describe('CocClient integration wiring', () => {
 
     expect(client.health).toBeInstanceOf(HealthClient);
     expect(client.git).toBeInstanceOf(GitClient);
-    expect(client.models).toBeInstanceOf(ModelsClient);
     expect(client.notes).toBeInstanceOf(NotesClient);
     expect(client.preferences).toBeInstanceOf(PreferencesClient);
     expect(client.processes).toBeInstanceOf(ProcessesClient);
@@ -124,7 +119,6 @@ describe('CocClient integration wiring', () => {
     const httpDomains = [
       client.health,
       client.git,
-      client.models,
       client.notes,
       client.preferences,
       client.processes,
@@ -143,7 +137,6 @@ describe('CocClient integration wiring', () => {
 
     await client.health.get();
     await client.git.getBranchRange('repo-a');
-    await client.models.list();
     await client.notes.getTree('repo-a');
     await client.preferences.getGlobal();
     await client.processes.list();
@@ -157,7 +150,6 @@ describe('CocClient integration wiring', () => {
     expect(requestSpy.mock.calls.map(call => call[0])).toEqual([
       '/health',
       '/workspaces/repo-a/git/branch-range',
-      '/models',
       '/workspaces/repo-a/notes/tree',
       '/preferences',
       '/processes',
@@ -374,7 +366,6 @@ function typeCheckPublicSurface(): string {
       CocClient,
       GitClient,
       HealthClient,
-      ModelsClient,
       PreferencesClient,
       ProcessesClient,
       QueueClient,
@@ -423,7 +414,6 @@ function typeCheckPublicSurface(): string {
       CocClient,
       GitClient,
       HealthClient,
-      ModelsClient,
       PreferencesClient,
       ProcessesClient,
       QueueClient,

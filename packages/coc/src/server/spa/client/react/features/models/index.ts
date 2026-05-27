@@ -1,1 +1,1 @@
-export { ModelsView } from './ModelsView';
+export { ProviderModelsSection } from './ProviderModelsSection';

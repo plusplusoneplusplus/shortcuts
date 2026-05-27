@@ -47,7 +47,7 @@ describe('UpdateDocumentDialog', () => {
     it('renders Update Document title', async () => {
         mockFetch.mockResolvedValue({
             ok: true,
-            json: () => Promise.resolve([]),
+            json: () => Promise.resolve({ provider: 'copilot', models: [] }),
         });
         await act(async () => {
             renderDialog();
@@ -55,12 +55,12 @@ describe('UpdateDocumentDialog', () => {
         expect(screen.getByText('Update Document')).toBeDefined();
     });
 
-    it('populates model select from /api/models', async () => {
+    it('populates model select from /models', async () => {
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/api/models')) {
+            if (url.includes('/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
+                    json: () => Promise.resolve({ provider: 'copilot', models: [{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }] }),
                 });
             }
             return Promise.resolve({
@@ -91,7 +91,7 @@ describe('UpdateDocumentDialog', () => {
                     json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
                 });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
         });
 
         await act(async () => {
@@ -117,7 +117,7 @@ describe('UpdateDocumentDialog', () => {
             if (opts?.method === 'POST' && url.includes('/queue')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
         });
 
         await act(async () => {
@@ -166,7 +166,7 @@ describe('UpdateDocumentDialog', () => {
             if (opts?.method === 'POST' && url.includes('/queue')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
         });
 
         await act(async () => {
@@ -204,7 +204,7 @@ describe('UpdateDocumentDialog', () => {
             if (opts?.method === 'POST' && url.includes('/queue')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
         });
 
         await act(async () => {
@@ -235,7 +235,7 @@ describe('UpdateDocumentDialog', () => {
             if (opts?.method === 'POST' && url.includes('/queue')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
         });
 
         await act(async () => {
@@ -268,7 +268,7 @@ describe('UpdateDocumentDialog', () => {
             if (opts?.method === 'POST' && url.includes('/queue')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
         });
 
         await act(async () => {
@@ -295,7 +295,7 @@ describe('UpdateDocumentDialog', () => {
         const absTaskPath = '/home/user/.copilot/session-state/abc-123/plan.md';
 
         mockFetch.mockImplementation((url: string) => {
-            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
         });
 
         await act(async () => {

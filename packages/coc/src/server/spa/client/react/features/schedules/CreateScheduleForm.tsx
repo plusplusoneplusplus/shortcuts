@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Button, cn } from '../../ui';
 import { SegmentedControl } from '../../ui/SegmentedControl';
 import { getSpaCocClient } from '../../api/cocClient';
+import { getActiveProvider } from '../../utils/config';
 import { fetchWorkflows } from '../workflow/workflow-api';
 import { describeCron, parseCronToInterval, intervalToCron } from '../../utils/cron';
 import { SCHEDULE_TEMPLATES } from './scheduleTemplates';
@@ -274,10 +275,10 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
 
     useEffect(() => {
         let cancelled = false;
-        getSpaCocClient().models.list()
+        getSpaCocClient().agentProviders.listModels(getActiveProvider())
             .then(data => {
                 if (!cancelled) {
-                    setModels(Array.isArray(data) ? data.map(m => m.id ?? m) : []);
+                    setModels(Array.isArray(data.models) ? data.models.map((m: any) => m.id ?? m) : []);
                 }
             })
             .catch(() => { /* keep the model override optional when the model API is unavailable */ });
