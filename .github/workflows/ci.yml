@@ -355,6 +355,9 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.58.2-noble
+      options: --ipc=host
     timeout-minutes: 10
 
     strategy:
@@ -411,10 +414,6 @@ jobs:
 
       - name: Build coc package
         run: npm run build
-        working-directory: packages/coc
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
         working-directory: packages/coc
 
       - name: Run Playwright E2E tests (shard ${{ matrix.shard }}/4)
