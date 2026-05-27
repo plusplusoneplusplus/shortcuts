@@ -24,13 +24,19 @@ function createMockWs() {
     return ws;
 }
 
+function createMockAgentConnMgr() {
+    return { send: vi.fn().mockReturnValue(true) };
+}
+
 describe('WebClientBridge', () => {
     let relay: ReturnType<typeof createMockWsRelay>;
+    let agentConnMgr: ReturnType<typeof createMockAgentConnMgr>;
     let bridge: WebClientBridge;
 
     beforeEach(() => {
         relay = createMockWsRelay();
-        bridge = new WebClientBridge({ wsRelay: relay as any });
+        agentConnMgr = createMockAgentConnMgr();
+        bridge = new WebClientBridge({ wsRelay: relay as any, agentConnMgr: agentConnMgr as any });
     });
 
     it('tracks connected clients', () => {
@@ -75,7 +81,7 @@ describe('WebClientBridge', () => {
         expect(ws.send).not.toHaveBeenCalled();
     });
 
-    it('forwards browser messages to agent via wsRelay', () => {
+    it('forwards browser messages to agent via agentConnMgr', () => {
         const ws = createMockWs();
         bridge.handleConnection(ws as any);
 
@@ -84,7 +90,7 @@ describe('WebClientBridge', () => {
             data: { type: 'subscribe', processId: 'proc-1' },
         })));
 
-        expect(relay.send).toHaveBeenCalledWith('agent-1', JSON.stringify({ type: 'subscribe', processId: 'proc-1' }));
+        expect(agentConnMgr.send).toHaveBeenCalledWith('agent-1', JSON.stringify({ type: 'subscribe', processId: 'proc-1' }));
     });
 
     it('unsubscribes from wsRelay on client disconnect', () => {
@@ -138,6 +144,6 @@ describe('WebClientBridge', () => {
         ws.emit('message', Buffer.from('not json'));
         ws.emit('message', Buffer.from('{}'));
 
-        expect(relay.send).not.toHaveBeenCalled();
+        expect(agentConnMgr.send).not.toHaveBeenCalled();
     });
 });

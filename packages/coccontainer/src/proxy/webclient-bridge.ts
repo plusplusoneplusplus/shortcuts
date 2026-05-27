@@ -6,7 +6,7 @@
  * and forwards them to connected browser clients.
  *
  * Inbound (browser → agent):
- *   Browser sends WS message { agentId, data } → forwarded via wsRelay.send()
+ *   Browser sends WS message { agentId, data } → forwarded via AgentConnectionManager.send()
  *
  * Outbound (agent → browser):
  *   WSRelay emits 'message' → broadcast to all connected browser WS clients
@@ -14,17 +14,21 @@
 
 import type { WebSocket as WsSocket } from 'ws';
 import type { WebSocketRelay, WSRelayMessage } from '../proxy/ws-relay';
+import type { AgentConnectionManager } from '../proxy/agent-connection-manager';
 
 export interface WebClientBridgeOptions {
     wsRelay: WebSocketRelay;
+    agentConnMgr: AgentConnectionManager;
 }
 
 export class WebClientBridge {
     private readonly wsRelay: WebSocketRelay;
+    private readonly agentConnMgr: AgentConnectionManager;
     private readonly clients = new Set<WsSocket>();
 
     constructor(opts: WebClientBridgeOptions) {
         this.wsRelay = opts.wsRelay;
+        this.agentConnMgr = opts.agentConnMgr;
     }
 
     /**
@@ -40,9 +44,7 @@ export class WebClientBridge {
             if (ws.readyState !== 1 /* WebSocket.OPEN */) return;
             // Parse the agent's JSON payload and inject agentId/agentName so the
             // browser's ProcessWebSocketConnection can pass isProcessEvent (which
-            // requires a top-level `type` field). Sending the raw envelope
-            // { agentId, agentName, data: "<json string>" } would fail that check
-            // and silently drop every event in container mode.
+            // requires a top-level `type` field).
             try {
                 const parsed = JSON.parse(msg.data);
                 ws.send(JSON.stringify({ ...parsed, agentId: msg.agentId, agentName: msg.agentName }));
@@ -58,7 +60,7 @@ export class WebClientBridge {
                 const parsed = JSON.parse(data.toString());
                 if (parsed.agentId && parsed.data) {
                     console.log(`[webclient-bridge] 📤 Browser → agent ${parsed.agentId}: forwarding WS message`);
-                    this.wsRelay.send(parsed.agentId, typeof parsed.data === 'string' ? parsed.data : JSON.stringify(parsed.data));
+                    this.agentConnMgr.send(parsed.agentId, typeof parsed.data === 'string' ? parsed.data : JSON.stringify(parsed.data));
                 }
             } catch {
                 // ignore malformed
