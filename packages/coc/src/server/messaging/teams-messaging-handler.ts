@@ -6,19 +6,55 @@
  *   POST /container/messaging/teams/config   — update config (botName, teamName, channelName, enabled)
  *   POST /container/messaging/teams/reconnect — (re)connect the bot
  *
+ * Also wires the {@link TeamsCommandRouter} as the inbound message handler,
+ * enabling Teams users to send commands (list agents, select repo, chat, etc.).
+ *
  * These routes power the TeamsSettingsCard in the admin dashboard (IMSettingsSection.tsx).
  */
 
 import { sendJSON, sendError } from '../core/api-handler';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { TeamsMessagingManager } from './teams-messaging-manager';
+import { TeamsCommandRouter } from './teams-command-router';
+
+export interface TeamsMessagingRoutesOptions {
+    dataDir: string;
+    /** ProcessStore for querying workspaces and processes. */
+    store?: ProcessStore;
+    /** Enqueue a new chat task. Returns the task ID. */
+    enqueueChat?: (workspaceId: string, message: string) => Promise<string>;
+    /** Send a follow-up message to an existing process. */
+    executeFollowUp?: (processId: string, message: string) => Promise<void>;
+}
 
 export function registerTeamsMessagingRoutes(
     routes: Route[],
-    opts: { dataDir: string },
+    opts: TeamsMessagingRoutesOptions,
 ): TeamsMessagingManager {
     const manager = new TeamsMessagingManager(opts.dataDir);
+
+    // Wire the command router if store + queue deps are provided
+    if (opts.store && opts.enqueueChat && opts.executeFollowUp) {
+        const router = new TeamsCommandRouter({
+            store: opts.store,
+            enqueueChat: opts.enqueueChat,
+            executeFollowUp: opts.executeFollowUp,
+            sendReply: async (text, replyToId) => {
+                try {
+                    await manager.sendMessage(text, replyToId);
+                } catch {
+                    // Best-effort — bot may not be connected
+                }
+            },
+            dataDir: opts.dataDir,
+        });
+
+        manager.setMessageHandler(async (msg) => {
+            await router.handle(msg);
+        });
+    }
 
     // GET /container/messaging/teams/status
     routes.push({

@@ -110,7 +110,7 @@ describe('TeamsBridge', () => {
     let tmpDir: string;
     let wsRelay: EventEmitter & { on: any; off: any; emit: any };
     let sseRelay: EventEmitter & { on: any; off: any; emit: any };
-    let inboundManager: EventEmitter & { on: any; off: any; emit: any; hasAgent: ReturnType<typeof vi.fn>; proxyRequest: ReturnType<typeof vi.fn>; listAgents: ReturnType<typeof vi.fn> };
+    let agentManager: EventEmitter & { on: any; off: any; emit: any; hasAgent: ReturnType<typeof vi.fn>; proxyRequest: ReturnType<typeof vi.fn>; listAgents: ReturnType<typeof vi.fn> };
     let agentStore: ReturnType<typeof createMockAgentStore>;
     let tunnelBridge: ReturnType<typeof createMockTunnelBridge>;
 
@@ -120,7 +120,7 @@ describe('TeamsBridge', () => {
         wsRelay = new EventEmitter() as any;
         sseRelay = new EventEmitter() as any;
         const emitter = new EventEmitter();
-        inboundManager = Object.assign(emitter, {
+        agentManager = Object.assign(emitter, {
             hasAgent: vi.fn().mockReturnValue(false),
             proxyRequest: vi.fn().mockResolvedValue({ status: 200, body: '{}', headers: {} }),
             listAgents: vi.fn().mockReturnValue([]),
@@ -158,7 +158,7 @@ describe('TeamsBridge', () => {
             sseRelay: sseRelay as any,
             agentStore: agentStore as any,
             tunnelBridge: tunnelBridge as any,
-            inboundManager: inboundManager as any,
+            agentManager: agentManager as any,
         });
     }
 
@@ -1344,7 +1344,7 @@ describe('TeamsBridge', () => {
 
             // Simulate agent reconnection
             lastBot().send.mockClear();
-            inboundManager.emit('agent-connected', { id: 'agent-a', name: 'Agent-A' });
+            agentManager.emit('agent-connected', { id: 'agent-a', name: 'Agent-A' });
             await new Promise(resolve => setTimeout(resolve, 100));
 
             // Should have sent the missed completion (proc-sent is in _completionSent)
@@ -1393,7 +1393,7 @@ describe('TeamsBridge', () => {
 
             // Simulate reconnection — should NOT re-send since _completionSent tracks it
             lastBot().send.mockClear();
-            inboundManager.emit('agent-connected', { id: 'agent-a', name: 'Agent-A' });
+            agentManager.emit('agent-connected', { id: 'agent-a', name: 'Agent-A' });
             await new Promise(resolve => setTimeout(resolve, 100));
 
             expect(lastBot().send).not.toHaveBeenCalled();
@@ -1429,7 +1429,7 @@ describe('TeamsBridge', () => {
             });
             vi.stubGlobal('fetch', mockFetch);
 
-            inboundManager.emit('agent-connected', { id: 'agent-a', name: 'Agent-A' });
+            agentManager.emit('agent-connected', { id: 'agent-a', name: 'Agent-A' });
             await new Promise(resolve => setTimeout(resolve, 100));
 
             // Should not send anything for running processes
@@ -1439,15 +1439,15 @@ describe('TeamsBridge', () => {
             await bridge.stop();
         });
 
-        it('should unsubscribe from inboundManager on stop', async () => {
+        it('should unsubscribe from agentManager on stop', async () => {
             const bridge = createBridge();
             await bridge.start();
 
-            expect(inboundManager.listenerCount('agent-connected')).toBe(1);
+            expect(agentManager.listenerCount('agent-connected')).toBe(1);
 
             await bridge.stop();
 
-            expect(inboundManager.listenerCount('agent-connected')).toBe(0);
+            expect(agentManager.listenerCount('agent-connected')).toBe(0);
         });
     });
 });

@@ -5,111 +5,117 @@ CoCContainer is a lightweight gateway that aggregates multiple CoC agents behind
 ## High-Level Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          CoC AGENTS (1..N)                                   │
-│                                                                             │
-│  Each agent runs independently with its own processes, workspaces, and API  │
-│  • HTTP REST API: /api/processes, /api/workspaces, /api/queue, etc.         │
-│  • WebSocket /ws: emits process-updated, process-created events             │
-│  • SSE /api/events: global event stream (chat streaming)                    │
-│  • SSE /processes/:id/stream: per-process content streaming                 │
-└──────┬──────────────────────────────┬──────────────────────┬────────────────┘
-       │                              │                      │
-       │ HTTP (REST)                  │ WebSocket /ws        │ SSE (streaming)
-       │                              │                      │
-       ▼                              ▼                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           COC CONTAINER                                      │
-│                                                                             │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                      WS RELAY ENGINE                                   │  │
-│  │                                                                       │  │
-│  │  Ingests process lifecycle events from agents via WebSocket,          │  │
-│  │  then dispatches to all subscribers.                                  │  │
-│  │                                                                       │  │
-│  │  ┌─────────────────────────────────────────────────────────────┐     │  │
-│  │  │  WS Relay (ws-relay.ts)                                      │     │  │
-│  │  │  • Connects to each agent's /ws                              │     │  │
-│  │  │  • Receives: process-updated, process-created                │     │  │
-│  │  │  • emit('message') to all subscribers                        │     │  │
-│  │  └──────────────────────────┬──────────────────────────────────┘     │  │
-│  │                             │                                         │  │
-│  │                     DISPATCH TO SUBSCRIBERS                            │  │
-│  │                             │                                         │  │
-│  └─────────────────────────────┼─────────────────────────────────────────┘  │
-│                                │                                            │
-│              ┌─────────────────┼──────────────────┐                         │
-│              ▼                 ▼                   ▼                         │
-│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐                │
-│  │  Web Client     │  │  Teams Bridge   │  │  WhatsApp      │                │
-│  │  (via WS)       │  │  (subscriber)   │  │  Bridge        │                │
-│  │                 │  │                 │  │  (subscriber)  │                │
-│  │  Browser opens  │  │  On completion: │  │  Same pattern  │                │
-│  │  container /ws  │  │  fetch process, │  │  as Teams      │                │
-│  │  for process    │  │  send last      │  │                │                │
-│  │  list updates   │  │  chunk to Teams │  │                │                │
-│  └────────┬────────┘  └───────┬─────────┘  └───────┬────────┘                │
-│           │                   │                     │                        │
-│  ┌────────┴───────────────────┴─────────────────────┴─────────────────────┐  │
-│  │  HTTP Proxy (http.ts) — transparent proxy to agents for REST + SSE     │  │
-│  │  • REST: /api/* (processes, workspaces, queue, chat)                   │  │
-│  └────────────────────────────────────────────────────────────────────────┘  │
-│                                                                             │
-│  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │  SSE Relay (transparent proxy)                                        │   │
-│  │  • Browser ↔ CoC agent direct connection (container just routes)      │   │
-│  │  • /api/events: global chat streaming                                 │   │
-│  │  • /processes/:id/stream: per-process content streaming               │   │
-│  │  • No buffering, no dispatching to bridges                            │   │
-│  └──────────────────────────────────────────────────────────────────────┘   │
-│                                                                             │
-│  ┌──────────────────────────────┐  ┌──────────────────────────────────────┐  │
-│  │  Tunnel Bridge                │  │  Health Monitor                      │  │
-│  │  Local proxy for devtunnel    │  │  Periodic health checks              │  │
-│  │  agents (auth + port mapping) │  │  Updates agent online/offline status │  │
-│  └───────────────────────────────┘  └──────────────────────────────────────┘  │
-│                                                                             │
-│  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │  SPA (CoC Dashboard in containerMode)                                 │   │
-│  │  • Reuses CoC's compiled HTML template                                │   │
-│  │  • Served at / for all non-API routes                                 │   │
-│  └──────────────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────────┘
-       │                    │                     │
-       │ HTTP + WS + SSE    │ MCP Transport       │ Baileys
-       ▼                    ▼                     ▼
-┌──────────────┐    ┌──────────────┐    ┌──────────────────┐
-│  Browser     │    │  Microsoft   │    │  WhatsApp        │
-│              │    │  Teams       │    │                  │
-│  • WS: live  │    │              │    │  • Final message │
-│    updates   │    │  • Final msg │    │    only          │
-│  • SSE: chat │    │    only      │    │                  │
-│    streaming │    │              │    │                  │
-│  (direct to  │    │              │    │                  │
-│   agent)     │    │              │    │                  │
-└──────────────┘    └──────────────┘    └──────────────────┘
+                              ┌──────────────────────────────────────────────────┐
+                              │              CoCContainer Server                  │
+                              │                                                  │
+                              │  ┌────────────────────────────────────────────┐  │
+                              │  │              AgentManager                   │  │
+                              │  │  (unified agent connection manager)         │  │
+                              │  │                                            │  │◄──WS call-home──► CoC Agent 1
+                              │  │  • Call-home: handleConnection()           │  │                   CoC Agent 2
+                              │  │  • Outbound:  connectOutbound()            │  │◄──WS outbound──► CoC Agent 3
+                              │  │  • HTTP proxy: proxyRequest()              │  │                   ...
+                              │  │  • WS send:   sendOutbound()               │  │
+                              │  │  • Query:     listAgents(), hasAgent()      │  │
+                              │  └──────────────────────┬─────────────────────┘  │
+                              │                         ↕                        │
+                              │  ┌──────────────────────┴─────────────────────┐  │
+                              │  │       WSRelay (central bidirectional bus)    │  │
+                              │  │                                            │  │
+                              │  │  Agent → Bridges:                          │  │
+                              │  │    .emit('message') / .on('message')       │  │
+                              │  │                                            │  │
+                              │  │  Bridges → Agent:                          │  │
+                              │  │    .proxyToAgent() — HTTP request proxy    │  │
+                              │  │    .sendToAgent()  — raw WS message        │  │
+                              │  └───────┬──────────────────────┬─────────────┘  │
+                              │          ↕                      ↕                │
+                              │  ┌───────┴──────────┐  ┌───────┴──────────────┐  │
+                              │  │ WebClientBridge   │  │    TeamsBridge       │  │
+                              │  │                   │  │                      │  │
+ Web Browser  ◄───HTTP/WS────►│  │ • Manages browser │  │ • TeamsBot           │  │◄──MCP poll──► MS Teams
+ (Dashboard)                  │  │   WS connections  │  │   (poll/send)        │  │
+                              │  │ • Events → browser│  │ • Events → Teams     │  │
+                              │  │ • Browser msgs    │  │ • Chat msgs          │  │
+                              │  │   → sendToAgent() │  │   → proxyToAgent()   │  │
+                              │  └───────────────────┘  │                      │  │
+                              │                         │  /commands            │  │
+                              │                         │       │              │  │
+                              │                         │       ▼              │  │
+                              │                         │  TeamsCommand        │  │
+                              │                         │  Executor            │  │
+                              │                         │  (local, no agent)   │  │
+                              │                         └──────────────────────┘  │
+                              │                                                  │
+                              │  Also: SSE Relay, Tunnel Bridge, Health Monitor, │
+                              │  Agent Store, SPA, HTTP Proxy                    │
+                              └──────────────────────────────────────────────────┘
 ```
 
-## WS Relay Engine
+## Message Flows
 
-The WS relay engine is the core event dispatch mechanism for process lifecycle events. It ingests events from all connected agents via WebSocket and dispatches them to subscribers:
+| Flow | Path |
+|------|------|
+| **Browser chat → Agent** | Browser → WebClientBridge → `wsRelay.sendToAgent()` → AgentManager → Agent |
+| **Agent event → Browser** | Agent → AgentManager → `wsRelay.emit('message')` → WebClientBridge → Browser |
+| **Teams chat → Agent** | Teams → TeamsBot.poll() → TeamsBridge → `wsRelay.proxyToAgent()` → AgentManager → Agent |
+| **Agent response → Teams** | Agent → AgentManager → `wsRelay.emit('message')` → TeamsBridge → TeamsBot.send() → Teams |
+| **Teams /command** | Teams → TeamsBot.poll() → TeamsBridge → TeamsCommandExecutor (local) → TeamsBot.send() → Teams |
 
-| Ingress | Component | What it receives |
-|---------|-----------|-----------------|
-| WebSocket `/ws` | WS Relay | `process-updated`, `process-created` events |
+## Core Components
 
-| Subscriber | How it connects | What it does with events |
-|------------|----------------|------------------------|
-| **Browser** | Opens container `/ws` (WebSocket) | Real-time sidebar/process list updates |
-| **Teams Bridge** | `wsRelay.on('message')` | On completion: fetch process, send last chunk |
-| **WhatsApp Bridge** | `wsRelay.on('message')` | Same pattern as Teams |
+### AgentManager (`inbound/agent-manager.ts`)
+
+Unified manager for all agent connections. Handles both connection modes:
+
+- **Call-home agents**: Agents connect outbound to the container via `handleConnection()`. Container sends requests back over the same WS channel using `proxyRequest()`.
+- **Outbound agents**: Container connects to agents via `connectOutbound()`. Raw WS messages sent via `sendOutbound()`.
+
+Both modes emit `agent-event` which is wired to WSRelay in `server/index.ts`.
+
+### WSRelay (`proxy/ws-relay.ts`)
+
+Central bidirectional event bus. All inter-component communication goes through WSRelay:
+
+- **Agent → Bridges** (outbound events): `wsRelay.emit('message', ...)` — bridges subscribe with `.on('message')`
+- **Bridges → Agent** (inbound messages): bridges call `wsRelay.proxyToAgent()` (HTTP proxy) or `wsRelay.sendToAgent()` (raw WS) — WSRelay delegates to AgentManager
+
+WSRelay does NOT manage any agent connections — that is AgentManager's job.
+
+### WebClientBridge (`proxy/webclient-bridge.ts`)
+
+Manages browser WebSocket connections. Symmetric to TeamsBridge:
+
+- Subscribes to `wsRelay.on('message')` for agent→browser event forwarding
+- Routes browser→agent WS messages via `wsRelay.sendToAgent()`
+
+### TeamsBridge (`messaging/teams-bridge.ts`)
+
+Manages MS Teams integration via TeamsBot (MCP poll transport):
+
+- Subscribes to `wsRelay.on('message')` for agent→Teams event forwarding
+- Routes chat messages to agents via `wsRelay.proxyToAgent()` (HTTP proxy)
+- Intercepts `/` commands before they reach WSRelay — executes locally via TeamsCommandExecutor
+
+### TeamsCommandExecutor (`messaging/teams-command-executor.ts`)
+
+Handles slash commands locally without touching agents or WSRelay:
+
+| Command | Action |
+|---------|--------|
+| `/list agents` | Lists connected agents from AgentManager |
+| `/list repos` | Lists repos across all agents |
+| `/select repo <n>` | Sets target repo for subsequent chats |
+| `/list topics` | Lists recent chat processes |
+| `/create topic` | Clears topic selection (next msg creates new) |
+| `/select topic <n>` | Selects active topic for follow-ups |
+| `/help` | Shows available commands |
+
+Per-user state (selected agent, repo, topic) tracked in memory.
 
 ## SSE Relay (Transparent Proxy)
 
-The SSE relay is a **transparent proxy** — it builds a direct connection between the browser client and the CoC agent. The container only handles routing (selecting the correct agent) and adds auth headers. It does NOT:
-- Buffer or parse SSE events
-- Dispatch events to messaging bridges
-- Store any streamed content
+The SSE relay is a **transparent proxy** — it builds a direct connection between the browser client and the CoC agent. The container only handles routing (selecting the correct agent). It does NOT dispatch events to messaging bridges.
 
 ```
 Browser opens: /api/agent/:agentId/processes/:id/stream
@@ -118,9 +124,9 @@ Browser opens: /api/agent/:agentId/processes/:id/stream
   → Browser receives directly, renders content in real-time
 ```
 
-The browser uses SSE for chat content streaming while using WebSocket (via WS relay) for process list/sidebar updates. These are two separate concerns:
-- **WS relay**: process lifecycle events → dispatched to all subscribers (browser, bridges)
-- **SSE relay**: chat content streaming → direct browser ↔ agent connection (no bridges involved)
+Two separate concerns:
+- **WSRelay**: process lifecycle events — bidirectional bus between all components
+- **SSE relay**: chat content streaming — direct browser ↔ agent (no bridges involved)
 
 ## Conversation Turn Storage & Timeline Chunks
 
@@ -132,36 +138,6 @@ Each assistant response in a CoC process is stored as a single **conversation tu
 | `tool_calls` | JSON | Array of tool call objects |
 | `timeline` | JSON | Ordered array of `TimelineItem` events preserving chunk boundaries |
 
-### TimelineItem structure
-
-```typescript
-type TimelineItem =
-  | { type: 'content'; content: string }       // one text chunk
-  | { type: 'tool-start'; toolCall: {...} }    // tool invocation started
-  | { type: 'tool-complete'; toolCall: {...} } // tool invocation finished
-  | { type: 'tool-failed'; toolCall: {...} }   // tool invocation failed
-```
-
-### How chunks relate to turns
-
-During streaming, the agent emits multiple `chunk` SSE events for a single assistant turn. Each chunk becomes one `{ type: 'content', content: '...' }` entry in the `timeline` array. After streaming completes:
-
-- **`content`** = concatenation of all content chunks (what the user reads in full)
-- **`timeline`** = ordered interleaving of content + tool events (preserves structure)
-
-### Reconstructing individual chunks from stored data
-
-To recover the N separate "messages" (chunks) from a completed turn:
-
-```typescript
-const chunks = turn.timeline
-  .filter(item => item.type === 'content')
-  .map(item => item.content);
-// chunks.length === N (e.g., 16 for the "16 messages" shown in the UI)
-```
-
-The dashboard SPA uses this to display "84 tool calls · 16 messages" in collapsed turn headers — it counts timeline items by type.
-
 ### Teams/WhatsApp bridge: last chunk only
 
 When delivering to external platforms, the bridge extracts only the **last** content chunk:
@@ -169,68 +145,35 @@ When delivering to external platforms, the bridge extracts only the **last** con
 ```typescript
 const contentChunks = extractTimelineContentChunks(lastTurn.timeline);
 const lastChunk = contentChunks[contentChunks.length - 1];
-// Send only lastChunk to Teams/WhatsApp
 ```
 
-This is the final prose after all tool calls — the actionable answer. Intermediate chunks are reasoning between tool executions and not useful to the external recipient. Falls back to full `content` when timeline is unavailable or has ≤1 items.
-
-## Message Dispatch (Outbound — Agent → Consumers)
-
-```
-Agent completes task execution
-       │
-       ▼ emits process-updated (status=completed) via WebSocket
-       │
-  WS Relay receives, dispatches to subscribers
-       │
-       ├──→ Browser (via container /ws): updates process list/sidebar
-       │
-       ├──→ Teams Bridge:
-       │      • "completed" → fetch full process via REST
-       │      • Extract last timeline chunk → send to Teams
-       │
-       └──→ WhatsApp Bridge: same as Teams
-
-Meanwhile (streaming, independent path):
-  Agent streams chunks via SSE /processes/:id/stream
-       │
-       └──→ Browser (transparent proxy, direct connection)
-            Renders content in real-time during execution
-```
-
-## Message Dispatch (Inbound — External → Agent)
-
-```
-External message arrives (Teams / WhatsApp / Browser)
-       │
-       ▼
-  Bridge/Browser → HTTP POST /api/workspaces/:wsId/chat
-       │
-       ▼ (via Container HTTP Proxy)
-       │
-  Agent creates new process or follows up on existing one
-```
+This is the final prose after all tool calls. Intermediate chunks are reasoning between tool executions.
 
 ## Module Responsibilities
 
 | Module | File | Purpose |
 |--------|------|---------|
-| **WS Relay** | `proxy/ws-relay.ts` | Connects to agent `/ws`, dispatches lifecycle events to subscribers |
+| **AgentManager** | `inbound/agent-manager.ts` | All agent connections (call-home + outbound), HTTP proxy, WS send |
+| **WSRelay** | `proxy/ws-relay.ts` | Central bidirectional event bus |
+| **WebClientBridge** | `proxy/webclient-bridge.ts` | Browser WS client management |
 | **SSE Relay** | `proxy/sse-relay.ts` | Transparent proxy: browser ↔ agent SSE streaming |
 | **HTTP Proxy** | `proxy/http.ts` | Transparent proxy for REST calls |
 | **Tunnel Bridge** | `proxy/tunnel-bridge.ts` | Local proxy for devtunnel agents (auth + port) |
 | **Health Monitor** | `server/health-monitor.ts` | Periodic agent health checks |
 | **Agent Store** | `store/agent-store.ts` | Persists agent registry |
-| **Teams Bridge** | `messaging/teams-bridge.ts` | WS relay subscriber → Teams (last chunk only) |
-| **WhatsApp Bridge** | `messaging/whatsapp-bridge.ts` | WS relay subscriber → WhatsApp (last chunk only) |
+| **TeamsBridge** | `messaging/teams-bridge.ts` | WSRelay subscriber → Teams (chat + events) |
+| **TeamsCommandExecutor** | `messaging/teams-command-executor.ts` | Local `/command` execution |
+| **WhatsApp Bridge** | `messaging/whatsapp-bridge.ts` | WSRelay subscriber → WhatsApp |
 | **Messaging Store** | `messaging/messaging-store.ts` | SQLite store for sent/received messages |
-| **Server** | `server/index.ts` | HTTP server, SPA, routes, orchestration |
+| **Server** | `server/index.ts` | HTTP server, SPA, routes, component wiring |
 
 ## Design Principles
 
-- **WS relay for lifecycle**: Process lifecycle events (created/updated/completed) flow through the WS relay to all subscribers
+- **WSRelay as central bus**: All inter-component communication flows through WSRelay — no component talks directly to another
+- **AgentManager owns connections**: Single manager for all agent connection types (call-home + outbound)
+- **Bridges are symmetric**: WebClientBridge and TeamsBridge follow the same pattern (subscribe + send via WSRelay)
+- **Commands execute locally**: `/` commands never touch agents or WSRelay — handled entirely by TeamsCommandExecutor
 - **SSE as transparent proxy**: Chat content streaming is a direct browser ↔ agent connection; container only routes
-- **Thin gateway**: Container has no business logic — aggregates, proxies, dispatches
+- **Thin gateway**: Container has minimal business logic — aggregates, proxies, dispatches
 - **Multi-agent**: All components handle N agents simultaneously
 - **Final-only messaging**: External platforms receive only the last content chunk, not intermediate streaming updates
-- **Two separate concerns**: WS relay (lifecycle dispatch) and SSE relay (content streaming) serve different purposes and never cross

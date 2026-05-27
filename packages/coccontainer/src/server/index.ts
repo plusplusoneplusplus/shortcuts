@@ -17,8 +17,9 @@ import { TunnelBridge } from '../proxy/tunnel-bridge';
 import { addCachedWorkspace, type RemoteWorkspace } from '../proxy/workspaces';
 import { SSERelay } from '../proxy/sse-relay';
 import { WebSocketRelay } from '../proxy/ws-relay';
+import { WebClientBridge } from '../proxy/webclient-bridge';
 import { AgentHealthMonitor } from './health-monitor';
-import { InboundAgentManager } from '../inbound';
+import { AgentManager } from '../inbound';
 
 export interface ContainerServer {
     close(): void;
@@ -61,9 +62,11 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
     const tunnelBridge = new TunnelBridge({ basePort: config.tunnelBridgeBasePort });
     const sseRelay = new SSERelay();
     const wsRelay = new WebSocketRelay();
-    const inboundManager = new InboundAgentManager();
-    inboundManager.startHeartbeatCheck(30_000);
-    const healthMonitor = new AgentHealthMonitor(agentStore, config.healthCheckIntervalMs, tunnelBridge, inboundManager);
+    const agentManager = new AgentManager();
+    wsRelay.setAgentManager(agentManager);
+    const webClientBridge = new WebClientBridge({ wsRelay });
+    agentManager.startHeartbeatCheck(30_000);
+    const healthMonitor = new AgentHealthMonitor(agentStore, config.healthCheckIntervalMs, tunnelBridge, agentManager);
 
     // Start health monitoring and SSE/WS connections for existing agents
     const agents = agentStore.list();
@@ -78,11 +81,11 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
         if (agent.address.startsWith('inbound://')) continue;
         const effectiveAddr = tunnelBridge.getLocalUrl(agent.id) || agent.address;
         sseRelay.connect(agent.id, agent.name, effectiveAddr);
-        wsRelay.connect(agent.id, agent.name, effectiveAddr);
+        agentManager.connectOutbound(agent.id, agent.name, effectiveAddr);
     }
 
     // Inbound agent lifecycle — auto-register/deregister agents that call home
-    inboundManager.on('agent-connected', (agent: { id: string; name: string }) => {
+    agentManager.on('agent-connected', (agent: { id: string; name: string }) => {
         // Add or update in agent store with a placeholder address (inbound agents don't expose a port)
         const existing = agentStore.list().find(a => a.address === `inbound://${agent.id}`);
         if (!existing) {
@@ -98,7 +101,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
         console.log(`[inbound] Agent "${agent.name}" (${agent.id}) connected via call-home`);
     });
 
-    inboundManager.on('agent-disconnected', (agentId: string, agentName: string) => {
+    agentManager.on('agent-disconnected', (agentId: string, agentName: string) => {
         // Look up agent by inbound:// address, not by agentId (which is the WebSocket ID, not the store UUID)
         const existing = agentStore.list().find(a => a.address === `inbound://${agentId}`);
         if (existing) {
@@ -108,7 +111,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
     });
 
     // Forward inbound agent WS events to browser clients (same path as wsRelay)
-    inboundManager.on('agent-event', (agentId: string, agentName: string, data: string) => {
+    agentManager.on('agent-event', (agentId: string, agentName: string, data: string) => {
         console.log(`[container] Forwarding agent-event to wsRelay from ${agentName}: ${data.substring(0, 120)}`);
         wsRelay.emit('message', { agentId, agentName, data });
     });
@@ -142,7 +145,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
             sseRelay,
             agentStore,
             tunnelBridge,
-            inboundManager,
+            agentManager,
         });
         await bridge.start();
         teamsBridge = bridge;
@@ -168,8 +171,8 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 // For offline agents, use cached data from disconnectedAgents
                 const list = agentStore.list().map(agent => {
                     const inboundId = agent.address.startsWith('inbound://') ? agent.address.replace('inbound://', '') : undefined;
-                    const inbound = inboundId ? inboundManager.getAgent(inboundId) : undefined;
-                    const disconnected = inboundId ? inboundManager.getDisconnectedAgent(inboundId) : undefined;
+                    const inbound = inboundId ? agentManager.getAgent(inboundId) : undefined;
+                    const disconnected = inboundId ? agentManager.getDisconnectedAgent(inboundId) : undefined;
                     return {
                         ...agent,
                         bridgeUrl: tunnelBridge.getLocalUrl(agent.id) || undefined,
@@ -189,7 +192,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 }
                 const effectiveAddr = tunnelBridge.getLocalUrl(agent.id) || agent.address;
                 sseRelay.connect(agent.id, agent.name, effectiveAddr);
-                wsRelay.connect(agent.id, agent.name, effectiveAddr);
+                agentManager.connectOutbound(agent.id, agent.name, effectiveAddr);
                 const bridgeUrl = tunnelBridge.getLocalUrl(agent.id);
                 return sendJson(res, { ...agent, bridgeUrl: bridgeUrl || undefined }, 201);
             }
@@ -200,7 +203,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 if (agent) {
                     tunnelBridge.stop(agent.id);
                     sseRelay.disconnect(agent.id);
-                    wsRelay.disconnect(agent.id);
+                    agentManager.disconnectOutbound(agent.id);
                 }
                 const removed = agentStore.remove(agentId);
                 return sendJson(res, { removed });
@@ -227,7 +230,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
             // Aggregated workspaces from all agents
             if (url.pathname === '/api/workspaces' && req.method === 'GET') {
                 const allAgents = agentStore.list();
-                const workspaces = await aggregateWorkspaces(allAgents, tunnelBridge, inboundManager);
+                const workspaces = await aggregateWorkspaces(allAgents, tunnelBridge, agentManager);
                 return sendJson(res, { workspaces });
             }
 
@@ -237,7 +240,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 const results = await Promise.all(
                     allAgents.map(async (agent) => {
                         try {
-                            const resp = await proxyToAgent(agent, inboundManager, tunnelBridge, 'GET', `/api/processes/summaries${url.search}`);
+                            const resp = await proxyToAgent(agent, agentManager, tunnelBridge, 'GET', `/api/processes/summaries${url.search}`);
                             if (resp.status !== 200) return [];
                             const data = JSON.parse(resp.body);
                             const summaries = data?.summaries || data?.processes || (Array.isArray(data) ? data : []);
@@ -520,7 +523,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                                 sseRelay,
                                 agentStore,
                                 tunnelBridge,
-                                inboundManager,
+                                agentManager,
                             });
                             await bridge.start();
                             teamsBridge = bridge;
@@ -598,8 +601,8 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 }
                 // Prefer inbound channel if agent is connected via call-home
                 const inboundId = agent.address.startsWith('inbound://') ? agent.address.replace('inbound://', '') : undefined;
-                process.stderr.write(`[agent-proxy] ${req.method} /api/${rest} → agent=${agent.name} inboundId=${inboundId ?? 'none'} hasAgent=${inboundId ? inboundManager.hasAgent(inboundId) : false}\n`);
-                if (inboundId && inboundManager.hasAgent(inboundId)) {
+                process.stderr.write(`[agent-proxy] ${req.method} /api/${rest} → agent=${agent.name} inboundId=${inboundId ?? 'none'} hasAgent=${inboundId ? agentManager.hasAgent(inboundId) : false}\n`);
+                if (inboundId && agentManager.hasAgent(inboundId)) {
                     try {
                         // Collect request body
                         const bodyChunks: Buffer[] = [];
@@ -613,7 +616,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                             // UTF-8 text, so compressed (gzip/br) responses would be garbled.
                             if (typeof value === 'string' && key.toLowerCase() !== 'accept-encoding') headers[key] = value;
                         }
-                        const response = await inboundManager.proxyRequest(
+                        const response = await agentManager.proxyRequest(
                             inboundId,
                             req.method ?? 'GET',
                             `/api/${rest}${url.search}`,
@@ -694,38 +697,11 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
     server.on('upgrade', (req, socket, head) => {
         const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
 
-        // Client WS at /ws — relay all agent messages
+        // Client WS at /ws — relay all agent messages via WebClientBridge
         if (url.pathname === '/ws') {
             const wss = new (require('ws').WebSocketServer)({ noServer: true });
             wss.handleUpgrade(req, socket, head, (ws: import('ws').WebSocket) => {
-                const onMessage = (msg: { agentId: string; agentName: string; data: string }) => {
-                    if (ws.readyState === 1) {
-                        // Parse the agent's JSON payload and inject agentId/agentName so the
-                        // browser's ProcessWebSocketConnection can pass isProcessEvent (which
-                        // requires a top-level `type` field). Sending the raw envelope
-                        // { agentId, agentName, data: "<json string>" } would fail that check
-                        // and silently drop every event in container mode.
-                        try {
-                            const parsed = JSON.parse(msg.data);
-                            ws.send(JSON.stringify({ ...parsed, agentId: msg.agentId, agentName: msg.agentName }));
-                        } catch {
-                            ws.send(JSON.stringify(msg));
-                        }
-                    }
-                };
-                wsRelay.on('message', onMessage);
-                ws.on('message', (data: Buffer) => {
-                    // Forward client messages to target agent
-                    try {
-                        const parsed = JSON.parse(data.toString());
-                        if (parsed.agentId && parsed.data) {
-                            wsRelay.send(parsed.agentId, typeof parsed.data === 'string' ? parsed.data : JSON.stringify(parsed.data));
-                        }
-                    } catch {
-                        // ignore malformed
-                    }
-                });
-                ws.on('close', () => wsRelay.off('message', onMessage));
+                webClientBridge.handleConnection(ws);
             });
             return;
         }
@@ -734,7 +710,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
         if (url.pathname === '/ws/agent-link') {
             const wss = new (require('ws').WebSocketServer)({ noServer: true });
             wss.handleUpgrade(req, socket, head, (ws: import('ws').WebSocket) => {
-                inboundManager.handleConnection(ws);
+                agentManager.handleConnection(ws);
             });
             return;
         }
@@ -750,8 +726,8 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
             healthMonitor.stop();
             tunnelBridge.stopAll();
             sseRelay.disconnectAll();
-            wsRelay.disconnectAll();
-            inboundManager.close();
+            agentManager.disconnectAllOutbound();
+            agentManager.close();
             agentStore.close();
             server.close();
         },
@@ -766,7 +742,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
  */
 async function proxyToAgent(
     agent: Agent,
-    inboundMgr: InboundAgentManager,
+    inboundMgr: AgentManager,
     bridge: TunnelBridge,
     method: string,
     apiPath: string,
@@ -785,7 +761,7 @@ async function proxyToAgent(
     return { status: resp.status, body, headers };
 }
 
-async function aggregateWorkspaces(agents: Agent[], bridge: TunnelBridge, inboundMgr: InboundAgentManager): Promise<RemoteWorkspace[]> {
+async function aggregateWorkspaces(agents: Agent[], bridge: TunnelBridge, inboundMgr: AgentManager): Promise<RemoteWorkspace[]> {
     const results = await Promise.all(
         agents
             .map(async (agent) => {
@@ -801,7 +777,7 @@ async function aggregateWorkspaces(agents: Agent[], bridge: TunnelBridge, inboun
                             agentOffline: true,
                         }));
                     }
-                    // Fall back to disconnected agent metadata from InboundAgentManager
+                    // Fall back to disconnected agent metadata from AgentManager
                     const inboundId = agent.address.startsWith('inbound://') ? agent.address.replace('inbound://', '') : undefined;
                     const disconnected = inboundId ? inboundMgr.getDisconnectedAgent(inboundId) : undefined;
                     if (disconnected?.workspaces?.length) {

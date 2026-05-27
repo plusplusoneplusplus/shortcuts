@@ -18,9 +18,10 @@ import type { WebSocketRelay, WSRelayMessage } from '../proxy/ws-relay';
 import type { SSERelay, SSEEvent } from '../proxy/sse-relay';
 import type { AgentStore } from '../store/agent-store';
 import type { TunnelBridge } from '../proxy/tunnel-bridge';
-import type { InboundAgentManager } from '../inbound/inbound-agent-manager';
+import type { AgentManager } from '../inbound/agent-manager';
 import type { ResolvedTeamsConfig } from '../config';
 import { MessagingStore } from './messaging-store';
+import { TeamsCommandExecutor, type ProcessInfo } from './teams-command-executor';
 
 export interface TeamsBridgeOptions {
     config: ResolvedTeamsConfig;
@@ -29,7 +30,7 @@ export interface TeamsBridgeOptions {
     sseRelay: SSERelay;
     agentStore: AgentStore;
     tunnelBridge: TunnelBridge;
-    inboundManager: InboundAgentManager;
+    agentManager: AgentManager;
 }
 
 export interface TeamsStatus {
@@ -51,6 +52,7 @@ export class TeamsBridge {
     private wsHandler: ((msg: WSRelayMessage) => void) | null = null;
     private sseHandler: ((event: SSEEvent) => void) | null = null;
     private reconnectHandler: ((agent: { id: string; name: string }) => void) | null = null;
+    private commandExecutor: TeamsCommandExecutor | null = null;
     /** Track latest assistant content per process (updated on each WS event) */
     private _lastAssistantContent = new Map<string, string>();
     private _workspaceNameCache = new Map<string, string>();
@@ -64,6 +66,47 @@ export class TeamsBridge {
 
     async start(): Promise<void> {
         this.store = new MessagingStore(this.opts.dataDir);
+
+        // Initialize the command executor for handling /slash commands locally
+        this.commandExecutor = new TeamsCommandExecutor({
+            agentManager: this.opts.agentManager,
+            agentStore: this.opts.agentStore,
+            messagingStore: this.store,
+            fetchProcess: async (agentId, processId, workspaceId) => {
+                try {
+                    const wsParam = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : '';
+                    const res = await this.fetchFromAgent(agentId, `/api/processes/${processId}${wsParam}`);
+                    if (!res.ok) return null;
+                    const body = await res.json() as Record<string, unknown>;
+                    const pd = (body.process ?? body) as Record<string, unknown>;
+                    return {
+                        id: pd.id as string,
+                        status: pd.status as string,
+                        title: pd.title as string | undefined,
+                        promptPreview: pd.promptPreview as string | undefined,
+                        startTime: pd.startTime as string | undefined,
+                        workspaceId: pd.workspaceId as string | undefined,
+                    };
+                } catch { return null; }
+            },
+            listProcesses: async (agentId, workspaceId) => {
+                try {
+                    const wsParam = workspaceId ? `?workspace=${encodeURIComponent(workspaceId)}&limit=10` : '?limit=10';
+                    const res = await this.fetchFromAgent(agentId, `/api/processes${wsParam}`);
+                    if (!res.ok) return [];
+                    const body = await res.json() as { processes?: Array<Record<string, unknown>> };
+                    return (body.processes ?? []).map(p => ({
+                        id: p.id as string,
+                        status: p.status as string,
+                        title: p.title as string | undefined,
+                        promptPreview: p.promptPreview as string | undefined,
+                        startTime: p.startTime as string | undefined,
+                        workspaceId: p.workspaceId as string | undefined,
+                    }));
+                } catch { return []; }
+            },
+        });
+        console.log('[teams-bridge] Command executor initialized');
 
         // Resolve team/channel names → IDs (create if missing) using az token
         await this.resolveTeamAndChannel();
@@ -121,7 +164,7 @@ export class TeamsBridge {
 
         // On agent reconnection, poll for missed completions
         this.reconnectHandler = (agent) => this.onAgentReconnected(agent);
-        this.opts.inboundManager.on('agent-connected', this.reconnectHandler);
+        this.opts.agentManager.on('agent-connected', this.reconnectHandler);
 
         // Start and wait for connection (with timeout to avoid hanging on slow MCP server)
         try {
@@ -149,7 +192,7 @@ export class TeamsBridge {
             this.sseHandler = null;
         }
         if (this.reconnectHandler) {
-            this.opts.inboundManager.off('agent-connected', this.reconnectHandler);
+            this.opts.agentManager.off('agent-connected', this.reconnectHandler);
             this.reconnectHandler = null;
         }
         await this.bot?.stop();
@@ -538,7 +581,7 @@ export class TeamsBridge {
                 console.log(`[teams-bridge]   turn[${i}] role=${t.role}${streaming} (${content.length} chars): ${content.substring(0, 80)}`);
             }
 
-            // Forward new user turns
+            // Forward new user turns (skip slash commands — they should not have been sent to agents)
             let currentUserCount = 0;
             for (const turn of turns) {
                 if (turn.role === 'user') currentUserCount++;
@@ -551,9 +594,11 @@ export class TeamsBridge {
                 for (let i = turns.length - 1; i >= 0; i--) {
                     if (turns[i].role === 'user') {
                         const content = (turns[i].content ?? turns[i].text ?? '').trim();
-                        if (content) {
+                        if (content && !content.startsWith('/')) {
                             console.log(`[teams-bridge] 📝 New user turn for ${processId} (${content.length} chars): ${content.substring(0, 100)}`);
                             await this.sendToTeams(processId, 'user', content, msg.agentId, msg.agentName, workspaceId);
+                        } else if (content.startsWith('/')) {
+                            console.log(`[teams-bridge] ⏭️ Skipping command turn for ${processId}: ${content.substring(0, 60)}`);
                         }
                         break;
                     }
@@ -641,12 +686,14 @@ export class TeamsBridge {
                 this.store!.setUserTurnCount(processId, currentUserCount);
                 this._lastAssistantContent.delete(processId);
 
-                // Forward the new user turn
+                // Forward the new user turn (skip slash commands)
                 for (let i = turns.length - 1; i >= 0; i--) {
                     if (turns[i].role === 'user') {
                         const content = (turns[i].content ?? turns[i].text ?? '').trim();
-                        if (content) {
+                        if (content && !content.startsWith('/')) {
                             await this.sendToTeams(processId, 'user', content, msg.agentId, msg.agentName, workspaceId);
+                        } else if (content.startsWith('/')) {
+                            console.log(`[teams-bridge] ⏭️ Skipping command turn in completion for ${processId}: ${content.substring(0, 60)}`);
                         }
                         break;
                     }
@@ -718,6 +765,39 @@ export class TeamsBridge {
     }
 
     /**
+     * Send a command response directly to Teams (not tied to a process).
+     */
+    private async sendCommandResponse(text: string, originalMsg: InboundTeamsMessage): Promise<void> {
+        if (!this.bot) {
+            console.warn(`[teams-bridge] ⚠️ sendCommandResponse skipped: bot not initialized`);
+            return;
+        }
+        const target = this.bot.getChannelId() ?? this.opts.config.channelId;
+        if (!target) {
+            console.warn(`[teams-bridge] ⚠️ sendCommandResponse skipped: no target available`);
+            return;
+        }
+        if (this.bot.getStatus() !== 'connected') {
+            console.warn(`[teams-bridge] ⚠️ sendCommandResponse skipped: bot status=${this.bot.getStatus()}`);
+            return;
+        }
+
+        // Format: sender name + command response
+        const senderName = originalMsg.senderName ?? 'User';
+        const formatted = `**${senderName}** ${text}`;
+
+        try {
+            const mentions = originalMsg.senderAadId && originalMsg.senderName
+                ? [{ aadId: originalMsg.senderAadId, displayName: originalMsg.senderName }]
+                : undefined;
+            const messageId = await this.bot.send(target, formatted, { mentions });
+            console.log(`[teams-bridge] ✅ Command response sent: ${messageId} (${text.length} chars)`);
+        } catch (err: any) {
+            console.error(`[teams-bridge] ❌ Failed to send command response: ${err.message}`);
+        }
+    }
+
+    /**
      * Send a message to Teams for a given process.
      */
     private async sendToTeams(
@@ -778,6 +858,14 @@ export class TeamsBridge {
             const messageId = await this.bot.send(target, teamsText, { mentions });
             console.log(`[teams-bridge] ✅ Sent message ${messageId} for process ${processId} (role=${role}, ${content.length} chars)`);
             this.store.bindMessage(messageId, processId, agentId, `${agentName}:${repoName}`, workspaceId);
+
+            // Reset forceNewTopic for the sender — agent has responded, session is active
+            if (sender?.senderAadId && this.commandExecutor) {
+                const state = this.commandExecutor.getUserState(sender.senderAadId);
+                if (state.forceNewTopic) {
+                    this.commandExecutor.updateUserState(sender.senderAadId, { forceNewTopic: false });
+                }
+            }
         } catch (err: any) {
             if (err?.message?.includes('NotFound') && this.opts.config.teamName) {
                 console.warn(`[teams-bridge] Channel NotFound — re-resolving...`);
@@ -863,12 +951,37 @@ export class TeamsBridge {
     private async onInboundMessage(msg: InboundTeamsMessage): Promise<void> {
         if (!this.store) return;
 
+        const text = msg.text.trim();
+        const _debug = this.opts.config.debug ?? false;
+        const userKey = msg.senderAadId ?? msg.senderName ?? 'unknown';
+
+        console.log(`[teams-bridge] 📨 Inbound message: id=${msg.messageId}, sender=${msg.senderName ?? 'unknown'}, text="${text.substring(0, 60)}"`);
+
+        // ── Slash command interception ──
+        // ALL messages starting with / are handled locally, NEVER forwarded to agents.
+        if (text.startsWith('/')) {
+            if (this.commandExecutor) {
+                console.log(`[teams-bridge] 🔧 Detected slash command: "${text.substring(0, 60)}"`);
+                const result = await this.commandExecutor.tryExecute(msg);
+                if (result.handled && result.response) {
+                    console.log(`[teams-bridge] 🔧 Command executed locally, sending response (${result.response.length} chars)`);
+                    await this.sendCommandResponse(result.response, msg);
+                    console.log(`[teams-bridge] 🔧 Command response sent to Teams`);
+                } else {
+                    // Unknown /command — respond with help hint, still don't forward
+                    console.log(`[teams-bridge] 🔧 Unknown slash command: "${text.substring(0, 60)}" — not forwarding to agent`);
+                    await this.sendCommandResponse(`❓ Unknown command: \`${text.split(/\s/)[0]}\`<br>Type \`/help\` for available commands.`, msg);
+                }
+            } else {
+                console.log(`[teams-bridge] 🔧 Slash command received but executor not initialized — ignoring`);
+            }
+            return;
+        }
+
         let processId: string | undefined;
         let agentId: string | undefined;
         let workspaceId: string | undefined;
         let isFollowUp = false;
-        const text = msg.text.trim();
-        const _debug = this.opts.config.debug ?? false;
 
         if (_debug) console.log(`[teams-bridge] onInboundMessage: id=${msg.messageId}, replyToMessageId=${msg.replyToMessageId ?? '(none)'}, sender=${msg.senderName}, text="${text.substring(0, 60)}"`);
 
@@ -926,13 +1039,17 @@ export class TeamsBridge {
                 msg = { ...msg, text: stripped };
             } else {
                 msg = { ...msg, text: stripped };
-                ({ processId, agentId } = await this.resolveGlobalSession(senderId, stripped));
+                const executorState = this.commandExecutor?.getUserState(userKey);
+                ({ processId, agentId } = await this.resolveGlobalSession(senderId, stripped, executorState?.selectedAgentId ?? undefined, executorState?.selectedWorkspaceId ?? undefined));
                 isFollowUp = false;
             }
         }
 
-        // No reply, no [global] → continue the last active session
-        if (!isFollowUp && !processId) {
+        // Check if command executor flagged "force new topic" for this user
+        const forceNew = this.commandExecutor?.getUserState(userKey)?.forceNewTopic ?? false;
+
+        // No reply, no [global] → continue the last active session (unless forced new)
+        if (!isFollowUp && !processId && !forceNew) {
             const last = this.store.getLastActiveSession();
             if (last) {
                 processId = last.processId;
@@ -942,11 +1059,24 @@ export class TeamsBridge {
             }
         }
 
-        // Still nothing → create a new chat via global session
+        // Still nothing (or forced new) → create a new chat via global session
         const senderId = msg.senderAadId ?? msg.senderName ?? 'unknown';
         if (!isFollowUp || !processId || !agentId) {
-            ({ processId, agentId } = await this.resolveGlobalSession(senderId, msg.text));
+            // Use the user's selected agent/workspace from command executor if available
+            const executorState = this.commandExecutor?.getUserState(userKey);
+            const selectedAgentId = executorState?.selectedAgentId ?? undefined;
+            const selectedWorkspaceId = executorState?.selectedWorkspaceId ?? undefined;
+
+            if (forceNew) {
+                console.log(`[teams-bridge] 🆕 Forced new topic for user ${userKey} (agent=${selectedAgentId}, workspace=${selectedWorkspaceId})`);
+                this.store.clearGlobalSession(senderId);
+            }
+            ({ processId, agentId } = await this.resolveGlobalSession(senderId, msg.text, selectedAgentId, selectedWorkspaceId));
             isFollowUp = false;
+            // Clear the force flag after creating new session
+            if (forceNew) {
+                this.commandExecutor?.updateUserState(userKey, { forceNewTopic: false });
+            }
         }
 
         if (!agentId) {
@@ -980,22 +1110,26 @@ export class TeamsBridge {
     }
 
     // ── Global session ────────────────────────────────────
-    private async resolveGlobalSession(senderId: string, text: string): Promise<{ processId: string; agentId: string }> {
+    private async resolveGlobalSession(senderId: string, text: string, preferredAgentId?: string, preferredWorkspaceId?: string): Promise<{ processId: string; agentId: string }> {
         if (!this.store) throw new Error('Store not initialized');
 
         const existing = this.store.getGlobalSession(senderId);
         if (existing) return existing;
 
-        const agentId = this.opts.config.defaultAgentId
+        const agentId = preferredAgentId
+            ?? this.opts.config.defaultAgentId
             ?? this.opts.agentStore.list().find(a => a.status === 'online')?.id;
         if (!agentId) throw new Error('No online agent available for global session');
+
+        const workspaceId = preferredWorkspaceId ?? 'ws-global';
+        console.log(`[teams-bridge] Creating new chat: agent=${agentId}, workspace=${workspaceId}`);
 
         const res = await this.fetchFromAgent(agentId, '/api/queue', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 type: 'chat',
-                payload: { workspaceId: 'ws-global', prompt: text, mode: 'ask' },
+                payload: { workspaceId, prompt: text, mode: 'ask' },
             }),
         });
         const { id: processId } = await res.json() as { id: string };
@@ -1010,13 +1144,13 @@ export class TeamsBridge {
     }
 
     /**
-     * Fetch from an agent — routes through inbound WS proxy for call-home agents,
+     * Fetch from an agent — routes through WSRelay for call-home agents,
      * or uses direct HTTP fetch for tunnel/direct agents.
      */
     private async fetchFromAgent(agentId: string, apiPath: string, options?: { method?: string; body?: string; headers?: Record<string, string> }): Promise<{ ok: boolean; status: number; json: () => Promise<any>; text: () => Promise<string> }> {
         // First: check if agentId IS the inbound registration ID directly
-        if (this.opts.inboundManager?.hasAgent(agentId)) {
-            return this.proxyViaInbound(agentId, apiPath, options);
+        if (this.opts.agentManager?.hasAgent(agentId)) {
+            return this.proxyViaRelay(agentId, apiPath, options);
         }
 
         // Second: look up in agent store (agentId may be the store UUID)
@@ -1029,13 +1163,13 @@ export class TeamsBridge {
             return { ok: false, status: 404, json: async () => ({ error: 'Agent not found' }), text: async () => 'Agent not found' };
         }
 
-        // For inbound agents found in store, extract inboundId and proxy
+        // For inbound agents found in store, extract inboundId and proxy via relay
         if (agent.address.startsWith('inbound://')) {
             const inboundId = agent.address.replace('inbound://', '');
-            if (!this.opts.inboundManager?.hasAgent(inboundId)) {
+            if (!this.opts.agentManager?.hasAgent(inboundId)) {
                 return { ok: false, status: 503, json: async () => ({ error: 'Agent not connected' }), text: async () => 'Agent not connected' };
             }
-            return this.proxyViaInbound(inboundId, apiPath, options);
+            return this.proxyViaRelay(inboundId, apiPath, options);
         }
 
         // Direct HTTP fetch for tunnel/direct agents
@@ -1050,10 +1184,11 @@ export class TeamsBridge {
         return res;
     }
 
-    private async proxyViaInbound(inboundId: string, apiPath: string, options?: { method?: string; body?: string; headers?: Record<string, string> }): Promise<{ ok: boolean; status: number; json: () => Promise<any>; text: () => Promise<string> }> {
+    /** Proxy an HTTP request to an agent via WSRelay → AgentManager. */
+    private async proxyViaRelay(agentId: string, apiPath: string, options?: { method?: string; body?: string; headers?: Record<string, string> }): Promise<{ ok: boolean; status: number; json: () => Promise<any>; text: () => Promise<string> }> {
         try {
-            const resp = await this.opts.inboundManager!.proxyRequest(
-                inboundId,
+            const resp = await this.opts.wsRelay.proxyToAgent(
+                agentId,
                 options?.method ?? 'GET',
                 apiPath,
                 options?.headers ?? {},

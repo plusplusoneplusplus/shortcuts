@@ -3,7 +3,7 @@
  *
  * Verifies that:
  * - The proxy extracts the inbound registration ID from the agent store address
- * - Requests are correctly routed via the InboundAgentManager
+ * - Requests are correctly routed via the AgentManager
  * - Hop-by-hop headers are filtered from responses
  * - Correct content-length is set on forwarded responses
  */
