@@ -2,9 +2,13 @@
  * RalphLaunchDialog — lightweight dialog for launching Ralph from a goal file.
  * Used by the notes editor when editing a goal.md / *.goal.md file.
  */
-import { useState } from 'react';
-import { getApiBase, isRalphEnabled } from '../utils/config';
+import { useEffect, useState } from 'react';
+import { getApiBase, getDefaultProvider } from '../utils/config';
 import { useModels } from '../hooks/useModels';
+import { useAgentProviders } from '../hooks/useAgentProviders';
+import { getSpaCocClient } from '../api/cocClient';
+import { AgentSelectorChip } from '../features/chat/AgentSelectorChip';
+import type { ChatProvider } from '../features/chat/AgentSelectorChip';
 
 export interface RalphLaunchDialogProps {
     open: boolean;
@@ -20,6 +24,16 @@ export interface RalphLaunchDialogProps {
     onLaunched: (processId: string) => void;
 }
 
+function isChatProvider(value: unknown): value is ChatProvider {
+    return value === 'copilot' || value === 'codex' || value === 'claude';
+}
+
+function isSelectableProvider(provider: ChatProvider, providers: Array<{ id: string; enabled: boolean; available: boolean }>): boolean {
+    if (provider === 'copilot') return true;
+    const status = providers.find(p => p.id === provider);
+    return status?.enabled === true && status?.available === true;
+}
+
 export function RalphLaunchDialog({
     open,
     workspaceId,
@@ -30,10 +44,49 @@ export function RalphLaunchDialog({
     onLaunched,
 }: RalphLaunchDialogProps) {
     const { models } = useModels();
+    const { providers: agentProviders, loading: providersLoading } = useAgentProviders();
     const enabledModels = models.filter(m => m.enabled);
     const [selectedModel, setSelectedModel] = useState('');
+    const [selectedProvider, setSelectedProvider] = useState<ChatProvider>(() => getDefaultProvider());
     const [launching, setLaunching] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const getSelectableDefaultProvider = () => {
+        const configuredDefault = getDefaultProvider();
+        return isSelectableProvider(configuredDefault, agentProviders) ? configuredDefault : 'copilot';
+    };
+
+    useEffect(() => {
+        const fallbackProvider = getSelectableDefaultProvider();
+        let cancelled = false;
+        getSpaCocClient().preferences.getRepo(workspaceId)
+            .then((prefs: any) => {
+                if (cancelled) return;
+                const last = prefs?.lastChatProvider;
+                if (isChatProvider(last) && isSelectableProvider(last, agentProviders)) {
+                    setSelectedProvider(last);
+                    return;
+                }
+                setSelectedProvider(fallbackProvider);
+            })
+            .catch(() => {
+                if (!cancelled) setSelectedProvider(fallbackProvider);
+            });
+        return () => { cancelled = true; };
+    }, [workspaceId, agentProviders]);
+
+    useEffect(() => {
+        if (selectedProvider === 'copilot') return;
+        if (!isSelectableProvider(selectedProvider, agentProviders)) {
+            setSelectedProvider(getSelectableDefaultProvider());
+        }
+    }, [agentProviders, selectedProvider]);
+
+    function handleProviderChange(provider: ChatProvider) {
+        setSelectedProvider(provider);
+        getSpaCocClient().preferences.patchRepo(workspaceId, { lastChatProvider: provider })
+            .catch(() => { /* non-fatal */ });
+    }
 
     if (!open) return null;
 
@@ -46,7 +99,7 @@ export function RalphLaunchDialog({
         setLaunching(true);
         setError(null);
         try {
-            const body: Record<string, unknown> = { goalSpec: trimmed, workspaceId };
+            const body: Record<string, unknown> = { goalSpec: trimmed, workspaceId, provider: selectedProvider };
             if (folderPath) body.folderPath = folderPath;
             if (selectedModel) body.config = { model: selectedModel };
             const resp = await fetch(`${getApiBase()}/ralph-launch`, {
@@ -99,6 +152,22 @@ export function RalphLaunchDialog({
                     {/* Source label */}
                     <div className="text-xs text-[#848484]">
                         Goal source: <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc]">{sourceLabel}</span>
+                    </div>
+
+                    {/* Provider selector */}
+                    <div>
+                        <div className="block text-xs text-[#848484] mb-1">
+                            Agent:
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <AgentSelectorChip
+                                providers={agentProviders}
+                                loading={providersLoading}
+                                selected={selectedProvider}
+                                onChange={handleProviderChange}
+                                disabled={launching}
+                            />
+                        </div>
                     </div>
 
                     {/* Model selector */}

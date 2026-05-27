@@ -14,6 +14,34 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => 'http://localhost:4000/api',
     isRalphEnabled: () => true,
+    getDefaultProvider: () => 'copilot',
+}));
+
+const {
+    mockGetRepoPreferences,
+    mockPatchRepoPreferences,
+    mockAgentProviders,
+} = vi.hoisted(() => ({
+    mockGetRepoPreferences: vi.fn().mockResolvedValue({}),
+    mockPatchRepoPreferences: vi.fn().mockResolvedValue({}),
+    mockAgentProviders: [
+        { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+        { id: 'codex', label: 'Codex', enabled: true, available: true },
+        { id: 'claude', label: 'Claude', enabled: false, available: false },
+    ],
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        preferences: {
+            getRepo: mockGetRepoPreferences,
+            patchRepo: mockPatchRepoPreferences,
+        },
+    }),
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/hooks/useAgentProviders', () => ({
+    useAgentProviders: () => ({ providers: mockAgentProviders, loading: false, error: null, reload: vi.fn() }),
 }));
 
 const mockModels = [
@@ -49,6 +77,10 @@ describe('RalphLaunchDialog', () => {
     beforeEach(() => {
         defaultProps.onClose.mockClear();
         defaultProps.onLaunched.mockClear();
+        mockGetRepoPreferences.mockReset();
+        mockGetRepoPreferences.mockResolvedValue({});
+        mockPatchRepoPreferences.mockReset();
+        mockPatchRepoPreferences.mockResolvedValue({});
         vi.stubGlobal('fetch', vi.fn());
     });
 
@@ -119,6 +151,7 @@ describe('RalphLaunchDialog', () => {
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
         expect(body.goalSpec).toBe('## Goal\nRefactor auth module');
         expect(body.workspaceId).toBe('ws-123');
+        expect(body.provider).toBe('copilot');
     });
 
     it('includes model in config when selected', async () => {
@@ -142,6 +175,52 @@ describe('RalphLaunchDialog', () => {
 
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
         expect(body.config).toEqual({ model: 'model-b' });
+    });
+
+    it('includes selected provider in launch payload', async () => {
+        const mockFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ processId: 'pid-provider' }),
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        render(<RalphLaunchDialog {...defaultProps} />);
+
+        fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+        fireEvent.click(screen.getByTestId('agent-option-codex'));
+        fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
+
+        await waitFor(() => {
+            expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-provider');
+        });
+
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body.provider).toBe('codex');
+        expect(mockPatchRepoPreferences).toHaveBeenCalledWith('ws-123', { lastChatProvider: 'codex' });
+    });
+
+    it('uses last chat provider preference when selectable', async () => {
+        mockGetRepoPreferences.mockResolvedValue({ lastChatProvider: 'codex' });
+        const mockFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ processId: 'pid-last-provider' }),
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        render(<RalphLaunchDialog {...defaultProps} />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Codex');
+        });
+
+        fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
+
+        await waitFor(() => {
+            expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-last-provider');
+        });
+
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body.provider).toBe('codex');
     });
 
     it('includes folderPath when provided', async () => {
