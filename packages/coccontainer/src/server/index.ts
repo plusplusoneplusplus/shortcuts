@@ -17,7 +17,6 @@ import { TunnelBridge } from '../proxy/tunnel-bridge';
 import { addCachedWorkspace, type RemoteWorkspace } from '../proxy/workspaces';
 import { SSERelay } from '../proxy/sse-relay';
 import { WebSocketRelay } from '../proxy/ws-relay';
-import { AgentConnectionManager } from '../proxy/agent-connection-manager';
 import { WebClientBridge } from '../proxy/webclient-bridge';
 import { AgentHealthMonitor } from './health-monitor';
 import { InboundAgentManager } from '../inbound';
@@ -63,9 +62,8 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
     const tunnelBridge = new TunnelBridge({ basePort: config.tunnelBridgeBasePort });
     const sseRelay = new SSERelay();
     const wsRelay = new WebSocketRelay();
-    const agentConnMgr = new AgentConnectionManager(wsRelay);
-    const webClientBridge = new WebClientBridge({ wsRelay, agentConnMgr });
     const inboundManager = new InboundAgentManager();
+    const webClientBridge = new WebClientBridge({ wsRelay, inboundManager });
     inboundManager.startHeartbeatCheck(30_000);
     const healthMonitor = new AgentHealthMonitor(agentStore, config.healthCheckIntervalMs, tunnelBridge, inboundManager);
 
@@ -82,7 +80,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
         if (agent.address.startsWith('inbound://')) continue;
         const effectiveAddr = tunnelBridge.getLocalUrl(agent.id) || agent.address;
         sseRelay.connect(agent.id, agent.name, effectiveAddr);
-        agentConnMgr.connect(agent.id, agent.name, effectiveAddr);
+        inboundManager.connectOutbound(agent.id, agent.name, effectiveAddr);
     }
 
     // Inbound agent lifecycle — auto-register/deregister agents that call home
@@ -193,7 +191,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 }
                 const effectiveAddr = tunnelBridge.getLocalUrl(agent.id) || agent.address;
                 sseRelay.connect(agent.id, agent.name, effectiveAddr);
-                agentConnMgr.connect(agent.id, agent.name, effectiveAddr);
+                inboundManager.connectOutbound(agent.id, agent.name, effectiveAddr);
                 const bridgeUrl = tunnelBridge.getLocalUrl(agent.id);
                 return sendJson(res, { ...agent, bridgeUrl: bridgeUrl || undefined }, 201);
             }
@@ -204,7 +202,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 if (agent) {
                     tunnelBridge.stop(agent.id);
                     sseRelay.disconnect(agent.id);
-                    agentConnMgr.disconnect(agent.id);
+                    inboundManager.disconnectOutbound(agent.id);
                 }
                 const removed = agentStore.remove(agentId);
                 return sendJson(res, { removed });
@@ -727,7 +725,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
             healthMonitor.stop();
             tunnelBridge.stopAll();
             sseRelay.disconnectAll();
-            agentConnMgr.disconnectAll();
+            inboundManager.disconnectAllOutbound();
             inboundManager.close();
             agentStore.close();
             server.close();

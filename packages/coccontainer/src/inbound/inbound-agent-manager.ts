@@ -267,6 +267,99 @@ export class InboundAgentManager extends EventEmitter {
             pending.reject(new Error('Manager closed'));
         }
         this.pendingRequests.clear();
+        // Close outbound connections
+        for (const [id] of this.outboundConnections) {
+            this.disconnectOutbound(id);
+        }
+    }
+
+    // ========================================================================
+    // Outbound connections (container connects TO agent)
+    // ========================================================================
+
+    private outboundConnections = new Map<string, WebSocket.WebSocket>();
+    private outboundReconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    private outboundMeta = new Map<string, { name: string; address: string; wsPath: string }>();
+
+    /**
+     * Connect outbound to an agent's WebSocket endpoint.
+     * Events from the agent are emitted via 'agent-event' (same as call-home agents).
+     */
+    connectOutbound(agentId: string, agentName: string, agentAddress: string, wsPath: string = '/ws'): void {
+        if (this.outboundConnections.has(agentId)) {
+            this.disconnectOutbound(agentId);
+        }
+
+        this.outboundMeta.set(agentId, { name: agentName, address: agentAddress, wsPath });
+        let normalizedAddr = agentAddress;
+        if (!/^(wss?|https?):\/\//i.test(normalizedAddr)) {
+            normalizedAddr = `ws://${normalizedAddr}`;
+        }
+        const wsUrl = normalizedAddr.replace(/^http/i, 'ws') + wsPath;
+        const ws = new WebSocket.WebSocket(wsUrl);
+
+        ws.on('open', () => {
+            this.outboundConnections.set(agentId, ws);
+            console.log(`[agent-mgr] Connected outbound to ${agentName} (${agentId}) at ${wsUrl}`);
+        });
+
+        ws.on('message', (data: WebSocket.RawData) => {
+            this.emit('agent-event', agentId, agentName, data.toString());
+        });
+
+        ws.on('close', () => {
+            this.outboundConnections.delete(agentId);
+            console.log(`[agent-mgr] Outbound disconnected from ${agentName} (${agentId}), reconnecting in 5s`);
+            this.scheduleOutboundReconnect(agentId);
+        });
+
+        ws.on('error', (err) => {
+            this.outboundConnections.delete(agentId);
+            console.error(`[agent-mgr] Outbound error for ${agentName} (${agentId}):`, err.message);
+            this.scheduleOutboundReconnect(agentId);
+        });
+    }
+
+    /** Send a raw WS message to an outbound-connected agent. */
+    sendOutbound(agentId: string, data: string): boolean {
+        const ws = this.outboundConnections.get(agentId);
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(data);
+            return true;
+        }
+        return false;
+    }
+
+    /** Disconnect an outbound agent connection. */
+    disconnectOutbound(agentId: string): void {
+        const timer = this.outboundReconnectTimers.get(agentId);
+        if (timer) { clearTimeout(timer); this.outboundReconnectTimers.delete(agentId); }
+        this.outboundMeta.delete(agentId);
+        const ws = this.outboundConnections.get(agentId);
+        if (ws) {
+            ws.close();
+            this.outboundConnections.delete(agentId);
+        }
+    }
+
+    /** Disconnect all outbound connections. */
+    disconnectAllOutbound(): void {
+        for (const [id] of this.outboundConnections) {
+            this.disconnectOutbound(id);
+        }
+    }
+
+    private scheduleOutboundReconnect(agentId: string): void {
+        if (this.outboundReconnectTimers.has(agentId)) return;
+        const meta = this.outboundMeta.get(agentId);
+        if (!meta) return;
+        this.outboundReconnectTimers.set(agentId, setTimeout(() => {
+            this.outboundReconnectTimers.delete(agentId);
+            if (!this.outboundConnections.has(agentId)) {
+                console.log(`[agent-mgr] Reconnecting outbound to ${meta.name} (${agentId})`);
+                this.connectOutbound(agentId, meta.name, meta.address, meta.wsPath);
+            }
+        }, 5000));
     }
 
     // ========================================================================

@@ -24,19 +24,19 @@ function createMockWs() {
     return ws;
 }
 
-function createMockAgentConnMgr() {
-    return { send: vi.fn().mockReturnValue(true) };
+function createMockInboundManager() {
+    return { sendOutbound: vi.fn().mockReturnValue(true) };
 }
 
 describe('WebClientBridge', () => {
     let relay: ReturnType<typeof createMockWsRelay>;
-    let agentConnMgr: ReturnType<typeof createMockAgentConnMgr>;
+    let inboundManager: ReturnType<typeof createMockInboundManager>;
     let bridge: WebClientBridge;
 
     beforeEach(() => {
         relay = createMockWsRelay();
-        agentConnMgr = createMockAgentConnMgr();
-        bridge = new WebClientBridge({ wsRelay: relay as any, agentConnMgr: agentConnMgr as any });
+        inboundManager = createMockInboundManager();
+        bridge = new WebClientBridge({ wsRelay: relay as any, inboundManager: inboundManager as any });
     });
 
     it('tracks connected clients', () => {
@@ -81,7 +81,7 @@ describe('WebClientBridge', () => {
         expect(ws.send).not.toHaveBeenCalled();
     });
 
-    it('forwards browser messages to agent via agentConnMgr', () => {
+    it('forwards browser messages to agent via inboundManager', () => {
         const ws = createMockWs();
         bridge.handleConnection(ws as any);
 
@@ -90,7 +90,7 @@ describe('WebClientBridge', () => {
             data: { type: 'subscribe', processId: 'proc-1' },
         })));
 
-        expect(agentConnMgr.send).toHaveBeenCalledWith('agent-1', JSON.stringify({ type: 'subscribe', processId: 'proc-1' }));
+        expect(inboundManager.sendOutbound).toHaveBeenCalledWith('agent-1', JSON.stringify({ type: 'subscribe', processId: 'proc-1' }));
     });
 
     it('unsubscribes from wsRelay on client disconnect', () => {
@@ -144,6 +144,6 @@ describe('WebClientBridge', () => {
         ws.emit('message', Buffer.from('not json'));
         ws.emit('message', Buffer.from('{}'));
 
-        expect(agentConnMgr.send).not.toHaveBeenCalled();
+        expect(inboundManager.sendOutbound).not.toHaveBeenCalled();
     });
 });
