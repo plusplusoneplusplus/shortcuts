@@ -63,8 +63,14 @@ interface Harness {
     aiService: { sendMessage: ReturnType<typeof vi.fn> };
 }
 
-async function makeHarness(opts?: { withDataDir?: boolean }): Promise<Harness> {
+async function makeHarness(opts?: { withDataDir?: boolean; seedEnabled?: boolean }): Promise<Harness> {
     const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'prompt-suggest-test-'));
+    if (opts?.withDataDir && opts.seedEnabled) {
+        await fs.writeFile(
+            path.join(dataDir, 'preferences.json'),
+            JSON.stringify({ global: { promptAutocomplete: { enabled: true } } }),
+        );
+    }
     const store = {
         getBestPromptCompletion: vi.fn(),
         getPromptAutocompleteContext: vi.fn(),
@@ -96,7 +102,7 @@ async function disposeHarness(h: Harness): Promise<void> {
 
 describe('GET /api/prompt-suggestions', () => {
     let h: Harness;
-    beforeEach(async () => { h = await makeHarness(); });
+    beforeEach(async () => { h = await makeHarness({ withDataDir: true, seedEnabled: true }); });
     afterEach(async () => { await disposeHarness(h); });
 
     it('returns the completion when store finds one', async () => {
@@ -177,13 +183,14 @@ describe('GET /api/prompt-suggestions — preference gate', () => {
     beforeEach(async () => { h = await makeHarness({ withDataDir: true }); });
     afterEach(async () => { await disposeHarness(h); });
 
-    it('serves suggestions when promptAutocomplete preference is absent', async () => {
+    it('returns null when promptAutocomplete preference is absent (disabled by default)', async () => {
         h.store.getBestPromptCompletion.mockReturnValue({
             completion: 'X',
             source: 'initial',
         });
         const r = await request(`${h.base}/api/prompt-suggestions?prefix=hello`);
-        expect(r.body.completion).toBe('X');
+        expect(r.body.completion).toBeNull();
+        expect(h.store.getBestPromptCompletion).not.toHaveBeenCalled();
     });
 
     it('serves suggestions when promptAutocomplete.enabled is true', async () => {
@@ -283,7 +290,11 @@ describe('GET /api/prompt-suggestions — preference gate', () => {
         expect(h.aiService.sendMessage).toHaveBeenCalledTimes(1);
     });
 
-    it('treats mode=ai as an explicit AI opt-in when AI preferences are absent', async () => {
+    it('treats mode=ai as an explicit AI opt-in when the master toggle is on and AI preferences are absent', async () => {
+        await fs.writeFile(
+            path.join(h.dataDir, 'preferences.json'),
+            JSON.stringify({ global: { promptAutocomplete: { enabled: true } } }),
+        );
         h.store.getBestPromptCompletion.mockReturnValue(null);
         h.store.getPromptAutocompleteContext.mockReturnValue({
             exactPrefixMatches: [],

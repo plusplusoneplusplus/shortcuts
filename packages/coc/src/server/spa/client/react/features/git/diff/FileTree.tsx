@@ -214,6 +214,12 @@ function buildCopyPathMenuItems(filePath: string, repoRoot?: string): ContextMen
 
 // ----- FlatFileList -----
 
+/** Per-file classification badge info for rail display. */
+export interface FileBadgeInfo {
+    category: 'logic' | 'mechanical' | 'test' | 'generated';
+    intensity: 'high' | 'low';
+}
+
 export interface FlatFileListProps {
     files: FileChange[];
     onFileSelect: (filePath: string) => void;
@@ -229,6 +235,69 @@ export interface FlatFileListProps {
     repoRoot?: string;
     /** When provided, files returning true are visually dimmed (e.g. filtered by classification). */
     isFileDimmed?: (filePath: string) => boolean;
+    /** When provided, renders a small classification badge before the filename. */
+    getFileBadge?: (filePath: string) => FileBadgeInfo | undefined;
+    /** Reviewed files (explicit "mark reviewed" state). Renders a ✓ indicator. */
+    reviewedFiles?: ReadonlySet<string>;
+    /** Visited files (opened but not yet reviewed). Renders a subtle • indicator. */
+    visitedFiles?: ReadonlySet<string>;
+}
+
+const CATEGORY_BADGE_STYLE: Record<FileBadgeInfo['category'], { label: string; cls: string }> = {
+    logic:      { label: 'L', cls: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200' },
+    test:       { label: 'T', cls: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200' },
+    mechanical: { label: 'M', cls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200' },
+    generated:  { label: 'G', cls: 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300' },
+};
+
+function CategoryBadge({ badge, testId }: { badge: FileBadgeInfo; testId?: string }) {
+    const style = CATEGORY_BADGE_STYLE[badge.category];
+    const ring = badge.intensity === 'high' ? ' ring-1 ring-current/30 font-bold' : '';
+    return (
+        <span
+            className={`inline-flex items-center justify-center w-4 h-3.5 text-[9px] leading-none rounded flex-shrink-0 ${style.cls}${ring}`}
+            title={`${badge.category} (${badge.intensity})`}
+            data-testid={testId}
+        >
+            {style.label}
+        </span>
+    );
+}
+
+function ReviewStateIndicator({
+    isReviewed,
+    isVisited,
+    testIdReviewed,
+    testIdVisited,
+}: {
+    isReviewed?: boolean;
+    isVisited?: boolean;
+    testIdReviewed?: string;
+    testIdVisited?: string;
+}) {
+    if (isReviewed) {
+        return (
+            <span
+                className="text-emerald-600 dark:text-emerald-400 text-[11px] flex-shrink-0"
+                title="Marked reviewed"
+                data-testid={testIdReviewed}
+            >
+                ✓
+            </span>
+        );
+    }
+    if (isVisited) {
+        return (
+            <span
+                className="text-[#848484] text-[11px] flex-shrink-0"
+                title="Visited (not reviewed)"
+                data-testid={testIdVisited}
+            >
+                •
+            </span>
+        );
+    }
+    return null;
 }
 
 export function FlatFileList({
@@ -242,6 +311,9 @@ export function FlatFileList({
     renderActions,
     repoRoot,
     isFileDimmed,
+    getFileBadge,
+    reviewedFiles,
+    visitedFiles,
 }: FlatFileListProps) {
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; filePath: string } | null>(null);
 
@@ -251,6 +323,9 @@ export function FlatFileList({
                 const displayStatus = normalizeStatus(file.status);
                 const count = fileCommentMap.get(file.path) ?? 0;
                 const dimmed = isFileDimmed?.(file.path) ?? false;
+                const badge = getFileBadge?.(file.path);
+                const isReviewed = reviewedFiles?.has(file.path) ?? false;
+                const isVisited = !isReviewed && (visitedFiles?.has(file.path) ?? false);
                 return (
                     <div key={i} style={dimmed ? { opacity: 0.4 } : undefined}>
                         <button
@@ -265,6 +340,18 @@ export function FlatFileList({
                             }}
                             data-testid={`${fileTestIdPrefix}-${file.path}`}
                         >
+                            {badge && (
+                                <CategoryBadge
+                                    badge={badge}
+                                    testId={`flat-file-category-badge-${file.path}`}
+                                />
+                            )}
+                            <ReviewStateIndicator
+                                isReviewed={isReviewed}
+                                isVisited={isVisited}
+                                testIdReviewed={`flat-file-reviewed-${file.path}`}
+                                testIdVisited={`flat-file-visited-${file.path}`}
+                            />
                             {count > 0 && (
                                 <span
                                     className="text-xs text-[#848484] mr-0.5 flex-shrink-0"
@@ -337,6 +424,12 @@ interface FileTreeViewProps {
     repoRoot?: string;
     /** When provided, files returning true are visually dimmed (e.g. filtered by classification). */
     isFileDimmed?: (filePath: string) => boolean;
+    /** When provided, renders a small classification badge before the filename. */
+    getFileBadge?: (filePath: string) => FileBadgeInfo | undefined;
+    /** Reviewed files (explicit "mark reviewed" state). */
+    reviewedFiles?: ReadonlySet<string>;
+    /** Visited files (opened but not yet reviewed). */
+    visitedFiles?: ReadonlySet<string>;
 }
 
 export function FileTreeView({
@@ -354,6 +447,9 @@ export function FileTreeView({
     renderActions,
     repoRoot,
     isFileDimmed,
+    getFileBadge,
+    reviewedFiles,
+    visitedFiles,
 }: FileTreeViewProps) {
     return (
         <div className="flex flex-col gap-0.5" data-testid={depth === 0 ? 'commit-file-list' : undefined}>
@@ -375,6 +471,9 @@ export function FileTreeView({
                         renderActions={renderActions}
                         repoRoot={repoRoot}
                         isFileDimmed={isFileDimmed}
+                        getFileBadge={getFileBadge}
+                        reviewedFiles={reviewedFiles}
+                        visitedFiles={visitedFiles}
                     />
                 ) : (
                     <FileEntry
@@ -393,6 +492,9 @@ export function FileTreeView({
                         renderActions={renderActions}
                         repoRoot={repoRoot}
                         isFileDimmed={isFileDimmed}
+                        getFileBadge={getFileBadge}
+                        reviewedFiles={reviewedFiles}
+                        visitedFiles={visitedFiles}
                     />
                 ),
             )}
@@ -415,6 +517,9 @@ function DirEntry({
     renderActions,
     repoRoot,
     isFileDimmed,
+    getFileBadge,
+    reviewedFiles,
+    visitedFiles,
 }: {
     node: DirNode;
     depth: number;
@@ -430,6 +535,9 @@ function DirEntry({
     renderActions?: (node: FileNode) => React.ReactNode;
     repoRoot?: string;
     isFileDimmed?: (filePath: string) => boolean;
+    getFileBadge?: (filePath: string) => FileBadgeInfo | undefined;
+    reviewedFiles?: ReadonlySet<string>;
+    visitedFiles?: ReadonlySet<string>;
 }) {
     const [open, setOpen] = useState(true);
 
@@ -464,6 +572,9 @@ function DirEntry({
                     renderActions={renderActions}
                     repoRoot={repoRoot}
                     isFileDimmed={isFileDimmed}
+                    getFileBadge={getFileBadge}
+                    reviewedFiles={reviewedFiles}
+                    visitedFiles={visitedFiles}
                 />
             )}
         </div>
@@ -485,6 +596,9 @@ function FileEntry({
     renderActions,
     repoRoot,
     isFileDimmed,
+    getFileBadge,
+    reviewedFiles,
+    visitedFiles,
 }: {
     node: FileNode;
     depth: number;
@@ -500,6 +614,9 @@ function FileEntry({
     renderActions?: (node: FileNode) => React.ReactNode;
     repoRoot?: string;
     isFileDimmed?: (filePath: string) => boolean;
+    getFileBadge?: (filePath: string) => FileBadgeInfo | undefined;
+    reviewedFiles?: ReadonlySet<string>;
+    visitedFiles?: ReadonlySet<string>;
 }) {
     const isActiveFile = onFileSelectSimple
         ? selectedFilePath === node.path
@@ -507,6 +624,9 @@ function FileEntry({
     const count = fileCommentMap.get(node.path) ?? 0;
     const displayStatus = normalizeStatus(node.status);
     const dimmed = isFileDimmed?.(node.path) ?? false;
+    const badge = getFileBadge?.(node.path);
+    const isReviewed = reviewedFiles?.has(node.path) ?? false;
+    const isVisited = !isReviewed && (visitedFiles?.has(node.path) ?? false);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
     return (
@@ -533,6 +653,18 @@ function FileEntry({
                 }}
                 data-testid={`${fileTestIdPrefix}-${node.path}`}
             >
+                {badge && (
+                    <CategoryBadge
+                        badge={badge}
+                        testId={`tree-file-category-badge-${node.path}`}
+                    />
+                )}
+                <ReviewStateIndicator
+                    isReviewed={isReviewed}
+                    isVisited={isVisited}
+                    testIdReviewed={`tree-file-reviewed-${node.path}`}
+                    testIdVisited={`tree-file-visited-${node.path}`}
+                />
                 {count > 0 && (
                     <span
                         className="text-xs text-[#848484] flex-shrink-0"

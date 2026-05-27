@@ -12,14 +12,21 @@
  * GET  /api/repos/:repoId/pull-requests/:prId/diff       — get unified diff (plain text)
  * GET  /api/repos/:repoId/pull-requests/:prId/diff/files/:path — get per-file diff (JSON)
  * GET  /api/repos/:repoId/pull-requests/:prId/checks     — get CI/check statuses
+ * GET  /api/repos/:repoId/pull-requests/:prId/review-progress — get reviewer progress (AC-04)
+ * PUT  /api/repos/:repoId/pull-requests/:prId/review-progress — save reviewer progress (AC-04)
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as url from 'url';
 import type { Route } from '../types';
-import { sendJson, send404, send500 } from '../router';
+import { sendJson, send404, send400, send500, readJsonBody } from '../router';
 import { RepoTreeService } from './tree-service';
+import {
+    readReviewProgress,
+    writeReviewProgress,
+    validateReviewProgressInput,
+} from './review-progress-store';
 import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
@@ -627,6 +634,76 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                 } else {
                     send500(res, err instanceof Error ? err.message : String(err));
                 }
+            }
+        },
+    });
+
+    // -- Get PR review progress (AC-04) ---------------------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/([^/]+)\/review-progress$/,
+        handler: async (req, res, match) => {
+            try {
+                const repoId = decodeURIComponent(match![1]);
+                const prId = decodeURIComponent(match![2]);
+                const parsed = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`);
+                const headSha = parsed.searchParams.get('headSha');
+                const workspaceIdParam = parsed.searchParams.get('workspaceId');
+                if (!headSha) {
+                    return send400(res, 'Missing required query parameter: headSha');
+                }
+                const workspaceId = workspaceIdParam || repoId;
+                const record = readReviewProgress(dataDir, workspaceId, repoId, prId, headSha);
+                return sendJson(res, record);
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    // -- Put PR review progress (AC-04) ---------------------------------------
+
+    routes.push({
+        method: 'PUT',
+        pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/([^/]+)\/review-progress$/,
+        handler: async (req, res, match) => {
+            try {
+                const repoId = decodeURIComponent(match![1]);
+                const prId = decodeURIComponent(match![2]);
+
+                let raw: unknown;
+                try {
+                    raw = await readJsonBody<unknown>(req);
+                } catch {
+                    return send400(res, 'Invalid JSON body');
+                }
+
+                const validation = validateReviewProgressInput(raw);
+                if (!validation.ok) {
+                    return send400(res, validation.error);
+                }
+
+                // workspaceId may travel in body OR query (body wins). Defaults to repoId.
+                const bodyObj = (raw && typeof raw === 'object') ? raw as Record<string, unknown> : {};
+                const workspaceIdRaw = typeof bodyObj.workspaceId === 'string' && bodyObj.workspaceId.length > 0
+                    ? bodyObj.workspaceId
+                    : (() => {
+                        const parsed = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`);
+                        return parsed.searchParams.get('workspaceId') ?? '';
+                    })();
+                const workspaceId = workspaceIdRaw || repoId;
+
+                const stored = writeReviewProgress(
+                    dataDir,
+                    workspaceId,
+                    repoId,
+                    prId,
+                    validation.record,
+                );
+                return sendJson(res, stored);
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
             }
         },
     });

@@ -45,6 +45,16 @@ export interface FileDiffPanelProps {
     backTestId?: string;
     /** Whether to display source.label in the toolbar. Defaults to true. */
     showSourceLabel?: boolean;
+    /** When provided, render a Mark reviewed toggle in the toolbar. */
+    isReviewed?: boolean;
+    onToggleReviewed?: () => void;
+    /**
+     * Optional classification props (AC-02). Forwarded to the unified diff
+     * viewer so filtered-out hunks render as compact summary rows instead
+     * of disappearing.
+     */
+    getHunkClassification?: (filePath: string, hunkIndex: number) => import('../../pull-requests/classification-types').HunkClassification | undefined;
+    hunkActiveFilters?: Set<import('../../pull-requests/classification-types').HunkCategory>;
 }
 
 type PopupState = {
@@ -63,6 +73,10 @@ export function FileDiffPanel({
     backLabel = 'All files',
     backTestId = 'file-diff-back-btn',
     showSourceLabel = true,
+    isReviewed,
+    onToggleReviewed,
+    getHunkClassification,
+    hunkActiveFilters,
 }: FileDiffPanelProps) {
     const { dispatch: queueDispatch } = useQueue();
 
@@ -310,6 +324,21 @@ export function FileDiffPanel({
                             {source.label}
                         </span>
                     )}
+                    {onToggleReviewed && (
+                        <button
+                            onClick={onToggleReviewed}
+                            title={isReviewed ? 'Unmark reviewed' : 'Mark reviewed'}
+                            className={
+                                isReviewed
+                                    ? 'inline-flex h-6 items-center gap-1 rounded border border-green-500 bg-green-50 px-2 text-[11px] font-medium text-green-700 hover:bg-green-100 dark:border-green-500 dark:bg-green-900/30 dark:text-green-200 dark:hover:bg-green-900/50'
+                                    : 'inline-flex h-6 items-center gap-1 rounded border border-gray-300 bg-white px-2 text-[11px] font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                            }
+                            data-testid="mark-reviewed-btn"
+                            aria-pressed={!!isReviewed}
+                        >
+                            {isReviewed ? '✓ Reviewed' : 'Mark reviewed'}
+                        </button>
+                    )}
                     <button
                         onClick={() => setSidebarOpen(o => !o)}
                         title="Toggle comments"
@@ -385,6 +414,9 @@ export function FileDiffPanel({
                                     onAskAI={handleAskAIDiff}
                                     onCopyAsContext={handleCopyAsContext}
                                     onCommentClick={handleCommentClick}
+                                    filePath={filePath}
+                                    getHunkClassification={getHunkClassification}
+                                    activeFilters={hunkActiveFilters}
                                     data-testid="file-diff-content"
                                 />
                             )}

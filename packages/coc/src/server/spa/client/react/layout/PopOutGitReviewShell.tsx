@@ -10,7 +10,7 @@
  *   PR:           `/?workspace=<wsId>&repo=<repoId>#popout/git-review/pr/<prId>`
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { AppProvider } from '../contexts/AppContext';
 import { QueueProvider } from '../contexts/QueueContext';
 import { ThemeProvider } from './ThemeProvider';
@@ -37,6 +37,8 @@ import {
 import { getHostname } from '../utils/config';
 import { extractFileStatsFromDiff } from '../features/git/diff/diffSource';
 import { useClassification } from '../features/git/diff/useClassification';
+import { usePrReviewProgress } from '../features/git/diff/usePrReviewProgress';
+import { pickPriorityFile } from '../features/git/diff/prPopoutPriority';
 import type { ClassificationKey } from '../features/git/diff/diffSource';
 import type { HunkCategory } from '../features/pull-requests/classification-types';
 import { HUNK_CATEGORIES, CATEGORY_LABELS } from '../features/pull-requests/classification-types';
@@ -338,26 +340,89 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
     const [prTitle, setPrTitle] = useState<string | undefined>(undefined);
     const [headSha, setHeadSha] = useState<string | undefined>(undefined);
     const [chatOpen, setChatOpen] = useState(false);
+    const [prioritySort, setPrioritySort] = useState(false);
 
     // Classification hook for PR diff
     const classificationKey: ClassificationKey | undefined =
         headSha ? { type: 'pr', repoId, identifier: `${prId}:${headSha}` } : undefined;
     const classification = useClassification(classificationKey);
+    const reviewProgress = usePrReviewProgress(headSha, {
+        persistence: { workspaceId, repoId, prId },
+    });
 
     const handleFileSelect = useCallback((filePath: string) => {
         setHunkTarget(undefined);
-        setSelectedFilePath(prev => prev === filePath ? null : filePath);
-    }, []);
+        setSelectedFilePath(prev => {
+            const next = prev === filePath ? null : filePath;
+            if (next) reviewProgress.markVisited(next);
+            return next;
+        });
+    }, [reviewProgress]);
 
     const handleNavigateToFile = useCallback((filePath: string, target: 'first' | 'last') => {
         setSelectedFilePath(filePath);
         setHunkTarget(target);
-    }, []);
+        reviewProgress.markVisited(filePath);
+    }, [reviewProgress]);
 
     const handleBack = useCallback(() => {
         setSelectedFilePath(null);
         setHunkTarget(undefined);
     }, []);
+
+    const handleTogglePrioritySort = useCallback(() => {
+        setPrioritySort(prev => !prev);
+    }, []);
+
+    const handleShowAll = useCallback(() => {
+        classification.setFilters(new Set<HunkCategory>(HUNK_CATEGORIES));
+    }, [classification]);
+
+    const classifyStatusForNav = classification.state.status;
+    const priorityNav = useMemo(() => {
+        if (classifyStatusForNav !== 'ready') {
+            return { prevPath: null as string | null, nextPath: null as string | null };
+        }
+        const ctx = {
+            getFileBadge: classification.getFileBadge,
+            reviewedFiles: reviewProgress.state.reviewedFiles,
+        };
+        const filters = classification.state.activeFilters;
+        const next = pickPriorityFile(fileList, ctx, {
+            currentPath: selectedFilePath,
+            direction: 'next',
+            activeFilters: filters,
+        });
+        const prev = pickPriorityFile(fileList, ctx, {
+            currentPath: selectedFilePath,
+            direction: 'prev',
+            activeFilters: filters,
+        });
+        return { prevPath: prev.path, nextPath: next.path };
+    }, [
+        classifyStatusForNav,
+        classification.getFileBadge,
+        classification.state.activeFilters,
+        reviewProgress.state.reviewedFiles,
+        fileList,
+        selectedFilePath,
+    ]);
+
+    const handleNextPriority = useCallback(() => {
+        if (priorityNav.nextPath) {
+            setSelectedFilePath(priorityNav.nextPath);
+            setHunkTarget('first');
+            reviewProgress.markVisited(priorityNav.nextPath);
+        }
+    }, [priorityNav.nextPath, reviewProgress]);
+
+    const handlePrevPriority = useCallback(() => {
+        if (priorityNav.prevPath) {
+            setSelectedFilePath(priorityNav.prevPath);
+            setHunkTarget('first');
+            reviewProgress.markVisited(priorityNav.prevPath);
+        }
+    }, [priorityNav.prevPath, reviewProgress]);
 
     useEffect(() => {
         setLoading(true);
@@ -377,6 +442,12 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
             .catch((err: Error) => setError(err.message))
             .finally(() => setLoading(false));
     }, [repoId, prId]);
+
+    // Sync the current selection into the persistence snapshot so reloads
+    // remember which file the reviewer was on.
+    useEffect(() => {
+        reviewProgress.setLastSelectedFile(selectedFilePath);
+    }, [selectedFilePath, reviewProgress]);
 
     const filePaths = fileList.map(f => f.path);
 
@@ -472,6 +543,17 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
                     selectedFilePath={selectedFilePath}
                     onFileSelect={handleFileSelect}
                     isFileDimmed={classifyStatus === 'ready' ? classification.isFileDimmed : undefined}
+                    getFileBadge={classifyStatus === 'ready' ? classification.getFileBadge : undefined}
+                    prioritySort={prioritySort}
+                    onTogglePrioritySort={classifyStatus === 'ready' ? handleTogglePrioritySort : undefined}
+                    activeFilters={classifyStatus === 'ready' ? classification.state.activeFilters : undefined}
+                    onShowAll={classifyStatus === 'ready' ? handleShowAll : undefined}
+                    reviewedFiles={reviewProgress.state.reviewedFiles}
+                    visitedFiles={reviewProgress.state.visitedFiles}
+                    onPrevPriorityFile={classifyStatus === 'ready' ? handlePrevPriority : undefined}
+                    onNextPriorityFile={classifyStatus === 'ready' ? handleNextPriority : undefined}
+                    prevPriorityDisabled={priorityNav.prevPath === null}
+                    nextPriorityDisabled={priorityNav.nextPath === null}
                 />
                 <div className="flex-1 min-w-0 overflow-hidden">
                     {selectedFilePath ? (
@@ -489,6 +571,10 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
                             onBack={handleBack}
                             backLabel="All files"
                             showSourceLabel={false}
+                            isReviewed={reviewProgress.isReviewed(selectedFilePath)}
+                            onToggleReviewed={() => reviewProgress.toggleReviewed(selectedFilePath)}
+                            getHunkClassification={classifyStatus === 'ready' ? classification.getHunkClassification : undefined}
+                            hunkActiveFilters={classifyStatus === 'ready' ? classification.state.activeFilters : undefined}
                         />
                     ) : (
                         <div className="flex flex-col items-center justify-center flex-1 gap-2 text-xs text-[#848484]">

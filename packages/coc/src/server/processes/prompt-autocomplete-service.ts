@@ -142,7 +142,7 @@ export class PromptAutocompleteService {
         }
 
         const prefs = this.readPreferences();
-        if (prefs.promptAutocomplete?.enabled === false) {
+        if (prefs.promptAutocomplete?.enabled !== true) {
             return { completion: null };
         }
 

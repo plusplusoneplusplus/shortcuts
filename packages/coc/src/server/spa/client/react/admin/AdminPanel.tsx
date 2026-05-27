@@ -345,7 +345,7 @@ export function AdminPanel() {
     const [reposSidebarCollapsed, setReposSidebarCollapsed] = useState(false);
     const [uiLayoutMode, setUiLayoutMode] = useState<'classic' | 'dev-workflow'>('classic');
     const [htmlEmbedEnabled, setHtmlEmbedEnabled] = useState(true);
-    const [promptAutocompleteEnabled, setPromptAutocompleteEnabled] = useState(true);
+    const [promptAutocompleteEnabled, setPromptAutocompleteEnabled] = useState(false);
     const [promptAutocompleteAiEnabled, setPromptAutocompleteAiEnabled] = useState(false);
 
     // Link handlers — shared module-level state via hook
@@ -372,7 +372,7 @@ export function AdminPanel() {
         reposSidebarCollapsed: false,
         uiLayoutMode: 'classic' as string,
         htmlEmbedEnabled: true,
-        promptAutocompleteEnabled: true,
+        promptAutocompleteEnabled: false,
         promptAutocompleteAiEnabled: false,
         taskCardDensity: 'compact' as 'compact' | 'dense',
         historyGrouping: true,
@@ -517,7 +517,7 @@ export function AdminPanel() {
             const r = data.reposSidebarCollapsed ?? false;
             const u = (data.uiLayoutMode === 'classic' || data.uiLayoutMode === 'dev-workflow') ? data.uiLayoutMode : 'classic';
             const h = data.htmlEmbed?.enabled !== false;
-            const pae = data.promptAutocomplete?.enabled !== false;
+            const pae = data.promptAutocomplete?.enabled === true;
             const paai = data.promptAutocomplete?.ai?.enabled === true;
             setTheme(t);
             setReposSidebarCollapsed(r);

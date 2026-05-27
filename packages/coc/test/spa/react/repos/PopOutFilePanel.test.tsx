@@ -182,4 +182,217 @@ describe('PopOutFilePanel', () => {
         );
         expect(screen.getByTestId('popout-file-panel-file-count').textContent).toBe('(0)');
     });
+
+    describe('classification-aware controls', () => {
+        const badges = new Map<string, { category: 'logic' | 'mechanical' | 'test' | 'generated'; intensity: 'high' | 'low' }>([
+            ['src/auth.ts', { category: 'logic', intensity: 'high' }],
+            ['src/login.ts', { category: 'mechanical', intensity: 'low' }],
+            ['tests/old.ts', { category: 'test', intensity: 'low' }],
+        ]);
+        const getFileBadge = (p: string) => badges.get(p);
+
+        it('does not render the classification bar when no badge fn is given', () => {
+            render(
+                <PopOutFilePanel
+                    workspaceId="ws1"
+                    files={SAMPLE_FILES}
+                    selectedFilePath={null}
+                    onFileSelect={() => {}}
+                />
+            );
+            expect(screen.queryByTestId('popout-file-panel-classification-bar')).toBeNull();
+        });
+
+        it('renders category counts when classification is available', () => {
+            render(
+                <PopOutFilePanel
+                    workspaceId="ws1"
+                    files={SAMPLE_FILES}
+                    selectedFilePath={null}
+                    onFileSelect={() => {}}
+                    getFileBadge={getFileBadge}
+                />
+            );
+            expect(screen.getByTestId('popout-file-panel-classification-bar')).toBeTruthy();
+            expect(screen.getByTestId('popout-file-panel-count-logic').textContent).toContain('1');
+            expect(screen.getByTestId('popout-file-panel-count-mechanical').textContent).toContain('1');
+            expect(screen.getByTestId('popout-file-panel-count-test').textContent).toContain('1');
+            expect(screen.getByTestId('popout-file-panel-count-generated').textContent).toContain('0');
+        });
+
+        it('renders progress reviewed/total totals', () => {
+            const reviewed = new Set(['src/auth.ts']);
+            render(
+                <PopOutFilePanel
+                    workspaceId="ws1"
+                    files={SAMPLE_FILES}
+                    selectedFilePath={null}
+                    onFileSelect={() => {}}
+                    getFileBadge={getFileBadge}
+                    reviewedFiles={reviewed}
+                />
+            );
+            expect(screen.getByTestId('popout-file-panel-progress').textContent).toBe('Reviewed 1/3');
+            // Logic file 'src/auth.ts' is the only logic file; once reviewed, remaining = 0
+            expect(screen.getByTestId('popout-file-panel-logic-remaining').textContent).toBe('Logic remaining 0');
+        });
+
+        it('renders priority sort toggle and fires handler on click', () => {
+            const onToggle = vi.fn();
+            render(
+                <PopOutFilePanel
+                    workspaceId="ws1"
+                    files={SAMPLE_FILES}
+                    selectedFilePath={null}
+                    onFileSelect={() => {}}
+                    getFileBadge={getFileBadge}
+                    onTogglePrioritySort={onToggle}
+                />
+            );
+            fireEvent.click(screen.getByTestId('popout-file-panel-priority-sort-toggle'));
+            expect(onToggle).toHaveBeenCalledOnce();
+        });
+
+        it('shows "Show all" button only when some filters are off', () => {
+            const allOn = new Set(['logic', 'mechanical', 'test', 'generated'] as const);
+            const partial = new Set(['logic'] as const);
+            const onShowAll = vi.fn();
+
+            const { rerender } = render(
+                <PopOutFilePanel
+                    workspaceId="ws1"
+                    files={SAMPLE_FILES}
+                    selectedFilePath={null}
+                    onFileSelect={() => {}}
+                    getFileBadge={getFileBadge}
+                    activeFilters={allOn}
+                    onShowAll={onShowAll}
+                />
+            );
+            expect(screen.queryByTestId('popout-file-panel-show-all')).toBeNull();
+
+            rerender(
+                <PopOutFilePanel
+                    workspaceId="ws1"
+                    files={SAMPLE_FILES}
+                    selectedFilePath={null}
+                    onFileSelect={() => {}}
+                    getFileBadge={getFileBadge}
+                    activeFilters={partial}
+                    onShowAll={onShowAll}
+                />
+            );
+            const showAll = screen.getByTestId('popout-file-panel-show-all');
+            fireEvent.click(showAll);
+            expect(onShowAll).toHaveBeenCalledOnce();
+        });
+
+        it('renders classification badge next to a file in tree view', () => {
+            render(
+                <PopOutFilePanel
+                    workspaceId="ws1"
+                    files={SAMPLE_FILES}
+                    selectedFilePath={null}
+                    onFileSelect={() => {}}
+                    getFileBadge={getFileBadge}
+                />
+            );
+            // Tree view is the mocked default. Badge appears for each classified file.
+            expect(screen.getByTestId('tree-file-category-badge-src/auth.ts').textContent).toBe('L');
+            expect(screen.getByTestId('tree-file-category-badge-src/login.ts').textContent).toBe('M');
+            expect(screen.getByTestId('tree-file-category-badge-tests/old.ts').textContent).toBe('T');
+        });
+
+        it('renders reviewed (✓) and visited (•) indicators distinctly', () => {
+            const reviewed = new Set(['src/auth.ts']);
+            const visited = new Set(['src/login.ts', 'src/auth.ts']);
+            render(
+                <PopOutFilePanel
+                    workspaceId="ws1"
+                    files={SAMPLE_FILES}
+                    selectedFilePath={null}
+                    onFileSelect={() => {}}
+                    getFileBadge={getFileBadge}
+                    reviewedFiles={reviewed}
+                    visitedFiles={visited}
+                />
+            );
+            // Reviewed wins over visited
+            expect(screen.getByTestId('tree-file-reviewed-src/auth.ts').textContent).toContain('✓');
+            expect(screen.queryByTestId('tree-file-visited-src/auth.ts')).toBeNull();
+            // Visited-but-not-reviewed shows dot
+            expect(screen.getByTestId('tree-file-visited-src/login.ts').textContent).toContain('•');
+            expect(screen.queryByTestId('tree-file-reviewed-src/login.ts')).toBeNull();
+            // Untouched file has neither
+            expect(screen.queryByTestId('tree-file-reviewed-tests/old.ts')).toBeNull();
+            expect(screen.queryByTestId('tree-file-visited-tests/old.ts')).toBeNull();
+        });
+
+        describe('priority navigation controls', () => {
+            it('does not render priority nav when handlers are not provided', () => {
+                render(
+                    <PopOutFilePanel
+                        workspaceId="ws1"
+                        files={SAMPLE_FILES}
+                        selectedFilePath={null}
+                        onFileSelect={() => {}}
+                        getFileBadge={getFileBadge}
+                    />
+                );
+                expect(screen.queryByTestId('popout-file-panel-priority-nav')).toBeNull();
+                expect(screen.queryByTestId('popout-file-panel-prev-priority')).toBeNull();
+                expect(screen.queryByTestId('popout-file-panel-next-priority')).toBeNull();
+            });
+
+            it('renders Prev/Next priority buttons and fires handlers on click', () => {
+                const onPrev = vi.fn();
+                const onNext = vi.fn();
+                render(
+                    <PopOutFilePanel
+                        workspaceId="ws1"
+                        files={SAMPLE_FILES}
+                        selectedFilePath={null}
+                        onFileSelect={() => {}}
+                        getFileBadge={getFileBadge}
+                        onPrevPriorityFile={onPrev}
+                        onNextPriorityFile={onNext}
+                    />
+                );
+                const prev = screen.getByTestId('popout-file-panel-prev-priority') as HTMLButtonElement;
+                const next = screen.getByTestId('popout-file-panel-next-priority') as HTMLButtonElement;
+                expect(prev.disabled).toBe(false);
+                expect(next.disabled).toBe(false);
+                fireEvent.click(prev);
+                fireEvent.click(next);
+                expect(onPrev).toHaveBeenCalledOnce();
+                expect(onNext).toHaveBeenCalledOnce();
+            });
+
+            it('disables Prev/Next when no candidate exists', () => {
+                const onPrev = vi.fn();
+                const onNext = vi.fn();
+                render(
+                    <PopOutFilePanel
+                        workspaceId="ws1"
+                        files={SAMPLE_FILES}
+                        selectedFilePath={null}
+                        onFileSelect={() => {}}
+                        getFileBadge={getFileBadge}
+                        onPrevPriorityFile={onPrev}
+                        onNextPriorityFile={onNext}
+                        prevPriorityDisabled
+                        nextPriorityDisabled
+                    />
+                );
+                const prev = screen.getByTestId('popout-file-panel-prev-priority') as HTMLButtonElement;
+                const next = screen.getByTestId('popout-file-panel-next-priority') as HTMLButtonElement;
+                expect(prev.disabled).toBe(true);
+                expect(next.disabled).toBe(true);
+                fireEvent.click(prev);
+                fireEvent.click(next);
+                expect(onPrev).not.toHaveBeenCalled();
+                expect(onNext).not.toHaveBeenCalled();
+            });
+        });
+    });
 });
