@@ -458,6 +458,110 @@ export function getMockTimeline(): AiTimelineEvent[] {
     return TIMELINE_EVENTS;
 }
 
+/**
+ * Extract initials from a display name. Returns up to 2 characters.
+ * Falls back to '?' when the name is empty.
+ */
+function nameInitials(displayName: string | undefined): string {
+    const name = (displayName ?? '').trim();
+    if (!name) return '?';
+    const parts = name.split(/\s+/);
+    if (parts.length >= 2) {
+        return (parts[0][0]! + parts[parts.length - 1][0]!).toUpperCase();
+    }
+    return name.slice(0, 2).toUpperCase();
+}
+
+/**
+ * Build a conversation timeline from real PR data.
+ *
+ * Replaces the static `getMockTimeline()` fixture with events derived from
+ * actual threads and commits fetched by PullRequestDetail:
+ *
+ *  - If threads exist: one "AI grouped N threads into M topics" entry.
+ *  - One reviewer entry per unique commenter (up to `maxReviewerEvents`),
+ *    using the first comment body as the detail snippet.
+ *  - One author push entry per unique author group (up to `maxAuthorEvents`),
+ *    summarising the subjects of their commits.
+ *
+ * Returns an empty array when both inputs are empty so the panel renders
+ * cleanly without placeholder content.
+ */
+export function buildTimelineFromRealData(
+    threads: CommentThread[],
+    commits: PullRequestCommit[],
+    threadGroups: Array<{ id: string; title: string; count: number }>,
+    options: { maxReviewerEvents?: number; maxAuthorEvents?: number } = {},
+): AiTimelineEvent[] {
+    const { maxReviewerEvents = 2, maxAuthorEvents = 1 } = options;
+    const events: AiTimelineEvent[] = [];
+
+    // ── AI thread-grouping summary ─────────────────────────────────────
+    if (threads.length > 0) {
+        const nonEmpty = threadGroups.filter(g => g.count > 0);
+        const groupCount = nonEmpty.length;
+        const topicNames = nonEmpty
+            .slice(0, 3)
+            .map(g => g.title)
+            .join(', ');
+        const suffix = nonEmpty.length > 3 ? `, and ${nonEmpty.length - 3} more` : '';
+        events.push({
+            initials: 'AI',
+            kind: 'ai',
+            title: `AI grouped ${threads.length} review thread${threads.length === 1 ? '' : 's'} into ${groupCount} topic${groupCount === 1 ? '' : 's'}.`,
+            detail: topicNames ? `${topicNames}${suffix}.` : 'No notable topics.',
+        });
+    }
+
+    // ── Reviewer comment events ────────────────────────────────────────
+    let reviewerCount = 0;
+    for (const thread of threads) {
+        if (reviewerCount >= maxReviewerEvents) break;
+        const first = thread.comments?.[0];
+        if (!first?.author?.displayName || !first.body) continue;
+        const raw = first.body.replace(/[\n\r]+/g, ' ').trim();
+        const snippet = raw.length > 80 ? `${raw.slice(0, 80)}…` : raw;
+        events.push({
+            initials: nameInitials(first.author.displayName),
+            kind: 'reviewer',
+            title: `${first.author.displayName} left a comment.`,
+            detail: `"${snippet}"`,
+        });
+        reviewerCount++;
+    }
+
+    // ── Author push events (grouped by author name) ────────────────────
+    const byAuthor = new Map<string, { displayName: string; subjects: string[] }>();
+    for (const commit of commits) {
+        const name = commit.author?.displayName ?? commit.committer?.displayName ?? '';
+        if (!byAuthor.has(name)) {
+            byAuthor.set(name, { displayName: name, subjects: [] });
+        }
+        const subject =
+            commit.subject ||
+            (commit.message ? commit.message.split('\n', 1)[0] : '') ||
+            commit.shortId ||
+            commit.id;
+        if (subject) byAuthor.get(name)!.subjects.push(subject);
+    }
+
+    let authorCount = 0;
+    for (const [, group] of byAuthor) {
+        if (authorCount >= maxAuthorEvents) break;
+        const count = group.subjects.length;
+        const detail = group.subjects.slice(0, 3).join('; ');
+        events.push({
+            initials: nameInitials(group.displayName || undefined),
+            kind: 'author',
+            title: `${group.displayName || 'Author'} pushed ${count} commit${count === 1 ? '' : 's'}.`,
+            detail,
+        });
+        authorCount++;
+    }
+
+    return events;
+}
+
 export function getMockThreadGroups(): AiThreadGroup[] {
     return THREAD_GROUPS;
 }
