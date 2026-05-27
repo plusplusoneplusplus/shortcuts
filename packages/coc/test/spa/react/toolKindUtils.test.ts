@@ -8,6 +8,17 @@ import {
     KIND_PILL_CLASSES,
     getToolMetric,
 } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolKindUtils';
+import { normalizeToolName } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolNormalization';
+
+describe('normalizeToolName — Claude provider aliases', () => {
+    it('normalizes PascalCase "Skill" (Claude Code SDK) to lowercase "skill"', () => {
+        expect(normalizeToolName('Skill')).toBe('skill');
+    });
+
+    it('passes through already-lowercase "skill" unchanged', () => {
+        expect(normalizeToolName('skill')).toBe('skill');
+    });
+});
 
 describe('getToolKindInfo', () => {
     it.each([
@@ -29,6 +40,9 @@ describe('getToolKindInfo', () => {
         ['task',         { label: 'Agent',  cls: 'agent' }],
         ['read_agent',   { label: 'Poll',   cls: 'agent' }],
         ['task_complete',{ label: 'Done',   cls: 'task'  }],
+        // skill tool — both casing variants
+        ['skill',        { label: 'Skill',  cls: 'other' }],
+        ['Skill',        { label: 'Skill',  cls: 'other' }],
     ])('classifies %s as %j', (toolName, expected) => {
         expect(getToolKindInfo(toolName as string)).toEqual(expected);
     });

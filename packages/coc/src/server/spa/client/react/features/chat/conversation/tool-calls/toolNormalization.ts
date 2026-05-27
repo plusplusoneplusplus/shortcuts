@@ -34,6 +34,11 @@ export function normalizeToolName(rawName: string | undefined): string {
             return 'shell';
         case 'file_change':
             return 'apply_patch';
+        // The Claude Code SDK emits its built-in skill tool as 'Skill' (PascalCase).
+        // Normalize to lowercase 'skill' so all downstream display/detection logic
+        // (getToolSummary, filterWhisperChunks, getToolKindInfo) handles it correctly.
+        case 'Skill':
+            return 'skill';
         default:
             return name || 'unknown';
     }

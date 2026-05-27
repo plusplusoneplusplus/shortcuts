@@ -64,6 +64,8 @@ export function getToolKindInfo(toolName: string): ToolKindInfo {
             return { label: 'Poll', cls: 'agent' };
         case 'task_complete':
             return { label: 'Done', cls: 'task' };
+        case 'skill':
+            return { label: 'Skill', cls: 'other' };
         default: {
             const trimmed = canonicalName.length > 8 ? canonicalName.slice(0, 8) : canonicalName;
             return { label: trimmed, cls: 'other' };
