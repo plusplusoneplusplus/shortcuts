@@ -5,7 +5,7 @@
  * Shows connection status, container URL, and allows connect/disconnect.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Spinner } from '../ui';
 
 interface ContainerLinkStatus {
@@ -36,7 +36,15 @@ export function ContainerLinkSection({ onError }: { onError?: (msg: string) => v
     const [urlInput, setUrlInput] = useState('');
     const [nameInput, setNameInput] = useState('');
 
-    const fetchStatus = useCallback(async () => {
+    // Use a ref so fetchStatus doesn't need onError as a dep — prevents a
+    // re-render cascade that causes an infinite GET /api/config/container loop
+    // when the server is restarting and every failed fetch triggers a toast,
+    // which re-renders AdminPanel, produces a new onError reference, which
+    // invalidates fetchStatus, which re-fires the effect, and so on.
+    const onErrorRef = useRef(onError);
+    useEffect(() => { onErrorRef.current = onError; });
+
+    const fetchStatus = useCallback(async (silent = false) => {
         try {
             const res = await fetch('/api/config/container');
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -45,18 +53,22 @@ export function ContainerLinkSection({ onError }: { onError?: (msg: string) => v
             if (data.containerUrl) setUrlInput(data.containerUrl);
             if (data.agentName) setNameInput(data.agentName);
         } catch (err) {
-            onError?.(`Failed to fetch container link status: ${(err as Error).message}`);
+            // Only surface errors for explicit user-triggered fetches; suppress
+            // during background polling so toasts don't spam during a restart.
+            if (!silent) onErrorRef.current?.(`Failed to fetch container link status: ${(err as Error).message}`);
         } finally {
             setLoading(false);
         }
-    }, [onError]);
+    }, []); // stable identity — onError captured via ref above
 
     useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
-    // Poll status while connecting
+    // Poll status while connecting; use silent=true so a temporary server
+    // restart doesn't flood the UI with error toasts, and polling continues
+    // so the UI auto-recovers once the server is back.
     useEffect(() => {
         if (!status || status.status === 'disconnected' || status.status === 'registered') return;
-        const timer = setInterval(fetchStatus, 3000);
+        const timer = setInterval(() => fetchStatus(true), 3000);
         return () => clearInterval(timer);
     }, [status?.status, fetchStatus]);
 
