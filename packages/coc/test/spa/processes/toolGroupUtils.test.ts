@@ -1249,6 +1249,28 @@ describe('filterWhisperChunks', () => {
         expect(wg.summary.skillNames).toEqual(['draft', 'test-gap-analysis']);
     });
 
+    it('skillCount counts Claude SDK "Skill" (PascalCase) tool name', () => {
+        // The Claude Code SDK emits its built-in skill tool as "Skill" (capital S).
+        // normalizeToolName maps it to lowercase "skill" before storage, so
+        // filterWhisperChunks must count these as skill invocations.
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'tool', key: 'k-t3', toolId: 't3' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'skill', status: 'completed', args: { name: 'impl' } }],
+            ['t2', { toolName: 'skill', status: 'completed', args: { name: 'code-review' } }],
+            ['t3', { toolName: 'skill', status: 'completed', args: { name: 'impl' } }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.skillCount).toBe(2);
+        expect(wg.summary.skillNames).toEqual(['code-review', 'impl']);
+    });
+
     it('skillCount from skills inside tool-group chunks', () => {
         const chunks = [
             {

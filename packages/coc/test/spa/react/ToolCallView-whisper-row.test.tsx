@@ -105,6 +105,70 @@ describe('ToolCallView — whisper-row variant', () => {
             expect(kind.className).toContain('bg-[#f5f5f4]');
         });
 
+        it('renders a "Skill" pill for the skill tool (lowercase)', () => {
+            const { container } = renderInWhisper({
+                id: 'sk1',
+                toolName: 'skill',
+                args: { name: 'impl' },
+                status: 'completed',
+            });
+            const kind = container.querySelector('[data-testid="tool-call-kind"]');
+            expect(kind?.textContent).toBe('Skill');
+            expect(container.querySelector('[data-tool-kind]')?.getAttribute('data-tool-kind')).toBe('other');
+        });
+
+        it('renders a "Skill" pill for the Claude Code SDK PascalCase "Skill" tool name', () => {
+            const { container } = renderInWhisper({
+                id: 'sk2',
+                toolName: 'Skill',
+                args: { name: 'impl' },
+                status: 'completed',
+            });
+            const kind = container.querySelector('[data-testid="tool-call-kind"]');
+            expect(kind?.textContent).toBe('Skill');
+            expect(container.querySelector('[data-tool-kind]')?.getAttribute('data-tool-kind')).toBe('other');
+        });
+
+        it('shows skill name in the row summary for both skill tool name casings', () => {
+            // lowercase 'skill'
+            const { container: c1 } = renderInWhisper({
+                id: 'sk3',
+                toolName: 'skill',
+                args: { name: 'impl' },
+                status: 'completed',
+            });
+            const path1 = c1.querySelector('.tool-call-row-path');
+            expect(path1?.textContent).toBe('impl');
+
+            // PascalCase 'Skill' — Claude Code SDK path
+            const { container: c2 } = renderInWhisper({
+                id: 'sk4',
+                toolName: 'Skill',
+                args: { name: 'go-deep' },
+                status: 'completed',
+            });
+            const path2 = c2.querySelector('.tool-call-row-path');
+            expect(path2?.textContent).toBe('go-deep');
+        });
+
+        it('shows skill name from args.skill and args.skill_name variants', () => {
+            const { container: ca } = renderInWhisper({
+                id: 'sk5',
+                toolName: 'Skill',
+                args: { skill: 'code-review' },
+                status: 'completed',
+            });
+            expect(ca.querySelector('.tool-call-row-path')?.textContent).toBe('code-review');
+
+            const { container: cb } = renderInWhisper({
+                id: 'sk6',
+                toolName: 'Skill',
+                args: { skill_name: 'draft' },
+                status: 'completed',
+            });
+            expect(cb.querySelector('.tool-call-row-path')?.textContent).toBe('draft');
+        });
+
         it('uses muted grey pill while running regardless of tool kind', () => {
             const { getByTestId } = renderInWhisper({
                 id: 't7',
