@@ -35,6 +35,11 @@ import { RALPH_BASE_INSTRUCTIONS } from '../executors/ralph-executor';
 import { RALPH_SYNTHESIS_PROMPT_BASE } from '../ralph/synthesis-prompt';
 import { RALPH_ITERATION_PROMPT_DEFAULT_HEAD } from '../ralph/iteration-prompt';
 import {
+    DIFF_CLASSIFICATION_DEFAULT_TEMPLATE,
+    DIFF_CLASSIFICATION_PROMPT_ID,
+    DIFF_CLASSIFICATION_TEMPLATE_VARS,
+} from '../repos/classification-prompt';
+import {
     getAllPromptOverrides,
     savePromptOverride as writeSavedPromptOverride,
     deletePromptOverride as removePromptOverride,
@@ -1095,6 +1100,16 @@ Each entry must have this exact shape:
             text: RALPH_ITERATION_PROMPT_DEFAULT_HEAD,
             editable: true,
             templateVars: [],
+        },
+        [DIFF_CLASSIFICATION_PROMPT_ID]: {
+            id: DIFF_CLASSIFICATION_PROMPT_ID,
+            title: 'Diff Classification - User Prompt',
+            group: 'Diff Classification',
+            source: 'coc/server/repos/classification-prompt.ts',
+            description: 'User prompt template for AI diff hunk classification (PR, commit, branch-range). Variables are substituted per classification target.',
+            text: DIFF_CLASSIFICATION_DEFAULT_TEMPLATE,
+            editable: true,
+            templateVars: DIFF_CLASSIFICATION_TEMPLATE_VARS,
         },
     };
 }
