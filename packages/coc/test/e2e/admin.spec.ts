@@ -71,7 +71,6 @@ test.describe('Admin Panel (008)', () => {
         ]);
         expect(byLabel.Configure).toEqual([
             'AI & Execution',
-            'Models',
             'AI Provider',
             'Chat',
             'Appearance',
@@ -82,10 +81,6 @@ test.describe('Admin Panel (008)', () => {
         expect(byLabel.Connections).toEqual(expect.arrayContaining(['Providers']));
         expect(byLabel.Operations).toEqual(['Usage & Costs', 'Logs', 'Server', 'Backup & Reset']);
         expect(byLabel['Developer / Internals']).toEqual(['System Prompts', 'Database Browser', 'Advanced']);
-
-        await page.getByTestId('models-toggle').click();
-        await expect(page.locator('.ar-breadcrumb')).toContainText('Configure');
-        await expect(page.locator('.ar-breadcrumb')).toContainText('Models');
 
         await page.getByTestId('stats-toggle').click();
         await expect(page.locator('.ar-breadcrumb')).toContainText('Operations');

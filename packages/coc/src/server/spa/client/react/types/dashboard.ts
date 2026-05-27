@@ -27,7 +27,7 @@ export interface ClientTokenUsage {
     currentTokens?: number;
 }
 
-export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports' | 'stats' | 'admin' | 'memory' | 'skills' | 'logs' | 'models' | 'servers';
+export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports' | 'stats' | 'admin' | 'memory' | 'skills' | 'logs' | 'servers';
 
 export const REPO_SUB_TAB_VALUES = [
     'chats', 'work-items', 'settings', 'workflows', 'templates', 'tasks',

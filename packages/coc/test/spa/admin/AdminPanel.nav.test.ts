@@ -1,6 +1,7 @@
 /**
- * Unit tests for AdminPanel navigation configuration — AC-01 (Memory in Knowledge group)
- * and AC-02 (sidebar group reorganization).
+ * Unit tests for AdminPanel navigation configuration — AC-01 (Memory in Knowledge group),
+ * AC-02 (sidebar group reorganization), and models removal (standalone Models page removed;
+ * model management moved to Agent Provider page).
  *
  * These tests verify the static nav data (exported constants) rather than rendering
  * the full component, which would require extensive mocking of API calls and lazy
@@ -37,11 +38,17 @@ describe('ALL_TOOL_NAV_ITEMS', () => {
         expect(memIdx).toBeLessThan(skillsIdx);
     });
 
+    it('does not include a standalone models entry (moved to Agent Provider)', () => {
+        const item = ALL_TOOL_NAV_ITEMS.find(i => i.tab === 'models' as string);
+        expect(item).toBeUndefined();
+        const ids = ALL_TOOL_NAV_ITEMS.map(i => i.id);
+        expect(ids).not.toContain('models-toggle');
+    });
+
     it('includes all expected tool tabs', () => {
         const tabs = ALL_TOOL_NAV_ITEMS.map(i => i.tab);
         expect(tabs).toContain('memory');
         expect(tabs).toContain('skills');
-        expect(tabs).toContain('models');
         expect(tabs).toContain('stats');
         expect(tabs).toContain('logs');
         expect(tabs).toContain('servers');
@@ -59,8 +66,8 @@ describe('TOOL_TAB_GROUP_LABELS', () => {
         expect(TOOL_TAB_GROUP_LABELS['skills']).toBe('Knowledge');
     });
 
-    it('places models in Configure', () => {
-        expect(TOOL_TAB_GROUP_LABELS['models']).toBe('Configure');
+    it('does not have a models group label (standalone Models page removed)', () => {
+        expect(TOOL_TAB_GROUP_LABELS['models' as string]).toBeUndefined();
     });
 
     it('places servers in Connections', () => {

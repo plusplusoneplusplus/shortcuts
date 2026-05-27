@@ -111,13 +111,13 @@ The legacy "Tools" popover has been migrated into the Admin page's left
 sidebar, but there is no longer a generic Tools group. The Admin sidebar is
 grouped by user task: Configure, Knowledge, Connections, Operations, and
 Developer / Internals. Embedded tool rows keep stable ids (`memory-toggle`,
-`skills-toggle`, `logs-toggle`, `stats-toggle`, `models-toggle`,
+`skills-toggle`, `logs-toggle`, `stats-toggle`,
 `servers-toggle`) and `data-tab` still carries the matching dashboard route;
 Servers is shown only when `isServersEnabled()` is true.
 
 Clicking an embedded tool row dispatches `SET_ACTIVE_TAB` and updates
 `location.hash` to the corresponding top-level route (`#memory`, `#skills`,
-`#logs`, `#stats`, `#models`, `#servers`). The Router maps every embedded tool
+`#logs`, `#stats`, `#servers`). The Router maps every embedded tool
 tab plus `'admin'` itself to a single `<AdminPanel />` render, so the admin shell
 (sidebar + breadcrumb + right pane) stays mounted across navigation.
 `AdminPanel` switches on `state.activeTab` — when it matches an embedded tool

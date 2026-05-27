@@ -125,22 +125,6 @@ function TerminalIconFilled() {
     );
 }
 
-function ModelsIconOutline() {
-    return (
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714a2.25 2.25 0 0 0 .659 1.591L19 14.5M14.25 3.104c.251.023.501.05.75.082M19 14.5l-1.47 4.41a2.25 2.25 0 0 1-2.133 1.59H8.603a2.25 2.25 0 0 1-2.133-1.59L5 14.5m14 0H5" />
-        </svg>
-    );
-}
-
-function ModelsIconFilled() {
-    return (
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-            <path d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714a2.25 2.25 0 0 0 .659 1.591L19 14.5M14.25 3.104c.251.023.501.05.75.082M19 14.5l-1.47 4.41a2.25 2.25 0 0 1-2.133 1.59H8.603a2.25 2.25 0 0 1-2.133-1.59L5 14.5m14 0H5" />
-        </svg>
-    );
-}
-
 function ServerIconOutline() {
     return (
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
@@ -170,7 +154,6 @@ const ALL_NAV_ITEMS: NavItem[] = [
     { tab: 'skills', label: 'Skills', icon: (active) => active ? <PuzzleIconFilled /> : <PuzzleIconOutline /> },
     { tab: 'memory', label: 'Memory', icon: (active) => active ? <BrainIconFilled /> : <BrainIconOutline /> },
     { tab: 'stats', label: 'Usage', icon: (active) => active ? <ChartBarIconFilled /> : <ChartBarIconOutline /> },
-    { tab: 'models', label: 'Models', icon: (active) => active ? <ModelsIconFilled /> : <ModelsIconOutline /> },
     { tab: 'servers', label: 'Servers', icon: (active) => active ? <ServerIconFilled /> : <ServerIconOutline /> },
     { tab: 'logs', label: 'Logs', icon: (active) => active ? <TerminalIconFilled /> : <TerminalIconOutline /> },
 ];

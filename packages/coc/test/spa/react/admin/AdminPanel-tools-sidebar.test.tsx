@@ -72,9 +72,8 @@ describe('AdminPanel — grouped sidebar navigation', () => {
             expect(document.getElementById('skills-toggle')).toBeTruthy();
             expect(document.getElementById('logs-toggle')).toBeTruthy();
             expect(document.getElementById('stats-toggle')).toBeTruthy();
-            expect(document.getElementById('models-toggle')).toBeTruthy();
         });
-        // Servers is gated behind serversEnabled, off by default.
+        // Models and Servers are not in tool nav (models moved to Agent Provider, servers gated).
         expect(document.getElementById('servers-toggle')).toBeNull();
     });
 
@@ -103,7 +102,7 @@ describe('AdminPanel — grouped sidebar navigation', () => {
         }));
 
         expect(groups).toEqual([
-            { label: 'Configure', ids: ['models-toggle'] },
+            { label: 'Configure', ids: [] },
             { label: 'Knowledge', ids: ['memory-toggle', 'skills-toggle'] },
             { label: 'Connections', ids: ['servers-toggle'] },
             { label: 'Operations', ids: ['stats-toggle', 'logs-toggle'] },
@@ -123,7 +122,6 @@ describe('AdminPanel — grouped sidebar navigation', () => {
         expect(document.getElementById('skills-toggle')!.getAttribute('data-tab')).toBe('skills');
         expect(document.getElementById('logs-toggle')!.getAttribute('data-tab')).toBe('logs');
         expect(document.getElementById('stats-toggle')!.getAttribute('data-tab')).toBe('stats');
-        expect(document.getElementById('models-toggle')!.getAttribute('data-tab')).toBe('models');
         expect(document.getElementById('servers-toggle')!.getAttribute('data-tab')).toBe('servers');
     });
 
@@ -145,11 +143,6 @@ describe('AdminPanel — grouped sidebar navigation', () => {
             fireEvent.click(document.getElementById('skills-toggle')!);
         });
         expect(window.location.hash).toBe('#skills');
-
-        await act(async () => {
-            fireEvent.click(document.getElementById('models-toggle')!);
-        });
-        expect(window.location.hash).toBe('#models');
     });
 
     it('embedded tool rows are accessible (aria-label + title)', async () => {
@@ -239,19 +232,17 @@ describe('AdminPanel — embedded tools render in the right panel', () => {
 
     it('breadcrumb reads "<Group> / <Label>" while a tool is embedded', async () => {
         await act(async () => { renderAdmin(); });
-        await waitFor(() => expect(document.getElementById('models-toggle')).toBeTruthy());
+        await waitFor(() => expect(document.getElementById('skills-toggle')).toBeTruthy());
 
         await act(async () => {
-            fireEvent.click(document.getElementById('models-toggle')!);
+            fireEvent.click(document.getElementById('skills-toggle')!);
         });
 
-        await waitFor(() => expect(document.querySelector('[data-testid="admin-tool-embed-models"]')).toBeTruthy());
-        // Both crumbs ("Configure" and the active tool label) sit inside the
-        // breadcrumb nav as direct text content.
+        await waitFor(() => expect(document.querySelector('[data-testid="admin-tool-embed-skills"]')).toBeTruthy());
         const crumb = document.querySelector('.ar-breadcrumb');
         expect(crumb).toBeTruthy();
-        expect(crumb!.textContent).toContain('Configure');
-        expect(crumb!.textContent).toContain('Models');
+        expect(crumb!.textContent).toContain('Knowledge');
+        expect(crumb!.textContent).toContain('Skills');
     });
 
     it('clicking a settings row after an embedded tool view restores the admin page', async () => {
