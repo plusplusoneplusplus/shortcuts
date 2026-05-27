@@ -22,7 +22,7 @@ import { isQueueProcessId, toQueueProcessId } from '../../utils/queue-process-id
 import { useModels } from '../../hooks/useModels';
 import { useDefaultModelForMode } from '../../hooks/useDefaultModelForMode';
 import { useSlashCommands } from './hooks/useSlashCommands';
-import { useModelCommand } from './hooks/useModelCommand';
+import { useModelCommand, selectPickableModels } from './hooks/useModelCommand';
 import { SlashCommandMenu, getMetaSkillItems, mergeSkillsWithMeta, type SkillItem } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
 import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION } from './ModePillSelector';
@@ -77,10 +77,10 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
 
     // Model command support
     const { models: availableModels } = useModels();
-    const enabledModels = availableModels.filter(m => m.enabled);
+    const pickableModels = selectPickableModels(availableModels);
     const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isLoopsEnabled())), [skills]);
     const slashCommands = useSlashCommands(augmentedSkills);
-    const modelCommand = useModelCommand(enabledModels);
+    const modelCommand = useModelCommand(pickableModels);
     const { effectiveModel: defaultModelId, effectiveModelName: defaultModelLabel } = useDefaultModelForMode(workspaceId, selectedMode, availableModels);
 
     const VALID_MODES: ChatMode[] = ['ask', 'plan', 'autopilot', 'ralph'];

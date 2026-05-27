@@ -17,7 +17,7 @@ import { useFileAttachments } from './hooks/useFileAttachments';
 import { useTextPaste } from './hooks/useTextPaste';
 import { useAttachedContext } from './hooks/useAttachedContext';
 import { useSlashCommands } from './hooks/useSlashCommands';
-import { useModelCommand } from './hooks/useModelCommand';
+import { useModelCommand, selectPickableModels } from './hooks/useModelCommand';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { getMetaSkillItems, mergeSkillsWithMeta, type SkillItem } from './SlashCommandMenu';
 import { scanTurnsForCreatedFiles } from '../../utils/conversationScan';
@@ -171,8 +171,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const lastRefreshVersionRef = useRef(queueState.refreshVersion);
     const { state: appState, dispatch: appDispatch } = useApp();
     const { models: availableModels } = useModels();
-    const enabledModels = availableModels.filter(m => m.enabled);
-    const modelCommand = useModelCommand(enabledModels);
+    const pickableModels = selectPickableModels(availableModels);
+    const modelCommand = useModelCommand(pickableModels);
     const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isLoopsEnabled())), [skills]);
     const slashCommands = useSlashCommands(augmentedSkills);
 

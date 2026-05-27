@@ -95,6 +95,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useModelCom
         handleModelKeyDown: vi.fn(() => false),
         setModelFilter: vi.fn(),
     }),
+    selectPickableModels: (models: unknown[]) => models,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/SlashCommandMenu', () => ({
