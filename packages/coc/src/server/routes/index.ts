@@ -420,7 +420,21 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     }
 
     // Teams messaging routes (container-mode)
-    registerTeamsMessagingRoutes(routes, { dataDir });
+    registerTeamsMessagingRoutes(routes, {
+        dataDir,
+        store,
+        enqueueChat: async (workspaceId, message) => {
+            const taskId = await bridge.enqueue({
+                type: 'chat',
+                repoId: workspaceId,
+                payload: { message, workspaceId },
+                config: {},
+                priority: 'normal' as const,
+            });
+            return taskId;
+        },
+        executeFollowUp: (processId, message) => bridge.executeFollowUp(processId, message),
+    });
 
     // Ralph routes
     registerRalphRoutes(routes, { bridge, store, dataDir });

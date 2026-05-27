@@ -226,15 +226,15 @@ export class TeamsMessagingManager {
         this._status = 'disconnected';
     }
 
-    /** Send a message to the configured channel. */
-    async sendMessage(text: string): Promise<string> {
+    /** Send a message to the configured channel. Optionally reply to a specific message. */
+    async sendMessage(text: string, replyToId?: string): Promise<string> {
         if (!this.bot || this._status !== 'connected') {
             throw new Error('Teams bot is not connected');
         }
         if (!this.config.channelId) {
             throw new Error('No channel configured');
         }
-        return this.bot.send(this.config.channelId, text);
+        return this.bot.send(this.config.channelId, text, replyToId ? { replyToId } : undefined);
     }
 
     // ── Private helpers ──────────────────────────────────────
