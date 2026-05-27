@@ -581,7 +581,7 @@ export class TeamsBridge {
                 console.log(`[teams-bridge]   turn[${i}] role=${t.role}${streaming} (${content.length} chars): ${content.substring(0, 80)}`);
             }
 
-            // Forward new user turns
+            // Forward new user turns (skip slash commands — they should not have been sent to agents)
             let currentUserCount = 0;
             for (const turn of turns) {
                 if (turn.role === 'user') currentUserCount++;
@@ -594,9 +594,11 @@ export class TeamsBridge {
                 for (let i = turns.length - 1; i >= 0; i--) {
                     if (turns[i].role === 'user') {
                         const content = (turns[i].content ?? turns[i].text ?? '').trim();
-                        if (content) {
+                        if (content && !content.startsWith('/')) {
                             console.log(`[teams-bridge] 📝 New user turn for ${processId} (${content.length} chars): ${content.substring(0, 100)}`);
                             await this.sendToTeams(processId, 'user', content, msg.agentId, msg.agentName, workspaceId);
+                        } else if (content.startsWith('/')) {
+                            console.log(`[teams-bridge] ⏭️ Skipping command turn for ${processId}: ${content.substring(0, 60)}`);
                         }
                         break;
                     }
@@ -684,12 +686,14 @@ export class TeamsBridge {
                 this.store!.setUserTurnCount(processId, currentUserCount);
                 this._lastAssistantContent.delete(processId);
 
-                // Forward the new user turn
+                // Forward the new user turn (skip slash commands)
                 for (let i = turns.length - 1; i >= 0; i--) {
                     if (turns[i].role === 'user') {
                         const content = (turns[i].content ?? turns[i].text ?? '').trim();
-                        if (content) {
+                        if (content && !content.startsWith('/')) {
                             await this.sendToTeams(processId, 'user', content, msg.agentId, msg.agentName, workspaceId);
+                        } else if (content.startsWith('/')) {
+                            console.log(`[teams-bridge] ⏭️ Skipping command turn in completion for ${processId}: ${content.substring(0, 60)}`);
                         }
                         break;
                     }
@@ -945,18 +949,24 @@ export class TeamsBridge {
         console.log(`[teams-bridge] 📨 Inbound message: id=${msg.messageId}, sender=${msg.senderName ?? 'unknown'}, text="${text.substring(0, 60)}"`);
 
         // ── Slash command interception ──
-        // Commands starting with / are executed locally, never forwarded to agents.
-        if (this.commandExecutor && text.startsWith('/')) {
-            console.log(`[teams-bridge] 🔧 Detected slash command: "${text.substring(0, 60)}"`);
-            const result = await this.commandExecutor.tryExecute(msg);
-            if (result.handled && result.response) {
-                console.log(`[teams-bridge] 🔧 Command handled locally, sending response (${result.response.length} chars)`);
-                await this.sendCommandResponse(result.response, msg);
-                console.log(`[teams-bridge] 🔧 Command response sent to Teams`);
-                return;
+        // ALL messages starting with / are handled locally, NEVER forwarded to agents.
+        if (text.startsWith('/')) {
+            if (this.commandExecutor) {
+                console.log(`[teams-bridge] 🔧 Detected slash command: "${text.substring(0, 60)}"`);
+                const result = await this.commandExecutor.tryExecute(msg);
+                if (result.handled && result.response) {
+                    console.log(`[teams-bridge] 🔧 Command executed locally, sending response (${result.response.length} chars)`);
+                    await this.sendCommandResponse(result.response, msg);
+                    console.log(`[teams-bridge] 🔧 Command response sent to Teams`);
+                } else {
+                    // Unknown /command — respond with help hint, still don't forward
+                    console.log(`[teams-bridge] 🔧 Unknown slash command: "${text.substring(0, 60)}" — not forwarding to agent`);
+                    await this.sendCommandResponse(`❓ Unknown command: \`${text.split(/\s/)[0]}\`\nType \`/help\` for available commands.`, msg);
+                }
+            } else {
+                console.log(`[teams-bridge] 🔧 Slash command received but executor not initialized — ignoring`);
             }
-            // If not handled (unknown /command), fall through to agent routing
-            console.log(`[teams-bridge] 🔧 Slash command not recognized, forwarding to agent`);
+            return;
         }
 
         let processId: string | undefined;
