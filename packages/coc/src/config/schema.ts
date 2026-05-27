@@ -108,6 +108,12 @@ export const CLIConfigSchema = z.object({
         enabled: z.boolean().optional(),
     }).passthrough().optional(),
     defaultProvider: z.enum(['copilot', 'codex', 'claude']).optional(),
+    ralph: z.object({
+        enabled: z.boolean().optional(),
+        finalCheck: z.object({
+            maxGapFixLoops: z.number().int().min(1).optional(),
+        }).passthrough().optional(),
+    }).passthrough().optional(),
     loops: z.object({
         enabled: z.boolean().optional(),
     }).passthrough().optional(),

@@ -70,7 +70,7 @@ const SCRATCHPAD_SOURCE_KEYS = ['scratchpad.enabled', 'scratchpad.layout'] as co
 const WORKFLOWS_SOURCE_KEYS = ['workflows.enabled'] as const;
 const PULL_REQUESTS_SOURCE_KEYS = ['pullRequests.enabled', 'pullRequests.suggestions'] as const;
 const SERVERS_SOURCE_KEYS = ['servers.enabled'] as const;
-const RALPH_SOURCE_KEYS = ['ralph.enabled'] as const;
+const RALPH_SOURCE_KEYS = ['ralph.enabled', 'ralph.finalCheck.maxGapFixLoops'] as const;
 const VIM_NAVIGATION_SOURCE_KEYS = ['vimNavigation.enabled'] as const;
 const LOOPS_SOURCE_KEYS = ['loops.enabled'] as const;
 const MCP_OAUTH_SOURCE_KEYS = ['mcpOauth.enabled'] as const;
@@ -244,7 +244,14 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
         {
             name: 'ralph',
             sourceDescriptors: [source('ralph.', ['ralph'], RALPH_SOURCE_KEYS)],
-            merge: (base, override) => ({ ralph: { enabled: override?.ralph?.enabled ?? base.ralph?.enabled ?? false } }),
+            merge: (base, override) => ({
+                ralph: {
+                    enabled: override?.ralph?.enabled ?? base.ralph?.enabled ?? false,
+                    finalCheck: {
+                        maxGapFixLoops: override?.ralph?.finalCheck?.maxGapFixLoops ?? base.ralph?.finalCheck?.maxGapFixLoops ?? 3,
+                    },
+                },
+            }),
         },
         {
             name: 'vimNavigation',

@@ -195,6 +195,18 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         if (!cfg.ralph) { cfg.ralph = {}; }
         cfg.ralph.enabled = v;
     }),
+    {
+        key: 'ralph.finalCheck.maxGapFixLoops',
+        runtime: 'live' as AdminConfigFieldRuntime,
+        validate: (v) => typeof v === 'number' && Number.isInteger(v) && v >= 1
+            ? undefined
+            : 'ralph.finalCheck.maxGapFixLoops must be a positive integer (≥ 1)',
+        apply: (cfg, v) => {
+            if (!cfg.ralph) { cfg.ralph = {}; }
+            if (!cfg.ralph.finalCheck) { cfg.ralph.finalCheck = {}; }
+            cfg.ralph.finalCheck.maxGapFixLoops = v as number;
+        },
+    },
     bool('vimNavigation.enabled', (cfg, v) => {
         if (!cfg.vimNavigation) { cfg.vimNavigation = {}; }
         cfg.vimNavigation.enabled = v;
