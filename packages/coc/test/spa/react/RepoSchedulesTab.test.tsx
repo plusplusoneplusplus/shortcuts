@@ -10,7 +10,7 @@ import { QueueProvider } from '../../../src/server/spa/client/react/contexts/Que
 import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
 import { SCHEDULE_TEMPLATES, describeCron, CRON_EXAMPLES } from '../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab';
 
-const { mockSchedulesClient, mockModelsClient, mockWorkflowClient } = vi.hoisted(() => ({
+const { mockSchedulesClient, mockModelsClient, mockWorkflowClient, mockAgentProvidersClient } = vi.hoisted(() => ({
     mockSchedulesClient: {
         list: vi.fn(),
         history: vi.fn(),
@@ -28,6 +28,9 @@ const { mockSchedulesClient, mockModelsClient, mockWorkflowClient } = vi.hoisted
     mockWorkflowClient: {
         list: vi.fn(),
     },
+    mockAgentProvidersClient: {
+        listModels: vi.fn().mockResolvedValue({ models: [] }),
+    },
 }));
 
 // Mock fetch and fetchApi so the component can render without a real server
@@ -43,13 +46,14 @@ vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
 }));
 
 vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({ schedules: mockSchedulesClient, models: mockModelsClient, workflow: mockWorkflowClient }),
+    getSpaCocClient: () => ({ schedules: mockSchedulesClient, models: mockModelsClient, workflow: mockWorkflowClient, agentProviders: mockAgentProvidersClient }),
 }));
 
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => 'http://localhost:4000/api',
     isRalphEnabled: () => false,
+    getActiveProvider: () => 'copilot' as const,
 }));
 
 vi.mock('../../../src/server/spa/client/react/utils/format', () => ({
