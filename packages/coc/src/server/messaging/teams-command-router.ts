@@ -54,12 +54,12 @@ export interface ParsedCommand {
 // ============================================================================
 
 const COMMAND_PATTERNS: Array<{ pattern: RegExp; type: ParsedCommand['type'] }> = [
-    { pattern: /^list\s+agents?\s*$/i, type: 'list-agents' },
-    { pattern: /^list\s+repos?\s*$/i, type: 'list-repos' },
-    { pattern: /^select\s+repos?\s+(.+)$/i, type: 'select-repo' },
-    { pattern: /^list\s+(?:chat\s+)?topics?\s*$/i, type: 'list-topics' },
-    { pattern: /^create\s+(?:chat\s+)?topic\s*$/i, type: 'create-topic' },
-    { pattern: /^select\s+(?:chat\s+)?topic\s+(.+)$/i, type: 'select-topic' },
+    { pattern: /^\/list\s+agents?\s*$/i, type: 'list-agents' },
+    { pattern: /^\/list\s+repos?\s*$/i, type: 'list-repos' },
+    { pattern: /^\/select\s+repos?\s+(.+)$/i, type: 'select-repo' },
+    { pattern: /^\/list\s+(?:chat\s+)?topics?\s*$/i, type: 'list-topics' },
+    { pattern: /^\/create\s+(?:chat\s+)?topic\s*$/i, type: 'create-topic' },
+    { pattern: /^\/select\s+(?:chat\s+)?topic\s+(.+)$/i, type: 'select-topic' },
 ];
 
 /** Matches `[chatid] message` syntax. */

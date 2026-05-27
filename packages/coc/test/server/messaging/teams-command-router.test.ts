@@ -15,36 +15,36 @@ import type { InboundTeamsMessage } from '@plusplusoneplusplus/teams-bot';
 // ============================================================================
 
 describe('parseCommand', () => {
-    it('parses "list agents"', () => {
-        expect(parseCommand('list agents')).toEqual({ type: 'list-agents', args: '' });
-        expect(parseCommand('LIST AGENTS')).toEqual({ type: 'list-agents', args: '' });
-        expect(parseCommand('list agent')).toEqual({ type: 'list-agents', args: '' });
+    it('parses "/list agents"', () => {
+        expect(parseCommand('/list agents')).toEqual({ type: 'list-agents', args: '' });
+        expect(parseCommand('/LIST AGENTS')).toEqual({ type: 'list-agents', args: '' });
+        expect(parseCommand('/list agent')).toEqual({ type: 'list-agents', args: '' });
     });
 
-    it('parses "list repos"', () => {
-        expect(parseCommand('list repos')).toEqual({ type: 'list-repos', args: '' });
-        expect(parseCommand('list repo')).toEqual({ type: 'list-repos', args: '' });
+    it('parses "/list repos"', () => {
+        expect(parseCommand('/list repos')).toEqual({ type: 'list-repos', args: '' });
+        expect(parseCommand('/list repo')).toEqual({ type: 'list-repos', args: '' });
     });
 
-    it('parses "select repo <name>"', () => {
-        expect(parseCommand('select repo my-project')).toEqual({ type: 'select-repo', args: 'my-project' });
-        expect(parseCommand('select repos My Repo')).toEqual({ type: 'select-repo', args: 'My Repo' });
+    it('parses "/select repo <name>"', () => {
+        expect(parseCommand('/select repo my-project')).toEqual({ type: 'select-repo', args: 'my-project' });
+        expect(parseCommand('/select repos My Repo')).toEqual({ type: 'select-repo', args: 'My Repo' });
     });
 
-    it('parses "list topics"', () => {
-        expect(parseCommand('list topics')).toEqual({ type: 'list-topics', args: '' });
-        expect(parseCommand('list chat topics')).toEqual({ type: 'list-topics', args: '' });
-        expect(parseCommand('list topic')).toEqual({ type: 'list-topics', args: '' });
+    it('parses "/list topics"', () => {
+        expect(parseCommand('/list topics')).toEqual({ type: 'list-topics', args: '' });
+        expect(parseCommand('/list chat topics')).toEqual({ type: 'list-topics', args: '' });
+        expect(parseCommand('/list topic')).toEqual({ type: 'list-topics', args: '' });
     });
 
-    it('parses "create topic"', () => {
-        expect(parseCommand('create topic')).toEqual({ type: 'create-topic', args: '' });
-        expect(parseCommand('create chat topic')).toEqual({ type: 'create-topic', args: '' });
+    it('parses "/create topic"', () => {
+        expect(parseCommand('/create topic')).toEqual({ type: 'create-topic', args: '' });
+        expect(parseCommand('/create chat topic')).toEqual({ type: 'create-topic', args: '' });
     });
 
-    it('parses "select topic <id>"', () => {
-        expect(parseCommand('select topic abc123')).toEqual({ type: 'select-topic', args: 'abc123' });
-        expect(parseCommand('select chat topic abc123')).toEqual({ type: 'select-topic', args: 'abc123' });
+    it('parses "/select topic <id>"', () => {
+        expect(parseCommand('/select topic abc123')).toEqual({ type: 'select-topic', args: 'abc123' });
+        expect(parseCommand('/select chat topic abc123')).toEqual({ type: 'select-topic', args: 'abc123' });
     });
 
     it('parses "[chatid] message" syntax', () => {
@@ -57,8 +57,13 @@ describe('parseCommand', () => {
         expect(parseCommand('Hello, how are you?')).toEqual({ type: 'chat', args: 'Hello, how are you?' });
     });
 
+    it('treats commands without / prefix as plain chat', () => {
+        expect(parseCommand('list agents')).toEqual({ type: 'chat', args: 'list agents' });
+        expect(parseCommand('select repo foo')).toEqual({ type: 'chat', args: 'select repo foo' });
+    });
+
     it('trims whitespace', () => {
-        expect(parseCommand('  list agents  ')).toEqual({ type: 'list-agents', args: '' });
+        expect(parseCommand('  /list agents  ')).toEqual({ type: 'list-agents', args: '' });
     });
 });
 
@@ -169,7 +174,7 @@ describe('TeamsCommandRouter', () => {
     // ── list agents / list repos ──────────────────────────────
 
     it('lists agents/repos', async () => {
-        await router.handle(makeMsg('list agents'));
+        await router.handle(makeMsg('/list agents'));
         expect(sendReplySpy).toHaveBeenCalledTimes(1);
         const reply = sendReplySpy.mock.calls[0][0] as string;
         expect(reply).toContain('ProjectA');
@@ -178,43 +183,42 @@ describe('TeamsCommandRouter', () => {
     });
 
     it('lists repos (alias)', async () => {
-        await router.handle(makeMsg('list repos'));
+        await router.handle(makeMsg('/list repos'));
         expect(sendReplySpy).toHaveBeenCalledTimes(1);
         expect(sendReplySpy.mock.calls[0][0]).toContain('Agents / Repos');
     });
 
     it('handles empty workspace list', async () => {
         (deps.store.getWorkspaces as any).mockResolvedValue([]);
-        await router.handle(makeMsg('list agents'));
+        await router.handle(makeMsg('/list agents'));
         expect(sendReplySpy.mock.calls[0][0]).toContain('No agents');
     });
 
     // ── select repo ───────────────────────────────────────────
 
     it('selects repo by name', async () => {
-        await router.handle(makeMsg('select repo ProjectA'));
+        await router.handle(makeMsg('/select repo ProjectA'));
         expect(sendReplySpy.mock.calls[0][0]).toContain('Selected repo');
         expect(sendReplySpy.mock.calls[0][0]).toContain('ProjectA');
     });
 
     it('selects repo by numeric index', async () => {
-        await router.handle(makeMsg('select repo 2'));
+        await router.handle(makeMsg('/select repo 2'));
         expect(sendReplySpy.mock.calls[0][0]).toContain('ProjectB');
     });
 
     it('errors on unknown repo', async () => {
-        await router.handle(makeMsg('select repo NonExistent'));
+        await router.handle(makeMsg('/select repo NonExistent'));
         expect(sendReplySpy.mock.calls[0][0]).toContain('not found');
     });
 
     // ── list topics ───────────────────────────────────────────
 
     it('lists topics', async () => {
-        // Select a repo first
-        await router.handle(makeMsg('select repo ProjectA'));
+        await router.handle(makeMsg('/select repo ProjectA'));
         sendReplySpy.mockClear();
 
-        await router.handle(makeMsg('list topics'));
+        await router.handle(makeMsg('/list topics'));
         const reply = sendReplySpy.mock.calls[0][0] as string;
         expect(reply).toContain('Chat Topics');
         expect(reply).toContain('Fix bug');
@@ -222,36 +226,36 @@ describe('TeamsCommandRouter', () => {
 
     it('handles no topics', async () => {
         (deps.store.getAllProcesses as any).mockResolvedValue([]);
-        await router.handle(makeMsg('list topics'));
+        await router.handle(makeMsg('/list topics'));
         expect(sendReplySpy.mock.calls[0][0]).toContain('No chat topics');
     });
 
     // ── create topic ──────────────────────────────────────────
 
     it('creates topic when repo is selected', async () => {
-        await router.handle(makeMsg('select repo ProjectA'));
+        await router.handle(makeMsg('/select repo ProjectA'));
         sendReplySpy.mockClear();
 
-        await router.handle(makeMsg('create topic'));
+        await router.handle(makeMsg('/create topic'));
         expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', '(New topic created from Teams)');
         expect(sendReplySpy.mock.calls[0][0]).toContain('Created new chat topic');
     });
 
     it('errors on create topic without repo', async () => {
-        await router.handle(makeMsg('create topic'));
+        await router.handle(makeMsg('/create topic'));
         expect(sendReplySpy.mock.calls[0][0]).toContain('No repo selected');
     });
 
     // ── select topic ──────────────────────────────────────────
 
     it('selects an existing topic', async () => {
-        await router.handle(makeMsg('select topic proc-111'));
+        await router.handle(makeMsg('/select topic proc-111'));
         expect(sendReplySpy.mock.calls[0][0]).toContain('Selected topic');
         expect(sendReplySpy.mock.calls[0][0]).toContain('Fix bug');
     });
 
     it('errors on selecting non-existent topic', async () => {
-        await router.handle(makeMsg('select topic bad-id'));
+        await router.handle(makeMsg('/select topic bad-id'));
         expect(sendReplySpy.mock.calls[0][0]).toContain('not found');
     });
 
@@ -271,7 +275,7 @@ describe('TeamsCommandRouter', () => {
     // ── chat (follow-up or create new) ────────────────────────
 
     it('follows up on selected topic', async () => {
-        await router.handle(makeMsg('select topic proc-222'));
+        await router.handle(makeMsg('/select topic proc-222'));
         sendReplySpy.mockClear();
 
         await router.handle(makeMsg('How is it going?'));
@@ -279,7 +283,7 @@ describe('TeamsCommandRouter', () => {
     });
 
     it('creates new topic when no active topic and repo is selected', async () => {
-        await router.handle(makeMsg('select repo ProjectA'));
+        await router.handle(makeMsg('/select repo ProjectA'));
         sendReplySpy.mockClear();
 
         await router.handle(makeMsg('Start something new'));
@@ -303,19 +307,19 @@ describe('TeamsCommandRouter', () => {
 
     it('catches and reports errors', async () => {
         (deps.store.getWorkspaces as any).mockRejectedValue(new Error('DB error'));
-        await router.handle(makeMsg('list agents'));
+        await router.handle(makeMsg('/list agents'));
         expect(sendReplySpy.mock.calls[0][0]).toContain('DB error');
     });
 
     // ── per-user isolation ────────────────────────────────────
 
     it('isolates state between users', async () => {
-        await router.handle(makeMsg('select repo ProjectA', { senderAadId: 'user-A' }));
-        await router.handle(makeMsg('select repo ProjectB', { senderAadId: 'user-B' }));
+        await router.handle(makeMsg('/select repo ProjectA', { senderAadId: 'user-A' }));
+        await router.handle(makeMsg('/select repo ProjectB', { senderAadId: 'user-B' }));
         sendReplySpy.mockClear();
 
         // user-A creates topic in ProjectA
-        await router.handle(makeMsg('create topic', { senderAadId: 'user-A' }));
+        await router.handle(makeMsg('/create topic', { senderAadId: 'user-A' }));
         expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', expect.any(String));
     });
 });
