@@ -554,6 +554,20 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
         return map;
     }, [hunkRanges, activeFilters, expandedHunks, filePath, getHunkClassification]);
 
+    // AC-03: hunks that were filtered-out but manually expanded by the reviewer.
+    // These keep a compact classification badge + Collapse button on their @@ header.
+    const expandedByStart = useMemo(() => {
+        const map = new Map<number, HunkRange>();
+        if (!activeFilters || !filePath || !getHunkClassification) return map;
+        for (const h of hunkRanges) {
+            if (!h.classification) continue;
+            if (activeFilters.has(h.classification.category)) continue;
+            if (!expandedHunks.has(h.hunkIndex)) continue;
+            map.set(h.startIdx, h);
+        }
+        return map;
+    }, [hunkRanges, activeFilters, expandedHunks, filePath, getHunkClassification]);
+
     const skipIndices = useMemo(() => {
         const set = new Set<number>();
         for (const h of collapsedByStart.values()) {
@@ -578,6 +592,15 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             if (prev.has(hunkIndex)) return prev;
             const next = new Set(prev);
             next.add(hunkIndex);
+            return next;
+        });
+    }, []);
+
+    const collapseHunk = useCallback((hunkIndex: number) => {
+        setExpandedHunks(prev => {
+            if (!prev.has(hunkIndex)) return prev;
+            const next = new Set(prev);
+            next.delete(hunkIndex);
             return next;
         });
     }, []);
@@ -801,6 +824,8 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                         </div>
                     );
                 }
+                // AC-03: hunk that was filtered-out but manually expanded (shows badge + Collapse).
+                const expandedHunk = expandedByStart.get(i);
                 if ((type === 'added' || type === 'removed' || type === 'context') && line.length > 0) {
                     const content = line.slice(1);
                     const intraParts = (type === 'added' || type === 'removed') ? intraLinePartsMap.get(i) : undefined;
@@ -899,6 +924,25 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                             </span>
                         )}
                         <span className="px-1 flex-1 min-w-0">{line || '\u00a0'}</span>
+                        {expandedHunk?.classification && type === 'hunk-header' && (
+                            <>
+                                <span
+                                    className={`shrink-0 inline-flex items-center self-center px-1.5 py-0.5 mx-1 rounded text-[10px] font-semibold uppercase tracking-wide ${expandedHunk.classification.intensity === 'high' ? 'bg-[#ffd8b2] text-[#b94a00] dark:bg-[#5a2e00] dark:text-[#ffb380]' : 'bg-[#e0e7ff] text-[#3730a3] dark:bg-[#1e293b] dark:text-[#93c5fd]'}`}
+                                    title={expandedHunk.classification.reason}
+                                    data-testid="expanded-hunk-badge"
+                                >
+                                    {CATEGORY_LABELS[expandedHunk.classification.category]}
+                                </span>
+                                <button
+                                    type="button"
+                                    className="shrink-0 self-center text-[11px] px-2 py-0.5 mx-1 rounded bg-white dark:bg-[#1f2937] border border-[#d0d7de] dark:border-[#3c3c3c] text-[#24292f] dark:text-[#c9d1d9] hover:bg-[#f3f4f6] dark:hover:bg-[#2a3340]"
+                                    onClick={() => collapseHunk(expandedHunk.hunkIndex)}
+                                    data-testid="expanded-hunk-collapse"
+                                >
+                                    Collapse
+                                </button>
+                            </>
+                        )}
                     </div>
                 );
             })}
