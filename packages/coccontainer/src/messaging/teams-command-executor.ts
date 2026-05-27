@@ -174,7 +174,7 @@ export class TeamsCommandExecutor {
             lines.push(`${idx++}. **${a.name}** (${a.id}) — ${statusIcon} ${a.status}`);
         }
 
-        return `**Agents** (${lines.length}):\n${lines.join('\n')}`;
+        return `**Agents** (${lines.length}):<br>${lines.join('<br>')}`;
     }
 
     private handleListRepos(): string {
@@ -194,7 +194,7 @@ export class TeamsCommandExecutor {
         const lines = repos.map((r, i) =>
             `${i + 1}. **${r.workspace.name}**, agent:${r.agentName}`,
         );
-        return `**Repos** (${repos.length}):\n${lines.join('\n')}`;
+        return `**Repos** (${repos.length}):<br>${lines.join('<br>')}`;
     }
 
     private handleSelectRepo(nameOrIndex: string, userKey: string): string {
@@ -255,7 +255,7 @@ export class TeamsCommandExecutor {
                 return `${i + 1}. \`${p.id.slice(0, 12)}\` [${p.status}] ${title}${selected}`;
             });
 
-            return `**Chat Topics** (agent: ${agentId}):\n${lines.join('\n')}`;
+            return `**Chat Topics** (agent: ${agentId}):<br>${lines.join('<br>')}`;
         } catch (err: any) {
             return `❌ Failed to list topics: ${err.message}`;
         }
@@ -322,6 +322,6 @@ export class TeamsCommandExecutor {
             '**Chat:**',
             'Any message without `/` is sent to the selected topic (or creates a new one).',
             'Use `[processId] message` to target a specific chat.',
-        ].join('\n');
+        ].join('<br>');
     }
 }
