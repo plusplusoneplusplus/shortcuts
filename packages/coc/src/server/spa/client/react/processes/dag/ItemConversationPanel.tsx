@@ -345,15 +345,22 @@ export function ItemConversationPanel({ processId, onClose, isDark }: ItemConver
                         No conversation data available.
                     </div>
                 )}
-                {turns.map((turn, i) => (
-                    <ConversationTurnBubble
-                        key={i}
-                        turn={turn}
-                        onRetry={turn.isError ? handleRetry : undefined}
-                        wsId={wsId}
-                        processType={proc?.type}
-                    />
-                ))}
+                {turns.map((turn, i) => {
+                    const rawProvider = proc?.metadata?.provider;
+                    const provider = rawProvider === 'codex' || rawProvider === 'claude' || rawProvider === 'copilot'
+                        ? rawProvider
+                        : undefined;
+                    return (
+                        <ConversationTurnBubble
+                            key={i}
+                            turn={turn}
+                            onRetry={turn.isError ? handleRetry : undefined}
+                            wsId={wsId}
+                            processType={proc?.type}
+                            provider={provider}
+                        />
+                    );
+                })}
                 <div ref={scrollRef} />
             </div>
 

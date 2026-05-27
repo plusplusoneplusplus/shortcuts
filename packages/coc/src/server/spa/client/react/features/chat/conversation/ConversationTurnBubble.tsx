@@ -35,6 +35,7 @@ import { CommitStrip } from './CommitStrip';
 import { NoteEditCard } from './NoteEditCard';
 import { ScriptTerminalBlock } from './ScriptTerminalBlock';
 import { parseScriptOutput, describeScriptExit } from './scriptOutputParser';
+import { getProviderAvatarClasses, type ChatProvider } from '../ProviderBadge';
 
 function escapeAttr(value: string): string {
     return value
@@ -243,6 +244,13 @@ interface ConversationTurnBubbleProps {
     }>;
     /** Process ID — needed for NoteEditCard undo API call. */
     processId?: string;
+    /**
+     * AI provider that produced the assistant turns (`copilot`, `codex`, or
+     * `claude`). Controls the round avatar's color so it matches the
+     * provider's brand palette (Copilot=green, Claude=orange, Codex=indigo).
+     * Defaults to `copilot` (green) when omitted to preserve the legacy look.
+     */
+    provider?: ChatProvider;
 }
 
 interface RenderToolCall {
@@ -760,7 +768,7 @@ function AssistantStatsBadge({ tokenUsage, costTimeMs }: { tokenUsage?: ClientTo
     );
 }
 
-export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsId, turnIndex, onAttachContext, onDeleteTurn, onPinTurn, onArchiveTurn, noteEdits, processId }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsId, turnIndex, onAttachContext, onDeleteTurn, onPinTurn, onArchiveTurn, noteEdits, processId, provider }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const isScript = !isUser && processType === TaskDefs.runScript.kind;
     const { showReportIntent, toolCompactness, groupSingleLineMessages } = useDisplaySettings();
@@ -1028,10 +1036,11 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                             ? 'bg-[#1e1e1e] text-[#d4d4d4] border-[#000] font-mono text-[10px]'
                             : turn.isError
                                 ? 'bg-[#ffebe9] text-[#cf222e] border-[#f5c2c2] dark:bg-[#3a1a1a] dark:text-[#f87171] dark:border-[#7a3030] text-[11.5px] font-semibold'
-                                : 'bg-[#dafbe1] text-[#15703a] border-[#b8e6c1] dark:bg-[#0f3a1f] dark:text-[#4ade80] dark:border-[#225a32] text-[11.5px] font-semibold'
+                                : cn(getProviderAvatarClasses(provider), 'text-[11.5px] font-semibold')
                     )}
                     title={isScript ? 'Script Output' : turn.isError ? 'Assistant — error' : 'Assistant'}
                     aria-hidden="true"
+                    data-provider={isScript || turn.isError ? undefined : (provider ?? 'copilot')}
                 >
                     {isScript ? '$_' : 'C'}
                 </span>
