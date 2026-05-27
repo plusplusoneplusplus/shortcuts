@@ -222,18 +222,18 @@ describe('AdminPanel — embedded tools render in the right panel', () => {
         await act(async () => { renderAdmin(); });
         await waitFor(() => expect(document.getElementById('skills-toggle')).toBeTruthy());
 
-        // Default admin sub-section is AI & Execution; before clicking a tool,
-        // that promoted settings row is active.
-        const aiRow = document.querySelector<HTMLButtonElement>('[data-testid="settings-subtab-ai"]')!;
-        expect(aiRow.className).toContain('is-active');
+        // Default admin sub-section is settings; before clicking a tool,
+        // the single "Configure" sidebar item is active.
+        const configureRow = document.querySelector<HTMLButtonElement>('[data-testid="settings-nav-configure"]')!;
+        expect(configureRow.className).toContain('is-active');
 
         await act(async () => {
             fireEvent.click(document.getElementById('skills-toggle')!);
         });
 
         await waitFor(() => {
-            // Once a tool is embedded, no admin/settings row should show as active.
-            expect(document.querySelector<HTMLButtonElement>('[data-testid="settings-subtab-ai"]')!.className).not.toContain('is-active');
+            // Once a tool is embedded, the Configure sidebar item should no longer be active.
+            expect(document.querySelector<HTMLButtonElement>('[data-testid="settings-nav-configure"]')!.className).not.toContain('is-active');
         });
     });
 
@@ -254,7 +254,7 @@ describe('AdminPanel — embedded tools render in the right panel', () => {
         expect(crumb!.textContent).toContain('Models');
     });
 
-    it('clicking a settings row after an embedded tool view restores the admin page', async () => {
+    it('clicking the Configure sidebar item after an embedded tool view restores the admin page', async () => {
         await act(async () => { renderAdmin(); });
         await waitFor(() => expect(document.getElementById('skills-toggle')).toBeTruthy());
 
@@ -263,17 +263,23 @@ describe('AdminPanel — embedded tools render in the right panel', () => {
         });
         await waitFor(() => expect(document.querySelector('[data-testid="admin-tool-embed-skills"]')).toBeTruthy());
 
-        // Click the Chat settings row — embed should unmount and the standard
-        // admin settings card view should render.
+        // Click the "Configure" sidebar item — embed should unmount and the settings
+        // page should render with the sub-tab bar and default (ai) card.
         await act(async () => {
-            fireEvent.click(document.querySelector<HTMLButtonElement>('[data-testid="settings-subtab-chat"]')!);
+            fireEvent.click(document.querySelector<HTMLButtonElement>('[data-testid="settings-nav-configure"]')!);
         });
 
         await waitFor(() => expect(document.querySelector('[data-testid="admin-tool-embed-skills"]')).toBeNull());
         // Settings cards container is back.
         expect(document.querySelector('[data-testid="settings-cards"]')).toBeTruthy();
-        expect(document.querySelector('[data-testid="settings-chat"]')).toBeTruthy();
-        // Chat row is active.
+        // Default (AI & Execution) card is visible.
+        expect(document.querySelector('[data-testid="settings-ai-execution"]')).toBeTruthy();
+        // The in-page sub-tab bar is rendered; clicking Chat switches to that section.
+        await act(async () => {
+            fireEvent.click(document.querySelector<HTMLButtonElement>('[data-testid="settings-subtab-chat"]')!);
+        });
+        await waitFor(() => expect(document.querySelector('[data-testid="settings-chat"]')).toBeTruthy());
+        // Chat tab is now marked active.
         expect(document.querySelector<HTMLButtonElement>('[data-testid="settings-subtab-chat"]')!.className).toContain('is-active');
     });
 });
