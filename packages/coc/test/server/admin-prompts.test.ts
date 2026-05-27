@@ -6,10 +6,10 @@ import { describe, it, expect } from 'vitest';
 import { getBuiltInPrompts } from '../../src/server/admin/admin-handler';
 
 describe('getBuiltInPrompts', () => {
-    it('returns all 12 built-in prompts', () => {
+    it('returns all 13 built-in prompts', () => {
         const prompts = getBuiltInPrompts();
         const ids = Object.keys(prompts);
-        expect(ids).toHaveLength(12);
+        expect(ids).toHaveLength(13);
         expect(ids).toContain('read-only-mode');
         expect(ids).toContain('task-creation');
         expect(ids).toContain('plan-generation');
@@ -22,6 +22,7 @@ describe('getBuiltInPrompts', () => {
         expect(ids).toContain('ralph-synthesis');
         expect(ids).toContain('ralph-execution-system');
         expect(ids).toContain('ralph-iteration-user');
+        expect(ids).toContain('diff-classification-user');
     });
 
     it('each prompt has all required fields', () => {
@@ -38,9 +39,9 @@ describe('getBuiltInPrompts', () => {
         }
     });
 
-    it('groups are Pipeline, Memory, UI, or Ralph', () => {
+    it('groups are Pipeline, Memory, UI, Ralph, or Diff Classification', () => {
         const prompts = getBuiltInPrompts();
-        const validGroups = new Set(['Pipeline', 'Memory', 'UI', 'Ralph']);
+        const validGroups = new Set(['Pipeline', 'Memory', 'UI', 'Ralph', 'Diff Classification']);
         for (const p of Object.values(prompts)) {
             expect(validGroups.has(p.group)).toBe(true);
         }
@@ -74,10 +75,20 @@ describe('getBuiltInPrompts', () => {
         }
     });
 
-    it('non-Ralph prompts are not editable', () => {
+    it('Diff Classification group contains 1 editable prompt', () => {
         const prompts = getBuiltInPrompts();
-        const nonRalph = Object.values(prompts).filter(p => p.group !== 'Ralph');
-        for (const p of nonRalph) {
+        const diffPrompts = Object.values(prompts).filter(p => p.group === 'Diff Classification');
+        expect(diffPrompts).toHaveLength(1);
+        for (const p of diffPrompts) {
+            expect(p.editable).toBe(true);
+            expect(Array.isArray(p.templateVars)).toBe(true);
+        }
+    });
+
+    it('Pipeline, Memory, and UI prompts are not editable', () => {
+        const prompts = getBuiltInPrompts();
+        const readOnlyPrompts = Object.values(prompts).filter(p => ['Pipeline', 'Memory', 'UI'].includes(p.group));
+        for (const p of readOnlyPrompts) {
             expect(p.editable).toBeFalsy();
         }
     });
