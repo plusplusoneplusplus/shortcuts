@@ -16,7 +16,6 @@ import {
     isWireAttachmentArray,
     processMessageAttachments,
 } from '../core/attachment-utils';
-import { resolveConfig } from '../../config';
 import type { Route } from '../types';
 import {
     serializeTask,
@@ -77,7 +76,7 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
         method: 'GET',
         pattern: '/api/queue/models',
         handler: async (_req, res) => {
-            const activeProvider = resolveConfig().activeProvider ?? 'copilot';
+            const activeProvider = ctx.getDefaultProvider?.() ?? 'copilot';
             if (activeProvider === 'copilot') {
                 const live = modelMetadataStore.getCachedModels()
                     .filter(m => m.policy?.state !== 'disabled');

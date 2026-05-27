@@ -76,6 +76,7 @@ export interface QueueRouteContext {
     store: ProcessStore | undefined;
     globalWorkspaceRootPath: string | undefined;
     state: QueueGlobalState;
+    getDefaultProvider?: () => 'copilot' | 'codex' | 'claude';
 }
 
 export function getRepoIdentifierFromQuery(query: ParsedUrlQuery): string | undefined {

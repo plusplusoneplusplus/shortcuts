@@ -62,6 +62,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/queue` | List queue tasks |
+| GET | `/api/queue/models` | List model IDs for the configured default provider |
 | POST | `/api/queue` | Enqueue a task |
 | DELETE | `/api/queue/:id` | Remove from queue |
 | POST | `/api/queue/:id/cancel` | Cancel queued task |

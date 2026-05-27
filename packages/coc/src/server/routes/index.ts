@@ -204,7 +204,15 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerTerminalRoutes(routes, store, opts.getTerminalSessionManager ?? (() => undefined), opts.resolvedConfig, opts.runtimeConfigService);
 
     // Queue routes receive the bridge directly for per-repo routing
-    registerQueueRoutes(routes, bridge, store, globalWorkspaceRootPath);
+    registerQueueRoutes(routes, bridge, store, globalWorkspaceRootPath, {
+        getDefaultProvider: () => {
+            const defaultProvider = opts.runtimeConfigService?.config.defaultProvider
+                ?? opts.resolvedConfig?.defaultProvider;
+            if (defaultProvider === 'codex') return 'codex';
+            if (defaultProvider === 'claude') return 'claude';
+            return 'copilot';
+        },
+    });
     registerTaskRoutes(routes, store, dataDir, (workspaceId) => {
         getWsServer().broadcastProcessEvent({
             type: 'tasks-changed',
