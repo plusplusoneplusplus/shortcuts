@@ -825,6 +825,9 @@ timeout: 300
                 '    enabled: true',
                 '    timeoutMs: 30000',
                 '    model: gpt-normalize',
+                'workItems:',
+                '  hierarchy:',
+                '    enabled: true',
             ].join('\n'));
             const result = getResolvedConfigWithSource(configPath);
 
@@ -1062,6 +1065,11 @@ timeout: 300
                   "vimNavigation": {
                     "enabled": true,
                   },
+                  "workItems": {
+                    "hierarchy": {
+                      "enabled": false,
+                    },
+                  },
                   "workflows": {
                     "enabled": true,
                   },
@@ -1112,6 +1120,7 @@ timeout: 300
                   "timeout": "file",
                   "toolCompactness": "file",
                   "vimNavigation.enabled": "file",
+                  "workItems.hierarchy.enabled": "default",
                   "workflows.enabled": "file",
                 },
               }
