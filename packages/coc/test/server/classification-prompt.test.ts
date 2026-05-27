@@ -116,4 +116,65 @@ describe('classification-prompt', () => {
             expect(result).toContain('Classify every hunk');
         });
     });
+
+    // ── Override validation contract ─────────────────────────────────────
+    // These tests verify the contract that admin-handler's validatePromptOverride
+    // enforces: every template variable must appear in any override text.
+
+    describe('override validation contract', () => {
+        /**
+         * Re-implements the same validation check used by
+         * admin-handler.ts's validatePromptOverride to avoid importing
+         * admin-handler (which has deep transitive deps that fail in vitest).
+         */
+        function validateOverride(text: string): string | undefined {
+            const missing = DIFF_CLASSIFICATION_TEMPLATE_VARS.filter(v => !text.includes(v));
+            if (missing.length > 0) {
+                return `Override must contain required template variable(s): ${missing.join(', ')}`;
+            }
+            return undefined;
+        }
+
+        it('accepts text containing all four required template vars', () => {
+            const text = 'Custom: ${target} ${diffInstructions} ${classificationSchema} ${saveInstruction}';
+            expect(validateOverride(text)).toBeUndefined();
+        });
+
+        it('rejects text missing ${target}', () => {
+            const text = 'Custom: ${diffInstructions} ${classificationSchema} ${saveInstruction}';
+            const err = validateOverride(text);
+            expect(err).toContain('${target}');
+            expect(err).toContain('required template variable');
+        });
+
+        it('rejects text missing ${diffInstructions}', () => {
+            const text = 'Custom: ${target} ${classificationSchema} ${saveInstruction}';
+            const err = validateOverride(text);
+            expect(err).toContain('${diffInstructions}');
+        });
+
+        it('rejects text missing ${classificationSchema}', () => {
+            const text = 'Custom: ${target} ${diffInstructions} ${saveInstruction}';
+            const err = validateOverride(text);
+            expect(err).toContain('${classificationSchema}');
+        });
+
+        it('rejects text missing ${saveInstruction}', () => {
+            const text = 'Custom: ${target} ${diffInstructions} ${classificationSchema}';
+            const err = validateOverride(text);
+            expect(err).toContain('${saveInstruction}');
+        });
+
+        it('lists all missing vars when none are present', () => {
+            const err = validateOverride('totally custom text with no vars');
+            expect(err).toContain('${target}');
+            expect(err).toContain('${diffInstructions}');
+            expect(err).toContain('${classificationSchema}');
+            expect(err).toContain('${saveInstruction}');
+        });
+
+        it('default template passes validation', () => {
+            expect(validateOverride(DIFF_CLASSIFICATION_DEFAULT_TEMPLATE)).toBeUndefined();
+        });
+    });
 });

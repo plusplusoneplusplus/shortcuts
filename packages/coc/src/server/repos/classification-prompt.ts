@@ -84,7 +84,7 @@ function branchRangeTarget(range: string): ClassificationTarget {
 function renderTemplate(template: string, vars: Record<string, string>): string {
     let result = template;
     for (const [key, value] of Object.entries(vars)) {
-        result = result.replaceAll(key, value);
+        result = result.split(key).join(value);
     }
     return result;
 }
