@@ -961,7 +961,7 @@ export class TeamsBridge {
                 } else {
                     // Unknown /command — respond with help hint, still don't forward
                     console.log(`[teams-bridge] 🔧 Unknown slash command: "${text.substring(0, 60)}" — not forwarding to agent`);
-                    await this.sendCommandResponse(`❓ Unknown command: \`${text.split(/\s/)[0]}\`\nType \`/help\` for available commands.`, msg);
+                    await this.sendCommandResponse(`❓ Unknown command: \`${text.split(/\s/)[0]}\`<br>Type \`/help\` for available commands.`, msg);
                 }
             } else {
                 console.log(`[teams-bridge] 🔧 Slash command received but executor not initialized — ignoring`);
