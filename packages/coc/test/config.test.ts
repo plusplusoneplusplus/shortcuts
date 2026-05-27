@@ -799,6 +799,8 @@ timeout: 300
                 '  enabled: true',
                 'ralph:',
                 '  enabled: true',
+                '  finalCheck:',
+                '    maxGapFixLoops: 5',
                 'vimNavigation:',
                 '  enabled: true',
                 'loops:',
@@ -1030,6 +1032,9 @@ timeout: 300
                   },
                   "ralph": {
                     "enabled": true,
+                    "finalCheck": {
+                      "maxGapFixLoops": 3,
+                    },
                   },
                   "scratchpad": {
                     "enabled": true,
@@ -1106,6 +1111,7 @@ timeout: 300
                   "pullRequests.enabled": "file",
                   "pullRequests.suggestions": "file",
                   "ralph.enabled": "file",
+                  "ralph.finalCheck.maxGapFixLoops": "default",
                   "scratchpad.enabled": "file",
                   "scratchpad.layout": "file",
                   "serve.dataDir": "file",
