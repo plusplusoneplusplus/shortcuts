@@ -41,6 +41,7 @@ const LogsView = lazy(() => import('../features/logs/LogsView').then(m => ({ def
 const UsageStatsView = lazy(() => import('../features/stats/UsageStatsView').then(m => ({ default: m.UsageStatsView })));
 const ServersView = lazy(() => import('../features/servers/ServersView').then(m => ({ default: m.ServersView })));
 const MemoryV2Panel = lazy(() => import('../features/memory/MemoryV2Panel').then(m => ({ default: m.MemoryV2Panel })));
+const ProviderModelsSection = lazy(() => import('../features/models/ProviderModelsSection').then(m => ({ default: m.ProviderModelsSection })));
 
 function formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
@@ -2170,6 +2171,24 @@ export function AdminPanel() {
                                         )}
                                     </div>
                                 </SettingsCard>
+
+                                {/* Provider-scoped model catalog and query */}
+                                <Suspense fallback={<div className="text-xs text-[#888] mt-4">Loading models…</div>}>
+                                    <ProviderModelsSection
+                                        provider={activeProvider}
+                                        available={
+                                            activeProvider === 'copilot'
+                                                ? true
+                                                : (providerAvailability[activeProvider]?.available ?? false)
+                                                    && (activeProvider === 'codex' ? codexEnabled : claudeEnabled)
+                                        }
+                                        unavailableMessage={
+                                            activeProvider !== 'copilot' && !(activeProvider === 'codex' ? codexEnabled : claudeEnabled)
+                                                ? `Enable the ${activeProvider === 'codex' ? 'Codex' : 'Claude'} provider above to access its model catalog.`
+                                                : providerAvailability[activeProvider]?.error
+                                        }
+                                    />
+                                </Suspense>
                             </>
                         )}
 
