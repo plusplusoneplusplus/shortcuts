@@ -643,6 +643,69 @@ describe('GET /api/repos/:id/pull-requests/:prId/diff/files/:filePath', () => {
     });
 });
 
+// ── GET /api/repos/:id/pull-requests/:prId/diff/files/:path?fullContext=true (AC-02) ──
+
+describe('GET .../diff/files/:path?fullContext=true (AC-02)', () => {
+    const combinedDiff = [
+        'diff --git a/src/foo.ts b/src/foo.ts',
+        '--- a/src/foo.ts',
+        '+++ b/src/foo.ts',
+        '@@ -1,3 +1,4 @@',
+        ' line1',
+        '+added',
+    ].join('\n');
+
+    beforeEach(() => {
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(combinedDiff);
+    });
+
+    it('without ?fullContext: returns normal diff, no fullContextUnavailable field', async () => {
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { diff: string; fullContextUnavailable?: boolean };
+        expect(body.diff).toContain('diff --git a/src/foo.ts');
+        expect(body.fullContextUnavailable).toBeUndefined();
+    });
+
+    it('with ?fullContext=true and no cached PR detail: returns hunk diff with fullContextUnavailable=true', async () => {
+        // No prior GET /pull-requests/42 call, so prDetailCache is empty
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}?fullContext=true`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { diff: string; fullContextUnavailable: boolean };
+        expect(body.fullContextUnavailable).toBe(true);
+        // Should still include the hunk diff as fallback
+        expect(body.diff).toContain('diff --git a/src/foo.ts');
+    });
+
+    it('with ?fullContext=true and cached PR detail missing SHAs: returns fullContextUnavailable=true', async () => {
+        // Warm the PR detail cache (mockPr has no baseSha/headSha)
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}?fullContext=true`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { diff: string; fullContextUnavailable: boolean };
+        expect(body.fullContextUnavailable).toBe(true);
+        // Fallback hunk diff still returned
+        expect(body.diff).toContain('diff --git a/src/foo.ts');
+    });
+
+    it('with ?fullContext=true and cached PR detail has SHAs but git fails: returns fullContextUnavailable=true', async () => {
+        // Override getPullRequest to return a PR with SHAs
+        const prWithShas = { ...mockPr, headSha: 'deadbeef111', baseSha: 'cafebabe222' };
+        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockResolvedValueOnce(prWithShas);
+
+        // Warm the PR detail cache with SHAs
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+
+        // The repo.localPath is /tmp/repo which is not a real git repo, so git diff fails
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}?fullContext=true`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { diff: string; fullContextUnavailable: boolean };
+        expect(body.fullContextUnavailable).toBe(true);
+        expect(body.diff).toContain('diff --git a/src/foo.ts');
+    });
+});
+
 // ── PR diff cache tests (AC-01) ───────────────────────────────────────────────
 
 describe('PR diff cache (AC-01)', () => {

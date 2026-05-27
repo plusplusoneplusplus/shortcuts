@@ -19,6 +19,8 @@
  */
 
 import * as url from 'url';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import type { Route } from '../types';
 import { sendJson, send404, send400, send500, readJsonBody } from '../router';
 import { RepoTreeService } from './tree-service';
@@ -144,6 +146,32 @@ export function clearPrDiffCache(): void {
 /** Clear the cached diff for one specific PR (used by force-refresh). */
 function clearPrDiffCacheEntry(repoId: string, prId: string): void {
     prDiffCache.delete(makePrDiffCacheKey(repoId, prId));
+}
+
+/**
+ * Attempt to produce a full-file-context diff by running `git diff -U99999`
+ * with the PR's base and head SHAs against the local repo checkout.
+ *
+ * Returns the diff string on success, or null if git is unavailable,
+ * the SHAs are not present locally (e.g. fork commits), or any other error.
+ */
+async function getFullContextFileDiff(
+    localPath: string,
+    baseSha: string,
+    headSha: string,
+    filePath: string,
+): Promise<string | null> {
+    const execFileAsync = promisify(execFile);
+    try {
+        const { stdout } = await execFileAsync(
+            'git',
+            ['diff', '-U99999', baseSha, headSha, '--', filePath],
+            { cwd: localPath, encoding: 'utf-8', timeout: 10_000 },
+        );
+        return stdout || null;
+    } catch {
+        return null;
+    }
 }
 
 /**
@@ -604,11 +632,13 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
     routes.push({
         method: 'GET',
         pattern: /^\/api\/repos\/([^/]+)\/pull-requests\/([^/]+)\/diff\/files\/(.+)$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             try {
                 const repoId = decodeURIComponent(match![1]);
                 const prId = decodeURIComponent(match![2]);
                 const filePath = decodeURIComponent(match![3]);
+                const query = url.parse(req.url ?? '', true).query;
+                const fullContext = query.fullContext === 'true';
 
                 const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
@@ -633,6 +663,24 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                     prSvc.getDiff.bind(prSvc),
                 );
                 const fileDiff = extractFileDiffFromCombined(combinedDiff, filePath);
+
+                if (fullContext) {
+                    // Try to get a full-context diff via local git
+                    const cachedDetail = prDetailCache.get(makePrDetailCacheKey(repoId, prId));
+                    const prData = cachedDetail?.data as { headSha?: string; baseSha?: string } | undefined;
+                    const baseSha = prData?.baseSha;
+                    const headSha = prData?.headSha;
+
+                    if (baseSha && headSha && repo.localPath) {
+                        const fullCtxDiff = await getFullContextFileDiff(repo.localPath, baseSha, headSha, filePath);
+                        if (fullCtxDiff) {
+                            return sendJson(res, { diff: fullCtxDiff, fullContextUnavailable: false });
+                        }
+                    }
+                    // Could not produce full-context diff; return hunk diff with flag
+                    return sendJson(res, { diff: fileDiff ?? '', fullContextUnavailable: true });
+                }
+
                 sendJson(res, { diff: fileDiff ?? '' });
             } catch (err) {
                 if (err instanceof Error && (err.message.includes('not found') || err.message.includes('404'))) {

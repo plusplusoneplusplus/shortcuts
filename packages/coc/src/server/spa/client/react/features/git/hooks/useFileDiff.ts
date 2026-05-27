@@ -21,6 +21,12 @@ export interface FileDiffState {
     totalLines: number;
     /** Call to re-fetch with full=true. No-op if not truncated. */
     requestFullDiff: () => void;
+    /**
+     * True when a full-context diff was requested but the server could not
+     * produce one (e.g. PR SHAs not locally available). The diff field holds
+     * the normal hunk-only diff as a fallback.
+     */
+    fullContextUnavailable?: boolean;
 }
 
 /**
@@ -41,6 +47,7 @@ export function useFileDiff(
     const [truncated, setTruncated] = useState(false);
     const [totalLines, setTotalLines] = useState(0);
     const [fullRequested, setFullRequested] = useState(false);
+    const [fullContextUnavailable, setFullContextUnavailable] = useState<boolean | undefined>(undefined);
 
     // Track the latest url to avoid stale fetches
     const urlRef = useRef(url);
@@ -56,6 +63,7 @@ export function useFileDiff(
                 setDiff(result.diff);
                 setTruncated(result.truncated);
                 setTotalLines(result.totalLines);
+                setFullContextUnavailable(result.fullContextUnavailable);
             })
             .catch((err: Error) => {
                 if (urlRef.current !== url) return;
@@ -72,6 +80,7 @@ export function useFileDiff(
         setFullRequested(false);
         setTruncated(false);
         setTotalLines(0);
+        setFullContextUnavailable(undefined);
         if (!url) {
             setDiff(null);
             setLoading(false);
@@ -98,5 +107,5 @@ export function useFileDiff(
         setFullRequested(true);
     }, [truncated, fullUrl]);
 
-    return { diff, loading, error, retry, truncated, totalLines, requestFullDiff };
+    return { diff, loading, error, retry, truncated, totalLines, requestFullDiff, fullContextUnavailable };
 }

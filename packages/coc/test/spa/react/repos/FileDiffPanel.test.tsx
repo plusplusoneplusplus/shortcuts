@@ -223,6 +223,21 @@ function makeCommitSource(overrides: Partial<DiffSource> = {}): DiffSource {
     };
 }
 
+function makePrSource(overrides: Partial<DiffSource> = {}): DiffSource {
+    return {
+        label: 'PR #42',
+        fileDiffUrl: (fp: string) => `/api/repos/repo1/pull-requests/42/diff/files/${fp}`,
+        fullContextFileDiffUrl: (fp: string) => `/api/repos/repo1/pull-requests/42/diff/files/${fp}?fullContext=true`,
+        fullDiffUrl: () => `/api/repos/repo1/pull-requests/42/diff`,
+        commentContext: (fp: string) => ({ repositoryId: 'ws1', filePath: fp, oldRef: 'pr-42-base', newRef: 'pr-42-head' }),
+        files: [],
+        chat: null,
+        supportsTruncation: false,
+        cacheKey: 'pr:repo1:42',
+        ...overrides,
+    };
+}
+
 // --- Tests ---
 
 describe('FileDiffPanel', () => {
@@ -708,5 +723,93 @@ describe('FileDiffPanel', () => {
 
         expect(screen.queryByTestId('inline-comment-popup')).toBeNull();
         expect(mockAddComment).not.toHaveBeenCalled();
+    });
+
+    // ── Full-context diff toggle (AC-02) ──
+
+    it('shows full-context toggle button when source supports fullContextFileDiffUrl', () => {
+        render(<FileDiffPanel workspaceId="ws1" filePath="src/foo.ts" source={makePrSource()} />);
+
+        expect(screen.getByTestId('full-context-toggle-btn')).toBeTruthy();
+    });
+
+    it('does not show full-context toggle button when source has no fullContextFileDiffUrl', () => {
+        render(<FileDiffPanel workspaceId="ws1" filePath="src/foo.ts" source={makeBranchSource()} />);
+
+        expect(screen.queryByTestId('full-context-toggle-btn')).toBeNull();
+    });
+
+    it('clicking full-context toggle fetches the full-context URL', async () => {
+        const prSource = makePrSource();
+        render(<FileDiffPanel workspaceId="ws1" filePath="src/foo.ts" source={prSource} />);
+
+        // Before toggle: standard URL
+        expect(mockUseFileDiff).toHaveBeenLastCalledWith(
+            `/api/repos/repo1/pull-requests/42/diff/files/src/foo.ts`,
+            null,
+        );
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('full-context-toggle-btn'));
+        });
+
+        // After toggle: full-context URL
+        expect(mockUseFileDiff).toHaveBeenLastCalledWith(
+            `/api/repos/repo1/pull-requests/42/diff/files/src/foo.ts?fullContext=true`,
+            null,
+        );
+    });
+
+    it('full-context toggle button shows active state when in full-context mode', async () => {
+        render(<FileDiffPanel workspaceId="ws1" filePath="src/foo.ts" source={makePrSource()} />);
+
+        const btn = screen.getByTestId('full-context-toggle-btn');
+        expect(btn.getAttribute('aria-pressed')).toBe('false');
+
+        await act(async () => {
+            fireEvent.click(btn);
+        });
+
+        expect(screen.getByTestId('full-context-toggle-btn').getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('shows fullContextUnavailable banner when server reports unavailable', () => {
+        mockUseFileDiff.mockReturnValue(makeFileDiffHook({ fullContextUnavailable: true }));
+
+        render(<FileDiffPanel workspaceId="ws1" filePath="src/foo.ts" source={makePrSource()} />);
+
+        expect(screen.getByTestId('full-context-unavailable-banner')).toBeTruthy();
+        expect(screen.getByText(/Full-file context unavailable/)).toBeTruthy();
+    });
+
+    it('does not show fullContextUnavailable banner when not unavailable', () => {
+        mockUseFileDiff.mockReturnValue(makeFileDiffHook({ fullContextUnavailable: false }));
+
+        render(<FileDiffPanel workspaceId="ws1" filePath="src/foo.ts" source={makePrSource()} />);
+
+        expect(screen.queryByTestId('full-context-unavailable-banner')).toBeNull();
+    });
+
+    it('navigating to a new file resets full-context mode back to hunk-only', async () => {
+        const prSource = makePrSource();
+        const { rerender } = render(<FileDiffPanel workspaceId="ws1" filePath="src/foo.ts" source={prSource} />);
+
+        // Enable full-context
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('full-context-toggle-btn'));
+        });
+        expect(mockUseFileDiff).toHaveBeenLastCalledWith(
+            `/api/repos/repo1/pull-requests/42/diff/files/src/foo.ts?fullContext=true`,
+            null,
+        );
+
+        // Navigate to a different file
+        rerender(<FileDiffPanel workspaceId="ws1" filePath="src/bar.ts" source={prSource} />);
+
+        // Mode should reset — standard URL used again
+        expect(mockUseFileDiff).toHaveBeenLastCalledWith(
+            `/api/repos/repo1/pull-requests/42/diff/files/src/bar.ts`,
+            null,
+        );
     });
 });

@@ -10,6 +10,12 @@ export interface DiffFetchResult {
     diff: string;
     truncated: boolean;
     totalLines: number;
+    /**
+     * True when the caller requested a full-file-context diff but the server
+     * could not produce one (e.g. PR SHAs not locally available). The diff
+     * field will contain the normal hunk-only diff as a fallback.
+     */
+    fullContextUnavailable?: boolean;
 }
 
 /**
@@ -57,6 +63,13 @@ export interface DiffSource {
      * @param full — when true, appends ?full=true to bypass server truncation.
      */
     fileDiffUrl(filePath: string, full?: boolean): string;
+
+    /**
+     * Build the API URL for a full-file-context diff.
+     * When present, the UI may offer a toggle to switch from hunk-only to
+     * full-context. Returns null when the source does not support it.
+     */
+    fullContextFileDiffUrl?(filePath: string): string | null;
 
     /**
      * Build the API URL for the full (all-files) diff.
@@ -209,6 +222,7 @@ export async function fetchDiffFromSource(url: string): Promise<DiffFetchResult>
         diff: data.diff ?? '',
         truncated: !!data.truncated,
         totalLines: data.totalLines ?? 0,
+        fullContextUnavailable: data.fullContextUnavailable === true ? true : undefined,
     };
 }
 
@@ -233,6 +247,10 @@ export function createPrDiffSource(
 
         fileDiffUrl(filePath: string, _full?: boolean): string {
             return `/api/repos/${encodeURIComponent(repoId)}/pull-requests/${encodeURIComponent(prId)}/diff/files/${encodeURIComponent(filePath)}`;
+        },
+
+        fullContextFileDiffUrl(filePath: string): string {
+            return `/api/repos/${encodeURIComponent(repoId)}/pull-requests/${encodeURIComponent(prId)}/diff/files/${encodeURIComponent(filePath)}?fullContext=true`;
         },
 
         fullDiffUrl(): string {

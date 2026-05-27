@@ -212,4 +212,62 @@ describe('useFileDiff', () => {
         // Should not fetch again since fullUrl is null
         expect(mockFetchDiffFromSource).toHaveBeenCalledTimes(1);
     });
+
+    it('propagates fullContextUnavailable=true from server response', async () => {
+        mockFetchDiffFromSource.mockResolvedValue({
+            diff: 'hunk-only fallback diff',
+            truncated: false,
+            totalLines: 0,
+            fullContextUnavailable: true,
+        });
+
+        const { result } = renderHook(() => useFileDiff('/api/diff?fullContext=true'));
+
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        expect(result.current.fullContextUnavailable).toBe(true);
+        expect(result.current.diff).toBe('hunk-only fallback diff');
+    });
+
+    it('fullContextUnavailable is undefined when not in server response', async () => {
+        mockFetchDiffFromSource.mockResolvedValue({
+            diff: 'normal diff',
+            truncated: false,
+            totalLines: 0,
+        });
+
+        const { result } = renderHook(() => useFileDiff('/api/diff'));
+
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        expect(result.current.fullContextUnavailable).toBeUndefined();
+    });
+
+    it('resets fullContextUnavailable on URL change', async () => {
+        mockFetchDiffFromSource
+            .mockResolvedValueOnce({
+                diff: 'hunk fallback',
+                truncated: false,
+                totalLines: 0,
+                fullContextUnavailable: true,
+            })
+            .mockResolvedValueOnce({
+                diff: 'normal diff',
+                truncated: false,
+                totalLines: 0,
+            });
+
+        const { result, rerender } = renderHook(
+            ({ url }) => useFileDiff(url),
+            { initialProps: { url: '/api/diff?fullContext=true' as string } },
+        );
+
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.fullContextUnavailable).toBe(true);
+
+        rerender({ url: '/api/diff' });
+
+        await waitFor(() => expect(result.current.diff).toBe('normal diff'));
+        expect(result.current.fullContextUnavailable).toBeUndefined();
+    });
 });
