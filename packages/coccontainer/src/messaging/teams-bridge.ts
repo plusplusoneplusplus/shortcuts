@@ -1035,8 +1035,12 @@ export class TeamsBridge {
             }
         }
 
-        // No reply, no [global] → continue the last active session
-        if (!isFollowUp && !processId) {
+        // Check if command executor flagged "force new topic" for this user
+        const userKey = msg.senderAadId ?? msg.senderName ?? 'unknown';
+        const forceNew = this.commandExecutor?.getUserState(userKey)?.forceNewTopic ?? false;
+
+        // No reply, no [global] → continue the last active session (unless forced new)
+        if (!isFollowUp && !processId && !forceNew) {
             const last = this.store.getLastActiveSession();
             if (last) {
                 processId = last.processId;
@@ -1046,11 +1050,20 @@ export class TeamsBridge {
             }
         }
 
-        // Still nothing → create a new chat via global session
+        // Still nothing (or forced new) → create a new chat via global session
         const senderId = msg.senderAadId ?? msg.senderName ?? 'unknown';
         if (!isFollowUp || !processId || !agentId) {
+            if (forceNew) {
+                console.log(`[teams-bridge] 🆕 Forced new topic for user ${userKey}`);
+                // Clear existing global session so a fresh one is created
+                this.store.clearGlobalSession(senderId);
+            }
             ({ processId, agentId } = await this.resolveGlobalSession(senderId, msg.text));
             isFollowUp = false;
+            // Clear the force flag after creating new session
+            if (forceNew) {
+                this.commandExecutor?.updateUserState(userKey, { forceNewTopic: false });
+            }
         }
 
         if (!agentId) {

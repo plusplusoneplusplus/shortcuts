@@ -44,6 +44,8 @@ export interface UserState {
     selectedWorkspaceId: string | null;
     selectedTopicId: string | null;
     lastActiveTopicId: string | null;
+    /** When true, next message should create a new chat instead of following up. */
+    forceNewTopic: boolean;
 }
 
 interface CommandResult {
@@ -122,6 +124,7 @@ export class TeamsCommandExecutor {
                 selectedWorkspaceId: null,
                 selectedTopicId: null,
                 lastActiveTopicId: null,
+                forceNewTopic: false,
             });
         }
         return this.userStates.get(userKey)!;
@@ -268,8 +271,8 @@ export class TeamsCommandExecutor {
             return '❌ No repo selected. Use `/select repo <name>` first.';
         }
 
-        // Clear topic selection — next message will auto-create a new chat
-        this.updateUserState(userKey, { selectedTopicId: null, lastActiveTopicId: null });
+        // Clear topic selection and force next message to create a new chat
+        this.updateUserState(userKey, { selectedTopicId: null, lastActiveTopicId: null, forceNewTopic: true });
         return '✅ Ready for a new topic. Send your next message to start a new chat.';
     }
 

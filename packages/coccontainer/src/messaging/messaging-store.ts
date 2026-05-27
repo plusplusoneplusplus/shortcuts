@@ -124,6 +124,11 @@ export class MessagingStore {
         ).run(senderJid, processId, agentId);
     }
 
+    /** Clear the global session for a sender (forces new session on next message). */
+    clearGlobalSession(senderJid: string): void {
+        this.db.prepare(`DELETE FROM wa_global_sessions WHERE sender_jid = ?`).run(senderJid);
+    }
+
     /** Store the sender info for a process (for @mentions on outbound). */
     setProcessSender(processId: string, senderAadId: string, senderName: string): void {
         this.db.prepare(
