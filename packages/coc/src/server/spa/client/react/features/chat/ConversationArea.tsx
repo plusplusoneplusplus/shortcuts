@@ -13,6 +13,7 @@ import type { QueuedMessage } from '../../utils/chatUtils';
 import type { BackgroundTasksState, AskUserBatch, McpOAuthPromptData } from './hooks/useChatSSE';
 import { MODE_ICONS, MODE_TEXT_COLORS } from '../../repos/modeConfig';
 import type { ChatMode } from '../../repos/modeConfig';
+import type { ChatProvider } from './ProviderBadge';
 
 export interface ConversationAreaProps {
     loading: boolean;
@@ -97,6 +98,12 @@ export interface ConversationAreaProps {
     onMcpOAuthCompleted?: (requestId: string) => void;
     /** Called when an MCP OAuth flow fails. */
     onMcpOAuthFailed?: (requestId: string) => void;
+    /**
+     * AI provider that owns this conversation. Threaded into
+     * {@link ConversationTurnBubble} so each assistant avatar takes on the
+     * provider's brand color (Copilot=green, Claude=orange, Codex=indigo).
+     */
+    provider?: ChatProvider;
 }
 
 export function ConversationArea({
@@ -139,6 +146,7 @@ export function ConversationArea({
     onMcpOAuthCompleted,
     onMcpOAuthFailed,
     processError,
+    provider,
 }: ConversationAreaProps) {
     const [showArchived, setShowArchived] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -220,6 +228,7 @@ export function ConversationArea({
                                                 noteEdits={noteEdits}
                                                 processId={processId}
                                                 processType={processType}
+                                                provider={provider}
                                             />
                                         ))}
                                     </div>
@@ -351,6 +360,7 @@ export function ConversationArea({
                                                     noteEdits={noteEdits}
                                                     processId={processId}
                                                     processType={processType}
+                                                    provider={provider}
                                                 />
                                             </div>
                                         </div>

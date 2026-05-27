@@ -20,6 +20,7 @@ import { useChatSSE } from '../chat/hooks/useChatSSE';
 import { getConversationTurns } from '../chat/conversation/chatConversationUtils';
 import { MetaRow, FilePathValue } from '../../queue/PendingTaskPayload';
 import type { ClientConversationTurn } from '../../types/dashboard';
+import type { ChatProvider } from '../chat/ProviderBadge';
 
 export interface WorkItemExecutionSessionProps {
     taskId: string;
@@ -400,6 +401,12 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
                         onArchiveTurn={handleArchiveTurn}
                         undoDeleteTurnIndex={undoDelete?.turnIndex ?? null}
                         onUndoDelete={handleUndoDelete}
+                        provider={(() => {
+                            const raw = processDetails?.metadata?.provider ?? task?.metadata?.provider;
+                            return raw === 'codex' || raw === 'claude' || raw === 'copilot'
+                                ? (raw as ChatProvider)
+                                : undefined;
+                        })()}
                     />
                     <ConversationMiniMap
                         turns={turns}

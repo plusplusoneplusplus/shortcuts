@@ -60,10 +60,21 @@ spa/client/react/
 ## Chat UI Architecture
 
 `ConversationTurnBubble` renders:
-- **Assistant turns:** Left-aligned with `C` avatar (green), borderless flowing content
+- **Assistant turns:** Left-aligned with `C` avatar whose color tracks the
+  chat's provider via `getProviderAvatarClasses` (`ProviderBadge.tsx`) —
+  Copilot=green, Claude=coral/orange, Codex=indigo. Body is borderless,
+  flowing content. The `provider` prop flows from `ChatDetail` →
+  `ConversationArea` → `ConversationTurnBubble`; missing/unknown provider
+  metadata falls back to the Copilot (green) palette.
 - **User turns:** Right-aligned with `Y` avatar (blue), soft-gray rounded bubbles
-- **Error turns:** Red error-strip aside with retry button
-- **Script output:** Dark terminal window with PASS/FAIL highlighting
+- **Error turns:** Red error-strip aside with retry button; the avatar
+  keeps its dedicated red palette and ignores `provider`.
+- **Script output:** Dark terminal window with PASS/FAIL highlighting; the
+  avatar keeps its dedicated dark-terminal palette and ignores `provider`.
+
+`ProviderBadge` (the chat-header agent pill) shares the same provider
+palette and mirrors `ChatStatusPill`'s "Thinking" style: rounded-full
+bordered pill with a leading colored dot followed by the provider label.
 
 `QueuedFollowUps` renders pending messages as compact dashed-border cards with cancel buttons.
 
