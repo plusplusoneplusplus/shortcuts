@@ -953,6 +953,7 @@ export class TeamsBridge {
 
         const text = msg.text.trim();
         const _debug = this.opts.config.debug ?? false;
+        const userKey = msg.senderAadId ?? msg.senderName ?? 'unknown';
 
         console.log(`[teams-bridge] 📨 Inbound message: id=${msg.messageId}, sender=${msg.senderName ?? 'unknown'}, text="${text.substring(0, 60)}"`);
 
@@ -1038,13 +1039,13 @@ export class TeamsBridge {
                 msg = { ...msg, text: stripped };
             } else {
                 msg = { ...msg, text: stripped };
-                ({ processId, agentId } = await this.resolveGlobalSession(senderId, stripped));
+                const executorState = this.commandExecutor?.getUserState(userKey);
+                ({ processId, agentId } = await this.resolveGlobalSession(senderId, stripped, executorState?.selectedAgentId ?? undefined, executorState?.selectedWorkspaceId ?? undefined));
                 isFollowUp = false;
             }
         }
 
         // Check if command executor flagged "force new topic" for this user
-        const userKey = msg.senderAadId ?? msg.senderName ?? 'unknown';
         const forceNew = this.commandExecutor?.getUserState(userKey)?.forceNewTopic ?? false;
 
         // No reply, no [global] → continue the last active session (unless forced new)
@@ -1061,12 +1062,16 @@ export class TeamsBridge {
         // Still nothing (or forced new) → create a new chat via global session
         const senderId = msg.senderAadId ?? msg.senderName ?? 'unknown';
         if (!isFollowUp || !processId || !agentId) {
+            // Use the user's selected agent/workspace from command executor if available
+            const executorState = this.commandExecutor?.getUserState(userKey);
+            const selectedAgentId = executorState?.selectedAgentId ?? undefined;
+            const selectedWorkspaceId = executorState?.selectedWorkspaceId ?? undefined;
+
             if (forceNew) {
-                console.log(`[teams-bridge] 🆕 Forced new topic for user ${userKey}`);
-                // Clear existing global session so a fresh one is created
+                console.log(`[teams-bridge] 🆕 Forced new topic for user ${userKey} (agent=${selectedAgentId}, workspace=${selectedWorkspaceId})`);
                 this.store.clearGlobalSession(senderId);
             }
-            ({ processId, agentId } = await this.resolveGlobalSession(senderId, msg.text));
+            ({ processId, agentId } = await this.resolveGlobalSession(senderId, msg.text, selectedAgentId, selectedWorkspaceId));
             isFollowUp = false;
             // Clear the force flag after creating new session
             if (forceNew) {
@@ -1105,22 +1110,26 @@ export class TeamsBridge {
     }
 
     // ── Global session ────────────────────────────────────
-    private async resolveGlobalSession(senderId: string, text: string): Promise<{ processId: string; agentId: string }> {
+    private async resolveGlobalSession(senderId: string, text: string, preferredAgentId?: string, preferredWorkspaceId?: string): Promise<{ processId: string; agentId: string }> {
         if (!this.store) throw new Error('Store not initialized');
 
         const existing = this.store.getGlobalSession(senderId);
         if (existing) return existing;
 
-        const agentId = this.opts.config.defaultAgentId
+        const agentId = preferredAgentId
+            ?? this.opts.config.defaultAgentId
             ?? this.opts.agentStore.list().find(a => a.status === 'online')?.id;
         if (!agentId) throw new Error('No online agent available for global session');
+
+        const workspaceId = preferredWorkspaceId ?? 'ws-global';
+        console.log(`[teams-bridge] Creating new chat: agent=${agentId}, workspace=${workspaceId}`);
 
         const res = await this.fetchFromAgent(agentId, '/api/queue', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 type: 'chat',
-                payload: { workspaceId: 'ws-global', prompt: text, mode: 'ask' },
+                payload: { workspaceId, prompt: text, mode: 'ask' },
             }),
         });
         const { id: processId } = await res.json() as { id: string };
