@@ -9,6 +9,7 @@ import { useState, useEffect } from 'react';
 import { Button, cn } from '../../ui';
 import { SegmentedControl } from '../../ui/SegmentedControl';
 import { getSpaCocClient } from '../../api/cocClient';
+import { getActiveProvider } from '../../utils/config';
 import { ScheduleTriggerPanel } from './ScheduleTriggerPanel';
 import {
     PROMPT_SCHEDULE_PRESETS,
@@ -83,9 +84,9 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
     // Load available models
     useEffect(() => {
         let cancelled = false;
-        getSpaCocClient().models.list()
+        getSpaCocClient().agentProviders.listModels(getActiveProvider())
             .then(data => {
-                if (!cancelled) setModels(Array.isArray(data) ? data.map(m => m.id ?? m) : []);
+                if (!cancelled) setModels(Array.isArray(data.models) ? data.models.map((m: any) => m.id ?? m) : []);
             })
             .catch(() => { /* model override stays optional */ });
         return () => { cancelled = true; };

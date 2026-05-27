@@ -57,13 +57,13 @@ describe('FollowPromptDialog', () => {
 
     it('shows only enabled models in the model dropdown', async () => {
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/api/models')) {
+            if (url.includes('/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve([
+                    json: () => Promise.resolve({ provider: 'copilot', models: [
                         { id: 'gpt-4', name: 'gpt-4', enabled: true, capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } },
                         { id: 'gpt-3.5', name: 'gpt-3.5', enabled: false, capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } },
-                    ]),
+                    ] }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({ skills: [] }) });
@@ -79,13 +79,13 @@ describe('FollowPromptDialog', () => {
 
     it('falls back to all models when none are enabled', async () => {
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/api/models')) {
+            if (url.includes('/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve([
+                    json: () => Promise.resolve({ provider: 'copilot', models: [
                         { id: 'gpt-4', name: 'gpt-4', enabled: false, capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } },
                         { id: 'gpt-3.5', name: 'gpt-3.5', enabled: false, capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } },
-                    ]),
+                    ] }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({ skills: [] }) });
@@ -99,12 +99,12 @@ describe('FollowPromptDialog', () => {
         });
     });
         
-    it('populates model select from /api/models', async () => {
+    it('populates model select from /models', async () => {
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/api/models')) {
+            if (url.includes('/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'gpt-3.5', name: 'gpt-3.5', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
+                    json: () => Promise.resolve({ provider: 'copilot', models: [{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'gpt-3.5', name: 'gpt-3.5', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }] }),
                 });
             }
             if (url.includes('/preferences')) {
@@ -256,10 +256,10 @@ describe('FollowPromptDialog', () => {
         const onClose = vi.fn();
 
         mockFetch.mockImplementation((url: string, opts?: any) => {
-            if (url.includes('/api/models')) {
+            if (url.includes('/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-sonnet', name: 'claude-sonnet', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
+                    json: () => Promise.resolve({ provider: 'copilot', models: [{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-sonnet', name: 'claude-sonnet', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }] }),
                 });
             }
             if (url.includes('/skills')) {
@@ -349,7 +349,7 @@ describe('FollowPromptDialog', () => {
                     json: () => Promise.resolve({ skills: [{ name: 'impl' }] }),
                 });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
         });
 
         await act(async () => {
@@ -378,7 +378,7 @@ describe('FollowPromptDialog', () => {
                     json: () => Promise.resolve({ skills: [{ name: 'my-skill' }] }),
                 });
             }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
         });
 
         await act(async () => {

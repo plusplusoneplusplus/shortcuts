@@ -1,4 +1,4 @@
-import { AdminClient, AgentProvidersClient, DbBrowserClient, ExplorerClient, GitClient, HealthClient, LoopsClient, MemoryClient, MemoryV2Client, ModelsClient, NotesClient, PreferencesClient, ProcessesClient, PromptHistoryClient, PullRequestsClient, QueueClient, SchedulesClient, SeenStateClient, ServersClient, SkillsClient, StatsClient, SuggestionsClient, SyncClient, TasksClient, TemplatesClient, WikiClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
+import { AdminClient, AgentProvidersClient, DbBrowserClient, ExplorerClient, GitClient, HealthClient, LoopsClient, MemoryClient, MemoryV2Client, NotesClient, PreferencesClient, ProcessesClient, PromptHistoryClient, PullRequestsClient, QueueClient, SchedulesClient, SeenStateClient, ServersClient, SkillsClient, StatsClient, SuggestionsClient, SyncClient, TasksClient, TemplatesClient, WikiClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
 import { HttpTransport, normalizeOptions } from './http';
 import { EventsClient } from './realtime';
 import type { CocClientOptions, CocRequestOptions, NormalizedCocClientOptions } from './types';
@@ -13,7 +13,6 @@ export class CocClient {
   readonly health: HealthClient;
   readonly memory: MemoryClient;
   readonly memoryV2: MemoryV2Client;
-  readonly models: ModelsClient;
   readonly notes: NotesClient;
   readonly preferences: PreferencesClient;
   readonly processes: ProcessesClient;
@@ -50,7 +49,6 @@ export class CocClient {
     this.health = new HealthClient(this.transport);
     this.memory = new MemoryClient(this.transport);
     this.memoryV2 = new MemoryV2Client(this.transport);
-    this.models = new ModelsClient(this.transport);
     this.notes = new NotesClient(this.transport);
     this.preferences = new PreferencesClient(this.transport);
     this.processes = new ProcessesClient(this.transport, this.options);

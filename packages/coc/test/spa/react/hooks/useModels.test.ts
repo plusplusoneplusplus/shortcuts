@@ -1,5 +1,5 @@
 /**
- * Tests for useModels — fetches model list from /models API via typed cocClient.
+ * Tests for useModels — fetches model list from provider-scoped API via agentProviders.listModels().
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -7,9 +7,9 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { useModels, useModelConfig } from '../../../../src/server/spa/client/react/hooks/useModels';
 
 const mocks = vi.hoisted(() => ({
-    models: {
-        list: vi.fn(),
-        setEnabled: vi.fn(),
+    agentProviders: {
+        listModels: vi.fn(),
+        setEnabledModels: vi.fn(),
         getReasoningEfforts: vi.fn(),
         setReasoningEffort: vi.fn(),
     },
@@ -19,25 +19,29 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', async (importOr
     const actual = await importOriginal<typeof import('../../../../src/server/spa/client/react/api/cocClient')>();
     return {
         ...actual,
-        getSpaCocClient: () => ({ models: mocks.models }),
+        getSpaCocClient: () => ({ agentProviders: mocks.agentProviders }),
     };
 });
 
+vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    getActiveProvider: () => 'copilot',
+}));
+
 describe('useModels', () => {
-    beforeEach(() => { mocks.models.list.mockReset(); mocks.models.setEnabled.mockReset(); });
+    beforeEach(() => { mocks.agentProviders.listModels.mockReset(); mocks.agentProviders.setEnabledModels.mockReset(); });
     afterEach(() => { vi.clearAllMocks(); });
 
     it('starts with loading=true and empty models', () => {
-        mocks.models.list.mockReturnValue(new Promise(() => {})); // never resolves
+        mocks.agentProviders.listModels.mockReturnValue(new Promise(() => {})); // never resolves
         const { result } = renderHook(() => useModels());
         expect(result.current.loading).toBe(true);
         expect(result.current.models).toEqual([]);
     });
 
-    it('fetches models via cocClient.models.list() on mount', async () => {
-        mocks.models.list.mockResolvedValue([]);
+    it('fetches models via agentProviders.listModels(activeProvider) on mount', async () => {
+        mocks.agentProviders.listModels.mockResolvedValue({ provider: 'copilot', models: [] });
         renderHook(() => useModels());
-        await waitFor(() => expect(mocks.models.list).toHaveBeenCalled());
+        await waitFor(() => expect(mocks.agentProviders.listModels).toHaveBeenCalledWith('copilot'));
     });
 
     it('returns parsed model list and loading=false after fetch', async () => {
@@ -49,7 +53,7 @@ describe('useModels', () => {
                 capabilities: { limits: { max_context_window_tokens: 8192 } },
             },
         ];
-        mocks.models.list.mockResolvedValue(rawModels);
+        mocks.agentProviders.listModels.mockResolvedValue({ provider: 'copilot', models: rawModels });
         const { result } = renderHook(() => useModels());
 
         await waitFor(() => expect(result.current.loading).toBe(false));
@@ -69,7 +73,7 @@ describe('useModels', () => {
     });
 
     it('returns empty models on rejection and sets error', async () => {
-        mocks.models.list.mockRejectedValue(new Error('HTTP 500'));
+        mocks.agentProviders.listModels.mockRejectedValue(new Error('HTTP 500'));
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.models).toEqual([]);
@@ -77,7 +81,7 @@ describe('useModels', () => {
     });
 
     it('returns empty models on fetch error and sets error', async () => {
-        mocks.models.list.mockRejectedValue(new Error('network error'));
+        mocks.agentProviders.listModels.mockRejectedValue(new Error('network error'));
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.models).toEqual([]);
@@ -85,7 +89,7 @@ describe('useModels', () => {
     });
 
     it('defaults tokenLimit to 0 and enabled to false when capabilities are missing', async () => {
-        mocks.models.list.mockResolvedValue([{ id: 'basic', name: 'Basic' }]);
+        mocks.agentProviders.listModels.mockResolvedValue({ provider: 'copilot', models: [{ id: 'basic', name: 'Basic' }] });
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.models[0].tokenLimit).toBe(0);
@@ -93,20 +97,20 @@ describe('useModels', () => {
         expect(result.current.models[0].capabilities?.supports?.vision).toBe(false);
     });
 
-    it('handles non-array response gracefully', async () => {
-        mocks.models.list.mockResolvedValue(null);
+    it('handles non-array models response gracefully', async () => {
+        mocks.agentProviders.listModels.mockResolvedValue({ provider: 'copilot', models: null });
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.models).toEqual([]);
     });
 
     it('reload clears error and re-fetches', async () => {
-        mocks.models.list.mockRejectedValueOnce(new Error('fail'));
+        mocks.agentProviders.listModels.mockRejectedValueOnce(new Error('fail'));
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.error).toBe('fail');
 
-        mocks.models.list.mockResolvedValueOnce([{ id: 'm1', name: 'M1' }]);
+        mocks.agentProviders.listModels.mockResolvedValueOnce({ provider: 'copilot', models: [{ id: 'm1', name: 'M1' }] });
         result.current.reload();
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.error).toBe(null);
@@ -122,7 +126,7 @@ describe('useModels', () => {
                 limits: { max_context_window_tokens: 200000 },
             },
         }];
-        mocks.models.list.mockResolvedValue(raw);
+        mocks.agentProviders.listModels.mockResolvedValue({ provider: 'copilot', models: raw });
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.models[0].capabilities?.supports?.vision).toBe(true);
@@ -130,7 +134,7 @@ describe('useModels', () => {
     });
 
     it('exposes supportedReasoningEfforts from raw CAPI capability metadata', async () => {
-        mocks.models.list.mockResolvedValue([{
+        mocks.agentProviders.listModels.mockResolvedValue({ provider: 'copilot', models: [{
             id: 'reasoning-model',
             name: 'Reasoning',
             capabilities: {
@@ -142,7 +146,7 @@ describe('useModels', () => {
                 limits: { max_context_window_tokens: 200000 },
             },
             defaultReasoningEffort: 'high',
-        }]);
+        }]});
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.models[0].supportedReasoningEfforts).toEqual(['low', 'medium', 'high']);
@@ -150,7 +154,7 @@ describe('useModels', () => {
     });
 
     it('falls back to top-level supportedReasoningEfforts when raw metadata is absent', async () => {
-        mocks.models.list.mockResolvedValue([{
+        mocks.agentProviders.listModels.mockResolvedValue({ provider: 'copilot', models: [{
             id: 'reasoning-model',
             name: 'Reasoning',
             capabilities: {
@@ -159,7 +163,7 @@ describe('useModels', () => {
             },
             supportedReasoningEfforts: ['medium', 'high', 'xhigh'],
             defaultReasoningEffort: 'medium',
-        }]);
+        }]});
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.models[0].supportedReasoningEfforts).toEqual(['medium', 'high', 'xhigh']);
@@ -167,7 +171,7 @@ describe('useModels', () => {
     });
 
     it('canonicalizes reasoning effort order, dedupes, and ignores unknown values', async () => {
-        mocks.models.list.mockResolvedValue([{
+        mocks.agentProviders.listModels.mockResolvedValue({ provider: 'copilot', models: [{
             id: 'noisy-model',
             name: 'Noisy',
             capabilities: {
@@ -178,14 +182,14 @@ describe('useModels', () => {
                 },
                 limits: { max_context_window_tokens: 200000 },
             },
-        }]);
+        }]});
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.models[0].supportedReasoningEfforts).toEqual(['low', 'medium', 'high']);
     });
 
     it('infers reasoningEffort=true when the supported list is non-empty', async () => {
-        mocks.models.list.mockResolvedValue([{
+        mocks.agentProviders.listModels.mockResolvedValue({ provider: 'copilot', models: [{
             id: 'implicit-reasoning',
             name: 'Implicit',
             capabilities: {
@@ -196,7 +200,7 @@ describe('useModels', () => {
                 },
                 limits: { max_context_window_tokens: 128000 },
             },
-        }]);
+        }]});
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.models[0].capabilities?.supports?.reasoningEffort).toBe(true);
@@ -204,7 +208,7 @@ describe('useModels', () => {
     });
 
     it('drops defaultReasoningEffort when it is not in the supported list', async () => {
-        mocks.models.list.mockResolvedValue([{
+        mocks.agentProviders.listModels.mockResolvedValue({ provider: 'copilot', models: [{
             id: 'misconfigured',
             name: 'Misconfigured',
             capabilities: {
@@ -216,21 +220,21 @@ describe('useModels', () => {
                 limits: { max_context_window_tokens: 128000 },
             },
             defaultReasoningEffort: 'xhigh',
-        }]);
+        }]});
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.models[0].defaultReasoningEffort).toBeUndefined();
     });
 
     it('returns empty supportedReasoningEfforts when no reasoning metadata is present', async () => {
-        mocks.models.list.mockResolvedValue([{
+        mocks.agentProviders.listModels.mockResolvedValue({ provider: 'copilot', models: [{
             id: 'plain',
             name: 'Plain',
             capabilities: {
                 supports: { vision: false, reasoningEffort: false },
                 limits: { max_context_window_tokens: 8192 },
             },
-        }]);
+        }]});
         const { result } = renderHook(() => useModels());
         await waitFor(() => expect(result.current.loading).toBe(false));
         expect(result.current.models[0].supportedReasoningEfforts).toEqual([]);
@@ -240,20 +244,20 @@ describe('useModels', () => {
 
 describe('useModelConfig', () => {
     beforeEach(() => {
-        mocks.models.list.mockReset();
-        mocks.models.setEnabled.mockReset();
-        mocks.models.getReasoningEfforts.mockReset();
-        mocks.models.setReasoningEffort.mockReset();
-        mocks.models.getReasoningEfforts.mockResolvedValue({ reasoningEfforts: {} });
+        mocks.agentProviders.listModels.mockReset();
+        mocks.agentProviders.setEnabledModels.mockReset();
+        mocks.agentProviders.getReasoningEfforts.mockReset();
+        mocks.agentProviders.setReasoningEffort.mockReset();
+        mocks.agentProviders.getReasoningEfforts.mockResolvedValue({ reasoningEfforts: {} });
     });
     afterEach(() => { vi.clearAllMocks(); });
 
-    it('toggleModel calls models.setEnabled with PUT semantics', async () => {
-        mocks.models.list.mockResolvedValue([
+    it('toggleModel calls agentProviders.setEnabledModels with active provider', async () => {
+        mocks.agentProviders.listModels.mockResolvedValue({ provider: 'copilot', models: [
             { id: 'a', name: 'A', enabled: true },
             { id: 'b', name: 'B', enabled: false },
-        ]);
-        mocks.models.setEnabled.mockResolvedValue({ enabledModels: ['a'] });
+        ]});
+        mocks.agentProviders.setEnabledModels.mockResolvedValue({ enabledModels: ['a'] });
 
         const { result } = renderHook(() => useModelConfig());
         await waitFor(() => expect(result.current.loading).toBe(false));
@@ -262,25 +266,27 @@ describe('useModelConfig', () => {
             await result.current.toggleModel('b', true);
         });
 
-        expect(mocks.models.setEnabled).toHaveBeenCalledWith(
+        expect(mocks.agentProviders.setEnabledModels).toHaveBeenCalledWith(
+            'copilot',
             expect.arrayContaining(['a', 'b'])
         );
     });
 
-    it('loads persisted reasoning efforts on mount', async () => {
-        mocks.models.list.mockResolvedValue([]);
-        mocks.models.getReasoningEfforts.mockResolvedValue({ reasoningEfforts: { 'model-a': 'high' } });
+    it('loads persisted reasoning efforts on mount via agentProviders', async () => {
+        mocks.agentProviders.listModels.mockResolvedValue({ provider: 'copilot', models: [] });
+        mocks.agentProviders.getReasoningEfforts.mockResolvedValue({ reasoningEfforts: { 'model-a': 'high' } });
 
         const { result } = renderHook(() => useModelConfig());
         await waitFor(() => expect(result.current.loading).toBe(false));
         await waitFor(() => expect(result.current.reasoningEfforts).toEqual({ 'model-a': 'high' }));
+        expect(mocks.agentProviders.getReasoningEfforts).toHaveBeenCalledWith('copilot');
     });
 
-    it('setReasoningEffort calls models.setReasoningEffort and updates local state', async () => {
-        mocks.models.list.mockResolvedValue([
+    it('setReasoningEffort calls agentProviders.setReasoningEffort and updates local state', async () => {
+        mocks.agentProviders.listModels.mockResolvedValue({ provider: 'copilot', models: [
             { id: 'model-a', name: 'A', enabled: true },
-        ]);
-        mocks.models.setReasoningEffort.mockResolvedValue({ reasoningEfforts: { 'model-a': 'xhigh' } });
+        ]});
+        mocks.agentProviders.setReasoningEffort.mockResolvedValue({ reasoningEfforts: { 'model-a': 'xhigh' } });
 
         const { result } = renderHook(() => useModelConfig());
         await waitFor(() => expect(result.current.loading).toBe(false));
@@ -289,14 +295,14 @@ describe('useModelConfig', () => {
             await result.current.setReasoningEffort('model-a', 'xhigh');
         });
 
-        expect(mocks.models.setReasoningEffort).toHaveBeenCalledWith('model-a', 'xhigh');
+        expect(mocks.agentProviders.setReasoningEffort).toHaveBeenCalledWith('copilot', 'model-a', 'xhigh');
         expect(result.current.reasoningEfforts['model-a']).toBe('xhigh');
     });
 
     it('setReasoningEffort with empty string removes the override', async () => {
-        mocks.models.list.mockResolvedValue([]);
-        mocks.models.getReasoningEfforts.mockResolvedValue({ reasoningEfforts: { 'model-a': 'high' } });
-        mocks.models.setReasoningEffort.mockResolvedValue({ reasoningEfforts: {} });
+        mocks.agentProviders.listModels.mockResolvedValue({ provider: 'copilot', models: [] });
+        mocks.agentProviders.getReasoningEfforts.mockResolvedValue({ reasoningEfforts: { 'model-a': 'high' } });
+        mocks.agentProviders.setReasoningEffort.mockResolvedValue({ reasoningEfforts: {} });
 
         const { result } = renderHook(() => useModelConfig());
         await waitFor(() => expect(result.current.reasoningEfforts).toEqual({ 'model-a': 'high' }));
@@ -305,14 +311,14 @@ describe('useModelConfig', () => {
             await result.current.setReasoningEffort('model-a', '');
         });
 
-        expect(mocks.models.setReasoningEffort).toHaveBeenCalledWith('model-a', '');
+        expect(mocks.agentProviders.setReasoningEffort).toHaveBeenCalledWith('copilot', 'model-a', '');
         expect(result.current.reasoningEfforts['model-a']).toBeUndefined();
     });
 
     it('reverts optimistic update on setReasoningEffort failure', async () => {
-        mocks.models.list.mockResolvedValue([]);
-        mocks.models.getReasoningEfforts.mockResolvedValue({ reasoningEfforts: {} });
-        mocks.models.setReasoningEffort.mockRejectedValue(new Error('fail'));
+        mocks.agentProviders.listModels.mockResolvedValue({ provider: 'copilot', models: [] });
+        mocks.agentProviders.getReasoningEfforts.mockResolvedValue({ reasoningEfforts: {} });
+        mocks.agentProviders.setReasoningEffort.mockRejectedValue(new Error('fail'));
 
         const { result } = renderHook(() => useModelConfig());
         await waitFor(() => expect(result.current.loading).toBe(false));
@@ -326,8 +332,8 @@ describe('useModelConfig', () => {
     });
 
     it('returns empty reasoningEfforts when getReasoningEfforts fails', async () => {
-        mocks.models.list.mockResolvedValue([]);
-        mocks.models.getReasoningEfforts.mockRejectedValue(new Error('fail'));
+        mocks.agentProviders.listModels.mockResolvedValue({ provider: 'copilot', models: [] });
+        mocks.agentProviders.getReasoningEfforts.mockRejectedValue(new Error('fail'));
 
         const { result } = renderHook(() => useModelConfig());
         await waitFor(() => expect(result.current.loading).toBe(false));

@@ -71,7 +71,6 @@ test.describe('Admin Panel (008)', () => {
         ]);
         expect(byLabel.Configure).toEqual([
             'AI & Execution',
-            'Models',
             'AI Provider',
             'Chat',
             'Appearance',
@@ -82,10 +81,6 @@ test.describe('Admin Panel (008)', () => {
         expect(byLabel.Connections).toEqual(expect.arrayContaining(['Providers']));
         expect(byLabel.Operations).toEqual(['Usage & Costs', 'Logs', 'Server', 'Backup & Reset']);
         expect(byLabel['Developer / Internals']).toEqual(['System Prompts', 'Database Browser', 'Advanced']);
-
-        await page.getByTestId('models-toggle').click();
-        await expect(page.locator('.ar-breadcrumb')).toContainText('Configure');
-        await expect(page.locator('.ar-breadcrumb')).toContainText('Models');
 
         await page.getByTestId('stats-toggle').click();
         await expect(page.locator('.ar-breadcrumb')).toContainText('Operations');
@@ -107,7 +102,7 @@ test.describe('Admin Panel (008)', () => {
         );
         const byLabel = Object.fromEntries(groups.map(group => [group.label, group.values]));
 
-        expect(byLabel.Configure).toEqual(expect.arrayContaining(['settings:features', 'tool:models', 'admin:agents']));
+        expect(byLabel.Configure).toEqual(expect.arrayContaining(['settings:features', 'admin:agents']));
         expect(byLabel.Knowledge).toEqual(expect.arrayContaining(['tool:memory', 'tool:skills']));
         expect(byLabel.Connections).toEqual(expect.arrayContaining(['admin:providers']));
         expect(byLabel.Operations).toEqual(expect.arrayContaining(['tool:stats', 'tool:logs', 'admin:data']));

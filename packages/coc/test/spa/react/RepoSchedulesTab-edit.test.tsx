@@ -10,7 +10,7 @@ import { QueueProvider } from '../../../src/server/spa/client/react/contexts/Que
 import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
 import { parseCronToInterval } from '../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab';
 
-const { mockSchedulesClient, mockModelsClient } = vi.hoisted(() => ({
+const { mockSchedulesClient, mockModelsClient, mockAgentProvidersClient } = vi.hoisted(() => ({
     mockSchedulesClient: {
         list: vi.fn(),
         history: vi.fn(),
@@ -24,6 +24,9 @@ const { mockSchedulesClient, mockModelsClient } = vi.hoisted(() => ({
     },
     mockModelsClient: {
         list: vi.fn(),
+    },
+    mockAgentProvidersClient: {
+        listModels: vi.fn(),
     },
 }));
 
@@ -52,13 +55,14 @@ vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
 }));
 
 vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({ schedules: mockSchedulesClient, models: mockModelsClient }),
+    getSpaCocClient: () => ({ schedules: mockSchedulesClient, models: mockModelsClient, agentProviders: mockAgentProvidersClient }),
 }));
 
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => 'http://localhost:4000/api',
     isRalphEnabled: () => false,
+    getActiveProvider: () => 'copilot' as const,
 }));
 
 vi.mock('../../../src/server/spa/client/react/utils/format', () => ({
@@ -92,6 +96,7 @@ async function renderWithSchedules(schedules = [MOCK_SCHEDULE]) {
     mockSchedulesClient.move.mockResolvedValue({});
     mockSchedulesClient.run.mockResolvedValue({ run: {} });
     mockModelsClient.list.mockResolvedValue([]);
+    mockAgentProvidersClient.listModels.mockResolvedValue({ models: [] });
     mockFetchApi.mockImplementation((url: string) => {
         if (url.includes('/history')) return Promise.resolve({ history: [] });
         return Promise.resolve({ schedules });

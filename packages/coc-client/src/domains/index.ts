@@ -6,7 +6,6 @@ export { ExplorerClient } from './explorer';
 export { GitClient } from './git';
 export { HealthClient } from './health';
 export { MemoryClient, MemoryV2Client } from './memory';
-export { ModelsClient } from './models';
 export { NotesClient } from './notes';
 export { PreferencesClient } from './preferences';
 export { ProcessesClient } from './processes';

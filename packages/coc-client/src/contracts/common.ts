@@ -49,3 +49,32 @@ export interface ModelQueryResponse {
   sessionId?: string;
   durationMs: number;
 }
+
+/** Response from GET /api/agent-providers/:provider/models */
+export interface ProviderModelsResponse {
+  provider: string;
+  models: ModelInfo[];
+}
+
+/** Response from GET /api/agent-providers/:provider/models/enabled */
+export interface ProviderEnabledModelsResponse {
+  provider: string;
+  enabledModels: string[];
+}
+
+/** Response from GET /api/agent-providers/:provider/models/reasoning-efforts */
+export interface ProviderReasoningEffortsResponse {
+  provider: string;
+  reasoningEfforts: Record<string, string>;
+}
+
+/** Response from POST /api/agent-providers/:provider/models/query */
+export interface ProviderModelQueryResponse {
+  success: boolean;
+  provider: string;
+  response?: string;
+  error?: string;
+  model?: string;
+  sessionId?: string;
+  durationMs: number;
+}

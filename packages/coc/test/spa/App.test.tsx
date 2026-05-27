@@ -33,8 +33,12 @@ vi.mock('../../src/server/spa/client/react/hooks/useApi', () => ({
 
 const mockQueueList = vi.fn();
 const mockModelsList = vi.fn();
+const mockAgentProviderModelsList = vi.fn();
 vi.mock('../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
+        agentProviders: {
+            listModels: mockAgentProviderModelsList,
+        },
         models: {
             list: mockModelsList,
         },
@@ -175,6 +179,8 @@ describe('App bootstrap', () => {
         mockQueueList.mockResolvedValue({ queued: [], running: [] });
         mockModelsList.mockReset();
         mockModelsList.mockResolvedValue([]);
+        mockAgentProviderModelsList.mockReset();
+        mockAgentProviderModelsList.mockResolvedValue({ models: [] });
     });
 
     it('fetches /preferences on mount and dispatches SET_WELCOME_PREFERENCES', async () => {

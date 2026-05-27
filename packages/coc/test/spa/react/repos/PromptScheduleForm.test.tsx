@@ -8,7 +8,7 @@ import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const { mockSchedulesClient, mockModelsClient } = vi.hoisted(() => ({
+const { mockSchedulesClient, mockModelsClient, mockAgentProvidersClient } = vi.hoisted(() => ({
     mockSchedulesClient: {
         create: vi.fn(),
         update: vi.fn(),
@@ -17,16 +17,20 @@ const { mockSchedulesClient, mockModelsClient } = vi.hoisted(() => ({
     mockModelsClient: {
         list: vi.fn(),
     },
+    mockAgentProvidersClient: {
+        listModels: vi.fn(),
+    },
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '',
     isRalphEnabled: () => false,
+    getActiveProvider: () => 'copilot' as const,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({ schedules: mockSchedulesClient, models: mockModelsClient }),
+    getSpaCocClient: () => ({ schedules: mockSchedulesClient, models: mockModelsClient, agentProviders: mockAgentProvidersClient }),
 }));
 
 async function renderPromptForm(overrides: Partial<Parameters<typeof import('../../../../src/server/spa/client/react/features/schedules/PromptScheduleForm').PromptScheduleForm>[0]> = {}) {
@@ -54,6 +58,7 @@ beforeEach(() => {
     mockSchedulesClient.update.mockResolvedValue({});
     mockSchedulesClient.disable.mockResolvedValue({});
     mockModelsClient.list.mockResolvedValue([]);
+    mockAgentProvidersClient.listModels.mockResolvedValue({ models: [] });
 });
 
 describe('PromptScheduleForm — default rendering', () => {

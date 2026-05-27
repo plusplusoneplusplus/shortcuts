@@ -16,6 +16,7 @@ import { isContextFile } from '../tasks/hooks/useTaskTree';
 import { RunSkillPanel } from './RunSkillPanel';
 import type { SkillItem } from './RunSkillPanel';
 import { getSpaCocClient } from '../api/cocClient';
+import { getActiveProvider } from '../utils/config';
 
 export interface BulkFollowPromptDialogProps {
     wsId: string;
@@ -96,11 +97,11 @@ export function BulkFollowPromptDialog({ wsId, folder, onClose }: BulkFollowProm
         (async () => {
             try {
                 const [modelsRes, skillRes] = await Promise.all([
-                    getSpaCocClient().models.list(),
+                    getSpaCocClient().agentProviders.listModels(getActiveProvider()),
                     getSpaCocClient().skills.listWorkspace(selectedWsId),
                 ]);
                 if (cancelled) return;
-                setModels(Array.isArray(modelsRes) ? modelsRes.map((m) => m.id) : []);
+                setModels(Array.isArray(modelsRes.models) ? modelsRes.models.map((m: any) => m.id) : []);
                 setSkills(Array.isArray(skillRes) ? skillRes : []);
             } catch {
                 // ignore

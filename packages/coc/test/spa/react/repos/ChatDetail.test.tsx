@@ -52,6 +52,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isRalphEnabled: () => true,
     isLoopsEnabled: () => false,
     getDefaultProvider: () => 'copilot' as const,
+    getActiveProvider: () => 'copilot' as const,
 }));
 
 // Display settings
@@ -145,6 +146,11 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useFileAtta
 // useBreakpoint
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' as const }),
+}));
+
+// useModels — return empty list so ChatDetail renders without a real API
+vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({
+    useModels: () => ({ models: [], loading: false, error: null, reload: vi.fn() }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useContainerWidth', () => ({

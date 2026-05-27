@@ -11,7 +11,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as http from 'http';
 import { createExecutionServer } from '../../src/server/index';
-import { buildSummarizePrompt, serializeConversationForSummary } from '../../src/server/queue/queue-handler';
+import { buildSummarizePrompt, registerQueueRoutes, serializeConversationForSummary } from '../../src/server/queue/queue-handler';
+import { createRouter } from '../../src/server/shared/router';
 import type { SummarizeConversation } from '../../src/server/queue/queue-handler';
 import type { ConversationTurn } from '@plusplusoneplusplus/forge';
 import { FileProcessStore, SqliteProcessStore, SqliteQueueStore } from '@plusplusoneplusplus/forge';
@@ -497,6 +498,33 @@ describe('Queue Handler', () => {
             const body = JSON.parse(res.body);
             expect(Array.isArray(body.models)).toBe(true);
             expect(body.models).toContain('claude-haiku-4.5');
+        });
+
+        it('should resolve provider from the queue route context', async () => {
+            const routes: any[] = [];
+            let providerLookups = 0;
+            registerQueueRoutes(routes, {} as any, undefined, undefined, {
+                getDefaultProvider: () => {
+                    providerLookups += 1;
+                    return 'copilot';
+                },
+            });
+            const bareServer = http.createServer(createRouter({ routes, spaHtml: '' }));
+            await new Promise<void>((resolve) => bareServer.listen(0, 'localhost', resolve));
+            const address = bareServer.address();
+            const url = `http://localhost:${typeof address === 'object' && address ? address.port : 0}`;
+
+            try {
+                const res = await request(`${url}/api/queue/models`);
+                expect(res.status).toBe(200);
+                const body = JSON.parse(res.body);
+                expect(body.provider).toBe('copilot');
+                expect(providerLookups).toBe(1);
+            } finally {
+                await new Promise<void>((resolve, reject) => {
+                    bareServer.close((err) => err ? reject(err) : resolve());
+                });
+            }
         });
     });
 

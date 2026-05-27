@@ -39,9 +39,9 @@ const ConnectedAgentsPanel = lazy(() => import('./ConnectedAgentsPanel').then(m 
 const SkillsView = lazy(() => import('../features/skills/SkillsView').then(m => ({ default: m.SkillsView })));
 const LogsView = lazy(() => import('../features/logs/LogsView').then(m => ({ default: m.LogsView })));
 const UsageStatsView = lazy(() => import('../features/stats/UsageStatsView').then(m => ({ default: m.UsageStatsView })));
-const ModelsView = lazy(() => import('../features/models/ModelsView').then(m => ({ default: m.ModelsView })));
 const ServersView = lazy(() => import('../features/servers/ServersView').then(m => ({ default: m.ServersView })));
 const MemoryV2Panel = lazy(() => import('../features/memory/MemoryV2Panel').then(m => ({ default: m.MemoryV2Panel })));
+const ProviderModelsSection = lazy(() => import('../features/models/ProviderModelsSection').then(m => ({ default: m.ProviderModelsSection })));
 
 function formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
@@ -141,11 +141,9 @@ export const ALL_TOOL_NAV_ITEMS: ToolNavItem[] = [
     { id: 'skills-toggle',  tab: 'skills',  label: 'Skills',  icon: '⚡', description: 'Install, configure, and inspect agent skills surfaced to the assistant.' },
     { id: 'logs-toggle',    tab: 'logs',    label: 'Logs',    icon: '📋', description: 'Live and historical server logs streamed via SSE.' },
     { id: 'stats-toggle',   tab: 'stats',   label: 'Usage & Costs',   icon: '📊', description: 'Aggregated usage statistics for chats, tokens, costs, and processes.' },
-    { id: 'models-toggle',  tab: 'models',  label: 'Models',  icon: '⚛', description: 'Available LLM models and their per-repo defaults.' },
     { id: 'servers-toggle', tab: 'servers', label: 'Servers', icon: '🖥', description: 'Browse running CoC server instances and their health.' },
 ];
 export const TOOL_TAB_GROUP_LABELS: Partial<Record<DashboardTab, string>> = {
-    models: 'Configure',
     memory: 'Knowledge',
     skills: 'Knowledge',
     servers: 'Connections',
@@ -1074,7 +1072,6 @@ export function AdminPanel() {
             label: 'Configure',
             items: [
                 settingsNavItem('ai'),
-                toolNavItem('models'),
                 ...nonContainerAgentsNavItem,
                 settingsNavItem('chat'),
                 settingsNavItem('appearance'),
@@ -1279,7 +1276,6 @@ export function AdminPanel() {
                                 {activeToolItem.tab === 'skills' && <SkillsView />}
                                 {activeToolItem.tab === 'logs' && <LogsView />}
                                 {activeToolItem.tab === 'stats' && <UsageStatsView />}
-                                {activeToolItem.tab === 'models' && <ModelsView />}
                                 {activeToolItem.tab === 'servers' && <ServersView />}
                             </Suspense>
                         </div>
@@ -2175,6 +2171,24 @@ export function AdminPanel() {
                                         )}
                                     </div>
                                 </SettingsCard>
+
+                                {/* Provider-scoped model catalog and query */}
+                                <Suspense fallback={<div className="text-xs text-[#888] mt-4">Loading models…</div>}>
+                                    <ProviderModelsSection
+                                        provider={defaultProvider}
+                                        available={
+                                            defaultProvider === 'copilot'
+                                                ? true
+                                                : (providerAvailability[defaultProvider]?.available ?? false)
+                                                    && (defaultProvider === 'codex' ? codexEnabled : claudeEnabled)
+                                        }
+                                        unavailableMessage={
+                                            defaultProvider !== 'copilot' && !(defaultProvider === 'codex' ? codexEnabled : claudeEnabled)
+                                                ? `Enable the ${defaultProvider === 'codex' ? 'Codex' : 'Claude'} provider above to access its model catalog.`
+                                                : providerAvailability[defaultProvider]?.error
+                                        }
+                                    />
+                                </Suspense>
                             </>
                         )}
 

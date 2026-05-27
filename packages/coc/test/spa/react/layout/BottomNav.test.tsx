@@ -63,7 +63,7 @@ describe('BottomNav', () => {
         render(<BottomNav />);
         expect(screen.getByTestId('bottom-nav')).toBeTruthy();
         const buttons = screen.getAllByRole('button');
-        expect(buttons).toHaveLength(5); // skills, memory, stats, models, logs (servers disabled by default)
+        expect(buttons).toHaveLength(4); // skills, memory, stats, logs (servers disabled by default)
     });
 
     it('hidden on desktop viewport', () => {
@@ -172,26 +172,10 @@ describe('BottomNav', () => {
 
     // ── Models and Servers tabs (responsive additions) ───────────────
 
-    it('includes Models tab on mobile', () => {
+    it('does not include Models tab on mobile (moved to Agent Provider)', () => {
         viewportCleanup = mockViewport(375);
         render(<BottomNav />);
-        expect(screen.getByText('Models')).toBeTruthy();
-        expect(screen.getByTestId('bottom-nav').querySelector('[data-tab="models"]')).toBeTruthy();
-    });
-
-    it('highlights active models tab', () => {
-        viewportCleanup = mockViewport(375);
-        mockActiveTab = 'models';
-        render(<BottomNav />);
-        const modelsBtn = screen.getByText('Models').closest('button')!;
-        expect(modelsBtn.className).toContain('text-[#0078d4]');
-    });
-
-    it('dispatches SET_ACTIVE_TAB for models on click', () => {
-        viewportCleanup = mockViewport(375);
-        render(<BottomNav />);
-        fireEvent.click(screen.getByText('Models').closest('button')!);
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_ACTIVE_TAB', tab: 'models' });
+        expect(screen.queryByText('Models')).toBeNull();
     });
 
     it('hides Servers tab when servers are disabled', () => {
@@ -214,7 +198,7 @@ describe('BottomNav', () => {
         mockServersEnabled = true;
         render(<BottomNav />);
         const buttons = screen.getAllByRole('button');
-        expect(buttons).toHaveLength(6); // skills, memory, stats, models, servers, logs
+        expect(buttons).toHaveLength(5); // skills, memory, stats, servers, logs
     });
 
     it('highlights active servers tab', () => {

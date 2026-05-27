@@ -81,8 +81,8 @@ describe('tabFromHash', () => {
         expect(tabFromHash('#admin')).toBe('admin');
     });
 
-    it('returns "models" for #models', () => {
-        expect(tabFromHash('#models')).toBe('models');
+    it('returns null for #models (standalone models route removed)', () => {
+        expect(tabFromHash('#models')).toBe(null);
     });
 });
 

@@ -12,9 +12,19 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | PUT | `/api/preferences` | Update global preferences |
 | GET | `/api/logs` | Server log ring buffer |
 | GET | `/api/stats` | Token usage + cost stats |
-| GET | `/api/models` | Available AI models |
 | GET | `/api/agent-providers` | Copilot/Codex/Claude enabled + SDK availability status. Codex auth is handled by the Codex SDK/CLI, not CoC routes |
 | GET | `/api/agent-providers/quota` | Provider quota snapshots where supported |
+
+## Agent Providers
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/agent-providers/:provider/models` | Provider model catalog |
+| GET | `/api/agent-providers/:provider/models/enabled` | Enabled models for provider |
+| PUT | `/api/agent-providers/:provider/models/enabled` | Set enabled models for provider |
+| GET | `/api/agent-providers/:provider/models/reasoning-efforts` | Reasoning effort overrides |
+| PUT | `/api/agent-providers/:provider/models/reasoning-efforts` | Set reasoning effort for model |
+| POST | `/api/agent-providers/:provider/models/query` | Test prompt against provider model |
 
 ## Workspace Management
 
@@ -52,6 +62,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/queue` | List queue tasks |
+| GET | `/api/queue/models` | List model IDs for the configured default provider |
 | POST | `/api/queue` | Enqueue a task |
 | DELETE | `/api/queue/:id` | Remove from queue |
 | POST | `/api/queue/:id/cancel` | Cancel queued task |

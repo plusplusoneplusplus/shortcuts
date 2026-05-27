@@ -508,8 +508,8 @@ describe('Folder context menu', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });
@@ -564,8 +564,8 @@ describe('Folder context menu', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             if (url.includes('/skills')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ skills: [] }) });
@@ -599,8 +599,8 @@ describe('Folder context menu', () => {
             if (url.includes('comment-counts')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: mockTree }) });
         });

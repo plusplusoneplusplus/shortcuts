@@ -100,10 +100,10 @@ beforeEach(() => {
 
     // Default fetch: models + tasks
     mockFetch.mockImplementation((url: string) => {
-        if (url.includes('/api/models')) {
+        if (url.includes('/models')) {
             return Promise.resolve({
                 ok: true,
-                json: () => Promise.resolve([]),
+                json: () => Promise.resolve({ provider: 'copilot', models: [] }),
             });
         }
         if (url.includes('/summary')) {
@@ -330,12 +330,12 @@ describe('GenerateTaskDialog', () => {
         );
     });
 
-    it('populates model select from /api/models', async () => {
+    it('populates model select from /models', async () => {
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/api/models')) {
+            if (url.includes('/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
+                    json: () => Promise.resolve({ provider: 'copilot', models: [{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }] }),
                 });
             }
             if (url.includes('/summary')) {
@@ -367,10 +367,10 @@ describe('GenerateTaskDialog', () => {
 
     it('populates folder select from workspace tasks API', async () => {
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/api/models')) {
+            if (url.includes('/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve([]),
+                    json: () => Promise.resolve({ provider: 'copilot', models: [] }),
                 });
             }
             if (url.includes('/workspaces/ws-1/summary')) {
@@ -416,10 +416,10 @@ describe('GenerateTaskDialog', () => {
 
     it('filters out .git folders from folder select', async () => {
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/api/models')) {
+            if (url.includes('/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve([]),
+                    json: () => Promise.resolve({ provider: 'copilot', models: [] }),
                 });
             }
             if (url.includes('/workspaces/ws-1/summary')) {
@@ -487,10 +487,10 @@ describe('GenerateTaskDialog', () => {
         });
 
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/api/models')) {
+            if (url.includes('/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
+                    json: () => Promise.resolve({ provider: 'copilot', models: [{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }] }),
                 });
             }
             if (url.includes('/summary')) {
@@ -520,10 +520,10 @@ describe('GenerateTaskDialog', () => {
 
     it('persists model selection when user changes model', async () => {
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/api/models')) {
+            if (url.includes('/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
+                    json: () => Promise.resolve({ provider: 'copilot', models: [{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }] }),
                 });
             }
             if (url.includes('/summary')) {
@@ -570,10 +570,10 @@ describe('GenerateTaskDialog', () => {
         });
 
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/api/models')) {
+            if (url.includes('/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
+                    json: () => Promise.resolve({ provider: 'copilot', models: [{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }] }),
                 });
             }
             if (url.includes('/summary')) {
@@ -622,10 +622,10 @@ describe('GenerateTaskDialog', () => {
         });
 
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/api/models')) {
+            if (url.includes('/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
+                    json: () => Promise.resolve({ provider: 'copilot', models: [{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }] }),
                 });
             }
             if (url.includes('/summary')) {
@@ -678,10 +678,10 @@ describe('GenerateTaskDialog', () => {
         });
 
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/api/models')) {
+            if (url.includes('/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
+                    json: () => Promise.resolve({ provider: 'copilot', models: [{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }] }),
                 });
             }
             if (url.includes('/summary')) {
@@ -975,10 +975,10 @@ describe('GenerateTaskDialog', () => {
         mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
 
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/api/models')) {
+            if (url.includes('/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve([{ id: 'claude-haiku-4.5', name: 'claude-haiku-4.5', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-sonnet-4', name: 'claude-sonnet-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-opus-4', name: 'claude-opus-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
+                    json: () => Promise.resolve({ provider: 'copilot', models: [{ id: 'claude-haiku-4.5', name: 'claude-haiku-4.5', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-sonnet-4', name: 'claude-sonnet-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-opus-4', name: 'claude-opus-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }] }),
                 });
             }
             if (url.includes('/summary')) {
@@ -1048,10 +1048,10 @@ describe('GenerateTaskDialog', () => {
         mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
 
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/api/models')) {
+            if (url.includes('/models')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]),
+                    json: () => Promise.resolve({ provider: 'copilot', models: [{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }] }),
                 });
             }
             if (url.includes('/summary')) {

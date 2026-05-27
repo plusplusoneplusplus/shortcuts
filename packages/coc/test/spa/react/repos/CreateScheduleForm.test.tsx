@@ -7,13 +7,16 @@ import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const { mockSchedulesClient, mockModelsClient, mockFeatureFlags } = vi.hoisted(() => ({
+const { mockSchedulesClient, mockModelsClient, mockAgentProvidersClient, mockFeatureFlags } = vi.hoisted(() => ({
     mockSchedulesClient: {
         create: vi.fn(),
         update: vi.fn(),
     },
     mockModelsClient: {
         list: vi.fn(),
+    },
+    mockAgentProvidersClient: {
+        listModels: vi.fn(),
     },
     mockFeatureFlags: {
         workflowsEnabled: true,
@@ -24,10 +27,11 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '',
     isRalphEnabled: () => false,
+    getActiveProvider: () => 'copilot' as const,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({ schedules: mockSchedulesClient, models: mockModelsClient }),
+    getSpaCocClient: () => ({ schedules: mockSchedulesClient, models: mockModelsClient, agentProviders: mockAgentProvidersClient }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/workflow/workflow-api', () => ({
@@ -66,6 +70,7 @@ beforeEach(() => {
     mockSchedulesClient.create.mockResolvedValue({});
     mockSchedulesClient.update.mockResolvedValue({});
     mockModelsClient.list.mockResolvedValue([]);
+    mockAgentProvidersClient.listModels.mockResolvedValue({ models: [] });
     mockFetch.mockResolvedValue({ ok: true, json: async () => [] });
     mockFeatureFlags.workflowsEnabled = true;
 });

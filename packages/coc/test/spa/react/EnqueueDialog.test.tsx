@@ -136,8 +136,8 @@ describe('EnqueueDialog', () => {
         global.fetch = fetchSpy;
         // Default: models endpoint returns empty
         fetchSpy.mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             if (typeof url === 'string' && url.includes('/summary')) {
                 return Promise.resolve({
@@ -188,8 +188,8 @@ describe('EnqueueDialog', () => {
 
     it('filters out .git folders from folder select options', async () => {
         fetchSpy.mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             if (typeof url === 'string' && url.includes('/summary')) {
                 return Promise.resolve({
@@ -245,8 +245,8 @@ describe('EnqueueDialog', () => {
                 postUrl = url;
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             if (typeof url === 'string' && url.includes('/summary')) {
                 return Promise.resolve({
@@ -311,8 +311,8 @@ describe('EnqueueDialog', () => {
                 postUrl = url;
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
@@ -343,8 +343,8 @@ describe('EnqueueDialog', () => {
 
     it('fetches skills when workspace is selected and shows skill selector', async () => {
         fetchSpy.mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             if (typeof url === 'string' && url.includes('/skills')) {
                 return Promise.resolve({
@@ -405,8 +405,8 @@ describe('EnqueueDialog', () => {
                 postUrl = url;
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             if (typeof url === 'string' && url.includes('/skills')) {
                 return Promise.resolve({
@@ -470,8 +470,8 @@ describe('EnqueueDialog', () => {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             if (typeof url === 'string' && url.includes('/skills')) {
                 return Promise.resolve({
@@ -528,8 +528,8 @@ describe('EnqueueDialog', () => {
 
     it('pre-selects workspace when dialogInitialWorkspaceId is set', async () => {
         fetchSpy.mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             if (typeof url === 'string' && url.includes('/skills')) {
                 return Promise.resolve({
@@ -568,8 +568,8 @@ describe('EnqueueDialog', () => {
 
     it('enables Enqueue button when skill is selected but prompt is empty', async () => {
         fetchSpy.mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             if (typeof url === 'string' && url.includes('/skills')) {
                 return Promise.resolve({
@@ -618,8 +618,8 @@ describe('EnqueueDialog', () => {
 
     it('enables submit button when contextFiles are present but no skill and no prompt', async () => {
         fetchSpy.mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             if (typeof url === 'string' && url.includes('/summary')) {
                 return Promise.resolve({
@@ -669,8 +669,8 @@ describe('EnqueueDialog', () => {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
@@ -727,8 +727,8 @@ describe('EnqueueDialog', () => {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             if (typeof url === 'string' && url.includes('/skills')) {
                 return Promise.resolve({
@@ -781,8 +781,8 @@ describe('EnqueueDialog', () => {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-sonnet', name: 'claude-sonnet', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-sonnet', name: 'claude-sonnet', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }] }) });
             }
             if (typeof url === 'string' && url.includes('/skills')) {
                 return Promise.resolve({
@@ -841,8 +841,8 @@ describe('EnqueueDialog', () => {
                 postUrl = url;
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
@@ -883,8 +883,8 @@ describe('EnqueueDialog', () => {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-sonnet', name: 'claude-sonnet', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-sonnet', name: 'claude-sonnet', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }] }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
@@ -922,8 +922,8 @@ describe('EnqueueDialog', () => {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             if (typeof url === 'string' && url.includes('/summary')) {
                 return Promise.resolve({
@@ -963,8 +963,8 @@ describe('EnqueueDialog', () => {
 
     it('persists selected skill to preferences via PATCH on submit', async () => {
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             if (typeof url === 'string' && url.includes('/skills')) {
                 return Promise.resolve({
@@ -1044,8 +1044,8 @@ describe('EnqueueDialog', () => {
 
     it('restores last-used skill from preferences when skills load', async () => {
         fetchSpy.mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             if (typeof url === 'string' && url.includes('/preferences')) {
                 return Promise.resolve({
@@ -1093,8 +1093,8 @@ describe('EnqueueDialog', () => {
 
     it('does not restore skill if it is not in available skills list', async () => {
         fetchSpy.mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             if (typeof url === 'string' && url.includes('/preferences')) {
                 return Promise.resolve({
@@ -1267,8 +1267,8 @@ describe('EnqueueDialog default tab', () => {
 
     function setupFetchWithTemplates(skillTemplates: any[]) {
         fetchSpy.mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             if (typeof url === 'string' && url.includes('/preferences')) {
                 return Promise.resolve({
@@ -1478,8 +1478,8 @@ describe('EnqueueDialog default tab', () => {
 describe('EnqueueDialog minimize behavior', () => {
     beforeEach(() => {
         global.fetch = vi.fn().mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
@@ -1667,8 +1667,8 @@ describe('EnqueueDialog minimize behavior', () => {
 
     it('minimize button is hidden while submitting', async () => {
         const fetchSpy = vi.fn().mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             // Simulate slow submit
             return new Promise(() => { /* never resolves */ });
@@ -1710,8 +1710,8 @@ describe('EnqueueDialog slash commands', () => {
                 capturePosts?.push({ body: JSON.parse(opts.body || '{}'), url });
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             if (typeof url === 'string' && url.includes('/skills')) {
                 return Promise.resolve({
@@ -2006,9 +2006,9 @@ describe('EnqueueDialog mode-switch state isolation', () => {
         } = opts;
 
         fetchSpy.mockImplementation((url: string, opts?: any) => {
-            if (typeof url === 'string' && url.includes('/api/models')) {
+            if (typeof url === 'string' && url.includes('/models')) {
                 const modelInfos = availableModels.map(id => ({ id, name: id, capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }));
-                return Promise.resolve({ ok: true, json: () => Promise.resolve(modelInfos) });
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: modelInfos }) });
             }
             if (typeof url === 'string' && url.includes('/preferences') && (!opts || opts.method !== 'PATCH')) {
                 return Promise.resolve({
@@ -2247,8 +2247,8 @@ describe('EnqueueDialog ask mode', () => {
         fetchSpy = vi.fn();
         global.fetch = fetchSpy;
         fetchSpy.mockImplementation((url: string) => {
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
@@ -2301,8 +2301,8 @@ describe('EnqueueDialog ask mode', () => {
                 postBody = JSON.parse(opts?.body || '{}');
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
@@ -2352,8 +2352,8 @@ describe('EnqueueDialog ask mode', () => {
                     }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
@@ -2406,8 +2406,8 @@ describe('EnqueueDialog ask mode', () => {
                     }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
@@ -2472,8 +2472,8 @@ describe('EnqueueDialog ask mode', () => {
                     }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
@@ -2524,8 +2524,8 @@ describe('EnqueueDialog ask mode', () => {
                     }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
@@ -2581,8 +2581,8 @@ describe('EnqueueDialog ask mode', () => {
                     }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
@@ -2636,8 +2636,8 @@ describe('EnqueueDialog ask mode', () => {
                     }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
@@ -2699,8 +2699,8 @@ describe('EnqueueDialog ask mode', () => {
                     }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
@@ -2766,8 +2766,8 @@ describe('EnqueueDialog ask mode', () => {
                     json: () => Promise.resolve({ merged: [{ name: 'go-deep', description: 'Deep research' }] }),
                 });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
@@ -2867,8 +2867,8 @@ describe('EnqueueDialog onboarding hasRunWorkflow', () => {
             if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
-            if (typeof url === 'string' && url.includes('/api/models')) {
-                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
             }
             if (typeof url === 'string' && url.includes('/summary')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: { name: 'tasks', relativePath: '', children: [] } }) });

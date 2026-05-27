@@ -35,7 +35,6 @@ export function tabFromHash(hash: string): DashboardTab | null {
     if (h === 'memory') return 'memory';
     if (h === 'skills') return 'skills';
     if (h === 'logs') return 'logs';
-    if (h === 'models') return 'models';
     if (h === 'servers') return 'servers';
     if (h === 'admin') return 'admin';
     return null;
@@ -756,7 +755,6 @@ export function Router() {
         case 'skills':
         case 'logs':
         case 'stats':
-        case 'models':
         case 'servers':
             return (
                 <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>

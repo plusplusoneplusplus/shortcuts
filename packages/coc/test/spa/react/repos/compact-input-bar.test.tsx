@@ -61,6 +61,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isLoopsEnabled: () => false,
     isCodexEnabled: () => false,
     getDefaultProvider: () => 'copilot',
+    getActiveProvider: () => 'copilot',
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({

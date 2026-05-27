@@ -22,7 +22,8 @@ export function registerQueueRoutes(
     routes: Route[],
     bridge: MultiRepoQueueRouter,
     store?: ProcessStore,
-    globalWorkspaceRootPath?: string
+    globalWorkspaceRootPath?: string,
+    options: { getDefaultProvider?: () => 'copilot' | 'codex' | 'claude' } = {},
 ): void {
     const state: QueueGlobalState = {
         globalPaused: false,
@@ -31,7 +32,7 @@ export function registerQueueRoutes(
         globalAutopilotPausedUntil: undefined,
         resumeInProgress: new Set(),
     };
-    const ctx = { bridge, store, globalWorkspaceRootPath, state };
+    const ctx = { bridge, store, globalWorkspaceRootPath, state, getDefaultProvider: options.getDefaultProvider };
     registerQueueEnqueueRoutes(routes, ctx);
     registerQueueStatsRoutes(routes, ctx);
     registerQueueControlRoutes(routes, ctx);
