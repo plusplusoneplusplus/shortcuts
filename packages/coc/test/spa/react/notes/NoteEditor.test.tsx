@@ -1722,5 +1722,30 @@ describe('NoteEditor', () => {
 
             expect(screen.getByTestId('ralph-launch-dialog-stub')).toBeDefined();
         });
+
+        it('onLaunched navigates to chats hash and closes dialog', async () => {
+            mockLoadContent.mockResolvedValue({ content: '## Goal\nBuild feature', path: 'feature.goal.md' });
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws-test" notePath="feature.goal.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+            // Open the dialog
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('note-run-ralph-btn'));
+            });
+            expect(screen.getByTestId('ralph-launch-dialog-stub')).toBeDefined();
+
+            // Simulate the dialog calling onLaunched with a processId
+            const dialogProps = mockRalphLaunchDialogProps.mock.calls[mockRalphLaunchDialogProps.mock.calls.length - 1][0] as Record<string, unknown>;
+            await act(async () => {
+                (dialogProps.onLaunched as (id: string) => void)('queue_proc-123');
+            });
+
+            // Dialog should be closed
+            expect(screen.queryByTestId('ralph-launch-dialog-stub')).toBeNull();
+            // Hash should navigate to chats view with the process id
+            expect(location.hash).toBe('#repos/' + encodeURIComponent('ws-test') + '/chats/' + encodeURIComponent('queue_proc-123'));
+        });
     });
 });
