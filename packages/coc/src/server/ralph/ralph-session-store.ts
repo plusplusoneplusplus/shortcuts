@@ -13,6 +13,7 @@ import { getRepoDataPath } from '../paths';
 import type {
     ParsedProgressSection,
     RalphExitSignal,
+    RalphFinalCheckRecord,
     RalphLoopRecord,
     RalphSessionRecord,
 } from './types';
@@ -380,6 +381,71 @@ export class RalphSessionStore {
         }
 
         await fs.promises.appendFile(progressPath, marker, 'utf-8');
+    }
+
+    /**
+     * Append a final-check section to `progress.md`.
+     *
+     * The `content` is raw Markdown. The caller is responsible for formatting
+     * (heading, status, gap list, etc.). The content is appended with a leading
+     * newline separator so sections remain visually distinct.
+     */
+    async appendFinalCheckSection(
+        workspaceId: string,
+        sessionId: string,
+        content: string,
+    ): Promise<void> {
+        const dir = this.getSessionDir(workspaceId, sessionId);
+        await fs.promises.mkdir(dir, { recursive: true });
+        const progressPath = this.getProgressPath(workspaceId, sessionId);
+        const block = `\n${content.trim()}\n`;
+        await fs.promises.appendFile(progressPath, block, 'utf-8');
+        await this.enforceSizeCap(progressPath);
+    }
+
+    /**
+     * Add or update a `RalphFinalCheckRecord` in `session.json`.
+     *
+     * - If `finalChecks` is absent (legacy session), it is initialised as `[]`.
+     * - If a record with `checkIndex` already exists, it is replaced.
+     * - Otherwise the record is appended.
+     *
+     * Returns the updated session record.
+     */
+    async upsertFinalCheckRecord(
+        workspaceId: string,
+        sessionId: string,
+        checkIndex: number,
+        partial: Partial<RalphFinalCheckRecord> & Pick<RalphFinalCheckRecord, 'status'>,
+    ): Promise<RalphSessionRecord> {
+        return this.updateSessionRecord(workspaceId, sessionId, (rec) => {
+            const base = rec ?? {
+                sessionId,
+                workspaceId,
+                originalGoal: '',
+                maxIterations: 0,
+                currentIteration: 0,
+                phase: 'complete' as const,
+                startedAt: new Date().toISOString(),
+                iterations: [],
+            };
+            const existing = base.finalChecks ?? [];
+            const idx = existing.findIndex(c => c.checkIndex === checkIndex);
+            const updated: RalphFinalCheckRecord = {
+                checkIndex,
+                loopIndex: partial.loopIndex ?? 1,
+                sourceIteration: partial.sourceIteration ?? 0,
+                startedAt: partial.startedAt ?? new Date().toISOString(),
+                ...partial,
+            };
+            const next = [...existing];
+            if (idx >= 0) {
+                next[idx] = { ...next[idx], ...updated };
+            } else {
+                next.push(updated);
+            }
+            return { ...base, finalChecks: next };
+        });
     }
 
     private async atomicWriteJson(filePath: string, value: unknown): Promise<void> {

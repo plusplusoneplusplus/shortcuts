@@ -333,6 +333,35 @@ export interface RalphSessionRecord {
   iterations: RalphIterationRecord[];
   /** Multi-loop history. Absent on pre-existing single-loop sessions. */
   loops?: RalphLoopRecord[];
+  /** Final-check automation records. Absent on legacy sessions. */
+  finalChecks?: RalphFinalCheckRecord[];
+}
+
+// ============================================================================
+// Final-check types (AC-03, AC-06)
+// ============================================================================
+
+export type RalphFinalCheckStatus = 'running' | 'completed' | 'failed';
+
+/** Metadata record for one final-check run within a Ralph session. */
+export interface RalphFinalCheckRecord {
+  /** 1-based index of this check within the session. */
+  checkIndex: number;
+  /** The loop index that triggered this check. */
+  loopIndex: number;
+  /** The iteration number of the last iteration in the triggering loop. */
+  sourceIteration: number;
+  taskId?: string;
+  processId?: string;
+  startedAt: string;
+  completedAt?: string;
+  status: RalphFinalCheckStatus;
+  hasGaps?: boolean;
+  gapCount?: number;
+  gapLoopStarted?: boolean;
+  gapLoopIndex?: number;
+  capReached?: boolean;
+  goalSynthesized?: boolean;
 }
 
 export interface ParsedProgressSection {

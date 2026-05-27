@@ -223,6 +223,21 @@ export interface RalphContext {
     sessionId?: string;
     /** Current stage of the Ralph session. */
     phase?: 'grilling' | 'executing' | 'complete';
+    /**
+     * Present on final-check tasks only (AC-01/02). Identifies this as a
+     * read-only goal-gap checker task. When set, `enqueueRalphNextIteration`
+     * routes to the final-check orchestration path instead of the normal
+     * iteration continuation path.
+     */
+    finalCheck?: {
+        kind: 'goal-gap-check';
+        /** 1-based index of this check within the session. */
+        checkIndex: number;
+        /** Last iteration number of the loop that triggered this check. */
+        sourceIteration: number;
+        /** The loop index that triggered this check. */
+        loopIndex: number;
+    };
 }
 
 // ============================================================================
