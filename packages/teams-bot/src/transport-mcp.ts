@@ -13,6 +13,7 @@ export class McpTransport implements TeamsTransport {
     private _availableTools: string[] = [];
     private _useChat = false;
     private _chatId: string | null = null;
+    private _initMessageId: string | null = null;
     debug = false;
 
     constructor(serverUrl: string) {
@@ -55,6 +56,11 @@ export class McpTransport implements TeamsTransport {
         return this._chatId;
     }
 
+    /** Get the message ID of the init probe (so the bot can skip it during polling). */
+    getInitMessageId(): string | null {
+        return this._initMessageId;
+    }
+
     /**
      * Discover the self-chat ID for polling purposes.
      * Sends a brief init message via SendMessageToSelf to get the chatId from the response.
@@ -74,6 +80,9 @@ export class McpTransport implements TeamsTransport {
 
                 if (!responseText.startsWith('Error:')) {
                     const parsed = JSON.parse(responseText);
+                    if (parsed.id) {
+                        this._initMessageId = parsed.id;
+                    }
                     if (parsed.chatId) {
                         this._chatId = parsed.chatId;
                         console.log(`[mcp-transport] Discovered self-chat for polling: ${this._chatId}`);

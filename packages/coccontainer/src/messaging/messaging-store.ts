@@ -155,6 +155,49 @@ export class MessagingStore {
         ).run(processId, lastTurnIndex);
     }
 
+    /** Get distinct recent processes for a given agent (last 1 hour by default). */
+    getRecentProcesses(agentId: string, maxAgeSec: number = 3600): Array<{ processId: string; workspaceId?: string }> {
+        const cutoff = Math.floor(Date.now() / 1000) - maxAgeSec;
+        const rows = this.db.prepare(
+            `SELECT DISTINCT process_id, workspace_id FROM wa_message_map
+             WHERE agent_id = ? AND created_at >= ?
+             ORDER BY created_at DESC`
+        ).all(agentId, cutoff) as Array<{ process_id: string; workspace_id: string | null }>;
+        return rows.map(r => ({ processId: r.process_id, workspaceId: r.workspace_id ?? undefined }));
+    }
+
+    /** Check if a completion was already sent for a process. */
+    isCompletionSent(processId: string): boolean {
+        const row = this.db.prepare(
+            `SELECT completion_sent FROM teams_completion_state WHERE process_id = ?`
+        ).get(processId) as { completion_sent: number } | undefined;
+        return row?.completion_sent === 1;
+    }
+
+    /** Mark a process completion as sent. */
+    markCompletionSent(processId: string): void {
+        this.db.prepare(
+            `INSERT INTO teams_completion_state (process_id, completion_sent, updated_at) VALUES (?, 1, unixepoch())
+             ON CONFLICT(process_id) DO UPDATE SET completion_sent = 1, updated_at = unixepoch()`
+        ).run(processId);
+    }
+
+    /** Get the persisted user turn count for a process. */
+    getUserTurnCount(processId: string): number {
+        const row = this.db.prepare(
+            `SELECT user_turn_count FROM teams_completion_state WHERE process_id = ?`
+        ).get(processId) as { user_turn_count: number } | undefined;
+        return row?.user_turn_count ?? 0;
+    }
+
+    /** Update the persisted user turn count for a process. Resets completion_sent on new turns. */
+    setUserTurnCount(processId: string, count: number): void {
+        this.db.prepare(
+            `INSERT INTO teams_completion_state (process_id, user_turn_count, completion_sent, updated_at) VALUES (?, ?, 0, unixepoch())
+             ON CONFLICT(process_id) DO UPDATE SET user_turn_count = ?, completion_sent = 0, updated_at = unixepoch()`
+        ).run(processId, count, count);
+    }
+
     /** Close the database. */
     close(): void {
         this.db.close();
@@ -189,6 +232,13 @@ export class MessagingStore {
                 sender_aad_id   TEXT NOT NULL,
                 sender_name     TEXT NOT NULL,
                 created_at      INTEGER NOT NULL DEFAULT (unixepoch())
+            );
+
+            CREATE TABLE IF NOT EXISTS teams_completion_state (
+                process_id      TEXT PRIMARY KEY,
+                completion_sent INTEGER NOT NULL DEFAULT 0,
+                user_turn_count INTEGER NOT NULL DEFAULT 0,
+                updated_at      INTEGER NOT NULL DEFAULT (unixepoch())
             );
         `);
         // Migration: add workspace_id if table already exists without it

@@ -24,7 +24,8 @@ export async function executeServe(opts: {
 
     const server = await createContainerServer(config);
 
-    const url = `http://${config.serve.host}:${config.serve.port}`;
+    const displayHost = config.serve.host === '0.0.0.0' || config.serve.host === '127.0.0.1' ? 'localhost' : config.serve.host;
+    const url = `http://${displayHost}:${config.serve.port}`;
     console.log(`CoCContainer dashboard running at ${url}`);
 
     if (opts.open !== false) {

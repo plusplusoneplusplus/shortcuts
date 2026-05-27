@@ -37,6 +37,14 @@ export interface InboundAgent {
     workspaces: Array<{ id: string; name: string; rootPath: string }>;
 }
 
+/** Cached metadata for agents that disconnected (preserved across reconnections). */
+export interface DisconnectedAgent {
+    id: string;
+    name: string;
+    workspaces: Array<{ id: string; name: string; rootPath: string }>;
+    disconnectedAt: number;
+}
+
 export interface PendingRequest {
     resolve: (response: ResponsePayload) => void;
     reject: (error: Error) => void;
@@ -53,12 +61,16 @@ export interface PendingRequest {
  */
 export class InboundAgentManager extends EventEmitter {
     private agents = new Map<string, InboundAgent>();
+    private disconnectedAgents = new Map<string, DisconnectedAgent>();
     private pendingRequests = new Map<string, PendingRequest>();
     private requestTimeoutMs: number;
+    private heartbeatCheckTimer: ReturnType<typeof setInterval> | null = null;
+    private staleThresholdMs: number;
 
-    constructor(options?: { requestTimeoutMs?: number }) {
+    constructor(options?: { requestTimeoutMs?: number; staleThresholdMs?: number }) {
         super();
         this.requestTimeoutMs = options?.requestTimeoutMs ?? 30_000;
+        this.staleThresholdMs = options?.staleThresholdMs ?? 90_000; // 3 missed heartbeats
     }
 
     /**
@@ -116,6 +128,15 @@ export class InboundAgentManager extends EventEmitter {
             if (agentId) {
                 const agent = this.agents.get(agentId);
                 const name = agent?.name ?? 'unknown';
+                // Preserve metadata for offline lookups
+                if (agent) {
+                    this.disconnectedAgents.set(agentId, {
+                        id: agent.id,
+                        name: agent.name,
+                        workspaces: agent.workspaces,
+                        disconnectedAt: Date.now(),
+                    });
+                }
                 this.agents.delete(agentId);
                 this.emit('agent-disconnected', agentId, name);
             }
@@ -145,6 +166,32 @@ export class InboundAgentManager extends EventEmitter {
      */
     listAgents(): InboundAgent[] {
         return Array.from(this.agents.values());
+    }
+
+    /**
+     * Get cached metadata for a disconnected agent.
+     */
+    getDisconnectedAgent(agentId: string): DisconnectedAgent | undefined {
+        return this.disconnectedAgents.get(agentId);
+    }
+
+    /**
+     * Start periodic heartbeat staleness checks.
+     * Terminates agents that haven't sent a heartbeat within staleThresholdMs.
+     */
+    startHeartbeatCheck(intervalMs: number = 30_000): void {
+        this.stopHeartbeatCheck();
+        this.heartbeatCheckTimer = setInterval(() => this.checkStaleAgents(), intervalMs);
+    }
+
+    /**
+     * Stop periodic heartbeat staleness checks.
+     */
+    stopHeartbeatCheck(): void {
+        if (this.heartbeatCheckTimer) {
+            clearInterval(this.heartbeatCheckTimer);
+            this.heartbeatCheckTimer = null;
+        }
     }
 
     /**
@@ -210,6 +257,7 @@ export class InboundAgentManager extends EventEmitter {
      * Close all connections and clean up.
      */
     close(): void {
+        this.stopHeartbeatCheck();
         for (const [, agent] of this.agents) {
             agent.ws.close();
         }
@@ -241,10 +289,11 @@ export class InboundAgentManager extends EventEmitter {
             name: payload.name,
             ws,
             lastHeartbeat: Date.now(),
-            workspaces: payload.workspaces ?? existing?.workspaces ?? [],
+            workspaces: payload.workspaces ?? existing?.workspaces ?? this.disconnectedAgents.get(agentId)?.workspaces ?? [],
         };
 
         this.agents.set(agentId, agent);
+        this.disconnectedAgents.delete(agentId);
 
         // Send registration confirmation
         const confirmedPayload: RegisteredPayload = { agentId, reconnected };
@@ -263,6 +312,17 @@ export class InboundAgentManager extends EventEmitter {
             clearTimeout(pending.timer);
             this.pendingRequests.delete(payload.requestId);
             pending.resolve(payload);
+        }
+    }
+
+    private checkStaleAgents(): void {
+        const now = Date.now();
+        for (const [agentId, agent] of this.agents) {
+            if (now - agent.lastHeartbeat > this.staleThresholdMs) {
+                console.log(`[inbound-mgr] Agent "${agent.name}" (${agentId}) heartbeat stale (${Math.round((now - agent.lastHeartbeat) / 1000)}s) — terminating connection`);
+                agent.ws.terminate();
+                // The 'close' event handler will clean up and emit 'agent-disconnected'
+            }
         }
     }
 }

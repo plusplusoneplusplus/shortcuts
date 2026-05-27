@@ -72,6 +72,11 @@ class MockWebSocket extends EventEmitter {
         this.emit('close');
     }
 
+    terminate() {
+        this.readyState = 3; // CLOSED
+        this.emit('close');
+    }
+
     simulateMessage(msg: ChannelMessage) {
         this.emit('message', Buffer.from(JSON.stringify(msg)));
     }
@@ -374,6 +379,133 @@ describe('InboundAgentManager', () => {
             manager.close();
 
             await expect(promise).rejects.toThrow('Manager closed');
+        });
+    });
+
+    describe('heartbeat staleness check', () => {
+        it('terminates agents with stale heartbeats', () => {
+            const staleManager = new InboundAgentManager({ requestTimeoutMs: 1000, staleThresholdMs: 100 });
+            const ws = new MockWebSocket();
+            const disconnectHandler = vi.fn();
+            staleManager.on('agent-disconnected', disconnectHandler);
+            staleManager.handleConnection(ws as any);
+
+            // Register with a heartbeat time in the past
+            ws.simulateMessage(createMessage('register', { name: 'stale-agent', agentId: 'stale-1' }));
+            expect(staleManager.hasAgent('stale-1')).toBe(true);
+
+            // Manually set lastHeartbeat to the past
+            const agent = staleManager.getAgent('stale-1');
+            agent!.lastHeartbeat = Date.now() - 200; // 200ms ago, threshold is 100ms
+
+            // Trigger the check (we call the private method via startHeartbeatCheck timing)
+            // Instead, use a short interval and wait
+            staleManager.startHeartbeatCheck(50);
+
+            // Wait for the check to fire
+            return new Promise<void>((resolve) => {
+                setTimeout(() => {
+                    expect(staleManager.hasAgent('stale-1')).toBe(false);
+                    expect(disconnectHandler).toHaveBeenCalledWith('stale-1', 'stale-agent');
+                    staleManager.stopHeartbeatCheck();
+                    staleManager.close();
+                    resolve();
+                }, 100);
+            });
+        });
+
+        it('does not terminate agents with fresh heartbeats', () => {
+            const staleManager = new InboundAgentManager({ requestTimeoutMs: 1000, staleThresholdMs: 5000 });
+            const ws = new MockWebSocket();
+            const disconnectHandler = vi.fn();
+            staleManager.on('agent-disconnected', disconnectHandler);
+            staleManager.handleConnection(ws as any);
+            ws.simulateMessage(createMessage('register', { name: 'fresh-agent', agentId: 'fresh-1' }));
+
+            staleManager.startHeartbeatCheck(50);
+
+            return new Promise<void>((resolve) => {
+                setTimeout(() => {
+                    expect(staleManager.hasAgent('fresh-1')).toBe(true);
+                    expect(disconnectHandler).not.toHaveBeenCalled();
+                    staleManager.stopHeartbeatCheck();
+                    staleManager.close();
+                    resolve();
+                }, 100);
+            });
+        });
+    });
+
+    describe('disconnected agent cache', () => {
+        it('preserves agent metadata after disconnection', () => {
+            const ws = new MockWebSocket();
+            manager.handleConnection(ws as any);
+            ws.simulateMessage(createMessage('register', {
+                name: 'cache-agent',
+                agentId: 'cache-1',
+                workspaces: [{ id: 'ws1', name: 'My Repo', rootPath: '/home/user/repo' }],
+            }));
+
+            expect(manager.hasAgent('cache-1')).toBe(true);
+            expect(manager.getDisconnectedAgent('cache-1')).toBeUndefined();
+
+            // Disconnect
+            ws.close();
+
+            expect(manager.hasAgent('cache-1')).toBe(false);
+            const cached = manager.getDisconnectedAgent('cache-1');
+            expect(cached).toBeDefined();
+            expect(cached!.name).toBe('cache-agent');
+            expect(cached!.workspaces).toEqual([{ id: 'ws1', name: 'My Repo', rootPath: '/home/user/repo' }]);
+            expect(cached!.disconnectedAt).toBeGreaterThan(0);
+        });
+
+        it('clears disconnected cache on reconnection', () => {
+            const ws1 = new MockWebSocket();
+            manager.handleConnection(ws1 as any);
+            ws1.simulateMessage(createMessage('register', {
+                name: 'recon-agent',
+                agentId: 'recon-1',
+                workspaces: [{ id: 'ws1', name: 'Repo', rootPath: '/path' }],
+            }));
+            ws1.close();
+
+            expect(manager.getDisconnectedAgent('recon-1')).toBeDefined();
+
+            // Reconnect
+            const ws2 = new MockWebSocket();
+            manager.handleConnection(ws2 as any);
+            ws2.simulateMessage(createMessage('register', {
+                name: 'recon-agent',
+                agentId: 'recon-1',
+                workspaces: [{ id: 'ws1', name: 'Repo', rootPath: '/path' }],
+            }));
+
+            expect(manager.hasAgent('recon-1')).toBe(true);
+            expect(manager.getDisconnectedAgent('recon-1')).toBeUndefined();
+        });
+
+        it('uses disconnected workspaces as fallback on reconnect without workspaces', () => {
+            const ws1 = new MockWebSocket();
+            manager.handleConnection(ws1 as any);
+            ws1.simulateMessage(createMessage('register', {
+                name: 'fallback-agent',
+                agentId: 'fb-1',
+                workspaces: [{ id: 'ws1', name: 'Repo', rootPath: '/path' }],
+            }));
+            ws1.close();
+
+            // Reconnect without workspaces
+            const ws2 = new MockWebSocket();
+            manager.handleConnection(ws2 as any);
+            ws2.simulateMessage(createMessage('register', {
+                name: 'fallback-agent',
+                agentId: 'fb-1',
+                // No workspaces in register payload
+            }));
+
+            const agent = manager.getAgent('fb-1');
+            expect(agent?.workspaces).toEqual([{ id: 'ws1', name: 'Repo', rootPath: '/path' }]);
         });
     });
 });

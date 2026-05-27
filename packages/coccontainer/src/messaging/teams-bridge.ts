@@ -50,11 +50,9 @@ export class TeamsBridge {
     private transport: TeamsTransport;
     private wsHandler: ((msg: WSRelayMessage) => void) | null = null;
     private sseHandler: ((event: SSEEvent) => void) | null = null;
-    private _completionSent = new Set<string>();
+    private reconnectHandler: ((agent: { id: string; name: string }) => void) | null = null;
     /** Track latest assistant content per process (updated on each WS event) */
     private _lastAssistantContent = new Map<string, string>();
-    /** Track user turn count per process to detect new user turns */
-    private _userTurnCount = new Map<string, number>();
     private _workspaceNameCache = new Map<string, string>();
     private _azToken: string | null = null;
 
@@ -121,6 +119,10 @@ export class TeamsBridge {
         this.sseHandler = (event) => this.onSSEEvent(event);
         this.opts.sseRelay.on('event', this.sseHandler);
 
+        // On agent reconnection, poll for missed completions
+        this.reconnectHandler = (agent) => this.onAgentReconnected(agent);
+        this.opts.inboundManager.on('agent-connected', this.reconnectHandler);
+
         // Start and wait for connection (with timeout to avoid hanging on slow MCP server)
         try {
             await Promise.race([
@@ -145,6 +147,10 @@ export class TeamsBridge {
         if (this.sseHandler) {
             this.opts.sseRelay.off('event', this.sseHandler);
             this.sseHandler = null;
+        }
+        if (this.reconnectHandler) {
+            this.opts.inboundManager.off('agent-connected', this.reconnectHandler);
+            this.reconnectHandler = null;
         }
         await this.bot?.stop();
         this.bot = null;
@@ -341,6 +347,45 @@ export class TeamsBridge {
         }
     }
 
+    // ── Reconnection catchup: poll agent for missed completions ──
+
+    /**
+     * When an agent reconnects after a WebSocket gap, poll it for any
+     * recently-completed processes whose completion event we missed.
+     */
+    private async onAgentReconnected(agent: { id: string; name: string }): Promise<void> {
+        if (!this.bot || !this.store) return;
+        if (this.bot.getStatus() !== 'connected') return;
+
+        const agentId = agent.id;
+        const recentProcesses = this.store.getRecentProcesses(agentId);
+        if (recentProcesses.length === 0) return;
+
+        console.log(`[teams-bridge] 🔄 Agent "${agent.name}" reconnected — checking ${recentProcesses.length} recent process(es) for missed completions`);
+
+        for (const { processId, workspaceId } of recentProcesses) {
+            if (this.store!.isCompletionSent(processId)) continue;
+
+            try {
+                const wsParam = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : '';
+                const res = await this.fetchFromAgent(agentId, `/api/processes/${processId}${wsParam}`);
+                if (!res.ok) continue;
+
+                const body = await res.json() as Record<string, unknown>;
+                const processData = (body.process ?? body) as Record<string, unknown>;
+                const status = processData.status as string;
+
+                if (status !== 'completed') continue;
+
+                console.log(`[teams-bridge] 🔄 Missed completion detected for process ${processId} — sending to Teams`);
+                const msg: WSRelayMessage = { agentId, agentName: agent.name, data: JSON.stringify({ type: 'process-updated', process: processData }) };
+                await this.handleCompletion(processId, msg, processData);
+            } catch (err) {
+                console.error(`[teams-bridge] 🔄 Error checking process ${processId} on reconnect:`, err);
+            }
+        }
+    }
+
     // ── Outbound: CoC process update → Teams ────────────
     // Teams-bridge subscribes to BOTH the WS relay and the SSE relay.
     // Each relay carries different data:
@@ -456,8 +501,14 @@ export class TeamsBridge {
         proc: Record<string, unknown>,
     ): Promise<void> {
         const agentId = msg.agentId;
-        if (!agentId) return;
-        if (!this.bot || this.bot.getStatus() !== 'connected') return;
+        if (!agentId) {
+            console.warn(`[teams-bridge] ⚠️ handleRunning skipped: no agentId for process ${processId}`);
+            return;
+        }
+        if (!this.bot || this.bot.getStatus() !== 'connected') {
+            console.warn(`[teams-bridge] ⚠️ handleRunning skipped for process ${processId}: bot ${!this.bot ? 'not initialized' : `status=${this.bot.getStatus()}`}`);
+            return;
+        }
 
         const workspaceId = (proc.workspaceId ?? proc.workspace) as string || '';
 
@@ -492,10 +543,9 @@ export class TeamsBridge {
             for (const turn of turns) {
                 if (turn.role === 'user') currentUserCount++;
             }
-            const prevUserCount = this._userTurnCount.get(processId) ?? 0;
+            const prevUserCount = this.store!.getUserTurnCount(processId);
             if (currentUserCount > prevUserCount) {
-                this._userTurnCount.set(processId, currentUserCount);
-                this._completionSent.delete(processId);
+                this.store!.setUserTurnCount(processId, currentUserCount);
                 this._lastAssistantContent.delete(processId);
 
                 for (let i = turns.length - 1; i >= 0; i--) {
@@ -543,8 +593,14 @@ export class TeamsBridge {
         proc: Record<string, unknown>,
     ): Promise<void> {
         const agentId = msg.agentId;
-        if (!agentId) return;
-        if (!this.bot || this.bot.getStatus() !== 'connected') return;
+        if (!agentId) {
+            console.warn(`[teams-bridge] ⚠️ handleCompletion skipped: no agentId for process ${processId}`);
+            return;
+        }
+        if (!this.bot || this.bot.getStatus() !== 'connected') {
+            console.warn(`[teams-bridge] ⚠️ handleCompletion skipped for process ${processId}: bot ${!this.bot ? 'not initialized' : `status=${this.bot.getStatus()}`}`);
+            return;
+        }
 
         const workspaceId = (proc.workspaceId ?? proc.workspace) as string || '';
 
@@ -580,10 +636,9 @@ export class TeamsBridge {
             for (const turn of turns) {
                 if (turn.role === 'user') currentUserCount++;
             }
-            const prevUserCount = this._userTurnCount.get(processId) ?? 0;
+            const prevUserCount = this.store!.getUserTurnCount(processId);
             if (currentUserCount > prevUserCount) {
-                this._userTurnCount.set(processId, currentUserCount);
-                this._completionSent.delete(processId);
+                this.store!.setUserTurnCount(processId, currentUserCount);
                 this._lastAssistantContent.delete(processId);
 
                 // Forward the new user turn
@@ -598,7 +653,7 @@ export class TeamsBridge {
                 }
             }
 
-            if (this._completionSent.has(processId)) return;
+            if (this.store!.isCompletionSent(processId)) return;
 
             // Find last user turn (start of current round)
             let lastUserIdx = -1;
@@ -636,7 +691,7 @@ export class TeamsBridge {
             }
 
             if (content) {
-                this._completionSent.add(processId);
+                this.store!.markCompletionSent(processId);
                 this._lastAssistantContent.delete(processId);
 
                 // Extract content chunks from the timeline of the last assistant turn.
@@ -673,15 +728,21 @@ export class TeamsBridge {
         agentName: string,
         workspaceId: string,
     ): Promise<void> {
-        if (!this.bot || !this.store) return;
-
-        let target = this.bot.getChannelId() ?? this.opts.config.channelId;
-        if (!target) {
-            console.warn('[teams-bridge] No target (chatId/channelId) available — skipping');
+        if (!this.bot || !this.store) {
+            console.warn(`[teams-bridge] ⚠️ sendToTeams skipped for process ${processId}: ${!this.bot ? 'bot not initialized' : 'store not initialized'}`);
             return;
         }
 
-        if (this.bot.getStatus() !== 'connected') return;
+        let target = this.bot.getChannelId() ?? this.opts.config.channelId;
+        if (!target) {
+            console.warn(`[teams-bridge] ⚠️ sendToTeams skipped for process ${processId}: no target (chatId/channelId) available`);
+            return;
+        }
+
+        if (this.bot.getStatus() !== 'connected') {
+            console.warn(`[teams-bridge] ⚠️ sendToTeams skipped for process ${processId}: bot status=${this.bot.getStatus()}`);
+            return;
+        }
 
         const repoName = await this.resolveWorkspaceName(undefined, undefined, workspaceId, agentId);
 

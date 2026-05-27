@@ -19,6 +19,7 @@ set -euo pipefail
 
 RESTART_EXIT_CODE=75
 PORT=5000
+BIND_ADDRESS='127.0.0.1'
 SKIP_INITIAL_BUILD=false
 
 # Parse arguments
@@ -28,13 +29,17 @@ while [[ $# -gt 0 ]]; do
             PORT="$2"
             shift 2
             ;;
+        --host|-H)
+            BIND_ADDRESS="$2"
+            shift 2
+            ;;
         --skip-initial-build|-s)
             SKIP_INITIAL_BUILD=true
             shift
             ;;
         *)
             echo "Unknown option: $1" >&2
-            echo "Usage: $0 [--port PORT] [--skip-initial-build]" >&2
+            echo "Usage: $0 [--port PORT] [--host BIND_ADDRESS] [--skip-initial-build]" >&2
             exit 1
             ;;
     esac
@@ -53,15 +58,23 @@ build_coccontainer() {
     cd "$REPO_ROOT"
     npm install || { echo -e "\033[31mnpm install failed\033[0m"; return 1; }
 
-    echo -e "\n\033[36m=== Building coccontainer packages ===\033[0m"
+    echo -e "\n\033[36m=== Building all packages (coc-memory → forge → teams-bot → whatsapp-bot → coc → coccontainer) ===\033[0m"
+
+    cd "$REPO_ROOT/packages/coc-memory"
+    npm run build || { echo -e "\033[31mcoc-memory build failed\033[0m"; return 1; }
 
     cd "$REPO_ROOT/packages/forge"
     npm run build || { echo -e "\033[31mforge build failed\033[0m"; return 1; }
     npm link
 
+    cd "$REPO_ROOT/packages/teams-bot"
+    npm run build || { echo -e "\033[31mteams-bot build failed\033[0m"; return 1; }
+
+    cd "$REPO_ROOT/packages/whatsapp-bot"
+    npm run build || { echo -e "\033[31mwhatsapp-bot build failed\033[0m"; return 1; }
+
     cd "$REPO_ROOT/packages/coc"
-    npm run build:client || { echo -e "\033[31mcoc client build failed\033[0m"; return 1; }
-    npm run build:copy-client || { echo -e "\033[31mcoc copy-client failed\033[0m"; return 1; }
+    npm run build || { echo -e "\033[31mcoc build failed\033[0m"; return 1; }
 
     cd "$REPO_ROOT/packages/coccontainer"
     npm run build || { echo -e "\033[31mcoccontainer build failed\033[0m"; return 1; }
@@ -99,11 +112,11 @@ while true; do
     first=false
 
     # Serve step
-    echo -e "\n\033[36m=== Starting coccontainer serve (port $PORT) ===\033[0m"
+    echo -e "\n\033[36m=== Starting coccontainer serve (host $BIND_ADDRESS, port $PORT) ===\033[0m"
     echo -e "\033[90mPOST /api/admin/restart to rebuild & restart.\033[0m\n"
 
     set +e
-    coccontainer serve --no-open --port "$PORT"
+    coccontainer serve --no-open --port "$PORT" --host "$BIND_ADDRESS"
     exit_code=$?
     set -e
 

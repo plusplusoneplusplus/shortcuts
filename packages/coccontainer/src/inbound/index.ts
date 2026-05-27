@@ -4,7 +4,7 @@
  * Exports the inbound agent manager, protocol types, and WebSocket handler.
  */
 
-export { InboundAgentManager, type InboundAgent, type PendingRequest } from './inbound-agent-manager';
+export { InboundAgentManager, type InboundAgent, type DisconnectedAgent, type PendingRequest } from './inbound-agent-manager';
 export {
     createMessage,
     parseMessage,
