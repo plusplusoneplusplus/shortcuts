@@ -21,6 +21,7 @@ import type { TunnelBridge } from '../proxy/tunnel-bridge';
 import type { InboundAgentManager } from '../inbound/inbound-agent-manager';
 import type { ResolvedTeamsConfig } from '../config';
 import { MessagingStore } from './messaging-store';
+import { TeamsCommandExecutor, type ProcessInfo } from './teams-command-executor';
 
 export interface TeamsBridgeOptions {
     config: ResolvedTeamsConfig;
@@ -51,6 +52,7 @@ export class TeamsBridge {
     private wsHandler: ((msg: WSRelayMessage) => void) | null = null;
     private sseHandler: ((event: SSEEvent) => void) | null = null;
     private reconnectHandler: ((agent: { id: string; name: string }) => void) | null = null;
+    private commandExecutor: TeamsCommandExecutor | null = null;
     /** Track latest assistant content per process (updated on each WS event) */
     private _lastAssistantContent = new Map<string, string>();
     private _workspaceNameCache = new Map<string, string>();
@@ -64,6 +66,47 @@ export class TeamsBridge {
 
     async start(): Promise<void> {
         this.store = new MessagingStore(this.opts.dataDir);
+
+        // Initialize the command executor for handling /slash commands locally
+        this.commandExecutor = new TeamsCommandExecutor({
+            inboundManager: this.opts.inboundManager,
+            agentStore: this.opts.agentStore,
+            messagingStore: this.store,
+            fetchProcess: async (agentId, processId, workspaceId) => {
+                try {
+                    const wsParam = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : '';
+                    const res = await this.fetchFromAgent(agentId, `/api/processes/${processId}${wsParam}`);
+                    if (!res.ok) return null;
+                    const body = await res.json() as Record<string, unknown>;
+                    const pd = (body.process ?? body) as Record<string, unknown>;
+                    return {
+                        id: pd.id as string,
+                        status: pd.status as string,
+                        title: pd.title as string | undefined,
+                        promptPreview: pd.promptPreview as string | undefined,
+                        startTime: pd.startTime as string | undefined,
+                        workspaceId: pd.workspaceId as string | undefined,
+                    };
+                } catch { return null; }
+            },
+            listProcesses: async (agentId, workspaceId) => {
+                try {
+                    const wsParam = workspaceId ? `?workspace=${encodeURIComponent(workspaceId)}&limit=10` : '?limit=10';
+                    const res = await this.fetchFromAgent(agentId, `/api/processes${wsParam}`);
+                    if (!res.ok) return [];
+                    const body = await res.json() as { processes?: Array<Record<string, unknown>> };
+                    return (body.processes ?? []).map(p => ({
+                        id: p.id as string,
+                        status: p.status as string,
+                        title: p.title as string | undefined,
+                        promptPreview: p.promptPreview as string | undefined,
+                        startTime: p.startTime as string | undefined,
+                        workspaceId: p.workspaceId as string | undefined,
+                    }));
+                } catch { return []; }
+            },
+        });
+        console.log('[teams-bridge] Command executor initialized');
 
         // Resolve team/channel names → IDs (create if missing) using az token
         await this.resolveTeamAndChannel();
@@ -718,6 +761,36 @@ export class TeamsBridge {
     }
 
     /**
+     * Send a command response directly to Teams (not tied to a process).
+     */
+    private async sendCommandResponse(text: string, originalMsg: InboundTeamsMessage): Promise<void> {
+        if (!this.bot) {
+            console.warn(`[teams-bridge] ⚠️ sendCommandResponse skipped: bot not initialized`);
+            return;
+        }
+        const target = this.bot.getChannelId() ?? this.opts.config.channelId;
+        if (!target) {
+            console.warn(`[teams-bridge] ⚠️ sendCommandResponse skipped: no target available`);
+            return;
+        }
+        if (this.bot.getStatus() !== 'connected') {
+            console.warn(`[teams-bridge] ⚠️ sendCommandResponse skipped: bot status=${this.bot.getStatus()}`);
+            return;
+        }
+
+        // Format: simple bot name header + command response
+        const botName = this.opts.config.botName || 'CoC';
+        const formatted = `**${botName}**\n${text}`;
+
+        try {
+            const messageId = await this.bot.send(target, formatted);
+            console.log(`[teams-bridge] ✅ Command response sent: ${messageId} (${text.length} chars)`);
+        } catch (err: any) {
+            console.error(`[teams-bridge] ❌ Failed to send command response: ${err.message}`);
+        }
+    }
+
+    /**
      * Send a message to Teams for a given process.
      */
     private async sendToTeams(
@@ -863,12 +936,30 @@ export class TeamsBridge {
     private async onInboundMessage(msg: InboundTeamsMessage): Promise<void> {
         if (!this.store) return;
 
+        const text = msg.text.trim();
+        const _debug = this.opts.config.debug ?? false;
+
+        console.log(`[teams-bridge] 📨 Inbound message: id=${msg.messageId}, sender=${msg.senderName ?? 'unknown'}, text="${text.substring(0, 60)}"`);
+
+        // ── Slash command interception ──
+        // Commands starting with / are executed locally, never forwarded to agents.
+        if (this.commandExecutor && text.startsWith('/')) {
+            console.log(`[teams-bridge] 🔧 Detected slash command: "${text.substring(0, 60)}"`);
+            const result = await this.commandExecutor.tryExecute(msg);
+            if (result.handled && result.response) {
+                console.log(`[teams-bridge] 🔧 Command handled locally, sending response (${result.response.length} chars)`);
+                await this.sendCommandResponse(result.response, msg);
+                console.log(`[teams-bridge] 🔧 Command response sent to Teams`);
+                return;
+            }
+            // If not handled (unknown /command), fall through to agent routing
+            console.log(`[teams-bridge] 🔧 Slash command not recognized, forwarding to agent`);
+        }
+
         let processId: string | undefined;
         let agentId: string | undefined;
         let workspaceId: string | undefined;
         let isFollowUp = false;
-        const text = msg.text.trim();
-        const _debug = this.opts.config.debug ?? false;
 
         if (_debug) console.log(`[teams-bridge] onInboundMessage: id=${msg.messageId}, replyToMessageId=${msg.replyToMessageId ?? '(none)'}, sender=${msg.senderName}, text="${text.substring(0, 60)}"`);
 
