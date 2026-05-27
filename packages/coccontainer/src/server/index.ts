@@ -17,6 +17,7 @@ import { TunnelBridge } from '../proxy/tunnel-bridge';
 import { addCachedWorkspace, type RemoteWorkspace } from '../proxy/workspaces';
 import { SSERelay } from '../proxy/sse-relay';
 import { WebSocketRelay } from '../proxy/ws-relay';
+import { WebClientBridge } from '../proxy/webclient-bridge';
 import { AgentHealthMonitor } from './health-monitor';
 import { InboundAgentManager } from '../inbound';
 
@@ -61,6 +62,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
     const tunnelBridge = new TunnelBridge({ basePort: config.tunnelBridgeBasePort });
     const sseRelay = new SSERelay();
     const wsRelay = new WebSocketRelay();
+    const webClientBridge = new WebClientBridge({ wsRelay });
     const inboundManager = new InboundAgentManager();
     inboundManager.startHeartbeatCheck(30_000);
     const healthMonitor = new AgentHealthMonitor(agentStore, config.healthCheckIntervalMs, tunnelBridge, inboundManager);
@@ -694,38 +696,11 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
     server.on('upgrade', (req, socket, head) => {
         const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
 
-        // Client WS at /ws — relay all agent messages
+        // Client WS at /ws — relay all agent messages via WebClientBridge
         if (url.pathname === '/ws') {
             const wss = new (require('ws').WebSocketServer)({ noServer: true });
             wss.handleUpgrade(req, socket, head, (ws: import('ws').WebSocket) => {
-                const onMessage = (msg: { agentId: string; agentName: string; data: string }) => {
-                    if (ws.readyState === 1) {
-                        // Parse the agent's JSON payload and inject agentId/agentName so the
-                        // browser's ProcessWebSocketConnection can pass isProcessEvent (which
-                        // requires a top-level `type` field). Sending the raw envelope
-                        // { agentId, agentName, data: "<json string>" } would fail that check
-                        // and silently drop every event in container mode.
-                        try {
-                            const parsed = JSON.parse(msg.data);
-                            ws.send(JSON.stringify({ ...parsed, agentId: msg.agentId, agentName: msg.agentName }));
-                        } catch {
-                            ws.send(JSON.stringify(msg));
-                        }
-                    }
-                };
-                wsRelay.on('message', onMessage);
-                ws.on('message', (data: Buffer) => {
-                    // Forward client messages to target agent
-                    try {
-                        const parsed = JSON.parse(data.toString());
-                        if (parsed.agentId && parsed.data) {
-                            wsRelay.send(parsed.agentId, typeof parsed.data === 'string' ? parsed.data : JSON.stringify(parsed.data));
-                        }
-                    } catch {
-                        // ignore malformed
-                    }
-                });
-                ws.on('close', () => wsRelay.off('message', onMessage));
+                webClientBridge.handleConnection(ws);
             });
             return;
         }
