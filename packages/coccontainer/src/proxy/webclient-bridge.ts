@@ -6,7 +6,7 @@
  * and forwards them to connected browser clients.
  *
  * Inbound (browser → agent):
- *   Browser sends WS message { agentId, data } → forwarded via InboundAgentManager.sendOutbound()
+ *   Browser sends WS message { agentId, data } → WSRelay.sendToAgent()
  *
  * Outbound (agent → browser):
  *   WSRelay emits 'message' → broadcast to all connected browser WS clients
@@ -14,21 +14,17 @@
 
 import type { WebSocket as WsSocket } from 'ws';
 import type { WebSocketRelay, WSRelayMessage } from '../proxy/ws-relay';
-import type { InboundAgentManager } from '../inbound/inbound-agent-manager';
 
 export interface WebClientBridgeOptions {
     wsRelay: WebSocketRelay;
-    inboundManager: InboundAgentManager;
 }
 
 export class WebClientBridge {
     private readonly wsRelay: WebSocketRelay;
-    private readonly inboundManager: InboundAgentManager;
     private readonly clients = new Set<WsSocket>();
 
     constructor(opts: WebClientBridgeOptions) {
         this.wsRelay = opts.wsRelay;
-        this.inboundManager = opts.inboundManager;
     }
 
     /**
@@ -60,7 +56,7 @@ export class WebClientBridge {
                 const parsed = JSON.parse(data.toString());
                 if (parsed.agentId && parsed.data) {
                     console.log(`[webclient-bridge] 📤 Browser → agent ${parsed.agentId}: forwarding WS message`);
-                    this.inboundManager.sendOutbound(parsed.agentId, typeof parsed.data === 'string' ? parsed.data : JSON.stringify(parsed.data));
+                    this.wsRelay.sendToAgent(parsed.agentId, typeof parsed.data === 'string' ? parsed.data : JSON.stringify(parsed.data));
                 }
             } catch {
                 // ignore malformed

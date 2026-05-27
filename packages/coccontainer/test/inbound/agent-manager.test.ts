@@ -1,10 +1,10 @@
 /**
- * Tests for the Agent ↔ Container call-home protocol and InboundAgentManager.
+ * Tests for the Agent ↔ Container call-home protocol and AgentManager.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EventEmitter } from 'events';
-import { InboundAgentManager } from '../../src/inbound/inbound-agent-manager';
+import { AgentManager } from '../../src/inbound/agent-manager';
 import { createMessage, parseMessage, type ChannelMessage } from '../../src/inbound/protocol';
 
 // ============================================================================
@@ -83,14 +83,14 @@ class MockWebSocket extends EventEmitter {
 }
 
 // ============================================================================
-// InboundAgentManager tests
+// AgentManager tests
 // ============================================================================
 
-describe('InboundAgentManager', () => {
-    let manager: InboundAgentManager;
+describe('AgentManager', () => {
+    let manager: AgentManager;
 
     beforeEach(() => {
-        manager = new InboundAgentManager({ requestTimeoutMs: 1000 });
+        manager = new AgentManager({ requestTimeoutMs: 1000 });
     });
 
     afterEach(() => {
@@ -384,7 +384,7 @@ describe('InboundAgentManager', () => {
 
     describe('heartbeat staleness check', () => {
         it('terminates agents with stale heartbeats', () => {
-            const staleManager = new InboundAgentManager({ requestTimeoutMs: 1000, staleThresholdMs: 100 });
+            const staleManager = new AgentManager({ requestTimeoutMs: 1000, staleThresholdMs: 100 });
             const ws = new MockWebSocket();
             const disconnectHandler = vi.fn();
             staleManager.on('agent-disconnected', disconnectHandler);
@@ -415,7 +415,7 @@ describe('InboundAgentManager', () => {
         });
 
         it('does not terminate agents with fresh heartbeats', () => {
-            const staleManager = new InboundAgentManager({ requestTimeoutMs: 1000, staleThresholdMs: 5000 });
+            const staleManager = new AgentManager({ requestTimeoutMs: 1000, staleThresholdMs: 5000 });
             const ws = new MockWebSocket();
             const disconnectHandler = vi.fn();
             staleManager.on('agent-disconnected', disconnectHandler);

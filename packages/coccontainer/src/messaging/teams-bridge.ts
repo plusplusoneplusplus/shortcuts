@@ -18,7 +18,7 @@ import type { WebSocketRelay, WSRelayMessage } from '../proxy/ws-relay';
 import type { SSERelay, SSEEvent } from '../proxy/sse-relay';
 import type { AgentStore } from '../store/agent-store';
 import type { TunnelBridge } from '../proxy/tunnel-bridge';
-import type { InboundAgentManager } from '../inbound/inbound-agent-manager';
+import type { AgentManager } from '../inbound/agent-manager';
 import type { ResolvedTeamsConfig } from '../config';
 import { MessagingStore } from './messaging-store';
 import { TeamsCommandExecutor, type ProcessInfo } from './teams-command-executor';
@@ -30,7 +30,7 @@ export interface TeamsBridgeOptions {
     sseRelay: SSERelay;
     agentStore: AgentStore;
     tunnelBridge: TunnelBridge;
-    inboundManager: InboundAgentManager;
+    agentManager: AgentManager;
 }
 
 export interface TeamsStatus {
@@ -69,7 +69,7 @@ export class TeamsBridge {
 
         // Initialize the command executor for handling /slash commands locally
         this.commandExecutor = new TeamsCommandExecutor({
-            inboundManager: this.opts.inboundManager,
+            agentManager: this.opts.agentManager,
             agentStore: this.opts.agentStore,
             messagingStore: this.store,
             fetchProcess: async (agentId, processId, workspaceId) => {
@@ -164,7 +164,7 @@ export class TeamsBridge {
 
         // On agent reconnection, poll for missed completions
         this.reconnectHandler = (agent) => this.onAgentReconnected(agent);
-        this.opts.inboundManager.on('agent-connected', this.reconnectHandler);
+        this.opts.agentManager.on('agent-connected', this.reconnectHandler);
 
         // Start and wait for connection (with timeout to avoid hanging on slow MCP server)
         try {
@@ -192,7 +192,7 @@ export class TeamsBridge {
             this.sseHandler = null;
         }
         if (this.reconnectHandler) {
-            this.opts.inboundManager.off('agent-connected', this.reconnectHandler);
+            this.opts.agentManager.off('agent-connected', this.reconnectHandler);
             this.reconnectHandler = null;
         }
         await this.bot?.stop();
@@ -1114,13 +1114,13 @@ export class TeamsBridge {
     }
 
     /**
-     * Fetch from an agent — routes through inbound WS proxy for call-home agents,
+     * Fetch from an agent — routes through WSRelay for call-home agents,
      * or uses direct HTTP fetch for tunnel/direct agents.
      */
     private async fetchFromAgent(agentId: string, apiPath: string, options?: { method?: string; body?: string; headers?: Record<string, string> }): Promise<{ ok: boolean; status: number; json: () => Promise<any>; text: () => Promise<string> }> {
         // First: check if agentId IS the inbound registration ID directly
-        if (this.opts.inboundManager?.hasAgent(agentId)) {
-            return this.proxyViaInbound(agentId, apiPath, options);
+        if (this.opts.agentManager?.hasAgent(agentId)) {
+            return this.proxyViaRelay(agentId, apiPath, options);
         }
 
         // Second: look up in agent store (agentId may be the store UUID)
@@ -1133,13 +1133,13 @@ export class TeamsBridge {
             return { ok: false, status: 404, json: async () => ({ error: 'Agent not found' }), text: async () => 'Agent not found' };
         }
 
-        // For inbound agents found in store, extract inboundId and proxy
+        // For inbound agents found in store, extract inboundId and proxy via relay
         if (agent.address.startsWith('inbound://')) {
             const inboundId = agent.address.replace('inbound://', '');
-            if (!this.opts.inboundManager?.hasAgent(inboundId)) {
+            if (!this.opts.agentManager?.hasAgent(inboundId)) {
                 return { ok: false, status: 503, json: async () => ({ error: 'Agent not connected' }), text: async () => 'Agent not connected' };
             }
-            return this.proxyViaInbound(inboundId, apiPath, options);
+            return this.proxyViaRelay(inboundId, apiPath, options);
         }
 
         // Direct HTTP fetch for tunnel/direct agents
@@ -1154,10 +1154,11 @@ export class TeamsBridge {
         return res;
     }
 
-    private async proxyViaInbound(inboundId: string, apiPath: string, options?: { method?: string; body?: string; headers?: Record<string, string> }): Promise<{ ok: boolean; status: number; json: () => Promise<any>; text: () => Promise<string> }> {
+    /** Proxy an HTTP request to an agent via WSRelay → AgentManager. */
+    private async proxyViaRelay(agentId: string, apiPath: string, options?: { method?: string; body?: string; headers?: Record<string, string> }): Promise<{ ok: boolean; status: number; json: () => Promise<any>; text: () => Promise<string> }> {
         try {
-            const resp = await this.opts.inboundManager!.proxyRequest(
-                inboundId,
+            const resp = await this.opts.wsRelay.proxyToAgent(
+                agentId,
                 options?.method ?? 'GET',
                 apiPath,
                 options?.headers ?? {},

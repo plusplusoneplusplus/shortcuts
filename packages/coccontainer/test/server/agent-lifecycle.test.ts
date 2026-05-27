@@ -10,8 +10,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 
-// Mock InboundAgentManager for testing
-class MockInboundAgentManager extends EventEmitter {
+// Mock AgentManager for testing
+class MockAgentManager extends EventEmitter {
     private agents = new Map<string, { id: string; name: string }>();
 
     simulateAgentConnect(agentId: string, name: string) {
@@ -39,12 +39,12 @@ class MockInboundAgentManager extends EventEmitter {
 describe('Agent Lifecycle', () => {
     let tmpDir: string;
     let agentStore: AgentStore;
-    let inboundManager: MockInboundAgentManager;
+    let agentManager: MockAgentManager;
 
     beforeEach(() => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coccontainer-test-'));
         agentStore = createAgentStore(tmpDir);
-        inboundManager = new MockInboundAgentManager();
+        agentManager = new MockAgentManager();
     });
 
     afterEach(() => {
@@ -55,7 +55,7 @@ describe('Agent Lifecycle', () => {
     describe('agent-connected event handling', () => {
         it('should add new inbound agent to store', () => {
             // Simulate the server's agent-connected handler
-            inboundManager.on('agent-connected', (agent: { id: string; name: string }) => {
+            agentManager.on('agent-connected', (agent: { id: string; name: string }) => {
                 const existing = agentStore.list().find(a => a.address === `inbound://${agent.id}`);
                 if (!existing) {
                     agentStore.add(`inbound://${agent.id}`, agent.name);
@@ -66,7 +66,7 @@ describe('Agent Lifecycle', () => {
                 }
             });
 
-            inboundManager.simulateAgentConnect('agent-ws-id-1', 'Agent-Dev3');
+            agentManager.simulateAgentConnect('agent-ws-id-1', 'Agent-Dev3');
 
             const agents = agentStore.list();
             expect(agents.length).toBe(1);
@@ -77,7 +77,7 @@ describe('Agent Lifecycle', () => {
 
         it('should update existing agent name on reconnection', () => {
             // Simulate the server's agent-connected handler
-            inboundManager.on('agent-connected', (agent: { id: string; name: string }) => {
+            agentManager.on('agent-connected', (agent: { id: string; name: string }) => {
                 const existing = agentStore.list().find(a => a.address === `inbound://${agent.id}`);
                 if (!existing) {
                     agentStore.add(`inbound://${agent.id}`, agent.name);
@@ -91,12 +91,12 @@ describe('Agent Lifecycle', () => {
             });
 
             // Initial connection
-            inboundManager.simulateAgentConnect('agent-x', 'OldName');
+            agentManager.simulateAgentConnect('agent-x', 'OldName');
             let agent = agentStore.list().find(a => a.address === 'inbound://agent-x');
             expect(agent?.name).toBe('OldName');
 
             // Reconnection with new name
-            inboundManager.simulateAgentConnect('agent-x', 'NewName');
+            agentManager.simulateAgentConnect('agent-x', 'NewName');
             agent = agentStore.list().find(a => a.address === 'inbound://agent-x');
             expect(agent?.name).toBe('NewName');
             expect(agentStore.list().length).toBe(1); // Still only one agent
@@ -106,7 +106,7 @@ describe('Agent Lifecycle', () => {
     describe('agent-disconnected event handling', () => {
         it('should mark agent offline when disconnected (BUG FIX)', () => {
             // Setup: Add agent and mark online
-            inboundManager.on('agent-connected', (agent: { id: string; name: string }) => {
+            agentManager.on('agent-connected', (agent: { id: string; name: string }) => {
                 const existing = agentStore.list().find(a => a.address === `inbound://${agent.id}`);
                 if (!existing) {
                     agentStore.add(`inbound://${agent.id}`, agent.name);
@@ -118,7 +118,7 @@ describe('Agent Lifecycle', () => {
             });
 
             // This is the FIXED handler - look up by address, not by WebSocket ID
-            inboundManager.on('agent-disconnected', (agentId: string, agentName: string) => {
+            agentManager.on('agent-disconnected', (agentId: string, agentName: string) => {
                 const existing = agentStore.list().find(a => a.address === `inbound://${agentId}`);
                 if (existing) {
                     agentStore.updateStatus(existing.id, 'offline');
@@ -126,12 +126,12 @@ describe('Agent Lifecycle', () => {
             });
 
             // Connect agent
-            inboundManager.simulateAgentConnect('ws-agent-123', 'Agent-Dev2-Linux');
+            agentManager.simulateAgentConnect('ws-agent-123', 'Agent-Dev2-Linux');
             let agent = agentStore.list().find(a => a.address === 'inbound://ws-agent-123');
             expect(agent?.status).toBe('online');
 
             // Disconnect agent
-            inboundManager.simulateAgentDisconnect('ws-agent-123');
+            agentManager.simulateAgentDisconnect('ws-agent-123');
 
             // Agent should now be offline
             agent = agentStore.list().find(a => a.address === 'inbound://ws-agent-123');
@@ -140,7 +140,7 @@ describe('Agent Lifecycle', () => {
 
         it('should handle multiple agents independently', () => {
             // Setup handlers
-            inboundManager.on('agent-connected', (agent: { id: string; name: string }) => {
+            agentManager.on('agent-connected', (agent: { id: string; name: string }) => {
                 const existing = agentStore.list().find(a => a.address === `inbound://${agent.id}`);
                 if (!existing) {
                     agentStore.add(`inbound://${agent.id}`, agent.name);
@@ -151,7 +151,7 @@ describe('Agent Lifecycle', () => {
                 }
             });
 
-            inboundManager.on('agent-disconnected', (agentId: string, agentName: string) => {
+            agentManager.on('agent-disconnected', (agentId: string, agentName: string) => {
                 const existing = agentStore.list().find(a => a.address === `inbound://${agentId}`);
                 if (existing) {
                     agentStore.updateStatus(existing.id, 'offline');
@@ -159,15 +159,15 @@ describe('Agent Lifecycle', () => {
             });
 
             // Connect multiple agents
-            inboundManager.simulateAgentConnect('agent-1', 'Agent-Dev1');
-            inboundManager.simulateAgentConnect('agent-2', 'Agent-Dev2');
-            inboundManager.simulateAgentConnect('agent-3', 'Agent-Dev3');
+            agentManager.simulateAgentConnect('agent-1', 'Agent-Dev1');
+            agentManager.simulateAgentConnect('agent-2', 'Agent-Dev2');
+            agentManager.simulateAgentConnect('agent-3', 'Agent-Dev3');
 
             expect(agentStore.list().length).toBe(3);
             agentStore.list().forEach(a => expect(a.status).toBe('online'));
 
             // Disconnect only agent-2
-            inboundManager.simulateAgentDisconnect('agent-2');
+            agentManager.simulateAgentDisconnect('agent-2');
 
             const agents = agentStore.list();
             const agent1 = agents.find(a => a.address === 'inbound://agent-1');
@@ -181,7 +181,7 @@ describe('Agent Lifecycle', () => {
 
         it('should not throw if agent not found in store', () => {
             // Setup disconnect handler
-            inboundManager.on('agent-disconnected', (agentId: string, agentName: string) => {
+            agentManager.on('agent-disconnected', (agentId: string, agentName: string) => {
                 const existing = agentStore.list().find(a => a.address === `inbound://${agentId}`);
                 if (existing) {
                     agentStore.updateStatus(existing.id, 'offline');
@@ -190,7 +190,7 @@ describe('Agent Lifecycle', () => {
 
             // Disconnect non-existent agent - should not throw
             expect(() => {
-                inboundManager.simulateAgentDisconnect('non-existent-agent');
+                agentManager.simulateAgentDisconnect('non-existent-agent');
             }).not.toThrow();
         });
     });

@@ -46,7 +46,7 @@ function createMockDeps(): TeamsCommandExecutorDeps {
     ];
 
     return {
-        inboundManager: {
+        agentManager: {
             listAgents: vi.fn().mockReturnValue(mockAgents),
         } as any,
         agentStore: {
@@ -95,7 +95,7 @@ describe('TeamsCommandExecutor', () => {
     });
 
     it('handles no agents', async () => {
-        (deps.inboundManager.listAgents as any).mockReturnValue([]);
+        (deps.agentManager.listAgents as any).mockReturnValue([]);
         const result = await executor.tryExecute(makeMsg('/list agents'));
         expect(result.handled).toBe(true);
         expect(result.response).toContain('No agents');
@@ -232,7 +232,7 @@ describe('TeamsCommandExecutor', () => {
     // ── Error handling ───────────────────────────────────
 
     it('catches and reports errors', async () => {
-        (deps.inboundManager.listAgents as any).mockImplementation(() => { throw new Error('Connection failed'); });
+        (deps.agentManager.listAgents as any).mockImplementation(() => { throw new Error('Connection failed'); });
         const result = await executor.tryExecute(makeMsg('/list agents'));
         expect(result.handled).toBe(true);
         expect(result.response).toContain('Connection failed');

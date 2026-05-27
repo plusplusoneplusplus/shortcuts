@@ -7,8 +7,8 @@ import { EventEmitter } from 'events';
 import { WebClientBridge } from '../../src/proxy/webclient-bridge';
 
 function createMockWsRelay() {
-    const relay = new EventEmitter() as EventEmitter & { send: ReturnType<typeof vi.fn> };
-    relay.send = vi.fn().mockReturnValue(true);
+    const relay = new EventEmitter() as EventEmitter & { sendToAgent: ReturnType<typeof vi.fn> };
+    relay.sendToAgent = vi.fn().mockReturnValue(true);
     return relay;
 }
 
@@ -24,19 +24,17 @@ function createMockWs() {
     return ws;
 }
 
-function createMockInboundManager() {
+function createMockagentManager() {
     return { sendOutbound: vi.fn().mockReturnValue(true) };
 }
 
 describe('WebClientBridge', () => {
     let relay: ReturnType<typeof createMockWsRelay>;
-    let inboundManager: ReturnType<typeof createMockInboundManager>;
-    let bridge: WebClientBridge;
+        let bridge: WebClientBridge;
 
     beforeEach(() => {
         relay = createMockWsRelay();
-        inboundManager = createMockInboundManager();
-        bridge = new WebClientBridge({ wsRelay: relay as any, inboundManager: inboundManager as any });
+                bridge = new WebClientBridge({ wsRelay: relay as any });
     });
 
     it('tracks connected clients', () => {
@@ -81,7 +79,7 @@ describe('WebClientBridge', () => {
         expect(ws.send).not.toHaveBeenCalled();
     });
 
-    it('forwards browser messages to agent via inboundManager', () => {
+    it('forwards browser messages to agent via agentManager', () => {
         const ws = createMockWs();
         bridge.handleConnection(ws as any);
 
@@ -90,7 +88,7 @@ describe('WebClientBridge', () => {
             data: { type: 'subscribe', processId: 'proc-1' },
         })));
 
-        expect(inboundManager.sendOutbound).toHaveBeenCalledWith('agent-1', JSON.stringify({ type: 'subscribe', processId: 'proc-1' }));
+        expect(relay.sendToAgent).toHaveBeenCalledWith('agent-1', JSON.stringify({ type: 'subscribe', processId: 'proc-1' }));
     });
 
     it('unsubscribes from wsRelay on client disconnect', () => {
@@ -144,6 +142,6 @@ describe('WebClientBridge', () => {
         ws.emit('message', Buffer.from('not json'));
         ws.emit('message', Buffer.from('{}'));
 
-        expect(inboundManager.sendOutbound).not.toHaveBeenCalled();
+        expect(relay.sendToAgent).not.toHaveBeenCalled();
     });
 });

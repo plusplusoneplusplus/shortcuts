@@ -9,7 +9,7 @@
  */
 
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/teams-bot';
-import type { InboundAgentManager, InboundAgent } from '../inbound/inbound-agent-manager';
+import type { AgentManager, InboundAgent } from '../inbound/agent-manager';
 import type { AgentStore, Agent } from '../store/agent-store';
 import type { MessagingStore } from './messaging-store';
 
@@ -18,8 +18,8 @@ import type { MessagingStore } from './messaging-store';
 // ============================================================================
 
 export interface TeamsCommandExecutorDeps {
-    /** InboundAgentManager for listing connected agents and their workspaces. */
-    inboundManager: InboundAgentManager;
+    /** AgentManager for listing connected agents and their workspaces. */
+    agentManager: AgentManager;
     /** AgentStore for listing registered agents. */
     agentStore: AgentStore;
     /** MessagingStore for listing chat topics (process bindings). */
@@ -151,10 +151,10 @@ export class TeamsCommandExecutor {
     // ── Command Handlers ────────────────────────────────────
 
     private handleListAgents(): string {
-        const inboundAgents = this.deps.inboundManager.listAgents();
+        const agents = this.deps.agentManager.listAgents();
         const storeAgents = this.deps.agentStore.list();
 
-        if (inboundAgents.length === 0 && storeAgents.length === 0) {
+        if (agents.length === 0 && storeAgents.length === 0) {
             return 'No agents registered or connected.';
         }
 
@@ -162,12 +162,12 @@ export class TeamsCommandExecutor {
         let idx = 1;
 
         // Connected (inbound) agents
-        for (const a of inboundAgents) {
+        for (const a of agents) {
             lines.push(`${idx++}. **${a.name}** (${a.id}) — 🟢 connected`);
         }
 
         // Registered but not connected (from agent store, not in inbound)
-        const inboundIds = new Set(inboundAgents.map(a => a.id));
+        const inboundIds = new Set(agents.map(a => a.id));
         for (const a of storeAgents) {
             if (inboundIds.has(a.id)) continue;
             const statusIcon = a.status === 'online' ? '🟢' : a.status === 'offline' ? '🔴' : '⚪';
@@ -178,10 +178,10 @@ export class TeamsCommandExecutor {
     }
 
     private handleListRepos(): string {
-        const inboundAgents = this.deps.inboundManager.listAgents();
+        const agents = this.deps.agentManager.listAgents();
 
         const repos: Array<{ agentName: string; agentId: string; workspace: { id: string; name: string; rootPath: string } }> = [];
-        for (const agent of inboundAgents) {
+        for (const agent of agents) {
             for (const ws of agent.workspaces ?? []) {
                 repos.push({ agentName: agent.name, agentId: agent.id, workspace: ws });
             }
@@ -198,9 +198,9 @@ export class TeamsCommandExecutor {
     }
 
     private handleSelectRepo(nameOrIndex: string, userKey: string): string {
-        const inboundAgents = this.deps.inboundManager.listAgents();
+        const agents = this.deps.agentManager.listAgents();
         const allRepos: Array<{ agentId: string; workspace: { id: string; name: string; rootPath: string } }> = [];
-        for (const agent of inboundAgents) {
+        for (const agent of agents) {
             for (const ws of agent.workspaces ?? []) {
                 allRepos.push({ agentId: agent.id, workspace: ws });
             }

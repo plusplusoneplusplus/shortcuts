@@ -59,7 +59,7 @@ export interface PendingRequest {
  *  - 'agent-event' (agentId: string, agentName: string, data: string)
  *  - 'agent-sse-event' (agentId: string, subscriptionId: string, event: string|undefined, data: string, id: string|undefined)
  */
-export class InboundAgentManager extends EventEmitter {
+export class AgentManager extends EventEmitter {
     private agents = new Map<string, InboundAgent>();
     private disconnectedAgents = new Map<string, DisconnectedAgent>();
     private pendingRequests = new Map<string, PendingRequest>();
@@ -103,7 +103,7 @@ export class InboundAgentManager extends EventEmitter {
                         const agent = this.agents.get(agentId);
                         if (agent) {
                             const payload = msg.payload as EventPayload;
-                            console.log(`[InboundAgentManager] Received event from ${agent.name} (${agentId}): ${(payload.data ?? '').substring(0, 120)}`);
+                            console.log(`[AgentManager] Received event from ${agent.name} (${agentId}): ${(payload.data ?? '').substring(0, 120)}`);
                             this.emit('agent-event', agentId, agent.name, payload.data);
                         }
                     }
@@ -207,18 +207,18 @@ export class InboundAgentManager extends EventEmitter {
         const payload: RequestPayload = { requestId, method, path, headers, body };
         const msg = createMessage('request', payload);
 
-        process.stderr.write(`[inbound-mgr] Sending request to agent "${agent.name}" (${agentId}): ${method} ${path}\n`);
+        process.stderr.write(`[agent-mgr] Sending request to agent "${agent.name}" (${agentId}): ${method} ${path}\n`);
 
         return new Promise<ResponsePayload>((resolve, reject) => {
             const timer = setTimeout(() => {
                 this.pendingRequests.delete(requestId);
-                process.stderr.write(`[inbound-mgr] Request TIMEOUT: ${method} ${path} (agent=${agentId})\n`);
+                process.stderr.write(`[agent-mgr] Request TIMEOUT: ${method} ${path} (agent=${agentId})\n`);
                 reject(new Error(`Request to agent ${agentId} timed out after ${this.requestTimeoutMs}ms`));
             }, this.requestTimeoutMs);
 
             this.pendingRequests.set(requestId, {
                 resolve: (resp) => {
-                    process.stderr.write(`[inbound-mgr] Got response from agent "${agent.name}": ${method} ${path} → ${resp.status} (bodyLen=${resp.body?.length ?? 0})\n`);
+                    process.stderr.write(`[agent-mgr] Got response from agent "${agent.name}": ${method} ${path} → ${resp.status} (bodyLen=${resp.body?.length ?? 0})\n`);
                     resolve(resp);
                 },
                 reject,
@@ -412,7 +412,7 @@ export class InboundAgentManager extends EventEmitter {
         const now = Date.now();
         for (const [agentId, agent] of this.agents) {
             if (now - agent.lastHeartbeat > this.staleThresholdMs) {
-                console.log(`[inbound-mgr] Agent "${agent.name}" (${agentId}) heartbeat stale (${Math.round((now - agent.lastHeartbeat) / 1000)}s) — terminating connection`);
+                console.log(`[agent-mgr] Agent "${agent.name}" (${agentId}) heartbeat stale (${Math.round((now - agent.lastHeartbeat) / 1000)}s) — terminating connection`);
                 agent.ws.terminate();
                 // The 'close' event handler will clean up and emit 'agent-disconnected'
             }
