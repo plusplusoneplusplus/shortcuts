@@ -248,10 +248,28 @@ describe('TeamsCommandRouter', () => {
 
     // ── select topic ──────────────────────────────────────────
 
-    it('selects an existing topic', async () => {
+    it('selects an existing topic by ID', async () => {
         await router.handle(makeMsg('/select topic proc-111'));
         expect(sendReplySpy.mock.calls[0][0]).toContain('Selected topic');
         expect(sendReplySpy.mock.calls[0][0]).toContain('Fix bug');
+    });
+
+    it('selects a topic by numeric index', async () => {
+        // proc-111 (2025-01-02) sorts first, proc-222 (2025-01-01) second
+        await router.handle(makeMsg('/select topic 1'));
+        expect(sendReplySpy.mock.calls[0][0]).toContain('Selected topic');
+        expect(sendReplySpy.mock.calls[0][0]).toContain('Fix bug');
+    });
+
+    it('selects second topic by numeric index', async () => {
+        await router.handle(makeMsg('/select topic 2'));
+        expect(sendReplySpy.mock.calls[0][0]).toContain('Selected topic');
+        expect(sendReplySpy.mock.calls[0][0]).toContain('Add feature');
+    });
+
+    it('errors on out-of-range numeric index', async () => {
+        await router.handle(makeMsg('/select topic 99'));
+        expect(sendReplySpy.mock.calls[0][0]).toContain('not found');
     });
 
     it('errors on selecting non-existent topic', async () => {

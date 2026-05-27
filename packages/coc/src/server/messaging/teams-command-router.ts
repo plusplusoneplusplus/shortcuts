@@ -192,11 +192,11 @@ export class TeamsCommandRouter {
             return;
         }
 
-        const lines = recent.map(p => {
+        const lines = recent.map((p, i) => {
             const title = p.title ?? p.customTitle ?? p.promptPreview?.slice(0, 60) ?? p.id;
             const status = p.status ?? 'unknown';
             const selected = state.selectedTopic === p.id ? ' ⬅️' : '';
-            return `• \`${p.id.slice(0, 8)}\` [${status}] ${title}${selected}`;
+            return `${i + 1}. \`${p.id.slice(0, 8)}\` [${status}] ${title}${selected}`;
         });
 
         const header = state.selectedRepo
@@ -226,12 +226,35 @@ export class TeamsCommandRouter {
         );
     }
 
-    private async handleSelectTopic(userKey: string, topicId: string, msg: InboundTeamsMessage): Promise<void> {
-        // Verify the process exists
-        const process = await this.deps.store.getProcess(topicId.trim());
+    private async handleSelectTopic(userKey: string, topicIdOrIndex: string, msg: InboundTeamsMessage): Promise<void> {
+        const trimmed = topicIdOrIndex.trim();
+        let process: AIProcess | undefined;
+
+        // Try numeric index — resolve against the same sorted list as /list topics
+        const idx = parseInt(trimmed, 10);
+        if (!isNaN(idx) && idx >= 1) {
+            const state = this.userState.get(userKey);
+            const filter: ProcessFilter = {};
+            if (state.selectedRepo) {
+                filter.workspaceId = state.selectedRepo;
+            }
+            const processes = await this.deps.store.getAllProcesses(filter);
+            const recent = processes
+                .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())
+                .slice(0, 10);
+            if (idx <= recent.length) {
+                process = recent[idx - 1];
+            }
+        }
+
+        // Fall back to direct ID lookup
+        if (!process) {
+            process = await this.deps.store.getProcess(trimmed);
+        }
+
         if (!process) {
             await this.deps.sendReply(
-                `❌ Topic "${topicId}" not found. Use \`list topics\` to see available topics.`,
+                `❌ Topic "${trimmed}" not found. Use \`/list topics\` to see available topics.`,
                 msg.messageId,
             );
             return;
