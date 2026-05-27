@@ -50,6 +50,7 @@ export function buildRuntimeDashboardConfig(
             codexEnabled: config.codex?.enabled ?? false,
             claudeEnabled: config.claude?.enabled ?? false,
             defaultProvider: (config.defaultProvider ?? 'copilot') as 'copilot' | 'codex' | 'claude',
+            workItemsHierarchyEnabled: config.workItems?.hierarchy?.enabled ?? false,
         },
         hostname: config.serve?.serverName || shortenHostname(hostname),
         bindAddress,

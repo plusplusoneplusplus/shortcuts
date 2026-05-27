@@ -70,6 +70,7 @@ export interface AdminResolvedConfig {
   claude?: { enabled?: boolean };
   defaultProvider?: 'copilot' | 'codex' | 'claude';
   mcpOauth?: { enabled?: boolean };
+  workItems?: { hierarchy?: { enabled?: boolean } };
   [key: string]: unknown;
 }
 
@@ -124,6 +125,7 @@ export interface AdminConfigUpdate {
   'codex.enabled'?: boolean;
   'claude.enabled'?: boolean;
   defaultProvider?: 'copilot' | 'codex' | 'claude';
+  'workItems.hierarchy.enabled'?: boolean;
   [key: string]: unknown;
 }
 
@@ -155,6 +157,7 @@ export interface RuntimeDashboardConfig {
     codexEnabled: boolean;
     claudeEnabled: boolean;
     defaultProvider: 'copilot' | 'codex' | 'claude';
+    workItemsHierarchyEnabled: boolean;
   };
   hostname?: string;
   bindAddress?: string;

@@ -15,6 +15,8 @@ import { useWorkItems } from '../../contexts/WorkItemContext';
 import { useCommitCommentTotals } from '../git/hooks/useCommitCommentTotals';
 import type { DiffComment } from '../../../comments/diff-comment-types';
 import { computeStorageKey, patchDiffComment } from '../../utils/diffCommentApi';
+import { isWorkItemsHierarchyEnabled } from '../../utils/config';
+import { WorkItemParentPicker } from './WorkItemParentPicker';
 
 const STATUS_LABELS: Record<string, { label: string; badgeStatus: string }> = {
     created:          { label: 'Created',          badgeStatus: 'queued' },
@@ -53,6 +55,8 @@ interface WorkItemDetailProps {
 
 interface WorkItemFull {
     id: string; workItemNumber?: number; title: string; description: string; status: string;
+    type?: string;
+    parentId?: string;
     priority?: string; source?: string; sourceId?: string;
     createdAt: string; updatedAt: string; completedAt?: string;
     pinnedAt?: string; archivedAt?: string;
@@ -86,6 +90,16 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const [resolvingDiffComments, setResolvingDiffComments] = useState(false);
     const [resolvingCommitSha, setResolvingCommitSha] = useState<string | null>(null);
     const [resolvingChangeIdx, setResolvingChangeIdx] = useState<number | null>(null);
+    // ── Inline edit state (container items only) ──
+    const [isEditing, setIsEditing] = useState(false);
+    const [editTitle, setEditTitle] = useState('');
+    const [editDescription, setEditDescription] = useState('');
+    const [editPriority, setEditPriority] = useState<'high' | 'normal' | 'low'>('normal');
+    const [editTags, setEditTags] = useState('');
+    const [editParentId, setEditParentId] = useState<string | undefined>(undefined);
+    const [editError, setEditError] = useState<string | null>(null);
+    const [saving, setSaving] = useState(false);
+    const [showParentPicker, setShowParentPicker] = useState(false);
 
     const fetchItem = useCallback(async () => {
         setLoading(true);
@@ -115,7 +129,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const commentTotals = useCommitCommentTotals(workspaceId, allCommitShas);
 
     /* ── Auto-refresh via WorkItemContext (WebSocket events) ── */
-    const { state: workItemState } = useWorkItems();
+    const { state: workItemState, dispatch } = useWorkItems();
     const contextItems = workItemState.workItemsByRepo[workspaceId] || [];
     const contextItem = contextItems.find(i => i.id === workItemId);
 
@@ -142,6 +156,12 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
             onBack?.();
         }
     }, [contextItem, onBack]);
+
+    // Reset edit mode when navigating to a different work item
+    useEffect(() => {
+        setIsEditing(false);
+        setEditError(null);
+    }, [workItemId]);
 
     const handleExecuteDialogDone = useCallback(async () => {
         setShowExecuteDialog(false);
@@ -285,6 +305,53 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         }
     };
 
+    const handleEditStart = useCallback(() => {
+        if (!item) return;
+        setEditTitle(item.title);
+        setEditDescription(item.description || '');
+        setEditPriority((item.priority ?? 'normal') as 'high' | 'normal' | 'low');
+        setEditTags((item.tags ?? []).join(', '));
+        setEditParentId(item.parentId);
+        setEditError(null);
+        setIsEditing(true);
+    }, [item]);
+
+    const handleEditCancel = useCallback(() => {
+        setIsEditing(false);
+        setEditError(null);
+    }, []);
+
+    const handleEditSave = useCallback(async () => {
+        const trimmedTitle = editTitle.trim();
+        if (!trimmedTitle) {
+            setEditError('Title is required');
+            return;
+        }
+        setSaving(true);
+        setEditError(null);
+        try {
+            const parsedTags = editTags.split(',').map((t: string) => t.trim()).filter(Boolean);
+            const uniqueTags = [...new Set(parsedTags)];
+            const updates: Record<string, unknown> = {
+                title: trimmedTitle,
+                description: editDescription,
+                priority: editPriority,
+                tags: uniqueTags,
+            };
+            if (editParentId !== undefined) {
+                updates.parentId = editParentId;
+            }
+            const updated = await getSpaCocClient().workItems.update(workspaceId, workItemId, updates as any);
+            dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item: updated as any });
+            await fetchItem();
+            setIsEditing(false);
+        } catch (err: any) {
+            setEditError(err.message || 'Failed to save changes');
+        } finally {
+            setSaving(false);
+        }
+    }, [editTitle, editDescription, editPriority, editTags, editParentId, workspaceId, workItemId, dispatch, fetchItem]);
+
     if (loading) {
         return <div className="flex items-center justify-center h-full text-sm text-[#848484]">Loading…</div>;
     }
@@ -302,11 +369,14 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
 
     if (!item) return null;
 
+    const effectiveType = item.type ?? 'work-item';
+    const isContainer = ['epic', 'feature', 'pbi'].includes(effectiveType);
     const statusCfg = STATUS_LABELS[item.status] || STATUS_LABELS.created;
-    const canExecute = item.status === 'readyToExecute';
-    const canEditPlan = ['created', 'planning', 'readyToExecute'].includes(item.status);
-    const isAiDone = item.status === 'aiDone';
+    const canExecute = !isContainer && item.status === 'readyToExecute';
+    const canEditPlan = !isContainer && ['created', 'planning', 'readyToExecute'].includes(item.status);
+    const isAiDone = !isContainer && item.status === 'aiDone';
     const validNextStatuses = VALID_TRANSITIONS[item.status] ?? [];
+    const hierarchyEnabled = isWorkItemsHierarchyEnabled();
 
     return (
         <div className="flex flex-col h-full" data-testid="work-item-detail">
@@ -320,9 +390,31 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                         {item.workItemNumber != null && (
-                            <span className="text-xs text-[#848484] dark:text-[#999] font-mono shrink-0" data-testid="work-item-detail-number">WI-{item.workItemNumber}</span>
+                            <span className="text-xs text-[#848484] dark:text-[#999] font-mono shrink-0" data-testid="work-item-detail-number">
+                                {effectiveType === 'epic' ? 'E'
+                                    : effectiveType === 'feature' ? 'F'
+                                    : effectiveType === 'pbi' ? 'PBI'
+                                    : effectiveType === 'bug' ? 'BUG'
+                                    : 'WI'}-{item.workItemNumber}
+                            </span>
                         )}
-                        <h2 className="text-sm font-semibold truncate" title={item.title}>{item.title}</h2>
+                        {isContainer && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 font-medium">
+                                {effectiveType === 'epic' ? 'Epic' : effectiveType === 'feature' ? 'Feature' : 'PBI / Story'}
+                            </span>
+                        )}
+                        {isEditing ? (
+                            <input
+                                type="text"
+                                className="text-sm font-semibold flex-1 min-w-0 rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
+                                value={editTitle}
+                                onChange={e => setEditTitle(e.target.value)}
+                                disabled={saving}
+                                data-testid="wi-edit-title-input"
+                            />
+                        ) : (
+                            <h2 className="text-sm font-semibold truncate" title={item.title}>{item.title}</h2>
+                        )}
                     </div>
                     <div className="flex items-center flex-wrap gap-1.5 text-[10px] text-[#848484] dark:text-[#999] mt-1">
                         {/* Status dropdown */}
@@ -349,7 +441,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                 <option key={s} value={s}>{STATUS_LABELS[s]?.label ?? s}</option>
                             ))}
                         </select>
-                        {item.priority && item.priority !== 'normal' && (
+                        {!isEditing && item.priority && item.priority !== 'normal' && (
                             <span className={cn('px-1.5 py-0.5 rounded text-[10px]',
                                 item.priority === 'high' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
                             )}>{item.priority}</span>
@@ -359,32 +451,53 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                         <span>{formatRelativeTime(item.updatedAt)}</span>
                     </div>
                 </div>
-                {/* Execute + Actions in header */}
+                {/* Execute + Actions in header — leaf items only */}
                 <div className="flex items-center gap-2 shrink-0">
-                    <label className="flex items-center gap-1 text-[10px] cursor-pointer" title="Auto-execute when status reaches Ready to Execute" data-testid="work-item-auto-execute-toggle">
-                        <input
-                            type="checkbox"
-                            checked={item.autoExecute ?? false}
-                            onChange={async (e) => {
-                                try {
-                                    await getSpaCocClient().workItems.update(workspaceId, workItemId, { autoExecute: e.target.checked });
-                                    await fetchItem();
-                                } catch (err: any) {
-                                    setError(err.message || 'Failed to update');
-                                }
-                            }}
-                            className="rounded"
-                        />
-                        Auto
-                    </label>
-                    <Button
-                        variant="primary" size="sm"
-                        onClick={() => setShowExecuteDialog(true)}
-                        disabled={!canExecute}
-                        data-testid="work-item-execute-btn"
-                    >
-                        ⚡ Start Implementing
-                    </Button>
+                    {/* Edit / Save+Cancel for container items with hierarchy enabled */}
+                    {isContainer && hierarchyEnabled && (
+                        isEditing ? (
+                            <>
+                                <Button variant="primary" size="sm" onClick={handleEditSave} disabled={saving} loading={saving} data-testid="wi-edit-save-btn">
+                                    Save
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={handleEditCancel} disabled={saving} data-testid="wi-edit-cancel-btn">
+                                    Cancel
+                                </Button>
+                            </>
+                        ) : (
+                            <Button variant="ghost" size="sm" onClick={handleEditStart} data-testid="wi-edit-btn">
+                                Edit
+                            </Button>
+                        )
+                    )}
+                    {!isContainer && (
+                        <>
+                            <label className="flex items-center gap-1 text-[10px] cursor-pointer" title="Auto-execute when status reaches Ready to Execute" data-testid="work-item-auto-execute-toggle">
+                                <input
+                                    type="checkbox"
+                                    checked={item.autoExecute ?? false}
+                                    onChange={async (e) => {
+                                        try {
+                                            await getSpaCocClient().workItems.update(workspaceId, workItemId, { autoExecute: e.target.checked });
+                                            await fetchItem();
+                                        } catch (err: any) {
+                                            setError(err.message || 'Failed to update');
+                                        }
+                                    }}
+                                    className="rounded"
+                                />
+                                Auto
+                            </label>
+                            <Button
+                                variant="primary" size="sm"
+                                onClick={() => setShowExecuteDialog(true)}
+                                disabled={!canExecute}
+                                data-testid="work-item-execute-btn"
+                            >
+                                ⚡ Start Implementing
+                            </Button>
+                        </>
+                    )}
                     <Button variant="ghost" size="sm" data-testid="work-item-pin-btn"
                         title={item.pinnedAt ? 'Unpin' : 'Pin'}
                         onClick={async () => {
@@ -429,16 +542,89 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                         <button className="text-[10px] shrink-0" onClick={() => setError(null)}>✕</button>
                     </div>
                 )}
+                {editError && (
+                    <div className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 rounded p-2" data-testid="wi-edit-error">
+                        {editError}
+                    </div>
+                )}
+
+                {/* Parent info row */}
+                {isEditing && isContainer && effectiveType !== 'epic' ? (
+                    <section data-testid="work-item-parent-edit">
+                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Parent</h3>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-[#3c3c3c] dark:text-[#cccccc] flex-1">
+                                {editParentId
+                                    ? <span className="font-mono text-[#848484]">{editParentId}</span>
+                                    : <span className="italic text-[#848484]">No parent</span>
+                                }
+                            </span>
+                            <Button variant="ghost" size="sm" onClick={() => setShowParentPicker(true)} disabled={saving} data-testid="wi-edit-parent-btn">
+                                {editParentId ? 'Change Parent' : 'Set Parent'}
+                            </Button>
+                        </div>
+                    </section>
+                ) : item.parentId ? (
+                    <section data-testid="work-item-parent-info">
+                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Part Of</h3>
+                        <div className="text-xs text-[#3c3c3c] dark:text-[#cccccc]">
+                            <span className="font-mono text-[#848484]">{item.parentId}</span>
+                        </div>
+                    </section>
+                ) : null}
 
                 {/* Description */}
                 <section>
                     <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Description</h3>
-                    <div className="text-sm whitespace-pre-wrap text-[#3c3c3c] dark:text-[#cccccc]">
-                        {item.description || <span className="italic text-[#848484]">No description</span>}
-                    </div>
+                    {isEditing && isContainer ? (
+                        <textarea
+                            className="w-full min-h-[80px] text-sm p-2 rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] resize-y focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
+                            value={editDescription}
+                            onChange={e => setEditDescription(e.target.value)}
+                            disabled={saving}
+                            data-testid="wi-edit-description-input"
+                        />
+                    ) : (
+                        <div className="text-sm whitespace-pre-wrap text-[#3c3c3c] dark:text-[#cccccc]">
+                            {item.description || <span className="italic text-[#848484]">No description</span>}
+                        </div>
+                    )}
                 </section>
 
-                {/* Plan */}
+                {/* Priority + Tags in edit mode */}
+                {isEditing && isContainer && (
+                    <section className="space-y-3" data-testid="wi-edit-fields">
+                        <div>
+                            <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Priority</h3>
+                            <select
+                                className="text-sm px-2 py-1 rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
+                                value={editPriority}
+                                onChange={e => setEditPriority(e.target.value as 'high' | 'normal' | 'low')}
+                                disabled={saving}
+                                data-testid="wi-edit-priority-select"
+                            >
+                                <option value="high">High</option>
+                                <option value="normal">Normal</option>
+                                <option value="low">Low</option>
+                            </select>
+                        </div>
+                        <div>
+                            <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Tags (comma-separated)</h3>
+                            <input
+                                type="text"
+                                className="w-full text-sm px-2 py-1 rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
+                                value={editTags}
+                                onChange={e => setEditTags(e.target.value)}
+                                disabled={saving}
+                                placeholder="e.g. frontend, critical"
+                                data-testid="wi-edit-tags-input"
+                            />
+                        </div>
+                    </section>
+                )}
+
+                {/* Plan — leaf items only */}
+                {!isContainer && (
                 <section>
                     <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-2">
                         Detail Plan {item.plan ? <span className="text-[#848484] normal-case">(v{item.plan.version})</span> : ''}
@@ -453,6 +639,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                         onNavigateToTasksTab={onNavigateToTasksTab}
                     />
                 </section>
+                )}
 
                 {/* AI Review section (aiDone only) */}
                 {isAiDone && (
@@ -492,8 +679,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     </section>
                 )}
 
-                {/* Execution session entry — shown when a task has been queued/run */}
-                {item.taskId && (onViewTask || onNavigateToTasksTab) && ['executing', 'aiDone', 'aiFailed'].includes(item.status) && (
+                {/* Execution session entry — shown when a task has been queued/run (leaf items only) */}
+                {!isContainer && item.taskId && (onViewTask || onNavigateToTasksTab) && ['executing', 'aiDone', 'aiFailed'].includes(item.status) && (
                     <section>
                         <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Execution Session</h3>
                         {item.status === 'aiDone' && onNavigateToTasksTab ? (
@@ -547,10 +734,9 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                 )}
 
                 {/* Execution history */}
-                {((item.executionHistory && item.executionHistory.length > 0) || (item.changes && item.changes.some(c => !c.taskId || !item.executionHistory?.some(e => e.taskId === c.taskId)))) && (
+                {!isContainer && ((item.executionHistory && item.executionHistory.length > 0) || (item.changes && item.changes.some(c => !c.taskId || !item.executionHistory?.some(e => e.taskId === c.taskId)))) && (
                     <section>
-                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Execution History</h3>
-                        <div className="space-y-2">
+                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Execution History</h3><div className="space-y-2">
                             {item.executionHistory?.map((exec, i) => {
                                 const matchingChange = item.changes?.find(c => c.taskId === exec.taskId);
                                 const commits = matchingChange?.commits ?? [];
@@ -765,6 +951,17 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     workItemTitle={item.title}
                     onClose={() => setShowExecuteDialog(false)}
                     onExecuted={handleExecuteDialogDone}
+                />
+            )}
+            {showParentPicker && (
+                <WorkItemParentPicker
+                    workspaceId={workspaceId}
+                    workItemId={workItemId}
+                    workItemType={effectiveType as any}
+                    currentParentId={editParentId}
+                    onlyPick={true}
+                    onParentChanged={(newParentId) => setEditParentId(newParentId)}
+                    onClose={() => setShowParentPicker(false)}
                 />
             )}
         </div>

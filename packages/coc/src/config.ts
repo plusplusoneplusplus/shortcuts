@@ -195,6 +195,13 @@ export interface CLIConfig {
         /** Bundled skills to auto-install on first serve startup if not already present */
         defaultSkills?: string[];
     };
+    /** Work Items configuration */
+    workItems?: {
+        /** Work item hierarchy board feature (Azure DevOps-like Epic/Feature/PBI hierarchy). Disabled by default. */
+        hierarchy?: {
+            enabled?: boolean;
+        };
+    };
 }
 
 // ============================================================================
@@ -389,6 +396,13 @@ export interface ResolvedCLIConfig {
         /** Bundled skills to auto-install on first serve startup if not already present */
         defaultSkills: string[];
     };
+    /** Work Items configuration */
+    workItems: {
+        /** Work item hierarchy board feature. */
+        hierarchy: {
+            enabled: boolean;
+        };
+    };
 }
 
 // ============================================================================
@@ -521,6 +535,11 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     skills: {
         autoUpdate: true,
         defaultSkills: [...DEFAULT_BUNDLED_SKILLS],
+    },
+    workItems: {
+        hierarchy: {
+            enabled: false,
+        },
     },
 };
 

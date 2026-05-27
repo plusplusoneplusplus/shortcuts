@@ -3,14 +3,24 @@ import {
     WORK_ITEM_STATUSES,
     TERMINAL_WORK_ITEM_STATUSES,
     VALID_TRANSITIONS,
+    WORK_ITEM_TYPES,
+    HIERARCHY_CONTAINER_TYPES,
+    LEAF_WORK_ITEM_TYPES,
+    ALLOWED_PARENT_TYPES,
+    ALLOWED_CHILD_TYPES,
     isTerminalStatus,
     isValidTransition,
     toIndexEntry,
     getLastRunTime,
+    getEffectiveType,
+    isContainerType,
+    isLeafType,
+    isValidParentChildTypes,
 } from '../../../src/server/work-items/types';
 import type {
     WorkItem,
     WorkItemStatus,
+    WorkItemType,
     WorkItemIndexEntry,
     WorkItemExecution,
 } from '../../../src/server/work-items/types';
@@ -178,7 +188,7 @@ describe('Work Item Types', () => {
 
             const entry = toIndexEntry(item);
 
-            expect(entry).toEqual<WorkItemIndexEntry>({
+            expect(entry).toMatchObject<Partial<WorkItemIndexEntry>>({
                 id: 'wi-001',
                 repoId: 'repo-1',
                 title: 'Test work item',
@@ -189,10 +199,22 @@ describe('Work Item Types', () => {
                 planVersion: 3,
                 createdAt: '2026-01-01T00:00:00.000Z',
                 updatedAt: '2026-01-01T00:00:00.000Z',
-                completedAt: undefined,
-                lastRunAt: undefined,
                 tags: ['backend', 'auth'],
             });
+            expect(entry.completedAt).toBeUndefined();
+            expect(entry.lastRunAt).toBeUndefined();
+        });
+
+        it('includes parentId when set', () => {
+            const item = makeWorkItem({ parentId: 'epic-parent' });
+            const entry = toIndexEntry(item);
+            expect(entry.parentId).toBe('epic-parent');
+        });
+
+        it('omits parentId when not set', () => {
+            const item = makeWorkItem();
+            const entry = toIndexEntry(item);
+            expect(entry.parentId).toBeUndefined();
         });
 
         it('handles work item without optional fields', () => {
@@ -273,6 +295,130 @@ describe('Work Item Types', () => {
                 { taskId: 't-2', startedAt: '2026-03-01T00:00:00.000Z', status: 'running' },
             ];
             expect(getLastRunTime(history)).toBe('2026-06-01T00:00:00.000Z');
+        });
+    });
+
+    describe('Hierarchy type constants', () => {
+        it('WORK_ITEM_TYPES includes all five types', () => {
+            expect(WORK_ITEM_TYPES).toContain('work-item');
+            expect(WORK_ITEM_TYPES).toContain('bug');
+            expect(WORK_ITEM_TYPES).toContain('epic');
+            expect(WORK_ITEM_TYPES).toContain('feature');
+            expect(WORK_ITEM_TYPES).toContain('pbi');
+        });
+
+        it('HIERARCHY_CONTAINER_TYPES contains epic, feature, pbi', () => {
+            expect(HIERARCHY_CONTAINER_TYPES.has('epic')).toBe(true);
+            expect(HIERARCHY_CONTAINER_TYPES.has('feature')).toBe(true);
+            expect(HIERARCHY_CONTAINER_TYPES.has('pbi')).toBe(true);
+            expect(HIERARCHY_CONTAINER_TYPES.has('work-item')).toBe(false);
+            expect(HIERARCHY_CONTAINER_TYPES.has('bug')).toBe(false);
+        });
+
+        it('LEAF_WORK_ITEM_TYPES contains work-item and bug', () => {
+            expect(LEAF_WORK_ITEM_TYPES.has('work-item')).toBe(true);
+            expect(LEAF_WORK_ITEM_TYPES.has('bug')).toBe(true);
+            expect(LEAF_WORK_ITEM_TYPES.has('epic')).toBe(false);
+            expect(LEAF_WORK_ITEM_TYPES.has('feature')).toBe(false);
+            expect(LEAF_WORK_ITEM_TYPES.has('pbi')).toBe(false);
+        });
+
+        it('ALLOWED_PARENT_TYPES defines correct hierarchy', () => {
+            expect(ALLOWED_PARENT_TYPES.epic).toEqual([]);
+            expect(ALLOWED_PARENT_TYPES.feature).toEqual(['epic']);
+            expect(ALLOWED_PARENT_TYPES.pbi).toEqual(['feature']);
+            expect(ALLOWED_PARENT_TYPES['work-item']).toEqual(['pbi']);
+            expect(ALLOWED_PARENT_TYPES.bug).toEqual(['pbi']);
+        });
+
+        it('ALLOWED_CHILD_TYPES defines correct hierarchy', () => {
+            expect(ALLOWED_CHILD_TYPES.epic).toEqual(['feature']);
+            expect(ALLOWED_CHILD_TYPES.feature).toEqual(['pbi']);
+            expect(ALLOWED_CHILD_TYPES.pbi).toContain('work-item');
+            expect(ALLOWED_CHILD_TYPES.pbi).toContain('bug');
+            expect(ALLOWED_CHILD_TYPES['work-item']).toEqual([]);
+            expect(ALLOWED_CHILD_TYPES.bug).toEqual([]);
+        });
+    });
+
+    describe('getEffectiveType', () => {
+        it('returns work-item for undefined (existing data compat)', () => {
+            expect(getEffectiveType(undefined)).toBe('work-item');
+        });
+
+        it('returns the type when provided', () => {
+            const types: WorkItemType[] = ['work-item', 'bug', 'epic', 'feature', 'pbi'];
+            for (const t of types) {
+                expect(getEffectiveType(t)).toBe(t);
+            }
+        });
+    });
+
+    describe('isContainerType', () => {
+        it('returns true for container types', () => {
+            expect(isContainerType('epic')).toBe(true);
+            expect(isContainerType('feature')).toBe(true);
+            expect(isContainerType('pbi')).toBe(true);
+        });
+
+        it('returns false for leaf types', () => {
+            expect(isContainerType('work-item')).toBe(false);
+            expect(isContainerType('bug')).toBe(false);
+        });
+    });
+
+    describe('isLeafType', () => {
+        it('returns true for leaf types', () => {
+            expect(isLeafType('work-item')).toBe(true);
+            expect(isLeafType('bug')).toBe(true);
+        });
+
+        it('returns false for container types', () => {
+            expect(isLeafType('epic')).toBe(false);
+            expect(isLeafType('feature')).toBe(false);
+            expect(isLeafType('pbi')).toBe(false);
+        });
+    });
+
+    describe('isValidParentChildTypes', () => {
+        it('allows feature under epic', () => {
+            expect(isValidParentChildTypes('feature', 'epic')).toBe(true);
+        });
+
+        it('allows pbi under feature', () => {
+            expect(isValidParentChildTypes('pbi', 'feature')).toBe(true);
+        });
+
+        it('allows work-item under pbi', () => {
+            expect(isValidParentChildTypes('work-item', 'pbi')).toBe(true);
+        });
+
+        it('allows bug under pbi', () => {
+            expect(isValidParentChildTypes('bug', 'pbi')).toBe(true);
+        });
+
+        it('rejects skipped levels (work-item under epic)', () => {
+            expect(isValidParentChildTypes('work-item', 'epic')).toBe(false);
+        });
+
+        it('rejects skipped levels (bug under feature)', () => {
+            expect(isValidParentChildTypes('bug', 'feature')).toBe(false);
+        });
+
+        it('rejects pbi under epic (skip feature)', () => {
+            expect(isValidParentChildTypes('pbi', 'epic')).toBe(false);
+        });
+
+        it('rejects epic having any parent', () => {
+            const types: WorkItemType[] = ['work-item', 'bug', 'epic', 'feature', 'pbi'];
+            for (const t of types) {
+                expect(isValidParentChildTypes('epic', t)).toBe(false);
+            }
+        });
+
+        it('rejects leaf items as parents', () => {
+            expect(isValidParentChildTypes('work-item', 'bug')).toBe(false);
+            expect(isValidParentChildTypes('bug', 'work-item')).toBe(false);
         });
     });
 });

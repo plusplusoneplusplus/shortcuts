@@ -130,6 +130,61 @@ describe('FileWorkItemStore', () => {
             const entries = await store.listWorkItems({ repoId: 'test-repo' });
             expect(entries.items.find(e => e.id === 'wi-rm2')).toBeUndefined();
         });
+
+        it('blocks deletion when children exist', async () => {
+            const parent = makeWorkItem({ id: 'wi-parent', type: 'pbi' });
+            const child = makeWorkItem({ id: 'wi-child', type: 'work-item', parentId: 'wi-parent' });
+            await store.addWorkItem(parent);
+            await store.addWorkItem(child);
+
+            await expect(store.removeWorkItem('wi-parent')).rejects.toThrow(
+                'Cannot delete work item: it has 1 child item(s)',
+            );
+            // Parent still exists
+            const retrieved = await store.getWorkItem('wi-parent', 'test-repo');
+            expect(retrieved).toBeDefined();
+        });
+
+        it('allows deletion of parent after children are removed', async () => {
+            const parent = makeWorkItem({ id: 'wi-par2', type: 'feature' });
+            const child = makeWorkItem({ id: 'wi-chi2', type: 'pbi', parentId: 'wi-par2' });
+            await store.addWorkItem(parent);
+            await store.addWorkItem(child);
+
+            // Remove child first
+            await store.removeWorkItem('wi-chi2');
+
+            // Now parent can be removed
+            const removed = await store.removeWorkItem('wi-par2');
+            expect(removed).toBe(true);
+        });
+    });
+
+    describe('listChildren', () => {
+        it('lists direct children of a parent item', async () => {
+            const epic = makeWorkItem({ id: 'epic-1', type: 'epic' });
+            const feat1 = makeWorkItem({ id: 'feat-1', type: 'feature', parentId: 'epic-1' });
+            const feat2 = makeWorkItem({ id: 'feat-2', type: 'feature', parentId: 'epic-1' });
+            const unrelated = makeWorkItem({ id: 'wi-unrelated' });
+
+            await store.addWorkItem(epic);
+            await store.addWorkItem(feat1);
+            await store.addWorkItem(feat2);
+            await store.addWorkItem(unrelated);
+
+            const children = await store.listChildren('epic-1', 'test-repo');
+            expect(children).toHaveLength(2);
+            expect(children.map(c => c.id)).toContain('feat-1');
+            expect(children.map(c => c.id)).toContain('feat-2');
+        });
+
+        it('returns empty array when parent has no children', async () => {
+            const item = makeWorkItem({ id: 'lone-item' });
+            await store.addWorkItem(item);
+
+            const children = await store.listChildren('lone-item', 'test-repo');
+            expect(children).toHaveLength(0);
+        });
     });
 
     describe('listWorkItems', () => {

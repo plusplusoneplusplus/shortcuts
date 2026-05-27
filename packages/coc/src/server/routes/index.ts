@@ -59,6 +59,7 @@ import { registerTerminalRoutes } from '../terminal/terminal-routes';
 import { registerMyWorkRoutes } from '../workspaces/my-work-handler';
 import { registerMyLifeRoutes } from '../workspaces/my-life-handler';
 import { registerWorkItemRoutes } from './work-item-routes';
+import { registerWorkItemHierarchyRoutes } from './work-item-hierarchy-routes';
 import { registerWorkItemPlanRoutes } from './work-item-plan-routes';
 import { registerWorkItemExecutionRoutes } from './work-item-execution-routes';
 import { registerWorkItemChangesRoutes } from './work-item-changes-routes';
@@ -429,7 +430,12 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // Work item routes
     const workItemStore = new FileWorkItemStore({ dataDir });
     const enqueueForWorkItems = bridge.enqueue.bind(bridge) as EnqueueFunction;
-    registerWorkItemRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer });
+    const getWorkItemsHierarchyEnabled = opts.runtimeConfigService
+        ? () => opts.runtimeConfigService!.config.workItems?.hierarchy?.enabled ?? false
+        : () => opts.resolvedConfig?.workItems?.hierarchy?.enabled ?? false;
+    // Hierarchy tree route must be registered before generic /:workItemId to win the match
+    registerWorkItemHierarchyRoutes({ routes, workItemStore, getHierarchyEnabled: getWorkItemsHierarchyEnabled });
+    registerWorkItemRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer, getHierarchyEnabled: getWorkItemsHierarchyEnabled });
     registerWorkItemPlanRoutes({ routes, workItemStore, getWsServer });
     registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer, dataDir });
     registerWorkItemChangesRoutes({ routes, workItemStore, getWsServer });

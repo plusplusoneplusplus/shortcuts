@@ -236,6 +236,12 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         if (!cfg.features) { cfg.features = {}; }
         cfg.features.focusedDiff = v;
     }),
+
+    bool('workItems.hierarchy.enabled', (cfg, v) => {
+        if (!cfg.workItems) { cfg.workItems = {}; }
+        if (!cfg.workItems.hierarchy) { cfg.workItems.hierarchy = {}; }
+        cfg.workItems.hierarchy.enabled = v;
+    }),
 ];
 
 /** Flat keys accepted by PUT /api/admin/config — derived from the registry. */

@@ -12,7 +12,32 @@ export type WorkItemStatus =
   | string;
 export type WorkItemPriority = 'high' | 'normal' | 'low';
 export type WorkItemSource = 'manual' | 'chat' | 'schedule';
-export type WorkItemType = 'work-item' | 'bug';
+export type WorkItemType = 'work-item' | 'bug' | 'epic' | 'feature' | 'pbi';
+
+/**
+ * Allowed parent types for each work item type.
+ * An empty array means the type cannot have a parent (top-level only).
+ * Any item may be temporarily unparented (parentId absent) regardless of type.
+ */
+export const ALLOWED_PARENT_TYPES: Record<WorkItemType, readonly WorkItemType[]> = {
+  epic:        [],
+  feature:     ['epic'],
+  pbi:         ['feature'],
+  'work-item': ['pbi'],
+  bug:         ['pbi'],
+};
+
+/**
+ * Allowed child types for each work item type.
+ * An empty array means the type cannot have children.
+ */
+export const ALLOWED_CHILD_TYPES: Record<WorkItemType, readonly WorkItemType[]> = {
+  epic:        ['feature'],
+  feature:     ['pbi'],
+  pbi:         ['work-item', 'bug'],
+  'work-item': [],
+  bug:         [],
+};
 
 export interface WorkItemPlan {
   version: number;
@@ -52,6 +77,8 @@ export interface WorkItem {
   description: string;
   status: WorkItemStatus;
   type?: WorkItemType;
+  /** Parent work item ID (hierarchy). Only set when hierarchy is enabled. */
+  parentId?: string;
   createdAt: string;
   updatedAt: string;
   completedAt?: string;
@@ -100,6 +127,8 @@ export interface CreateWorkItemRequest {
   title: string;
   description?: string;
   type?: WorkItemType;
+  /** Parent work item ID (hierarchy). Only accepted when hierarchy flag is enabled. */
+  parentId?: string;
   source?: WorkItemSource;
   sourceId?: string;
   priority?: WorkItemPriority;
@@ -121,6 +150,8 @@ export interface CreateWorkItemFromChatRequest extends JsonObject {
 export interface UpdateWorkItemRequest extends Partial<Pick<WorkItem, 'title' | 'description' | 'status' | 'priority' | 'tags' | 'autoExecute'>> {
   completedAt?: string;
   reviewComments?: unknown[];
+  /** Update parent link (hierarchy). Only accepted when hierarchy flag is enabled. */
+  parentId?: string | null;
 }
 
 export interface ExecuteWorkItemRequest extends JsonObject {
@@ -192,4 +223,53 @@ export interface WorkItemChange {
   prNumber?: number;
   prUrl?: string;
   prStatus?: 'open' | 'merged' | 'closed' | string;
+}
+
+// ============================================================================
+// Hierarchy tree types
+// ============================================================================
+
+/** Descendant count roll-up for a hierarchy tree node. */
+export interface WorkItemRollup {
+  descendantCount: number;
+  byType: {
+    epic: number;
+    feature: number;
+    pbi: number;
+    'work-item': number;
+    bug: number;
+  };
+  byStatus: {
+    created: number;
+    planning: number;
+    readyToExecute: number;
+    executing: number;
+    aiDone: number;
+    aiFailed: number;
+    done: number;
+    failed: number;
+  };
+}
+
+/** A node in the work item hierarchy tree. */
+export interface WorkItemTreeNode {
+  item: WorkItem;
+  children: WorkItemTreeNode[];
+  rollup: WorkItemRollup;
+}
+
+/** Response from the work item tree endpoint. */
+export interface WorkItemTreeResponse {
+  roots: WorkItemTreeNode[];
+  total: number;
+  /** True when the hierarchy feature flag is disabled. */
+  disabled?: boolean;
+}
+
+/** Filter options for the tree endpoint. */
+export interface WorkItemTreeFilter {
+  q?: string;
+  type?: WorkItemType;
+  status?: WorkItemStatus;
+  includeArchived?: boolean;
 }

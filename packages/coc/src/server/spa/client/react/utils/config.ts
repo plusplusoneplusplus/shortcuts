@@ -34,6 +34,8 @@ interface DashboardConfig {
     codexEnabled?: boolean;
     /** Default AI provider for new chats/tasks. */
     defaultProvider?: 'copilot' | 'codex' | 'claude';
+    /** Whether the Work Items hierarchy board is enabled (feature flag). */
+    workItemsHierarchyEnabled?: boolean;
 }
 
 /** Cached runtime config loaded from the API. */
@@ -94,6 +96,7 @@ async function _doLoadRuntimeConfig(): Promise<void> {
             containerDefaultAgentEnabled: data.features.containerDefaultAgentEnabled,
             codexEnabled: data.features.codexEnabled,
             defaultProvider: data.features.defaultProvider,
+            workItemsHierarchyEnabled: data.features.workItemsHierarchyEnabled,
             hostname: data.hostname ?? bootstrap.hostname,
             bindAddress: data.bindAddress ?? bootstrap.bindAddress,
         };
@@ -224,6 +227,11 @@ export function isContainerDefaultAgentEnabled(): boolean {
 /** Returns true when the Codex SDK provider feature flag is enabled. */
 export function isCodexEnabled(): boolean {
     return getConfig().codexEnabled === true;
+}
+
+/** Returns true when the Work Items hierarchy board feature flag is enabled. */
+export function isWorkItemsHierarchyEnabled(): boolean {
+    return getConfig().workItemsHierarchyEnabled === true;
 }
 
 /** Returns the configured default AI provider for new chats/tasks. */

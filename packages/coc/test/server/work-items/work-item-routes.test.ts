@@ -156,10 +156,19 @@ describe('Work Item Routes', () => {
             expect(res.body.priority).toBe('high');
         });
 
-        it('ignores invalid type values', async () => {
+        it('rejects hierarchy container types when hierarchy flag is disabled', async () => {
             const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
                 title: 'Invalid type',
                 type: 'epic',
+            });
+
+            expect(res.status).toBe(400);
+        });
+
+        it('ignores genuinely unknown type values', async () => {
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Unknown type',
+                type: 'unknown-type-xyz',
             });
 
             expect(res.status).toBe(201);
