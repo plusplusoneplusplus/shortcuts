@@ -26,7 +26,7 @@ interface PromptsPanelProps {
     onError: (msg: string) => void;
 }
 
-const GROUP_ORDER = ['Pipeline', 'Memory', 'UI', 'Ralph'];
+const GROUP_ORDER = ['Pipeline', 'Memory', 'UI', 'Ralph', 'Diff Classification'];
 
 export function PromptsPanel({ onError }: PromptsPanelProps) {
     const [prompts, setPrompts] = useState<BuiltInPrompt[]>([]);
@@ -88,7 +88,7 @@ export function PromptsPanel({ onError }: PromptsPanelProps) {
             <div>
                 <h2 className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-1">Prompt Templates</h2>
                 <p className="text-xs text-[#616161] dark:text-[#9d9d9d]">
-                    Built-in AI instructions used by CoC. Ralph prompts are editable; others are read-only.
+                    Built-in AI instructions used by CoC. Editable prompts can be customised via overrides; others are read-only.
                 </p>
             </div>
 

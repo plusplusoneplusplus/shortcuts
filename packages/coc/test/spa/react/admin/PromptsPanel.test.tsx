@@ -63,6 +63,16 @@ const MOCK_PROMPTS = {
         description: 'Tool description for suggest_follow_ups',
         text: 'After completing your response, call this tool.',
     },
+    'diff-classification-user': {
+        id: 'diff-classification-user',
+        title: 'Diff Classification - User Prompt',
+        group: 'Diff Classification',
+        source: 'coc/server/repos/classification-prompt.ts',
+        description: 'User prompt template for AI diff hunk classification',
+        text: 'Classify every hunk in ${target}.\n${diffInstructions}\n${classificationSchema}\n${saveInstruction}',
+        editable: true,
+        templateVars: ['${target}', '${diffInstructions}', '${classificationSchema}', '${saveInstruction}'],
+    },
 };
 
 describe('PromptsPanel', () => {
@@ -86,11 +96,13 @@ describe('PromptsPanel', () => {
         expect(screen.getByText('Pipeline')).toBeDefined();
         expect(screen.getByText('Memory')).toBeDefined();
         expect(screen.getByText('UI')).toBeDefined();
+        expect(screen.getByText('Diff Classification')).toBeDefined();
 
         // Prompt titles
         expect(screen.getByText('Read-only Mode')).toBeDefined();
         expect(screen.getByText('Memory Tool Schema')).toBeDefined();
         expect(screen.getByText('Follow-up Suggestions')).toBeDefined();
+        expect(screen.getByText('Diff Classification - User Prompt')).toBeDefined();
     });
 
     it('renders the page header description', async () => {
@@ -100,7 +112,7 @@ describe('PromptsPanel', () => {
 
         await waitFor(() => {
             expect(screen.getByText('Prompt Templates')).toBeDefined();
-            expect(screen.getByText(/Ralph prompts are editable/)).toBeDefined();
+            expect(screen.getByText(/Editable prompts can be customised/)).toBeDefined();
         });
     });
 
@@ -131,7 +143,48 @@ describe('PromptsPanel', () => {
 
         await waitFor(() => {
             const cards = screen.getAllByTestId('prompt-card');
-            expect(cards.length).toBe(3);
+            expect(cards.length).toBe(4);
         });
+    });
+
+    it('renders Diff Classification group after other groups', async () => {
+        mocks.admin.getPrompts.mockResolvedValue(MOCK_PROMPTS);
+
+        await act(async () => { renderPanel(); });
+
+        await waitFor(() => {
+            expect(screen.getByText('Diff Classification')).toBeDefined();
+        });
+
+        // Diff Classification is the last group in GROUP_ORDER
+        const headings = screen.getAllByRole('heading');
+        const groupHeadings = headings.filter(h =>
+            ['Pipeline', 'Memory', 'UI', 'Diff Classification'].includes(h.textContent ?? '')
+        );
+        const lastGroup = groupHeadings[groupHeadings.length - 1];
+        expect(lastGroup?.textContent).toBe('Diff Classification');
+    });
+
+    it('shows edit button for editable diff classification prompt', async () => {
+        mocks.admin.getPrompts.mockResolvedValue(MOCK_PROMPTS);
+
+        await act(async () => { renderPanel(); });
+
+        await waitFor(() => {
+            const editButtons = screen.getAllByTestId('prompt-edit-btn');
+            expect(editButtons.length).toBeGreaterThanOrEqual(1);
+        });
+    });
+
+    it('does not show retriever warning for diff classification prompt', async () => {
+        mocks.admin.getPrompts.mockResolvedValue(MOCK_PROMPTS);
+
+        await act(async () => { renderPanel(); });
+
+        await waitFor(() => {
+            expect(screen.getByText('Diff Classification - User Prompt')).toBeDefined();
+        });
+        // The retriever warning only appears for ralph-iteration-user
+        expect(screen.queryByTestId('prompt-retriever-warning')).toBeNull();
     });
 });

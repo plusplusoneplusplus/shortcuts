@@ -27,6 +27,7 @@ import {
 } from './classification-store';
 import { TaskDefs } from '../tasks/task-types';
 import { buildClassificationPrompt } from './pr-classification-handler';
+import { renderClassificationPrompt } from './classification-prompt';
 
 // ============================================================================
 // Types
@@ -110,7 +111,7 @@ export function registerGenericClassificationRoutes(routes: Route[], opts: Gener
                 const repo = await svc.resolveRepo(repoId);
                 if (!repo) return send404(res, `Repo ${repoId} not found`);
 
-                const prompt = buildPromptForType(type, identifier, repoId);
+                const prompt = buildPromptForType(type, identifier, repoId, dataDir);
                 const rootPath = repo.localPath ?? process.cwd();
                 bridge.getOrCreateBridge(rootPath);
                 const resolvedRepoId = bridge.getRepoIdForPath(rootPath);
@@ -255,33 +256,13 @@ function splitIdentifier(type: ClassificationType, identifier: string, _repoId: 
     return { prId: `_${type}`, headSha: identifier };
 }
 
-function buildPromptForType(type: ClassificationType, identifier: string, repoId: string): string {
+function buildPromptForType(type: ClassificationType, identifier: string, repoId: string, dataDir?: string): string {
     if (type === 'pr') {
         const colonIdx = identifier.indexOf(':');
         const prId = colonIdx !== -1 ? identifier.slice(0, colonIdx) : identifier;
-        return buildClassificationPrompt(repoId, prId);
+        return buildClassificationPrompt(repoId, prId, dataDir);
     }
-    if (type === 'commit') {
-        return [
-            `Classify every hunk in commit ${identifier} of this repository.`,
-            '',
-            'Use the available git CLI tools to read the commit diff. Do NOT ask me for the diff — fetch it yourself.',
-            '',
-            'For each @@ hunk, produce a classification with: file, hunkIndex (0-based within the file), category (logic|mechanical|test|generated), intensity (high|low), and a one-sentence reason.',
-            '',
-            'When you have classified every hunk, persist the results by calling the `saveClassification` tool exactly once with the full array. Do NOT print the classifications as JSON in your response — the persistence layer reads them directly from the tool call.',
-        ].join('\n');
-    }
-    // branch-range: identifier = "baseRef..headRef"
-    return [
-        `Classify every hunk in the branch range ${identifier} of this repository.`,
-        '',
-        'Use the available git CLI tools to read the diff (git diff). Do NOT ask me for the diff — fetch it yourself.',
-        '',
-        'For each @@ hunk, produce a classification with: file, hunkIndex (0-based within the file), category (logic|mechanical|test|generated), intensity (high|low), and a one-sentence reason.',
-        '',
-        'When you have classified every hunk, persist the results by calling the `saveClassification` tool exactly once with the full array. Do NOT print the classifications as JSON in your response — the persistence layer reads them directly from the tool call.',
-    ].join('\n');
+    return renderClassificationPrompt(type, identifier, repoId, dataDir);
 }
 
 function buildDisplayName(type: ClassificationType, identifier: string): string {
