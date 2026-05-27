@@ -101,6 +101,13 @@ function makeOpts(overrides: Partial<RegisterRoutesOptions> = {}): RegisterRoute
         resolvedAiService: {} as any,
         getWsServer: () => wsServer,
         queuePersistence: makeQueuePersistence(),
+        runtimeConfigService: {
+            config: {
+                codex: { enabled: false },
+                claude: { enabled: false },
+                defaultProvider: 'copilot',
+            },
+        } as any,
         ...overrides,
     };
 }
@@ -143,7 +150,7 @@ describe('registerAllRoutes', () => {
         expect(patterns.some(p => p.includes('summary'))).toBe(true);
         // Admin
         expect(patterns.some(p => p.includes('/api/admin'))).toBe(true);
-        // Agent providers (replaces the old standalone /api/models route, removed in AC-05)
+        // Agent providers
         expect(patterns.some(p => p.includes('/api/agent-providers'))).toBe(true);
         // Logs
         expect(patterns.some(p => p.includes('/api/logs'))).toBe(true);

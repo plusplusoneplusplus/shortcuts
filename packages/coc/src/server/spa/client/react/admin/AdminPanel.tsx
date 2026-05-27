@@ -2175,17 +2175,17 @@ export function AdminPanel() {
                                 {/* Provider-scoped model catalog and query */}
                                 <Suspense fallback={<div className="text-xs text-[#888] mt-4">Loading models…</div>}>
                                     <ProviderModelsSection
-                                        provider={activeProvider}
+                                        provider={defaultProvider}
                                         available={
-                                            activeProvider === 'copilot'
+                                            defaultProvider === 'copilot'
                                                 ? true
-                                                : (providerAvailability[activeProvider]?.available ?? false)
-                                                    && (activeProvider === 'codex' ? codexEnabled : claudeEnabled)
+                                                : (providerAvailability[defaultProvider]?.available ?? false)
+                                                    && (defaultProvider === 'codex' ? codexEnabled : claudeEnabled)
                                         }
                                         unavailableMessage={
-                                            activeProvider !== 'copilot' && !(activeProvider === 'codex' ? codexEnabled : claudeEnabled)
-                                                ? `Enable the ${activeProvider === 'codex' ? 'Codex' : 'Claude'} provider above to access its model catalog.`
-                                                : providerAvailability[activeProvider]?.error
+                                            defaultProvider !== 'copilot' && !(defaultProvider === 'codex' ? codexEnabled : claudeEnabled)
+                                                ? `Enable the ${defaultProvider === 'codex' ? 'Codex' : 'Claude'} provider above to access its model catalog.`
+                                                : providerAvailability[defaultProvider]?.error
                                         }
                                     />
                                 </Suspense>

@@ -24,6 +24,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '',
     isRalphEnabled: () => false,
+    getActiveProvider: () => 'copilot' as const,
 }));
 
 const mockSetFilesViewMode = vi.fn();
@@ -88,7 +89,7 @@ function mockDefaultFetches(overrides?: {
         }
         // GET /models
         if (url.includes('/models')) {
-            return Promise.resolve({ ok: true, json: () => Promise.resolve(models) });
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ models }) });
         }
         // GET /skills/all
         if (url.includes('/skills/all')) {

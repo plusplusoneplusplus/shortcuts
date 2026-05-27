@@ -11,7 +11,7 @@ import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppCo
 import { QueueProvider } from '../../../src/server/spa/client/react/contexts/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
 
-const { mockSchedulesClient, mockModelsClient } = vi.hoisted(() => ({
+const { mockSchedulesClient, mockModelsClient, mockAgentProvidersClient } = vi.hoisted(() => ({
     mockSchedulesClient: {
         list: vi.fn(),
         history: vi.fn(),
@@ -25,6 +25,9 @@ const { mockSchedulesClient, mockModelsClient } = vi.hoisted(() => ({
     },
     mockModelsClient: {
         list: vi.fn(),
+    },
+    mockAgentProvidersClient: {
+        listModels: vi.fn(),
     },
 }));
 
@@ -67,13 +70,14 @@ vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
 }));
 
 vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({ schedules: mockSchedulesClient, models: mockModelsClient }),
+    getSpaCocClient: () => ({ schedules: mockSchedulesClient, models: mockModelsClient, agentProviders: mockAgentProvidersClient }),
 }));
 
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => 'http://localhost:4000/api',
     isRalphEnabled: () => false,
+    getActiveProvider: () => 'copilot' as const,
 }));
 
 vi.mock('../../../src/server/spa/client/react/utils/format', () => ({
@@ -121,6 +125,7 @@ async function renderWithSchedules(schedules = [MOCK_SCHEDULE]) {
     mockSchedulesClient.history.mockResolvedValue([]);
     mockSchedulesClient.create.mockResolvedValue({});
     mockModelsClient.list.mockResolvedValue([]);
+    mockAgentProvidersClient.listModels.mockResolvedValue({ models: [] });
     mockFetchApi.mockImplementation((url: string) => {
         if (url.includes('/history')) return Promise.resolve({ history: [] });
         return Promise.resolve({ schedules });
@@ -154,6 +159,7 @@ async function renderEmpty() {
     mockSchedulesClient.history.mockResolvedValue([]);
     mockSchedulesClient.create.mockResolvedValue({});
     mockModelsClient.list.mockResolvedValue([]);
+    mockAgentProvidersClient.listModels.mockResolvedValue({ models: [] });
     mockFetchApi.mockResolvedValue({ schedules: [] });
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
 
@@ -299,6 +305,7 @@ describe('Split-panel layout', () => {
         mockSchedulesClient.list.mockResolvedValue([MOCK_SCHEDULE]);
         mockSchedulesClient.history.mockResolvedValue([]);
         mockModelsClient.list.mockResolvedValue([]);
+        mockAgentProvidersClient.listModels.mockResolvedValue({ models: [] });
         mockFetchApi.mockImplementation((url: string) => {
             if (url.includes('/history')) return Promise.resolve({ history: [] });
             return Promise.resolve({ schedules: [MOCK_SCHEDULE] });
