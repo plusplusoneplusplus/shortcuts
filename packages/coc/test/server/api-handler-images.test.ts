@@ -117,6 +117,8 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             images,
             undefined,
             undefined,
+            undefined, // turnSource
+            undefined, // reasoningEffort
         );
     });
 
@@ -140,6 +142,8 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             undefined,
             undefined,
             undefined,
+            undefined, // turnSource
+            undefined, // reasoningEffort
         );
     });
 
@@ -162,6 +166,8 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             undefined,
             undefined,
             undefined,
+            undefined, // turnSource
+            undefined, // reasoningEffort
         );
     });
 
@@ -187,6 +193,8 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             sevenImages.slice(0, 5),
             undefined,
             undefined,
+            undefined, // turnSource
+            undefined, // reasoningEffort
         );
     });
 
@@ -216,6 +224,8 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             [PNG_DATA_URL, GIF_DATA_URL],
             undefined,
             undefined,
+            undefined, // turnSource
+            undefined, // reasoningEffort
         );
     });
 
@@ -244,6 +254,8 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             [PNG_DATA_URL, JPEG_DATA_URL],
             undefined,
             undefined,
+            undefined, // turnSource
+            undefined, // reasoningEffort
         );
     });
 

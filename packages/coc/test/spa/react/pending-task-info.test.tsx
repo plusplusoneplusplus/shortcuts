@@ -34,6 +34,7 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     getWsUrl: () => 'ws://localhost/ws',
     isRalphEnabled: () => true,
     isLoopsEnabled: () => false,
+    getDefaultProvider: () => 'copilot' as const,
 }));
 
 // Mock useDisplaySettings
