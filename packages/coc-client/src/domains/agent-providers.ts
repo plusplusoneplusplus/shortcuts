@@ -1,4 +1,12 @@
-import type { AgentProvidersResponse, ProviderInstallStatus } from '../contracts';
+import type {
+  AgentProvidersResponse,
+  ProviderInstallStatus,
+  ProviderModelsResponse,
+  ProviderEnabledModelsResponse,
+  ProviderReasoningEffortsResponse,
+  ModelQueryRequest,
+  ProviderModelQueryResponse,
+} from '../contracts';
 import type { RequestAdapter } from '../types';
 
 export interface ProviderInstallStatusResponse {
@@ -39,6 +47,45 @@ export class AgentProvidersClient {
     return this.transport.request<ProviderInstallResponse>(
       `/providers/sdk/${encodeURIComponent(provider)}/install`,
       { method: 'POST' },
+    );
+  }
+
+  listModels(provider: string): Promise<ProviderModelsResponse> {
+    return this.transport.request<ProviderModelsResponse>(
+      `/agent-providers/${encodeURIComponent(provider)}/models`,
+    );
+  }
+
+  getEnabledModels(provider: string): Promise<ProviderEnabledModelsResponse> {
+    return this.transport.request<ProviderEnabledModelsResponse>(
+      `/agent-providers/${encodeURIComponent(provider)}/models/enabled`,
+    );
+  }
+
+  setEnabledModels(provider: string, enabledModels: string[]): Promise<ProviderEnabledModelsResponse> {
+    return this.transport.request<ProviderEnabledModelsResponse>(
+      `/agent-providers/${encodeURIComponent(provider)}/models/enabled`,
+      { method: 'PUT', body: { enabledModels: [...enabledModels] } },
+    );
+  }
+
+  getReasoningEfforts(provider: string): Promise<ProviderReasoningEffortsResponse> {
+    return this.transport.request<ProviderReasoningEffortsResponse>(
+      `/agent-providers/${encodeURIComponent(provider)}/models/reasoning-efforts`,
+    );
+  }
+
+  setReasoningEffort(provider: string, modelId: string, effort: string): Promise<ProviderReasoningEffortsResponse> {
+    return this.transport.request<ProviderReasoningEffortsResponse>(
+      `/agent-providers/${encodeURIComponent(provider)}/models/reasoning-efforts`,
+      { method: 'PUT', body: { modelId, effort } },
+    );
+  }
+
+  queryModel(provider: string, request: ModelQueryRequest): Promise<ProviderModelQueryResponse> {
+    return this.transport.request<ProviderModelQueryResponse>(
+      `/agent-providers/${encodeURIComponent(provider)}/models/query`,
+      { method: 'POST', body: request },
     );
   }
 }

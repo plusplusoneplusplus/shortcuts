@@ -35,7 +35,6 @@ import { registerPrRoutes } from '../repos/pr-routes';
 import { registerPrClassificationRoutes } from '../repos/pr-classification-handler';
 import { registerGenericClassificationRoutes } from '../repos/generic-classification-handler';
 import { registerLogsRoutes } from '../logging/logs-routes';
-import { registerModelRoutes } from '../models/model-routes';
 import { RepoTreeService } from '../repos/tree-service';
 import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from '../processes/process-resume-handler';
 import { registerWorkflowRoutes, registerWorkflowWriteRoutes } from '../workflows/workflows-handler';
@@ -333,6 +332,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                 const svc = sdkServiceRegistry.get(SDK_PROVIDER_CLAUDE);
                 return svc instanceof ClaudeSDKService ? svc : undefined;
             },
+            configPath,
+            loadConfigFile,
+            writeConfigFile,
+            getConfigFilePath,
         });
     }
 
@@ -340,13 +343,6 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     registerMemoryV2Routes(routes, dataDir, store);
 
-    registerModelRoutes(routes, modelMetadataStore, {
-        configPath,
-        loadConfigFile,
-        writeConfigFile,
-        getConfigFilePath,
-        aiService: resolvedAiService,
-    });
     registerLogsRoutes(routes);
     registerInstructionRoutes(routes, store);
     registerStatsRoutes(routes, store);
