@@ -778,12 +778,15 @@ export class TeamsBridge {
             return;
         }
 
-        // Format: simple bot name header + command response
-        const botName = this.opts.config.botName || 'CoC';
-        const formatted = `**${botName}**\n${text}`;
+        // Format: sender name + command response
+        const senderName = originalMsg.senderName ?? 'User';
+        const formatted = `**${senderName}** ${text}`;
 
         try {
-            const messageId = await this.bot.send(target, formatted);
+            const mentions = originalMsg.senderAadId && originalMsg.senderName
+                ? [{ aadId: originalMsg.senderAadId, displayName: originalMsg.senderName }]
+                : undefined;
+            const messageId = await this.bot.send(target, formatted, { mentions });
             console.log(`[teams-bridge] ✅ Command response sent: ${messageId} (${text.length} chars)`);
         } catch (err: any) {
             console.error(`[teams-bridge] ❌ Failed to send command response: ${err.message}`);

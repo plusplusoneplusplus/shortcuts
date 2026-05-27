@@ -83,12 +83,15 @@ describe('TeamsCommandExecutor', () => {
 
     // ── /list agents ─────────────────────────────────────
 
-    it('lists connected agents', async () => {
+    it('lists connected agents without repo names', async () => {
         const result = await executor.tryExecute(makeMsg('/list agents'));
         expect(result.handled).toBe(true);
         expect(result.response).toContain('Agent-Dev1');
         expect(result.response).toContain('Agent-Dev2');
         expect(result.response).toContain('connected');
+        // Should NOT include repo names in agent listing
+        expect(result.response).not.toContain('ProjectA');
+        expect(result.response).not.toContain('repo(s)');
     });
 
     it('handles no agents', async () => {
@@ -100,12 +103,12 @@ describe('TeamsCommandExecutor', () => {
 
     // ── /list repos ──────────────────────────────────────
 
-    it('lists repos across agents', async () => {
+    it('lists repos with agent name', async () => {
         const result = await executor.tryExecute(makeMsg('/list repos'));
         expect(result.handled).toBe(true);
-        expect(result.response).toContain('ProjectA');
-        expect(result.response).toContain('ProjectB');
-        expect(result.response).toContain('ProjectC');
+        expect(result.response).toContain('**ProjectA**, agent:Agent-Dev1');
+        expect(result.response).toContain('**ProjectB**, agent:Agent-Dev1');
+        expect(result.response).toContain('**ProjectC**, agent:Agent-Dev2');
         expect(result.response).toContain('3');
     });
 

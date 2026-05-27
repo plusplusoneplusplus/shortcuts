@@ -163,9 +163,7 @@ export class TeamsCommandExecutor {
 
         // Connected (inbound) agents
         for (const a of inboundAgents) {
-            const wsCount = a.workspaces?.length ?? 0;
-            const wsNames = a.workspaces?.map(w => w.name).join(', ') ?? '';
-            lines.push(`${idx++}. **${a.name}** (${a.id}) — 🟢 connected, ${wsCount} repo(s)${wsNames ? `: ${wsNames}` : ''}`);
+            lines.push(`${idx++}. **${a.name}** (${a.id}) — 🟢 connected`);
         }
 
         // Registered but not connected (from agent store, not in inbound)
@@ -194,7 +192,7 @@ export class TeamsCommandExecutor {
         }
 
         const lines = repos.map((r, i) =>
-            `${i + 1}. **${r.workspace.name}** — agent: ${r.agentName}, path: \`${r.workspace.rootPath}\``,
+            `${i + 1}. **${r.workspace.name}**, agent:${r.agentName}`,
         );
         return `**Repos** (${repos.length}):\n${lines.join('\n')}`;
     }
