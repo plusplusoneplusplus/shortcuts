@@ -231,6 +231,11 @@ export function getDefaultProvider(): 'copilot' | 'codex' | 'claude' {
     return getConfig().defaultProvider ?? 'copilot';
 }
 
+/** Returns the currently active provider (alias for getDefaultProvider). */
+export function getActiveProvider(): 'copilot' | 'codex' | 'claude' {
+    return getDefaultProvider();
+}
+
 /** Returns the raw bind address the server is listening on (e.g., '0.0.0.0'), if known. */
 export function getBindAddress(): string | undefined {
     return getConfig().bindAddress;
