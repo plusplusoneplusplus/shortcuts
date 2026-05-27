@@ -1,7 +1,7 @@
 /**
  * Tests for useDefaultModelForMode hook.
  * Verifies that the hook resolves the effective default model from repo preferences
- * using the same cascade as the server: defaultModels[mode] → defaultModel → undefined.
+ * using provider-scoped cascade: providerModels[mode] → legacy defaultModels[mode] (Copilot) → legacy defaultModel (Copilot) → undefined.
  *
  * @vitest-environment jsdom
  */
@@ -10,14 +10,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
-const { mockGetRepo } = vi.hoisted(() => ({
+const { mockGetRepo, mockGetActiveProvider } = vi.hoisted(() => ({
     mockGetRepo: vi.fn(),
+    mockGetActiveProvider: vi.fn(() => 'copilot'),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         preferences: { getRepo: mockGetRepo },
     }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    getActiveProvider: mockGetActiveProvider,
 }));
 
 import { useDefaultModelForMode } from '../../../../src/server/spa/client/react/hooks/useDefaultModelForMode';
@@ -31,6 +36,7 @@ const MODELS = [
 beforeEach(() => {
     vi.clearAllMocks();
     mockGetRepo.mockResolvedValue({});
+    mockGetActiveProvider.mockReturnValue('copilot');
 });
 
 describe('useDefaultModelForMode', () => {
@@ -46,7 +52,7 @@ describe('useDefaultModelForMode', () => {
         expect(result.current.effectiveModelName).toBeUndefined();
     });
 
-    it('returns repo-wide defaultModel when no per-mode override is set', async () => {
+    it('returns repo-wide defaultModel when no per-mode override is set (Copilot)', async () => {
         mockGetRepo.mockResolvedValue({ defaultModel: 'claude-sonnet-4.6' });
         const { result } = renderHook(() =>
             useDefaultModelForMode('ws-1', 'ask', MODELS),
@@ -200,6 +206,85 @@ describe('useDefaultModelForMode', () => {
         );
         await waitFor(() => {
             expect(result.current.effectiveModel).toBe('gpt-5.5');
+        });
+    });
+
+    // ── Provider-scoped tests ──────────────────────────────────────────────
+
+    it('uses provider-scoped defaultModelsByProvider when set', async () => {
+        mockGetRepo.mockResolvedValue({
+            defaultModel: 'gpt-5.5',
+            defaultModelsByProvider: {
+                copilot: { ask: 'claude-opus-4.7' },
+            },
+        });
+        const { result } = renderHook(() =>
+            useDefaultModelForMode('ws-1', 'ask', MODELS),
+        );
+        await waitFor(() => {
+            expect(result.current.effectiveModel).toBe('claude-opus-4.7');
+        });
+    });
+
+    it('provider-scoped defaults take priority over legacy defaults for Copilot', async () => {
+        mockGetRepo.mockResolvedValue({
+            defaultModel: 'gpt-5.5',
+            defaultModels: { ask: 'claude-sonnet-4.6' },
+            defaultModelsByProvider: {
+                copilot: { ask: 'claude-opus-4.7' },
+            },
+        });
+        const { result } = renderHook(() =>
+            useDefaultModelForMode('ws-1', 'ask', MODELS),
+        );
+        await waitFor(() => {
+            expect(result.current.effectiveModel).toBe('claude-opus-4.7');
+        });
+    });
+
+    it('non-Copilot providers ignore legacy defaults', async () => {
+        mockGetActiveProvider.mockReturnValue('codex');
+        mockGetRepo.mockResolvedValue({
+            defaultModel: 'gpt-5.5',
+            defaultModels: { ask: 'claude-sonnet-4.6' },
+        });
+        const { result } = renderHook(() =>
+            useDefaultModelForMode('ws-1', 'ask', MODELS),
+        );
+        await waitFor(() => {
+            expect(mockGetRepo).toHaveBeenCalled();
+        });
+        // Codex has no provider-scoped defaults and legacy is Copilot-only
+        expect(result.current.effectiveModel).toBeUndefined();
+    });
+
+    it('non-Copilot providers use their own provider-scoped defaults', async () => {
+        mockGetActiveProvider.mockReturnValue('codex');
+        mockGetRepo.mockResolvedValue({
+            defaultModel: 'gpt-5.5',
+            defaultModelsByProvider: {
+                codex: { ask: 'claude-opus-4.7' },
+            },
+        });
+        const { result } = renderHook(() =>
+            useDefaultModelForMode('ws-1', 'ask', MODELS),
+        );
+        await waitFor(() => {
+            expect(result.current.effectiveModel).toBe('claude-opus-4.7');
+        });
+    });
+
+    it('Copilot falls back to legacy defaults when no provider-scoped defaults exist', async () => {
+        mockGetRepo.mockResolvedValue({
+            defaultModel: 'gpt-5.5',
+            defaultModels: { ask: 'claude-sonnet-4.6' },
+            defaultModelsByProvider: {},
+        });
+        const { result } = renderHook(() =>
+            useDefaultModelForMode('ws-1', 'ask', MODELS),
+        );
+        await waitFor(() => {
+            expect(result.current.effectiveModel).toBe('claude-sonnet-4.6');
         });
     });
 });

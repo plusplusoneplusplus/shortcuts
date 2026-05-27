@@ -10,12 +10,13 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { getActiveModels, modelMetadataStore, ensureQueueProcessId, SqliteProcessStore } from '@plusplusoneplusplus/forge';
+import { getActiveModels, modelMetadataStore, ensureQueueProcessId, SqliteProcessStore, sdkServiceRegistry } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
 import {
     isWireAttachmentArray,
     processMessageAttachments,
 } from '../core/attachment-utils';
+import { resolveConfig } from '../../config';
 import type { Route } from '../types';
 import {
     serializeTask,
@@ -70,18 +71,33 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
     };
 
     // ------------------------------------------------------------------
-    // GET /api/queue/models — List available AI model IDs
+    // GET /api/queue/models — List available AI model IDs (provider-aware)
     // ------------------------------------------------------------------
     routes.push({
         method: 'GET',
         pattern: '/api/queue/models',
         handler: async (_req, res) => {
-            const live = modelMetadataStore.getCachedModels()
-                .filter(m => m.policy?.state !== 'disabled');
-            const models = live.length > 0
-                ? live.map(m => m.id)
-                : getActiveModels().map(m => m.id);
-            sendJSON(res, 200, { models });
+            const activeProvider = resolveConfig().activeProvider ?? 'copilot';
+            if (activeProvider === 'copilot') {
+                const live = modelMetadataStore.getCachedModels()
+                    .filter(m => m.policy?.state !== 'disabled');
+                const models = live.length > 0
+                    ? live.map(m => m.id)
+                    : getActiveModels().map(m => m.id);
+                sendJSON(res, 200, { provider: activeProvider, models });
+            } else {
+                const sdkService = sdkServiceRegistry.get(activeProvider);
+                if (!sdkService) {
+                    sendJSON(res, 200, { provider: activeProvider, models: [] });
+                    return;
+                }
+                try {
+                    const providerModels = await sdkService.listModels();
+                    sendJSON(res, 200, { provider: activeProvider, models: providerModels.map((m: any) => m.id) });
+                } catch {
+                    sendJSON(res, 200, { provider: activeProvider, models: [] });
+                }
+            }
         },
     });
 

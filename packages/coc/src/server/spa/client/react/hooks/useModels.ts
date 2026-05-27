@@ -1,9 +1,15 @@
 /**
- * useModels — fetches available models from the models endpoint.
+ * useModels — fetches available models from the active provider's model endpoint.
+ *
+ * Delegates to the provider-scoped GET /api/agent-providers/:provider/models
+ * endpoint, using the active provider from dashboard config. All consumers
+ * automatically see models from the correct provider without individual changes.
+ *
  * Returns ModelInfo[] for interface compatibility with consumers.
  */
 import { useState, useEffect, useCallback } from 'react';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import { getActiveProvider } from '../utils/config';
 
 export interface ModelInfo {
     id: string;
@@ -94,6 +100,11 @@ function mapModel(m: RawModel): ModelInfo {
     };
 }
 
+/**
+ * Fetches models from the active provider's catalog.
+ * All model consumers (chat picker, queue dialogs, etc.) use this hook
+ * so they automatically reflect the active provider's model list.
+ */
 export function useModels(): { models: ModelInfo[]; loading: boolean; error: string | null; reload: () => void } {
     const [models, setModels] = useState<ModelInfo[]>([]);
     const [loading, setLoading] = useState(true);
@@ -102,9 +113,10 @@ export function useModels(): { models: ModelInfo[]; loading: boolean; error: str
     const load = useCallback(() => {
         setLoading(true);
         setError(null);
-        getSpaCocClient().models.list()
-            .then((data: unknown) => {
-                const arr = Array.isArray(data) ? data.map(mapModel) : [];
+        const provider = getActiveProvider();
+        getSpaCocClient().agentProviders.listModels(provider)
+            .then((data: any) => {
+                const arr = Array.isArray(data?.models) ? data.models.map(mapModel) : [];
                 setModels(arr);
             })
             .catch((e: unknown) => { setError(getSpaCocClientErrorMessage(e, 'Failed to load models')); })
@@ -116,6 +128,12 @@ export function useModels(): { models: ModelInfo[]; loading: boolean; error: str
     return { models, loading, error, reload: load };
 }
 
+/**
+ * @deprecated Use useProviderModelConfig from useProviderModels.ts for
+ * provider-scoped model management in the Agent Provider admin page.
+ * This wrapper is kept for backward compatibility with consumers that
+ * still reference useModelConfig from this module.
+ */
 export function useModelConfig(): {
     models: ModelInfo[];
     loading: boolean;
@@ -132,6 +150,7 @@ export function useModelConfig(): {
     const [localModels, setLocalModels] = useState<ModelInfo[]>([]);
     const [saving, setSaving] = useState(false);
     const [reasoningEfforts, setReasoningEfforts] = useState<Record<string, string>>({});
+    const provider = getActiveProvider();
 
     // Keep localModels in sync with fetched models
     useEffect(() => {
@@ -140,14 +159,14 @@ export function useModelConfig(): {
 
     // Load persisted reasoning efforts on mount
     useEffect(() => {
-        getSpaCocClient().models.getReasoningEfforts()
+        getSpaCocClient().agentProviders.getReasoningEfforts(provider)
             .then((data: { reasoningEfforts: Record<string, string> }) => {
                 if (data?.reasoningEfforts && typeof data.reasoningEfforts === 'object') {
                     setReasoningEfforts(data.reasoningEfforts);
                 }
             })
             .catch(() => { /* reasoning efforts are optional */ });
-    }, []);
+    }, [provider]);
 
     const toggleModel = useCallback(async (modelId: string, enabled: boolean) => {
         // Optimistic update
@@ -156,14 +175,14 @@ export function useModelConfig(): {
         try {
             const updated = localModels.map(m => m.id === modelId ? { ...m, enabled } : m);
             const enabledModels = updated.filter(m => m.id === modelId ? enabled : m.enabled).map(m => m.id);
-            await getSpaCocClient().models.setEnabled(enabledModels);
+            await getSpaCocClient().agentProviders.setEnabledModels(provider, enabledModels);
         } catch {
             // Revert optimistic update on error
             setLocalModels(models);
         } finally {
             setSaving(false);
         }
-    }, [localModels, models]);
+    }, [localModels, models, provider]);
 
     const setReasoningEffortFn = useCallback(async (modelId: string, effort: string) => {
         const prev = { ...reasoningEfforts };
@@ -176,11 +195,11 @@ export function useModelConfig(): {
             setReasoningEfforts({ ...reasoningEfforts, [modelId]: effort });
         }
         try {
-            await getSpaCocClient().models.setReasoningEffort(modelId, effort);
+            await getSpaCocClient().agentProviders.setReasoningEffort(provider, modelId, effort);
         } catch {
             setReasoningEfforts(prev);
         }
-    }, [reasoningEfforts]);
+    }, [reasoningEfforts, provider]);
 
     return { models: localModels, loading, error, saving, reload, toggleModel, reasoningEfforts, setReasoningEffort: setReasoningEffortFn };
 }

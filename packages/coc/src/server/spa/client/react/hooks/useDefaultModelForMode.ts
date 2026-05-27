@@ -1,11 +1,13 @@
 /**
  * useDefaultModelForMode — resolves the effective default model for a given chat mode
- * from per-repo preferences.
+ * from per-repo preferences, with provider-scoped resolution.
  *
- * Resolution order (mirrors server-side resolveDefaultModel):
- * 1. Per-mode default from `defaultModels[mode]`
- * 2. Repo-wide default from `defaultModel`
- * 3. undefined (CLI default)
+ * Resolution order (provider-aware):
+ * 1. `defaultModelsByProvider[provider][mode]`
+ * 2. `defaultModelsByProvider[provider]` (all-mode fallback, if stored as string)
+ * 3. Legacy `defaultModels[mode]` only as Copilot migration fallback
+ * 4. Legacy `defaultModel` only as Copilot migration fallback
+ * 5. undefined (CLI default)
  *
  * The `chatMode` parameter uses the UI chat modes ('ask' | 'plan' | 'autopilot' | 'ralph').
  * 'autopilot' and 'ralph' map to the 'task' preference key.
@@ -13,6 +15,7 @@
 
 import { useState, useEffect } from 'react';
 import { getSpaCocClient } from '../api/cocClient';
+import { getActiveProvider } from '../utils/config';
 
 export type ChatModeForModel = 'ask' | 'plan' | 'autopilot' | 'ralph';
 
@@ -36,15 +39,34 @@ export function useDefaultModelForMode(
 ): UseDefaultModelForModeResult {
     const [defaultModel, setDefaultModel] = useState<string | undefined>();
     const [defaultModels, setDefaultModels] = useState<Record<string, string | undefined>>({});
+    const [providerModels, setProviderModels] = useState<Record<string, string | undefined>>({});
 
     useEffect(() => {
         setDefaultModel(undefined);
         setDefaultModels({});
+        setProviderModels({});
         if (!workspaceId) return;
         let cancelled = false;
         getSpaCocClient().preferences.getRepo(workspaceId)
             .then((prefs: any) => {
                 if (cancelled) return;
+
+                const provider = getActiveProvider();
+
+                // Provider-scoped defaults: defaultModelsByProvider.<provider>.<mode>
+                const byProvider = prefs.defaultModelsByProvider;
+                if (typeof byProvider === 'object' && byProvider !== null) {
+                    const providerPrefs = byProvider[provider];
+                    if (typeof providerPrefs === 'object' && providerPrefs !== null) {
+                        const cleaned: Record<string, string> = {};
+                        for (const [k, v] of Object.entries(providerPrefs)) {
+                            if (typeof v === 'string' && v) cleaned[k] = v;
+                        }
+                        setProviderModels(cleaned);
+                    }
+                }
+
+                // Legacy fields (used as Copilot migration fallback)
                 if (typeof prefs.defaultModel === 'string' && prefs.defaultModel) {
                     setDefaultModel(prefs.defaultModel);
                 }
@@ -61,7 +83,19 @@ export function useDefaultModelForMode(
     }, [workspaceId]);
 
     const prefKey = toPreferenceMode(chatMode);
-    const effectiveModel = defaultModels[prefKey] || defaultModel || undefined;
+    const provider = getActiveProvider();
+    const isCopilot = provider === 'copilot';
+
+    // Resolution order:
+    // 1. Provider-scoped per-mode default
+    // 2. Legacy per-mode default (Copilot migration only)
+    // 3. Legacy repo-wide default (Copilot migration only)
+    // 4. undefined
+    const effectiveModel =
+        providerModels[prefKey] ||
+        (isCopilot ? defaultModels[prefKey] : undefined) ||
+        (isCopilot ? defaultModel : undefined) ||
+        undefined;
 
     const matched = effectiveModel
         ? availableModels.find(m => m.id === effectiveModel)
