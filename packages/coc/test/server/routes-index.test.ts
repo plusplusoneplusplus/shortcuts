@@ -143,8 +143,8 @@ describe('registerAllRoutes', () => {
         expect(patterns.some(p => p.includes('summary'))).toBe(true);
         // Admin
         expect(patterns.some(p => p.includes('/api/admin'))).toBe(true);
-        // Models
-        expect(patterns.some(p => p.includes('/api/models'))).toBe(true);
+        // Agent providers (replaces the old standalone /api/models route, removed in AC-05)
+        expect(patterns.some(p => p.includes('/api/agent-providers'))).toBe(true);
         // Logs
         expect(patterns.some(p => p.includes('/api/logs'))).toBe(true);
         // Remote servers
