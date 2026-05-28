@@ -419,6 +419,23 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         }).catch(() => { /* best-effort — never block startup */ });
     }
 
+    // Mirror installed bundled skills to Claude Code when the Claude provider is enabled
+    // (non-blocking on errors). Copies each skill's SKILL.md to ~/.claude/commands/<name>.md
+    // so Claude Code discovers them as slash commands on next startup.
+    if (resolvedConfig.claude?.enabled) {
+        const globalSkillsDir = path.join(dataDir, 'skills');
+        import('./skills/claude-skill-mirror').then(({ syncInstalledSkillsToClaude }) => {
+            return syncInstalledSkillsToClaude(globalSkillsDir);
+        }).then(result => {
+            if (result.synced.length > 0) {
+                process.stderr.write(`[skills] Synced ${result.synced.length} skill(s) to Claude\n`);
+            }
+            for (const e of result.errors) {
+                process.stderr.write(`[skills] Failed to sync "${e.name}" to Claude: ${e.error}\n`);
+            }
+        }).catch(() => { /* best-effort — never block startup */ });
+    }
+
     const globalWorkspace = await ensureGlobalWorkspace(dataDir, store);
     bridge.registerRepoId(globalWorkspace.id, globalWorkspace.rootPath);
 
