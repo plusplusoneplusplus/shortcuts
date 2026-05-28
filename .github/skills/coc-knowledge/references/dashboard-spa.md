@@ -21,7 +21,7 @@ spa/client/react/
 ├── features/
 │   ├── chat/           # Chat UI: ChatDetail, ChatListPane, ConversationArea
 │   ├── memory/         # Memory V2 route, facts/review/episodes tabs, repo memory settings section
-│   ├── notes/          # Notes UI: NoteEditor, sidebar, multi-root dropdown (useNotesRoots)
+│   ├── notes/          # Notes UI: NoteEditor, Mermaid zoom/pan, sidebar, multi-root dropdown (useNotesRoots)
 │   ├── pull-requests/  # PR dashboard: attention groups, BatchCommandPanel
 │   └── terminal/       # Terminal UI: TerminalView, pin/unpin
 ├── processes/          # Process detail, DAG visualization
