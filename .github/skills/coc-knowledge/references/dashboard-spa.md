@@ -75,6 +75,10 @@ spa/client/react/
 `ProviderBadge` (the chat-header agent pill) shares the same provider
 palette and mirrors `ChatStatusPill`'s "Thinking" style: rounded-full
 bordered pill with a leading colored dot followed by the provider label.
+Task-tree queue activity badges reuse the provider dot palette from
+`ProviderBadge`: queued/running items carry `payload.provider` through
+`useQueueChat`, and file/folder "in progress" badges fall back to Copilot
+green when provider metadata is missing.
 
 `QueuedFollowUps` renders pending messages as compact dashed-border cards with cancel buttons.
 

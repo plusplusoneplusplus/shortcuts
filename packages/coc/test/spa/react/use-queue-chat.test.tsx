@@ -92,7 +92,7 @@ describe('useQueueChat — hook with context', () => {
             }],
         });
         const { result } = renderHook(() => useQueueChat('ws1', TASKS_FOLDER), { wrapper });
-        expect(result.current.fileMap).toEqual({ 'feature1/task.plan.md': 1 });
+        expect(result.current.fileMap).toEqual({ 'feature1/task.plan.md': { count: 1, provider: undefined } });
     });
 
     it('maps data.originalTaskPath to relative task path', () => {
@@ -104,7 +104,7 @@ describe('useQueueChat — hook with context', () => {
             }],
         });
         const { result } = renderHook(() => useQueueChat('ws1', TASKS_FOLDER), { wrapper });
-        expect(result.current.fileMap).toEqual({ 'feature2/impl.md': 1 });
+        expect(result.current.fileMap).toEqual({ 'feature2/impl.md': { count: 1, provider: undefined } });
     });
 
     it('maps filePath to relative task path', () => {
@@ -116,7 +116,7 @@ describe('useQueueChat — hook with context', () => {
             }],
         });
         const { result } = renderHook(() => useQueueChat('ws1', TASKS_FOLDER), { wrapper });
-        expect(result.current.fileMap).toEqual({ 'bug/fix.md': 1 });
+        expect(result.current.fileMap).toEqual({ 'bug/fix.md': { count: 1, provider: undefined } });
     });
 
     it('ignores items with no matching workspace prefix', () => {
@@ -141,7 +141,7 @@ describe('useQueueChat — hook with context', () => {
             }],
         });
         const { result } = renderHook(() => useQueueChat('ws1', winFolder), { wrapper });
-        expect(result.current.fileMap).toEqual({ 'feature/task.md': 1 });
+        expect(result.current.fileMap).toEqual({ 'feature/task.md': { count: 1, provider: undefined } });
     });
 
     it('counts multiple items for the same file path', () => {
@@ -153,7 +153,19 @@ describe('useQueueChat — hook with context', () => {
             ],
         });
         const { result } = renderHook(() => useQueueChat('ws1', TASKS_FOLDER), { wrapper });
-        expect(result.current.fileMap['feature/task.md']).toBe(2);
+        expect(result.current.fileMap['feature/task.md']).toEqual({ count: 2, provider: undefined });
+    });
+
+    it('preserves the first provider seen for the same file path', () => {
+        const wrapper = createWrapper({
+            workspaces: [{ id: 'ws1', rootPath: '/home/user/project' }],
+            queued: [
+                { id: 'q1', payload: { provider: 'claude', planFilePath: '/data/repos/abc/tasks/feature/task.md' } },
+                { id: 'q2', payload: { provider: 'codex', filePath: '/data/repos/abc/tasks/feature/task.md' } },
+            ],
+        });
+        const { result } = renderHook(() => useQueueChat('ws1', TASKS_FOLDER), { wrapper });
+        expect(result.current.fileMap['feature/task.md']).toEqual({ count: 2, provider: 'claude' });
     });
 
     it('builds folderMap with ancestor folder counts', () => {
@@ -165,7 +177,10 @@ describe('useQueueChat — hook with context', () => {
             }],
         });
         const { result } = renderHook(() => useQueueChat('ws1', TASKS_FOLDER), { wrapper });
-        expect(result.current.folderMap).toEqual({ 'a': 1, 'a/b': 1 });
+        expect(result.current.folderMap).toEqual({
+            'a': { count: 1, provider: undefined },
+            'a/b': { count: 1, provider: undefined },
+        });
     });
 
     it('combines queued and running items', () => {
@@ -175,9 +190,21 @@ describe('useQueueChat — hook with context', () => {
             running: [{ id: 'r1', payload: { planFilePath: '/data/repos/abc/tasks/a/task2.md' } }],
         });
         const { result } = renderHook(() => useQueueChat('ws1', TASKS_FOLDER), { wrapper });
-        expect(result.current.fileMap['a/task1.md']).toBe(1);
-        expect(result.current.fileMap['a/task2.md']).toBe(1);
-        expect(result.current.folderMap['a']).toBe(2);
+        expect(result.current.fileMap['a/task1.md']).toEqual({ count: 1, provider: undefined });
+        expect(result.current.fileMap['a/task2.md']).toEqual({ count: 1, provider: undefined });
+        expect(result.current.folderMap['a']).toEqual({ count: 2, provider: undefined });
+    });
+
+    it('preserves the first provider seen for ancestor folders', () => {
+        const wrapper = createWrapper({
+            workspaces: [{ id: 'ws1', rootPath: '/home/user/project' }],
+            queued: [
+                { id: 'q1', payload: { provider: 'codex', planFilePath: '/data/repos/abc/tasks/a/task1.md' } },
+                { id: 'q2', payload: { provider: 'claude', planFilePath: '/data/repos/abc/tasks/a/task2.md' } },
+            ],
+        });
+        const { result } = renderHook(() => useQueueChat('ws1', TASKS_FOLDER), { wrapper });
+        expect(result.current.folderMap['a']).toEqual({ count: 2, provider: 'codex' });
     });
 
     it('returns empty maps when workspace is not found', () => {

@@ -14,11 +14,15 @@ import type { QueueChatMap, QueueFolderChatMap } from '../../../src/server/spa/c
  */
 function computeFolderMap(fileMap: QueueChatMap): QueueFolderChatMap {
     const folderMap: QueueFolderChatMap = {};
-    for (const [rel, count] of Object.entries(fileMap)) {
+    for (const [rel, entry] of Object.entries(fileMap)) {
         const parts = rel.split('/');
         for (let i = 1; i < parts.length; i++) {
             const prefix = parts.slice(0, i).join('/');
-            folderMap[prefix] = (folderMap[prefix] || 0) + count;
+            const folderEntry = folderMap[prefix];
+            folderMap[prefix] = {
+                count: (folderEntry?.count ?? 0) + entry.count,
+                provider: folderEntry?.provider ?? entry.provider,
+            };
         }
     }
     return folderMap;
@@ -30,49 +34,57 @@ describe('useQueueChat — folderMap aggregation', () => {
     });
 
     it('returns empty folderMap for root-level files (no folder prefix)', () => {
-        expect(computeFolderMap({ 'task.md': 1 })).toEqual({});
+        expect(computeFolderMap({ 'task.md': { count: 1 } })).toEqual({});
     });
 
     it('aggregates single nested file to its ancestor folders', () => {
-        const folderMap = computeFolderMap({ 'a/b/c.md': 1 });
-        expect(folderMap).toEqual({ 'a': 1, 'a/b': 1 });
+        const folderMap = computeFolderMap({ 'a/b/c.md': { count: 1 } });
+        expect(folderMap).toEqual({ 'a': { count: 1, provider: undefined }, 'a/b': { count: 1, provider: undefined } });
     });
 
     it('aggregates multiple files under the same parent folder', () => {
         const folderMap = computeFolderMap({
-            'a/b/x.md': 1,
-            'a/c/y.md': 1,
+            'a/b/x.md': { count: 1 },
+            'a/c/y.md': { count: 1 },
         });
-        expect(folderMap['a']).toBe(2);
-        expect(folderMap['a/b']).toBe(1);
-        expect(folderMap['a/c']).toBe(1);
+        expect(folderMap['a']).toEqual({ count: 2, provider: undefined });
+        expect(folderMap['a/b']).toEqual({ count: 1, provider: undefined });
+        expect(folderMap['a/c']).toEqual({ count: 1, provider: undefined });
     });
 
     it('handles counts greater than 1', () => {
-        const folderMap = computeFolderMap({ 'a/b/file.md': 3 });
-        expect(folderMap['a']).toBe(3);
-        expect(folderMap['a/b']).toBe(3);
+        const folderMap = computeFolderMap({ 'a/b/file.md': { count: 3 } });
+        expect(folderMap['a']).toEqual({ count: 3, provider: undefined });
+        expect(folderMap['a/b']).toEqual({ count: 3, provider: undefined });
     });
 
     it('handles deeply nested paths', () => {
-        const folderMap = computeFolderMap({ 'a/b/c/d/e.md': 1 });
+        const folderMap = computeFolderMap({ 'a/b/c/d/e.md': { count: 1 } });
         expect(folderMap).toEqual({
-            'a': 1,
-            'a/b': 1,
-            'a/b/c': 1,
-            'a/b/c/d': 1,
+            'a': { count: 1, provider: undefined },
+            'a/b': { count: 1, provider: undefined },
+            'a/b/c': { count: 1, provider: undefined },
+            'a/b/c/d': { count: 1, provider: undefined },
         });
     });
 
     it('correctly sums across files in different subtrees', () => {
         const folderMap = computeFolderMap({
-            'feature1/task-a.md': 1,
-            'feature1/sub/task-b.md': 2,
-            'feature2/task-c.md': 1,
+            'feature1/task-a.md': { count: 1 },
+            'feature1/sub/task-b.md': { count: 2 },
+            'feature2/task-c.md': { count: 1 },
         });
-        expect(folderMap['feature1']).toBe(3); // 1 + 2
-        expect(folderMap['feature1/sub']).toBe(2);
-        expect(folderMap['feature2']).toBe(1);
+        expect(folderMap['feature1']).toEqual({ count: 3, provider: undefined }); // 1 + 2
+        expect(folderMap['feature1/sub']).toEqual({ count: 2, provider: undefined });
+        expect(folderMap['feature2']).toEqual({ count: 1, provider: undefined });
+    });
+
+    it('preserves the first provider seen for mixed-provider folders', () => {
+        const folderMap = computeFolderMap({
+            'feature/task-a.md': { count: 1, provider: 'claude' },
+            'feature/task-b.md': { count: 1, provider: 'codex' },
+        });
+        expect(folderMap['feature']).toEqual({ count: 2, provider: 'claude' });
     });
 });
 
@@ -415,6 +427,7 @@ function mapQueued(t: any) {
         payload: {
             kind: (t.payload as any)?.kind,
             mode: (t.payload as any)?.mode,
+            provider: (t.payload as any)?.provider,
             prompt: (t.payload as any)?.prompt,
             planFilePath: (t.payload as any)?.planFilePath,
             filePath: (t.payload as any)?.filePath,
@@ -459,6 +472,16 @@ describe('mapQueued — payload passthrough', () => {
         expect(mapped.payload.prompt).toBe('hello');
     });
 
+    it('includes payload.provider for provider-colored queue indicators', () => {
+        const task = {
+            id: 'chat-provider', repoId: 'r1', type: 'chat', priority: 1,
+            status: 'queued', displayName: 'Ask task', createdAt: '2025-01-01',
+            payload: { kind: 'chat', mode: 'ask', provider: 'claude', prompt: 'hello', workingDirectory: '/ws' },
+        };
+        const mapped = mapQueued(task);
+        expect(mapped.payload.provider).toBe('claude');
+    });
+
     it('includes payload.filePath in mapped output', () => {
         const task = {
             id: '2', repoId: 'r1', type: 'pipeline', priority: 1,
@@ -496,6 +519,7 @@ describe('mapQueued — payload passthrough', () => {
         expect(mapped.payload).toEqual({
             kind: undefined,
             mode: undefined,
+            provider: undefined,
             prompt: undefined,
             planFilePath: undefined,
             filePath: undefined,

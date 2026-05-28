@@ -1,14 +1,15 @@
 /**
  * useQueueChat — maps queue execution state onto task file paths.
  *
- * Builds a record keyed by relative task file path (matching TaskTreeItem paths)
- * with the count of running queue items for each path.
+ * Builds records keyed by relative task file path (matching TaskTreeItem paths)
+ * with the count of active queue items and the first provider seen for each path.
  */
 
 import { useMemo } from 'react';
 import { useQueue } from '../../contexts/QueueContext';
 import { useApp } from '../../contexts/AppContext';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
+import type { ChatProvider } from '../../features/chat/ProviderBadge';
 
 /** Normalise a file path: backslash → slash, strip trailing slash. */
 function normalizePath(p: string): string {
@@ -64,8 +65,13 @@ function extractTaskPath(
     return null;
 }
 
-export type QueueChatMap = Record<string, number>;
-export type QueueFolderChatMap = Record<string, number>;
+export interface QueueChatEntry {
+    count: number;
+    provider?: ChatProvider;
+}
+
+export type QueueChatMap = Record<string, QueueChatEntry>;
+export type QueueFolderChatMap = Record<string, QueueChatEntry>;
 
 export function useQueueChat(wsId: string, tasksFolder = '.vscode/tasks'): { fileMap: QueueChatMap; folderMap: QueueFolderChatMap } {
     const { state: queueState } = useQueue();
@@ -87,17 +93,26 @@ export function useQueueChat(wsId: string, tasksFolder = '.vscode/tasks'): { fil
         for (const item of activeItems) {
             const rel = extractTaskPath(item, wsRootPath, tasksFolder);
             if (rel) {
-                map[rel] = (map[rel] || 0) + 1;
+                const provider = item?.payload?.provider as ChatProvider | undefined;
+                const entry = map[rel];
+                map[rel] = {
+                    count: (entry?.count ?? 0) + 1,
+                    provider: entry?.provider ?? provider,
+                };
             }
         }
 
         const folderMap: QueueFolderChatMap = {};
-        for (const [rel, count] of Object.entries(map)) {
+        for (const [rel, entry] of Object.entries(map)) {
             const parts = rel.split('/');
             // accumulate for each ancestor folder prefix (exclude the filename itself)
             for (let i = 1; i < parts.length; i++) {
                 const prefix = parts.slice(0, i).join('/');
-                folderMap[prefix] = (folderMap[prefix] || 0) + count;
+                const folderEntry = folderMap[prefix];
+                folderMap[prefix] = {
+                    count: (folderEntry?.count ?? 0) + entry.count,
+                    provider: folderEntry?.provider ?? entry.provider,
+                };
             }
         }
 

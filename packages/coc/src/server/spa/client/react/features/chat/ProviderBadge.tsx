@@ -66,6 +66,13 @@ export function getProviderAvatarClasses(provider: ChatProvider | undefined): st
     return PROVIDER_VARIANTS.copilot.avatar;
 }
 
+export function getProviderDotClasses(provider: ChatProvider | undefined): string {
+    if (provider && PROVIDER_VARIANTS[provider]) {
+        return PROVIDER_VARIANTS[provider].dot;
+    }
+    return PROVIDER_VARIANTS.copilot.dot;
+}
+
 export interface ProviderBadgeProps {
     provider: ChatProvider;
     className?: string;

@@ -306,6 +306,30 @@ describe('TaskTreeItem — queue running indicator', () => {
         expect(badge).toBeTruthy();
         expect(badge!.textContent).toContain('in progress');
     });
+
+    it('colors file queue indicator from provider', () => {
+        renderItem({ item: makeDocument(), queueRunning: 1, queueRunningProvider: 'claude' });
+        const li = screen.getByTestId('task-tree-item-task');
+        const badge = li.querySelector('.miller-queue-indicator-running');
+        expect(badge?.className).toContain('d97757');
+        expect(badge?.className).toContain('f4a17d');
+    });
+
+    it('falls back to copilot color when file queue provider is absent', () => {
+        renderItem({ item: makeDocument(), queueRunning: 1 });
+        const li = screen.getByTestId('task-tree-item-task');
+        const badge = li.querySelector('.miller-queue-indicator-running');
+        expect(badge?.className).toContain('16825d');
+        expect(badge?.className).toContain('89d185');
+    });
+
+    it('colors folder queue indicator from provider', () => {
+        renderItem({ item: makeFolder(), folderQueueCount: 2, folderQueueProvider: 'codex' });
+        const li = screen.getByTestId('task-tree-item-feature1');
+        const badge = li.querySelector('.miller-queue-indicator-running');
+        expect(badge?.className).toContain('6366f1');
+        expect(badge?.className).toContain('a5b4fc');
+    });
 });
 
 describe('TaskTreeItem — status icons', () => {

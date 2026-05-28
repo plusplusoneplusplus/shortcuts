@@ -426,8 +426,10 @@ export function TaskTree({
                                         isActiveFolder={isTaskFolder(node) && activeFolderKeys[colIndex] === getFolderKey(node as TaskFolder)}
                                         isPrimaryRoot={colIndex === 0 && isTaskFolder(node) && !!(node as TaskFolder).folderPath && (node as TaskFolder).folderPath === primaryFolderPath}
                                         commentCount={path ? (commentCounts[path] || 0) : 0}
-                                        queueRunning={path ? (queueActivity[path] || 0) : 0}
-                                        folderQueueCount={isTaskFolder(node) ? (queueFolderActivity[getFolderKey(node as TaskFolder)] ?? 0) : 0}
+                                        queueRunning={path ? (queueActivity[path]?.count ?? 0) : 0}
+                                        queueRunningProvider={path ? queueActivity[path]?.provider : undefined}
+                                        folderQueueCount={isTaskFolder(node) ? (queueFolderActivity[getFolderKey(node as TaskFolder)]?.count ?? 0) : 0}
+                                        folderQueueProvider={isTaskFolder(node) ? queueFolderActivity[getFolderKey(node as TaskFolder)]?.provider : undefined}
                                         folderMdCount={folderMdCount}
                                         showContextFiles={showContextFiles}
                                         onFolderClick={(folder) => handleFolderClick(folder, colIndex)}

@@ -4,6 +4,7 @@
 
 import { useRef } from 'react';
 import { cn } from '../ui';
+import { getProviderDotClasses, type ChatProvider } from '../features/chat/ProviderBadge';
 import { isContextFile, isTaskFolder, isTaskDocumentGroup, isTaskDocument, getTaskStatusIcon, getTaskNodePath } from './hooks/useTaskTree';
 import type { TaskNode, TaskFolder, TaskDocumentGroup, TaskDocument } from './hooks/useTaskTree';
 
@@ -16,7 +17,9 @@ export interface TaskTreeItemProps {
     isPrimaryRoot?: boolean;
     commentCount: number;
     queueRunning: number;
+    queueRunningProvider?: ChatProvider;
     folderQueueCount?: number;
+    folderQueueProvider?: ChatProvider;
     folderMdCount: number;
     showContextFiles: boolean;
     onFolderClick: (folder: TaskFolder) => void;
@@ -71,7 +74,9 @@ export function TaskTreeItem({
     isPrimaryRoot,
     commentCount,
     queueRunning,
+    queueRunningProvider,
     folderQueueCount,
+    folderQueueProvider,
     folderMdCount,
     showContextFiles,
     onFolderClick,
@@ -269,7 +274,11 @@ export function TaskTreeItem({
             {/* Queue execution indicator */}
             {queueRunning > 0 && (
                 <span
-                    className="miller-queue-indicator miller-queue-indicator-running flex-shrink-0 text-[9px] font-medium px-1.5 py-px rounded-full bg-[#0078d4] text-white animate-pulse"
+                    className={cn(
+                        'miller-queue-indicator miller-queue-indicator-running flex-shrink-0 text-[9px] font-medium px-1.5 py-px rounded-full',
+                        'text-white animate-pulse',
+                        getProviderDotClasses(queueRunningProvider),
+                    )}
                     title={`In progress (${queueRunning})`}
                 >
                     in progress
@@ -279,7 +288,11 @@ export function TaskTreeItem({
             {/* Folder queue activity badge */}
             {isFolder && (folderQueueCount ?? 0) > 0 && (
                 <span
-                    className="miller-queue-indicator miller-queue-indicator-running flex-shrink-0 text-[9px] font-medium px-1.5 py-px rounded-full bg-[#0078d4] text-white animate-pulse"
+                    className={cn(
+                        'miller-queue-indicator miller-queue-indicator-running flex-shrink-0 text-[9px] font-medium px-1.5 py-px rounded-full',
+                        'text-white animate-pulse',
+                        getProviderDotClasses(folderQueueProvider),
+                    )}
                     title={`${folderQueueCount} task${folderQueueCount === 1 ? '' : 's'} in progress in this folder`}
                 >
                     {folderQueueCount} in progress
