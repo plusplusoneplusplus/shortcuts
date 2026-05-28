@@ -556,6 +556,8 @@ export class ClaudeSDKService implements ISDKService {
             const [, family, major, minor] = dottedMarketingId;
             return `claude-${family}-${major}-${minor}`;
         }
+        // Pass through short family aliases returned by Claude Code's supportedModels().
+        if (/^(opus|sonnet|haiku)$/.test(normalized)) return trimmed;
         // Only pass through Claude model IDs; reject Copilot/Codex model IDs.
         if (normalized.startsWith('claude')) return trimmed;
         return undefined;
