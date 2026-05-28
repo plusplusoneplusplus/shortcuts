@@ -13,6 +13,7 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 const mockQueueDispatch = vi.fn();
 const mockAppDispatch = vi.fn();
 const mockEnqueueTask = vi.fn();
+const mockHandleModelSelect = vi.fn();
 let mockDefaultProvider: 'copilot' | 'codex' | 'claude' = 'copilot';
 let mockRepoPreferences: Record<string, unknown> = {};
 let mockAgentProviders: any[] = [
@@ -74,11 +75,12 @@ vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useFileA
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/shared/RichTextInput', () => ({
-    RichTextInput: vi.fn().mockImplementation(({ onChange, onKeyDown, placeholder, disabled, ...rest }: any) => (
+    RichTextInput: vi.fn().mockImplementation(({ onChange, onKeyDown, placeholder, disabled, value, ...rest }: any) => (
         <input
             data-testid={rest['data-testid'] ?? 'rich-text-input'}
             placeholder={placeholder}
             disabled={disabled}
+            value={value ?? ''}
             onChange={(e) => onChange?.(e.target.value)}
             onKeyDown={onKeyDown}
         />
@@ -140,13 +142,13 @@ vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useSlash
 
 vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useModelCommand', () => ({
     useModelCommand: () => ({
-        modelMenuVisible: false,
+        modelMenuVisible: true,
         modelFilter: '',
-        filteredModels: [],
+        filteredModels: [{ id: 'gpt-5.4', name: 'GPT 5.4', enabled: true }],
         modelHighlightIndex: 0,
         modelOverride: null,
         setModelOverride: vi.fn(),
-        handleModelSelect: vi.fn(),
+        handleModelSelect: mockHandleModelSelect,
         showModelMenu: vi.fn(),
         dismissModelMenu: vi.fn(),
         handleModelKeyDown: vi.fn(() => false),
@@ -167,7 +169,11 @@ vi.mock('../../../../../src/server/spa/client/react/features/chat/SlashCommandMe
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/features/chat/ModelCommandMenu', () => ({
-    ModelCommandMenu: () => null,
+    ModelCommandMenu: ({ onSelect }: any) => (
+        <button type="button" data-testid="model-menu-select" onClick={() => onSelect('gpt-5.4')}>
+            GPT 5.4
+        </button>
+    ),
 }));
 
 import { NewChatArea } from '../../../../../src/server/spa/client/react/features/chat/NewChatArea';
@@ -338,5 +344,15 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         await waitFor(() => {
             expect(screen.getByTestId('agent-selector-chip-btn')).toBeTruthy();
         });
+    });
+
+    it('keeps the draft text when selecting a model from the picker', () => {
+        renderNewChatArea();
+        typeInInput('Keep this draft');
+
+        fireEvent.click(screen.getByTestId('model-menu-select'));
+
+        expect(mockHandleModelSelect).toHaveBeenCalledWith('gpt-5.4');
+        expect((screen.getByTestId('new-chat-input') as HTMLInputElement).value).toBe('Keep this draft');
     });
 });

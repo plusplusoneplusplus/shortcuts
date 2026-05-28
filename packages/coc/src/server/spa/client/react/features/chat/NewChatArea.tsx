@@ -393,8 +393,6 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                     const model = modelCommand.filteredModels[modelCommand.modelHighlightIndex];
                                     if (model) {
                                         modelCommand.handleModelSelect(model.id);
-                                        setInput('');
-                                        richTextRef.current?.setValue('');
                                     }
                                 }
                                 return;
@@ -637,8 +635,6 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         filter={modelCommand.modelFilter}
                         onSelect={(modelId) => {
                             modelCommand.handleModelSelect(modelId);
-                            setInput('');
-                            richTextRef.current?.setValue('');
                             richTextRef.current?.focus();
                         }}
                         onDismiss={modelCommand.dismissModelMenu}
