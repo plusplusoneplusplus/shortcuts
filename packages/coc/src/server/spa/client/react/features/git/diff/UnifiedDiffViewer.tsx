@@ -198,6 +198,8 @@ export interface SideBySideLine {
     rightParts?: IntraLinePart[];
     /** File path from a `diff --git` header — set on the first row of each file section. */
     filePath?: string;
+    /** Original unified diff line index represented by a full-width split row. */
+    originalIndex?: number;
 }
 
 const LINE_CLASSES: Record<LineType, string> = {
@@ -321,6 +323,7 @@ export function computeSideBySideLines(lines: DiffLine[]): SideBySideLine[] {
                 left: { type: 'empty', content: '', lineNumber: null, originalIndex: null },
                 right: { type: 'empty', content: '', lineNumber: null, originalIndex: null },
                 hunkHeader: line.content,
+                originalIndex: line.index,
             };
             if (pendingFilePath) {
                 entry.filePath = pendingFilePath;
