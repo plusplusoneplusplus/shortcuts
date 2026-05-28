@@ -70,13 +70,9 @@ test.describe('Admin Panel (008)', () => {
             'Developer / Internals',
         ]);
         expect(byLabel.Configure).toEqual([
-            'AI & Execution',
+            'Configure',
             'Models',
             'AI Provider',
-            'Chat',
-            'Appearance',
-            'Features',
-            'Integrations',
         ]);
         expect(byLabel.Knowledge).toEqual(['Memory', 'Skills']);
         expect(byLabel.Connections).toEqual(expect.arrayContaining(['Providers']));
@@ -107,16 +103,16 @@ test.describe('Admin Panel (008)', () => {
         );
         const byLabel = Object.fromEntries(groups.map(group => [group.label, group.values]));
 
-        expect(byLabel.Configure).toEqual(expect.arrayContaining(['settings:features', 'tool:models', 'admin:agents']));
+        expect(byLabel.Configure).toEqual(expect.arrayContaining(['settings:configure', 'tool:models', 'admin:agents']));
         expect(byLabel.Knowledge).toEqual(expect.arrayContaining(['tool:memory', 'tool:skills']));
         expect(byLabel.Connections).toEqual(expect.arrayContaining(['admin:providers']));
         expect(byLabel.Operations).toEqual(expect.arrayContaining(['tool:stats', 'tool:logs', 'admin:data']));
         expect(byLabel['Developer / Internals']).toEqual(expect.arrayContaining(['admin:prompts', 'admin:database', 'settings:advanced']));
 
-        await picker.selectOption('settings:features');
+        await picker.selectOption('settings:configure');
         await expect(page.locator('.ar-breadcrumb')).toContainText('Configure');
-        await expect(page.locator('.ar-breadcrumb')).toContainText('Features');
-        await expect(page.getByTestId('settings-features')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.ar-breadcrumb')).toContainText('AI & Execution');
+        await expect(page.getByTestId('settings-ai-execution')).toBeVisible({ timeout: 5000 });
 
         await picker.selectOption('tool:stats');
         await expect(page.locator('[data-testid="admin-tool-embed-stats"]')).toBeVisible({ timeout: 5000 });
