@@ -8,6 +8,7 @@ import { RichTextInput } from '../../shared/RichTextInput';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
+import { AgentSelectorChip } from './AgentSelectorChip';
 import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION } from './ModePillSelector';
 import type { ModePillOption } from './ModePillSelector';
 import { EffortPillSelector } from './EffortPillSelector';
@@ -586,6 +587,18 @@ export function FollowUpInputArea({
                             className="flex flex-wrap items-center gap-x-px gap-y-0.5 pl-2 pr-1.5 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
                             data-testid="chat-input-toolbar"
                         >
+                            {/* Agent provider chip — leftmost, always disabled because
+                                 agent switching mid-session is not yet supported. The chip
+                                 mirrors the NewChatArea layout ("provider · mode · model")
+                                 so both composers share the same visual order. */}
+                            <AgentSelectorChip
+                                providers={[]}
+                                loading={false}
+                                selected={activeProvider ?? 'copilot'}
+                                onChange={() => {}}
+                                disabled={true}
+                            />
+                            <span aria-hidden="true" data-testid="chat-toolbar-divider-provider" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                             {/* Mode pill selector — first in toolbar */}
                             {!hideModeSelector && (
                                 <div data-testid="mode-selector" className="shrink-0 mr-0.5">
@@ -596,13 +609,7 @@ export function FollowUpInputArea({
                                     />
                                 </div>
                             )}
-                            {/* Divider between the mode zone and the model zone.
-                                 Mirrors the OpenDesign provider-first composer:
-                                 "provider · mode · model · tools · send" reads
-                                 as four discrete ownership zones. The provider
-                                 isn't switchable on a follow-up (it's locked to
-                                 the session), so this composer starts at the
-                                 mode zone. */}
+                            {/* Divider between the mode zone and the model zone. */}
                             {!hideModeSelector && modelCommand && (
                                 <span aria-hidden="true" data-testid="chat-toolbar-divider-mode" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                             )}
@@ -727,7 +734,6 @@ export function FollowUpInputArea({
                                 sessionTokenLimit={sessionTokenLimit}
                                 sessionCurrentTokens={sessionCurrentTokens}
                                 sessionModel={sessionModel}
-                                activeProvider={activeProvider}
                             />
                             <span aria-hidden="true" data-testid="chat-toolbar-divider-send" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                             {isActiveGeneration ? stopButton : (
