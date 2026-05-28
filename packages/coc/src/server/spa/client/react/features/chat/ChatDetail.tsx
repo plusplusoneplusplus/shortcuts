@@ -9,7 +9,6 @@
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
-import { getActiveProvider } from '../../utils/config';
 import { getConversationTurns } from './conversation/chatConversationUtils';
 import { getSessionIdFromProcess } from './conversation/ConversationMetadataPopover';
 import { useQueue } from '../../contexts/QueueContext';
@@ -171,16 +170,27 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // Init from current refreshVersion so a fresh mount treats it as "already seen"
     const lastRefreshVersionRef = useRef(queueState.refreshVersion);
     const { state: appState, dispatch: appDispatch } = useApp();
-    const { models: availableModels } = useModels();
-    const pickableModels = selectPickableModels(availableModels);
-    const modelCommand = useModelCommand(pickableModels);
-    const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isLoopsEnabled())), [skills]);
-    const slashCommands = useSlashCommands(augmentedSkills);
 
     // Loop management
     const processId = task?.processId ?? (taskId
         ? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(taskId))
         : null);
+    const metadataProcess = useMemo(() => buildMetadataProcess(task, processDetails, processId), [task, processId, processDetails]);
+    const sessionModel = metadataProcess?.metadata?.model as string | undefined;
+    const workingDirectory: string | undefined = metadataProcess?.workingDirectory
+        || metadataProcess?.payload?.workingDirectory
+        || metadataProcess?.metadata?.workingDirectory
+        || undefined;
+    const rawSessionProvider = metadataProcess?.metadata?.provider;
+    const sessionProvider = rawSessionProvider === 'codex' || rawSessionProvider === 'claude' || rawSessionProvider === 'copilot'
+        ? rawSessionProvider
+        : getDefaultProvider();
+    const { models: availableModels } = useModels(sessionProvider);
+    const pickableModels = selectPickableModels(availableModels);
+    const modelCommand = useModelCommand(pickableModels);
+    const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isLoopsEnabled())), [skills]);
+    const slashCommands = useSlashCommands(augmentedSkills);
+
     const loopsHook = useLoops(workspaceId, processId);
     const [loopPanelOpen, setLoopPanelOpen] = useState(false);
     const [renameOpen, setRenameOpen] = useState(false);
@@ -220,16 +230,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const resumeSessionId = getSessionIdFromProcess(processDetails || task);
     const noSessionForFollowUp = isTerminal && processDetails !== null && !resumeSessionId;
 
-    const metadataProcess = useMemo(() => buildMetadataProcess(task, processDetails, processId), [task, processId, processDetails]);
-    const sessionModel = metadataProcess?.metadata?.model as string | undefined;
-    const workingDirectory: string | undefined = metadataProcess?.workingDirectory
-        || metadataProcess?.payload?.workingDirectory
-        || metadataProcess?.metadata?.workingDirectory
-        || undefined;
-    const rawSessionProvider = metadataProcess?.metadata?.provider;
-    const sessionProvider = rawSessionProvider === 'codex' || rawSessionProvider === 'claude' || rawSessionProvider === 'copilot'
-        ? rawSessionProvider
-        : getDefaultProvider();
     const createdFiles = useMemo(() => scanTurnsForCreatedFiles(turns), [turns]);
 
     // Compute the follow-up mode pill set, optionally appending Ralph when
@@ -453,22 +453,17 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // effect that uses it is defined below `refreshConversation`.
     const prevStatusRef = useRef<string | undefined>(undefined);
 
-    // Seed tokenLimit from /api/models as soon as sessionModel is known.
+    // Seed tokenLimit from the session provider's model catalog as soon as
+    // sessionModel is known.
     // Only runs when sessionTokenLimit is still undefined to avoid clobbering
     // a value already received via SSE (conversation-snapshot / token-usage).
     useEffect(() => {
         if (!sessionModel || sessionTokenLimit !== undefined) return;
-        getSpaCocClient().agentProviders.listModels(getActiveProvider())
-            .then((data) => {
-                const models = data.models;
-                if (!Array.isArray(models)) return;
-                const info = models.find((m: ModelInfo) => m.id === sessionModel);
-                if (info?.tokenLimit && info.tokenLimit > 0) {
-                    setSessionTokenLimit(info.tokenLimit);
-                }
-            })
-            .catch(() => { /* ignore — bar stays hidden until SSE arrives */ });
-    }, [sessionModel, sessionTokenLimit]); // eslint-disable-line react-hooks/exhaustive-deps
+        const info = availableModels.find((m: ModelInfo) => m.id === sessionModel);
+        if (info?.tokenLimit && info.tokenLimit > 0) {
+            setSessionTokenLimit(info.tokenLimit);
+        }
+    }, [availableModels, sessionModel, sessionTokenLimit]);
     const pinnedFile = createdFiles.at(-1);
 
     const setTurnsAndRef = useCallback((next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => {
