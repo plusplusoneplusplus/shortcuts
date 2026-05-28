@@ -1,9 +1,9 @@
 /**
- * useModels — fetches available models from the active provider's model endpoint.
+ * useModels — fetches available models from a provider's model endpoint.
  *
  * Delegates to the provider-scoped GET /api/agent-providers/:provider/models
- * endpoint, using the active provider from dashboard config. All consumers
- * automatically see models from the correct provider without individual changes.
+ * endpoint. Consumers may pass an explicit provider; otherwise the dashboard's
+ * active/default provider is used for backwards compatibility.
  *
  * Returns ModelInfo[] for interface compatibility with consumers.
  */
@@ -105,25 +105,36 @@ function mapModel(m: RawModel): ModelInfo {
  * All model consumers (chat picker, queue dialogs, etc.) use this hook
  * so they automatically reflect the active provider's model list.
  */
-export function useModels(): { models: ModelInfo[]; loading: boolean; error: string | null; reload: () => void } {
+export function useModels(providerOverride?: string): { models: ModelInfo[]; loading: boolean; error: string | null; reload: () => void } {
     const [models, setModels] = useState<ModelInfo[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [reloadToken, setReloadToken] = useState(0);
+    const provider = providerOverride ?? getActiveProvider();
 
     const load = useCallback(() => {
+        setReloadToken(token => token + 1);
+    }, []);
+
+    useEffect(() => {
         setLoading(true);
         setError(null);
-        const provider = getActiveProvider();
+        setModels([]);
+        let cancelled = false;
         getSpaCocClient().agentProviders.listModels(provider)
             .then((data: any) => {
+                if (cancelled) return;
                 const arr = Array.isArray(data?.models) ? data.models.map(mapModel) : [];
                 setModels(arr);
             })
-            .catch((e: unknown) => { setError(getSpaCocClientErrorMessage(e, 'Failed to load models')); })
-            .finally(() => setLoading(false));
-    }, []);
-
-    useEffect(() => { load(); }, [load]);
+            .catch((e: unknown) => {
+                if (!cancelled) setError(getSpaCocClientErrorMessage(e, 'Failed to load models'));
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
+            });
+        return () => { cancelled = true; };
+    }, [provider, reloadToken]);
 
     return { models, loading, error, reload: load };
 }

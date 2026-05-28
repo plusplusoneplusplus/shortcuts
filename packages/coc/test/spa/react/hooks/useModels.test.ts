@@ -44,6 +44,32 @@ describe('useModels', () => {
         await waitFor(() => expect(mocks.agentProviders.listModels).toHaveBeenCalledWith('copilot'));
     });
 
+    it('fetches models via agentProviders.listModels(explicitProvider) when provided', async () => {
+        mocks.agentProviders.listModels.mockResolvedValue({ provider: 'codex', models: [] });
+        renderHook(() => useModels('codex'));
+        await waitFor(() => expect(mocks.agentProviders.listModels).toHaveBeenCalledWith('codex'));
+    });
+
+    it('clears previous models immediately when the provider changes', async () => {
+        let resolveCodex: (value: unknown) => void = () => {};
+        mocks.agentProviders.listModels
+            .mockResolvedValueOnce({ provider: 'copilot', models: [{ id: 'gpt-4', enabled: true }] })
+            .mockReturnValueOnce(new Promise(resolve => { resolveCodex = resolve; }));
+
+        const { result, rerender } = renderHook(
+            ({ provider }) => useModels(provider),
+            { initialProps: { provider: 'copilot' } },
+        );
+        await waitFor(() => expect(result.current.models.map(m => m.id)).toEqual(['gpt-4']));
+
+        rerender({ provider: 'codex' });
+        await waitFor(() => expect(result.current.loading).toBe(true));
+        expect(result.current.models).toEqual([]);
+
+        resolveCodex({ provider: 'codex', models: [{ id: 'codex-mini', enabled: true }] });
+        await waitFor(() => expect(result.current.models.map(m => m.id)).toEqual(['codex-mini']));
+    });
+
     it('returns parsed model list and loading=false after fetch', async () => {
         const rawModels = [
             {
@@ -112,9 +138,9 @@ describe('useModels', () => {
 
         mocks.agentProviders.listModels.mockResolvedValueOnce({ provider: 'copilot', models: [{ id: 'm1', name: 'M1' }] });
         result.current.reload();
-        await waitFor(() => expect(result.current.loading).toBe(false));
+        await waitFor(() => expect(mocks.agentProviders.listModels).toHaveBeenCalledTimes(2));
+        await waitFor(() => expect(result.current.models).toHaveLength(1));
         expect(result.current.error).toBe(null);
-        expect(result.current.models).toHaveLength(1);
     });
 
     it('exposes vision and reasoning capabilities', async () => {

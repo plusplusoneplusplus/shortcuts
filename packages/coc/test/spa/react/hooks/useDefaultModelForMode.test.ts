@@ -274,6 +274,57 @@ describe('useDefaultModelForMode', () => {
         });
     });
 
+    it('uses the explicit provider argument instead of the active provider', async () => {
+        mockGetActiveProvider.mockReturnValue('copilot');
+        mockGetRepo.mockResolvedValue({
+            defaultModel: 'gpt-5.5',
+            defaultModelsByProvider: {
+                codex: { ask: 'claude-opus-4.7' },
+            },
+        });
+        const { result } = renderHook(() =>
+            useDefaultModelForMode('ws-1', 'ask', MODELS, 'codex'),
+        );
+        await waitFor(() => {
+            expect(result.current.effectiveModel).toBe('claude-opus-4.7');
+        });
+    });
+
+    it('re-resolves provider defaults when the explicit provider changes', async () => {
+        mockGetRepo.mockResolvedValue({
+            defaultModelsByProvider: {
+                copilot: { ask: 'gpt-5.5' },
+                codex: { ask: 'claude-opus-4.7' },
+            },
+        });
+        const { result, rerender } = renderHook(
+            ({ provider }) => useDefaultModelForMode('ws-1', 'ask', MODELS, provider),
+            { initialProps: { provider: 'copilot' } },
+        );
+        await waitFor(() => {
+            expect(result.current.effectiveModel).toBe('gpt-5.5');
+        });
+
+        rerender({ provider: 'codex' });
+        await waitFor(() => {
+            expect(result.current.effectiveModel).toBe('claude-opus-4.7');
+        });
+    });
+
+    it('supports a string provider default as an all-mode fallback', async () => {
+        mockGetRepo.mockResolvedValue({
+            defaultModelsByProvider: {
+                codex: 'claude-opus-4.7',
+            },
+        });
+        const { result } = renderHook(() =>
+            useDefaultModelForMode('ws-1', 'plan', MODELS, 'codex'),
+        );
+        await waitFor(() => {
+            expect(result.current.effectiveModel).toBe('claude-opus-4.7');
+        });
+    });
+
     it('Copilot falls back to legacy defaults when no provider-scoped defaults exist', async () => {
         mockGetRepo.mockResolvedValue({
             defaultModel: 'gpt-5.5',

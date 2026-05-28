@@ -36,10 +36,13 @@ export function useDefaultModelForMode(
     chatMode: ChatModeForModel,
     /** Available models used to resolve display names. */
     availableModels: { id: string; name?: string }[],
+    /** Provider whose defaults should be resolved. Defaults to active dashboard provider. */
+    providerOverride?: string,
 ): UseDefaultModelForModeResult {
     const [defaultModel, setDefaultModel] = useState<string | undefined>();
     const [defaultModels, setDefaultModels] = useState<Record<string, string | undefined>>({});
     const [providerModels, setProviderModels] = useState<Record<string, string | undefined>>({});
+    const provider = providerOverride ?? getActiveProvider();
 
     useEffect(() => {
         setDefaultModel(undefined);
@@ -51,8 +54,6 @@ export function useDefaultModelForMode(
             .then((prefs: any) => {
                 if (cancelled) return;
 
-                const provider = getActiveProvider();
-
                 // Provider-scoped defaults: defaultModelsByProvider.<provider>.<mode>
                 const byProvider = prefs.defaultModelsByProvider;
                 if (typeof byProvider === 'object' && byProvider !== null) {
@@ -63,6 +64,8 @@ export function useDefaultModelForMode(
                             if (typeof v === 'string' && v) cleaned[k] = v;
                         }
                         setProviderModels(cleaned);
+                    } else if (typeof providerPrefs === 'string' && providerPrefs) {
+                        setProviderModels({ '*': providerPrefs });
                     }
                 }
 
@@ -80,10 +83,9 @@ export function useDefaultModelForMode(
             })
             .catch(() => { /* preferences are optional */ });
         return () => { cancelled = true; };
-    }, [workspaceId]);
+    }, [workspaceId, provider]);
 
     const prefKey = toPreferenceMode(chatMode);
-    const provider = getActiveProvider();
     const isCopilot = provider === 'copilot';
 
     // Resolution order:
@@ -93,6 +95,7 @@ export function useDefaultModelForMode(
     // 4. undefined
     const effectiveModel =
         providerModels[prefKey] ||
+        providerModels['*'] ||
         (isCopilot ? defaultModels[prefKey] : undefined) ||
         (isCopilot ? defaultModel : undefined) ||
         undefined;
