@@ -5,8 +5,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, configure } from '@testing-library/react';
 import { type ReactNode } from 'react';
+
+// Slow Windows CI runners can take >1 s to flush two chained promise
+// resolutions (listTables → setSelectedTable → getTable → setTableData)
+// through React's state-update cycle. Raise the RTL async timeout for the
+// whole file so every waitFor call uses 5 s instead of the default 1 s.
+configure({ asyncUtilTimeout: 5000 });
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppContext';
 import { DbBrowserSection } from '../../../src/server/spa/client/react/admin/DbBrowserSection';
