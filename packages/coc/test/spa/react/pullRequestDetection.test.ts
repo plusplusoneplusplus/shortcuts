@@ -144,4 +144,152 @@ describe('detectPullRequestsInToolGroup', () => {
 
         expect(pullRequests).toEqual([]);
     });
+
+    // --- Azure DevOps detection ---
+
+    it('detects an ADO dev.azure.com pull request URL', () => {
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-1',
+                toolName: 'powershell',
+                args: { command: 'az repos pr create --title "feat"' },
+                result: 'https://dev.azure.com/myorg/MyProject/_git/MyRepo/pullrequest/12345',
+            },
+        ]);
+
+        expect(pullRequests).toEqual<DetectedPullRequest[]>([
+            {
+                number: 12345,
+                url: 'https://dev.azure.com/myorg/MyProject/_git/MyRepo/pullrequest/12345',
+                provider: 'azure-devops',
+                organization: 'myorg',
+                project: 'MyProject',
+                repo: 'MyRepo',
+                toolCallId: 'tool-1',
+            },
+        ]);
+    });
+
+    it('detects an ADO visualstudio.com pull request URL', () => {
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-2',
+                toolName: 'powershell',
+                args: { command: 'az repos pr create --source-branch feature' },
+                result: 'https://contoso.visualstudio.com/alpha-project/_git/my-service/pullrequest/7890',
+            },
+        ]);
+
+        expect(pullRequests).toEqual<DetectedPullRequest[]>([
+            {
+                number: 7890,
+                url: 'https://contoso.visualstudio.com/alpha-project/_git/my-service/pullrequest/7890',
+                provider: 'azure-devops',
+                organization: 'contoso',
+                project: 'alpha-project',
+                repo: 'my-service',
+                toolCallId: 'tool-2',
+            },
+        ]);
+    });
+
+    it('detects ADO PR when command metadata is unavailable', () => {
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-1',
+                toolName: 'powershell',
+                result: 'https://dev.azure.com/org/project/_git/repo/pullrequest/999',
+            },
+        ]);
+
+        expect(pullRequests).toHaveLength(1);
+        expect(pullRequests[0]).toMatchObject({
+            number: 999,
+            provider: 'azure-devops',
+            organization: 'org',
+            project: 'project',
+            repo: 'repo',
+        });
+    });
+
+    it('ignores az repos pr show (read-only ADO command)', () => {
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-1',
+                toolName: 'powershell',
+                args: { command: 'az repos pr show --id 123' },
+                result: 'https://dev.azure.com/org/proj/_git/repo/pullrequest/123',
+            },
+        ]);
+
+        expect(pullRequests).toEqual([]);
+    });
+
+    it('ignores az repos pr list (read-only ADO command)', () => {
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-1',
+                toolName: 'powershell',
+                args: { command: 'az repos pr list --project MyProject' },
+                result: 'https://dev.azure.com/org/MyProject/_git/repo/pullrequest/100',
+            },
+        ]);
+
+        expect(pullRequests).toEqual([]);
+    });
+
+    it('deduplicates repeated ADO URLs', () => {
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-1',
+                toolName: 'bash',
+                args: { command: 'az repos pr create --title "fix"' },
+                result: [
+                    'https://dev.azure.com/org/proj/_git/repo/pullrequest/500',
+                    'Created: https://dev.azure.com/org/proj/_git/repo/pullrequest/500',
+                ].join('\n'),
+            },
+        ]);
+
+        expect(pullRequests).toHaveLength(1);
+        expect(pullRequests[0].number).toBe(500);
+    });
+
+    it('detects both GitHub and ADO PRs in the same tool group', () => {
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-1',
+                toolName: 'powershell',
+                args: { command: 'gh pr create --fill' },
+                result: 'https://github.com/org/repo/pull/42',
+            },
+            {
+                id: 'tool-2',
+                toolName: 'powershell',
+                args: { command: 'az repos pr create --title "sync"' },
+                result: 'https://dev.azure.com/myorg/proj/_git/repo/pullrequest/200',
+            },
+        ]);
+
+        expect(pullRequests).toHaveLength(2);
+        expect(pullRequests[0].provider).toBe('github');
+        expect(pullRequests[1].provider).toBe('azure-devops');
+    });
+
+    it('handles ADO project names with percent-encoded spaces', () => {
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-1',
+                toolName: 'powershell',
+                result: 'https://dev.azure.com/org/My%20Project/_git/repo/pullrequest/77',
+            },
+        ]);
+
+        expect(pullRequests).toHaveLength(1);
+        expect(pullRequests[0]).toMatchObject({
+            number: 77,
+            provider: 'azure-devops',
+            project: 'My%20Project',
+        });
+    });
 });

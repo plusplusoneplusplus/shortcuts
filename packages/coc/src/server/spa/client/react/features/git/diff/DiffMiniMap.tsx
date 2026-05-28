@@ -69,21 +69,56 @@ export function getSegmentColor(type: SegmentType): string {
  */
 export function measureLineOffsets(
     scrollContainer: HTMLElement,
-): { offsets: LineOffset[]; totalHeight: number } {
+): { offsets: Array<LineOffset | undefined>; totalHeight: number } {
     const lineEls = scrollContainer.querySelectorAll<HTMLElement>('[data-diff-line-index]');
     if (lineEls.length === 0) return { offsets: [], totalHeight: scrollContainer.scrollHeight };
 
     const containerRect = scrollContainer.getBoundingClientRect();
     const scrollTop = scrollContainer.scrollTop;
 
-    const result: LineOffset[] = [];
+    const result: Array<LineOffset | undefined> = [];
     for (const el of lineEls) {
+        const index = Number.parseInt(el.getAttribute('data-diff-line-index') ?? '', 10);
+        if (!Number.isFinite(index) || index < 0) continue;
+
         const elRect = el.getBoundingClientRect();
         const top = elRect.top - containerRect.top + scrollTop;
-        result.push({ top, height: elRect.height });
+        const bottom = top + elRect.height;
+        const existing = result[index];
+        if (existing) {
+            const unionTop = Math.min(existing.top, top);
+            const unionBottom = Math.max(existing.top + existing.height, bottom);
+            result[index] = { top: unionTop, height: unionBottom - unionTop };
+        } else {
+            result[index] = { top, height: elRect.height };
+        }
     }
 
     return { offsets: result, totalHeight: scrollContainer.scrollHeight };
+}
+
+function findFirstMeasuredOffset(
+    lineOffsets: Array<LineOffset | undefined>,
+    startIdx: number,
+    endIdx: number,
+): { index: number; offset: LineOffset } | null {
+    for (let i = startIdx; i <= endIdx && i < lineOffsets.length; i++) {
+        const offset = lineOffsets[i];
+        if (offset) return { index: i, offset };
+    }
+    return null;
+}
+
+function findLastMeasuredOffset(
+    lineOffsets: Array<LineOffset | undefined>,
+    startIdx: number,
+    endIdx: number,
+): { index: number; offset: LineOffset } | null {
+    for (let i = Math.min(endIdx, lineOffsets.length - 1); i >= startIdx; i--) {
+        const offset = lineOffsets[i];
+        if (offset) return { index: i, offset };
+    }
+    return null;
 }
 
 /**
@@ -92,7 +127,7 @@ export function measureLineOffsets(
  */
 export function computeSegmentPositions(
     segments: DiffSegment[],
-    lineOffsets: LineOffset[],
+    lineOffsets: Array<LineOffset | undefined>,
     totalHeight: number,
 ): { topPercent: number; heightPercent: number }[] {
     if (totalHeight <= 0 || lineOffsets.length === 0) {
@@ -107,12 +142,14 @@ export function computeSegmentPositions(
             return { topPercent: 100, heightPercent: 0 };
         }
 
-        const clampedLast = Math.min(lastIdx, lineOffsets.length - 1);
-        const first = lineOffsets[firstIdx];
-        const last = lineOffsets[clampedLast];
+        const first = findFirstMeasuredOffset(lineOffsets, firstIdx, lastIdx);
+        const last = findLastMeasuredOffset(lineOffsets, firstIdx, lastIdx);
+        if (!first || !last) {
+            return { topPercent: 0, heightPercent: 0 };
+        }
 
-        const segTop = first.top;
-        const segHeight = (last.top + last.height) - segTop;
+        const segTop = first.offset.top;
+        const segHeight = (last.offset.top + last.offset.height) - segTop;
 
         return {
             topPercent: (segTop / totalHeight) * 100,
@@ -134,7 +171,7 @@ export interface DiffMiniMapProps {
 export function DiffMiniMap({ diffLines, scrollContainerRef }: DiffMiniMapProps) {
     const [viewportTop, setViewportTop] = useState(0);
     const [viewportHeight, setViewportHeight] = useState(0);
-    const [lineOffsets, setLineOffsets] = useState<LineOffset[]>([]);
+    const [lineOffsets, setLineOffsets] = useState<Array<LineOffset | undefined>>([]);
     const [totalContentHeight, setTotalContentHeight] = useState(0);
 
     const stripAreaRef = useRef<HTMLDivElement>(null);

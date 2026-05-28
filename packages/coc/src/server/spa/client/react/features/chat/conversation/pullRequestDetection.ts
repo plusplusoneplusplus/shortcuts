@@ -6,9 +6,13 @@
 export interface DetectedPullRequest {
     number: number;
     url: string;
-    provider: 'github' | 'unknown';
+    provider: 'github' | 'azure-devops' | 'unknown';
     owner?: string;
     repo?: string;
+    /** Azure DevOps organization name (for ADO PRs). */
+    organization?: string;
+    /** Azure DevOps project name (for ADO PRs). */
+    project?: string;
     toolCallId: string;
 }
 
@@ -25,14 +29,23 @@ const SHELL_TOOL_NAMES = new Set(['powershell', 'shell', 'bash']);
 
 const GITHUB_PR_URL_RE = /https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/pull\/(\d+)/g;
 
+// Azure DevOps PR URLs:
+//   https://dev.azure.com/{org}/{project}/_git/{repo}/pullrequest/{id}
+//   https://{org}.visualstudio.com/{project}/_git/{repo}/pullrequest/{id}
+const ADO_DEV_AZURE_PR_URL_RE = /https:\/\/dev\.azure\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_. %-]+)\/_git\/([A-Za-z0-9_.-]+)\/pullrequest\/(\d+)/g;
+const ADO_VSTS_PR_URL_RE = /https:\/\/([A-Za-z0-9_.-]+)\.visualstudio\.com\/([A-Za-z0-9_. %-]+)\/_git\/([A-Za-z0-9_.-]+)\/pullrequest\/(\d+)/g;
+
 const PR_CREATING_PATTERNS = [
     /\bgh\s+pr\s+create\b/,
+    /\baz\s+repos\s+pr\s+create\b/,
 ];
 
 const READ_ONLY_PR_PATTERNS = [
     /\bgh\s+pr\s+view\b/,
     /\bgh\s+pr\s+list\b/,
     /\bgh\s+pr\s+status\b/,
+    /\baz\s+repos\s+pr\s+show\b/,
+    /\baz\s+repos\s+pr\s+list\b/,
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -93,6 +106,40 @@ export function detectPullRequestsInToolGroup(toolCalls: ToolCallLike[]): Detect
                 url,
                 provider: 'github',
                 owner,
+                repo,
+                toolCallId: tc.id,
+            });
+        }
+
+        ADO_DEV_AZURE_PR_URL_RE.lastIndex = 0;
+        for (const match of tc.result.matchAll(ADO_DEV_AZURE_PR_URL_RE)) {
+            const [, org, project, repo, numberText] = match;
+            const url = match[0];
+            if (seenUrls.has(url)) continue;
+            seenUrls.add(url);
+            results.push({
+                number: Number.parseInt(numberText, 10),
+                url,
+                provider: 'azure-devops',
+                organization: org,
+                project,
+                repo,
+                toolCallId: tc.id,
+            });
+        }
+
+        ADO_VSTS_PR_URL_RE.lastIndex = 0;
+        for (const match of tc.result.matchAll(ADO_VSTS_PR_URL_RE)) {
+            const [, org, project, repo, numberText] = match;
+            const url = match[0];
+            if (seenUrls.has(url)) continue;
+            seenUrls.add(url);
+            results.push({
+                number: Number.parseInt(numberText, 10),
+                url,
+                provider: 'azure-devops',
+                organization: org,
+                project,
                 repo,
                 toolCallId: tc.id,
             });

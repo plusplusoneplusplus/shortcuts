@@ -269,6 +269,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                         className="flex w-full bg-[#dbedff] dark:bg-[#1d3251] text-[#0550ae] dark:text-[#79c0ff] whitespace-pre-wrap break-words"
                         data-hunk-header=""
                         data-file-path={row.filePath ?? undefined}
+                        data-diff-line-index={row.originalIndex}
                     >
                         {showLineNumbers && (
                             <span className="select-none text-right w-8 shrink-0 text-[#6e7681] pr-1 whitespace-nowrap" />
@@ -298,7 +299,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                     {/* LEFT column — removed or context */}
                     <div
                         className={`flex w-1/2 min-w-0 ${leftBg} ${leftHighlight}`}
-                        data-diff-line-index={enableComments && leftLine && leftLine.originalIndex !== null ? leftLine.originalIndex : undefined}
+                        data-diff-line-index={leftLine && leftLine.originalIndex !== null ? leftLine.originalIndex : undefined}
                         data-line-type={enableComments && leftLine ? leftLine.type : undefined}
                         data-old-line={enableComments && leftLine ? (row.left.lineNumber ?? '') : undefined}
                         data-new-line={enableComments && leftLine ? (row.right.lineNumber ?? '') : undefined}
@@ -344,7 +345,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                     {/* RIGHT column — added or context */}
                     <div
                         className={`flex w-1/2 min-w-0 border-l border-[#e0e0e0] dark:border-[#3c3c3c] ${rightBg} ${rightHighlight}`}
-                        data-diff-line-index={enableComments && rightLine && rightLine.originalIndex !== null ? rightLine.originalIndex : undefined}
+                        data-diff-line-index={rightLine && rightLine.originalIndex !== null ? rightLine.originalIndex : undefined}
                         data-line-type={enableComments && rightLine ? rightLine.type : undefined}
                         data-old-line={enableComments && rightLine ? (row.left.lineNumber ?? '') : undefined}
                         data-new-line={enableComments && rightLine ? (row.right.lineNumber ?? '') : undefined}

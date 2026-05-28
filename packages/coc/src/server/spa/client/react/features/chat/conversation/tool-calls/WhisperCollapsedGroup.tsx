@@ -820,6 +820,11 @@ interface PullRequestHoverPopoverProps {
 }
 
 function formatPullRequestLabel(pr: DetectedPullRequest): string {
+    if (pr.provider === 'azure-devops') {
+        const project = pr.project || pr.organization;
+        const repo = pr.repo && project ? `${project}/${pr.repo}` : pr.repo || project;
+        return repo ? `${repo}!${pr.number}` : `!${pr.number}`;
+    }
     const repo = pr.owner && pr.repo ? `${pr.owner}/${pr.repo}` : undefined;
     return repo ? `${repo}#${pr.number}` : `#${pr.number}`;
 }
