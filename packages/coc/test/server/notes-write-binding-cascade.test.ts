@@ -122,6 +122,20 @@ describe('Notes write — rename/delete binding cascade', { timeout: 30_000 }, (
         expect(JSON.parse(res.body).bindingsMoved).toBe(0);
     });
 
+    it('file rename without .md moves the binding row to the effective markdown path', async () => {
+        writeNote('old.md');
+        bindings.bind(wsId, 'old.md', 'task-1');
+
+        const res = await patchJSON(notesUrl('/notes/path'), { oldPath: 'old.md', newPath: 'new' });
+        expect(res.status).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.newPath).toBe('new.md');
+        expect(body.bindingsMoved).toBe(1);
+
+        expect(bindings.get(wsId, 'old.md')).toBeUndefined();
+        expect(bindings.get(wsId, 'new.md')?.taskId).toBe('task-1');
+    });
+
     // ────────────────────────────────────────────────────────────────────────
     // Folder rename
     // ────────────────────────────────────────────────────────────────────────

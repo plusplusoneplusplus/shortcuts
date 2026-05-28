@@ -1494,7 +1494,7 @@ export function NoteEditor({
                     onClose={() => setRalphDialogOpen(false)}
                     onLaunched={(processId) => {
                         setRalphDialogOpen(false);
-                        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: workspaceId });
+                        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chats/' + encodeURIComponent(processId);
                     }}
                 />
             )}

@@ -14,6 +14,8 @@ import { toQueueProcessId, getLogger, LogCategory } from '@plusplusoneplusplus/f
 import { RalphSessionStore } from '../ralph/ralph-session-store';
 import { buildRalphIterationTask } from '../ralph/enqueue-iteration';
 import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
+import { VALID_CHAT_PROVIDERS } from '../tasks/task-types';
+import type { ChatProvider } from '../tasks/task-types';
 
 export interface RalphLaunchRouteContext {
     bridge: MultiRepoQueueRouter;
@@ -53,6 +55,18 @@ export function registerRalphLaunchRoutes(routes: Route[], ctx: RalphLaunchRoute
             const workingDirectory = typeof body.workingDirectory === 'string' && body.workingDirectory
                 ? body.workingDirectory
                 : folderPath;
+            const provider = body.provider === undefined
+                ? undefined
+                : body.provider as ChatProvider;
+            if (provider !== undefined && !VALID_CHAT_PROVIDERS.has(provider)) {
+                return sendError(res, 400, `Invalid provider: '${String(body.provider)}'. Valid providers: ${[...VALID_CHAT_PROVIDERS].join(', ')}`);
+            }
+            const config = body.config && typeof body.config === 'object'
+                ? body.config as Record<string, unknown>
+                : {};
+            const model = typeof config.model === 'string' && config.model.trim()
+                ? config.model.trim()
+                : undefined;
 
             // Resolve max iterations: per-repo preference > hardcoded default.
             let prefMax: number | undefined;
@@ -93,11 +107,14 @@ export function registerRalphLaunchRoutes(routes: Route[], ctx: RalphLaunchRoute
                 iteration: 1,
                 maxIterations,
                 dataDir,
+                provider,
             });
 
             const taskId = await bridge.enqueue({
                 ...task,
-                config: {},
+                config: {
+                    ...(model ? { model } : {}),
+                },
             });
 
             sendJSON(res, 200, { processId: toQueueProcessId(taskId), sessionId });

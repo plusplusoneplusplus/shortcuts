@@ -49,6 +49,8 @@ export interface RalphSessionRecord {
     iterations: RalphIterationRecord[];
     /** Multi-loop history. Absent on pre-existing single-loop sessions. */
     loops?: RalphLoopRecord[];
+    /** Final-check automation records. Absent on legacy sessions. */
+    finalChecks?: RalphFinalCheckRecord[];
 }
 
 export interface ParsedProgressSection {
@@ -56,4 +58,36 @@ export interface ParsedProgressSection {
     signal: RalphExitSignal;
     timestamp: string;
     body: string;
+}
+
+// ============================================================================
+// Final-check types (AC-01, AC-03)
+// ============================================================================
+
+export type RalphFinalCheckStatus = 'running' | 'completed' | 'failed';
+
+/** Metadata record for one final-check run within a Ralph session. */
+export interface RalphFinalCheckRecord {
+    /** 1-based index of this check within the session. */
+    checkIndex: number;
+    /** The loop index that triggered this check (the loop that just completed). */
+    loopIndex: number;
+    /** The iteration number of the last iteration in the triggering loop. */
+    sourceIteration: number;
+    taskId?: string;
+    processId?: string;
+    startedAt: string;
+    completedAt?: string;
+    status: RalphFinalCheckStatus;
+    /** Undefined while running; set on completion or failure. */
+    hasGaps?: boolean;
+    gapCount?: number;
+    /** True if a gap-fix loop was started after this check. */
+    gapLoopStarted?: boolean;
+    /** The loopIndex of the gap-fix loop started, if any. */
+    gapLoopIndex?: number;
+    /** True when the gap-fix-loop cap was reached and no new loop was started. */
+    capReached?: boolean;
+    /** True when gapFixGoal was absent but synthesized server-side. */
+    goalSynthesized?: boolean;
 }

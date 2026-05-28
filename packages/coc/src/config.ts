@@ -125,6 +125,13 @@ export interface CLIConfig {
     /** Ralph mode configuration (autonomous iterative coding loop). Disabled by default. */
     ralph?: {
         enabled?: boolean;
+        finalCheck?: {
+            /**
+             * Maximum number of automated gap-fix loops to run after the initial
+             * implementation loop. Must be a positive integer. Default: 3.
+             */
+            maxGapFixLoops?: number;
+        };
     };
     /** Loops/recurring follow-up subsystem configuration. Disabled by default. */
     loops?: {
@@ -326,6 +333,10 @@ export interface ResolvedCLIConfig {
     /** Ralph orchestration mode configuration. */
     ralph: {
         enabled: boolean;
+        finalCheck: {
+            /** Maximum automated gap-fix loops after the initial loop. Default: 3. */
+            maxGapFixLoops: number;
+        };
     };
     /** Loops/recurring follow-up subsystem configuration. */
     loops: {
@@ -484,6 +495,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     ralph: {
         enabled: false,
+        finalCheck: {
+            maxGapFixLoops: 3,
+        },
     },
     loops: {
         enabled: true,

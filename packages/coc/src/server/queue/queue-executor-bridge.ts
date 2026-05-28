@@ -11,6 +11,17 @@ import { TitleGenerationService } from '../executors/title-generator';
 import { ExecutorRegistry } from '../executors/executor-registry';
 import { parseRalphSignal } from '../executors/ralph-signal-parser';
 import { recordRalphIteration } from '../ralph/record-iteration';
+import { RalphSessionStore } from '../ralph/ralph-session-store';
+import {
+    buildFinalCheckTaskPayload,
+    buildFinalCheckStartRecord,
+    nextCheckIndex,
+    sessionHasFinalCheckFor,
+    wasFinalCheckEnqueued,
+    markFinalCheckEnqueued,
+} from '../ralph/enqueue-final-check';
+import { orchestrateFinalCheck } from '../ralph/orchestrate-final-check';
+import { loadConfigFile, DEFAULT_CONFIG } from '../../config';
 
 export const DEFAULT_FOLLOW_UP_SUGGESTIONS = { enabled: true, count: 3 } as const;
 
@@ -132,18 +143,30 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
      * progress section to the per-session journal (`progress.md` +
      * `session.json`), and either enqueues the next iteration or emits a
      * ralph-session-complete WS event.
+     *
+     * When the completed task is a final-check task (context.ralph.finalCheck
+     * is set), routes to handleFinalCheckCompletion instead.
      */
     private enqueueRalphNextIteration(processId: string, completedTask: QueuedTask, responseText: string): void {
         if (!this.queueManager) return;
         const logger = getLogger();
 
-        const { signal, progress } = parseRalphSignal(responseText);
         const payload = completedTask.payload as unknown as ChatPayload;
         const ralphCtx = payload.context?.ralph;
-        const currentIteration = ralphCtx?.currentIteration ?? 1;
-        const maxIterations = ralphCtx?.maxIterations ?? 20;
         const workspaceId = payload.workspaceId;
         const sessionId = ralphCtx?.sessionId;
+
+        // ── Route final-check completions separately (AC-01) ────────────────
+        if (ralphCtx?.finalCheck) {
+            this.handleFinalCheckCompletion(processId, completedTask, responseText, ralphCtx, workspaceId, sessionId).catch(err => {
+                logger.warn(LogCategory.AI, `[Ralph/FinalCheck] handleFinalCheckCompletion threw: ${err instanceof Error ? err.message : String(err)}`);
+            });
+            return;
+        }
+
+        const { signal, progress } = parseRalphSignal(responseText);
+        const currentIteration = ralphCtx?.currentIteration ?? 1;
+        const maxIterations = ralphCtx?.maxIterations ?? 20;
 
         const shouldContinue = signal === 'RALPH_NEXT' && currentIteration < maxIterations;
 
@@ -167,22 +190,20 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         });
 
         if (!shouldContinue) {
-            // Session complete — emit WS event
-            const reason = signal === 'RALPH_COMPLETE' ? 'signal' : 'cap';
-            logger.debug(LogCategory.AI, `[Ralph] Session complete for ${processId} (reason: ${reason}, iterations: ${currentIteration})`);
-            if (workspaceId) {
-                try {
-                    this.getWsServer?.()?.broadcastProcessEvent({
-                        type: 'ralph-session-complete',
-                        workspaceId,
-                        sessionId,
-                        processId,
-                        totalIterations: currentIteration,
-                        reason,
-                    });
-                } catch (err) {
-                    logger.debug(LogCategory.AI, `[Ralph] Failed to broadcast ralph-session-complete: ${err instanceof Error ? err.message : String(err)}`);
-                }
+            if (signal === 'RALPH_COMPLETE') {
+                // Enqueue a final-check task before broadcasting session-complete (AC-01).
+                this.enqueueFinalCheckAfterComplete(
+                    workspaceId, sessionId, currentIteration, ralphCtx, completedTask, payload,
+                ).catch(err => {
+                    logger.warn(LogCategory.AI, `[Ralph] enqueueFinalCheckAfterComplete failed: ${err instanceof Error ? err.message : String(err)}`);
+                    // Broadcast session complete even if final-check enqueue fails
+                    this.broadcastRalphSessionComplete(workspaceId, sessionId, processId, currentIteration, 'signal');
+                });
+            } else {
+                // cap / no-signal / cancelled — broadcast immediately, no final check
+                const reason = 'cap';
+                logger.debug(LogCategory.AI, `[Ralph] Session complete for ${processId} (reason: ${reason}, iterations: ${currentIteration})`);
+                this.broadcastRalphSessionComplete(workspaceId, sessionId, processId, currentIteration, reason);
             }
             return;
         }
@@ -224,12 +245,170 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         }
     }
 
+    /** Broadcast a ralph-session-complete WS event. */
+    private broadcastRalphSessionComplete(
+        workspaceId: string | undefined,
+        sessionId: string | undefined,
+        processId: string,
+        totalIterations: number,
+        reason: string,
+    ): void {
+        if (!workspaceId) return;
+        const logger = getLogger();
+        try {
+            this.getWsServer?.()?.broadcastProcessEvent({
+                type: 'ralph-session-complete',
+                workspaceId,
+                sessionId,
+                processId,
+                totalIterations,
+                reason,
+            });
+        } catch (err) {
+            logger.debug(LogCategory.AI, `[Ralph] Failed to broadcast ralph-session-complete: ${err instanceof Error ? err.message : String(err)}`);
+        }
+    }
+
     /**
-     * Best-effort: append the parsed `RALPH_PROGRESS:` body to the
-     * session journal and update `session.json`. Implementation lives in
-     * `recordRalphIteration` so it can be unit-tested in isolation.
+     * After a normal Ralph loop ends with RALPH_COMPLETE, enqueue one
+     * final-check task (AC-01). Idempotency-guarded against duplicate events.
      */
-    // (delegated to recordRalphIteration above)
+    private async enqueueFinalCheckAfterComplete(
+        workspaceId: string | undefined,
+        sessionId: string | undefined,
+        sourceIteration: number,
+        ralphCtx: any,
+        completedTask: QueuedTask,
+        payload: ChatPayload,
+    ): Promise<void> {
+        if (!workspaceId || !sessionId || !this.queueManager || !this.dataDir) return;
+        const logger = getLogger();
+
+        // ── In-memory idempotency guard ──────────────────────────────────────
+        if (wasFinalCheckEnqueued(sessionId, sourceIteration)) {
+            logger.debug(LogCategory.AI, `[Ralph/FinalCheck] Duplicate completion event ignored for ${sessionId}:${sourceIteration}`);
+            return;
+        }
+
+        // ── Persistent idempotency guard (survives server restart) ───────────
+        const store = new RalphSessionStore({ dataDir: this.dataDir! });
+        const session = await store.readSessionRecord(workspaceId, sessionId);
+        if (!session) {
+            logger.warn(LogCategory.AI, `[Ralph/FinalCheck] Session record missing for ${sessionId}; skipping final-check enqueue.`);
+            this.broadcastRalphSessionComplete(workspaceId, sessionId, completedTask.id, sourceIteration, 'signal');
+            return;
+        }
+
+        if (sessionHasFinalCheckFor(session, sourceIteration)) {
+            logger.debug(LogCategory.AI, `[Ralph/FinalCheck] Persistent duplicate: check for ${sessionId}:${sourceIteration} already exists.`);
+            return;
+        }
+
+        markFinalCheckEnqueued(sessionId, sourceIteration);
+
+        const checkIndex = nextCheckIndex(session);
+        const loopIndex = (ralphCtx?.loopIndex as number | undefined)
+            ?? (session.loops?.[session.loops.length - 1]?.loopIndex ?? 1);
+
+        const progressPath = store.getProgressPath(workspaceId, sessionId);
+
+        const taskPayload = buildFinalCheckTaskPayload({
+            workspaceId,
+            sessionId,
+            originalGoal: session.originalGoal,
+            checkIndex,
+            sourceIteration,
+            loopIndex,
+            progressPath,
+            workingDirectory: payload.workingDirectory,
+            folderPath: (payload as any).folderPath,
+            repoId: completedTask.repoId,
+            provider: (payload as any).provider,
+        });
+
+        let taskId: string;
+        try {
+            taskId = this.queueManager.enqueue(taskPayload as any);
+        } catch (err) {
+            logger.warn(LogCategory.AI, `[Ralph/FinalCheck] Enqueue failed for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
+            this.broadcastRalphSessionComplete(workspaceId, sessionId, completedTask.id, sourceIteration, 'signal');
+            return;
+        }
+
+        // Persist the running-status record immediately so the session response
+        // shows the check is in progress before the AI response arrives.
+        const startRecord = buildFinalCheckStartRecord(checkIndex, loopIndex, sourceIteration, taskId, undefined, new Date().toISOString());
+        await store.upsertFinalCheckRecord(workspaceId, sessionId, checkIndex, startRecord).catch(err => {
+            logger.debug(LogCategory.AI, `[Ralph/FinalCheck] Failed to persist start record: ${err instanceof Error ? err.message : String(err)}`);
+        });
+
+        logger.debug(LogCategory.AI, `[Ralph/FinalCheck] Enqueued final-check task ${taskId} (check ${checkIndex}) for session ${sessionId}`);
+    }
+
+    /**
+     * Handle completion of a final-check task.
+     * Routes to orchestrateFinalCheck which decides gap-loop or session-complete.
+     */
+    private async handleFinalCheckCompletion(
+        processId: string,
+        completedTask: QueuedTask,
+        responseText: string,
+        ralphCtx: any,
+        workspaceId: string | undefined,
+        sessionId: string | undefined,
+    ): Promise<void> {
+        if (!workspaceId || !sessionId || !this.queueManager || !this.dataDir) return;
+        const logger = getLogger();
+
+        const finalCheckCtx = ralphCtx.finalCheck;
+        const checkIndex: number = finalCheckCtx?.checkIndex ?? 1;
+        const loopIndex: number = finalCheckCtx?.loopIndex ?? 1;
+        const sourceIteration: number = finalCheckCtx?.sourceIteration ?? 0;
+
+        // Update the record to reflect the process ID (now known from processId)
+        const store = new RalphSessionStore({ dataDir: this.dataDir! });
+        await store.upsertFinalCheckRecord(workspaceId, sessionId, checkIndex, {
+            status: 'running',
+            loopIndex,
+            sourceIteration,
+            processId,
+        }).catch(err => {
+            logger.debug(LogCategory.AI, `[Ralph/FinalCheck] Failed to update processId for check ${checkIndex}: ${err instanceof Error ? err.message : String(err)}`);
+        });
+
+        // Resolve config cap
+        const fileConfig = loadConfigFile();
+        const maxGapFixLoops = fileConfig?.ralph?.finalCheck?.maxGapFixLoops
+            ?? DEFAULT_CONFIG.ralph.finalCheck.maxGapFixLoops;
+
+        const qm = this.queueManager;
+        await orchestrateFinalCheck({
+            workspaceId,
+            sessionId,
+            checkIndex,
+            loopIndex,
+            sourceIteration,
+            taskId: completedTask.id,
+            processId,
+            responseText,
+            deps: {
+                store,
+                enqueueTask: (payload) => qm.enqueue(payload as any),
+                broadcastSessionComplete: (params) => this.broadcastRalphSessionComplete(
+                    params.workspaceId, params.sessionId, params.processId,
+                    params.totalIterations, params.reason,
+                ),
+                maxGapFixLoops,
+                dataDir: this.dataDir,
+                workingDirectory: (completedTask.payload as any).workingDirectory,
+                folderPath: (completedTask.payload as any).folderPath,
+                provider: (completedTask.payload as any).provider,
+                repoId: completedTask.repoId,
+            },
+        }).catch(err => {
+            logger.warn(LogCategory.AI, `[Ralph/FinalCheck] orchestrateFinalCheck threw: ${err instanceof Error ? err.message : String(err)}`);
+        });
+    }
 
     async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[]): Promise<void> {
         if (!this.queueManager) throw new Error('Queue manager is not available');

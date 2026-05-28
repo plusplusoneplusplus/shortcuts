@@ -81,9 +81,18 @@ export function FileDiffPanel({
     const { dispatch: queueDispatch } = useQueue();
 
     // ── Diff fetching ──
-    const diffUrl = source.fileDiffUrl(filePath);
+    const [fullContextMode, setFullContextMode] = useState(false);
+
+    // Reset full-context mode when navigating to a different file
+    useEffect(() => {
+        setFullContextMode(false);
+    }, [filePath]);
+
+    const diffUrl = fullContextMode && source.fullContextFileDiffUrl
+        ? source.fullContextFileDiffUrl(filePath)
+        : source.fileDiffUrl(filePath);
     const fullDiffUrl = source.supportsTruncation ? source.fileDiffUrl(filePath, true) : null;
-    const { diff, loading, error, retry, truncated, totalLines, requestFullDiff } =
+    const { diff, loading, error, retry, truncated, totalLines, requestFullDiff, fullContextUnavailable } =
         useFileDiff(diffUrl, fullDiffUrl);
 
     // ── View mode ──
@@ -319,6 +328,21 @@ export function FileDiffPanel({
                 <div className="flex items-center gap-2">
                     <HunkNavButtons onPrev={handlePrev} onNext={handleNext} />
                     <DiffViewToggle mode={viewMode} onChange={setViewMode} />
+                    {source.fullContextFileDiffUrl && (
+                        <button
+                            onClick={() => setFullContextMode(m => !m)}
+                            title={fullContextMode ? 'Switch to hunk-only diff' : 'Show full-file context'}
+                            className={
+                                fullContextMode
+                                    ? 'inline-flex h-6 items-center gap-1 rounded border border-[#0078d4] bg-[#ddeeff] px-2 text-[11px] font-medium text-[#005a9e] hover:bg-[#cce0ff] dark:border-[#3794ff] dark:bg-[#1e3a5f] dark:text-[#79c0ff] dark:hover:bg-[#1e4a7a]'
+                                    : 'inline-flex h-6 items-center gap-1 rounded border border-gray-300 bg-white px-2 text-[11px] font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                            }
+                            data-testid="full-context-toggle-btn"
+                            aria-pressed={fullContextMode}
+                        >
+                            {fullContextMode ? '⊟ Full context' : '⊞ Full context'}
+                        </button>
+                    )}
                     {showSourceLabel && source.label && (
                         <span className="text-xs text-[#616161] dark:text-[#999] flex-shrink-0">
                             {source.label}
@@ -436,6 +460,16 @@ export function FileDiffPanel({
                                     >
                                         Load full diff
                                     </button>
+                                </div>
+                            )}
+                            {fullContextUnavailable && (
+                                <div
+                                    className="flex items-center gap-2 px-4 py-2 text-xs bg-[#fff3cd] dark:bg-[#3a3000] border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
+                                    data-testid="full-context-unavailable-banner"
+                                >
+                                    <span>
+                                        Full-file context unavailable for this file (PR commit SHAs may not be locally present). Showing hunk diff instead.
+                                    </span>
                                 </div>
                             )}
                         </>

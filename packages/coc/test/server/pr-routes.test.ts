@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createRouter } from '../../src/server/shared/router';
-import { registerPrRoutes, clearPrListCache, clearPrDetailCache } from '../../src/server/repos/pr-routes';
+import { registerPrRoutes, clearPrListCache, clearPrDetailCache, clearPrDiffCache } from '../../src/server/repos/pr-routes';
 import type { Route } from '../../src/server/types';
 import type { IPullRequestsService } from '@plusplusoneplusplus/forge';
 import type { PullRequest, CommentThread, Reviewer } from '@plusplusoneplusplus/forge';
@@ -137,6 +137,7 @@ async function stopServer(): Promise<void> {
 beforeEach(async () => {
     clearPrListCache();
     clearPrDetailCache();
+    clearPrDiffCache();
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pr-routes-test-'));
     dataDir = path.join(tmpDir, 'data');
     fs.mkdirSync(dataDir, { recursive: true });
@@ -639,6 +640,163 @@ describe('GET /api/repos/:id/pull-requests/:prId/diff/files/:filePath', () => {
         expect(res.status).toBe(200);
         const body = await res.json() as { diff: string };
         expect(body.diff).toContain('path with spaces/file.ts');
+    });
+});
+
+// ── GET /api/repos/:id/pull-requests/:prId/diff/files/:path?fullContext=true (AC-02) ──
+
+describe('GET .../diff/files/:path?fullContext=true (AC-02)', () => {
+    const combinedDiff = [
+        'diff --git a/src/foo.ts b/src/foo.ts',
+        '--- a/src/foo.ts',
+        '+++ b/src/foo.ts',
+        '@@ -1,3 +1,4 @@',
+        ' line1',
+        '+added',
+    ].join('\n');
+
+    beforeEach(() => {
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(combinedDiff);
+    });
+
+    it('without ?fullContext: returns normal diff, no fullContextUnavailable field', async () => {
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { diff: string; fullContextUnavailable?: boolean };
+        expect(body.diff).toContain('diff --git a/src/foo.ts');
+        expect(body.fullContextUnavailable).toBeUndefined();
+    });
+
+    it('with ?fullContext=true and no cached PR detail: returns hunk diff with fullContextUnavailable=true', async () => {
+        // No prior GET /pull-requests/42 call, so prDetailCache is empty
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}?fullContext=true`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { diff: string; fullContextUnavailable: boolean };
+        expect(body.fullContextUnavailable).toBe(true);
+        // Should still include the hunk diff as fallback
+        expect(body.diff).toContain('diff --git a/src/foo.ts');
+    });
+
+    it('with ?fullContext=true and cached PR detail missing SHAs: returns fullContextUnavailable=true', async () => {
+        // Warm the PR detail cache (mockPr has no baseSha/headSha)
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}?fullContext=true`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { diff: string; fullContextUnavailable: boolean };
+        expect(body.fullContextUnavailable).toBe(true);
+        // Fallback hunk diff still returned
+        expect(body.diff).toContain('diff --git a/src/foo.ts');
+    });
+
+    it('with ?fullContext=true and cached PR detail has SHAs but git fails: returns fullContextUnavailable=true', async () => {
+        // Override getPullRequest to return a PR with SHAs
+        const prWithShas = { ...mockPr, headSha: 'deadbeef111', baseSha: 'cafebabe222' };
+        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockResolvedValueOnce(prWithShas);
+
+        // Warm the PR detail cache with SHAs
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42`);
+
+        // The repo.localPath is /tmp/repo which is not a real git repo, so git diff fails
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}?fullContext=true`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as { diff: string; fullContextUnavailable: boolean };
+        expect(body.fullContextUnavailable).toBe(true);
+        expect(body.diff).toContain('diff --git a/src/foo.ts');
+    });
+});
+
+// ── PR diff cache tests (AC-01) ───────────────────────────────────────────────
+
+describe('PR diff cache (AC-01)', () => {
+    const combinedDiff = [
+        'diff --git a/src/foo.ts b/src/foo.ts',
+        '--- a/src/foo.ts',
+        '+++ b/src/foo.ts',
+        '@@ -1,3 +1,4 @@',
+        ' line1',
+        '+added',
+        'diff --git a/src/bar.ts b/src/bar.ts',
+        '--- a/src/bar.ts',
+        '+++ b/src/bar.ts',
+        '@@ -1 +1 @@',
+        '-old',
+        '+new',
+    ].join('\n');
+
+    beforeEach(() => {
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(combinedDiff);
+    });
+
+    it('caches the combined diff so /diff endpoint hits once on second request', async () => {
+        const r1 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        expect(r1.status).toBe(200);
+
+        const r2 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        expect(r2.status).toBe(200);
+        expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
+    });
+
+    it('caches the combined diff so /diff/files endpoint hits once on second request', async () => {
+        const r1 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}`);
+        expect(r1.status).toBe(200);
+
+        const r2 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/bar.ts')}`);
+        expect(r2.status).toBe(200);
+        // Both per-file requests share one upstream fetch
+        expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
+    });
+
+    it('full /diff and /diff/files requests share the same cached combined diff', async () => {
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff/files/${encodeURIComponent('src/foo.ts')}`);
+        // Second call should reuse the cache set by the first
+        expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
+    });
+
+    it('force-refreshing PR detail clears the diff cache and the next diff request refetches', async () => {
+        // Warm the diff cache via /diff
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
+
+        // Force-refresh PR detail
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42?force=true`);
+
+        // Next diff request must refetch from provider
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        expect(mockSvc.getDiff).toHaveBeenCalledTimes(2);
+    });
+
+    it('uses separate cache entries per PR so switching PRs does not cross-pollute', async () => {
+        const pr2Diff = 'diff --git a/other.ts b/other.ts\n';
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>)
+            .mockResolvedValueOnce(combinedDiff)  // PR 42
+            .mockResolvedValueOnce(pr2Diff);        // PR 99
+
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        const r99 = await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/99/diff`);
+        const text99 = await r99.text();
+        expect(text99).toContain('other.ts');
+        expect(text99).not.toContain('src/foo.ts');
+        expect(mockSvc.getDiff).toHaveBeenCalledTimes(2);
+    });
+
+    it('force-refreshing one PR does not invalidate another PR diff cache', async () => {
+        const pr2Diff = 'diff --git a/other.ts b/other.ts\n';
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>)
+            .mockResolvedValueOnce(combinedDiff) // PR 42 initial
+            .mockResolvedValueOnce(pr2Diff);     // PR 99
+
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42/diff`);
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/99/diff`);
+        expect(mockSvc.getDiff).toHaveBeenCalledTimes(2);
+
+        // Force-refresh PR 42 detail only
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/42?force=true`);
+
+        // PR 99 diff still cached
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/pull-requests/99/diff`);
+        expect(mockSvc.getDiff).toHaveBeenCalledTimes(2);
     });
 });
 

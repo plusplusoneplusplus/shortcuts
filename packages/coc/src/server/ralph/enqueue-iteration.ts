@@ -9,6 +9,7 @@
 
 import { buildRalphIterationPrompt } from './iteration-prompt';
 import { getPromptOverride } from '../admin/ralph-prompt-overrides';
+import type { ChatProvider } from '../tasks/task-types';
 
 export interface BuildRalphIterationTaskInput {
     workspaceId?: string;
@@ -28,6 +29,8 @@ export interface BuildRalphIterationTaskInput {
     displayName?: string;
     /** Priority for the enqueued task. Defaults to 'normal'. */
     priority?: 'normal' | 'low' | 'high';
+    /** AI provider to use for this Ralph execution task. */
+    provider?: ChatProvider;
 }
 
 export function buildRalphIterationTask(input: BuildRalphIterationTaskInput) {
@@ -53,6 +56,7 @@ export function buildRalphIterationTask(input: BuildRalphIterationTaskInput) {
             workspaceId: input.workspaceId,
             workingDirectory: input.workingDirectory,
             folderPath: input.folderPath,
+            provider: input.provider,
             context: {
                 ...(input.extraContext ?? {}),
                 ralph: {

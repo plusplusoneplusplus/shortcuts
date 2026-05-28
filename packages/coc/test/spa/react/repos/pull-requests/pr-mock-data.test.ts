@@ -8,6 +8,7 @@ import {
     buildCheckRowsFromChecks,
     buildCommitRowsFromPrCommits,
     buildMergeReadinessFromData,
+    buildTimelineFromRealData,
     checkStatusClass,
     commitIntentClass,
     findingTagClass,
@@ -526,5 +527,181 @@ describe('queue helpers', () => {
     it('excludes "foryou" filter by default', () => {
         const ids = getQueueFilterDefinitions().map(f => f.id);
         expect(ids).not.toContain('foryou');
+    });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// buildTimelineFromRealData
+// ──────────────────────────────────────────────────────────────────────────────
+
+const threadGroups = [
+    { id: 'blocking',     title: 'Blocking concerns',     count: 2 },
+    { id: 'non-blocking', title: 'Non-blocking feedback', count: 1 },
+    { id: 'noise',        title: 'Nits and noise',        count: 0 },
+];
+
+const sampleThreads: CommentThread[] = [
+    {
+        id: 't1',
+        status: 'active',
+        comments: [
+            {
+                id: 'c1',
+                author: { displayName: 'Jordan Lee' },
+                body: 'Can we prove abort does not replay the final partial line?',
+            },
+        ],
+    },
+    {
+        id: 't2',
+        status: 'active',
+        comments: [
+            {
+                id: 'c2',
+                author: { displayName: 'Alex Kim' },
+                body: 'Style nit: rename variable.',
+            },
+        ],
+    },
+];
+
+const sampleCommits: PullRequestCommit[] = [
+    {
+        id: 'abc1',
+        shortId: 'abc1',
+        message: 'Added parser boundary docs',
+        subject: 'Added parser boundary docs',
+        author: { displayName: 'Morgan Ames' },
+    },
+    {
+        id: 'abc2',
+        shortId: 'abc2',
+        message: 'Replaced the old batch fixture helper',
+        subject: 'Replaced the old batch fixture helper',
+        author: { displayName: 'Morgan Ames' },
+    },
+    {
+        id: 'abc3',
+        shortId: 'abc3',
+        message: 'Fix cancellation edge case',
+        subject: 'Fix cancellation edge case',
+        author: { displayName: 'Morgan Ames' },
+    },
+];
+
+describe('buildTimelineFromRealData', () => {
+    it('returns an empty array when both threads and commits are empty', () => {
+        expect(buildTimelineFromRealData([], [], [])).toEqual([]);
+    });
+
+    it('emits an AI grouping event when threads are present', () => {
+        const events = buildTimelineFromRealData(sampleThreads, [], threadGroups);
+        const aiEvent = events.find(e => e.kind === 'ai');
+        expect(aiEvent).toBeDefined();
+        expect(aiEvent!.initials).toBe('AI');
+        expect(aiEvent!.title).toMatch(/AI grouped 2 review threads into 2 topics/);
+        expect(aiEvent!.detail).toMatch(/Blocking concerns/);
+        expect(aiEvent!.detail).toMatch(/Non-blocking feedback/);
+    });
+
+    it('omits AI event when there are no threads', () => {
+        const events = buildTimelineFromRealData([], sampleCommits, []);
+        expect(events.find(e => e.kind === 'ai')).toBeUndefined();
+    });
+
+    it('emits a reviewer event with initials derived from the commenter name', () => {
+        const events = buildTimelineFromRealData(sampleThreads, [], threadGroups);
+        const reviewerEvent = events.find(e => e.kind === 'reviewer');
+        expect(reviewerEvent).toBeDefined();
+        expect(reviewerEvent!.initials).toBe('JL');
+        expect(reviewerEvent!.title).toContain('Jordan Lee');
+        expect(reviewerEvent!.detail).toContain('abort');
+    });
+
+    it('emits an author push event with real commit subjects', () => {
+        const events = buildTimelineFromRealData([], sampleCommits, []);
+        const authorEvent = events.find(e => e.kind === 'author');
+        expect(authorEvent).toBeDefined();
+        expect(authorEvent!.initials).toBe('MA');
+        expect(authorEvent!.title).toContain('Morgan Ames');
+        expect(authorEvent!.title).toContain('3 commits');
+        expect(authorEvent!.detail).toContain('Added parser boundary docs');
+    });
+
+    it('respects maxReviewerEvents and maxAuthorEvents options', () => {
+        const events = buildTimelineFromRealData(
+            sampleThreads, sampleCommits, threadGroups,
+            { maxReviewerEvents: 1, maxAuthorEvents: 1 },
+        );
+        expect(events.filter(e => e.kind === 'reviewer')).toHaveLength(1);
+        expect(events.filter(e => e.kind === 'author')).toHaveLength(1);
+    });
+
+    it('limits reviewer events to maxReviewerEvents (default 2)', () => {
+        const manyThreads: CommentThread[] = Array.from({ length: 5 }, (_, i) => ({
+            id: `t${i}`,
+            status: 'active',
+            comments: [{ id: `c${i}`, author: { displayName: `Reviewer ${i}` }, body: `comment ${i}` }],
+        }));
+        const events = buildTimelineFromRealData(manyThreads, [], []);
+        expect(events.filter(e => e.kind === 'reviewer')).toHaveLength(2);
+    });
+
+    it('uses singular "thread" and "topic" when there is exactly one', () => {
+        const oneThread: CommentThread[] = [
+            {
+                id: 'x',
+                status: 'active',
+                comments: [{ id: 'cx', author: { displayName: 'Dev Dev' }, body: 'question' }],
+            },
+        ];
+        const oneGroup = [{ id: 'blocking', title: 'Blocking', count: 1 }];
+        const events = buildTimelineFromRealData(oneThread, [], oneGroup);
+        const aiEvent = events.find(e => e.kind === 'ai');
+        expect(aiEvent!.title).toMatch(/1 review thread into 1 topic/);
+    });
+
+    it('truncates long comment bodies to 80 chars with an ellipsis', () => {
+        const longBody = 'A'.repeat(100);
+        const longThread: CommentThread[] = [
+            {
+                id: 'long',
+                status: 'active',
+                comments: [{ id: 'cl', author: { displayName: 'Bob Builder' }, body: longBody }],
+            },
+        ];
+        const events = buildTimelineFromRealData(longThread, [], []);
+        const reviewerEvent = events.find(e => e.kind === 'reviewer');
+        expect(reviewerEvent!.detail).toHaveLength(83); // "  + 80 chars + … + " = 83
+        expect(reviewerEvent!.detail).toMatch(/…"$/);
+    });
+
+    it('skips threads with no author displayName or empty body', () => {
+        const badThreads: CommentThread[] = [
+            { id: 'b1', comments: [] },
+            { id: 'b2', comments: [{ id: 'c', body: '' }] },
+            { id: 'b3', comments: [{ id: 'c', author: { displayName: '' }, body: 'hi' }] },
+        ];
+        const events = buildTimelineFromRealData(badThreads, [], []);
+        expect(events.filter(e => e.kind === 'reviewer')).toHaveLength(0);
+    });
+
+    it('produces correct 2-letter initials for single-name authors', () => {
+        const commits: PullRequestCommit[] = [
+            { id: 'a', shortId: 'a', message: 'fix thing', subject: 'fix thing', author: { displayName: 'Zara' } },
+        ];
+        const events = buildTimelineFromRealData([], commits, []);
+        const authorEvent = events.find(e => e.kind === 'author');
+        expect(authorEvent!.initials).toBe('ZA');
+    });
+
+    it('falls back to "Author" when commit has no author name', () => {
+        const commits: PullRequestCommit[] = [
+            { id: 'a', shortId: 'a', message: 'fix thing', subject: 'fix thing' },
+        ];
+        const events = buildTimelineFromRealData([], commits, []);
+        const authorEvent = events.find(e => e.kind === 'author');
+        expect(authorEvent!.title).toContain('Author');
+        expect(authorEvent!.initials).toBe('?');
     });
 });

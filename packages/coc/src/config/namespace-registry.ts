@@ -71,6 +71,7 @@ const WORKFLOWS_SOURCE_KEYS = ['workflows.enabled'] as const;
 const PULL_REQUESTS_SOURCE_KEYS = ['pullRequests.enabled', 'pullRequests.suggestions'] as const;
 const SERVERS_SOURCE_KEYS = ['servers.enabled'] as const;
 const RALPH_SOURCE_KEYS = ['ralph.enabled'] as const;
+const RALPH_FINAL_CHECK_SOURCE_KEYS = ['ralph.finalCheck.maxGapFixLoops'] as const;
 const VIM_NAVIGATION_SOURCE_KEYS = ['vimNavigation.enabled'] as const;
 const LOOPS_SOURCE_KEYS = ['loops.enabled'] as const;
 const MCP_OAUTH_SOURCE_KEYS = ['mcpOauth.enabled'] as const;
@@ -106,6 +107,7 @@ export const CONFIG_NAMESPACE_SOURCE_KEYS = [
     ...PULL_REQUESTS_SOURCE_KEYS,
     ...SERVERS_SOURCE_KEYS,
     ...RALPH_SOURCE_KEYS,
+    ...RALPH_FINAL_CHECK_SOURCE_KEYS,
     ...VIM_NAVIGATION_SOURCE_KEYS,
     ...LOOPS_SOURCE_KEYS,
     ...MCP_OAUTH_SOURCE_KEYS,
@@ -243,8 +245,18 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
         },
         {
             name: 'ralph',
-            sourceDescriptors: [source('ralph.', ['ralph'], RALPH_SOURCE_KEYS)],
-            merge: (base, override) => ({ ralph: { enabled: override?.ralph?.enabled ?? base.ralph?.enabled ?? false } }),
+            sourceDescriptors: [
+                source('ralph.finalCheck.', ['ralph', 'finalCheck'], RALPH_FINAL_CHECK_SOURCE_KEYS),
+                source('ralph.', ['ralph'], RALPH_SOURCE_KEYS),
+            ],
+            merge: (base, override) => ({
+                ralph: {
+                    enabled: override?.ralph?.enabled ?? base.ralph?.enabled ?? false,
+                    finalCheck: {
+                        maxGapFixLoops: override?.ralph?.finalCheck?.maxGapFixLoops ?? base.ralph?.finalCheck?.maxGapFixLoops ?? 3,
+                    },
+                },
+            }),
         },
         {
             name: 'vimNavigation',

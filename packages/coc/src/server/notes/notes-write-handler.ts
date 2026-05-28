@@ -70,6 +70,10 @@ async function pathExists(filePath: string): Promise<boolean> {
     }
 }
 
+function ensureMarkdownExtension(notePath: string): string {
+    return notePath.endsWith('.md') ? notePath : `${notePath}.md`;
+}
+
 function normalizePathForComparison(filePath: string): string {
     return path.normalize(filePath);
 }
@@ -166,7 +170,7 @@ export function registerNotesWriteRoutes(
                     sendJSON(res, 201, { path: notePath, type });
                 } else {
                     // page — auto-append .md if missing, then create parent dir and empty file
-                    const effectivePath = notePath.endsWith('.md') ? notePath : `${notePath}.md`;
+                    const effectivePath = ensureMarkdownExtension(notePath);
                     const resolvedPage = path.resolve(notesRoot, effectivePath);
                     if (!isWithinDirectory(resolvedPage, notesRoot)) {
                         return sendError(res, 403, 'Access denied: path is outside notes directory');
@@ -288,12 +292,8 @@ export function registerNotesWriteRoutes(
 
             const notesRoot = rootResult.absolutePath;
             const resolvedOld = path.resolve(notesRoot, oldPath);
-            const resolvedNew = path.resolve(notesRoot, newPath);
 
             if (!isWithinDirectory(resolvedOld, notesRoot)) {
-                return sendError(res, 403, 'Access denied: path is outside notes directory');
-            }
-            if (!isWithinDirectory(resolvedNew, notesRoot)) {
                 return sendError(res, 403, 'Access denied: path is outside notes directory');
             }
 
@@ -303,10 +303,17 @@ export function registerNotesWriteRoutes(
             }
 
             // Check source exists
+            let oldStat: fs.Stats;
             try {
-                await fs.promises.access(resolvedOld);
+                oldStat = await fs.promises.stat(resolvedOld);
             } catch {
                 return sendError(res, 404, 'Source path not found');
+            }
+
+            const effectiveNewPath = oldStat.isFile() ? ensureMarkdownExtension(newPath) : newPath;
+            const resolvedNew = path.resolve(notesRoot, effectiveNewPath);
+            if (!isWithinDirectory(resolvedNew, notesRoot)) {
+                return sendError(res, 403, 'Access denied: path is outside notes directory');
             }
 
             if (resolvedOld === resolvedNew) {
@@ -369,7 +376,7 @@ export function registerNotesWriteRoutes(
                     }
                 }
 
-                sendJSON(res, 200, { oldPath, newPath, bindingsMoved });
+                sendJSON(res, 200, { oldPath, newPath: effectiveNewPath, bindingsMoved });
             } catch (err: any) {
                 return sendError(res, 500, 'Failed to rename: ' + (err.message || 'Unknown error'));
             }

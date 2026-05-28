@@ -171,4 +171,81 @@ describe('UnifiedDiffViewer — AC-02 hunk collapse', () => {
         act(() => { fireEvent.click(screen.getByTestId('toggle-all')); });
         expect(screen.getAllByTestId('collapsed-hunk-summary')).toHaveLength(2);
     });
+
+    it('expanded hunk header shows compact classification badge with category and reason', () => {
+        // Filter to 'mechanical' → both logic and generated hunks collapse.
+        render(
+            <UnifiedDiffViewer
+                diff={TWO_HUNK_DIFF}
+                fileName="foo.ts"
+                filePath="foo.ts"
+                getHunkClassification={makeGetHunkClassification()}
+                activeFilters={new Set<HunkCategory>(['mechanical'])}
+            />,
+        );
+        // Expand the first (logic) hunk.
+        const summaries = screen.getAllByTestId('collapsed-hunk-summary');
+        const expandBtn = summaries[0].querySelector<HTMLButtonElement>('[data-testid="collapsed-hunk-expand"]')!;
+        act(() => { fireEvent.click(expandBtn); });
+
+        // The hunk is now expanded — only one collapsed summary remains (generated).
+        expect(screen.queryAllByTestId('collapsed-hunk-summary')).toHaveLength(1);
+        // The expanded hunk header should carry a compact classification badge.
+        const badges = screen.getAllByTestId('expanded-hunk-badge');
+        expect(badges).toHaveLength(1);
+        expect(badges[0]).toHaveTextContent('Logic');
+        // The badge title attribute carries the reason.
+        expect(badges[0].getAttribute('title')).toBe('Touches core logic path');
+    });
+
+    it('Collapse button on expanded hunk restores the collapsed summary row', () => {
+        render(
+            <UnifiedDiffViewer
+                diff={TWO_HUNK_DIFF}
+                fileName="foo.ts"
+                filePath="foo.ts"
+                getHunkClassification={makeGetHunkClassification()}
+                activeFilters={new Set<HunkCategory>(['mechanical'])}
+            />,
+        );
+        // Expand the first (logic) hunk.
+        let summaries = screen.getAllByTestId('collapsed-hunk-summary');
+        const expandBtn = summaries[0].querySelector<HTMLButtonElement>('[data-testid="collapsed-hunk-expand"]')!;
+        act(() => { fireEvent.click(expandBtn); });
+
+        // Badge now visible; one collapsed summary remains.
+        expect(screen.getAllByTestId('expanded-hunk-badge')).toHaveLength(1);
+        expect(screen.queryAllByTestId('collapsed-hunk-summary')).toHaveLength(1);
+
+        // Click Collapse.
+        const collapseBtn = screen.getByTestId('expanded-hunk-collapse');
+        act(() => { fireEvent.click(collapseBtn); });
+
+        // The hunk is collapsed again — two summary rows, no badge.
+        summaries = screen.getAllByTestId('collapsed-hunk-summary');
+        expect(summaries).toHaveLength(2);
+        expect(screen.queryByTestId('expanded-hunk-badge')).toBeNull();
+        expect(screen.queryByTestId('expanded-hunk-collapse')).toBeNull();
+    });
+
+    it('Collapse action does not affect global activeFilters (other hunk stays collapsed)', () => {
+        render(
+            <UnifiedDiffViewer
+                diff={TWO_HUNK_DIFF}
+                fileName="foo.ts"
+                filePath="foo.ts"
+                getHunkClassification={makeGetHunkClassification()}
+                activeFilters={new Set<HunkCategory>(['mechanical'])}
+            />,
+        );
+        // Expand the first (logic) hunk, then collapse it back.
+        let summaries = screen.getAllByTestId('collapsed-hunk-summary');
+        act(() => { fireEvent.click(summaries[0].querySelector<HTMLButtonElement>('[data-testid="collapsed-hunk-expand"]')!); });
+        act(() => { fireEvent.click(screen.getByTestId('expanded-hunk-collapse')); });
+
+        // Both hunks should be collapsed again (filter unchanged).
+        summaries = screen.getAllByTestId('collapsed-hunk-summary');
+        expect(summaries).toHaveLength(2);
+        expect(summaries[1]).toHaveTextContent('Generated');
+    });
 });

@@ -17,6 +17,7 @@ import {
 suite('Pipelines Viewer Tests (Package Structure)', () => {
     let tempDir: string;
     let pipelineManager: PipelineManager;
+    let originalCreateFileSystemWatcher: typeof vscode.workspace.createFileSystemWatcher;
 
     setup(() => {
         // Create temporary directory for testing
@@ -40,12 +41,57 @@ suite('Pipelines Viewer Tests (Package Structure)', () => {
             return originalGetConfiguration(section);
         };
 
+        // Mock vscode.workspace.createFileSystemWatcher with Node.js fs.watch so
+        // that the watcher fires reliably for temp-dir paths that are outside the
+        // VS Code workspace in the extension-host test environment.
+        originalCreateFileSystemWatcher = vscode.workspace.createFileSystemWatcher;
+        (vscode.workspace as any).createFileSystemWatcher = (
+            pattern: vscode.GlobPattern | vscode.RelativePattern
+        ) => {
+            const createHandlers: Array<() => void> = [];
+            const changeHandlers: Array<() => void> = [];
+            const deleteHandlers: Array<() => void> = [];
+            // RelativePattern exposes `.base` (string) or `.baseUri` (Uri)
+            const base: string | undefined =
+                (pattern as any)?.base ?? (pattern as any)?.baseUri?.fsPath;
+            let fsWatcher: fs.FSWatcher | undefined;
+            if (base && fs.existsSync(base)) {
+                fsWatcher = fs.watch(base, { persistent: false }, (eventType: string) => {
+                    if (eventType === 'rename') {
+                        createHandlers.forEach(h => h());
+                        deleteHandlers.forEach(h => h());
+                    } else {
+                        changeHandlers.forEach(h => h());
+                    }
+                });
+                fsWatcher.on('error', () => { /* ignore watch errors */ });
+            }
+            return {
+                onDidCreate: (handler: () => void) => {
+                    createHandlers.push(handler);
+                    return { dispose: () => {} };
+                },
+                onDidChange: (handler: () => void) => {
+                    changeHandlers.push(handler);
+                    return { dispose: () => {} };
+                },
+                onDidDelete: (handler: () => void) => {
+                    deleteHandlers.push(handler);
+                    return { dispose: () => {} };
+                },
+                dispose: () => { fsWatcher?.close(); }
+            };
+        };
+
         pipelineManager = new PipelineManager(tempDir);
     });
 
     teardown(() => {
         // Dispose pipeline manager
         pipelineManager.dispose();
+
+        // Restore mocked VS Code APIs
+        (vscode.workspace as any).createFileSystemWatcher = originalCreateFileSystemWatcher;
 
         // Clean up temporary directory
         if (fs.existsSync(tempDir)) {

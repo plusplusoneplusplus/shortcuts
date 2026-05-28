@@ -46,10 +46,10 @@ import {
     buildCheckRowsFromChecks,
     buildCommitRowsFromPrCommits,
     buildMergeReadinessFromData,
+    buildTimelineFromRealData,
     getMockAiSummary,
     getMockPersonaLenses,
     getMockReviewSummaryText,
-    getMockTimeline,
     riskPillClass,
 } from './pr-mock-data';
 import type { PullRequest, PullRequestCommit, CommentThread, PullRequestCheck } from './pr-utils';
@@ -222,8 +222,8 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
 
     const aiSummary = useMemo(() => (pr ? getMockAiSummary(pr) : null), [pr]);
     const personaLenses = useMemo(() => getMockPersonaLenses(), []);
-    const timeline = useMemo(() => getMockTimeline(), []);
     const threadGroups = useMemo(() => buildAiThreadGroupsFromThreads(threads), [threads]);
+    const timeline = useMemo(() => buildTimelineFromRealData(threads, commits, threadGroups), [threads, commits, threadGroups]);
     const commitRows = useMemo(() => buildCommitRowsFromPrCommits(commits), [commits]);
     const checkRows = useMemo(() => buildCheckRowsFromChecks(checks), [checks]);
     const mergeReadiness = useMemo(
