@@ -305,11 +305,6 @@ export class ClaudeSDKService implements ISDKService {
                 })
                 .filter((model): model is IModelInfo => model !== null);
 
-            const hasProviderDefault = mapped.some(model => model.id === 'claude-provider-default');
-            if (!hasProviderDefault) {
-                mapped.push({ id: 'claude-provider-default', name: 'Claude Provider Default' });
-            }
-
             return mapped.length > 0 ? mapped : fallbackModels;
         } catch {
             return fallbackModels;

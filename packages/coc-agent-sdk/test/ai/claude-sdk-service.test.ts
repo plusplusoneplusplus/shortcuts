@@ -205,7 +205,7 @@ describe('ClaudeSDKService.listModels', () => {
         expect(supportedModelsFn).toHaveBeenCalled();
         expect(models).toContainEqual({ id: 'claude-opus-4-7', name: 'Claude Opus 4.7' });
         expect(models).toContainEqual({ id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' });
-        expect(models).toContainEqual({ id: 'claude-provider-default', name: 'Claude Provider Default' });
+        expect(models).not.toContainEqual({ id: 'claude-provider-default', name: 'Claude Provider Default' });
     });
 
     it('falls back to curated models when supportedModels is unavailable', async () => {
