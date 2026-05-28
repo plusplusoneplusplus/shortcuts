@@ -34,6 +34,13 @@ all have their own `references/*.md`.
   `resolvedConfig.codex?.enabled === true`), not per-install. The
   `syncInstalledSkillsToCodex` function copies all globally installed bundled
   skills from `~/.coc/skills` to `~/.codex/skills` (`$CODEX_HOME/skills`).
+- **Claude skill mirroring** runs once at server startup (when
+  `resolvedConfig.claude?.enabled === true`). The `syncInstalledSkillsToClaude`
+  function copies each skill's `SKILL.md` from `~/.coc/skills/<name>/SKILL.md`
+  to `~/.claude/commands/<name>.md` (`$CLAUDE_HOME/commands/<name>.md`) so
+  Claude Code discovers them as slash commands. A sidecar marker
+  `.coc-<name>.json` tracks CoC-managed commands to distinguish them from
+  user-authored ones.
 - **Adding an editable config field** is a single registry entry — do not
   modify `admin-handler.ts` (see [admin-config.md](../../.github/skills/coc-knowledge/references/admin-config.md)).
 - **Adding a namespaced config field** must update

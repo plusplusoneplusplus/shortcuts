@@ -219,6 +219,34 @@ describe('FollowUpInputArea — cursor regression', () => {
         // useEffect must sync the new value to the DOM
         expect(tracker.calls).toContainEqual(['restored draft', undefined]);
     });
+
+    it('keeps follow-up draft text when selecting a model from the picker', () => {
+        const setFollowUpInput = vi.fn();
+        const handleModelSelect = vi.fn();
+        render(<FollowUpInputArea {...makeProps({
+            followUpInput: 'Keep this follow-up',
+            setFollowUpInput,
+            modelCommand: {
+                modelMenuVisible: true,
+                modelFilter: '',
+                filteredModels: [{ id: 'gpt-5.4', name: 'GPT 5.4', enabled: true }],
+                modelHighlightIndex: 0,
+                modelOverride: null,
+                setModelOverride: vi.fn(),
+                handleModelSelect,
+                showModelMenu: vi.fn(),
+                dismissModelMenu: vi.fn(),
+                handleModelKeyDown: vi.fn(() => false),
+                setModelFilter: vi.fn(),
+            },
+        })} />);
+
+        fireEvent.mouseDown(screen.getByText('GPT 5.4'));
+
+        expect(handleModelSelect).toHaveBeenCalledWith('gpt-5.4');
+        expect(setFollowUpInput).not.toHaveBeenCalledWith('');
+        expect(tracker.calls).not.toContainEqual(['', undefined]);
+    });
 });
 
 describe('FollowUpInputArea — Send button tooltip', () => {

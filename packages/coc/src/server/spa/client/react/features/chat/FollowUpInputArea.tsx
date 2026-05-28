@@ -229,8 +229,6 @@ export function FollowUpInputArea({
                 const model = modelCommand.filteredModels[modelCommand.modelHighlightIndex];
                 if (model) {
                     modelCommand.handleModelSelect(model.id);
-                    setFollowUpInput('');
-                    richTextRef.current?.setValue('');
                 }
             }
             return;
@@ -500,8 +498,6 @@ export function FollowUpInputArea({
                                 filter={modelCommand.modelFilter}
                                 onSelect={(modelId) => {
                                     modelCommand.handleModelSelect(modelId);
-                                    setFollowUpInput('');
-                                    richTextRef.current?.setValue('');
                                     richTextRef.current?.focus();
                                 }}
                                 onDismiss={modelCommand.dismissModelMenu}
@@ -757,8 +753,6 @@ export function FollowUpInputArea({
                                 filter={modelCommand.modelFilter}
                                 onSelect={(modelId) => {
                                     modelCommand.handleModelSelect(modelId);
-                                    setFollowUpInput('');
-                                    richTextRef.current?.setValue('');
                                     richTextRef.current?.focus();
                                 }}
                                 onDismiss={modelCommand.dismissModelMenu}

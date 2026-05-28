@@ -173,8 +173,6 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                                                         const model = modelCommand.filteredModels[modelCommand.modelHighlightIndex];
                                                         if (model) {
                                                             modelCommand.handleModelSelect(model.id);
-                                                            setInput('');
-                                                            richTextRef.current?.setValue('');
                                                         }
                                                     }
                                                     return;
@@ -224,8 +222,6 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                                             filter={modelCommand.modelFilter}
                                             onSelect={(modelId) => {
                                                 modelCommand.handleModelSelect(modelId);
-                                                setInput('');
-                                                richTextRef.current?.setValue('');
                                                 richTextRef.current?.focus();
                                             }}
                                             onDismiss={modelCommand.dismissModelMenu}
