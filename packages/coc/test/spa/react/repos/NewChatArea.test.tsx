@@ -91,7 +91,10 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({
-    useModels: () => ({ models: [{ id: 'gpt-5.4', name: 'GPT-5.4', tokenLimit: 128000, enabled: true }], loading: false, error: null, reload: vi.fn() }),
+    useModels: () => ({ models: [
+        { id: 'gpt-5.4', name: 'GPT-5.4', tokenLimit: 128000, enabled: true },
+        { id: 'claude-sonnet-4.6', name: 'Claude Sonnet 4.6', tokenLimit: 128000, enabled: true },
+    ], loading: false, error: null, reload: vi.fn() }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useSlashCommands', () => ({

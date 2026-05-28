@@ -76,12 +76,17 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const { providers: agentProviders, loading: providersLoading } = useAgentProviders();
 
     // Model command support
-    const { models: availableModels } = useModels();
+    const { models: availableModels, loading: modelsLoading } = useModels(selectedProvider);
     const pickableModels = selectPickableModels(availableModels);
     const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isLoopsEnabled())), [skills]);
     const slashCommands = useSlashCommands(augmentedSkills);
     const modelCommand = useModelCommand(pickableModels);
-    const { effectiveModel: defaultModelId, effectiveModelName: defaultModelLabel } = useDefaultModelForMode(workspaceId, selectedMode, availableModels);
+    const { effectiveModel: defaultModelId, effectiveModelName: defaultModelLabel } = useDefaultModelForMode(workspaceId, selectedMode, availableModels, selectedProvider);
+    const validModelOverride = useMemo(() => {
+        const override = modelCommand.modelOverride;
+        if (!override) return null;
+        return pickableModels.some(model => model.id === override) ? override : null;
+    }, [modelCommand.modelOverride, pickableModels]);
 
     const VALID_MODES: ChatMode[] = ['ask', 'plan', 'autopilot', 'ralph'];
 
@@ -175,6 +180,16 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
         }
     }, [agentProviders, selectedProvider]);
 
+    // Keep model overrides scoped to the selected provider catalog. While a
+    // provider's models are loading, the override is hidden and omitted from
+    // sends; once loading settles, invalid overrides are cleared from state.
+    useEffect(() => {
+        if (modelsLoading || !modelCommand.modelOverride) return;
+        if (!validModelOverride) {
+            modelCommand.setModelOverride(null);
+        }
+    }, [modelsLoading, modelCommand.modelOverride, modelCommand.setModelOverride, validModelOverride]);
+
     function handleProviderChange(provider: ChatProvider) {
         setSelectedProvider(provider);
         if (workspaceId) {
@@ -259,7 +274,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                     workspaceId,
                     ...(contextOverride ? { context: contextOverride } : {}),
                     ...(attachmentPayload.length > 0 ? { attachments: attachmentPayload } : {}),
-                    ...(modelCommand.modelOverride ? { model: modelCommand.modelOverride } : {}),
+                    ...(validModelOverride ? { model: validModelOverride } : {}),
                     ...(effortOverride ? { reasoningEffort: effortOverride } : {}),
                     provider: selectedProvider,
                 } as any,
@@ -480,8 +495,8 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                     modelCommand.showModelMenu();
                                 }
                             }}
-                            title={modelCommand.modelOverride
-                                ? `Override active: ${modelCommand.modelOverride} (click to change or clear)`
+                            title={validModelOverride
+                                ? `Override active: ${validModelOverride} (click to change or clear)`
                                 : defaultModelLabel
                                     ? `Default: ${defaultModelLabel} (click to override)`
                                     : 'Pick a model'}
@@ -498,7 +513,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                 />
                             </svg>
                             <span className="truncate font-mono text-[10.5px] font-medium text-[#848484] dark:text-[#999]">
-                                {modelCommand.modelOverride || defaultModelLabel || 'model'}
+                                {validModelOverride || defaultModelLabel || 'model'}
                             </span>
                             {/* Mirrors AgentSelectorChip: chevron only, no
                                  inline ✕ clear. The override is cleared via
@@ -640,7 +655,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         onDismiss={modelCommand.dismissModelMenu}
                         visible={modelCommand.modelMenuVisible}
                         highlightIndex={modelCommand.modelHighlightIndex}
-                        currentModelId={modelCommand.modelOverride ?? defaultModelId}
+                        currentModelId={validModelOverride ?? defaultModelId}
                         onClearOverride={modelCommand.modelOverride
                             ? () => modelCommand.setModelOverride(null)
                             : undefined}

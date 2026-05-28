@@ -14,8 +14,12 @@ const mockQueueDispatch = vi.fn();
 const mockAppDispatch = vi.fn();
 const mockEnqueueTask = vi.fn();
 const mockHandleModelSelect = vi.fn();
+const mockSetModelOverride = vi.fn((model: string | null) => { mockModelOverride = model; });
 let mockDefaultProvider: 'copilot' | 'codex' | 'claude' = 'copilot';
 let mockRepoPreferences: Record<string, unknown> = {};
+let mockModelOverride: string | null = null;
+let mockUseModelsProviders: Array<string | undefined> = [];
+let mockUseDefaultModelArgs: Array<[string | undefined, string, string | undefined]> = [];
 let mockAgentProviders: any[] = [
     { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
     { id: 'codex', label: 'Codex', enabled: false, available: false },
@@ -123,7 +127,23 @@ vi.mock('../../../../../src/server/spa/client/react/ui/cn', () => ({
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/useModels', () => ({
-    useModels: () => ({ models: [], loading: false, error: null, reload: vi.fn() }),
+    useModels: (provider?: string) => {
+        mockUseModelsProviders.push(provider);
+        const modelsByProvider: Record<string, any[]> = {
+            copilot: [
+                { id: 'gpt-5.4', name: 'GPT 5.4', enabled: true },
+                { id: 'shared-model', name: 'Shared Model', enabled: true },
+            ],
+            codex: [
+                { id: 'codex-mini', name: 'Codex Mini', enabled: true },
+                { id: 'shared-model', name: 'Shared Model', enabled: true },
+            ],
+            claude: [
+                { id: 'claude-sonnet', name: 'Claude Sonnet', enabled: true },
+            ],
+        };
+        return { models: modelsByProvider[provider ?? 'copilot'] ?? [], loading: false, error: null, reload: vi.fn() };
+    },
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useSlashCommands', () => ({
@@ -146,8 +166,8 @@ vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useModel
         modelFilter: '',
         filteredModels: [{ id: 'gpt-5.4', name: 'GPT 5.4', enabled: true }],
         modelHighlightIndex: 0,
-        modelOverride: null,
-        setModelOverride: vi.fn(),
+        modelOverride: mockModelOverride,
+        setModelOverride: mockSetModelOverride,
         handleModelSelect: mockHandleModelSelect,
         showModelMenu: vi.fn(),
         dismissModelMenu: vi.fn(),
@@ -158,7 +178,14 @@ vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useModel
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/useDefaultModelForMode', () => ({
-    useDefaultModelForMode: () => ({ effectiveModel: undefined, effectiveModelName: undefined }),
+    useDefaultModelForMode: (workspaceId: string | undefined, chatMode: string, _models: any[], provider?: string) => {
+        mockUseDefaultModelArgs.push([workspaceId, chatMode, provider]);
+        const defaults: Record<string, any> = {
+            copilot: { effectiveModel: 'gpt-5.4', effectiveModelName: 'GPT 5.4' },
+            codex: { effectiveModel: 'codex-mini', effectiveModelName: 'Codex Mini' },
+        };
+        return defaults[provider ?? 'copilot'] ?? { effectiveModel: undefined, effectiveModelName: undefined };
+    },
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/features/chat/SlashCommandMenu', () => ({
@@ -207,6 +234,9 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         vi.clearAllMocks();
         mockDefaultProvider = 'copilot';
         mockRepoPreferences = {};
+        mockModelOverride = null;
+        mockUseModelsProviders = [];
+        mockUseDefaultModelArgs = [];
         mockAgentProviders = [
             { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
             { id: 'codex', label: 'Codex', enabled: false, available: false },
@@ -354,5 +384,75 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
 
         expect(mockHandleModelSelect).toHaveBeenCalledWith('gpt-5.4');
         expect((screen.getByTestId('new-chat-input') as HTMLInputElement).value).toBe('Keep this draft');
+    });
+
+    it('resolves models and default model against the selected provider after switching', async () => {
+        mockAgentProviders = [
+            { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+            { id: 'codex', label: 'Codex', enabled: true, available: true },
+            { id: 'claude', label: 'Claude', enabled: false, available: false },
+        ];
+
+        renderNewChatArea();
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Copilot'));
+
+        fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+        fireEvent.click(screen.getByTestId('agent-option-codex'));
+
+        await waitFor(() => {
+            expect(mockUseModelsProviders).toContain('codex');
+            expect(mockUseDefaultModelArgs.some(([, , provider]) => provider === 'codex')).toBe(true);
+            expect(screen.getByTestId('model-picker-chip').textContent).toContain('Codex Mini');
+        });
+    });
+
+    it('omits a stale model override after switching to a provider without that model', async () => {
+        mockModelOverride = 'gpt-5.4';
+        mockAgentProviders = [
+            { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+            { id: 'codex', label: 'Codex', enabled: true, available: true },
+            { id: 'claude', label: 'Claude', enabled: false, available: false },
+        ];
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'queue_123' } });
+
+        renderNewChatArea();
+        await waitFor(() => expect((screen.getByTestId('agent-selector-chip-btn') as HTMLButtonElement).disabled).toBe(false));
+        fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+        fireEvent.click(screen.getByTestId('agent-option-codex'));
+        typeInInput('Hello');
+        await clickSend();
+
+        await waitFor(() => {
+            expect(mockSetModelOverride).toHaveBeenCalledWith(null);
+            expect(mockEnqueueTask).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    payload: expect.objectContaining({ provider: 'codex' }),
+                })
+            );
+        });
+        const body = mockEnqueueTask.mock.calls[0][0];
+        expect(body.payload.model).toBeUndefined();
+    });
+
+    it('preserves and sends an override that exists in both provider catalogs', async () => {
+        mockModelOverride = 'shared-model';
+        mockAgentProviders = [
+            { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+            { id: 'codex', label: 'Codex', enabled: true, available: true },
+            { id: 'claude', label: 'Claude', enabled: false, available: false },
+        ];
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'queue_123' } });
+
+        renderNewChatArea();
+        await waitFor(() => expect((screen.getByTestId('agent-selector-chip-btn') as HTMLButtonElement).disabled).toBe(false));
+        fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+        fireEvent.click(screen.getByTestId('agent-option-codex'));
+        typeInInput('Hello');
+        await clickSend();
+
+        const body = mockEnqueueTask.mock.calls[0][0];
+        expect(mockSetModelOverride).not.toHaveBeenCalledWith(null);
+        expect(body.payload.provider).toBe('codex');
+        expect(body.payload.model).toBe('shared-model');
     });
 });
