@@ -109,6 +109,7 @@ export function createWebSocketInfrastructure(
         payload: {
             kind: (t.payload as any)?.kind,
             mode: (t.payload as any)?.mode,
+            provider: (t.payload as any)?.provider,
             prompt: (t.payload as any)?.prompt,
             planFilePath: (t.payload as any)?.planFilePath,
             filePath: (t.payload as any)?.filePath,

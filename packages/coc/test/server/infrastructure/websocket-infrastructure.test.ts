@@ -241,6 +241,34 @@ describe('createWebSocketInfrastructure', () => {
             expect(aggregate.queue.history).toBeUndefined();
         });
 
+        it('queue broadcasts include payload.provider for chat tasks', () => {
+            registry._mockManager.getQueued.mockReturnValue([
+                {
+                    id: 'q-provider',
+                    repoId: 'repo-1',
+                    type: 'chat',
+                    priority: 1,
+                    status: 'queued',
+                    displayName: 'Provider task',
+                    createdAt: '2026-01-01',
+                    payload: {
+                        kind: 'chat',
+                        mode: 'ask',
+                        provider: 'codex',
+                        planFilePath: '/data/repos/abc/tasks/provider/task.md',
+                    },
+                },
+            ]);
+
+            const ws = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager);
+            const broadcast = vi.spyOn(ws, 'broadcastProcessEvent');
+
+            bridge.emit('queueChange', { repoPath: '/repo', repoId: 'repo-1', type: 'enqueued' });
+
+            const perRepo = broadcast.mock.calls[0][0] as any;
+            expect(perRepo.queue.queued[0].payload.provider).toBe('codex');
+        });
+
         it('does not call getHistory on managers', () => {
             const ws = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager);
             vi.spyOn(ws, 'broadcastProcessEvent');

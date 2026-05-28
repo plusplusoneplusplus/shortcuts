@@ -12,7 +12,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ProviderBadge, getProviderAvatarClasses } from '../../../../../src/server/spa/client/react/features/chat/ProviderBadge';
+import { ProviderBadge, getProviderAvatarClasses, getProviderDotClasses } from '../../../../../src/server/spa/client/react/features/chat/ProviderBadge';
 
 describe('ProviderBadge', () => {
     describe('rendering', () => {
@@ -132,5 +132,33 @@ describe('getProviderAvatarClasses', () => {
         // Must equal the copilot palette so the legacy avatar look is
         // preserved when a chat has no provider metadata.
         expect(classes).toBe(getProviderAvatarClasses('copilot'));
+    });
+});
+
+describe('getProviderDotClasses', () => {
+    it('returns the green dot palette for copilot', () => {
+        const classes = getProviderDotClasses('copilot');
+        expect(classes).toContain('16825d');
+        expect(classes).toContain('89d185');
+    });
+
+    it('returns the coral/orange dot palette for claude', () => {
+        const classes = getProviderDotClasses('claude');
+        expect(classes).toContain('d97757');
+        expect(classes).toContain('f4a17d');
+    });
+
+    it('returns the indigo dot palette for codex', () => {
+        const classes = getProviderDotClasses('codex');
+        expect(classes).toContain('6366f1');
+        expect(classes).toContain('a5b4fc');
+    });
+
+    it('falls back to the copilot dot palette for undefined provider', () => {
+        expect(getProviderDotClasses(undefined)).toBe(getProviderDotClasses('copilot'));
+    });
+
+    it('falls back to the copilot dot palette for unknown runtime provider values', () => {
+        expect(getProviderDotClasses('future-provider' as any)).toBe(getProviderDotClasses('copilot'));
     });
 });
