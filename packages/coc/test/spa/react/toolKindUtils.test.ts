@@ -11,6 +11,20 @@ import {
 import { normalizeToolName } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolNormalization';
 
 describe('normalizeToolName — Claude provider aliases', () => {
+    it.each([
+        ['Read', 'view'],
+        ['Grep', 'grep'],
+        ['Glob', 'glob'],
+        ['LS', 'glob'],
+        ['Edit', 'edit'],
+        ['MultiEdit', 'edit'],
+        ['Write', 'create'],
+        ['Bash', 'bash'],
+        ['Task', 'task'],
+    ])('normalizes PascalCase "%s" (Claude Code SDK) to "%s"', (input, expected) => {
+        expect(normalizeToolName(input)).toBe(expected);
+    });
+
     it('normalizes PascalCase "Skill" (Claude Code SDK) to lowercase "skill"', () => {
         expect(normalizeToolName('Skill')).toBe('skill');
     });
@@ -24,15 +38,23 @@ describe('getToolKindInfo', () => {
     it.each([
         ['view',         { label: 'Read',   cls: 'read'  }],
         ['read',         { label: 'Read',   cls: 'read'  }],
+        ['Read',         { label: 'Read',   cls: 'read'  }],
         ['grep',         { label: 'Grep',   cls: 'grep'  }],
+        ['Grep',         { label: 'Grep',   cls: 'grep'  }],
         ['glob',         { label: 'Glob',   cls: 'glob'  }],
+        ['Glob',         { label: 'Glob',   cls: 'glob'  }],
+        ['LS',           { label: 'Glob',   cls: 'glob'  }],
         ['edit',         { label: 'Edit',   cls: 'edit'  }],
+        ['Edit',         { label: 'Edit',   cls: 'edit'  }],
+        ['MultiEdit',    { label: 'Edit',   cls: 'edit'  }],
         ['edit_file',    { label: 'Edit',   cls: 'edit'  }],
         ['apply_patch',  { label: 'Patch',  cls: 'edit'  }],
         ['file_change',  { label: 'Patch',  cls: 'edit'  }],
         ['create',       { label: 'Write',  cls: 'write' }],
+        ['Write',        { label: 'Write',  cls: 'write' }],
         ['write_file',   { label: 'Write',  cls: 'write' }],
         ['bash',         { label: 'Bash',   cls: 'shell' }],
+        ['Bash',         { label: 'Bash',   cls: 'shell' }],
         ['shell',        { label: 'Shell',  cls: 'shell' }],
         ['command_execution', { label: 'Shell', cls: 'shell' }],
         ['powershell',   { label: 'PS',     cls: 'shell' }],
@@ -73,16 +95,19 @@ describe('getToolMetric', () => {
     it('returns line count for view/read tools', () => {
         const m = getToolMetric('view', { path: '/x' }, 'a\nb\nc', undefined);
         expect(m).toEqual({ kind: 'plain', text: '3 lines' });
+        expect(getToolMetric('Read', { path: '/x' }, 'a\nb', undefined)).toEqual({ kind: 'plain', text: '2 lines' });
     });
 
     it('returns hits count for grep tools', () => {
         const m = getToolMetric('grep', { pattern: 'x' }, 'a.ts:1: x\nb.ts:2: x', undefined);
         expect(m).toEqual({ kind: 'plain', text: '2 hits' });
+        expect(getToolMetric('Grep', { pattern: 'x' }, 'a.ts:1: x', undefined)).toEqual({ kind: 'plain', text: '1 hit' });
     });
 
     it('returns files count for glob tools', () => {
         const m = getToolMetric('glob', { pattern: '*.ts' }, 'a.ts\nb.ts\nc.ts', undefined);
         expect(m).toEqual({ kind: 'plain', text: '3 files' });
+        expect(getToolMetric('Glob', { pattern: '*.ts' }, 'a.ts\nb.ts', undefined)).toEqual({ kind: 'plain', text: '2 files' });
     });
 
     it('returns +N −M diff for edit tools', () => {

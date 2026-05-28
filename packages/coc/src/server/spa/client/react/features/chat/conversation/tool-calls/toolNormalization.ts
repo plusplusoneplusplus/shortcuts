@@ -20,18 +20,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function normalizeToolName(rawName: string | undefined): string {
     const name = (rawName ?? '').trim();
     switch (name) {
+        case 'Read':
         case 'read_file':
         case 'open_file':
             return 'view';
+        case 'Edit':
+        case 'MultiEdit':
+        case 'NotebookEdit':
         case 'edit_file':
         case 'str_replace':
         case 'str_replace_editor':
             return 'edit';
+        case 'Write':
         case 'write_file':
         case 'create_file':
             return 'create';
+        case 'Bash':
+            return 'bash';
         case 'command_execution':
             return 'shell';
+        case 'Grep':
+            return 'grep';
+        case 'Glob':
+        case 'LS':
+            return 'glob';
+        case 'Task':
+            return 'task';
         case 'file_change':
             return 'apply_patch';
         // The Claude Code SDK emits its built-in skill tool as 'Skill' (PascalCase).
