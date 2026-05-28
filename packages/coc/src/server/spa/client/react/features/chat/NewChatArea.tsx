@@ -485,9 +485,10 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                             />
                         </div>
                         <span aria-hidden="true" data-testid="chat-toolbar-divider-mode" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
+                        <div className="relative shrink-0" data-testid="model-picker-chip-container">
                         <button
                             type="button"
-                            className="ctool shrink-0 inline-flex items-center gap-1 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 min-w-0 max-w-[40vw] sm:max-w-[180px] transition-colors"
+                            className="ctool inline-flex items-center gap-1 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 min-w-0 max-w-[40vw] sm:max-w-[180px] transition-colors"
                             onClick={() => {
                                 if (modelCommand.modelMenuVisible) {
                                     modelCommand.dismissModelMenu();
@@ -529,6 +530,22 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                                 <path d="M1 1l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                             </svg>
                         </button>
+                        <ModelCommandMenu
+                            models={modelCommand.filteredModels}
+                            filter={modelCommand.modelFilter}
+                            onSelect={(modelId) => {
+                                modelCommand.handleModelSelect(modelId);
+                                richTextRef.current?.focus();
+                            }}
+                            onDismiss={modelCommand.dismissModelMenu}
+                            visible={modelCommand.modelMenuVisible}
+                            highlightIndex={modelCommand.modelHighlightIndex}
+                            currentModelId={validModelOverride ?? defaultModelId}
+                            onClearOverride={modelCommand.modelOverride
+                                ? () => modelCommand.setModelOverride(null)
+                                : undefined}
+                        />
+                        </div>
                         {/* Effort pill — picks `task.config.reasoningEffort` for
                              models that support extended thinking. `null`
                              (no button selected) leaves the override unset
@@ -644,21 +661,6 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         onDismiss={slashCommands.dismissMenu}
                         visible={slashCommands.menuVisible}
                         highlightIndex={slashCommands.highlightIndex}
-                    />
-                    <ModelCommandMenu
-                        models={modelCommand.filteredModels}
-                        filter={modelCommand.modelFilter}
-                        onSelect={(modelId) => {
-                            modelCommand.handleModelSelect(modelId);
-                            richTextRef.current?.focus();
-                        }}
-                        onDismiss={modelCommand.dismissModelMenu}
-                        visible={modelCommand.modelMenuVisible}
-                        highlightIndex={modelCommand.modelHighlightIndex}
-                        currentModelId={validModelOverride ?? defaultModelId}
-                        onClearOverride={modelCommand.modelOverride
-                            ? () => modelCommand.setModelOverride(null)
-                            : undefined}
                     />
                 </div>
                 </div>

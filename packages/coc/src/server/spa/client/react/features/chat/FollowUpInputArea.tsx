@@ -8,6 +8,7 @@ import { RichTextInput } from '../../shared/RichTextInput';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
+import { AgentSelectorChip } from './AgentSelectorChip';
 import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION } from './ModePillSelector';
 import type { ModePillOption } from './ModePillSelector';
 import { EffortPillSelector } from './EffortPillSelector';
@@ -586,6 +587,18 @@ export function FollowUpInputArea({
                             className="flex flex-wrap items-center gap-x-px gap-y-0.5 pl-2 pr-1.5 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
                             data-testid="chat-input-toolbar"
                         >
+                            {/* Agent provider chip — leftmost, always disabled because
+                                 agent switching mid-session is not yet supported. The chip
+                                 mirrors the NewChatArea layout ("provider · mode · model")
+                                 so both composers share the same visual order. */}
+                            <AgentSelectorChip
+                                providers={[]}
+                                loading={false}
+                                selected={activeProvider ?? 'copilot'}
+                                onChange={() => {}}
+                                disabled={true}
+                            />
+                            <span aria-hidden="true" data-testid="chat-toolbar-divider-provider" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                             {/* Mode pill selector — first in toolbar */}
                             {!hideModeSelector && (
                                 <div data-testid="mode-selector" className="shrink-0 mr-0.5">
@@ -596,13 +609,7 @@ export function FollowUpInputArea({
                                     />
                                 </div>
                             )}
-                            {/* Divider between the mode zone and the model zone.
-                                 Mirrors the OpenDesign provider-first composer:
-                                 "provider · mode · model · tools · send" reads
-                                 as four discrete ownership zones. The provider
-                                 isn't switchable on a follow-up (it's locked to
-                                 the session), so this composer starts at the
-                                 mode zone. */}
+                            {/* Divider between the mode zone and the model zone. */}
                             {!hideModeSelector && modelCommand && (
                                 <span aria-hidden="true" data-testid="chat-toolbar-divider-mode" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                             )}
@@ -612,50 +619,67 @@ export function FollowUpInputArea({
                                  truth for the active model — no separate
                                  override badge is rendered. */}
                             {modelCommand && (
-                                <button
-                                    type="button"
-                                    className="ctool shrink-0 inline-flex items-center gap-1 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 min-w-0 max-w-[40vw] sm:max-w-[180px] transition-colors"
-                                    onClick={() => {
-                                        if (modelCommand.modelMenuVisible) {
-                                            modelCommand.dismissModelMenu();
-                                        } else {
-                                            modelCommand.showModelMenu();
-                                        }
-                                    }}
-                                    title={modelCommand.modelOverride
-                                        ? `Override active: ${modelCommand.modelOverride} (click to change or clear)`
-                                        : (sessionModel ? `Session model: ${sessionModel}` : 'Pick a model')}
-                                    data-testid="model-picker-chip"
-                                    aria-haspopup="listbox"
-                                    aria-expanded={modelCommand.modelMenuVisible}
-                                >
-                                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
-                                        <polygon
-                                            points="8,1 14,4.5 14,11.5 8,15 2,11.5 2,4.5"
-                                            stroke="currentColor"
-                                            strokeWidth="1.2"
-                                            strokeLinejoin="round"
-                                        />
-                                    </svg>
-                                    <span className="truncate font-mono text-[10.5px] font-medium text-[#848484] dark:text-[#999]">
-                                        {modelCommand.modelOverride || sessionModel || 'model'}
-                                    </span>
-                                    {/* Mirrors AgentSelectorChip: chevron
-                                         only, no inline ✕ clear. The
-                                         override is cleared via the "Use
-                                         default" entry rendered at the top
-                                         of ModelCommandMenu when an
-                                         override is set. */}
-                                    <svg
-                                        width="7" height="7"
-                                        viewBox="0 0 8 6"
-                                        fill="none"
-                                        aria-hidden="true"
-                                        className="shrink-0 opacity-60"
+                                <div className="relative shrink-0" data-testid="model-picker-chip-container">
+                                    <button
+                                        type="button"
+                                        className="ctool inline-flex items-center gap-1 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 min-w-0 max-w-[40vw] sm:max-w-[180px] transition-colors"
+                                        onClick={() => {
+                                            if (modelCommand.modelMenuVisible) {
+                                                modelCommand.dismissModelMenu();
+                                            } else {
+                                                modelCommand.showModelMenu();
+                                            }
+                                        }}
+                                        title={modelCommand.modelOverride
+                                            ? `Override active: ${modelCommand.modelOverride} (click to change or clear)`
+                                            : (sessionModel ? `Session model: ${sessionModel}` : 'Pick a model')}
+                                        data-testid="model-picker-chip"
+                                        aria-haspopup="listbox"
+                                        aria-expanded={modelCommand.modelMenuVisible}
                                     >
-                                        <path d="M1 1l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                    </svg>
-                                </button>
+                                        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
+                                            <polygon
+                                                points="8,1 14,4.5 14,11.5 8,15 2,11.5 2,4.5"
+                                                stroke="currentColor"
+                                                strokeWidth="1.2"
+                                                strokeLinejoin="round"
+                                            />
+                                        </svg>
+                                        <span className="truncate font-mono text-[10.5px] font-medium text-[#848484] dark:text-[#999]">
+                                            {modelCommand.modelOverride || sessionModel || 'model'}
+                                        </span>
+                                        {/* Mirrors AgentSelectorChip: chevron
+                                             only, no inline ✕ clear. The
+                                             override is cleared via the "Use
+                                             default" entry rendered at the top
+                                             of ModelCommandMenu when an
+                                             override is set. */}
+                                        <svg
+                                            width="7" height="7"
+                                            viewBox="0 0 8 6"
+                                            fill="none"
+                                            aria-hidden="true"
+                                            className="shrink-0 opacity-60"
+                                        >
+                                            <path d="M1 1l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                        </svg>
+                                    </button>
+                                    <ModelCommandMenu
+                                        models={modelCommand.filteredModels}
+                                        filter={modelCommand.modelFilter}
+                                        onSelect={(modelId) => {
+                                            modelCommand.handleModelSelect(modelId);
+                                            richTextRef.current?.focus();
+                                        }}
+                                        onDismiss={modelCommand.dismissModelMenu}
+                                        visible={modelCommand.modelMenuVisible}
+                                        highlightIndex={modelCommand.modelHighlightIndex}
+                                        currentModelId={modelCommand.modelOverride || sessionModel}
+                                        onClearOverride={modelCommand.modelOverride
+                                            ? () => modelCommand.setModelOverride(null)
+                                            : undefined}
+                                    />
+                                </div>
                             )}
                             {/* Effort pill — picks the per-turn
                                  `reasoningEffort` sent with this follow-up.
@@ -727,7 +751,6 @@ export function FollowUpInputArea({
                                 sessionTokenLimit={sessionTokenLimit}
                                 sessionCurrentTokens={sessionCurrentTokens}
                                 sessionModel={sessionModel}
-                                activeProvider={activeProvider}
                             />
                             <span aria-hidden="true" data-testid="chat-toolbar-divider-send" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                             {isActiveGeneration ? stopButton : (
@@ -747,23 +770,6 @@ export function FollowUpInputArea({
                             visible={slashCommands.menuVisible}
                             highlightIndex={slashCommands.highlightIndex}
                         />
-                        {modelCommand && (
-                            <ModelCommandMenu
-                                models={modelCommand.filteredModels}
-                                filter={modelCommand.modelFilter}
-                                onSelect={(modelId) => {
-                                    modelCommand.handleModelSelect(modelId);
-                                    richTextRef.current?.focus();
-                                }}
-                                onDismiss={modelCommand.dismissModelMenu}
-                                visible={modelCommand.modelMenuVisible}
-                                highlightIndex={modelCommand.modelHighlightIndex}
-                                currentModelId={modelCommand.modelOverride || sessionModel}
-                                onClearOverride={modelCommand.modelOverride
-                                    ? () => modelCommand.setModelOverride(null)
-                                    : undefined}
-                            />
-                        )}
                     </div>
                 </div>
             )}

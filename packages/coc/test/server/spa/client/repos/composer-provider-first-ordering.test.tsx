@@ -332,9 +332,12 @@ describe('Composer provider-first ordering', () => {
             render(<NewChatArea workspaceId="ws-1" />);
             const mode = screen.getByTestId('mode-selector');
             const divider = screen.getByTestId('chat-toolbar-divider-mode');
-            const model = screen.getByTestId('model-picker-chip');
+            // Compare the chip's container (direct toolbar child) rather than
+            // the nested button, because the chip is wrapped in a relative
+            // div to anchor its dropdown.
+            const modelContainer = screen.getByTestId('model-picker-chip-container');
             expect(indexInParent(mode)).toBeLessThan(indexInParent(divider));
-            expect(indexInParent(divider)).toBeLessThan(indexInParent(model));
+            expect(indexInParent(divider)).toBeLessThan(indexInParent(modelContainer));
         });
 
         it('renders slash/mention/attach buttons after the model picker (tools-on-the-right zone)', () => {
@@ -380,17 +383,23 @@ describe('Composer provider-first ordering', () => {
         it('renders the mode pill before the model picker', () => {
             render(<FollowUpInputArea {...defaultFollowUpProps()} />);
             const mode = screen.getByTestId('mode-selector');
-            const model = screen.getByTestId('model-picker-chip');
-            expect(indexInParent(mode)).toBeLessThan(indexInParent(model));
+            // Compare the chip's container (direct toolbar child) rather than
+            // the nested button, because the chip is wrapped in a relative
+            // div to anchor its dropdown.
+            const modelContainer = screen.getByTestId('model-picker-chip-container');
+            expect(indexInParent(mode)).toBeLessThan(indexInParent(modelContainer));
         });
 
         it('renders a divider between mode and model zones', () => {
             render(<FollowUpInputArea {...defaultFollowUpProps()} />);
             const mode = screen.getByTestId('mode-selector');
             const divider = screen.getByTestId('chat-toolbar-divider-mode');
-            const model = screen.getByTestId('model-picker-chip');
+            // Compare the chip's container (direct toolbar child) rather than
+            // the nested button, because the chip is wrapped in a relative
+            // div to anchor its dropdown.
+            const modelContainer = screen.getByTestId('model-picker-chip-container');
             expect(indexInParent(mode)).toBeLessThan(indexInParent(divider));
-            expect(indexInParent(divider)).toBeLessThan(indexInParent(model));
+            expect(indexInParent(divider)).toBeLessThan(indexInParent(modelContainer));
         });
 
         it('renders slash/mention/attach buttons after the model picker', () => {
