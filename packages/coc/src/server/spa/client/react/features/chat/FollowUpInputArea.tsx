@@ -619,7 +619,7 @@ export function FollowUpInputArea({
                                  truth for the active model — no separate
                                  override badge is rendered. */}
                             {modelCommand && (
-                                <div className="relative shrink-0">
+                                <div className="relative shrink-0" data-testid="model-picker-chip-container">
                                     <button
                                         type="button"
                                         className="ctool inline-flex items-center gap-1 h-[22px] px-1.5 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e] hover:text-[#1e1e1e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50 min-w-0 max-w-[40vw] sm:max-w-[180px] transition-colors"
