@@ -146,6 +146,7 @@ export interface ClaudeAccountInfo {
  */
 interface ClaudeQueryHandle extends AsyncIterable<ClaudeSDKMessage> {
     accountInfo?(): Promise<ClaudeAccountInfo>;
+    supportedModels?(): Promise<Array<{ value?: string; displayName?: string; description?: string }>>;
     return?(value?: unknown): Promise<{ done: true; value: unknown }>;
 }
 
@@ -269,20 +270,50 @@ export class ClaudeSDKService implements ISDKService {
     // ── Model discovery ───────────────────────────────────────────────────────
 
     /**
-     * Returns a static list of well-known Claude model IDs.
-     * Claude Code SDK does not expose a dynamic model catalog, so we return
-     * a curated list of known Claude models with a provider-default fallback.
+     * Return available Claude models from the SDK control API when possible.
+     * Falls back to a curated baseline list if dynamic model discovery fails.
      */
     public async listModels(): Promise<IModelInfo[]> {
         if (this.disposed) throw new Error('ClaudeSDKService has been disposed');
         const avail = await this.isAvailable();
         if (!avail.available) throw new Error(avail.error ?? 'Claude Code SDK is not available');
-        return [
-            { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5' },
-            { id: 'claude-opus-4-5', name: 'Claude Opus 4.5' },
+
+        const fallbackModels: IModelInfo[] = [
+            { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
+            { id: 'claude-opus-4-7', name: 'Claude Opus 4.7' },
+            { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
             { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
             { id: 'claude-provider-default', name: 'Claude Provider Default' },
         ];
+
+        const queryFn = this.queryFn;
+        if (!queryFn) return fallbackModels;
+
+        try {
+            const handle = queryFn({ prompt: '' });
+            const sdkModels = await handle.supportedModels?.();
+            await handle.return?.();
+
+            if (!sdkModels || sdkModels.length === 0) return fallbackModels;
+
+            const mapped = sdkModels
+                .map(model => {
+                    const value = model.value?.trim();
+                    const displayName = model.displayName?.trim();
+                    if (!value || !displayName) return null;
+                    return { id: value, name: displayName } as IModelInfo;
+                })
+                .filter((model): model is IModelInfo => model !== null);
+
+            const hasProviderDefault = mapped.some(model => model.id === 'claude-provider-default');
+            if (!hasProviderDefault) {
+                mapped.push({ id: 'claude-provider-default', name: 'Claude Provider Default' });
+            }
+
+            return mapped.length > 0 ? mapped : fallbackModels;
+        } catch {
+            return fallbackModels;
+        }
     }
 
     // ── Account quota from Claude rate-limit events ───────────────────────────

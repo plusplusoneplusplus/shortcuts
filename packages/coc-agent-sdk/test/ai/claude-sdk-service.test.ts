@@ -46,11 +46,16 @@ async function* makeMessages(messages: object[]): AsyncIterable<object> {
     }
 }
 
-/** Wraps a message array as a query handle with an optional accountInfo spy. */
-function makeQueryHandle(messages: object[], accountInfoFn?: () => Promise<object>) {
+/** Wraps a message array as a query handle with optional control-method spies. */
+function makeQueryHandle(
+    messages: object[],
+    accountInfoFn?: () => Promise<object>,
+    supportedModelsFn?: () => Promise<object[]>,
+) {
     const handle = {
         [Symbol.asyncIterator]() { return makeMessages(messages)[Symbol.asyncIterator](); },
         accountInfo: accountInfoFn ?? vi.fn<[], Promise<object>>().mockResolvedValue({}),
+        supportedModels: supportedModelsFn ?? vi.fn<[], Promise<object[]>>().mockResolvedValue([]),
         return: vi.fn(async (value?: unknown) => ({ done: true as const, value })),
     };
     return handle;
@@ -166,6 +171,52 @@ describe('ClaudeSDKService.isAvailable', () => {
         const result = await svc.isAvailable();
         expect(result.available).toBe(false);
         expect(result.error).toMatch(/disposed/);
+    });
+});
+
+// ============================================================================
+// listModels
+// ============================================================================
+
+describe('ClaudeSDKService.listModels', () => {
+    let svc: ClaudeSDKService;
+    const queryFn = vi.fn();
+
+    beforeEach(() => {
+        svc = new ClaudeSDKService();
+        mockDynamicImport.mockReset();
+        queryFn.mockReset();
+        mockDynamicImport.mockResolvedValue({ query: queryFn });
+    });
+
+    afterEach(() => {
+        svc.dispose();
+    });
+
+    it('returns dynamic model list from Claude SDK supportedModels()', async () => {
+        const supportedModelsFn = vi.fn().mockResolvedValue([
+            { value: 'claude-opus-4-7', displayName: 'Claude Opus 4.7', description: 'Premium' },
+            { value: 'claude-sonnet-4-6', displayName: 'Claude Sonnet 4.6', description: 'Balanced' },
+        ]);
+        queryFn.mockReturnValueOnce(makeQueryHandle([], undefined, supportedModelsFn));
+
+        const models = await svc.listModels();
+
+        expect(supportedModelsFn).toHaveBeenCalled();
+        expect(models).toContainEqual({ id: 'claude-opus-4-7', name: 'Claude Opus 4.7' });
+        expect(models).toContainEqual({ id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' });
+        expect(models).toContainEqual({ id: 'claude-provider-default', name: 'Claude Provider Default' });
+    });
+
+    it('falls back to curated models when supportedModels is unavailable', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([]));
+
+        const models = await svc.listModels();
+
+        expect(models).toContainEqual({ id: 'claude-opus-4-7', name: 'Claude Opus 4.7' });
+        expect(models).toContainEqual({ id: 'claude-opus-4-6', name: 'Claude Opus 4.6' });
+        expect(models).toContainEqual({ id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' });
+        expect(models).toContainEqual({ id: 'claude-provider-default', name: 'Claude Provider Default' });
     });
 });
 
