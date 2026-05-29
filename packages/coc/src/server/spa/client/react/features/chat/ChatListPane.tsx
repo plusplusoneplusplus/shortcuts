@@ -34,7 +34,7 @@ import { getListModeConfig } from './list-mode-config';
 import { useAllLoops, type ProcessLoopState } from './hooks/useAllLoops';
 import { LoopIcon } from './icons/LoopIcon';
 import { isRalphTask } from '../../../../../tasks/task-types';
-import { ProviderBadge } from './ProviderBadge';
+import { getProviderDotClasses, getTaskChatProvider } from './ProviderBadge';
 
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {
@@ -1221,6 +1221,7 @@ export function ChatListPane({
             || (awaitingInputProcessIds?.has(task.id) ?? false)
             || askUserCountOnTask > 0
         );
+        const taskProvider = getTaskChatProvider(task);
 
         const modeKey = getTaskModeKey(task);
         const modeLabel = getTaskModeLabel(task);
@@ -1273,7 +1274,8 @@ export function ChatListPane({
         const dotClasses = cn(
             'w-2 h-2 rounded-full justify-self-center transition-shadow',
             isRunning && isAwaitingInput && 'bg-amber-500 dark:bg-amber-400 shadow-[0_0_0_3px_rgba(245,158,11,0.28)]',
-            isRunning && !isAwaitingInput && 'bg-[#0078d4] dark:bg-[#3794ff] animate-pulse shadow-[0_0_0_3px_rgba(0,120,212,0.22)]',
+            isRunning && !isAwaitingInput && getProviderDotClasses(taskProvider),
+            isRunning && !isAwaitingInput && 'animate-pulse shadow-[0_0_0_3px_rgba(0,120,212,0.22)]',
             !isRunning && isFailed && 'bg-red-500 shadow-[0_0_0_2px_rgba(239,68,68,0.20)]',
             !isRunning && isQueued && !isFailed && 'bg-[#dcdcdc] dark:bg-[#6b6b6b]',
             !isRunning && !isQueued && !isFailed && 'bg-[#bbbbbb] dark:bg-[#5c5c5c]',
@@ -1396,13 +1398,6 @@ export function ChatListPane({
                                     <LoopIcon className="w-3.5 h-3.5" />
                                 </span>
                             );
-                        })()}
-                        {(() => {
-                            // Show provider badge for non-default providers (codex, claude).
-                            // Copilot is the default and would add noise to every chat row.
-                            const provider = task.provider ?? task.metadata?.provider ?? task.payload?.provider;
-                            if (provider !== 'codex' && provider !== 'claude') return null;
-                            return <ProviderBadge provider={provider} />;
                         })()}
                     </span>
                     <span className={cn('flex items-center gap-1', isAwaitingInput ? 'text-amber-700 dark:text-amber-300 font-medium' : 'text-[#848484] dark:text-[#999]')}>
