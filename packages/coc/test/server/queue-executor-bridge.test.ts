@@ -43,6 +43,8 @@ import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore, createCompletedProcessWithSession } from '../helpers/mock-process-store';
 import { RalphSessionStore } from '../../src/server/ralph/ralph-session-store';
 import { _clearFinalCheckEnqueuedSet } from '../../src/server/ralph/enqueue-final-check';
+import { ScheduleManager } from '../../src/server/schedule/schedule-manager';
+import { ScheduleYamlPersistence } from '../../src/server/schedule/schedule-yaml-persistence';
 
 // ============================================================================
 // Mock CopilotSDKService
@@ -125,6 +127,16 @@ vi.mock('child_process', () => ({
 
 function delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+    });
+    return { promise, resolve, reject };
 }
 
 async function waitForCondition(predicate: () => boolean, timeoutMs = 3000): Promise<void> {
@@ -6831,6 +6843,109 @@ describe('createQueueExecutorBridge scheduled Ralph session completion', () => {
         expect(record?.loops).toHaveLength(2);
 
         executor.dispose();
+    });
+
+    it('keeps a scheduled Ralph run active through final-check gap loops', async () => {
+        mockSendMessage.mockReset();
+        const gapCheck = deferred<{ success: boolean; response: string; sessionId: string }>();
+        const gapFix = deferred<{ success: boolean; response: string; sessionId: string }>();
+        const cleanCheck = deferred<{ success: boolean; response: string; sessionId: string }>();
+        mockSendMessage
+            .mockResolvedValueOnce({
+                success: true,
+                response: 'Implementation slice done.\n\nRALPH_PROGRESS:\nFiles: a\nDecisions: d\nRemaining: final check\nRALPH_COMPLETE',
+                sessionId: 'sdk-iter-1',
+            })
+            .mockImplementationOnce(() => gapCheck.promise)
+            .mockImplementationOnce(() => gapFix.promise)
+            .mockImplementationOnce(() => cleanCheck.promise);
+
+        const queueManager = new TaskQueueManager();
+        const persistence = new ScheduleYamlPersistence(dataDir);
+        await fs.promises.mkdir(path.join(dataDir, 'repos', workspaceId, 'schedules'), { recursive: true });
+        const manager = new ScheduleManager(persistence, queueManager, null, dataDir);
+        const events: any[] = [];
+        manager.on('change', (event: any) => events.push(event));
+        const { executor } = createQueueExecutorBridge(queueManager, store, {
+            dataDir,
+            sharedConcurrency: 5,
+            exclusiveConcurrency: 1,
+            onRalphSessionComplete: event => queueManager.emit('ralphSessionComplete', event),
+        });
+
+        try {
+            const schedule = manager.addSchedule(workspaceId, {
+                name: 'Scheduled Ralph Gap Loop',
+                target: 'goal.md',
+                cron: '0 9 * * *',
+                params: { flavor: 'gap-loop' },
+                onFailure: 'notify',
+                status: 'paused',
+                mode: 'ralph',
+            });
+            const runPromise = manager.triggerRun(workspaceId, schedule.id);
+
+            await waitForCondition(() => mockSendMessage.mock.calls.length === 2, 5000);
+            const run = manager.getRunHistory(schedule.id)[0];
+            const completionEvents = () => events.filter(event => event.type === 'schedule-run-complete');
+
+            expect(run.status).toBe('running');
+            expect(manager.isRunning(schedule.id, workspaceId)).toBe(true);
+            expect(completionEvents()).toHaveLength(0);
+
+            const finalCheckTask = queueManager.getRunning()[0];
+            expect(finalCheckTask?.payload?.context?.scheduleId).toBe(schedule.id);
+            expect(finalCheckTask?.payload?.context?.scheduleRunId).toBe(run.id);
+
+            gapCheck.resolve({
+                success: true,
+                response: gapFinalCheckResponse(),
+                sessionId: 'sdk-check-1',
+            });
+            await waitForCondition(() => mockSendMessage.mock.calls.length === 3, 5000);
+
+            expect(manager.getRunHistory(schedule.id)[0].status).toBe('running');
+            expect(manager.isRunning(schedule.id, workspaceId)).toBe(true);
+            expect(completionEvents()).toHaveLength(0);
+
+            const gapFixTask = queueManager.getRunning()[0];
+            expect(gapFixTask?.payload?.context?.scheduleId).toBe(schedule.id);
+            expect(gapFixTask?.payload?.context?.scheduleRunId).toBe(run.id);
+
+            gapFix.resolve({
+                success: true,
+                response: 'Gap fixed.\n\nRALPH_PROGRESS:\nFiles: b\nDecisions: d\nRemaining: final check\nRALPH_COMPLETE',
+                sessionId: 'sdk-gap-1',
+            });
+            await waitForCondition(() => mockSendMessage.mock.calls.length === 4, 5000);
+
+            expect(manager.getRunHistory(schedule.id)[0].status).toBe('running');
+            expect(manager.isRunning(schedule.id, workspaceId)).toBe(true);
+            expect(completionEvents()).toHaveLength(0);
+
+            const cleanCheckTask = queueManager.getRunning()[0];
+            expect(cleanCheckTask?.payload?.context?.scheduleId).toBe(schedule.id);
+            expect(cleanCheckTask?.payload?.context?.scheduleRunId).toBe(run.id);
+
+            cleanCheck.resolve({
+                success: true,
+                response: cleanFinalCheckResponse(),
+                sessionId: 'sdk-check-2',
+            });
+
+            const completedRun = await runPromise;
+            expect(completedRun.status).toBe('completed');
+            expect(completedRun.ralphSessionId).toBeDefined();
+            expect(manager.isRunning(schedule.id, workspaceId)).toBe(false);
+            expect(completionEvents()).toHaveLength(1);
+            expect(completionEvents()[0].run).toEqual(expect.objectContaining({
+                id: completedRun.id,
+                status: 'completed',
+            }));
+        } finally {
+            executor.dispose();
+            manager.dispose();
+        }
     });
 });
 
