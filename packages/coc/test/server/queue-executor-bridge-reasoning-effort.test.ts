@@ -341,4 +341,32 @@ describe('reasoningEffort wiring in queue executor bridge', () => {
         expect(call.model).toBe('multi-effort-model');
         expect(call.reasoningEffort).toBe('low');
     });
+
+    // -------------------------------------------------------------------------
+    it('executeFollowUp() preserves "xhigh" per-turn override end-to-end (AC: queued/buffered/drained follow-ups)', async () => {
+        // Verifies that xhigh flows intact through the queue → executor → SDK call.
+        // This covers the acceptance criterion "Queued, buffered, and drained
+        // follow-ups preserve xhigh".
+        getModelSpy.mockImplementation((id: string) =>
+            id === 'codex-gpt-5.5'
+                ? modelInfo(id, {
+                    supportedEfforts: ['low', 'medium', 'high', 'xhigh'],
+                    defaultEffort: 'medium',
+                })
+                : undefined,
+        );
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const proc = createCompletedProcessWithSession('proc-re-xhigh', 'sess-re-xhigh');
+        proc.metadata = { type: 'chat', model: 'codex-gpt-5.5' };
+        await store.addProcess(proc);
+
+        const task = followUpTask('proc-re-xhigh', 'codex-gpt-5.5', 'xhigh');
+        await executor.execute(task);
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
+        expect(call.model).toBe('codex-gpt-5.5');
+        expect(call.reasoningEffort).toBe('xhigh');
+    });
 });
