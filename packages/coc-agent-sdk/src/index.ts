@@ -183,3 +183,25 @@ export type {
     RuntimeToolResultContent,
     CocToolRuntimeContext,
 } from './llm-tools';
+
+export {
+    CocToolBridgeServer,
+    cocToolBridgeServer,
+    COC_LLM_TOOLS_MCP_SERVER_NAME,
+    COC_LLM_TOOLS_ENDPOINT_ENV,
+    COC_LLM_TOOLS_TOKEN_ENV,
+    COC_LLM_TOOLS_BRIDGE_PATH_ENV,
+    buildCocLlmToolsMcpConfig,
+    resolveCocLlmToolsBridgePath,
+    setCocLlmToolsBridgePath,
+    createBridgeHandlers,
+    createHttpTransport,
+    runBridge,
+} from './llm-tools';
+
+export type {
+    CocToolBridgeRegistration,
+    CocLlmToolsMcpServerConfig,
+    BridgeTransport,
+    BridgeHandlerOptions,
+} from './llm-tools';
