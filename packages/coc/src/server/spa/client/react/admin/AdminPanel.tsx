@@ -1077,12 +1077,14 @@ export function AdminPanel() {
         {
             label: 'Configure',
             items: [
-                settingsNavItem('ai'),
+                {
+                    key: 'settings:configure',
+                    label: 'Configure',
+                    icon: '✦',
+                    testId: 'settings-nav-configure',
+                    action: { kind: 'settings', subTab: DEFAULT_SETTINGS_SUBTAB } as AdminNavAction,
+                },
                 ...nonContainerAgentsNavItem,
-                settingsNavItem('chat'),
-                settingsNavItem('appearance'),
-                settingsNavItem('features'),
-                settingsNavItem('integrations'),
             ],
         },
         {
@@ -1144,7 +1146,7 @@ export function AdminPanel() {
     const activeNavKey = isToolEmbedded
         ? `tool:${activeDashboardTab}`
         : activeTab === 'settings'
-            ? `settings:${settingsSubTab}`
+            ? (settingsSubTab === 'advanced' ? 'settings:advanced' : 'settings:configure')
             : `admin:${activeTab}`;
     const activeTabLabel = activeTab === 'settings'
         ? getSettingsSubTabMeta(settingsSubTab).label
@@ -1300,6 +1302,25 @@ export function AdminPanel() {
                         {/* ── Settings tab ── */}
                 {activeTab === 'settings' && (
                     <div className="space-y-3" data-testid="settings-cards">
+                        {/* Sub-tab bar — shown for the 5 main settings sections (not advanced) */}
+                        {settingsSubTab !== 'advanced' && (
+                            <nav className="ar-subtab-row" role="tablist" aria-label="Settings sections">
+                                {SETTINGS_SUBTABS.filter(t => t.id !== 'advanced').map(tab => (
+                                    <button
+                                        key={tab.id}
+                                        type="button"
+                                        role="tab"
+                                        className={`ar-subtab${(!isToolEmbedded && settingsSubTab === tab.id) ? ' is-active' : ''}`}
+                                        onClick={() => handleSettingsSubTabChange(tab.id)}
+                                        data-testid={`settings-subtab-${tab.id}`}
+                                        aria-selected={!isToolEmbedded && settingsSubTab === tab.id}
+                                    >
+                                        <span className="ar-subtab-icon">{tab.icon}</span>
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </nav>
+                        )}
                         {configLoading ? (
                             <section className="ar-card">
                                 <div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>

@@ -53,6 +53,13 @@ const PROVIDER_VARIANTS: Record<ChatProvider, ProviderColorVariant> = {
     },
 };
 
+export function getTaskChatProvider(task: any): ChatProvider | undefined {
+    const provider = task?.provider ?? task?.metadata?.provider ?? task?.payload?.provider;
+    return provider === 'copilot' || provider === 'codex' || provider === 'claude'
+        ? provider
+        : undefined;
+}
+
 /**
  * Returns the Tailwind class string for the round assistant-turn avatar that
  * corresponds to the given provider. Falls back to Copilot's palette for

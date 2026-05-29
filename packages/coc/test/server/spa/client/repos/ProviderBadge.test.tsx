@@ -12,7 +12,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ProviderBadge, getProviderAvatarClasses, getProviderDotClasses } from '../../../../../src/server/spa/client/react/features/chat/ProviderBadge';
+import { ProviderBadge, getProviderAvatarClasses, getProviderDotClasses, getTaskChatProvider } from '../../../../../src/server/spa/client/react/features/chat/ProviderBadge';
 
 describe('ProviderBadge', () => {
     describe('rendering', () => {
@@ -160,5 +160,25 @@ describe('getProviderDotClasses', () => {
 
     it('falls back to the copilot dot palette for unknown runtime provider values', () => {
         expect(getProviderDotClasses('future-provider' as any)).toBe(getProviderDotClasses('copilot'));
+    });
+});
+
+describe('getTaskChatProvider', () => {
+    it('prefers the top-level task provider', () => {
+        expect(getTaskChatProvider({
+            provider: 'claude',
+            metadata: { provider: 'codex' },
+            payload: { provider: 'copilot' },
+        })).toBe('claude');
+    });
+
+    it('falls back to metadata provider and then payload provider', () => {
+        expect(getTaskChatProvider({ metadata: { provider: 'codex' } })).toBe('codex');
+        expect(getTaskChatProvider({ payload: { provider: 'claude' } })).toBe('claude');
+    });
+
+    it('returns undefined for missing or unknown provider values', () => {
+        expect(getTaskChatProvider({})).toBeUndefined();
+        expect(getTaskChatProvider({ provider: 'future-provider' })).toBeUndefined();
     });
 });
