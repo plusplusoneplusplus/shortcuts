@@ -331,7 +331,7 @@ function isBranchRangeInfo(data: GitBranchRangeResponse): data is BranchRangeInf
 
 // ── PR review content ──────────────────────────────────────────────────────────
 
-function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; repoId: string; prId: string }) {
+function PrReviewContent({ workspaceId, repoId, prId, onTitleLoaded }: { workspaceId: string; repoId: string; prId: string; onTitleLoaded?: (title: string) => void }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [fileList, setFileList] = useState<FileChange[]>([]);
@@ -435,6 +435,7 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
         ])
             .then(([prData, diffText]) => {
                 setPrTitle(prData.title);
+                if (prData.title) onTitleLoaded?.(prData.title);
                 setHeadSha(prData.headSha);
                 const stats = extractFileStatsFromDiff(diffText);
                 setFileList(stats.map(s => ({ path: s.path, status: 'modified' as const, additions: s.additions, deletions: s.deletions })));
@@ -604,6 +605,8 @@ function PrReviewContent({ workspaceId, repoId, prId }: { workspaceId: string; r
 function PopOutGitReviewContent({ params }: { params: PopOutGitReviewParams }) {
     const { toasts, addToast, removeToast } = useToast();
     const hasNotifiedRef = useRef(false);
+    const [prTitle, setPrTitle] = useState<string | undefined>(undefined);
+    const [titleExpanded, setTitleExpanded] = useState(true);
 
     const key = params.reviewType === 'commit'
         ? gitReviewPopOutKey(params.workspaceId, params.commitHash!)
@@ -634,36 +637,65 @@ function PopOutGitReviewContent({ params }: { params: PopOutGitReviewParams }) {
     useEffect(() => {
         const hostname = getHostname();
         const brand = hostname ? `CoC @ ${hostname}` : 'CoC';
-        const title = params.reviewType === 'commit'
+        const base = params.reviewType === 'commit'
             ? `Commit ${params.commitHash!.slice(0, 7)}`
             : params.reviewType === 'pr'
                 ? `PR #${params.prId}`
                 : 'Branch Range Review';
+        const title = params.reviewType === 'pr' && prTitle ? `${base} — ${prTitle}` : base;
         document.title = `${title} — ${brand}`;
-    }, [params]);
+    }, [params, prTitle]);
 
     return (
         <ToastProvider value={{ addToast, removeToast, toasts }}>
             <div className="flex flex-col h-screen bg-white dark:bg-[#1e1e1e]" data-testid="popout-git-review-shell">
                 {/* Minimal top bar */}
-                <div className="flex items-center justify-between px-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526]" style={{ minHeight: 44 }}>
-                    <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-sm">📝</span>
-                        <span className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate" data-testid="popout-git-review-title">
-                            {params.reviewType === 'commit'
-                                ? `Commit ${params.commitHash!.slice(0, 7)}`
-                                : params.reviewType === 'pr'
-                                    ? `PR #${params.prId}`
-                                    : 'Branch Range Review'}
-                        </span>
+                <div className="flex flex-col px-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526]">
+                    {/* Primary title row */}
+                    <div className="flex items-center justify-between" style={{ minHeight: 44 }}>
+                        <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm">📝</span>
+                            <span className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate" data-testid="popout-git-review-title">
+                                {params.reviewType === 'commit'
+                                    ? `Commit ${params.commitHash!.slice(0, 7)}`
+                                    : params.reviewType === 'pr'
+                                        ? `PR #${params.prId}`
+                                        : 'Branch Range Review'}
+                            </span>
+                        </div>
+                        {params.reviewType === 'pr' && prTitle && (
+                            <button
+                                type="button"
+                                onClick={() => setTitleExpanded(prev => !prev)}
+                                className="ml-2 shrink-0 text-[#848484] hover:text-[#1e1e1e] dark:text-[#666] dark:hover:text-[#ccc] transition-colors"
+                                aria-label={titleExpanded ? 'Collapse PR title' : 'Expand PR title'}
+                                data-testid="popout-pr-title-toggle"
+                            >
+                                <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                                    {titleExpanded
+                                        ? <path d="M6 4l-4 4h8z" />
+                                        : <path d="M6 8l4-4H2z" />}
+                                </svg>
+                            </button>
+                        )}
                     </div>
+                    {/* Collapsible PR title row */}
+                    {params.reviewType === 'pr' && prTitle && titleExpanded && (
+                        <div
+                            className="pb-2 text-xs text-[#616161] dark:text-[#9d9d9d] truncate"
+                            data-testid="popout-pr-title-description"
+                            title={prTitle}
+                        >
+                            {prTitle}
+                        </div>
+                    )}
                 </div>
                 {/* Review content with file panel */}
                 <div className="flex flex-1 min-h-0 overflow-hidden">
                     {params.reviewType === 'commit' ? (
                         <CommitReviewContent workspaceId={params.workspaceId} commitHash={params.commitHash!} />
                     ) : params.reviewType === 'pr' ? (
-                        <PrReviewContent workspaceId={params.workspaceId} repoId={params.repoId!} prId={params.prId!} />
+                        <PrReviewContent workspaceId={params.workspaceId} repoId={params.repoId!} prId={params.prId!} onTitleLoaded={setPrTitle} />
                     ) : (
                         <BranchRangeReviewContent workspaceId={params.workspaceId} />
                     )}
