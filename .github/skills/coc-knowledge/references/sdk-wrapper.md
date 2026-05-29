@@ -40,6 +40,10 @@ Location: `packages/coc-agent-sdk/src/`
 | `internal/path-security.ts` | Internal: path traversal validation |
 | `internal/path-utils.ts` | Internal: path resolution utilities |
 | `internal/workspace-execution.ts` | Internal: workspace execution helpers |
+| `llm-tools/coc-tool-runtime.ts` | `CocToolRuntime` — provider-neutral runtime over a per-invocation `Tool<any>[]` bundle (`listTools`/`callTool`, result normalization, disposable) |
+| `llm-tools/bridge-server.ts` | `CocToolBridgeServer` + `cocToolBridgeServer` singleton — loopback IPC channel hosting per-invocation runtimes for the MCP bridge |
+| `llm-tools/bridge.ts` | `coc-llm-tools-mcp` — standalone hand-rolled stdio MCP server (child process) proxying `tools/list`/`tools/call` to the parent loopback endpoint |
+| `llm-tools/mcp-config.ts` | `buildCocLlmToolsMcpConfig()` + bridge-path resolution + server-name/env constants |
 | `index.ts` | Public API surface |
 
 ## SDKServiceRegistry
@@ -103,6 +107,8 @@ sdkServiceRegistry.register(SDK_PROVIDER_CODEX, svc);
 
 **Lazy loading:** No SDK module is loaded until the first `isAvailable()` or `sendMessage()` call.
 
+**CoC LLM tools:** when `options.tools` is present, a per-request `Codex` client is built with `config.mcp_servers.coc_llm_tools` pointing at the stdio bridge (see *CoC LLM Tools over MCP*).
+
 ## ClaudeSDKService Architecture
 
 `ClaudeSDKService` implements `ISDKService` backed by the **optional** `@anthropic-ai/claude-agent-sdk` peer dependency. It lazy-loads the SDK's `query` export, streams Claude messages into the common invocation result shape, and reports `{ available: false }` with install guidance when the package cannot be imported.
@@ -121,6 +127,8 @@ Claude session persistence uses the Claude Code SDK transcript session ID. New `
 Claude Code expects hyphenated model IDs for version aliases (for example, `claude-sonnet-4-6`). `ClaudeSDKService` normalizes CoC's shared dotted Claude registry IDs (`claude-sonnet-4.6`, `claude-haiku-4.5`, `claude-opus-4.6`) to that Claude Code form before passing `options.model` to the SDK. Non-Claude model IDs and `claude-provider-default` are omitted so Claude Code can use its configured default.
 
 Claude Code permission mode is mapped at the provider boundary: CoC `autopilot` sends `permissionMode: 'bypassPermissions'` plus `allowDangerouslySkipPermissions: true`, while CoC `plan` sends `permissionMode: 'plan'`. Interactive/ask mode leaves Claude Code's default permission behavior in place.
+
+`ClaudeSDKService` wires CoC LLM tools and any caller-provided `mcpServers` into `query({ options: { mcpServers } })`; CoC tools ride a stdio bridge entry (`coc_llm_tools`, `alwaysLoad: true`) and bridged `tool_use` names are de-namespaced (see *CoC LLM Tools over MCP*).
 
 ## RequestRunner — sendMessage() Flow (Copilot)
 
@@ -169,6 +177,46 @@ Code workspace config uses a top-level `servers` map, which is normalized into
 the `mcpServers` shape before passing configuration to the SDK.
 Config load results include source-scoped `success`/`error` metadata so callers
 can continue with valid sources when another source is malformed.
+
+## CoC LLM Tools over MCP (provider parity)
+
+CoC LLM tools are assembled in the coc package as Copilot SDK-native `Tool<any>[]`
+(via `buildChatToolBundle()` / `applyLlmToolPreferences()`) and passed to every
+provider through `SendMessageOptions.tools`. Copilot consumes them natively; Codex
+and Claude consume the **same already-filtered array** through a provider-neutral
+MCP bridge so features like `ask_user`, conversation search, work-item/bug
+creation, wakeups/loops, Tavily, comments, and memory tools work uniformly.
+
+Pipeline (all in `coc-agent-sdk/src/llm-tools/`):
+1. `CocToolRuntime` wraps the per-invocation `Tool<any>[]` → `listTools()` (JSON-schema
+   descriptors) + `callTool()` (invokes the original in-process handler, normalizes
+   results to MCP `CallToolResult`). Exposes exactly the tools it is given, so
+   per-repo preference filtering upstream means only enabled tools surface.
+2. `CocToolBridgeServer` (`cocToolBridgeServer` singleton) registers each runtime
+   under a random bearer token on a lazily-started `127.0.0.1` HTTP server and
+   serves `POST /list` / `POST /call`. `/call` awaits `callTool` with no server-side
+   timeout, so blocking tools (`ask_user`) keep the request open until the SPA
+   answers — preserving blocking/resume across the process boundary. Reference-
+   counted: torn down when the last runtime unregisters (no idle server, no caching).
+3. `bridge.ts` (`coc-llm-tools-mcp`) is a dependency-free hand-rolled MCP **stdio**
+   server spawned as a child by the provider's MCP client. It reads
+   `COC_LLM_TOOLS_ENDPOINT` / `COC_LLM_TOOLS_TOKEN` from env and proxies
+   `initialize`/`tools/list`/`tools/call` to the loopback endpoint.
+4. `buildCocLlmToolsMcpConfig()` emits the `{ command, args, env }` stdio spec; bridge
+   path resolves to the dist-adjacent `bridge.js`, overridable via
+   `setCocLlmToolsBridgePath()` / `COC_LLM_TOOLS_BRIDGE_PATH` for bundled hosts.
+
+Provider wiring (per request, only when `options.tools` is non-empty; disposed in
+`finally`):
+- **Copilot:** native `SendMessageOptions.tools` (unchanged; no bridge).
+- **Codex:** a fresh `Codex` client is built with
+  `config.mcp_servers.coc_llm_tools = { command, args, env }`. Bridged calls arrive
+  as `mcp_tool_call` items and report bare tool names via existing normalization.
+- **Claude:** the stdio bridge entry is injected into `query({ options: { mcpServers } })`
+  under `coc_llm_tools` with `alwaysLoad: true`; caller-provided `mcpServers` are
+  also forwarded (normalized to Claude's shape). `tool_use` blocks named
+  `mcp__coc_llm_tools__<tool>` are de-namespaced to `<tool>` so `onToolEvent` /
+  tool-call capture / the timeline see the bare CoC tool name.
 
 ## Model Resolution
 

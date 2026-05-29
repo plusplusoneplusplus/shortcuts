@@ -46,6 +46,17 @@ Exports: `DEFAULT_DISABLED_LLM_TOOLS`, `isLlmToolEnabled()`, `filterDisabledLlmT
 - Applies `applyLlmToolPreferences()` filtering from `prompt-builder.ts`
 - Filters by the effective disabled tools list
 
+## Provider Parity (Copilot / Codex / Claude)
+
+The assembled `Tool<any>[]` bundle is passed to every provider via
+`SendMessageOptions.tools`. Copilot consumes it natively; Codex and Claude consume
+the **same already-filtered array** through `coc-agent-sdk`'s provider-neutral MCP
+bridge (`CocToolRuntime` + `CocToolBridgeServer` + the `coc-llm-tools-mcp` stdio
+bridge). The runtime calls the same in-process handler closures, so workspace/process
+context and `ask_user` blocking are preserved across the bridge. See
+[sdk-wrapper.md](sdk-wrapper.md) → *CoC LLM Tools over MCP*. No executor changes are
+needed — providers opt in based on `options.tools`.
+
 ## Memory Read Tools
 
 `memory-read-tools.ts` provides opt-in read-side tools:
