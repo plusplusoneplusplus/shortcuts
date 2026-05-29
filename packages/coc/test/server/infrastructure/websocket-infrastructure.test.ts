@@ -298,5 +298,61 @@ describe('createWebSocketInfrastructure', () => {
             expect((event as any).repoId).toBe('r1');
             expect((event as any).scheduleId).toBe('s1');
         });
+
+        it('forwards running schedule-triggered payloads to dashboard clients', () => {
+            const ws = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager);
+            const broadcast = vi.spyOn(ws, 'broadcastProcessEvent');
+
+            scheduleManager.emit('change', {
+                type: 'schedule-triggered',
+                repoId: 'r1',
+                scheduleId: 's1',
+                schedule: { id: 's1', name: 'Nightly Ralph' },
+                run: { id: 'run-1', scheduleId: 's1', repoId: 'r1', status: 'running' },
+            });
+
+            expect(broadcast).toHaveBeenCalledOnce();
+            const [event] = broadcast.mock.calls[0];
+            expect(event).toMatchObject({
+                type: 'schedule-triggered',
+                repoId: 'r1',
+                scheduleId: 's1',
+                run: { id: 'run-1', status: 'running' },
+            });
+        });
+
+        it.each(['missed', 'completed', 'failed'] as const)(
+            'forwards %s schedule-run-complete payloads to dashboard clients',
+            (status) => {
+                const ws = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager);
+                const broadcast = vi.spyOn(ws, 'broadcastProcessEvent');
+
+                scheduleManager.emit('change', {
+                    type: 'schedule-run-complete',
+                    repoId: 'r1',
+                    scheduleId: 's1',
+                    schedule: { id: 's1', name: 'Nightly Ralph' },
+                    run: {
+                        id: `run-${status}`,
+                        scheduleId: 's1',
+                        repoId: 'r1',
+                        status,
+                        error: status === 'failed' ? 'final-check-failed' : undefined,
+                    },
+                });
+
+                expect(broadcast).toHaveBeenCalledOnce();
+                const [event] = broadcast.mock.calls[0];
+                expect(event).toMatchObject({
+                    type: 'schedule-run-complete',
+                    repoId: 'r1',
+                    scheduleId: 's1',
+                    run: { id: `run-${status}`, status },
+                });
+                if (status === 'failed') {
+                    expect((event as any).run.error).toBe('final-check-failed');
+                }
+            },
+        );
     });
 });

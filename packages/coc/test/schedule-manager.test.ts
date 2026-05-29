@@ -473,6 +473,7 @@ describe('ScheduleManager', () => {
             expect(taskId).toBeDefined();
             expect(mgr.getRunHistory(schedule.id)[0].status).toBe('running');
             expect(mgr.isRunning(schedule.id, REPO_ID)).toBe(true);
+            expect(events.some(e => e.type === 'schedule-triggered' && e.run?.status === 'running')).toBe(true);
             expect(events.some(e => e.type === 'schedule-run-complete')).toBe(false);
 
             let settled = false;
@@ -494,6 +495,8 @@ describe('ScheduleManager', () => {
         it('marks the schedule run failed when the queued task fails', async () => {
             const queue = createDeferredQueueManager();
             const mgr = new ScheduleManager(persistence, queue as any);
+            const events: any[] = [];
+            mgr.on('change', (e: any) => events.push(e));
 
             const schedule = mgr.addSchedule(REPO_ID, {
                 name: 'Deferred Failure',
@@ -513,6 +516,12 @@ describe('ScheduleManager', () => {
             expect(run.error).toContain('queued task failed');
             expect(mgr.getSchedule(REPO_ID, schedule.id)?.status).toBe('stopped');
             expect(mgr.isRunning(schedule.id, REPO_ID)).toBe(false);
+            expect(events.some(e =>
+                e.type === 'schedule-run-complete'
+                && e.run?.id === run.id
+                && e.run?.status === 'failed'
+                && String(e.run?.error).includes('queued task failed')
+            )).toBe(true);
 
             mgr.dispose();
         });
@@ -573,6 +582,8 @@ describe('ScheduleManager', () => {
         it('fails a scheduled Ralph run when the Ralph session terminal reason is a final-check failure', async () => {
             const queue = createDeferredQueueManager();
             const mgr = new ScheduleManager(persistence, queue as any, null, dataDir);
+            const events: any[] = [];
+            mgr.on('change', (e: any) => events.push(e));
 
             const schedule = mgr.addSchedule(REPO_ID, {
                 name: 'Scheduled Ralph Failure',
@@ -602,6 +613,12 @@ describe('ScheduleManager', () => {
             expect(run.status).toBe('failed');
             expect(run.error).toContain('final-check-failed');
             expect(mgr.getSchedule(REPO_ID, schedule.id)?.status).toBe('stopped');
+            expect(events.some(e =>
+                e.type === 'schedule-run-complete'
+                && e.run?.id === run.id
+                && e.run?.status === 'failed'
+                && String(e.run?.error).includes('final-check-failed')
+            )).toBe(true);
 
             mgr.dispose();
         });
