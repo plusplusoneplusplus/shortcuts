@@ -17,7 +17,7 @@
  */
 
 import * as path from 'path';
-import type { Tool } from '@plusplusoneplusplus/forge';
+import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import {
     createMemoryStores,
     HybridSearchEngine,

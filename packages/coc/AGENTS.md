@@ -1,6 +1,8 @@
 # packages/coc
 
-CoC CLI and integrated server. Consumes `@plusplusoneplusplus/forge`.
+CoC CLI and integrated server. Consumes `@plusplusoneplusplus/forge`, plus
+`@plusplusoneplusplus/coc-agent-sdk` directly for the provider-neutral LLM-tool
+contract (`Tool`, `defineTool`, etc.).
 
 See the root `AGENTS.md` for cross-package conventions and **always load
 `.github/skills/coc-knowledge/SKILL.md`** before working on this package —

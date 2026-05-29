@@ -14,7 +14,7 @@
  */
 
 import type { ConversationTurn, ProcessIndexEntry, ProcessStore } from '@plusplusoneplusplus/forge';
-import { defineTool } from '@plusplusoneplusplus/forge';
+import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 
 export interface SearchConversationsArgs {
     query?: string;

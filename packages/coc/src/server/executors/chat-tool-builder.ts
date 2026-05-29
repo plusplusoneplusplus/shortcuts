@@ -1,4 +1,5 @@
-import type { ProcessStore, Tool } from '@plusplusoneplusplus/forge';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { BroadcastWorkItemFn } from '../llm-tools/create-work-item-tool';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { WakeupToolDeps, LoopToolDeps } from '../llm-tools/loop-tools';

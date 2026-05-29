@@ -15,8 +15,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { defineTool } from '@plusplusoneplusplus/forge';
-import type { Tool } from '@plusplusoneplusplus/forge';
+import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
+import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import { getRepoDataPath } from '../paths';
 
 // ============================================================================

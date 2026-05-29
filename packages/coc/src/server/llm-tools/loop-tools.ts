@@ -12,7 +12,7 @@
  */
 
 import * as crypto from 'crypto';
-import { defineTool } from '@plusplusoneplusplus/forge';
+import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { LoopEntry, LoopChangeEvent } from '../loops/loop-types';
 import {
     MIN_LOOP_INTERVAL_MS,

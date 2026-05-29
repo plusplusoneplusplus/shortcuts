@@ -1,6 +1,6 @@
 # LLM Tools
 
-AI tool factories injected into chat executor sessions. Each factory follows a per-invocation pattern: create a stateful tool + accessor per AI call to avoid cross-request contamination. All tools use `defineTool()` from forge.
+AI tool factories injected into chat executor sessions. Each factory follows a per-invocation pattern: create a stateful tool + accessor per AI call to avoid cross-request contamination. All tools use `defineTool()` and the `Tool` type imported directly from `@plusplusoneplusplus/coc-agent-sdk` (the provider-neutral contract owner), not via the forge re-export.
 
 ## Tool Registry
 

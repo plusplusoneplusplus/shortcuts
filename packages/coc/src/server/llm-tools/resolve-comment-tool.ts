@@ -9,7 +9,7 @@
  * avoiding cross-request contamination.
  */
 
-import { defineTool } from '@plusplusoneplusplus/forge';
+import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 
 interface ResolveCommentArgs {
     commentId: string;
