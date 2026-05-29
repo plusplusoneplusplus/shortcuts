@@ -260,6 +260,79 @@ describe('Work Item Hierarchy Routes', () => {
             expect(res.body.roots).toHaveLength(1);
         });
 
+        it('excludes done items when includeDone is false (default)', async () => {
+            const itemRes = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Done item',
+                type: 'work-item',
+            });
+            await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${itemRes.body.id}`, {
+                status: 'done',
+            });
+
+            const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items/tree`);
+            expect(res.status).toBe(200);
+            expect(res.body.roots).toHaveLength(0);
+            expect(res.body.total).toBe(0);
+        });
+
+        it('includes done items when includeDone=true', async () => {
+            const itemRes = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Done item',
+                type: 'work-item',
+            });
+            await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${itemRes.body.id}`, {
+                status: 'done',
+            });
+
+            const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items/tree?includeDone=true`);
+            expect(res.status).toBe(200);
+            expect(res.body.roots).toHaveLength(1);
+            expect(res.body.roots[0].item.status).toBe('done');
+        });
+
+        it('shows only non-done items by default with mixed statuses', async () => {
+            const doneRes = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Done task',
+                type: 'work-item',
+            });
+            await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${doneRes.body.id}`, {
+                status: 'done',
+            });
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Active task',
+                type: 'work-item',
+            });
+
+            const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items/tree`);
+            expect(res.status).toBe(200);
+            expect(res.body.roots).toHaveLength(1);
+            expect(res.body.roots[0].item.title).toBe('Active task');
+            expect(res.body.total).toBe(1);
+        });
+
+        it('done parent with active children: children appear as unparented when includeDone=false', async () => {
+            hierarchyEnabled = true;
+
+            const epicRes = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Done Epic',
+                type: 'epic',
+            });
+            await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${epicRes.body.id}`, {
+                status: 'done',
+            });
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Active Feature',
+                type: 'feature',
+                parentId: epicRes.body.id,
+            });
+
+            const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items/tree`);
+            expect(res.status).toBe(200);
+            // Done epic is hidden; active feature becomes a root
+            expect(res.body.roots).toHaveLength(1);
+            expect(res.body.roots[0].item.title).toBe('Active Feature');
+        });
+
         it('preserves ancestors when search matches a descendant', async () => {
             const epicRes = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
                 title: 'My Epic',

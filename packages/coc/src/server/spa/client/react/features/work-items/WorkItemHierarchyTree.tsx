@@ -63,6 +63,7 @@ export function WorkItemHierarchyTree({
     const [searchQuery, setSearchQuery] = useState('');
     const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => loadCollapsed(workspaceId));
     const [showArchived, setShowArchived] = useState(false);
+    const [showDone, setShowDone] = useState(false);
 
     const [contextMenu, setContextMenu] = useState<{
         node: WorkItemTreeNode;
@@ -85,6 +86,7 @@ export function WorkItemHierarchyTree({
             const resp: WorkItemTreeResponse = await getSpaCocClient().workItems.tree(workspaceId, {
                 q: searchQuery || undefined,
                 includeArchived: showArchived,
+                includeDone: showDone,
             });
             if (resp.disabled) {
                 setError('Hierarchy feature is disabled.');
@@ -98,7 +100,7 @@ export function WorkItemHierarchyTree({
         } finally {
             setLoading(false);
         }
-    }, [workspaceId, searchQuery, showArchived]);
+    }, [workspaceId, searchQuery, showArchived, showDone]);
 
     // Initial load
     useEffect(() => { fetchTree(); }, [fetchTree]);
@@ -306,6 +308,19 @@ export function WorkItemHierarchyTree({
                     onChange={e => setSearchQuery(e.target.value)}
                     data-testid="hierarchy-search-input"
                 />
+                <button
+                    className={cn(
+                        'text-[11px] px-1.5 py-0.5 rounded border transition-colors',
+                        showDone
+                            ? 'border-[#007acc] text-[#007acc] bg-[#007acc]/10'
+                            : 'border-[#d0d0d0] dark:border-[#555] text-[#848484] hover:border-[#999]',
+                    )}
+                    onClick={() => setShowDone(p => !p)}
+                    title="Toggle done items"
+                    data-testid="hierarchy-done-toggle"
+                >
+                    ✓
+                </button>
                 <button
                     className={cn(
                         'text-[11px] px-1.5 py-0.5 rounded border transition-colors',
