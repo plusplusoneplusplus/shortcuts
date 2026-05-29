@@ -1,12 +1,12 @@
 /**
- * Tests for provider badge rendering in ChatListPane.
- * - Shows ProviderBadge for codex tasks
- * - Does NOT show ProviderBadge for copilot-only tasks (default)
+ * Tests for provider rendering in ChatListPane.
+ * - Provider badges are not rendered for list rows.
+ * - Running row status dots use provider color classes.
  * - Reads provider from task.provider (HistorySummary top-level), metadata.provider, or payload.provider
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, cleanup as testingCleanup } from '@testing-library/react';
 
 // --- Mocks (same as ChatListPane-loops pattern) ---
 
@@ -149,6 +149,7 @@ vi.mock('../../../../src/server/spa/client/react/tasks/comments/ContextMenu', ()
 }));
 
 import { ChatListPane } from '../../../../src/server/spa/client/react/features/chat/ChatListPane';
+import { getProviderDotClasses } from '../../../../src/server/spa/client/react/features/chat/ProviderBadge';
 
 function makeTask(overrides: Record<string, any> = {}) {
     return {
@@ -185,34 +186,52 @@ describe('ChatListPane provider badge', () => {
         vi.clearAllMocks();
     });
 
+    const renderRunningTask = async (task: Record<string, any>) => {
+        testingCleanup();
+        await act(async () => {
+            render(<ChatListPane {...defaultProps} running={[makeTask({ status: 'running', ...task })]} />);
+        });
+        const row = screen.getByTestId('running-task-row');
+        const dot = row.querySelector('[aria-label="status: running"]');
+        expect(dot).not.toBeNull();
+        return dot as HTMLElement;
+    };
+
+    const expectProviderDot = (dot: HTMLElement, provider: 'copilot' | 'codex' | 'claude') => {
+        for (const className of getProviderDotClasses(provider).split(' ')) {
+            expect(dot.className).toContain(className);
+        }
+    };
+
     describe('codex provider', () => {
-        it('shows provider-badge for task with provider="codex" at top level', async () => {
+        it('does NOT show provider-badge for task with provider="codex" at top level', async () => {
             const tasks = [makeTask({ id: 'task-a', displayName: 'Codex Chat', provider: 'codex' })];
             await act(async () => {
                 render(<ChatListPane {...defaultProps} history={tasks} />);
             });
-            const badges = screen.getAllByTestId('provider-badge');
-            expect(badges.length).toBeGreaterThan(0);
-            expect(badges[0].getAttribute('data-provider')).toBe('codex');
-            expect(badges[0].textContent).toBe('Codex');
+            expect(screen.queryByTestId('provider-badge')).toBeNull();
         });
 
-        it('shows provider-badge for task with metadata.provider="codex"', async () => {
+        it('does NOT show provider-badge for task with metadata.provider="codex"', async () => {
             const tasks = [makeTask({ id: 'task-b', displayName: 'Codex Meta Chat', metadata: { provider: 'codex' } })];
             await act(async () => {
                 render(<ChatListPane {...defaultProps} history={tasks} />);
             });
-            const badges = screen.getAllByTestId('provider-badge');
-            expect(badges[0].getAttribute('data-provider')).toBe('codex');
+            expect(screen.queryByTestId('provider-badge')).toBeNull();
         });
 
-        it('shows provider-badge for task with payload.provider="codex"', async () => {
+        it('does NOT show provider-badge for task with payload.provider="codex"', async () => {
             const tasks = [makeTask({ id: 'task-c', displayName: 'Codex Payload Chat', payload: { mode: 'ask', provider: 'codex' } })];
             await act(async () => {
                 render(<ChatListPane {...defaultProps} history={tasks} />);
             });
-            const badges = screen.getAllByTestId('provider-badge');
-            expect(badges[0].getAttribute('data-provider')).toBe('codex');
+            expect(screen.queryByTestId('provider-badge')).toBeNull();
+        });
+
+        it('uses codex color for a running task from top-level, metadata, and payload providers', async () => {
+            expectProviderDot(await renderRunningTask({ id: 'task-codex-top', provider: 'codex' }), 'codex');
+            expectProviderDot(await renderRunningTask({ id: 'task-codex-meta', metadata: { provider: 'codex' } }), 'codex');
+            expectProviderDot(await renderRunningTask({ id: 'task-codex-payload', payload: { mode: 'ask', provider: 'codex' } }), 'codex');
         });
     });
 
@@ -222,7 +241,6 @@ describe('ChatListPane provider badge', () => {
             await act(async () => {
                 render(<ChatListPane {...defaultProps} history={tasks} />);
             });
-            // Copilot is the default — no badge shown to avoid visual noise
             expect(screen.queryByTestId('provider-badge')).toBeNull();
         });
 
@@ -233,10 +251,14 @@ describe('ChatListPane provider badge', () => {
             });
             expect(screen.queryByTestId('provider-badge')).toBeNull();
         });
+
+        it('uses copilot color for a running task with missing provider metadata', async () => {
+            expectProviderDot(await renderRunningTask({ id: 'task-default' }), 'copilot');
+        });
     });
 
     describe('mixed provider list', () => {
-        it('shows badge only for codex tasks in a mixed list', async () => {
+        it('shows no badges for a mixed copilot/codex/no-provider list', async () => {
             const tasks = [
                 makeTask({ id: 'task-1', displayName: 'Copilot Chat', provider: 'copilot' }),
                 makeTask({ id: 'task-2', displayName: 'Codex Chat', provider: 'codex' }),
@@ -245,13 +267,10 @@ describe('ChatListPane provider badge', () => {
             await act(async () => {
                 render(<ChatListPane {...defaultProps} history={tasks} />);
             });
-            // Only the codex task should have a badge
-            const badges = screen.getAllByTestId('provider-badge');
-            expect(badges).toHaveLength(1);
-            expect(badges[0].getAttribute('data-provider')).toBe('codex');
+            expect(screen.queryByTestId('provider-badge')).toBeNull();
         });
 
-        it('shows badges for both codex and claude tasks in a mixed list', async () => {
+        it('shows no badges for a mixed copilot/codex/claude list', async () => {
             const tasks = [
                 makeTask({ id: 'task-1', displayName: 'Copilot Chat', provider: 'copilot' }),
                 makeTask({ id: 'task-2', displayName: 'Codex Chat', provider: 'codex' }),
@@ -260,42 +279,39 @@ describe('ChatListPane provider badge', () => {
             await act(async () => {
                 render(<ChatListPane {...defaultProps} history={tasks} />);
             });
-            const badges = screen.getAllByTestId('provider-badge');
-            expect(badges).toHaveLength(2);
-            const providers = badges.map(b => b.getAttribute('data-provider'));
-            expect(providers).toContain('codex');
-            expect(providers).toContain('claude');
+            expect(screen.queryByTestId('provider-badge')).toBeNull();
         });
     });
 
     describe('claude provider', () => {
-        it('shows provider-badge for task with provider="claude" at top level', async () => {
+        it('does NOT show provider-badge for task with provider="claude" at top level', async () => {
             const tasks = [makeTask({ id: 'task-f', displayName: 'Claude Chat', provider: 'claude' })];
             await act(async () => {
                 render(<ChatListPane {...defaultProps} history={tasks} />);
             });
-            const badges = screen.getAllByTestId('provider-badge');
-            expect(badges.length).toBeGreaterThan(0);
-            expect(badges[0].getAttribute('data-provider')).toBe('claude');
-            expect(badges[0].textContent).toBe('Claude');
+            expect(screen.queryByTestId('provider-badge')).toBeNull();
         });
 
-        it('shows provider-badge for task with metadata.provider="claude"', async () => {
+        it('does NOT show provider-badge for task with metadata.provider="claude"', async () => {
             const tasks = [makeTask({ id: 'task-g', displayName: 'Claude Meta Chat', metadata: { provider: 'claude' } })];
             await act(async () => {
                 render(<ChatListPane {...defaultProps} history={tasks} />);
             });
-            const badges = screen.getAllByTestId('provider-badge');
-            expect(badges[0].getAttribute('data-provider')).toBe('claude');
+            expect(screen.queryByTestId('provider-badge')).toBeNull();
         });
 
-        it('shows provider-badge for task with payload.provider="claude"', async () => {
+        it('does NOT show provider-badge for task with payload.provider="claude"', async () => {
             const tasks = [makeTask({ id: 'task-h', displayName: 'Claude Payload Chat', payload: { mode: 'ask', provider: 'claude' } })];
             await act(async () => {
                 render(<ChatListPane {...defaultProps} history={tasks} />);
             });
-            const badges = screen.getAllByTestId('provider-badge');
-            expect(badges[0].getAttribute('data-provider')).toBe('claude');
+            expect(screen.queryByTestId('provider-badge')).toBeNull();
+        });
+
+        it('uses claude color for a running task from top-level, metadata, and payload providers', async () => {
+            expectProviderDot(await renderRunningTask({ id: 'task-claude-top', provider: 'claude' }), 'claude');
+            expectProviderDot(await renderRunningTask({ id: 'task-claude-meta', metadata: { provider: 'claude' } }), 'claude');
+            expectProviderDot(await renderRunningTask({ id: 'task-claude-payload', payload: { mode: 'ask', provider: 'claude' } }), 'claude');
         });
     });
 });
