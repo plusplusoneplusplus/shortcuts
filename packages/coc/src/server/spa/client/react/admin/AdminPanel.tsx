@@ -1084,7 +1084,6 @@ export function AdminPanel() {
                     testId: 'settings-nav-configure',
                     action: { kind: 'settings', subTab: DEFAULT_SETTINGS_SUBTAB } as AdminNavAction,
                 },
-                toolNavItem('models'),
                 ...nonContainerAgentsNavItem,
             ],
         },
