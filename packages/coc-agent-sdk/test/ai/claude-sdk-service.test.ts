@@ -479,6 +479,27 @@ describe('ClaudeSDKService.sendMessage', () => {
         expect(callArgs.options?.model).toBeUndefined();
     });
 
+    it('passes short Claude Code family aliases through unchanged', async () => {
+        queryFn.mockReturnValue(makeMessages([{ type: 'result', subtype: 'success' }]));
+
+        for (const alias of ['opus', 'sonnet', 'haiku']) {
+            queryFn.mockReset();
+            queryFn.mockReturnValue(makeMessages([{ type: 'result', subtype: 'success' }]));
+            await svc.sendMessage({ prompt: 'test', model: alias });
+            expect(queryFn).toHaveBeenLastCalledWith(
+                expect.objectContaining({ options: expect.objectContaining({ model: alias }) }),
+            );
+        }
+    });
+
+    it('drops non-Claude short words that are not valid aliases', async () => {
+        queryFn.mockReturnValue(makeMessages([{ type: 'result', subtype: 'success' }]));
+
+        await svc.sendMessage({ prompt: 'test', model: 'gpt' });
+        const callArgs = queryFn.mock.calls[0][0];
+        expect(callArgs.options?.model).toBeUndefined();
+    });
+
     it('normalizes dotted CoC Claude model IDs to Claude Code model IDs', async () => {
         queryFn.mockReturnValue(makeMessages([
             { type: 'result', subtype: 'success' },
