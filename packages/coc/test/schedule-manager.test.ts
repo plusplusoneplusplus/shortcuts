@@ -27,6 +27,17 @@ function cleanupDir(dir: string): void {
     } catch { /* ignore */ }
 }
 
+async function waitForQueuedTask(queue: ReturnType<typeof createDeferredQueueManager>): Promise<string> {
+    const start = Date.now();
+    while (queue.taskIds().length === 0) {
+        if (Date.now() - start > 1000) {
+            throw new Error('Timed out waiting for queued task');
+        }
+        await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    return queue.taskIds()[0];
+}
+
 function createDeferredQueueManager() {
     const emitter = new EventEmitter();
     const tasks = new Map<string, any>();
@@ -58,6 +69,12 @@ function createDeferredQueueManager() {
             task.completedAt = Date.now();
             task.error = error.message;
             emitter.emit('taskFailed', task, error);
+        },
+        ralphComplete(event: Record<string, unknown>) {
+            emitter.emit('ralphSessionComplete', {
+                type: 'ralphSessionComplete',
+                ...event,
+            });
         },
         taskIds() {
             return Array.from(tasks.keys());
@@ -496,6 +513,95 @@ describe('ScheduleManager', () => {
             expect(run.error).toContain('queued task failed');
             expect(mgr.getSchedule(REPO_ID, schedule.id)?.status).toBe('stopped');
             expect(mgr.isRunning(schedule.id, REPO_ID)).toBe(false);
+
+            mgr.dispose();
+        });
+
+        it('keeps a scheduled Ralph run active until the Ralph session completes', async () => {
+            const queue = createDeferredQueueManager();
+            const mgr = new ScheduleManager(persistence, queue as any, null, dataDir);
+            const events: any[] = [];
+            mgr.on('change', (e: any) => events.push(e));
+
+            const schedule = mgr.addSchedule(REPO_ID, {
+                name: 'Scheduled Ralph',
+                target: 'goal.md',
+                cron: '0 9 * * *',
+                params: { flavor: 'regression' },
+                onFailure: 'notify',
+                status: 'paused',
+                mode: 'ralph',
+            });
+
+            const runPromise = mgr.triggerRun(REPO_ID, schedule.id);
+            await Promise.resolve();
+
+            const taskId = await waitForQueuedTask(queue);
+            const task = queue.getTask(taskId);
+            const sessionId = task.payload.context.ralph.sessionId;
+            const scheduleRunId = task.payload.context.scheduleRunId;
+
+            expect(sessionId).toMatch(/^ralph-/);
+            expect(scheduleRunId).toBe(mgr.getRunHistory(schedule.id)[0].id);
+            expect(task.payload.context.scheduleId).toBe(schedule.id);
+            expect(task.payload.context.scheduleParams).toEqual({ flavor: 'regression' });
+
+            queue.complete(taskId);
+            await Promise.resolve();
+
+            expect(mgr.getRunHistory(schedule.id)[0].status).toBe('running');
+            expect(mgr.isRunning(schedule.id, REPO_ID)).toBe(true);
+            expect(events.some(e => e.type === 'schedule-run-complete')).toBe(false);
+
+            queue.ralphComplete({
+                workspaceId: REPO_ID,
+                sessionId,
+                processId: `queue_${taskId}`,
+                totalIterations: 3,
+                reason: 'signal',
+            });
+
+            const run = await runPromise;
+            expect(run.status).toBe('completed');
+            expect(run.ralphSessionId).toBe(sessionId);
+            expect(mgr.isRunning(schedule.id, REPO_ID)).toBe(false);
+            expect(events.some(e => e.type === 'schedule-run-complete' && e.run?.id === run.id)).toBe(true);
+
+            mgr.dispose();
+        });
+
+        it('fails a scheduled Ralph run when the Ralph session terminal reason is a final-check failure', async () => {
+            const queue = createDeferredQueueManager();
+            const mgr = new ScheduleManager(persistence, queue as any, null, dataDir);
+
+            const schedule = mgr.addSchedule(REPO_ID, {
+                name: 'Scheduled Ralph Failure',
+                target: 'goal.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'stop',
+                status: 'paused',
+                mode: 'ralph',
+            });
+
+            const runPromise = mgr.triggerRun(REPO_ID, schedule.id);
+            await Promise.resolve();
+
+            const taskId = await waitForQueuedTask(queue);
+            const sessionId = queue.getTask(taskId).payload.context.ralph.sessionId;
+            queue.complete(taskId);
+            queue.ralphComplete({
+                workspaceId: REPO_ID,
+                sessionId,
+                processId: `queue_${taskId}`,
+                totalIterations: 1,
+                reason: 'final-check-failed',
+            });
+
+            const run = await runPromise;
+            expect(run.status).toBe('failed');
+            expect(run.error).toContain('final-check-failed');
+            expect(mgr.getSchedule(REPO_ID, schedule.id)?.status).toBe('stopped');
 
             mgr.dispose();
         });

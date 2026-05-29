@@ -916,6 +916,37 @@ describe('ProcessLifecycleRunner — ralph onRalphNext callback', () => {
         expect(onRalphNext).toHaveBeenCalledOnce();
     });
 
+    it('awaits asynchronous onRalphNext bookkeeping before completing the queue task', async () => {
+        let release!: () => void;
+        const blocker = new Promise<void>(resolve => { release = resolve; });
+        let callbackFinished = false;
+        const onRalphNext = vi.fn(async () => {
+            await blocker;
+            callbackFinished = true;
+        });
+        const task = makeRalphTask({ originalGoal: 'Build a REST API' });
+
+        const runPromise = runner.run(task, makeOpts({
+            executeByTypeFn: vi.fn().mockResolvedValue({ response: 'RALPH_NEXT' }),
+            onRalphNext,
+        }));
+
+        const start = Date.now();
+        while (onRalphNext.mock.calls.length === 0) {
+            if (Date.now() - start > 1000) {
+                throw new Error('Timed out waiting for onRalphNext');
+            }
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+        expect(onRalphNext).toHaveBeenCalledOnce();
+        expect(callbackFinished).toBe(false);
+
+        release();
+        const result = await runPromise;
+        expect(result.success).toBe(true);
+        expect(callbackFinished).toBe(true);
+    });
+
     it('works without onRalphNext callback (backward compat)', async () => {
         const task = makeRalphTask({ originalGoal: 'Build a REST API' });
 

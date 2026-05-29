@@ -15,9 +15,16 @@
 import * as crypto from 'crypto';
 import type { QueuedTask, TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
+import type { ChatPayload } from '../tasks/task-types';
 import { TaskDefs } from '../tasks/task-types';
 import { getErrorMessage } from '../shared/fs-utils';
-import { resolveDefaultModel } from '../preferences-handler';
+import {
+    RALPH_DEFAULT_MAX_ITERATIONS,
+    readRepoPreferences,
+    resolveDefaultModel,
+} from '../preferences-handler';
+import { buildRalphIterationTask } from '../ralph/enqueue-iteration';
+import { RalphSessionStore } from '../ralph/ralph-session-store';
 import type {
     ScheduleEntry,
     ScheduleRunRecord,
@@ -127,13 +134,20 @@ export class ScheduleExecutor {
         runningKey: string,
     ): Promise<ScheduleRunRecord> {
         try {
-            this.enqueueTask(repoId, schedule, run);
+            await this.enqueueTask(repoId, schedule, run);
 
             if (!run.taskId) {
                 finaliseRun(run, 'completed');
             } else {
                 this.history.update(schedule.id, run);
-                const outcome = await this.waitForTaskTerminal(run.taskId);
+                const outcome = run.ralphSessionId
+                    ? await this.waitForRalphSessionTerminal({
+                        taskId: run.taskId,
+                        sessionId: run.ralphSessionId,
+                        workspaceId: repoId,
+                        scheduleRunId: run.id,
+                    })
+                    : await this.waitForTaskTerminal(run.taskId);
                 if (outcome.status === 'completed') {
                     finaliseRun(run, 'completed');
                 } else {
@@ -216,7 +230,67 @@ export class ScheduleExecutor {
         });
     }
 
-    private enqueueTask(repoId: string, schedule: ScheduleEntry, run: ScheduleRunRecord): void {
+    private waitForRalphSessionTerminal(input: {
+        taskId: string;
+        sessionId: string;
+        workspaceId: string;
+        scheduleRunId: string;
+    }): Promise<QueueTerminalOutcome> {
+        const queueManager = this.queueManager;
+        if (!queueManager) return Promise.resolve({ status: 'completed' });
+        if (
+            typeof queueManager.on !== 'function'
+            || typeof queueManager.off !== 'function'
+            || typeof queueManager.getTask !== 'function'
+        ) {
+            return this.waitForTaskTerminal(input.taskId);
+        }
+
+        const existingOutcome = getTerminalOutcome(queueManager.getTask(input.taskId));
+        if (existingOutcome?.status === 'failed') return Promise.resolve(existingOutcome);
+
+        return new Promise(resolve => {
+            let settled = false;
+            const resolveOnce = (outcome: QueueTerminalOutcome) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                resolve(outcome);
+            };
+            const onSessionComplete = (event: RalphSessionCompleteEvent) => {
+                if (!matchesRalphSession(input, event)) return;
+                if (isFailedRalphCompletionReason(event.reason)) {
+                    resolveOnce({ status: 'failed', error: event.reason });
+                    return;
+                }
+                resolveOnce({ status: 'completed' });
+            };
+            const onFailed = (task: QueuedTask, error: Error) => {
+                if (!matchesScheduledRalphTask(input, task)) return;
+                resolveOnce({ status: 'failed', error: error ?? task.error });
+            };
+            const onCancelled = (task: QueuedTask) => {
+                if (!matchesScheduledRalphTask(input, task)) return;
+                resolveOnce({ status: 'failed', error: 'Task cancelled' });
+            };
+            const cleanup = () => {
+                queueManager.off('ralphSessionComplete' as never, onSessionComplete as never);
+                queueManager.off('taskFailed', onFailed);
+                queueManager.off('taskCancelled', onCancelled);
+            };
+
+            queueManager.on('ralphSessionComplete' as never, onSessionComplete as never);
+            queueManager.on('taskFailed', onFailed);
+            queueManager.on('taskCancelled', onCancelled);
+
+            const terminalOutcome = getTerminalOutcome(queueManager.getTask(input.taskId));
+            if (terminalOutcome?.status === 'failed') {
+                resolveOnce(terminalOutcome);
+            }
+        });
+    }
+
+    private async enqueueTask(repoId: string, schedule: ScheduleEntry, run: ScheduleRunRecord): Promise<void> {
         if (!this.queueManager) return;
 
         if (!schedule.targetType || schedule.targetType === 'prompt') {
@@ -225,6 +299,42 @@ export class ScheduleExecutor {
             const model = schedule.model
                 || (this.dataDir ? resolveDefaultModel(this.dataDir, repoId, 'schedule') : undefined)
                 || undefined;
+            if (schedule.mode === 'ralph') {
+                const sessionId = createRalphSessionId();
+                const maxIterations = this.dataDir
+                    ? (readRepoPreferences(this.dataDir, repoId).maxRalphIterations ?? RALPH_DEFAULT_MAX_ITERATIONS)
+                    : RALPH_DEFAULT_MAX_ITERATIONS;
+                const originalGoal = `${outputPrefix}Follow the instruction ${schedule.target}.`;
+                if (this.dataDir) {
+                    const store = new RalphSessionStore({ dataDir: this.dataDir });
+                    await store.initSession(repoId, sessionId, {
+                        originalGoal,
+                        maxIterations,
+                    });
+                }
+                const taskId = this.queueManager.enqueue({
+                    ...buildRalphIterationTask({
+                        workspaceId: repoId,
+                        workingDirectory: '',
+                        sessionId,
+                        originalGoal,
+                        iteration: 1,
+                        maxIterations,
+                        dataDir: this.dataDir,
+                        displayName: `[Schedule:Ralph] ${schedule.name}`,
+                        extraContext: {
+                            scheduleId: schedule.id,
+                            scheduleRunId: run.id,
+                            scheduleParams: schedule.params,
+                        },
+                    }),
+                    config: { model },
+                });
+                run.taskId = taskId;
+                run.processId = toQueueProcessId(taskId);
+                run.ralphSessionId = sessionId;
+                return;
+            }
             const taskId = this.queueManager.enqueue({
                 type: 'chat',
                 priority: 'normal',
@@ -277,12 +387,46 @@ function scheduleKey(repoId: string, scheduleId: string): string {
     return `${repoId}\0${scheduleId}`;
 }
 
+function createRalphSessionId(): string {
+    return `ralph-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+}
+
 function getTerminalOutcome(task: QueuedTask | undefined): QueueTerminalOutcome | undefined {
     if (!task) return undefined;
     if (task.status === 'completed') return { status: 'completed' };
     if (task.status === 'failed') return { status: 'failed', error: task.error };
     if (task.status === 'cancelled') return { status: 'failed', error: 'Task cancelled' };
     return undefined;
+}
+
+interface RalphSessionCompleteEvent {
+    workspaceId: string;
+    sessionId?: string;
+    reason: string;
+}
+
+function matchesRalphSession(
+    input: { sessionId: string; workspaceId: string },
+    event: RalphSessionCompleteEvent,
+): boolean {
+    return event.workspaceId === input.workspaceId && event.sessionId === input.sessionId;
+}
+
+function matchesScheduledRalphTask(
+    input: { sessionId: string; scheduleRunId: string },
+    task: QueuedTask | undefined,
+): boolean {
+    const payload = task?.payload as Partial<ChatPayload> | undefined;
+    return payload?.context?.ralph?.sessionId === input.sessionId
+        && payload.context.scheduleRunId === input.scheduleRunId;
+}
+
+function isFailedRalphCompletionReason(reason: string): boolean {
+    return reason === 'final-check-failed'
+        || reason === 'final-check-enqueue-failed'
+        || reason === 'final-check-session-missing'
+        || reason === 'final-check-gap-loop-start-failed'
+        || reason === 'final-check-gap-enqueue-failed';
 }
 
 /** Stamp completedAt, durationMs, and optionally error on a run record. */

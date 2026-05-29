@@ -200,6 +200,8 @@ export interface ChatContext {
     };
     /** Schedule-specific metadata. */
     scheduleId?: string;
+    /** Schedule run record ID that originated this task chain. */
+    scheduleRunId?: string;
     scheduleParams?: Record<string, string>;
     /** Ralph-mode orchestration metadata. */
     ralph?: RalphContext;

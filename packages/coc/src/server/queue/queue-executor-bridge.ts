@@ -40,6 +40,7 @@ export interface CLITaskExecutorOptions {
     getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
     getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined;
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
+    onRalphSessionComplete?: (event: RalphSessionCompleteEvent) => void;
 }
 export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
     maxConcurrency?: number; sharedConcurrency?: number; exclusiveConcurrency?: number;
@@ -57,6 +58,15 @@ export interface QueueExecutorBridge {
     skipAskUserQuestion?(processId: string, questionId: string): Promise<boolean>;
     /** Resolve a pending ask-user question batch. Returns true only if every answer resolves. */
     answerAskUserQuestions?(processId: string, batchId: string, answers: Array<{ questionId: string; answer?: string | string[] | boolean; skipped?: boolean }>): Promise<boolean>;
+}
+
+export interface RalphSessionCompleteEvent {
+    type: 'ralphSessionComplete';
+    workspaceId: string;
+    sessionId?: string;
+    processId: string;
+    totalIterations: number;
+    reason: string;
 }
 
 function pathsReferToSameWorkspace(leftPath: string, rightPath: string): boolean {
@@ -88,6 +98,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private readonly titleGenerationService: TitleGenerationService;
     private readonly getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
     private readonly getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined;
+    private readonly onRalphSessionComplete?: (event: RalphSessionCompleteEvent) => void;
 
     constructor(store: ProcessStore, options: CLITaskExecutorOptions = {}) {
         super(store, options.dataDir);
@@ -95,6 +106,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         this.defaultWorkingDirectory = options.workingDirectory;
         this.aiService = options.aiService ?? sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
         this.getWsServer = options.getWsServer;
+        this.onRalphSessionComplete = options.onRalphSessionComplete;
         this.titleGenerationService = new TitleGenerationService({
             store,
             aiService: this.aiService,
@@ -144,7 +156,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
      * When the completed task is a final-check task (context.ralph.finalCheck
      * is set), routes to handleFinalCheckCompletion instead.
      */
-    private enqueueRalphNextIteration(processId: string, completedTask: QueuedTask, responseText: string): void {
+    private async enqueueRalphNextIteration(processId: string, completedTask: QueuedTask, responseText: string): Promise<void> {
         if (!this.queueManager) return;
         const logger = getLogger();
 
@@ -155,9 +167,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
 
         // ── Route final-check completions separately (AC-01) ────────────────
         if (ralphCtx?.finalCheck) {
-            this.handleFinalCheckCompletion(processId, completedTask, responseText, ralphCtx, workspaceId, sessionId).catch(err => {
-                logger.warn(LogCategory.AI, `[Ralph/FinalCheck] handleFinalCheckCompletion threw: ${err instanceof Error ? err.message : String(err)}`);
-            });
+            await this.handleFinalCheckCompletion(processId, completedTask, responseText, ralphCtx, workspaceId, sessionId);
             return;
         }
 
@@ -167,9 +177,9 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
 
         const shouldContinue = signal === 'RALPH_NEXT' && currentIteration < maxIterations;
 
-        // Persist the iteration's progress section + update session.json.
-        // Best-effort: any I/O failure is logged and does not block enqueue.
-        recordRalphIteration({
+        // Persist before enqueueing follow-on tasks so session observers see
+        // the current iteration state; failures are logged and the loop continues.
+        await recordRalphIteration({
             dataDir: this.dataDir,
             workspaceId,
             sessionId,
@@ -189,12 +199,11 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         if (!shouldContinue) {
             if (signal === 'RALPH_COMPLETE') {
                 // Enqueue a final-check task before broadcasting session-complete (AC-01).
-                this.enqueueFinalCheckAfterComplete(
+                await this.enqueueFinalCheckAfterComplete(
                     workspaceId, sessionId, currentIteration, ralphCtx, completedTask, payload,
                 ).catch(err => {
                     logger.warn(LogCategory.AI, `[Ralph] enqueueFinalCheckAfterComplete failed: ${err instanceof Error ? err.message : String(err)}`);
-                    // Broadcast session complete even if final-check enqueue fails
-                    this.broadcastRalphSessionComplete(workspaceId, sessionId, processId, currentIteration, 'signal');
+                    this.broadcastRalphSessionComplete(workspaceId, sessionId, processId, currentIteration, 'final-check-enqueue-failed');
                 });
             } else {
                 // cap / no-signal / cancelled — broadcast immediately, no final check
@@ -252,6 +261,19 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     ): void {
         if (!workspaceId) return;
         const logger = getLogger();
+        const event: RalphSessionCompleteEvent = {
+            type: 'ralphSessionComplete',
+            workspaceId,
+            sessionId,
+            processId,
+            totalIterations,
+            reason,
+        };
+        try {
+            this.onRalphSessionComplete?.(event);
+        } catch (err) {
+            logger.debug(LogCategory.AI, `[Ralph] Failed to publish internal ralphSessionComplete event: ${err instanceof Error ? err.message : String(err)}`);
+        }
         try {
             this.getWsServer?.()?.broadcastProcessEvent({
                 type: 'ralph-session-complete',
@@ -278,8 +300,12 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         completedTask: QueuedTask,
         payload: ChatPayload,
     ): Promise<void> {
-        if (!workspaceId || !sessionId || !this.queueManager || !this.dataDir) return;
+        if (!workspaceId || !sessionId || !this.queueManager) return;
         const logger = getLogger();
+        if (!this.dataDir) {
+            this.broadcastRalphSessionComplete(workspaceId, sessionId, completedTask.id, sourceIteration, 'signal');
+            return;
+        }
 
         // ── In-memory idempotency guard ──────────────────────────────────────
         if (wasFinalCheckEnqueued(sessionId, sourceIteration)) {
@@ -292,7 +318,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         const session = await store.readSessionRecord(workspaceId, sessionId);
         if (!session) {
             logger.warn(LogCategory.AI, `[Ralph/FinalCheck] Session record missing for ${sessionId}; skipping final-check enqueue.`);
-            this.broadcastRalphSessionComplete(workspaceId, sessionId, completedTask.id, sourceIteration, 'signal');
+            this.broadcastRalphSessionComplete(workspaceId, sessionId, completedTask.id, sourceIteration, 'final-check-session-missing');
             return;
         }
 
@@ -321,6 +347,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             folderPath: (payload as any).folderPath,
             repoId: completedTask.repoId,
             provider: (payload as any).provider,
+            extraContext: getScheduleRunContext(payload.context),
         });
 
         let taskId: string;
@@ -328,7 +355,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             taskId = this.queueManager.enqueue(taskPayload as any);
         } catch (err) {
             logger.warn(LogCategory.AI, `[Ralph/FinalCheck] Enqueue failed for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
-            this.broadcastRalphSessionComplete(workspaceId, sessionId, completedTask.id, sourceIteration, 'signal');
+            this.broadcastRalphSessionComplete(workspaceId, sessionId, completedTask.id, sourceIteration, 'final-check-enqueue-failed');
             return;
         }
 
@@ -401,6 +428,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 folderPath: (completedTask.payload as any).folderPath,
                 provider: (completedTask.payload as any).provider,
                 repoId: completedTask.repoId,
+                extraContext: getScheduleRunContext((completedTask.payload as any).context),
             },
         }).catch(err => {
             logger.warn(LogCategory.AI, `[Ralph/FinalCheck] orchestrateFinalCheck threw: ${err instanceof Error ? err.message : String(err)}`);
@@ -585,6 +613,14 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         });
         await this.store.updateProcess(processId, { pendingMessages: rest });
     }
+}
+
+function getScheduleRunContext(context: ChatPayload['context'] | undefined): Record<string, unknown> | undefined {
+    const scheduleContext: Record<string, unknown> = {};
+    if (context?.scheduleId) scheduleContext.scheduleId = context.scheduleId;
+    if (context?.scheduleRunId) scheduleContext.scheduleRunId = context.scheduleRunId;
+    if (context?.scheduleParams) scheduleContext.scheduleParams = context.scheduleParams;
+    return Object.keys(scheduleContext).length > 0 ? scheduleContext : undefined;
 }
 
 /**

@@ -82,6 +82,7 @@ export interface BuildFinalCheckTaskInput {
     folderPath?: string;
     repoId?: string;
     provider?: import('../tasks/task-types').ChatProvider;
+    extraContext?: Record<string, unknown>;
 }
 
 /**
@@ -96,6 +97,7 @@ export function buildFinalCheckTaskPayload(input: BuildFinalCheckTaskInput) {
     const {
         workspaceId, sessionId, originalGoal, checkIndex, sourceIteration,
         loopIndex, progressPath, workingDirectory, folderPath, repoId, provider,
+        extraContext,
     } = input;
 
     const prompt = buildFinalCheckPrompt({
@@ -113,6 +115,7 @@ export function buildFinalCheckTaskPayload(input: BuildFinalCheckTaskInput) {
         repoId,
         folderPath,
         displayName: `Ralph final check ${checkIndex} (${sessionId})`,
+        config: {},
         payload: {
             kind: 'chat' as const,
             mode: 'ralph' as const,
@@ -122,6 +125,7 @@ export function buildFinalCheckTaskPayload(input: BuildFinalCheckTaskInput) {
             folderPath,
             provider,
             context: {
+                ...(extraContext ?? {}),
                 ralph: {
                     phase: 'executing' as const,
                     sessionId,

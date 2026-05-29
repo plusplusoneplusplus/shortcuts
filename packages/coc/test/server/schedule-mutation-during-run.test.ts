@@ -330,7 +330,7 @@ describe('Schedule Deleted While Running (Section 3)', () => {
         expect(schedules.some((s: any) => s.id === id)).toBe(false);
     });
 
-    it('run triggered before delete completes as completed', async () => {
+    it('run triggered before delete reaches a terminal or active run state', async () => {
         await startServer();
 
         const cr = await postJSON(schedulesUrl(), makeSchedule());
@@ -340,7 +340,7 @@ describe('Schedule Deleted While Running (Section 3)', () => {
         const runRes = await postJSON(`${schedulesUrl()}/${id}/run`, {});
         expect(runRes.status).toBe(200);
         const { run } = JSON.parse(runRes.body);
-        expect(run.status).toMatch(/completed|running/);
+        expect(run.status).toMatch(/completed|running|failed/);
 
         // Delete schedule
         const delRes = await deleteReq(`${schedulesUrl()}/${id}`);

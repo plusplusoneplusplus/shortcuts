@@ -37,6 +37,7 @@ export interface ScheduleRunRecord {
     durationMs?: number;
     processId?: string;
     taskId?: string;
+    ralphSessionId?: string;
 }
 
 export interface ScheduleChangeEvent {

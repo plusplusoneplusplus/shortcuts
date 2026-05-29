@@ -49,6 +49,7 @@ export function buildRalphIterationTask(input: BuildRalphIterationTaskInput) {
         repoId: input.workspaceId,
         folderPath: input.folderPath,
         displayName,
+        config: {},
         payload: {
             kind: 'chat' as const,
             mode: 'ralph' as const,

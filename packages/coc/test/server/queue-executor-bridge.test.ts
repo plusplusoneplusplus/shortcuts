@@ -14,6 +14,8 @@
  */
 
 import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // Partial mock of fs — allows overriding existsSync/readFileSync per test
@@ -39,6 +41,8 @@ import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/forge';
 import { CLITaskExecutor, createQueueExecutorBridge, defaultIsExclusive } from '../../src/server/queue/queue-executor-bridge';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore, createCompletedProcessWithSession } from '../helpers/mock-process-store';
+import { RalphSessionStore } from '../../src/server/ralph/ralph-session-store';
+import { _clearFinalCheckEnqueuedSet } from '../../src/server/ralph/enqueue-final-check';
 
 // ============================================================================
 // Mock CopilotSDKService
@@ -121,6 +125,16 @@ vi.mock('child_process', () => ({
 
 function delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function waitForCondition(predicate: () => boolean, timeoutMs = 3000): Promise<void> {
+    const start = Date.now();
+    while (!predicate()) {
+        if (Date.now() - start > timeoutMs) {
+            throw new Error('Timed out waiting for condition');
+        }
+        await delay(25);
+    }
 }
 
 // ============================================================================
@@ -6679,6 +6693,142 @@ describe('createQueueExecutorBridge dual-limiter options', () => {
         // Second task must have started after first task ended
         expect(startTimes).toHaveLength(2);
         expect(startTimes[1]).toBeGreaterThanOrEqual(endTimes[0]);
+
+        executor.dispose();
+    });
+});
+
+describe('createQueueExecutorBridge scheduled Ralph session completion', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    let dataDir: string;
+
+    const workspaceId = 'ws-scheduled-ralph';
+    const sessionId = 'ralph-scheduled-session';
+    const scheduleId = 'sch_scheduled_ralph';
+    const scheduleRunId = 'run_scheduled_ralph';
+    const marker = 'RALPH_FINAL_CHECK_RESULT';
+
+    function cleanFinalCheckResponse(): string {
+        return `RALPH_FINAL_CHECK_RESULT\n\`\`\`json\n${JSON.stringify({
+            marker,
+            hasGaps: false,
+            summary: 'All schedule acceptance criteria are satisfied.',
+            gaps: [],
+        }, null, 2)}\n\`\`\``;
+    }
+
+    function gapFinalCheckResponse(): string {
+        return `RALPH_FINAL_CHECK_RESULT\n\`\`\`json\n${JSON.stringify({
+            marker,
+            hasGaps: true,
+            summary: 'One gap remains.',
+            gaps: [
+                {
+                    id: 'GAP-01',
+                    title: 'Missing validation evidence',
+                    evidence: 'No final validation output was recorded.',
+                    recommendedAction: 'Run the required validation and record it.',
+                },
+            ],
+            gapFixGoal: 'Fix only GAP-01 and rerun the required validation.',
+        }, null, 2)}\n\`\`\``;
+    }
+
+    beforeEach(async () => {
+        store = createMockProcessStore();
+        dataDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'scheduled-ralph-bridge-'));
+        _clearFinalCheckEnqueuedSet();
+        mockSendMessage.mockReset();
+        mockSendMessage
+            .mockResolvedValueOnce({
+                success: true,
+                response: 'Implementation slice done.\n\nRALPH_PROGRESS:\nFiles: a\nDecisions: d\nRemaining: final check\nRALPH_COMPLETE',
+                sessionId: 'sdk-iter-1',
+            })
+            .mockResolvedValueOnce({
+                success: true,
+                response: gapFinalCheckResponse(),
+                sessionId: 'sdk-check-1',
+            })
+            .mockResolvedValueOnce({
+                success: true,
+                response: 'Gap fixed.\n\nRALPH_PROGRESS:\nFiles: b\nDecisions: d\nRemaining: final check\nRALPH_COMPLETE',
+                sessionId: 'sdk-gap-1',
+            })
+            .mockResolvedValueOnce({
+                success: true,
+                response: cleanFinalCheckResponse(),
+                sessionId: 'sdk-check-2',
+            });
+    });
+
+    afterEach(async () => {
+        _clearFinalCheckEnqueuedSet();
+        await fs.promises.rm(dataDir, { recursive: true, force: true });
+    });
+
+    it('emits Ralph session completion only after final check and gap-fix loops finish', async () => {
+        const sessionStore = new RalphSessionStore({ dataDir });
+        await sessionStore.initSession(workspaceId, sessionId, {
+            originalGoal: 'Complete the scheduled Ralph goal.',
+            maxIterations: 2,
+        });
+
+        const queueManager = new TaskQueueManager();
+        const completions: any[] = [];
+        const { executor } = createQueueExecutorBridge(queueManager, store, {
+            dataDir,
+            sharedConcurrency: 5,
+            exclusiveConcurrency: 1,
+            onRalphSessionComplete: event => completions.push(event),
+        });
+
+        queueManager.enqueue({
+            type: 'chat',
+            priority: 'normal',
+            repoId: workspaceId,
+            payload: {
+                kind: 'chat',
+                mode: 'ralph',
+                prompt: 'Continue the scheduled Ralph session.',
+                workspaceId,
+                workingDirectory: '',
+                context: {
+                    scheduleId,
+                    scheduleRunId,
+                    ralph: {
+                        phase: 'executing',
+                        sessionId,
+                        originalGoal: 'Complete the scheduled Ralph goal.',
+                        currentIteration: 1,
+                        maxIterations: 2,
+                    },
+                },
+            },
+            config: {},
+            displayName: 'Scheduled Ralph iteration 1',
+        });
+
+        await waitForCondition(() => completions.length === 1, 5000);
+
+        expect(completions[0]).toEqual(expect.objectContaining({
+            workspaceId,
+            sessionId,
+            reason: 'signal',
+        }));
+        expect(mockSendMessage).toHaveBeenCalledTimes(4);
+
+        const record = await sessionStore.readSessionRecord(workspaceId, sessionId);
+        expect(record?.finalChecks).toHaveLength(2);
+        expect(record?.finalChecks?.[0]).toEqual(expect.objectContaining({
+            hasGaps: true,
+            gapLoopStarted: true,
+        }));
+        expect(record?.finalChecks?.[1]).toEqual(expect.objectContaining({
+            hasGaps: false,
+            gapLoopStarted: false,
+        }));
+        expect(record?.loops).toHaveLength(2);
 
         executor.dispose();
     });
