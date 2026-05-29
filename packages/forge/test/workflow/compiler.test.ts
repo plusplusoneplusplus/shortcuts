@@ -638,19 +638,6 @@ job:
             const config = compileToWorkflow(yaml);
             expect(config.settings?.workingDirectory).toBe('/my/dir');
         });
-
-        it('maps toolCallCache to settings.toolCallCache', () => {
-            const yaml = `
-name: test
-toolCallCache:
-  enabled: true
-  level: system
-job:
-  prompt: test
-`;
-            const config = compileToWorkflow(yaml);
-            expect(config.settings?.toolCallCache).toBe(true);
-        });
     });
 
     describe('Edge cases', () => {
@@ -976,8 +963,6 @@ reduce:
         const yaml = `
 name: "Full Pipeline"
 workingDirectory: /workspace
-toolCallCache:
-  enabled: true
 parameters:
   - name: lang
     value: en
@@ -1026,7 +1011,6 @@ reduce:
 
         expect(config.name).toBe('Full Pipeline');
         expect(config.settings?.workingDirectory).toBe('/workspace');
-        expect(config.settings?.toolCallCache).toBe(true);
         expect(config.parameters).toEqual({ lang: 'en', mode: 'strict' });
         expect(Object.keys(config.nodes)).toEqual(['load', 'filter', 'map', 'reduce']);
 

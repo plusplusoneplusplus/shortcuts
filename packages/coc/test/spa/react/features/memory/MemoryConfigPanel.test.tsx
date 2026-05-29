@@ -9,8 +9,6 @@ import { MemoryConfigPanel } from '../../../../../src/server/spa/client/react/fe
 const mockMemoryApi = vi.hoisted(() => ({
     getConfig: vi.fn(),
     saveConfig: vi.fn(),
-    getToolCallCacheStats: vi.fn(),
-    aggregateToolCalls: vi.fn(),
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/features/memory/memoryApi', () => ({
@@ -29,15 +27,7 @@ const defaultConfig = {
 beforeEach(() => {
     mockMemoryApi.getConfig.mockReset();
     mockMemoryApi.saveConfig.mockReset();
-    mockMemoryApi.getToolCallCacheStats.mockReset();
-    mockMemoryApi.aggregateToolCalls.mockReset();
     mockMemoryApi.getConfig.mockResolvedValue(defaultConfig);
-    mockMemoryApi.getToolCallCacheStats.mockResolvedValue({
-        rawCount: 0,
-        consolidatedCount: 0,
-        consolidatedExists: false,
-        lastAggregation: null,
-    });
 });
 
 afterEach(() => {

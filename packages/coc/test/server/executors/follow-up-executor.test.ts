@@ -135,7 +135,6 @@ function makeExecutor(
         aiService: sdkMocks.service as any,
         defaultTimeoutMs: 30_000,
         followUpSuggestions: { enabled: false, count: 3 },
-        toolCallCacheStore: { options: {} } as any,
         resolveWorkspaceIdForPath: vi.fn().mockResolvedValue('ws-id'),
         resolveSkillConfig: vi.fn().mockResolvedValue({ skillDirectories: undefined, disabledSkills: undefined }),
         // Default: always resolve to the mock service (any provider).

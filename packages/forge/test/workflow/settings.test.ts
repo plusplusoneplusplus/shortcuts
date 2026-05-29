@@ -169,11 +169,4 @@ describe('WorkflowSettings cascading', () => {
             expect.objectContaining({ workingDirectory: '/workflow/dir' }),
         );
     });
-
-    it('toolCallCache field is accepted on settings without error', async () => {
-        const invoker = makeInvoker();
-        const config = configWithSettings({ toolCallCache: true });
-        const result = await executeWorkflow(config, { aiInvoker: invoker });
-        expect(result.success).toBe(true);
-    });
 });

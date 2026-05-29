@@ -89,14 +89,13 @@ Exported.  Implements `TaskExecutor` (forge) and `QueueExecutorBridge`.
 | `followUpSuggestions: { enabled, count }` | private | `base-executor.ts` | Config forwarded to follow-up/chat executors |
 | `getWsServer?: () => ProcessWebSocketServer` | private | `base-executor.ts` | Used in `executeResolveComments` |
 | `queueManager?: TaskQueueManager` | private | `base-executor.ts` | Injected by factory; used in title generation and follow-up requeue |
-| `toolCallCacheStore: FileToolCallCacheStore` | private | `base-executor.ts` | Tool-call Q&A capture |
 | `registry: TaskStrategyRegistry` | private | `base-executor.ts` | Dispatch for `run-script` / `replicate-template` |
 
 ### 5b. Public Methods
 
 | Method | Target module | Dependencies on other in-file symbols |
 |---|---|---|
-| `constructor` | `base-executor.ts` | All instance fields; `RunScriptStrategy`, `ReplicateTemplateStrategy`, `resolveToolCallCacheOptions` |
+| `constructor` | `base-executor.ts` | All instance fields; `RunScriptStrategy`, `ReplicateTemplateStrategy` |
 | `setQueueManager(qm)` | `base-executor.ts` | `queueManager` field |
 | `execute(task)` ← `TaskExecutor` contract | `base-executor.ts` | `extractPrompt`, `applySkillContent`, `getWorkingDirectory`, `executeByType`, `generateTitleIfNeeded`, `cleanupSession`, `persistOutput`, `TERMINAL_STATUSES`, `sessions`, `ImageBlobStore` |
 | `cancel(taskId)` ← `TaskExecutor` contract | `base-executor.ts` | `cancelledTasks` |
@@ -118,7 +117,7 @@ Exported.  Implements `TaskExecutor` (forge) and `QueueExecutorBridge`.
 | `applySkillContent(prompt, task)` | `executors/prompt-builder.ts` | — (pure transformation) |
 | `buildExecutionContext(task)` | `base-executor.ts` | `getWorkingDirectory`, `store`, `approvePermissions` |
 | `executeByType(task, prompt)` | `base-executor.ts` (dispatcher) | `executeRunPipeline`, `executeTaskGeneration`, `executeResolveComments`, `executeWithAI`, `buildFollowUpSuggestionsAddon`, `buildModeSystemMessage`, `withRepoInstructions`, `getWorkingDirectory`, `resolveSkillConfig`, `registry` |
-| `executeWithAI(task, prompt, options)` | `base-executor.ts` | `getOrCreateSession`, `buildToolEventHandler`, `checkThrottleAndFlush`, `appendTimelineItem`, `toAgentMode`, `resolveSkillConfig`, `getWorkingDirectory`, `ImageBlobStore`, `saveImagesToTempFiles`, `cleanupTempDir`, `ToolCallCapture` |
+| `executeWithAI(task, prompt, options)` | `base-executor.ts` | `getOrCreateSession`, `buildToolEventHandler`, `checkThrottleAndFlush`, `appendTimelineItem`, `toAgentMode`, `resolveSkillConfig`, `getWorkingDirectory`, `ImageBlobStore`, `saveImagesToTempFiles`, `cleanupTempDir` |
 | `executeTaskGeneration(task)` | `executors/plan-executor.ts` | `executeWithAI`, `resolveTaskRoot`, `resolveWorkspaceIdForPath`, `gatherFeatureContext` (forge), prompt-builder helpers (forge) |
 | `executeRunPipeline(task)` | `executors/workflow-executor.ts` | `createCLIAIInvoker`, `compileToWorkflow`/`executeWorkflow`/`flattenWorkflowResult` (forge), `store` |
 | `executeResolveComments(task)` | `executors/chat-executor.ts` | `executeWithAI`, `store`, `getWsServer`, `dataDir`, `TaskCommentsManager` |

@@ -3,15 +3,7 @@
  */
 
 import {
-    type AggregateToolCallsResponse,
-    type ConsolidatedEntryWithAnswer,
-    type ExploreCacheConsolidatedListResponse,
-    type ExploreCacheLevelsOverview,
-    type ExploreCacheRawListResponse,
     type MemoryConfig,
-    type MemoryLevel,
-    type ToolCallCacheStats,
-    type ToolCallQAEntry,
     type DbBrowserColumn,
     type DbBrowserTableDataResponse,
     type DbBrowserTable,
@@ -30,15 +22,7 @@ export interface FeedItem {
 }
 
 export type {
-    AggregateToolCallsResponse,
-    ConsolidatedEntryWithAnswer,
-    ExploreCacheConsolidatedListResponse,
-    ExploreCacheLevelsOverview,
-    ExploreCacheRawListResponse,
     MemoryConfig,
-    MemoryLevel,
-    ToolCallCacheStats,
-    ToolCallQAEntry,
     DbBrowserColumn as RawDbColumnInfo,
     DbBrowserTableDataResponse as RawDbTableData,
     DbBrowserTable as RawDbTableInfo,
@@ -53,33 +37,5 @@ export const memoryApi = {
 
     saveConfig(config: MemoryConfig): Promise<MemoryConfig> {
         return getSpaCocClient().memory.replaceConfig(config);
-    },
-
-    getExploreCacheLevels(): Promise<ExploreCacheLevelsOverview> {
-        return getSpaCocClient().memory.getExploreCacheLevels();
-    },
-
-    listExploreCacheRaw(level: MemoryLevel, hash?: string): Promise<ExploreCacheRawListResponse> {
-        return getSpaCocClient().memory.listExploreCacheRaw(level, { hash });
-    },
-
-    getExploreCacheRaw(filename: string, level: MemoryLevel, hash?: string): Promise<ToolCallQAEntry> {
-        return getSpaCocClient().memory.getExploreCacheRaw(filename, level, { hash });
-    },
-
-    listExploreCacheConsolidated(level: MemoryLevel, hash?: string): Promise<ExploreCacheConsolidatedListResponse> {
-        return getSpaCocClient().memory.listExploreCacheConsolidated(level, { hash });
-    },
-
-    getExploreCacheConsolidated(id: string, level: MemoryLevel, hash?: string): Promise<ConsolidatedEntryWithAnswer> {
-        return getSpaCocClient().memory.getExploreCacheConsolidated(id, level, { hash });
-    },
-
-    getToolCallCacheStats(): Promise<ToolCallCacheStats> {
-        return getSpaCocClient().memory.getToolCallCacheStats();
-    },
-
-    aggregateToolCalls(): Promise<AggregateToolCallsResponse> {
-        return getSpaCocClient().memory.aggregateToolCalls();
     },
 };

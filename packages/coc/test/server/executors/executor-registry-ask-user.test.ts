@@ -59,7 +59,6 @@ function createRegistry() {
         dataDir: '/data',
         defaultTimeoutMs: 30_000,
         followUpSuggestions: { enabled: false, count: 3 },
-        toolCallCacheStore: { options: {} } as any,
         resolveSkillConfig: vi.fn().mockResolvedValue({}),
         resolveWorkspaceIdForPath: vi.fn().mockResolvedValue('ws-1'),
         onTitleNeeded: vi.fn(),

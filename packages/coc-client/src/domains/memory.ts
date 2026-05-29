@@ -1,26 +1,13 @@
-import { CocApiError } from '../errors';
 import type {
-  AggregateToolCallsResponse,
-  ConsolidatedEntryWithAnswer,
-  ExploreCacheConsolidatedListResponse,
-  ExploreCacheLevelsOverview,
-  ExploreCacheRawListResponse,
   ListFactsOptions,
   MemoryConfig,
   MemoryEpisode,
   MemoryFact,
-  MemoryLevel,
   MemoryScopeInfo,
   MemoryV2ExportData,
-  ToolCallCacheStats,
-  ToolCallQAEntry,
 } from '../contracts';
 import type { RequestAdapter } from '../types';
 import { encodePathSegment } from '../url';
-
-export interface MemoryHashOptions {
-  hash?: string;
-}
 
 export class MemoryClient {
   constructor(private readonly transport: RequestAdapter) {}
@@ -31,42 +18,6 @@ export class MemoryClient {
 
   replaceConfig(config: MemoryConfig): Promise<MemoryConfig> {
     return this.transport.request<MemoryConfig>('/memory/config', { method: 'PUT', body: { ...config } });
-  }
-
-  getExploreCacheLevels(): Promise<ExploreCacheLevelsOverview> {
-    return this.transport.request<ExploreCacheLevelsOverview>('/memory/explore-cache/levels');
-  }
-
-  listExploreCacheRaw(level: MemoryLevel = 'system', options?: MemoryHashOptions): Promise<ExploreCacheRawListResponse> {
-    return this.transport.request<ExploreCacheRawListResponse>('/memory/explore-cache/raw', {
-      query: { level, hash: options?.hash },
-    });
-  }
-
-  getExploreCacheRaw(filename: string, level: MemoryLevel = 'system', options?: MemoryHashOptions): Promise<ToolCallQAEntry> {
-    return this.transport.request<ToolCallQAEntry>(`/memory/explore-cache/raw/${encodePathSegment(filename)}`, {
-      query: { level, hash: options?.hash },
-    });
-  }
-
-  listExploreCacheConsolidated(level: MemoryLevel = 'system', options?: MemoryHashOptions): Promise<ExploreCacheConsolidatedListResponse> {
-    return this.transport.request<ExploreCacheConsolidatedListResponse>('/memory/explore-cache/consolidated', {
-      query: { level, hash: options?.hash },
-    });
-  }
-
-  getExploreCacheConsolidated(id: string, level: MemoryLevel = 'system', options?: MemoryHashOptions): Promise<ConsolidatedEntryWithAnswer> {
-    return this.transport.request<ConsolidatedEntryWithAnswer>(`/memory/explore-cache/consolidated/${encodePathSegment(id)}`, {
-      query: { level, hash: options?.hash },
-    });
-  }
-
-  getToolCallCacheStats(): Promise<ToolCallCacheStats> {
-    return this.transport.request<ToolCallCacheStats>('/memory/aggregate-tool-calls/stats');
-  }
-
-  aggregateToolCalls(): Promise<AggregateToolCallsResponse> {
-    return this.transport.request<AggregateToolCallsResponse>('/memory/aggregate-tool-calls', { method: 'POST' });
   }
 }
 

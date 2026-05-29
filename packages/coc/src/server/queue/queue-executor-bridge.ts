@@ -3,8 +3,7 @@ import { isChatPayload, TaskDefs, getTaskDef } from '../tasks/task-types';
 import { applyFollowUpToTask } from '../shared/queue-utils';
 import { processToQueuedTask } from '../shared/process-history-mapper';
 import type { Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
-import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, FileToolCallCacheStore, sdkServiceRegistry, SDK_PROVIDER_COPILOT, getLogger, LogCategory, normalizeExecutionPath, resolveToolCallCacheOptions, resolveWorkspaceExecutionContext, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
-import * as path from 'path';
+import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, sdkServiceRegistry, SDK_PROVIDER_COPILOT, getLogger, LogCategory, normalizeExecutionPath, resolveWorkspaceExecutionContext, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import { BaseExecutor } from '../executors/base-executor';
 import { resolveSkillConfig } from '../executors/skill-config-resolver';
 import { TitleGenerationService } from '../executors/title-generator';
@@ -101,7 +100,6 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             aiService: this.aiService,
             defaultWorkingDirectory: this.defaultWorkingDirectory,
         });
-        const cacheStore = new FileToolCallCacheStore(resolveToolCallCacheOptions(options.workingDirectory, this.dataDir ? path.join(this.dataDir, 'memory') : undefined));
         const skillCfg = (wsId: string | undefined, workDir?: string) => resolveSkillConfig(store, this.dataDir, wsId, workDir);
         this.executors = new ExecutorRegistry(store, {
             approvePermissions: this.approvePermissions,
@@ -113,7 +111,6 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             askUser: options.askUser,
             provider: options.provider,
             resolveAiServiceForProvider: options.resolveAiServiceForProvider,
-            toolCallCacheStore: cacheStore,
             resolveSkillConfig: skillCfg,
             resolveWorkspaceIdForPath: (p: string) => this.resolveWorkspaceIdForPath(p),
             onTitleNeeded: (pid: string, turns: ConversationTurn[]) => this.generateTitleIfNeeded(pid, turns),

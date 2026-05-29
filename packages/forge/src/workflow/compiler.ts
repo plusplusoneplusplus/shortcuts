@@ -369,9 +369,6 @@ function compilePipelineToWorkflow(parsed: Record<string, unknown>): WorkflowCon
     if (pipeline.workingDirectory) {
         settings.workingDirectory = pipeline.workingDirectory;
     }
-    if (pipeline.toolCallCache) {
-        settings.toolCallCache = true;
-    }
     if (Object.keys(settings).length > 0) {
         config.settings = settings;
     }
