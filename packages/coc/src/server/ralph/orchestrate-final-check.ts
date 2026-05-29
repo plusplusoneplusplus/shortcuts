@@ -18,7 +18,7 @@ import { RalphSessionStore } from './ralph-session-store';
 import { buildRalphIterationTask } from './enqueue-iteration';
 import type { RalphFinalCheckRecord } from './types';
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
-import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
+import { resolveRalphAdditionalIterations } from '../routes/ralph-route-utils';
 
 // ============================================================================
 // Injected dependencies (allow testability without a live bridge/WS)
@@ -168,16 +168,7 @@ export async function orchestrateFinalCheck(input: OrchestrateFinalCheckInput): 
         logger.warn(LogCategory.AI, `[Ralph/FinalCheck] No gapFixGoal for ${sessionId} — falling back to gap titles.`);
     }
 
-    // Resolve additional iterations from preferences or default.
-    let additionalIterations = RALPH_DEFAULT_MAX_ITERATIONS;
-    if (dataDir) {
-        try {
-            const prefs = readRepoPreferences(dataDir, workspaceId);
-            if (prefs.maxRalphIterations) additionalIterations = prefs.maxRalphIterations;
-        } catch {
-            // Preferences are optional
-        }
-    }
+    const additionalIterations = resolveRalphAdditionalIterations(undefined, dataDir, workspaceId);
 
     let newLoopRecord;
     try {

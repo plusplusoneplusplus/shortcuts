@@ -104,3 +104,13 @@ The endpoint:
 The SPA shows a **"Promote to Ralph"** pill in the follow-up area for eligible
 chats and calls this endpoint via `coc-client`'s `processes.promoteToRalph`
 helper.
+
+## Resume Routes
+
+Session resume endpoints share infrastructure in
+`packages/coc/src/server/routes/ralph-route-utils.ts`.
+`/continue` and `/new-loop` both use it for in-flight Ralph task scans,
+`additionalIterations` validation/default resolution, resume hard caps, and
+best-effort recovery of `workingDirectory` / `folderPath` from the latest
+iteration process. Final-check gap-fix loops use the same additional-iteration
+resolver so per-repo `maxRalphIterations` fallback stays consistent.

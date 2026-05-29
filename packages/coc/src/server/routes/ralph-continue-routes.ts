@@ -11,17 +11,19 @@
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
 import type { Route } from '../types';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
-import type { ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
 import type { RalphSessionRecord } from '../ralph/types';
 import { buildRalphIterationTask } from '../ralph/enqueue-iteration';
-import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
-
-/** Hard cap on the resulting maxIterations after a continue. */
-export const RALPH_CONTINUE_HARD_CAP = 500;
-/** Inclusive upper bound on a single `additionalIterations` request. */
-export const RALPH_CONTINUE_ADDITIONAL_LIMIT = 200;
+import {
+    findInFlightRalphTask,
+    parseAdditionalIterations,
+    recoverIterationPaths,
+    resolveRalphAdditionalIterations,
+    RALPH_RESUME_ADDITIONAL_LIMIT,
+    RALPH_RESUME_HARD_CAP,
+} from './ralph-route-utils';
 
 export interface RalphContinueRouteContext {
     bridge: MultiRepoQueueRouter;
@@ -31,8 +33,12 @@ export interface RalphContinueRouteContext {
 }
 
 export function isResumableTerminalState(record: RalphSessionRecord): boolean {
-    if (record.phase !== 'complete') return false;
-    if (record.terminalReason === 'CAP_REACHED') return true;
+    if (record.phase !== 'complete') {
+        return false;
+    }
+    if (record.terminalReason === 'CAP_REACHED') {
+        return true;
+    }
     if (record.terminalReason === 'NO_SIGNAL'
         && record.currentIteration >= record.maxIterations) {
         return true;
@@ -61,23 +67,11 @@ export function registerRalphContinueRoutes(routes: Route[], ctx: RalphContinueR
                 body = {};
             }
 
-            // Validate optional override
-            let additionalIterations: number | undefined;
-            if (body && Object.prototype.hasOwnProperty.call(body, 'additionalIterations')) {
-                const raw = body.additionalIterations;
-                if (typeof raw !== 'number'
-                    || !Number.isFinite(raw)
-                    || !Number.isInteger(raw)
-                    || raw < 1
-                    || raw > RALPH_CONTINUE_ADDITIONAL_LIMIT) {
-                    return sendError(
-                        res,
-                        400,
-                        `additionalIterations must be an integer between 1 and ${RALPH_CONTINUE_ADDITIONAL_LIMIT}`,
-                    );
-                }
-                additionalIterations = raw;
+            const additionalIterationsResult = parseAdditionalIterations(body, RALPH_RESUME_ADDITIONAL_LIMIT);
+            if ('error' in additionalIterationsResult) {
+                return sendError(res, 400, additionalIterationsResult.error);
             }
+            const additionalIterations = additionalIterationsResult.value;
 
             const journal = new RalphSessionStore({ dataDir });
             const record = await journal.readSessionRecord(workspaceId, sessionId);
@@ -106,44 +100,18 @@ export function registerRalphContinueRoutes(routes: Route[], ctx: RalphContinueR
                 return sendError(res, 409, `A Ralph task for this session is still ${inFlight.status}`);
             }
 
-            // Resolve additional iterations: explicit body > per-repo pref > default
-            let resolvedAdd = additionalIterations;
-            if (resolvedAdd === undefined) {
-                let prefMax: number | undefined;
-                try {
-                    prefMax = readRepoPreferences(dataDir, workspaceId).maxRalphIterations;
-                } catch {
-                    // Preferences are optional
-                }
-                resolvedAdd = prefMax ?? RALPH_DEFAULT_MAX_ITERATIONS;
-            }
+            const resolvedAdd = resolveRalphAdditionalIterations(additionalIterations, dataDir, workspaceId);
 
             const newMax = record.maxIterations + resolvedAdd;
-            if (newMax > RALPH_CONTINUE_HARD_CAP) {
+            if (newMax > RALPH_RESUME_HARD_CAP) {
                 return sendError(
                     res,
                     400,
-                    `Resulting maxIterations (${newMax}) exceeds hard cap of ${RALPH_CONTINUE_HARD_CAP}`,
+                    `Resulting maxIterations (${newMax}) exceeds hard cap of ${RALPH_RESUME_HARD_CAP}`,
                 );
             }
 
-            // Try to recover the workingDirectory and folderPath from the most
-            // recent iteration's process. Best-effort.
-            let workingDirectory: string | undefined;
-            let folderPath: string | undefined;
-            const lastIter = [...record.iterations].sort((a, b) => b.iteration - a.iteration)[0];
-            if (lastIter?.processId) {
-                try {
-                    const proc = await store.getProcess(lastIter.processId, workspaceId);
-                    const procPayload = (proc as any)?.payload as Record<string, any> | undefined;
-                    workingDirectory = procPayload?.workingDirectory
-                        ?? procPayload?.folderPath
-                        ?? (proc as any)?.workingDirectory;
-                    folderPath = procPayload?.folderPath;
-                } catch {
-                    // Non-fatal — workingDirectory may be undefined
-                }
-            }
+            const { workingDirectory, folderPath } = await recoverIterationPaths(record, store, workspaceId);
 
             // Mutate session.json + append continuation marker. Order matters:
             // do the atomic record update first so concurrent continues lose
@@ -202,25 +170,4 @@ export function registerRalphContinueRoutes(routes: Route[], ctx: RalphContinueR
             });
         },
     });
-}
-
-function findInFlightRalphTask(
-    bridge: MultiRepoQueueRouter,
-    sessionId: string,
-): { id: string; status: string } | undefined {
-    // MultiRepoQueueRouter does not expose a global "all tasks" iterator
-    // directly, but `findTaskByProcessId` shows the pattern. We re-implement
-    // a sessionId scan by iterating per-repo queues.
-    const queues = (bridge as any).registry?.getAllQueues?.() as Map<string, { getAll(): QueuedTask[] }> | undefined;
-    if (!queues) return undefined;
-    for (const manager of queues.values()) {
-        for (const task of manager.getAll()) {
-            const ralph = (task.payload as any)?.context?.ralph;
-            if (ralph?.sessionId !== sessionId) continue;
-            if (task.status === 'queued' || task.status === 'running') {
-                return { id: task.id, status: task.status };
-            }
-        }
-    }
-    return undefined;
 }
