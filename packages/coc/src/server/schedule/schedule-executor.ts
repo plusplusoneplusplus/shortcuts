@@ -32,6 +32,7 @@ export type ScheduleFailureStopHandler = (repoId: string, scheduleId: string) =>
 
 export class ScheduleExecutor {
     private readonly runningSchedules = new Set<string>();
+    private readonly runningRunPromises = new Map<string, Promise<ScheduleRunRecord>>();
 
     constructor(
         private readonly queueManager: TaskQueueManager | null,
@@ -57,7 +58,7 @@ export class ScheduleExecutor {
      * task reaches a terminal state. Errors during enqueue mark the run as
      * failed immediately and may stop the schedule via `onFailureStop`.
      */
-    async executeRun(repoId: string, schedule: ScheduleEntry): Promise<ScheduleRunRecord> {
+    executeRun(repoId: string, schedule: ScheduleEntry): Promise<ScheduleRunRecord> {
         const runningKey = scheduleKey(repoId, schedule.id);
         const run: ScheduleRunRecord = {
             id: 'run_' + crypto.randomBytes(6).toString('hex'),
@@ -78,6 +79,53 @@ export class ScheduleExecutor {
             run,
         });
 
+        let resolveRun!: (value: ScheduleRunRecord) => void;
+        let rejectRun!: (reason?: unknown) => void;
+        const runPromise = new Promise<ScheduleRunRecord>((resolve, reject) => {
+            resolveRun = resolve;
+            rejectRun = reject;
+        });
+        this.runningRunPromises.set(runningKey, runPromise);
+        void this.executeQueuedRun(repoId, schedule, run, runningKey).then(resolveRun, rejectRun);
+        return runPromise;
+    }
+
+    whenIdle(scheduleId: string, repoId: string): Promise<void> {
+        const runPromise = this.runningRunPromises.get(scheduleKey(repoId, scheduleId));
+        if (!runPromise) return Promise.resolve();
+        return runPromise.then(() => undefined, () => undefined);
+    }
+
+    recordMissedRun(repoId: string, schedule: ScheduleEntry, reason: string): ScheduleRunRecord {
+        const now = new Date().toISOString();
+        const run: ScheduleRunRecord = {
+            id: 'run_' + crypto.randomBytes(6).toString('hex'),
+            scheduleId: schedule.id,
+            repoId,
+            startedAt: now,
+            completedAt: now,
+            status: 'missed',
+            durationMs: 0,
+            error: reason,
+        };
+
+        this.history.add(schedule.id, run);
+        this.emit({
+            type: 'schedule-run-complete',
+            repoId,
+            scheduleId: schedule.id,
+            schedule,
+            run,
+        });
+        return run;
+    }
+
+    private async executeQueuedRun(
+        repoId: string,
+        schedule: ScheduleEntry,
+        run: ScheduleRunRecord,
+        runningKey: string,
+    ): Promise<ScheduleRunRecord> {
         try {
             this.enqueueTask(repoId, schedule, run);
 
@@ -102,6 +150,7 @@ export class ScheduleExecutor {
             }
         } finally {
             this.runningSchedules.delete(runningKey);
+            this.runningRunPromises.delete(runningKey);
             this.history.update(schedule.id, run);
         }
 

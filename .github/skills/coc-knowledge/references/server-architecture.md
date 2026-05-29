@@ -74,7 +74,7 @@ The `src/server/` tree is grouped by feature domain. Cross-cutting plumbing stay
 | `workspaces/` | global-workspace, my-work, my-life, workspace-summary |
 | `processes/` | in-memory store, output-file-manager, stale-task-detector, pin/archive, seen-state, turn-actions, history, resume |
 | `queue/` | queue-handler, executor-bridge, multi-repo-router, image-blob-store, partitioner |
-| `schedule/` | cron-utils, schedule-handler/manager/executor, run-persistence, yaml-persistence, repo-schedule-loader/overrides. Schedule run records stay `running` after enqueue and finalize from queue terminal events. |
+| `schedule/` | cron-utils, schedule-handler/manager/executor, run-persistence, yaml-persistence, repo-schedule-loader/overrides. Schedule run records stay `running` after enqueue and finalize from queue terminal events; overlapping timer fires are recorded as `missed` and the next timer is armed after the active run finishes. |
 | `tasks/` | task-types, cache, watcher, migration, root-resolver, generation, read/write handlers, comments/ |
 | `notes/` | read/write/comments/AI/file-preview/image/edits handlers, git/ sub-module, notes-root-resolver (multi-root), notes-roots-handler (roots CRUD API) |
 | `workflows/` | constants, utils, watcher, read/write handlers |

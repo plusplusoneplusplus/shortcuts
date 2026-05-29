@@ -527,6 +527,64 @@ describe('ScheduleManager', () => {
         });
     });
 
+    describe('timer overlap handling', () => {
+        it('records a missed run and waits for the active run to finish before rescheduling', async () => {
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date('2026-02-18T10:00:30Z'));
+
+            const queue = createDeferredQueueManager();
+            const mgr = new ScheduleManager(persistence, queue as any);
+            const events: any[] = [];
+            mgr.on('change', (e: any) => events.push(e));
+
+            try {
+                const schedule = mgr.addSchedule(REPO_ID, {
+                    name: 'Overlap Schedule',
+                    target: 'test.yaml',
+                    cron: '* * * * *',
+                    params: {},
+                    onFailure: 'notify',
+                    status: 'active',
+                });
+
+                const activeRunPromise = mgr.triggerRun(REPO_ID, schedule.id);
+                await Promise.resolve();
+                const activeTaskId = queue.taskIds()[0];
+                expect(queue.enqueue).toHaveBeenCalledTimes(1);
+
+                await vi.advanceTimersByTimeAsync(30_000);
+
+                const historyAfterMiss = mgr.getRunHistory(schedule.id);
+                expect(queue.enqueue).toHaveBeenCalledTimes(1);
+                expect(historyAfterMiss[0].status).toBe('missed');
+                expect(historyAfterMiss[0].completedAt).toBeDefined();
+                expect(historyAfterMiss[1].status).toBe('running');
+                expect(events.some(e => e.type === 'schedule-run-complete' && e.run?.status === 'missed')).toBe(true);
+
+                await vi.advanceTimersByTimeAsync(60_000);
+                expect(queue.enqueue).toHaveBeenCalledTimes(1);
+                expect(mgr.getRunHistory(schedule.id).filter(run => run.status === 'missed')).toHaveLength(1);
+
+                queue.complete(activeTaskId);
+                await activeRunPromise;
+                await Promise.resolve();
+
+                await vi.advanceTimersByTimeAsync(59_000);
+                expect(queue.enqueue).toHaveBeenCalledTimes(1);
+
+                await vi.advanceTimersByTimeAsync(1_000);
+                expect(queue.enqueue).toHaveBeenCalledTimes(2);
+
+                const secondTaskId = queue.taskIds()[1];
+                queue.complete(secondTaskId);
+                await Promise.resolve();
+            } finally {
+                mgr.dispose();
+                vi.useRealTimers();
+            }
+        });
+    });
+
     describe('restore', () => {
         it('restores schedules from persistence', () => {
             // Create a schedule, save, dispose, then restore in a new manager
