@@ -169,3 +169,17 @@ export {
 } from './tool-call';
 
 export { initSDKLogger, resetSDKLogger, getSDKLogger } from './logger';
+
+export {
+    CocToolRuntime,
+    resolveInputSchema,
+    normalizeToolResult,
+    errorResult,
+} from './llm-tools';
+
+export type {
+    RuntimeToolDescriptor,
+    RuntimeToolResult,
+    RuntimeToolResultContent,
+    CocToolRuntimeContext,
+} from './llm-tools';
