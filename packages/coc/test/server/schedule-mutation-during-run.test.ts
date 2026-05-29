@@ -5,11 +5,10 @@
  * - Schedule Modified While Running (Section 2)
  * - Schedule Deleted While Running (Section 3)
  *
- * Since ScheduleManager.executeRun() is synchronous under the hood (no awaits
- * before finalising the run), "during run" tests verify the next scheduled
- * fire behaviour after state mutations. The critical invariants are:
- * - PATCH/DELETE do not affect a run that has already been enqueued
- * - State changes take effect on the NEXT fire
+ * Since ScheduleManager.executeRun() awaits the queued task to reach a
+ * terminal state, "during run" tests rely on fake queueManagers that don't
+ * emit completion events — leaving the executor waiting — so state-mutation
+ * side effects are tested without waiting for the run to finish.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
