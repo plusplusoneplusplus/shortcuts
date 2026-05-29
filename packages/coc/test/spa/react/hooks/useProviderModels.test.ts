@@ -112,6 +112,61 @@ describe('useProviderModels', () => {
         expect(result.current.models[0].defaultReasoningEffort).toBe('high');
     });
 
+    it('includes xhigh for Codex gpt-5.5 from supportedReasoningEfforts (AC-02)', async () => {
+        // Verifies that xhigh is preserved end-to-end through the SPA normalization
+        // path when the backend catalog reports it via supportedReasoningEfforts.
+        mocks.agentProviders.listModels.mockResolvedValue({
+            provider: 'codex',
+            models: [{
+                id: 'gpt-5.5',
+                name: 'GPT-5.5',
+                enabled: true,
+                capabilities: {
+                    supports: {
+                        vision: false,
+                        reasoningEffort: true,
+                        reasoning_effort: ['low', 'medium', 'high', 'xhigh'],
+                    },
+                    limits: { max_context_window_tokens: 0 },
+                },
+                supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
+                defaultReasoningEffort: 'medium',
+            }],
+        });
+        const { result } = renderHook(() => useProviderModels('codex'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        const m = result.current.models[0];
+        expect(m.id).toBe('gpt-5.5');
+        expect(m.supportedReasoningEfforts).toEqual(['low', 'medium', 'high', 'xhigh']);
+        expect(m.defaultReasoningEffort).toBe('medium');
+        expect(m.capabilities?.supports.reasoningEffort).toBe(true);
+    });
+
+    it('deliberately filters "minimal" effort — not supported by the CoC effort picker (AC-02b)', async () => {
+        // The Codex catalog may report "minimal" as a supported level.
+        // CoC's effort picker UI only supports ['low','medium','high','xhigh'].
+        // "minimal" is intentionally excluded so users cannot select an effort
+        // that has no corresponding UI label or end-to-end handling.
+        mocks.agentProviders.listModels.mockResolvedValue({
+            provider: 'codex',
+            models: [{
+                id: 'gpt-5.5',
+                name: 'GPT-5.5',
+                capabilities: {
+                    supports: {
+                        reasoning_effort: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+                    },
+                    limits: { max_context_window_tokens: 0 },
+                },
+            }],
+        });
+        const { result } = renderHook(() => useProviderModels('codex'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        const efforts = result.current.models[0].supportedReasoningEfforts;
+        expect(efforts).not.toContain('minimal');
+        expect(efforts).toEqual(['low', 'medium', 'high', 'xhigh']);
+    });
+
     it('reload clears error and re-fetches', async () => {
         mocks.agentProviders.listModels.mockRejectedValueOnce(new Error('fail'));
         const { result } = renderHook(() => useProviderModels('copilot'));

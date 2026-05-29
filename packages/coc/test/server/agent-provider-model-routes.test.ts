@@ -218,6 +218,60 @@ describe('GET /api/agent-providers/:provider/models', () => {
         expect(data.provider).toBe('codex');
         expect(data.models).toEqual([]);
     });
+
+    it('returns codex gpt-5.5 with supportedReasoningEfforts and defaultReasoningEffort (AC-01)', async () => {
+        // This verifies the core acceptance criterion: the REST catalog exposes
+        // supportedReasoningEfforts and defaultReasoningEffort for Codex models.
+        const gpt55 = {
+            id: 'gpt-5.5',
+            name: 'GPT-5.5',
+            capabilities: {
+                supports: {
+                    vision: false,
+                    reasoningEffort: true,
+                    reasoning_effort: ['low', 'medium', 'high', 'xhigh'],
+                },
+                limits: { max_context_window_tokens: 0 },
+            },
+            supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
+            defaultReasoningEffort: 'medium',
+        };
+        const codexService = makeAiService({
+            listModels: async () => [gpt55] as unknown as any[],
+        });
+        const ctx = makeCtx({
+            getCodexSdkService: () => codexService as unknown as any,
+        });
+        server = makeServer(ctx);
+        await startServer();
+
+        const { status, body } = await apiGet('/api/agent-providers/codex/models');
+        expect(status).toBe(200);
+        const data = body as { provider: string; models: Array<ModelInfo & { enabled: boolean; supportedReasoningEfforts?: string[]; defaultReasoningEffort?: string }> };
+        expect(data.provider).toBe('codex');
+        expect(data.models).toHaveLength(1);
+        const m = data.models[0];
+        expect(m.id).toBe('gpt-5.5');
+        expect(m.supportedReasoningEfforts).toEqual(['low', 'medium', 'high', 'xhigh']);
+        expect(m.defaultReasoningEffort).toBe('medium');
+    });
+
+    it('returns empty models for codex when SDK service listModels throws', async () => {
+        const codexService = makeAiService({
+            listModels: async () => { throw new Error('catalog unavailable'); },
+        });
+        const ctx = makeCtx({
+            getCodexSdkService: () => codexService as unknown as any,
+        });
+        server = makeServer(ctx);
+        await startServer();
+
+        const { status, body } = await apiGet('/api/agent-providers/codex/models');
+        expect(status).toBe(200);
+        const data = body as { provider: string; models: ModelInfo[] };
+        expect(data.provider).toBe('codex');
+        expect(data.models).toEqual([]);
+    });
 });
 
 describe('GET /api/agent-providers/:provider/models/enabled', () => {
