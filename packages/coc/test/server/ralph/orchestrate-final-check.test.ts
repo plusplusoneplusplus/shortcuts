@@ -8,6 +8,7 @@
  *  - Unparseable response → record status=failed + broadcastSessionComplete('final-check-failed')
  *  - Missing gapFixGoal → synthesize from gaps (goalSynthesized flag)
  *  - startNewLoop failure → record gapLoopStarted=false + broadcast
+ *  - enqueueTask failure → record gapLoopStarted=false + broadcast
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -241,13 +242,13 @@ describe('orchestrateFinalCheck', () => {
     });
 
     describe('unparseable response', () => {
-        it('records status=failed', async () => {
+        it('records status=failed with explicit gap metadata', async () => {
             const deps = makeDeps();
             await orchestrateFinalCheck(makeInput('This is not a valid response', deps));
 
             expect(deps.store.upsertFinalCheckRecord).toHaveBeenCalledWith(
                 WORKSPACE_ID, SESSION_ID, CHECK_INDEX,
-                expect.objectContaining({ status: 'failed' }),
+                expect.objectContaining({ status: 'failed', hasGaps: false, gapCount: 0 }),
             );
         });
 
@@ -300,6 +301,32 @@ describe('orchestrateFinalCheck', () => {
             expect(deps.store.upsertFinalCheckRecord).toHaveBeenLastCalledWith(
                 WORKSPACE_ID, SESSION_ID, CHECK_INDEX,
                 expect.objectContaining({ gapLoopStarted: false }),
+            );
+        });
+    });
+
+    describe('enqueueTask failure', () => {
+        it('persists gapLoopStarted=false and broadcasts a terminal event', async () => {
+            const deps = makeDeps({
+                enqueueTask: vi.fn().mockImplementation(() => {
+                    throw new Error('Queue full');
+                }),
+            });
+
+            await orchestrateFinalCheck(makeInput(makeGapsResponse('Fix it.'), deps));
+
+            expect(deps.store.upsertFinalCheckRecord).toHaveBeenLastCalledWith(
+                WORKSPACE_ID, SESSION_ID, CHECK_INDEX,
+                expect.objectContaining({ gapLoopStarted: false, hasGaps: true, gapCount: 1 }),
+            );
+            expect(deps.broadcastSessionComplete).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    workspaceId: WORKSPACE_ID,
+                    sessionId: SESSION_ID,
+                    processId: PROCESS_ID,
+                    totalIterations: SOURCE_ITERATION,
+                    reason: 'final-check-gap-enqueue-failed',
+                }),
             );
         });
     });

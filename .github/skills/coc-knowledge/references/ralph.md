@@ -114,3 +114,19 @@ Session resume endpoints share infrastructure in
 best-effort recovery of `workingDirectory` / `folderPath` from the latest
 iteration process. Final-check gap-fix loops use the same additional-iteration
 resolver so per-repo `maxRalphIterations` fallback stays consistent.
+
+## Final Check Automation
+
+`orchestrateFinalCheck(...)` in
+`packages/coc/src/server/ralph/orchestrate-final-check.ts` appends the
+final-check result to `progress.md`, reads the session once, and persists a
+`RalphFinalCheckRecord` with shared base fields (`loopIndex`,
+`sourceIteration`, `taskId`, `processId`, `startedAt`, `completedAt`) plus
+outcome-specific metadata.
+
+Terminal paths broadcast `ralph-session-complete`: clean checks use
+`reason='signal'`, cap-reached checks use `reason='cap'`, parse failures use
+`reason='final-check-failed'`, gap-loop creation failures use
+`reason='final-check-gap-loop-start-failed'`, and gap-loop enqueue failures use
+`reason='final-check-gap-enqueue-failed'`. A successful gap-fix enqueue does
+not broadcast completion because the next loop continues the session.
