@@ -5,7 +5,8 @@ import {
     normalizeToolResult,
     errorResult,
 } from '../../src/llm-tools/coc-tool-runtime';
-import type { Tool, ToolInvocation } from '../../src/types';
+import { defineTool } from '../../src/types';
+import type { Tool, ToolInvocation, ToolResultObject, ToolResultType } from '../../src/types';
 
 function tool(name: string, overrides: Partial<Tool<any>> = {}): Tool<any> {
     return {
@@ -190,6 +191,17 @@ describe('CocToolRuntime', () => {
             expect(r.content[0].text).toBe('bad');
         });
 
+        it('maps every error ToolResultType (incl. the natively-owned "timeout") to isError', () => {
+            const errorTypes: ToolResultType[] = ['failure', 'rejected', 'denied', 'timeout'];
+            for (const resultType of errorTypes) {
+                const r = normalizeToolResult({ textResultForLlm: `r-${resultType}`, resultType } as ToolResultObject);
+                expect(r.isError, `resultType=${resultType}`).toBe(true);
+                expect(r.content[0].text).toBe(`r-${resultType}`);
+            }
+            // "success" is the only non-error classification.
+            expect(normalizeToolResult({ textResultForLlm: 'ok', resultType: 'success' }).isError).toBe(false);
+        });
+
         it('treats null/undefined as empty success', () => {
             expect(normalizeToolResult(null)).toEqual({ content: [{ type: 'text', text: '' }], isError: false });
             expect(normalizeToolResult(undefined)).toEqual({ content: [{ type: 'text', text: '' }], isError: false });
@@ -197,6 +209,51 @@ describe('CocToolRuntime', () => {
 
         it('builds an error result via errorResult()', () => {
             expect(errorResult('x')).toEqual({ content: [{ type: 'text', text: 'x' }], isError: true });
+        });
+    });
+
+    describe('native defineTool contract', () => {
+        it('produces a plain provider-neutral Tool object the runtime can list and call', async () => {
+            // Zod-like schema: any object exposing toJSONSchema() (native ZodSchema).
+            const zodLike = {
+                _output: undefined as unknown,
+                toJSONSchema: () => ({ type: 'object', properties: { name: { type: 'string' } }, required: ['name'] }),
+            };
+            const handler = vi.fn(async () => 'created');
+            const tool = defineTool('create_work_item', {
+                description: 'Create a work item',
+                parameters: zodLike as never,
+                handler,
+                overridesBuiltInTool: true,
+            });
+
+            // defineTool is a pure data-merge — no SDK runtime wrapping.
+            expect(tool).toEqual({
+                name: 'create_work_item',
+                description: 'Create a work item',
+                parameters: zodLike,
+                handler,
+                overridesBuiltInTool: true,
+            });
+
+            const runtime = new CocToolRuntime([tool], { sessionId: 'sess-9' });
+            const [descriptor] = runtime.listTools();
+            expect(descriptor.name).toBe('create_work_item');
+            expect(descriptor.description).toBe('Create a work item');
+            // Zod-like schema is resolved via toJSONSchema().
+            expect(descriptor.inputSchema).toEqual({
+                type: 'object',
+                properties: { name: { type: 'string' } },
+                required: ['name'],
+            });
+
+            const result = await runtime.callTool('create_work_item', { name: 'x' });
+            expect(result).toEqual({ content: [{ type: 'text', text: 'created' }], isError: false });
+            // Handler receives the native ToolInvocation envelope.
+            const [, invocation] = handler.mock.calls[0] as [unknown, ToolInvocation];
+            expect(invocation.sessionId).toBe('sess-9');
+            expect(invocation.toolName).toBe('create_work_item');
+            expect(invocation.arguments).toEqual({ name: 'x' });
         });
     });
 });
