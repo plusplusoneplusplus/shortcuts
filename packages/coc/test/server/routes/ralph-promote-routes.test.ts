@@ -284,4 +284,75 @@ describe('POST /api/processes/:id/promote-to-ralph', () => {
         const proc = await store.getProcess('queue_p-rollback');
         expect((proc as any)?.metadata?.ralph).toBeUndefined();
     });
+
+    // ── Seed goal detection (AC-02) ──
+
+    it('injects seedGoal into synthesis prompt when last assistant turn contains ## Goal', async () => {
+        const goalBlock = '## Goal\nBuild the widget factory.\n\n[decision] Use TypeScript only.';
+        await store.addProcess(makeFixture({
+            id: 'queue_p-seed',
+            workspaceId: 'ws-seed',
+            conversationTurns: [
+                { role: 'user', content: 'Build something' },
+                { role: 'assistant', content: `Here is the spec:\n\n${goalBlock}` },
+            ],
+        }));
+
+        const res = await post(baseUrl, '/api/processes/queue_p-seed/promote-to-ralph', {
+            workspaceId: 'ws-seed',
+        });
+
+        expect(res.status).toBe(200);
+        const enqueueArg = mockEnqueue.mock.calls.at(-1)![0];
+        const prompt: string = enqueueArg.payload.prompt;
+        expect(prompt).toContain(goalBlock);
+        expect(prompt).toContain('authoritative');
+        expect(prompt).toContain('preserve all [decision] tags and constraints verbatim');
+    });
+
+    it('does not inject seedGoal when last assistant turn has no ## Goal block', async () => {
+        await store.addProcess(makeFixture({
+            id: 'queue_p-no-seed',
+            workspaceId: 'ws-no-seed',
+            conversationTurns: [
+                { role: 'user', content: 'Build something' },
+                { role: 'assistant', content: 'Sure, let me help you with that.' },
+            ],
+        }));
+
+        const res = await post(baseUrl, '/api/processes/queue_p-no-seed/promote-to-ralph', {
+            workspaceId: 'ws-no-seed',
+        });
+
+        expect(res.status).toBe(200);
+        const enqueueArg = mockEnqueue.mock.calls.at(-1)![0];
+        const prompt: string = enqueueArg.payload.prompt;
+        expect(prompt).not.toContain('authoritative');
+        expect(prompt).not.toContain('preserve all [decision] tags');
+    });
+
+    it('uses only the last assistant turn for seed detection, ignoring earlier turns', async () => {
+        const oldGoal = '## Goal\nOld spec that should not be used.';
+        await store.addProcess(makeFixture({
+            id: 'queue_p-last-turn',
+            workspaceId: 'ws-last-turn',
+            conversationTurns: [
+                { role: 'user', content: 'First question' },
+                { role: 'assistant', content: `Early response:\n\n${oldGoal}` },
+                { role: 'user', content: 'Changed my mind' },
+                { role: 'assistant', content: 'OK, no goal block here.' },
+            ],
+        }));
+
+        const res = await post(baseUrl, '/api/processes/queue_p-last-turn/promote-to-ralph', {
+            workspaceId: 'ws-last-turn',
+        });
+
+        expect(res.status).toBe(200);
+        const enqueueArg = mockEnqueue.mock.calls.at(-1)![0];
+        const prompt: string = enqueueArg.payload.prompt;
+        // Old goal from the non-last turn should NOT be seeded
+        expect(prompt).not.toContain('Old spec that should not be used');
+        expect(prompt).not.toContain('authoritative');
+    });
 });

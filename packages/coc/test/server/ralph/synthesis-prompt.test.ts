@@ -35,9 +35,45 @@ describe('buildRalphSynthesisPrompt', () => {
         expect(prompt).toMatch(/…$/);
     });
 
-    it('keeps the goal-block instruction stable across calls (snapshot-style)', () => {
+    it('improved base prompt explicitly mentions decisions, constraints, and ACs with DoD', () => {
         const prompt = buildRalphSynthesisPrompt();
-        expect(prompt).toContain('one or two short paragraphs');
         expect(prompt).toContain('Do not include preamble');
+        expect(prompt).toContain('[decision]');
+        expect(prompt).toContain('constraint');
+        expect(prompt).toContain('Acceptance criteria');
+        expect(prompt).toContain('Definition of Done');
+    });
+
+    // ── Seed goal (AC-01) ──
+
+    it('injects seed block with authoritative-preserve instruction when seedGoal is provided', () => {
+        const seed = '## Goal\nBuild a widget factory.\n\n[decision] Use TypeScript.';
+        const prompt = buildRalphSynthesisPrompt({ seedGoal: seed });
+        expect(prompt).toContain(seed);
+        expect(prompt).toContain('authoritative');
+        expect(prompt).toContain('preserve all [decision] tags and constraints verbatim');
+    });
+
+    it('does not inject a seed section when seedGoal is absent', () => {
+        const prompt = buildRalphSynthesisPrompt({});
+        expect(prompt).not.toContain('authoritative');
+        expect(prompt).not.toContain('preserve all [decision] tags');
+    });
+
+    it('treats whitespace-only seedGoal as absent', () => {
+        const prompt = buildRalphSynthesisPrompt({ seedGoal: '   \n  ' });
+        expect(prompt).not.toContain('authoritative');
+    });
+
+    it('combines seedGoal and extraGuidance in the correct order', () => {
+        const seed = '## Goal\nSeed content.';
+        const guidance = 'focus on the auth module';
+        const prompt = buildRalphSynthesisPrompt({ seedGoal: seed, extraGuidance: guidance });
+        const seedIdx = prompt.indexOf(seed);
+        const guidanceIdx = prompt.indexOf(guidance);
+        expect(seedIdx).toBeGreaterThan(-1);
+        expect(guidanceIdx).toBeGreaterThan(-1);
+        // seed should appear before extra guidance
+        expect(seedIdx).toBeLessThan(guidanceIdx);
     });
 });
