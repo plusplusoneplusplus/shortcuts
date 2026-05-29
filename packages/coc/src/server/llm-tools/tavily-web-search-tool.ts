@@ -14,7 +14,7 @@
  *   3. Missing → handler returns an error envelope (does not throw).
  */
 
-import { defineTool } from '@plusplusoneplusplus/forge';
+import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import { readProvidersConfig } from '../providers/providers-config';
 
 // ============================================================================

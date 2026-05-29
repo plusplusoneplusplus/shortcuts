@@ -9,20 +9,121 @@ import type { ToolCall } from './tool-call';
 export interface AIInvocationResult { success: boolean; response?: string; error?: string; }
 
 // ============================================================================
-// SDK Tool Types — re-exported from @github/copilot-sdk
+// Tool contract — native, provider-neutral types
 // ============================================================================
+//
+// The CoC tool contract is owned here rather than aliased from a specific
+// provider's SDK. This keeps the provider-neutral tool runtime + MCP bridge
+// (see ./llm-tools) free of any compile-time dependency on @github/copilot-sdk
+// and insulates every CoC tool from churn in that pre-1.0 package. The Copilot
+// provider path still hands the same `Tool[]` bundle straight to the SDK, so a
+// compile-time drift guard (below) asserts these stay structurally
+// interchangeable with the Copilot SDK's contract.
 
+// Permission types remain provider-owned — they are not part of the tool
+// contract and are only consumed on the Copilot path.
 import type {
     PermissionHandler as _PermissionHandler,
-    Tool as _Tool,
-    ToolHandler as _ToolHandler,
-    ZodSchema as _ZodSchema,
 } from '@github/copilot-sdk';
 
 export type {
-    PermissionHandler, PermissionRequest,
-    PermissionRequestResult, Tool, ToolHandler, ToolInvocation, ToolResultObject, ZodSchema
+    PermissionHandler, PermissionRequest, PermissionRequestResult,
 } from '@github/copilot-sdk';
+
+/**
+ * Result classification for a structured tool invocation.
+ * Matches the Copilot SDK's `ToolResultType` union.
+ */
+export type ToolResultType = 'success' | 'failure' | 'rejected' | 'denied' | 'timeout';
+
+/** Binary payload attached to a structured tool result. */
+export interface ToolBinaryResult {
+    data: string;
+    mimeType: string;
+    type: string;
+    description?: string;
+}
+
+/**
+ * Structured tool-handler result. Structurally identical to the Copilot SDK's
+ * `ToolResultObject`.
+ */
+export interface ToolResultObject {
+    textResultForLlm: string;
+    binaryResultsForLlm?: ToolBinaryResult[];
+    resultType: ToolResultType;
+    error?: string;
+    sessionLog?: string;
+    toolTelemetry?: Record<string, unknown>;
+}
+
+/**
+ * Per-invocation envelope passed to a tool handler. Structurally identical to
+ * the Copilot SDK's `ToolInvocation`.
+ */
+export interface ToolInvocation {
+    sessionId: string;
+    toolCallId: string;
+    toolName: string;
+    arguments: unknown;
+    /** W3C Trace Context traceparent from the CLI's execute_tool span. */
+    traceparent?: string;
+    /** W3C Trace Context tracestate from the CLI's execute_tool span. */
+    tracestate?: string;
+}
+
+/** Tool handler signature: receives parsed args plus the invocation envelope. */
+export type ToolHandler<TArgs = unknown> = (args: TArgs, invocation: ToolInvocation) => Promise<unknown> | unknown;
+
+/**
+ * Zod-like schema interface for type inference. Any object exposing a
+ * `toJSONSchema()` method is treated as a schema.
+ */
+export interface ZodSchema<T = unknown> {
+    _output: T;
+    toJSONSchema(): Record<string, unknown>;
+}
+
+/**
+ * Tool definition. `parameters` may be a Zod-like schema (enabling handler-arg
+ * inference), a raw JSON Schema object, or omitted.
+ */
+export interface Tool<TArgs = unknown> {
+    name: string;
+    description?: string;
+    parameters?: ZodSchema<TArgs> | Record<string, unknown>;
+    handler: ToolHandler<TArgs>;
+    /**
+     * When true, explicitly indicates this tool is intended to override a
+     * built-in tool of the same name. If unset and the name clashes with a
+     * built-in tool, the runtime returns an error.
+     */
+    overridesBuiltInTool?: boolean;
+    /** When true, the tool can execute without a permission prompt. */
+    skipPermission?: boolean;
+}
+
+// ----------------------------------------------------------------------------
+// Compile-time drift guard
+// ----------------------------------------------------------------------------
+// Asserts the native tool contract above stays structurally interchangeable
+// with the Copilot SDK's, in both directions. The Copilot provider path assigns
+// the same `Tool[]` bundle straight to the SDK's `SessionConfig.tools` (see
+// request-runner.ts), so if the SDK's shape drifts — a field type changes or a
+// required field is added — one of these assertions fails its constraint and
+// the build breaks here, pointing at the exact contract to reconcile.
+// Type-only; emits no runtime code.
+type _Extends<A, B> = [A] extends [B] ? true : false;
+type _Assert<_T extends true> = never;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type _ToolContractGuard = [
+    _Assert<_Extends<Tool<unknown>, import('@github/copilot-sdk').Tool<unknown>>>,
+    _Assert<_Extends<import('@github/copilot-sdk').Tool<unknown>, Tool<unknown>>>,
+    _Assert<_Extends<ToolInvocation, import('@github/copilot-sdk').ToolInvocation>>,
+    _Assert<_Extends<import('@github/copilot-sdk').ToolInvocation, ToolInvocation>>,
+    _Assert<_Extends<ToolResultObject, import('@github/copilot-sdk').ToolResultObject>>,
+    _Assert<_Extends<import('@github/copilot-sdk').ToolResultObject, ToolResultObject>>,
+];
 
 /**
  * Local implementation of the SDK's `defineTool` helper.
@@ -34,12 +135,12 @@ export function defineTool<T = unknown>(
     name: string,
     config: {
         description?: string;
-        parameters?: _ZodSchema<T> | Record<string, unknown>;
-        handler: _ToolHandler<T>;
+        parameters?: ZodSchema<T> | Record<string, unknown>;
+        handler: ToolHandler<T>;
         overridesBuiltInTool?: boolean;
         skipPermission?: boolean;
     },
-): _Tool<T> {
+): Tool<T> {
     return { name, ...config };
 }
 
@@ -52,16 +153,11 @@ export const approveAll: _PermissionHandler = () => ({ kind: 'approve-once' });
 export { loadCopilotSdk } from './sdk-esm-loader';
 
 /**
- * Result type for a tool invocation.
- * Not re-exported from the SDK's public API, so kept locally.
- */
-export type ToolResultType = 'success' | 'failure' | 'rejected' | 'denied';
-
-/**
  * Tool result — either a plain string or a structured result object.
- * Not re-exported from the SDK's public API, so kept locally.
+ * (`ToolResultType` and `ToolResultObject` are defined in the tool-contract
+ * section above.)
  */
-export type ToolResult = string | import('@github/copilot-sdk').ToolResultObject;
+export type ToolResult = string | ToolResultObject;
 
 /**
  * Reasoning effort level for models that support extended thinking.
@@ -438,7 +534,7 @@ export interface SendMessageOptions {
      * These are SDK-native tools (not MCP) — each tool has a name, optional
      * description/parameters, and a handler function invoked by the AI.
      */
-    tools?: import('@github/copilot-sdk').Tool<any>[];
+    tools?: Tool<any>[];
 
     /**
      * System message configuration for the SDK session.

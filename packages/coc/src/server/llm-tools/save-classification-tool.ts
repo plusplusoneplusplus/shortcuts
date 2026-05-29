@@ -14,8 +14,8 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { defineTool } from '@plusplusoneplusplus/forge';
-import type { Tool } from '@plusplusoneplusplus/forge';
+import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
+import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { HunkClassification } from '../spa/client/react/features/pull-requests/classification-types';
 import {
     validateClassificationResult,

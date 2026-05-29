@@ -6,7 +6,7 @@
  * actions; the handler is a passthrough that returns the suggestions as-is.
  */
 
-import { defineTool } from '@plusplusoneplusplus/forge';
+import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 
 export interface FollowUpSuggestion {
     suggestions: string[];

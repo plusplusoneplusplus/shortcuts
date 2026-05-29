@@ -17,7 +17,8 @@ import {
     SqliteFactStore,
     type IMemoryEpisodeStore,
 } from '@plusplusoneplusplus/coc-memory';
-import { defineTool, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
+import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
+import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 
 // ============================================================================
 // Deps

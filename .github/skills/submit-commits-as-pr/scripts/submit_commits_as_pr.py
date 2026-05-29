@@ -189,6 +189,19 @@ def resolve_commits(spec: str) -> list[str]:
     return commits
 
 
+def outgoing_commits(remote: str, base: str) -> list[str]:
+    """Return commits on HEAD that are not yet on <remote>/<base>, oldest first."""
+    git("fetch", remote, base)
+    out = git_out("rev-list", "--reverse", f"{remote}/{base}..HEAD")
+    commits = [line.strip() for line in out.splitlines() if line.strip()]
+    if not commits:
+        raise SystemExit(
+            f"no outgoing commits found between {remote}/{base} and HEAD; "
+            "nothing to submit"
+        )
+    return commits
+
+
 def branch_exists(name: str) -> bool:
     res = git("rev-parse", "--verify", "--quiet", f"refs/heads/{name}", check=False)
     return res.returncode == 0
@@ -392,15 +405,19 @@ def cmd_start(args: argparse.Namespace) -> None:
 
     ensure_clean_worktree()
     original = current_branch()
-    commits = resolve_commits(args.commits)
-    log(f"resolved {len(commits)} commit(s): {', '.join(c[:8] for c in commits)}")
+    if args.commits:
+        commits = resolve_commits(args.commits)
+        log(f"resolved {len(commits)} commit(s): {', '.join(c[:8] for c in commits)}")
+        log(f"fetching {args.remote}/{args.base}")
+        git("fetch", args.remote, args.base)
+    else:
+        log(f"no commits specified; detecting outgoing commits vs {args.remote}/{args.base}")
+        commits = outgoing_commits(args.remote, args.base)
+        log(f"found {len(commits)} outgoing commit(s): {', '.join(c[:8] for c in commits)}")
 
     branch = args.branch or derive_branch_name(commits)
     if branch_exists(branch):
         raise SystemExit(f"branch already exists: {branch}")
-
-    log(f"fetching {args.remote}/{args.base}")
-    git("fetch", args.remote, args.base)
 
     log(f"creating branch {branch} from {args.remote}/{args.base}")
     git("checkout", "-b", branch, f"{args.remote}/{args.base}")
@@ -499,7 +516,13 @@ def build_parser() -> argparse.ArgumentParser:
     start = sub.add_parser("start", help="Begin a new submit")
     start.add_argument(
         "commits",
-        help="Commit SHA, comma-separated SHAs, or range (A..B or A^..B)",
+        nargs="?",
+        default=None,
+        help=(
+            "Commit SHA, comma-separated SHAs, or range (A..B or A^..B). "
+            "If omitted, defaults to all outgoing commits on HEAD that are "
+            "not yet on <remote>/<base>."
+        ),
     )
     start.add_argument("--branch", help="New branch name (auto-generated if omitted)")
     start.add_argument("--base", default="main", help="Base branch (default: main)")

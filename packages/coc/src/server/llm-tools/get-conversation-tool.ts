@@ -18,7 +18,7 @@
  * bound to the store instance, avoiding cross-request contamination.
  */
 
-import { defineTool } from '@plusplusoneplusplus/forge';
+import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { ProcessStore, ConversationTurn, ToolCall } from '@plusplusoneplusplus/forge';
 
 export interface GetConversationArgs {

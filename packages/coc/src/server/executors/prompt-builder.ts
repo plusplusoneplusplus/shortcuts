@@ -15,8 +15,8 @@ import type {
     QueuedTask,
     SendMessageOptions,
     SystemMessageConfig,
-    Tool,
 } from '@plusplusoneplusplus/forge';
+import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import {
     READ_ONLY_SYSTEM_MESSAGE,
     buildAutoFolderLocationBlock,

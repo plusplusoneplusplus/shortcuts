@@ -214,10 +214,6 @@ export {
     isPermissionApproved,
     READ_ONLY_SYSTEM_MESSAGE,
     ToolEvent,
-    Tool,
-    ToolHandler,
-    ToolInvocation,
-    defineTool,
     // MCP Config Loader
     MCPConfigFile,
     MCPConfigLoadResult,

@@ -13,8 +13,9 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { DiffCommentContext, DiffCommentSelection, Tool } from '@plusplusoneplusplus/forge';
-import { defineTool } from '@plusplusoneplusplus/forge';
+import type { DiffCommentContext, DiffCommentSelection } from '@plusplusoneplusplus/forge';
+import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
+import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { DiffCommentsManager } from '../tasks/comments/diff-comments-manager';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import {

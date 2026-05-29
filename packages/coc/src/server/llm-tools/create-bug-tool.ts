@@ -9,7 +9,7 @@
  */
 
 import * as crypto from 'crypto';
-import { defineTool } from '@plusplusoneplusplus/forge';
+import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import { FileWorkItemStore } from '../work-items/work-item-store';
 import type { WorkItemPriority, WorkItemStatus } from '../work-items/types';
 import { WORK_ITEM_PLAN_TEMPLATE } from '../work-items/plan-template';

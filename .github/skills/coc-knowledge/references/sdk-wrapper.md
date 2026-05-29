@@ -180,12 +180,20 @@ can continue with valid sources when another source is malformed.
 
 ## CoC LLM Tools over MCP (provider parity)
 
-CoC LLM tools are assembled in the coc package as Copilot SDK-native `Tool<any>[]`
+CoC LLM tools are assembled in the coc package as `Tool<any>[]`
 (via `buildChatToolBundle()` / `applyLlmToolPreferences()`) and passed to every
 provider through `SendMessageOptions.tools`. Copilot consumes them natively; Codex
 and Claude consume the **same already-filtered array** through a provider-neutral
 MCP bridge so features like `ask_user`, conversation search, work-item/bug
 creation, wakeups/loops, Tavily, comments, and memory tools work uniformly.
+
+The tool contract (`Tool`, `ToolHandler`, `ToolInvocation`, `ToolResultObject`,
+`ZodSchema`) is owned natively by `coc-agent-sdk/src/types.ts`, not aliased from a
+provider SDK — keeping the runtime + bridge free of any compile-time dependency on
+`@github/copilot-sdk`. `defineTool()` is a local pure data-merge. A compile-time
+guard in `types.ts` asserts the native contract stays structurally interchangeable
+with the Copilot SDK's, since the Copilot path assigns the same bundle to the SDK's
+`SessionConfig.tools` (`request-runner.ts`).
 
 Pipeline (all in `coc-agent-sdk/src/llm-tools/`):
 1. `CocToolRuntime` wraps the per-invocation `Tool<any>[]` → `listTools()` (JSON-schema

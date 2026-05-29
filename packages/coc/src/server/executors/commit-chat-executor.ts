@@ -18,8 +18,8 @@ import type {
     AgentMode,
     ProcessStore,
     QueuedTask,
-    Tool,
 } from '@plusplusoneplusplus/forge';
+import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../tasks/task-types';
 import { DiffCommentsManager } from '../tasks/comments/diff-comments-manager';

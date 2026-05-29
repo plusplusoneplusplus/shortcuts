@@ -14,7 +14,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import { defineTool } from '@plusplusoneplusplus/forge';
+import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 
 // ============================================================================
 // Types
