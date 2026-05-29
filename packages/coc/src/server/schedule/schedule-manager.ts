@@ -380,8 +380,8 @@ export class ScheduleManager extends EventEmitter {
     /**
      * Check if a schedule is currently running.
      */
-    isRunning(scheduleId: string): boolean {
-        return this.executor.isRunning(scheduleId);
+    isRunning(scheduleId: string, repoId?: string): boolean {
+        return this.executor.isRunning(scheduleId, repoId);
     }
 
     /**
@@ -575,7 +575,7 @@ export class ScheduleManager extends EventEmitter {
             }
 
             // Skip if previous run still active
-            if (this.executor.isRunning(schedule.id)) {
+            if (this.executor.isRunning(schedule.id, repoId)) {
                 getServerLogger().info(
                     { scheduleName: schedule.name, scheduleId: schedule.id },
                     '[ScheduleManager] Skipped run: previous run still active',

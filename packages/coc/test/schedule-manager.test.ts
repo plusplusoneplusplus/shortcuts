@@ -5,7 +5,8 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { EventEmitter } from 'events';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -24,6 +25,46 @@ function cleanupDir(dir: string): void {
     try {
         fs.rmSync(dir, { recursive: true, force: true });
     } catch { /* ignore */ }
+}
+
+function createDeferredQueueManager() {
+    const emitter = new EventEmitter();
+    const tasks = new Map<string, any>();
+    let nextTask = 0;
+
+    const queue = {
+        enqueue: vi.fn((input: any) => {
+            const id = input.id ?? `task_${++nextTask}`;
+            tasks.set(id, {
+                ...input,
+                id,
+                status: 'queued',
+                createdAt: Date.now(),
+            });
+            return id;
+        }),
+        getTask: vi.fn((taskId: string) => tasks.get(taskId)),
+        on: emitter.on.bind(emitter),
+        off: emitter.off.bind(emitter),
+        complete(taskId: string) {
+            const task = tasks.get(taskId);
+            task.status = 'completed';
+            task.completedAt = Date.now();
+            emitter.emit('taskCompleted', task, { ok: true });
+        },
+        fail(taskId: string, error: Error) {
+            const task = tasks.get(taskId);
+            task.status = 'failed';
+            task.completedAt = Date.now();
+            task.error = error.message;
+            emitter.emit('taskFailed', task, error);
+        },
+        taskIds() {
+            return Array.from(tasks.keys());
+        },
+    };
+
+    return queue;
 }
 
 // ============================================================================
@@ -391,6 +432,98 @@ describe('ScheduleManager', () => {
             await manager.triggerRun(REPO_ID, schedule.id);
             expect(events.some(e => e.type === 'schedule-triggered')).toBe(true);
             expect(events.some(e => e.type === 'schedule-run-complete')).toBe(true);
+        });
+
+        it('keeps a queued schedule run active until the queue task completes', async () => {
+            const queue = createDeferredQueueManager();
+            const mgr = new ScheduleManager(persistence, queue as any);
+            const events: any[] = [];
+            mgr.on('change', (e: any) => events.push(e));
+
+            const schedule = mgr.addSchedule(REPO_ID, {
+                name: 'Deferred Queue',
+                target: 'test.yaml',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'paused',
+            });
+
+            const runPromise = mgr.triggerRun(REPO_ID, schedule.id);
+            await Promise.resolve();
+
+            const taskId = queue.taskIds()[0];
+            expect(taskId).toBeDefined();
+            expect(mgr.getRunHistory(schedule.id)[0].status).toBe('running');
+            expect(mgr.isRunning(schedule.id, REPO_ID)).toBe(true);
+            expect(events.some(e => e.type === 'schedule-run-complete')).toBe(false);
+
+            let settled = false;
+            runPromise.then(() => { settled = true; });
+            await Promise.resolve();
+            expect(settled).toBe(false);
+
+            queue.complete(taskId);
+
+            const run = await runPromise;
+            expect(run.status).toBe('completed');
+            expect(run.completedAt).toBeDefined();
+            expect(mgr.isRunning(schedule.id, REPO_ID)).toBe(false);
+            expect(events.some(e => e.type === 'schedule-run-complete' && e.run?.id === run.id)).toBe(true);
+
+            mgr.dispose();
+        });
+
+        it('marks the schedule run failed when the queued task fails', async () => {
+            const queue = createDeferredQueueManager();
+            const mgr = new ScheduleManager(persistence, queue as any);
+
+            const schedule = mgr.addSchedule(REPO_ID, {
+                name: 'Deferred Failure',
+                target: 'test.yaml',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'stop',
+                status: 'active',
+            });
+
+            const runPromise = mgr.triggerRun(REPO_ID, schedule.id);
+            await Promise.resolve();
+            queue.fail(queue.taskIds()[0], new Error('queued task failed'));
+
+            const run = await runPromise;
+            expect(run.status).toBe('failed');
+            expect(run.error).toContain('queued task failed');
+            expect(mgr.getSchedule(REPO_ID, schedule.id)?.status).toBe('stopped');
+            expect(mgr.isRunning(schedule.id, REPO_ID)).toBe(false);
+
+            mgr.dispose();
+        });
+
+        it('records enqueue failures immediately', async () => {
+            const queue = {
+                enqueue: vi.fn(() => {
+                    throw new Error('enqueue failed');
+                }),
+            };
+            const mgr = new ScheduleManager(persistence, queue as any);
+
+            const schedule = mgr.addSchedule(REPO_ID, {
+                name: 'Enqueue Failure',
+                target: 'test.yaml',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'paused',
+            });
+
+            const run = await mgr.triggerRun(REPO_ID, schedule.id);
+            expect(run.status).toBe('failed');
+            expect(run.error).toContain('enqueue failed');
+            expect(run.completedAt).toBeDefined();
+            expect(mgr.isRunning(schedule.id, REPO_ID)).toBe(false);
+
+            mgr.dispose();
         });
     });
 
