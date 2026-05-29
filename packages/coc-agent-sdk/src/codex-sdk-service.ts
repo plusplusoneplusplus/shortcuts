@@ -25,6 +25,9 @@ import type { ToolCall } from './tool-call';
 import { sdkServiceRegistry, CODEX_PROVIDER } from './sdk-service-registry';
 import { dynamicImportModule } from './sdk-esm-loader';
 import { execFileAsync } from './internal/exec-utils';
+import { CocToolRuntime } from './llm-tools/coc-tool-runtime';
+import { cocToolBridgeServer } from './llm-tools/bridge-server';
+import { buildCocLlmToolsMcpConfig, COC_LLM_TOOLS_MCP_SERVER_NAME } from './llm-tools/mcp-config';
 import { spawn } from 'child_process';
 import { createRequire } from 'module';
 import * as readline from 'readline';
@@ -142,10 +145,23 @@ interface CodexClient {
     resumeThread(threadId: string, options?: CodexStartThreadOptions): CodexThread;
 }
 
+/**
+ * Constructor options accepted by the `Codex` client. Only `config` is used by
+ * this adapter — to inject `mcp_servers` CLI overrides for the CoC LLM-tool
+ * bridge. Mirrors `CodexOptions.config` (a JSON object flattened by the SDK into
+ * `--config key=value` TOML overrides).
+ */
+interface CodexConstructorOptions {
+    config?: Record<string, unknown>;
+}
+
+/** Constructs a Codex client. The published SDK accepts optional `CodexOptions`. */
+type CodexClientCtor = new (options?: CodexConstructorOptions) => CodexClient;
+
 /** Subset of the @openai/codex-sdk API used by this adapter. */
 interface CodexSDKModule {
-    Codex?: new () => CodexClient;
-    default?: { Codex?: new () => CodexClient } | (new () => CodexClient);
+    Codex?: CodexClientCtor;
+    default?: { Codex?: CodexClientCtor } | CodexClientCtor;
 }
 
 interface CodexStartThreadOptions {
@@ -224,6 +240,8 @@ interface ActiveCodexSession {
 export class CodexSDKService implements ISDKService {
     private availabilityCache: IAvailabilityResult | null = null;
     private sdk: CodexClient | null = null;
+    /** Cached Codex constructor, used to build per-request clients carrying MCP config. */
+    private codexCtor: CodexClientCtor | null = null;
     private disposed = false;
     private authChecker: CodexAuthChecker | null = null;
 
@@ -260,6 +278,7 @@ export class CodexSDKService implements ISDKService {
             if (!CodexCtor) {
                 throw new Error('Codex SDK did not export Codex');
             }
+            this.codexCtor = CodexCtor;
             this.sdk = new CodexCtor();
             this.availabilityCache = { available: true };
         } catch {
@@ -280,6 +299,52 @@ export class CodexSDKService implements ISDKService {
     public clearAvailabilityCache(): void {
         this.availabilityCache = null;
         this.sdk = null;
+        this.codexCtor = null;
+    }
+
+    /**
+     * Resolve the Codex client to use for a single request.
+     *
+     * When the caller supplies CoC LLM tools, those are exposed to Codex through
+     * an MCP bridge: a per-invocation {@link CocToolRuntime} is registered on the
+     * loopback {@link cocToolBridgeServer}, and a fresh Codex client is built with
+     * `config.mcp_servers` pointing at the bridge. The returned `cleanup` disposes
+     * the runtime and unregisters the bridge route after the turn — no caching.
+     *
+     * With no tools (the common case) the shared `this.sdk` client is reused.
+     */
+    private async resolveRequestClient(
+        options: SendMessageOptions,
+    ): Promise<{ client: CodexClient; cleanup: () => void }> {
+        const tools = options.tools;
+        if (!tools || tools.length === 0 || !this.codexCtor) {
+            return { client: this.sdk!, cleanup: () => {} };
+        }
+
+        const runtime = new CocToolRuntime(tools, { sessionId: options.sessionId });
+        const registration = await cocToolBridgeServer.register(runtime);
+        const mcpConfig = buildCocLlmToolsMcpConfig({
+            endpoint: registration.endpoint,
+            token: registration.token,
+        });
+        const client = new this.codexCtor({
+            config: {
+                mcp_servers: {
+                    [COC_LLM_TOOLS_MCP_SERVER_NAME]: {
+                        command: mcpConfig.command,
+                        args: mcpConfig.args,
+                        env: mcpConfig.env,
+                    },
+                },
+            },
+        });
+        return {
+            client,
+            cleanup: () => {
+                registration.unregister();
+                runtime.dispose();
+            },
+        };
     }
 
     // ── Model discovery ───────────────────────────────────────────────────────
@@ -479,7 +544,6 @@ export class CodexSDKService implements ISDKService {
             return { success: false, error: avail.error };
         }
 
-        const sdk = this.sdk!;
         const abortController = new AbortController();
 
         // Propagate caller's AbortSignal into our internal controller so
@@ -495,8 +559,15 @@ export class CodexSDKService implements ISDKService {
         let sessionCreatedNotified = false;
         const toolCalls = new Map<string, ToolCall>();
         const startedToolCalls = new Set<string>();
+        // Releases the per-invocation CoC LLM-tool MCP bridge (no-op when no tools).
+        let mcpCleanup: () => void = () => {};
 
         try {
+            // Resolve the client for this request. With CoC LLM tools present this
+            // builds a fresh client carrying the bridge's mcp_servers config.
+            const { client: sdk, cleanup } = await this.resolveRequestClient(options);
+            mcpCleanup = cleanup;
+
             let thread: CodexThread;
             const threadOptions = this.buildThreadOptions(options);
             if (options.sessionId) {
@@ -562,6 +633,7 @@ export class CodexSDKService implements ISDKService {
             return { success: false, error: message, sessionId: options.sessionId ?? threadId };
         } finally {
             signalCleanup?.();
+            mcpCleanup();
             if (threadId) this.sessions.delete(threadId);
         }
     }
@@ -819,6 +891,7 @@ export class CodexSDKService implements ISDKService {
         this.sessions.clear();
         this.availabilityCache = null;
         this.sdk = null;
+        this.codexCtor = null;
     }
 
     public dispose(): void {

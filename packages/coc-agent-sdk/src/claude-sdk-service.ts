@@ -28,7 +28,7 @@
  * themselves.
  */
 
-import type { SendMessageOptions } from './types';
+import type { SendMessageOptions, MCPServerConfig, MCPLocalServerConfig } from './types';
 import type { ToolEvent } from './types';
 import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult } from './sdk-service-interface';
 import type { IAccountQuotaResult, IAccountQuotaSnapshot } from './copilot-sdk-service';
@@ -36,6 +36,9 @@ import type { ToolCall } from './tool-call';
 import { sdkServiceRegistry, CLAUDE_PROVIDER } from './sdk-service-registry';
 import { dynamicImportModule } from './sdk-esm-loader';
 import { getSDKLogger } from './logger';
+import { CocToolRuntime } from './llm-tools/coc-tool-runtime';
+import { cocToolBridgeServer } from './llm-tools/bridge-server';
+import { buildCocLlmToolsMcpConfig, COC_LLM_TOOLS_MCP_SERVER_NAME } from './llm-tools/mcp-config';
 import * as crypto from 'crypto';
 
 // ============================================================================
@@ -110,6 +113,17 @@ interface ClaudeRateLimitEvent {
 type ClaudeSDKMessage = ClaudeAssistantMessage | ClaudeResultMessage | ClaudeSystemMessage | ClaudeRateLimitEvent | Record<string, unknown>;
 type ClaudePermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | 'auto';
 
+/**
+ * MCP server config accepted by Claude Code's `query({ options: { mcpServers } })`.
+ * Mirrors the published `McpStdioServerConfig | McpHttpServerConfig | McpSSEServerConfig`
+ * union (the in-process SDK-server variant is not used here — CoC tools are
+ * exposed through the stdio bridge so they round-trip raw JSON Schema).
+ */
+type ClaudeMcpServerConfig =
+    | { type?: 'stdio'; command: string; args?: string[]; env?: Record<string, string>; alwaysLoad?: boolean }
+    | { type: 'http'; url: string; headers?: Record<string, string> }
+    | { type: 'sse'; url: string; headers?: Record<string, string> };
+
 interface ClaudeQueryOptions {
     prompt: string;
     abortController?: AbortController;
@@ -120,6 +134,10 @@ interface ClaudeQueryOptions {
         appendSystemPrompt?: string;
         permissionMode?: ClaudePermissionMode;
         allowDangerouslySkipPermissions?: boolean;
+        /** Tool names auto-allowed without a permission prompt (CoC bridge tools). */
+        allowedTools?: string[];
+        /** MCP servers to expose to the Claude Code session (CoC LLM-tool bridge + caller servers). */
+        mcpServers?: Record<string, ClaudeMcpServerConfig>;
         /** Resume a persisted Claude Code transcript session. */
         resume?: string;
         /** Use a stable UUID for a newly-created Claude Code transcript session. */
@@ -370,9 +388,14 @@ export class ClaudeSDKService implements ISDKService {
             options.onSessionCreated?.(providerSessionId);
         };
 
+        // Releases the per-invocation CoC LLM-tool MCP bridge (no-op when no tools).
+        let mcpCleanup: () => void = () => {};
+
         try {
             const model = this.normalizeClaudeModel(options.model);
             const permissionOptions = this.resolveClaudePermissionOptions(options.mode);
+            const { servers: mcpServers, allowedTools, cleanup } = await this.buildClaudeMcpServers(options);
+            mcpCleanup = cleanup;
             const queryOptions: ClaudeQueryOptions = {
                 prompt: options.prompt ?? '',
                 abortController,
@@ -381,6 +404,8 @@ export class ClaudeSDKService implements ISDKService {
                     ...(model ? { model } : {}),
                     ...(options.systemMessage?.mode === 'append' ? { appendSystemPrompt: options.systemMessage.content } : {}),
                     ...(options.systemMessage?.mode === 'replace' ? { customSystemPrompt: options.systemMessage.content } : {}),
+                    ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
+                    ...(allowedTools.length > 0 ? { allowedTools } : {}),
                     ...(options.sessionId ? { resume: options.sessionId } : { sessionId }),
                     ...permissionOptions,
                 },
@@ -441,9 +466,68 @@ export class ClaudeSDKService implements ISDKService {
             return { success: false, error: message, sessionId: currentSessionId };
         } finally {
             signalCleanup?.();
+            mcpCleanup();
             this.sessions.delete(currentSessionId);
             if (currentSessionId !== sessionId) this.sessions.delete(sessionId);
         }
+    }
+
+    /**
+     * Build the `mcpServers` map for the Claude Code session.
+     *
+     * Combines any caller-provided `options.mcpServers` (normalized from forge's
+     * MCP config shape to Claude Code's) with the CoC LLM-tool bridge: when the
+     * caller supplies CoC tools, a per-invocation {@link CocToolRuntime} is
+     * registered on the loopback {@link cocToolBridgeServer} and exposed as a
+     * stdio MCP server (`alwaysLoad: true` so the tools are not deferred behind
+     * tool search). The returned `cleanup` disposes the runtime and unregisters
+     * the bridge route after the turn — no caching.
+     */
+    private async buildClaudeMcpServers(
+        options: SendMessageOptions,
+    ): Promise<{ servers: Record<string, ClaudeMcpServerConfig>; allowedTools: string[]; cleanup: () => void }> {
+        const servers: Record<string, ClaudeMcpServerConfig> = {};
+
+        if (options.mcpServers) {
+            for (const [name, cfg] of Object.entries(options.mcpServers)) {
+                const mapped = mapForgeMcpServerToClaude(cfg);
+                if (mapped) servers[name] = mapped;
+            }
+        }
+
+        const tools = options.tools;
+        if (!tools || tools.length === 0) {
+            return { servers, allowedTools: [], cleanup: () => {} };
+        }
+
+        const runtime = new CocToolRuntime(tools, { sessionId: options.sessionId });
+        const registration = await cocToolBridgeServer.register(runtime);
+        const mcpConfig = buildCocLlmToolsMcpConfig({
+            endpoint: registration.endpoint,
+            token: registration.token,
+        });
+        servers[COC_LLM_TOOLS_MCP_SERVER_NAME] = {
+            type: 'stdio',
+            command: mcpConfig.command,
+            args: mcpConfig.args,
+            env: mcpConfig.env,
+            alwaysLoad: true,
+        };
+        // Pre-approve CoC's own first-party tools so Claude Code does not prompt
+        // for (or block) them — parity with Copilot, which runs the same bundle
+        // without permission prompts. Each tool is allowed under its namespaced
+        // MCP name (`mcp__<server>__<tool>`).
+        const allowedTools = runtime.listTools().map(
+            tool => `mcp__${COC_LLM_TOOLS_MCP_SERVER_NAME}__${tool.name}`,
+        );
+        return {
+            servers,
+            allowedTools,
+            cleanup: () => {
+                registration.unregister();
+                runtime.dispose();
+            },
+        };
     }
 
     private extractSessionId(msg: ClaudeSDKMessage): string | undefined {
@@ -487,7 +571,7 @@ export class ClaudeSDKService implements ISDKService {
         startedToolCalls: Set<string>,
     ): void {
         const id = block.id ?? crypto.randomUUID();
-        const toolName = block.name ?? 'unknown_tool';
+        const toolName = normalizeBridgedToolName(block.name ?? 'unknown_tool');
         const parameters = (typeof block.input === 'object' && block.input !== null)
             ? (block.input as Record<string, unknown>)
             : {};
@@ -670,6 +754,36 @@ export function registerClaudeSDKService(): ClaudeSDKService {
     const svc = new ClaudeSDKService();
     sdkServiceRegistry.register(CLAUDE_PROVIDER, svc);
     return svc;
+}
+
+/**
+ * Strip the `mcp__<server>__` prefix Claude Code prepends to MCP tool names so
+ * CoC's bridged tools (e.g. `mcp__coc_llm_tools__ask_user`) surface to
+ * `onToolEvent`, tool-call capture, and the process timeline as their bare names
+ * (`ask_user`) — matching how Copilot and Codex report the same tools.
+ */
+function normalizeBridgedToolName(name: string): string {
+    const prefix = `mcp__${COC_LLM_TOOLS_MCP_SERVER_NAME}__`;
+    return name.startsWith(prefix) ? name.slice(prefix.length) : name;
+}
+
+/**
+ * Normalize a forge `MCPServerConfig` into the Claude Code `mcpServers` shape.
+ * Returns `undefined` for configs missing the fields Claude requires.
+ */
+function mapForgeMcpServerToClaude(cfg: MCPServerConfig): ClaudeMcpServerConfig | undefined {
+    if (cfg.type === 'http' || cfg.type === 'sse') {
+        if (!cfg.url) return undefined;
+        return { type: cfg.type, url: cfg.url, ...(cfg.headers ? { headers: cfg.headers } : {}) };
+    }
+    const local = cfg as MCPLocalServerConfig;
+    if (!local.command) return undefined;
+    return {
+        type: 'stdio',
+        command: local.command,
+        args: local.args ?? [],
+        ...(local.env ? { env: local.env } : {}),
+    };
 }
 
 export function mapClaudeRateLimitInfoToQuota(info: ClaudeRateLimitInfo): IAccountQuotaResult {
