@@ -70,11 +70,6 @@ export {
     READ_ONLY_SYSTEM_MESSAGE,
     // Tool event types
     ToolEvent,
-    // SDK tool types
-    Tool,
-    ToolHandler,
-    ToolInvocation,
-    defineTool,
     // Copilot SDK Service
     CopilotSDKService,
     resetCopilotSDKService,

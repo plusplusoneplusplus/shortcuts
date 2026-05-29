@@ -18,8 +18,8 @@ import type {
     AgentMode,
     ProcessStore,
     QueuedTask,
-    Tool,
 } from '@plusplusoneplusplus/forge';
+import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ChatPayload, PrClassificationPayload } from '../tasks/task-types';
 import { isPrClassificationPayload, isChatPayload } from '../tasks/task-types';

@@ -28,9 +28,9 @@ import type {
     SDKInvocationResult,
     SystemMessageConfig,
     TimelineItem,
-    Tool,
     ToolEvent,
 } from '@plusplusoneplusplus/forge';
+import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import {
     approveAllPermissions,
     FileToolCallCacheStore,

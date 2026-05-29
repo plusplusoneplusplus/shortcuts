@@ -24,8 +24,8 @@ import type {
     AIInvokerResult,
     MCPServerConfig,
     SendMessageOptions,
-    Tool,
 } from '@plusplusoneplusplus/forge';
+import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 
 // ============================================================================
 // Types
