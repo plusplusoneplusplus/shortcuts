@@ -134,6 +134,8 @@ interface ClaudeQueryOptions {
         appendSystemPrompt?: string;
         permissionMode?: ClaudePermissionMode;
         allowDangerouslySkipPermissions?: boolean;
+        /** Tool names auto-allowed without a permission prompt (CoC bridge tools). */
+        allowedTools?: string[];
         /** MCP servers to expose to the Claude Code session (CoC LLM-tool bridge + caller servers). */
         mcpServers?: Record<string, ClaudeMcpServerConfig>;
         /** Resume a persisted Claude Code transcript session. */
@@ -392,7 +394,7 @@ export class ClaudeSDKService implements ISDKService {
         try {
             const model = this.normalizeClaudeModel(options.model);
             const permissionOptions = this.resolveClaudePermissionOptions(options.mode);
-            const { servers: mcpServers, cleanup } = await this.buildClaudeMcpServers(options);
+            const { servers: mcpServers, allowedTools, cleanup } = await this.buildClaudeMcpServers(options);
             mcpCleanup = cleanup;
             const queryOptions: ClaudeQueryOptions = {
                 prompt: options.prompt ?? '',
@@ -403,6 +405,7 @@ export class ClaudeSDKService implements ISDKService {
                     ...(options.systemMessage?.mode === 'append' ? { appendSystemPrompt: options.systemMessage.content } : {}),
                     ...(options.systemMessage?.mode === 'replace' ? { customSystemPrompt: options.systemMessage.content } : {}),
                     ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
+                    ...(allowedTools.length > 0 ? { allowedTools } : {}),
                     ...(options.sessionId ? { resume: options.sessionId } : { sessionId }),
                     ...permissionOptions,
                 },
@@ -482,7 +485,7 @@ export class ClaudeSDKService implements ISDKService {
      */
     private async buildClaudeMcpServers(
         options: SendMessageOptions,
-    ): Promise<{ servers: Record<string, ClaudeMcpServerConfig>; cleanup: () => void }> {
+    ): Promise<{ servers: Record<string, ClaudeMcpServerConfig>; allowedTools: string[]; cleanup: () => void }> {
         const servers: Record<string, ClaudeMcpServerConfig> = {};
 
         if (options.mcpServers) {
@@ -494,7 +497,7 @@ export class ClaudeSDKService implements ISDKService {
 
         const tools = options.tools;
         if (!tools || tools.length === 0) {
-            return { servers, cleanup: () => {} };
+            return { servers, allowedTools: [], cleanup: () => {} };
         }
 
         const runtime = new CocToolRuntime(tools, { sessionId: options.sessionId });
@@ -510,8 +513,16 @@ export class ClaudeSDKService implements ISDKService {
             env: mcpConfig.env,
             alwaysLoad: true,
         };
+        // Pre-approve CoC's own first-party tools so Claude Code does not prompt
+        // for (or block) them — parity with Copilot, which runs the same bundle
+        // without permission prompts. Each tool is allowed under its namespaced
+        // MCP name (`mcp__<server>__<tool>`).
+        const allowedTools = runtime.listTools().map(
+            tool => `mcp__${COC_LLM_TOOLS_MCP_SERVER_NAME}__${tool.name}`,
+        );
         return {
             servers,
+            allowedTools,
             cleanup: () => {
                 registration.unregister();
                 runtime.dispose();

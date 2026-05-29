@@ -82,6 +82,28 @@ describe('ClaudeSDKService MCP tool wiring', () => {
         expect(entry.env[COC_LLM_TOOLS_TOKEN_ENV].length).toBeGreaterThan(0);
     });
 
+    it('pre-approves the bridged CoC tools via allowedTools (no permission prompt)', async () => {
+        queryFn.mockReturnValue(makeHandle([SUCCESS]));
+        await svc.sendMessage({ prompt: 'hi', tools: [tool('ask_user'), tool('search_conversations')] });
+
+        const opts = (queryFn.mock.calls[0][0] as any).options;
+        expect(opts.allowedTools).toEqual(
+            expect.arrayContaining([
+                `mcp__${COC_LLM_TOOLS_MCP_SERVER_NAME}__ask_user`,
+                `mcp__${COC_LLM_TOOLS_MCP_SERVER_NAME}__search_conversations`,
+            ]),
+        );
+        // Names match the namespaced form Claude Code blocks by default.
+        expect(opts.allowedTools).toContain('mcp__coc_llm_tools__ask_user');
+    });
+
+    it('does not set allowedTools when there are no CoC tools', async () => {
+        queryFn.mockReturnValue(makeHandle([SUCCESS]));
+        await svc.sendMessage({ prompt: 'hi' });
+        const opts = (queryFn.mock.calls[0][0] as any).options;
+        expect(opts.allowedTools).toBeUndefined();
+    });
+
     it('tears down the bridge registration after the turn', async () => {
         queryFn.mockReturnValue(makeHandle([SUCCESS]));
         expect(cocToolBridgeServer.activeCount).toBe(0);

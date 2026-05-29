@@ -128,7 +128,7 @@ Claude Code expects hyphenated model IDs for version aliases (for example, `clau
 
 Claude Code permission mode is mapped at the provider boundary: CoC `autopilot` sends `permissionMode: 'bypassPermissions'` plus `allowDangerouslySkipPermissions: true`, while CoC `plan` sends `permissionMode: 'plan'`. Interactive/ask mode leaves Claude Code's default permission behavior in place.
 
-`ClaudeSDKService` wires CoC LLM tools and any caller-provided `mcpServers` into `query({ options: { mcpServers } })`; CoC tools ride a stdio bridge entry (`coc_llm_tools`, `alwaysLoad: true`) and bridged `tool_use` names are de-namespaced (see *CoC LLM Tools over MCP*).
+`ClaudeSDKService` wires CoC LLM tools and any caller-provided `mcpServers` into `query({ options: { mcpServers } })`; CoC tools ride a stdio bridge entry (`coc_llm_tools`, `alwaysLoad: true`), are pre-approved via `options.allowedTools` (`mcp__coc_llm_tools__<tool>`) so Claude Code never prompts for them, and bridged `tool_use` names are de-namespaced (see *CoC LLM Tools over MCP*).
 
 ## RequestRunner — sendMessage() Flow (Copilot)
 
@@ -214,7 +214,10 @@ Provider wiring (per request, only when `options.tools` is non-empty; disposed i
   as `mcp_tool_call` items and report bare tool names via existing normalization.
 - **Claude:** the stdio bridge entry is injected into `query({ options: { mcpServers } })`
   under `coc_llm_tools` with `alwaysLoad: true`; caller-provided `mcpServers` are
-  also forwarded (normalized to Claude's shape). `tool_use` blocks named
+  also forwarded (normalized to Claude's shape). Each bridged tool is added to
+  `options.allowedTools` as `mcp__coc_llm_tools__<tool>` so Claude Code does not
+  prompt for (or block) CoC's own first-party tools — parity with Copilot, which
+  runs the same bundle without permission prompts. `tool_use` blocks named
   `mcp__coc_llm_tools__<tool>` are de-namespaced to `<tool>` so `onToolEvent` /
   tool-call capture / the timeline see the bare CoC tool name.
 
