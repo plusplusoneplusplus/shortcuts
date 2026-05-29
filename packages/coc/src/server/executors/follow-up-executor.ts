@@ -299,17 +299,21 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 const { resolveDefaultModel } = await import('../preferences-handler');
                 reasoningModel = resolveDefaultModel(this.dataDir, wsId, 'followUp');
             }
-            // Resolve reasoning effort: per-turn override > persisted per-model preference > SDK default.
-            // The per-turn override is supplied by the UI's EffortPillSelector
-            // (or any caller of executeFollowUp) and wins over the user's
-            // persisted default — this matches the chat-base executor's
-            // precedence so new chats and follow-ups behave identically.
+            // Resolve reasoning effort:
+            //   per-turn override (from EffortPillSelector)
+            //   > provider-scoped persisted default (cfg.models.providers[provider].reasoningEfforts)
+            //   > global persisted default — Copilot legacy only (cfg.models.reasoningEfforts)
+            //   > SDK default (model catalog default, then FALLBACK_REASONING_EFFORT_ORDER)
             type _RequestedEffort = Parameters<typeof resolveReasoningSelection>[0]['requestedEffort'];
             let requestedEffort: _RequestedEffort = reasoningEffort;
             if (!requestedEffort && reasoningModel) {
                 const { loadConfigFile } = await import('../../config');
                 const cfg = loadConfigFile();
-                const persisted = cfg?.models?.reasoningEfforts?.[reasoningModel];
+                const providerSettings = cfg?.models?.providers?.[sessionProvider];
+                const effortMap: Record<string, string> = providerSettings
+                    ? (providerSettings.reasoningEfforts ?? {})
+                    : (sessionProvider === 'copilot' ? (cfg?.models?.reasoningEfforts ?? {}) : {});
+                const persisted = effortMap[reasoningModel];
                 if (persisted) requestedEffort = persisted as _RequestedEffort;
             }
             const reasoningSelection = resolveReasoningSelection({

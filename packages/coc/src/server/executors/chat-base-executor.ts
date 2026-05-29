@@ -518,11 +518,19 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 effectiveModel = resolveDefaultModel(this.dataDir, payload.workspaceId, defaultModelMode);
             }
 
-            // Resolve reasoning effort: explicit task config > persisted per-model preference > SDK default
+            // Resolve reasoning effort:
+            //   explicit task config
+            //   > provider-scoped persisted default (cfg.models.providers[provider].reasoningEfforts)
+            //   > global persisted default — Copilot legacy only (cfg.models.reasoningEfforts)
+            //   > SDK default (model catalog default, then FALLBACK_REASONING_EFFORT_ORDER)
             let requestedEffort: Parameters<typeof resolveReasoningSelection>[0]['requestedEffort'] = task.config.reasoningEffort;
             if (!requestedEffort && effectiveModel) {
                 const cfg = loadConfigFile();
-                const persisted = cfg?.models?.reasoningEfforts?.[effectiveModel];
+                const providerSettings = cfg?.models?.providers?.[taskProvider];
+                const effortMap: Record<string, string> = providerSettings
+                    ? (providerSettings.reasoningEfforts ?? {})
+                    : (taskProvider === 'copilot' ? (cfg?.models?.reasoningEfforts ?? {}) : {});
+                const persisted = effortMap[effectiveModel];
                 if (persisted) requestedEffort = persisted as NonNullable<typeof requestedEffort>;
             }
             const reasoningSelection = resolveReasoningSelection({

@@ -18,10 +18,10 @@ export interface Draft {
     modelOverride?: string | null;
     /**
      * Optional reasoning-effort override persisted alongside the draft.
-     * One of `'low' | 'medium' | 'high'`. When unset, the executor falls
+     * One of `'low' | 'medium' | 'high' | 'xhigh'`. When unset, the executor falls
      * back to the per-model persisted preference, then the SDK default.
      */
-    effortOverride?: 'low' | 'medium' | 'high' | null;
+    effortOverride?: 'low' | 'medium' | 'high' | 'xhigh' | null;
 }
 
 type DraftMap = Record<string, Draft>;
@@ -62,7 +62,7 @@ export function setDraft(
     text: string,
     mode: string,
     modelOverride?: string | null,
-    effortOverride?: 'low' | 'medium' | 'high' | null,
+    effortOverride?: 'low' | 'medium' | 'high' | 'xhigh' | null,
 ): void {
     if (!text) {
         clearDraft(taskId);

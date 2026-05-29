@@ -55,7 +55,7 @@ export interface UseSendMessageOptions {
      * `null` (or omitted) means no override — the executor falls back to the
      * persisted per-model effort, then the SDK default.
      */
-    effortOverride?: 'low' | 'medium' | 'high' | null;
+    effortOverride?: 'low' | 'medium' | 'high' | 'xhigh' | null;
     /**
      * Workspace ID used for the Ralph promotion endpoint when `selectedMode === 'ralph'`.
      * Without it the server falls back to the workspaceId stored on the process.

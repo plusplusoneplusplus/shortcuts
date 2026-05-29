@@ -9,15 +9,16 @@
  * popover surfaces this as an explicit "Auto" option so the user can
  * always return to the unset state without guessing.
  *
- * The `xhigh` effort is intentionally not exposed here: it's a per-model
- * provisioned variant (admin sets it via Settings → Models), not a
- * per-turn override.
+ * Options are derived from the active model's `supportedReasoningEfforts`
+ * so only valid per-model efforts are selectable. Pass the result of
+ * `buildEffortOptionsForModel(model.supportedReasoningEfforts)` as the
+ * `options` prop; omit it to show all four known options.
  */
 
 import { useEffect, useRef, useState } from 'react';
 import { cn } from '../../ui/cn';
 
-export type EffortLevel = 'low' | 'medium' | 'high';
+export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh';
 
 export interface EffortPillOption {
     /** Effort value sent to the queue/follow-up payload. */
@@ -50,7 +51,7 @@ export interface EffortPillSelectorProps {
     className?: string;
 }
 
-export const DEFAULT_EFFORT_PILL_OPTIONS: readonly EffortPillOption[] = [
+const ALL_EFFORT_PILL_OPTIONS: readonly EffortPillOption[] = [
     {
         value: 'low',
         label: 'Low',
@@ -72,18 +73,45 @@ export const DEFAULT_EFFORT_PILL_OPTIONS: readonly EffortPillOption[] = [
         barClass: 'text-[#8250df] dark:text-[#b392f0]',
         filled: 3,
     },
+    {
+        value: 'xhigh',
+        label: 'Extra High',
+        title: 'Extra High effort — maximum reasoning depth, slowest',
+        barClass: 'text-[#cf222e] dark:text-[#ff7b72]',
+        filled: 4,
+    },
 ];
 
-/** Three-bar reasoning-effort icon. The first `filled` bars are opaque. */
+/** Default options (all four known efforts). */
+export const DEFAULT_EFFORT_PILL_OPTIONS: readonly EffortPillOption[] = ALL_EFFORT_PILL_OPTIONS;
+
+/**
+ * Build the effort options for the active model.
+ *
+ * Only options whose `value` appears in `supportedEfforts` are returned,
+ * preserving canonical ordering (low → medium → high → xhigh).
+ * Returns all four options when `supportedEfforts` is empty or undefined.
+ */
+export function buildEffortOptionsForModel(supportedEfforts: readonly string[] | undefined): readonly EffortPillOption[] {
+    if (!supportedEfforts || supportedEfforts.length === 0) {
+        return ALL_EFFORT_PILL_OPTIONS;
+    }
+    const set = new Set(supportedEfforts);
+    const filtered = ALL_EFFORT_PILL_OPTIONS.filter(opt => set.has(opt.value));
+    return filtered.length > 0 ? filtered : ALL_EFFORT_PILL_OPTIONS;
+}
+
+/** Four-bar reasoning-effort icon. The first `filled` bars are opaque. */
 function BarsIcon({ filled, className }: { filled: number; className?: string }) {
     return (
         <span
             aria-hidden="true"
-            className={cn('inline-flex items-end gap-[2px] h-[9px]', className)}
+            className={cn('inline-flex items-end gap-[2px] h-[12px]', className)}
         >
             <span className={cn('w-[2px] rounded-[1px]', filled >= 1 ? 'opacity-90' : 'opacity-30')} style={{ height: '3px', background: 'currentColor' }} />
             <span className={cn('w-[2px] rounded-[1px]', filled >= 2 ? 'opacity-90' : 'opacity-30')} style={{ height: '6px', background: 'currentColor' }} />
             <span className={cn('w-[2px] rounded-[1px]', filled >= 3 ? 'opacity-90' : 'opacity-30')} style={{ height: '9px', background: 'currentColor' }} />
+            <span className={cn('w-[2px] rounded-[1px]', filled >= 4 ? 'opacity-90' : 'opacity-30')} style={{ height: '12px', background: 'currentColor' }} />
         </span>
     );
 }
