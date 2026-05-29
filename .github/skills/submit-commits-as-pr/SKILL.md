@@ -13,7 +13,10 @@ commits — use `impl` for that.
 ## Inputs (ask only if missing)
 
 1. **Commits** — SHA, comma-separated SHAs, or a range (`A..B`). For
-   "last N commits", resolve to `HEAD~N..HEAD`.
+   "last N commits", resolve to `HEAD~N..HEAD`. **If omitted, defaults
+   to all outgoing commits on the current branch that are not yet on
+   `<remote>/<base>` — do not ask the user for commits unless they want
+   to submit a specific subset.**
 2. **Base** — defaults to `main`. Ask only if the repo clearly differs.
 3. **Title / body** — optional; otherwise `gh pr create --fill` uses the
    commit message.
@@ -28,7 +31,7 @@ commit/stash first.
 ## Invocation
 
 ```bash
-python .agents/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start <commits> [options]
+python .agents/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start [<commits>] [options]
 ```
 
 Common options:
