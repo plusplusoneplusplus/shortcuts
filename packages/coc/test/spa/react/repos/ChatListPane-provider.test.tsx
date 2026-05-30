@@ -1,7 +1,8 @@
 /**
  * Tests for provider rendering in ChatListPane.
- * - Provider badges are not rendered for list rows.
- * - Running row status dots use provider color classes.
+ * - Provider badges are NOT rendered for history items (any provider).
+ *   Provider identity for history items is conveyed via the running-task dot
+ *   color (getProviderDotClasses) rather than a badge pill.
  * - Reads provider from task.provider (HistorySummary top-level), metadata.provider, or payload.provider
  */
 import React from 'react';
@@ -186,6 +187,8 @@ describe('ChatListPane provider badge', () => {
         vi.clearAllMocks();
     });
 
+    // Provider badges were removed from history items in favour of provider-coloured
+    // running-task dots (getProviderDotClasses). No badge is rendered for any provider.
     const renderRunningTask = async (task: Record<string, any>) => {
         testingCleanup();
         await act(async () => {
@@ -202,6 +205,7 @@ describe('ChatListPane provider badge', () => {
             expect(dot.className).toContain(className);
         }
     };
+
 
     describe('codex provider', () => {
         it('does NOT show provider-badge for task with provider="codex" at top level', async () => {
@@ -235,7 +239,7 @@ describe('ChatListPane provider badge', () => {
         });
     });
 
-    describe('copilot provider (default)', () => {
+    describe('copilot provider (default)',() => {
         it('does NOT show provider-badge for task with provider="copilot"', async () => {
             const tasks = [makeTask({ id: 'task-d', displayName: 'Copilot Chat', provider: 'copilot' })];
             await act(async () => {

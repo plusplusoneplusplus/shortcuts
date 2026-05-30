@@ -26,7 +26,7 @@ import { useModelCommand, selectPickableModels } from './hooks/useModelCommand';
 import { SlashCommandMenu, getMetaSkillItems, mergeSkillsWithMeta, type SkillItem } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
 import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION } from './ModePillSelector';
-import { EffortPillSelector } from './EffortPillSelector';
+import { EffortPillSelector, buildEffortOptionsForModel } from './EffortPillSelector';
 import type { EffortLevel } from './EffortPillSelector';
 import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
@@ -104,7 +104,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             if (draft.modelOverride) {
                 modelCommand.setModelOverride(draft.modelOverride);
             }
-            if (draft.effortOverride === 'low' || draft.effortOverride === 'medium' || draft.effortOverride === 'high') {
+            if (draft.effortOverride === 'low' || draft.effortOverride === 'medium' || draft.effortOverride === 'high' || draft.effortOverride === 'xhigh') {
                 setEffortOverride(draft.effortOverride);
             } else {
                 setEffortOverride(null);
@@ -189,6 +189,22 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             modelCommand.setModelOverride(null);
         }
     }, [modelsLoading, modelCommand.modelOverride, modelCommand.setModelOverride, validModelOverride]);
+
+    // Derive effort options from the currently effective model's supported efforts.
+    const effectiveModelId = validModelOverride ?? defaultModelId;
+    const effectiveModelInfo = availableModels.find(m => m.id === effectiveModelId);
+    const effortOptions = buildEffortOptionsForModel(effectiveModelInfo?.supportedReasoningEfforts);
+    // Disable the effort picker when the model's capabilities explicitly report no reasoning support.
+    const effortPickerDisabled = Boolean(effectiveModelInfo && effectiveModelInfo.capabilities?.supports.reasoningEffort === false);
+
+    // Reset effort override when provider/model changes and the selected effort is no longer supported.
+    useEffect(() => {
+        if (!effortOverride) return;
+        const supported = effectiveModelInfo?.supportedReasoningEfforts;
+        if (supported && supported.length > 0 && !supported.includes(effortOverride)) {
+            setEffortOverride(null);
+        }
+    }, [effectiveModelId, effectiveModelInfo, effortOverride]);
 
     function handleProviderChange(provider: ChatProvider) {
         setSelectedProvider(provider);
@@ -554,6 +570,9 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                         <EffortPillSelector
                             value={effortOverride}
                             onChange={setEffortOverride}
+                            options={effortOptions}
+                            disabled={effortPickerDisabled}
+                            disabledTitle="This model does not support reasoning effort selection"
                             className="ml-0.5"
                         />
                         <div className="flex-1 min-w-0" />

@@ -212,4 +212,33 @@ describe('PopOutGitReviewShell: data-testid', () => {
     it('has data-testid for the title', () => {
         expect(SOURCE).toContain('data-testid="popout-git-review-title"');
     });
+
+    it('has data-testid for the PR title toggle button', () => {
+        expect(SOURCE).toContain('data-testid="popout-pr-title-toggle"');
+    });
+
+    it('has data-testid for the collapsible PR title description row', () => {
+        expect(SOURCE).toContain('data-testid="popout-pr-title-description"');
+    });
+});
+
+describe('PopOutGitReviewShell: PR title collapsible', () => {
+    it('passes onTitleLoaded callback to PrReviewContent', () => {
+        expect(SOURCE).toContain('onTitleLoaded');
+    });
+
+    it('tracks titleExpanded state for the collapsible PR title', () => {
+        expect(SOURCE).toContain('titleExpanded');
+        expect(SOURCE).toContain('setTitleExpanded');
+    });
+
+    it('tracks prTitle state to hold fetched PR title', () => {
+        expect(SOURCE).toContain('prTitle');
+        expect(SOURCE).toContain('setPrTitle');
+    });
+
+    it('includes PR title in document.title when available', () => {
+        // The document.title effect should use prTitle in its dependency array
+        expect(SOURCE).toContain('prTitle');
+    });
 });

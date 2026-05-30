@@ -157,7 +157,7 @@ function makeScriptTask(id = 'sh-task-1'): QueuedTask {
     };
 }
 
-function makeFollowUpTask(processId: string, id = 'fu-task-1'): QueuedTask {
+function makeFollowUpTask(processId: string, id = 'fu-task-1', reasoningEffort?: string): QueuedTask {
     return {
         id,
         type: 'chat',
@@ -168,8 +168,9 @@ function makeFollowUpTask(processId: string, id = 'fu-task-1'): QueuedTask {
             kind: 'chat',
             processId,
             prompt: 'Follow-up question',
+            ...(reasoningEffort ? { reasoningEffort } : {}),
         } as any,
-        config: {},
+        config: reasoningEffort ? { reasoningEffort } : {},
     };
 }
 
@@ -349,6 +350,42 @@ describe('CLITaskExecutor executor dispatch', () => {
 
             expect(result.success).toBe(false);
             expect(result.error?.message).toBe('Follow-up failed');
+        });
+
+        it('passes "xhigh" per-turn override to FollowUpExecutor (AC: buffered/drained follow-ups preserve xhigh)', async () => {
+            mockFollowUpExecuteFollowUp.mockResolvedValue(undefined);
+
+            const procId = 'proc-xhigh';
+            store.processes.set(procId, {
+                id: procId,
+                type: 'chat',
+                status: 'completed',
+                startTime: new Date(),
+                promptPreview: 'initial',
+                fullPrompt: 'initial',
+                sdkSessionId: 'sdk-xhigh',
+            });
+
+            const executor = new CLITaskExecutor(store);
+            const task = makeFollowUpTask(procId, 'fu-xhigh-1', 'xhigh');
+
+            const result = await executor.execute(task);
+
+            expect(result.success).toBe(true);
+            expect(mockFollowUpExecuteFollowUp).toHaveBeenCalledOnce();
+            expect(mockFollowUpExecuteFollowUp).toHaveBeenCalledWith(
+                procId,
+                'Follow-up question',
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                // 10th arg = per-turn reasoningEffort override
+                'xhigh',
+            );
         });
     });
 

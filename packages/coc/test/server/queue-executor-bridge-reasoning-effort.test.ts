@@ -5,9 +5,16 @@
  * - executeWithAI() resolves reasoningEffort from live model metadata
  * - executeFollowUp() resolves reasoningEffort from process/task model metadata
  * - A custom reasoningEffort in task.config overrides the default
+ * - Provider-scoped Auto resolution: Codex uses cfg.models.providers.codex.reasoningEfforts;
+ *   Copilot falls back to the legacy global cfg.models.reasoningEfforts.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+// ---------------------------------------------------------------------------
+// Config mock — must be hoisted so the factory can close over the fn ref.
+// ---------------------------------------------------------------------------
+const mockLoadConfigFile = vi.hoisted(() => vi.fn().mockReturnValue(null));
 
 vi.mock('fs', async (importOriginal) => {
     const actual = await importOriginal<typeof import('fs')>();
@@ -16,6 +23,14 @@ vi.mock('fs', async (importOriginal) => {
         existsSync: vi.fn(actual.existsSync),
         readFileSync: vi.fn(actual.readFileSync),
         mkdirSync: vi.fn(),
+    };
+});
+
+vi.mock('../../src/config', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../src/config')>();
+    return {
+        ...actual,
+        loadConfigFile: mockLoadConfigFile,
     };
 });
 
@@ -106,6 +121,19 @@ function chatTask(reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', model?:
     };
 }
 
+function chatTaskWithProvider(provider: string, model: string, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'): QueuedTask {
+    return {
+        id: 'task-re-provider',
+        type: 'chat',
+        priority: 'normal',
+        status: 'running',
+        createdAt: Date.now(),
+        payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Hello', provider: provider as any, model },
+        config: { timeoutMs: 30000, model, ...(reasoningEffort ? { reasoningEffort } : {}) },
+        displayName: 'Hello',
+    };
+}
+
 function followUpTask(processId: string, model?: string, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'): QueuedTask {
     return {
         id: 'fu-task-re-1',
@@ -143,6 +171,8 @@ describe('reasoningEffort wiring in queue executor bridge', () => {
         initializeSpy = vi.spyOn(modelMetadataStore, 'initialize').mockResolvedValue(undefined);
         mockLoadImages.mockReset();
         mockLoadImages.mockResolvedValue([]);
+        // Reset config mock to return null (no persisted preferences) by default.
+        mockLoadConfigFile.mockReturnValue(null);
         sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
         sdkMocks.mockSendMessage.mockResolvedValue({
             success: true,
@@ -339,6 +369,167 @@ describe('reasoningEffort wiring in queue executor bridge', () => {
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
         const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
         expect(call.model).toBe('multi-effort-model');
+        expect(call.reasoningEffort).toBe('low');
+    });
+
+    // -------------------------------------------------------------------------
+    it('executeFollowUp() preserves "xhigh" per-turn override end-to-end (AC: queued/buffered/drained follow-ups)', async () => {
+        // Verifies that xhigh flows intact through the queue → executor → SDK call.
+        // This covers the acceptance criterion "Queued, buffered, and drained
+        // follow-ups preserve xhigh".
+        getModelSpy.mockImplementation((id: string) =>
+            id === 'codex-gpt-5.5'
+                ? modelInfo(id, {
+                    supportedEfforts: ['low', 'medium', 'high', 'xhigh'],
+                    defaultEffort: 'medium',
+                })
+                : undefined,
+        );
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const proc = createCompletedProcessWithSession('proc-re-xhigh', 'sess-re-xhigh');
+        proc.metadata = { type: 'chat', model: 'codex-gpt-5.5' };
+        await store.addProcess(proc);
+
+        const task = followUpTask('proc-re-xhigh', 'codex-gpt-5.5', 'xhigh');
+        await executor.execute(task);
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
+        expect(call.model).toBe('codex-gpt-5.5');
+        expect(call.reasoningEffort).toBe('xhigh');
+    });
+
+    // =========================================================================
+    // Provider-scoped Auto resolution
+    // =========================================================================
+
+    it('executeWithAI() uses provider-scoped reasoningEfforts for Codex (Auto path)', async () => {
+        // When no per-turn override is present, chat-base-executor must read
+        // cfg.models.providers.codex.reasoningEfforts, not the legacy global map.
+        getModelSpy.mockImplementation((id: string) =>
+            id === 'gpt-5.5'
+                ? modelInfo(id, { supportedEfforts: ['low', 'medium', 'high', 'xhigh'], defaultEffort: 'medium' })
+                : undefined,
+        );
+        mockLoadConfigFile.mockReturnValue({
+            models: {
+                providers: {
+                    codex: { reasoningEfforts: { 'gpt-5.5': 'xhigh' } },
+                },
+            },
+        });
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task = chatTaskWithProvider('codex', 'gpt-5.5');
+        await executor.execute(task);
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
+        expect(call.reasoningEffort).toBe('xhigh');
+    });
+
+    // -------------------------------------------------------------------------
+    it('executeWithAI() falls back to legacy global reasoningEfforts for Copilot (Auto path)', async () => {
+        // Copilot must still honour the legacy cfg.models.reasoningEfforts map
+        // when no provider-scoped map is present.
+        getModelSpy.mockImplementation((id: string) =>
+            id === 'copilot-model-1'
+                ? modelInfo(id, { supportedEfforts: ['low', 'medium', 'high'] })
+                : undefined,
+        );
+        mockLoadConfigFile.mockReturnValue({
+            models: {
+                reasoningEfforts: { 'copilot-model-1': 'low' }, // legacy global key
+            },
+        });
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task = chatTaskWithProvider('copilot', 'copilot-model-1');
+        await executor.execute(task);
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
+        expect(call.reasoningEffort).toBe('low');
+    });
+
+    // -------------------------------------------------------------------------
+    it('executeWithAI() does NOT use global reasoningEfforts for Codex (isolation)', async () => {
+        // The global cfg.models.reasoningEfforts entry for gpt-5.5 must NOT
+        // bleed into a Codex task; Auto falls through to the catalog default.
+        getModelSpy.mockImplementation((id: string) =>
+            id === 'gpt-5.5'
+                ? modelInfo(id, { supportedEfforts: ['low', 'medium', 'high', 'xhigh'], defaultEffort: 'medium' })
+                : undefined,
+        );
+        mockLoadConfigFile.mockReturnValue({
+            models: {
+                reasoningEfforts: { 'gpt-5.5': 'high' }, // global — must be ignored for Codex
+            },
+        });
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task = chatTaskWithProvider('codex', 'gpt-5.5');
+        await executor.execute(task);
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
+        // Should use catalog default 'medium', NOT the global 'high'.
+        expect(call.reasoningEffort).toBe('medium');
+    });
+
+    // -------------------------------------------------------------------------
+    it('executeFollowUp() uses provider-scoped reasoningEfforts for Codex session (Auto path)', async () => {
+        getModelSpy.mockImplementation((id: string) =>
+            id === 'gpt-5.5'
+                ? modelInfo(id, { supportedEfforts: ['low', 'medium', 'high', 'xhigh'], defaultEffort: 'medium' })
+                : undefined,
+        );
+        mockLoadConfigFile.mockReturnValue({
+            models: {
+                providers: {
+                    codex: { reasoningEfforts: { 'gpt-5.5': 'xhigh' } },
+                },
+            },
+        });
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const proc = createCompletedProcessWithSession('proc-scoped-1', 'sess-scoped-1');
+        // Process metadata records provider=codex so follow-up-executor picks the right provider.
+        proc.metadata = { type: 'chat', model: 'gpt-5.5', provider: 'codex' };
+        await store.addProcess(proc);
+
+        const task = followUpTask('proc-scoped-1');
+        await executor.execute(task);
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
+        expect(call.reasoningEffort).toBe('xhigh');
+    });
+
+    // -------------------------------------------------------------------------
+    it('executeFollowUp() falls back to legacy global reasoningEfforts for Copilot session (Auto path)', async () => {
+        getModelSpy.mockImplementation((id: string) =>
+            id === 'copilot-model-2'
+                ? modelInfo(id, { supportedEfforts: ['low', 'medium', 'high'] })
+                : undefined,
+        );
+        mockLoadConfigFile.mockReturnValue({
+            models: {
+                reasoningEfforts: { 'copilot-model-2': 'low' },
+            },
+        });
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const proc = createCompletedProcessWithSession('proc-scoped-2', 'sess-scoped-2');
+        proc.metadata = { type: 'chat', model: 'copilot-model-2' }; // no provider → defaults to copilot
+        await store.addProcess(proc);
+
+        const task = followUpTask('proc-scoped-2');
+        await executor.execute(task);
+
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
         expect(call.reasoningEffort).toBe('low');
     });
 });

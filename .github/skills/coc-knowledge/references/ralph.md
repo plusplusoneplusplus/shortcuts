@@ -104,3 +104,29 @@ The endpoint:
 The SPA shows a **"Promote to Ralph"** pill in the follow-up area for eligible
 chats and calls this endpoint via `coc-client`'s `processes.promoteToRalph`
 helper.
+
+## Resume Routes
+
+Session resume endpoints share infrastructure in
+`packages/coc/src/server/routes/ralph-route-utils.ts`.
+`/continue` and `/new-loop` both use it for in-flight Ralph task scans,
+`additionalIterations` validation/default resolution, resume hard caps, and
+best-effort recovery of `workingDirectory` / `folderPath` from the latest
+iteration process. Final-check gap-fix loops use the same additional-iteration
+resolver so per-repo `maxRalphIterations` fallback stays consistent.
+
+## Final Check Automation
+
+`orchestrateFinalCheck(...)` in
+`packages/coc/src/server/ralph/orchestrate-final-check.ts` appends the
+final-check result to `progress.md`, reads the session once, and persists a
+`RalphFinalCheckRecord` with shared base fields (`loopIndex`,
+`sourceIteration`, `taskId`, `processId`, `startedAt`, `completedAt`) plus
+outcome-specific metadata.
+
+Terminal paths broadcast `ralph-session-complete`: clean checks use
+`reason='signal'`, cap-reached checks use `reason='cap'`, parse failures use
+`reason='final-check-failed'`, gap-loop creation failures use
+`reason='final-check-gap-loop-start-failed'`, and gap-loop enqueue failures use
+`reason='final-check-gap-enqueue-failed'`. A successful gap-fix enqueue does
+not broadcast completion because the next loop continues the session.

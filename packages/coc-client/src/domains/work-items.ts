@@ -140,6 +140,7 @@ export class WorkItemsClient {
     if (filter?.type) query.type = filter.type;
     if (filter?.status) query.status = filter.status;
     if (filter?.includeArchived !== undefined) query.includeArchived = filter.includeArchived;
+    if (filter?.includeDone !== undefined) query.includeDone = filter.includeDone;
     return this.transport.request<WorkItemTreeResponse>(path(workspaceId, '/tree'), { query });
   }
 }

@@ -272,4 +272,6 @@ export interface WorkItemTreeFilter {
   type?: WorkItemType;
   status?: WorkItemStatus;
   includeArchived?: boolean;
+  /** When true, items with status "done" are included. Defaults to false. */
+  includeDone?: boolean;
 }

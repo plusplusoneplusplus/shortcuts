@@ -148,12 +148,18 @@ function filterWithAncestors(
         type?: string;
         status?: string;
         includeArchived: boolean;
+        includeDone: boolean;
     },
 ): WorkItemIndexEntry[] {
     // Step 1: apply archived filter
     let working = opts.includeArchived
         ? entries
         : entries.filter(e => !e.archivedAt);
+
+    // Step 1.5: apply done filter
+    if (!opts.includeDone) {
+        working = working.filter(e => e.status !== 'done');
+    }
 
     // Step 2: if no content filters, return as-is
     const hasContentFilter = opts.q || opts.type || opts.status;
@@ -216,6 +222,7 @@ export function registerWorkItemHierarchyRoutes(ctx: WorkItemHierarchyRouteConte
             const typeFilter = typeof query.type === 'string' ? query.type : undefined;
             const statusFilter = typeof query.status === 'string' ? query.status : undefined;
             const includeArchived = query.includeArchived === 'true';
+            const includeDone = query.includeDone === 'true';
 
             // Load the full index for this workspace
             const result = await workItemStore.listWorkItems({ repoId });
@@ -227,6 +234,7 @@ export function registerWorkItemHierarchyRoutes(ctx: WorkItemHierarchyRouteConte
                 type: typeFilter,
                 status: statusFilter,
                 includeArchived,
+                includeDone,
             });
 
             const roots = buildTree(filtered);

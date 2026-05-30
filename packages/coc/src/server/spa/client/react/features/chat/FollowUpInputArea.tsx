@@ -12,7 +12,7 @@ import { AgentSelectorChip } from './AgentSelectorChip';
 import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION } from './ModePillSelector';
 import type { ModePillOption } from './ModePillSelector';
 import { EffortPillSelector } from './EffortPillSelector';
-import type { EffortLevel } from './EffortPillSelector';
+import type { EffortLevel, EffortPillOption } from './EffortPillSelector';
 import { ComposerMetaStrip } from './ComposerMetaStrip';
 import { useModifierKey } from '../../hooks/ui/useModifierKey';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
@@ -109,7 +109,7 @@ export interface FollowUpInputAreaProps {
     /** Active AI provider — shown as a read-only badge in the toolbar when set to 'codex' or 'claude'. */
     activeProvider?: 'copilot' | 'codex' | 'claude';
     /**
-     * Current per-turn reasoning-effort override (`'low' | 'medium' | 'high'`).
+     * Current per-turn reasoning-effort override (`'low' | 'medium' | 'high' | 'xhigh'`).
      * `null` means no override — the executor falls back to the persisted
      * per-model effort, then the SDK default. When omitted, the effort pill
      * is rendered as an unselected control. Wired via `onEffortChange`.
@@ -117,6 +117,17 @@ export interface FollowUpInputAreaProps {
     effortOverride?: EffortLevel | null;
     /** Called when the user picks (or clears) a reasoning-effort level. */
     onEffortChange?: (value: EffortLevel | null) => void;
+    /**
+     * Model-specific effort options. Pass `buildEffortOptionsForModel(model.supportedReasoningEfforts)`
+     * to show only the efforts supported by the active session model.
+     * Defaults to all four options when omitted.
+     */
+    effortOptions?: readonly EffortPillOption[];
+    /**
+     * When true, the effort picker is rendered disabled.
+     * Set when the active session model's `capabilities.supports.reasoningEffort === false`.
+     */
+    effortDisabled?: boolean;
 }
 
 export function FollowUpInputArea({
@@ -157,6 +168,8 @@ export function FollowUpInputArea({
     activeProvider,
     effortOverride = null,
     onEffortChange,
+    effortOptions,
+    effortDisabled = false,
 }: FollowUpInputAreaProps) {
     const inputWrapperRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -690,6 +703,9 @@ export function FollowUpInputArea({
                                 <EffortPillSelector
                                     value={effortOverride}
                                     onChange={onEffortChange}
+                                    options={effortOptions}
+                                    disabled={effortDisabled}
+                                    disabledTitle="This model does not support reasoning effort selection"
                                     className="ml-0.5"
                                 />
                             )}

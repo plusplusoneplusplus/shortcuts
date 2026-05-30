@@ -36,6 +36,7 @@ import type { ModelInfo } from '../../hooks/useModels';
 import { ChatHeader } from './ChatHeader';
 import { ConversationArea } from './ConversationArea';
 import { FollowUpInputArea } from './FollowUpInputArea';
+import { buildEffortOptionsForModel } from './EffortPillSelector';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { ConversationMiniMap } from './conversation/ConversationMiniMap';
 import { useConversationSelection } from './hooks/useConversationSelection';
@@ -136,7 +137,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [processDetails, setProcessDetails] = useState<any>(null);
     const [copied, setCopied] = useState(false);
     const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
-    const [effortOverride, setEffortOverride] = useState<'low' | 'medium' | 'high' | null>(null);
+    const [effortOverride, setEffortOverride] = useState<'low' | 'medium' | 'high' | 'xhigh' | null>(null);
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [sessionTokenLimit, setSessionTokenLimit] = useState<number | undefined>(undefined);
     const [sessionCurrentTokens, setSessionCurrentTokens] = useState<number | undefined>(undefined);
@@ -464,6 +465,21 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             setSessionTokenLimit(info.tokenLimit);
         }
     }, [availableModels, sessionModel, sessionTokenLimit]);
+
+    // Derive effort picker options from session model's supported reasoning efforts.
+    const sessionModelInfo = availableModels.find((m: ModelInfo) => m.id === sessionModel);
+    const effortOptions = buildEffortOptionsForModel(sessionModelInfo?.supportedReasoningEfforts);
+    // Disable the effort picker when the model's capabilities explicitly report no reasoning support.
+    const effortPickerDisabled = Boolean(sessionModelInfo && sessionModelInfo.capabilities?.supports.reasoningEffort === false);
+
+    // Reset effort override when session model changes and the selected effort is no longer supported.
+    useEffect(() => {
+        if (!effortOverride || !sessionModelInfo) return;
+        const supported = sessionModelInfo.supportedReasoningEfforts;
+        if (supported && supported.length > 0 && !supported.includes(effortOverride)) {
+            setEffortOverride(null);
+        }
+    }, [sessionModelInfo, effortOverride]);
     const pinnedFile = createdFiles.at(-1);
 
     const setTurnsAndRef = useCallback((next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => {
@@ -1394,6 +1410,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             sessionCurrentTokens={sessionCurrentTokens}
                             activeProvider={sessionProvider}
                             effortOverride={effortOverride}
+                            effortOptions={effortOptions}
+                            effortDisabled={effortPickerDisabled}
                             onEffortChange={setEffortOverride}
                         />
                     )}
@@ -1504,6 +1522,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     sessionCurrentTokens={sessionCurrentTokens}
                     activeProvider={sessionProvider}
                     effortOverride={effortOverride}
+                    effortOptions={effortOptions}
+                    effortDisabled={effortPickerDisabled}
                     onEffortChange={setEffortOverride}
                 />
             )}
