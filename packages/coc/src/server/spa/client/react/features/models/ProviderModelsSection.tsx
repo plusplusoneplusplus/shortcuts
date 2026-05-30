@@ -1,13 +1,16 @@
 /**
  * ProviderModelsSection — provider-scoped model catalog and query UI.
  * Embedded inside the Agent Provider page for each provider tab.
+ *
+ * Uses the admin-redesign `.aip-*` class system for consistent styling
+ * with the rest of the AI Provider page.
  */
 import React, { useState, useMemo } from 'react';
 import { useProviderModelConfig, type ProviderModelInfo, type AgentProvider } from '../../hooks/useProviderModels';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
-import { Button } from '../../ui';
+import { Spinner } from '../../ui';
 
-type CapFilter = 'all' | 'vision' | 'reasoning';
+type CapFilter = 'all' | 'vision' | 'reasoning' | 'enabled';
 type ViewMode = 'catalog' | 'query';
 
 interface QueryState {
@@ -19,145 +22,24 @@ interface QueryState {
 }
 
 function fmt(n: number): string {
-    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
-    if (n >= 1_000) return (n / 1_000).toFixed(1) + 'k';
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(0) + 'M';
+    if (n >= 1_000) return (n / 1_000).toFixed(0) + 'k';
     return String(n);
-}
-
-interface ModelCardProps {
-    model: ProviderModelInfo;
-    onToggle: (id: string, enabled: boolean) => void;
-    saving: boolean;
-    selectedEffort?: string;
-    onSelectEffort: (modelId: string, effort: string) => void;
-}
-
-function ModelCard({ model, onToggle, saving, selectedEffort, onSelectEffort }: ModelCardProps) {
-    const [copied, setCopied] = useState(false);
-
-    const handleClick = () => {
-        try {
-            navigator.clipboard.writeText(model.id);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-        } catch {
-            // clipboard API unavailable
-        }
-    };
-
-    const handleToggle = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        onToggle(model.id, !model.enabled);
-    };
-
-    const vision = model.capabilities?.supports?.vision;
-    const reasoning = model.capabilities?.supports?.reasoningEffort;
-    const ctx = model.capabilities?.limits?.max_context_window_tokens ?? model.tokenLimit;
-    const supportedEfforts = model.supportedReasoningEfforts ?? [];
-    const defaultEffort = model.defaultReasoningEffort;
-    const activeEffort = selectedEffort ?? defaultEffort;
-
-    const borderClass = model.enabled
-        ? 'border-[#4caf50] dark:border-[#388e3c]'
-        : 'border-[#e0e0e0] dark:border-[#3c3c3c]';
-
-    return (
-        <button
-            type="button"
-            className={`relative text-left rounded-lg border ${borderClass} bg-white dark:bg-[#1e1e1e] p-4 hover:shadow-md transition-shadow cursor-pointer`}
-            data-testid="provider-model-card"
-            onClick={handleClick}
-        >
-            {copied && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-lg text-white font-semibold text-sm" data-testid="copied-overlay">
-                    Copied!
-                </div>
-            )}
-            <div
-                role="button"
-                tabIndex={0}
-                className="absolute top-2 right-2 flex items-center"
-                onClick={handleToggle}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleToggle(e as unknown as React.MouseEvent); }}
-                aria-label={model.enabled ? 'Disable model' : 'Enable model'}
-                aria-disabled={saving}
-                data-testid="provider-model-toggle"
-            >
-                <span
-                    className={`inline-block w-8 h-4 rounded-full transition-colors relative ${model.enabled ? 'bg-[#4caf50] dark:bg-[#388e3c]' : 'bg-[#ccc] dark:bg-[#555]'}`}
-                    data-testid={model.enabled ? 'toggle-on' : 'toggle-off'}
-                >
-                    <span
-                        className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${model.enabled ? 'translate-x-4' : 'translate-x-0.5'}`}
-                    />
-                </span>
-            </div>
-            <div className="font-semibold text-sm text-[#1e1e1e] dark:text-[#cccccc] pr-10">{model.name || model.id}</div>
-            <div className="text-xs text-[#888] mt-0.5 font-mono">{model.id}</div>
-            <hr className="my-2 border-[#e0e0e0] dark:border-[#3c3c3c]" />
-            {ctx > 0 && <div className="text-xs text-[#666] dark:text-[#999]">Context: {fmt(ctx)}</div>}
-            <div className="flex gap-2 mt-1.5 flex-wrap">
-                {vision && <span className="text-xs bg-[#e8f5e9] dark:bg-[#1b3a26] text-[#2e7d32] dark:text-[#81c784] px-1.5 py-0.5 rounded" data-testid="badge-vision">👁 Vision</span>}
-                {reasoning && <span className="text-xs bg-[#e3f2fd] dark:bg-[#1a2e45] text-[#1565c0] dark:text-[#64b5f6] px-1.5 py-0.5 rounded" data-testid="badge-reasoning">🧠 Reasoning</span>}
-            </div>
-            {supportedEfforts.length > 0 && (
-                <div className="flex gap-1 mt-1.5 flex-wrap items-center" data-testid="reasoning-efforts">
-                    <span className="text-xs text-[#666] dark:text-[#999]">Effort:</span>
-                    {supportedEfforts.map(effort => {
-                        const isActive = effort === activeEffort;
-                        const isDefault = effort === defaultEffort;
-                        const badgeClass = isActive
-                            ? 'bg-[#1565c0] dark:bg-[#1976d2] text-white'
-                            : 'bg-[#e3f2fd] dark:bg-[#1a2e45] text-[#1565c0] dark:text-[#64b5f6]';
-                        const handleEffortClick = (e: React.MouseEvent) => {
-                            e.stopPropagation();
-                            if (effort === defaultEffort && !selectedEffort) return;
-                            if (effort === selectedEffort) {
-                                onSelectEffort(model.id, '');
-                            } else {
-                                onSelectEffort(model.id, effort);
-                            }
-                        };
-                        let title = effort;
-                        if (isDefault) title += ' (default)';
-                        if (selectedEffort === effort) title += ' (selected — click to reset)';
-                        return (
-                            <span
-                                key={effort}
-                                role="button"
-                                tabIndex={0}
-                                className={`text-[10px] px-1.5 py-0.5 rounded font-mono cursor-pointer hover:opacity-80 transition-opacity ${badgeClass}`}
-                                data-testid={`effort-${effort}`}
-                                data-active={isActive ? 'true' : 'false'}
-                                data-default={isDefault ? 'true' : 'false'}
-                                title={title}
-                                onClick={handleEffortClick}
-                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleEffortClick(e as unknown as React.MouseEvent); }}
-                            >
-                                {effort}{isActive ? '★' : ''}
-                            </span>
-                        );
-                    })}
-                    {selectedEffort && (
-                        <span className="text-[10px] text-[#888] italic ml-0.5" data-testid="effort-override-indicator">
-                            (custom)
-                        </span>
-                    )}
-                </div>
-            )}
-        </button>
-    );
 }
 
 interface ProviderModelsSectionProps {
     provider: AgentProvider;
-    /** Whether the provider is available (installed, auth'd, enabled). When false, shows setup state. */
     available: boolean;
-    /** Optional message to show when provider is unavailable. */
     unavailableMessage?: string;
+    /** All providers to show in the toolbar tab bar. When set, renders provider-switching tabs. */
+    allProviders?: AgentProvider[];
+    /** Called when the user clicks a provider tab. */
+    onProviderChange?: (provider: AgentProvider) => void;
 }
 
-export function ProviderModelsSection({ provider, available, unavailableMessage }: ProviderModelsSectionProps) {
+const PROVIDER_TAB_LABELS: Record<AgentProvider, string> = { copilot: 'Copilot', codex: 'Codex', claude: 'Claude' };
+
+export function ProviderModelsSection({ provider, available, unavailableMessage, allProviders, onProviderChange }: ProviderModelsSectionProps) {
     const { models, loading, error, saving, reload, toggleModel, reasoningEfforts, setReasoningEffort } = useProviderModelConfig(provider);
     const [search, setSearch] = useState('');
     const [capFilter, setCapFilter] = useState<CapFilter>('all');
@@ -175,7 +57,8 @@ export function ProviderModelsSection({ provider, available, unavailableMessage 
         }
         if (capFilter === 'vision') list = list.filter(m => m.capabilities?.supports?.vision);
         if (capFilter === 'reasoning') list = list.filter(m => m.capabilities?.supports?.reasoningEffort);
-        return list;
+        if (capFilter === 'enabled') list = list.filter(m => m.enabled);
+        return [...list].sort((a, b) => (b.enabled ? 1 : 0) - (a.enabled ? 1 : 0));
     }, [models, search, capFilter]);
 
     const enabledCount = useMemo(() => models.filter(m => m.enabled).length, [models]);
@@ -214,51 +97,116 @@ export function ProviderModelsSection({ provider, available, unavailableMessage 
 
     if (!available) {
         return (
-            <div data-testid="provider-models-unavailable" className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526] p-4 mt-4">
-                <div className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] mb-2">
-                    {providerLabel} Models
-                </div>
-                <div className="text-sm text-[#888]">
-                    {unavailableMessage || `${providerLabel} is not available. Enable and configure the provider above to access its model catalog.`}
-                </div>
-            </div>
+            <section className="ar-card" data-testid="provider-models-unavailable">
+                <header className="aip-panel-head">
+                    <div>
+                        <h3 className="aip-panel-title">{providerLabel} Models</h3>
+                        <p className="aip-panel-desc">
+                            {unavailableMessage || `${providerLabel} is not available. Enable and configure the provider above to access its model catalog.`}
+                        </p>
+                    </div>
+                </header>
+            </section>
         );
     }
 
     if (loading) {
         return (
-            <div data-testid="provider-models-loading" className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] p-4 mt-4 text-[#888] text-sm">
-                Loading {providerLabel} models…
-            </div>
+            <section className="ar-card" data-testid="provider-models-loading">
+                <header className="aip-panel-head">
+                    <div>
+                        <h3 className="aip-panel-title">Model catalog and query</h3>
+                        <p className="aip-panel-desc">Loading {providerLabel} models…</p>
+                    </div>
+                </header>
+                <div className="aip-empty"><Spinner size="sm" /> Loading models…</div>
+            </section>
         );
     }
 
     if (error) {
         return (
-            <div data-testid="provider-models-error" className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] p-4 mt-4">
-                <p className="text-sm text-[#888]">Failed to load {providerLabel} models: {error}</p>
-                <button
-                    className="mt-2 px-3 py-1.5 rounded bg-[#0078d4] text-white text-sm hover:bg-[#106ebe] transition-colors"
-                    onClick={reload}
-                    data-testid="provider-models-retry"
-                >
-                    Retry
-                </button>
-            </div>
+            <section className="ar-card" data-testid="provider-models-error">
+                <header className="aip-panel-head">
+                    <div>
+                        <h3 className="aip-panel-title">Model catalog and query</h3>
+                        <p className="aip-panel-desc">Failed to load {providerLabel} models: {error}</p>
+                    </div>
+                </header>
+                <div className="aip-empty">
+                    <button
+                        type="button"
+                        className="ar-btn ar-btn-secondary ar-btn-sm"
+                        onClick={reload}
+                        data-testid="provider-models-retry"
+                    >
+                        Retry
+                    </button>
+                </div>
+            </section>
         );
     }
 
+    const handleCopyModelId = (modelId: string) => {
+        try { navigator.clipboard.writeText(modelId); } catch { /* clipboard unavailable */ }
+    };
+
     return (
-        <div data-testid="provider-models-section" className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] p-4 mt-4">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 mb-4">
-                <div className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
-                    {providerLabel} Models
+        <section className="ar-card" data-testid="provider-models-section" aria-labelledby="models-title">
+            <header className="aip-panel-head">
+                <div>
+                    <h3 className="aip-panel-title" id="models-title">Model catalog and query</h3>
+                    <p className="aip-panel-desc">A dense workspace for filtering enabled models, setting effort, and running a provider test.</p>
                 </div>
-                <div className="inline-flex h-7 rounded border border-[#d0d0d0] dark:border-[#3c3c3c] overflow-hidden shrink-0 ml-0 sm:ml-auto" role="tablist" aria-label="Provider models view">
+                <span className="ar-badge" data-testid="provider-models-count">
+                    {filtered.length} model{filtered.length !== 1 ? 's' : ''}
+                </span>
+            </header>
+
+            {/* Toolbar */}
+            <div className={`aip-toolbar ${allProviders ? 'aip-toolbar-5col' : ''}`} aria-label="Model controls">
+                {allProviders && onProviderChange && (
+                    <div className="aip-seg" role="tablist" aria-label="Provider">
+                        {allProviders.map(p => (
+                            <button
+                                key={p}
+                                type="button"
+                                className={provider === p ? 'is-active' : ''}
+                                onClick={() => onProviderChange(p)}
+                                role="tab"
+                                aria-selected={provider === p}
+                                data-testid={`provider-tab-${p}`}
+                            >
+                                {PROVIDER_TAB_LABELS[p]}
+                            </button>
+                        ))}
+                    </div>
+                )}
+                <input
+                    className="aip-search"
+                    type="search"
+                    placeholder="Search models by name or ID"
+                    aria-label="Search models"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    data-testid="provider-models-search"
+                />
+                <select
+                    className="aip-select"
+                    aria-label="Capability filter"
+                    value={capFilter}
+                    onChange={e => setCapFilter(e.target.value as CapFilter)}
+                    data-testid="provider-models-filter"
+                >
+                    <option value="all">All capabilities</option>
+                    <option value="vision">Vision</option>
+                    <option value="reasoning">Reasoning</option>
+                    <option value="enabled">Enabled</option>
+                </select>
+                <div className="aip-seg" role="tablist" aria-label="Model view">
                     <button
                         type="button"
-                        className={`px-2.5 text-xs ${viewMode === 'catalog' ? 'bg-[#0078d4] text-white' : 'bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc]'}`}
+                        className={viewMode === 'catalog' ? 'is-active' : ''}
                         onClick={() => setViewMode('catalog')}
                         role="tab"
                         aria-selected={viewMode === 'catalog'}
@@ -268,7 +216,7 @@ export function ProviderModelsSection({ provider, available, unavailableMessage 
                     </button>
                     <button
                         type="button"
-                        className={`px-2.5 text-xs border-l border-[#d0d0d0] dark:border-[#3c3c3c] ${viewMode === 'query' ? 'bg-[#0078d4] text-white' : 'bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc]'}`}
+                        className={viewMode === 'query' ? 'is-active' : ''}
                         onClick={() => setViewMode('query')}
                         role="tab"
                         aria-selected={viewMode === 'query'}
@@ -279,117 +227,172 @@ export function ProviderModelsSection({ provider, available, unavailableMessage 
                 </div>
             </div>
 
-            {viewMode === 'catalog' && (
-                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 mb-3">
-                    <input
-                        type="text"
-                        placeholder="🔍 Search models..."
-                        className="h-7 px-2.5 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] text-xs text-[#1e1e1e] dark:text-[#cccccc] flex-1 min-w-0 w-full sm:w-auto"
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        data-testid="provider-models-search"
-                    />
-                    <select
-                        className="h-7 px-2 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] text-xs text-[#1e1e1e] dark:text-[#cccccc]"
-                        value={capFilter}
-                        onChange={e => setCapFilter(e.target.value as CapFilter)}
-                        data-testid="provider-models-filter"
-                    >
-                        <option value="all">All</option>
-                        <option value="vision">Vision</option>
-                        <option value="reasoning">Reasoning</option>
-                    </select>
-                    <span className="text-xs text-[#888] whitespace-nowrap" data-testid="provider-models-count">{filtered.length} model{filtered.length !== 1 ? 's' : ''}</span>
-                    <span className="text-xs text-[#888] whitespace-nowrap" data-testid="provider-models-enabled-count">{enabledCount} of {models.length} enabled{saving ? ' …' : ''}</span>
-                    <Button variant="ghost" size="sm" onClick={reload} title="Refresh Models" data-testid="provider-models-refresh-btn">
-                        ↻
-                    </Button>
-                </div>
-            )}
+            {viewMode === 'catalog' ? (
+                filtered.length === 0 ? (
+                    <div className="aip-empty" data-testid="provider-models-empty">
+                        {models.length === 0
+                            ? `No models available from ${providerLabel}.`
+                            : <>No models match the current filter. <button type="button" className="ar-btn ar-btn-ghost ar-btn-sm" onClick={() => { setSearch(''); setCapFilter('all'); }}>Clear</button></>
+                        }
+                    </div>
+                ) : (
+                    <div className="aip-model-table" data-testid="provider-models-grid">
+                        <table aria-label="Provider models">
+                            <thead>
+                                <tr>
+                                    <th>Model</th>
+                                    <th>Capabilities</th>
+                                    <th>Context</th>
+                                    <th>Reasoning</th>
+                                    <th>Enabled</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filtered.map(model => {
+                                    const vision = model.capabilities?.supports?.vision;
+                                    const reasoning = model.capabilities?.supports?.reasoningEffort;
+                                    const ctx = model.capabilities?.limits?.max_context_window_tokens ?? model.tokenLimit;
+                                    const supportedEfforts = model.supportedReasoningEfforts ?? [];
+                                    const defaultEffort = model.defaultReasoningEffort;
+                                    const activeEffort = reasoningEfforts[model.id] ?? defaultEffort;
 
-            {viewMode === 'query' ? (
-                <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,480px)_minmax(0,1fr)] gap-3" data-testid="provider-model-query-view">
-                    <div className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526] p-3">
-                        <div className="flex flex-col gap-2.5">
-                            <label className="flex flex-col gap-1 text-xs text-[#666] dark:text-[#999]">
-                                Model
-                                <select
-                                    className="h-7 px-2 rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-xs text-[#1e1e1e] dark:text-[#cccccc]"
-                                    value={selectedQueryModel}
-                                    onChange={e => setQueryModel(e.target.value)}
-                                    data-testid="provider-model-query-select"
-                                >
-                                    <option value="">Provider default</option>
-                                    {queryModels.map(m => (
-                                        <option key={m.id} value={m.id}>{m.name || m.id}</option>
-                                    ))}
-                                </select>
-                            </label>
-                            <label className="flex flex-col gap-1 text-xs text-[#666] dark:text-[#999]">
-                                Prompt
-                                <textarea
-                                    className="min-h-[140px] resize-y rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] p-2.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] font-mono"
-                                    value={queryPrompt}
-                                    onChange={e => setQueryPrompt(e.target.value)}
-                                    data-testid="provider-model-query-prompt"
-                                />
-                            </label>
-                            <div className="flex items-center gap-3">
-                                <Button
-                                    variant="primary"
-                                    size="sm"
-                                    onClick={handleRunQuery}
-                                    disabled={!queryPrompt.trim() || queryRunning}
-                                    data-testid="provider-model-query-run"
-                                >
-                                    {queryRunning ? 'Running...' : 'Run'}
-                                </Button>
-                                <span className="text-xs text-[#888]">
-                                    {queryModels.length} selectable model{queryModels.length !== 1 ? 's' : ''}
-                                </span>
+                                    return (
+                                        <tr key={model.id} data-testid="provider-model-card">
+                                            <td>
+                                                <div className="aip-model-name">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleCopyModelId(model.id)}
+                                                        data-testid={`model-copy-${model.id}`}
+                                                    >
+                                                        {model.name || model.id}
+                                                    </button>
+                                                    <span className="aip-mono">{model.id}</span>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div className="aip-cap-list">
+                                                    {vision && <span className="ar-badge ar-badge-accent" data-testid="badge-vision">Vision</span>}
+                                                    {reasoning && <span className="ar-badge ar-badge-accent" data-testid="badge-reasoning">Reasoning</span>}
+                                                    {!vision && !reasoning && <span className="ar-badge">Base</span>}
+                                                </div>
+                                            </td>
+                                            <td className="aip-mono">{ctx ? fmt(ctx) : 'Not reported'}</td>
+                                            <td>
+                                                {supportedEfforts.length > 0 ? (
+                                                    <div className="aip-effort">
+                                                        {supportedEfforts.map(effort => (
+                                                            <button
+                                                                key={effort}
+                                                                type="button"
+                                                                className={activeEffort === effort ? 'is-active' : ''}
+                                                                data-testid={`effort-${effort}`}
+                                                                data-active={activeEffort === effort ? 'true' : 'false'}
+                                                                data-default={defaultEffort === effort ? 'true' : 'false'}
+                                                                onClick={() => {
+                                                                    if (effort === defaultEffort && !reasoningEfforts[model.id]) return;
+                                                                    if (effort === reasoningEfforts[model.id]) {
+                                                                        setReasoningEffort(model.id, '');
+                                                                    } else {
+                                                                        setReasoningEffort(model.id, effort);
+                                                                    }
+                                                                }}
+                                                            >
+                                                                {effort}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <span className="ar-badge">None</span>
+                                                )}
+                                            </td>
+                                            <td>
+                                                <button
+                                                    type="button"
+                                                    className="aip-toggle"
+                                                    role="switch"
+                                                    aria-checked={model.enabled}
+                                                    aria-label={model.enabled ? 'Disable model' : 'Enable model'}
+                                                    aria-disabled={saving}
+                                                    onClick={() => toggleModel(model.id, !model.enabled)}
+                                                    data-testid="provider-model-toggle"
+                                                >
+                                                    <span className={`aip-toggle-track ${model.enabled ? 'is-on' : ''}`}>
+                                                        <span className="aip-toggle-knob" />
+                                                    </span>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )
+            ) : (
+                <div className="aip-query-grid" data-testid="provider-model-query-view">
+                    <form className="aip-query-card" onSubmit={e => { e.preventDefault(); handleRunQuery(); }}>
+                        <div className="aip-field">
+                            <label htmlFor="query-model">Model</label>
+                            <select
+                                id="query-model"
+                                className="aip-select"
+                                value={selectedQueryModel}
+                                onChange={e => setQueryModel(e.target.value)}
+                                data-testid="provider-model-query-select"
+                            >
+                                <option value="">Provider default</option>
+                                {queryModels.map(m => (
+                                    <option key={m.id} value={m.id}>{m.name || m.id}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="aip-field">
+                            <label htmlFor="query-prompt">Prompt</label>
+                            <textarea
+                                id="query-prompt"
+                                className="aip-textarea"
+                                placeholder="Ask the selected provider a short verification question."
+                                value={queryPrompt}
+                                onChange={e => setQueryPrompt(e.target.value)}
+                                data-testid="provider-model-query-prompt"
+                            />
+                        </div>
+                        <button
+                            type="submit"
+                            className="ar-btn ar-btn-primary ar-btn-sm"
+                            disabled={!queryPrompt.trim() || queryRunning}
+                            data-testid="provider-model-query-run"
+                        >
+                            {queryRunning ? <><Spinner size="sm" /> Running…</> : 'Run provider query'}
+                        </button>
+                    </form>
+                    <div>
+                        <div className="aip-panel-head" style={{ border: '1px solid var(--ar-border)', borderBottom: 0, borderRadius: 'var(--ar-radius-sm) var(--ar-radius-sm) 0 0' }}>
+                            <div>
+                                <h4 className="aip-panel-title" style={{ fontSize: 14 }}>Result</h4>
+                                <p className="aip-panel-desc" data-testid="query-meta">
+                                    {queryState.durationMs !== undefined
+                                        ? `${queryState.model || selectedQueryModel || 'provider default'} · ${queryState.durationMs}ms${queryState.sessionId ? ` · ${queryState.sessionId}` : ''}`
+                                        : 'No query has run yet.'}
+                                </p>
                             </div>
                         </div>
-                    </div>
-                    <div className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526] p-3 min-h-[200px]">
-                        <div className="flex items-center justify-between gap-3 mb-2">
-                            <div className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Result</div>
-                            {queryState.durationMs !== undefined && (
-                                <div className="text-xs text-[#888]">
-                                    {queryState.model || selectedQueryModel} · {queryState.durationMs}ms
-                                    {queryState.sessionId ? ` · ${queryState.sessionId}` : ''}
-                                </div>
-                            )}
-                        </div>
                         {queryState.error ? (
-                            <pre className="whitespace-pre-wrap rounded bg-[#fff4f4] dark:bg-[#3a1f1f] border border-[#f2b8b8] dark:border-[#6f3333] p-2.5 text-xs text-[#9f1d1d] dark:text-[#ffb3b3]" data-testid="provider-model-query-error">{queryState.error}</pre>
+                            <pre className="aip-result" style={{ borderTopLeftRadius: 0, borderTopRightRadius: 0, color: 'var(--ar-danger)' }} data-testid="provider-model-query-error">{queryState.error}</pre>
                         ) : queryState.response ? (
-                            <pre className="whitespace-pre-wrap text-xs text-[#1e1e1e] dark:text-[#cccccc]" data-testid="provider-model-query-result">{queryState.response}</pre>
+                            <pre className="aip-result" style={{ borderTopLeftRadius: 0, borderTopRightRadius: 0 }} data-testid="provider-model-query-result">{queryState.response}</pre>
                         ) : (
-                            <div className="text-xs text-[#888]" data-testid="provider-model-query-empty">No query result yet.</div>
+                            <pre className="aip-result" style={{ borderTopLeftRadius: 0, borderTopRightRadius: 0, color: 'var(--ar-text-mute)' }} data-testid="provider-model-query-empty">Select a model, enter a prompt, then run a provider query.</pre>
                         )}
                     </div>
                 </div>
-            ) : filtered.length === 0 ? (
-                <div className="text-center text-[#888] text-xs mt-6" data-testid="provider-models-empty">
-                    {models.length === 0
-                        ? `No models available from ${providerLabel}.`
-                        : <>No models match your filter. <button className="underline text-[#0078d4]" onClick={() => { setSearch(''); setCapFilter('all'); }}>Clear</button></>
-                    }
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3" data-testid="provider-models-grid">
-                    {filtered.map(m => (
-                        <ModelCard
-                            key={m.id}
-                            model={m}
-                            onToggle={toggleModel}
-                            saving={saving}
-                            selectedEffort={reasoningEfforts[m.id]}
-                            onSelectEffort={setReasoningEffort}
-                        />
-                    ))}
-                </div>
             )}
-        </div>
+
+            {/* Enabled count footer */}
+            <div style={{ padding: '8px 16px', borderTop: '1px solid var(--ar-border)', fontSize: 12, color: 'var(--ar-text-mute)' }} data-testid="provider-models-enabled-count">
+                {enabledCount} of {models.length} enabled{saving ? ' …' : ''}
+            </div>
+        </section>
     );
 }
