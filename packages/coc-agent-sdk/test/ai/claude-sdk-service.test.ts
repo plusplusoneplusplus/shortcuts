@@ -259,7 +259,7 @@ describe('ClaudeSDKService.sendMessage', () => {
         expect(result.response).toBe('Hello world');
     });
 
-    it('emits tool-start and tool-complete events for tool_use blocks', async () => {
+    it('emits tool-start for tool_use blocks without fabricating argument JSON as the result', async () => {
         queryFn.mockReturnValueOnce(makeMessages([
             {
                 type: 'assistant',
@@ -278,10 +278,170 @@ describe('ClaudeSDKService.sendMessage', () => {
             onToolEvent: (e) => toolEvents.push(e),
         });
 
-        expect(toolEvents).toHaveLength(2);
+        expect(toolEvents).toHaveLength(1);
         expect((toolEvents[0] as any).type).toBe('tool-start');
         expect((toolEvents[0] as any).toolName).toBe('read_file');
-        expect((toolEvents[1] as any).type).toBe('tool-complete');
+    });
+
+    it('completes Claude tools from tool_result blocks with real output text', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'assistant',
+                message: {
+                    content: [
+                        { type: 'tool_use', id: 'tc-commit', name: 'Bash', input: { command: 'git commit -m "fix: stuff"' } },
+                    ],
+                },
+            },
+            {
+                type: 'user',
+                message: {
+                    content: [
+                        {
+                            type: 'tool_result',
+                            tool_use_id: 'tc-commit',
+                            content: '[main abc1234] fix: stuff\n 1 file changed, 1 insertion(+)',
+                        },
+                    ],
+                },
+            },
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        const toolEvents: object[] = [];
+        const result = await svc.sendMessage({
+            prompt: 'commit',
+            onToolEvent: (e) => toolEvents.push(e),
+        });
+
+        expect(toolEvents).toHaveLength(2);
+        expect(toolEvents[0]).toMatchObject({
+            type: 'tool-start',
+            toolCallId: 'tc-commit',
+            toolName: 'Bash',
+            parameters: { command: 'git commit -m "fix: stuff"' },
+        });
+        expect(toolEvents[1]).toMatchObject({
+            type: 'tool-complete',
+            toolCallId: 'tc-commit',
+            toolName: 'Bash',
+            result: '[main abc1234] fix: stuff\n 1 file changed, 1 insertion(+)',
+        });
+        expect(result.toolCalls?.[0]).toMatchObject({
+            id: 'tc-commit',
+            name: 'Bash',
+            status: 'completed',
+            args: { command: 'git commit -m "fix: stuff"' },
+            result: '[main abc1234] fix: stuff\n 1 file changed, 1 insertion(+)',
+        });
+    });
+
+    it('stringifies structured Claude Bash tool results from stdout and stderr', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'assistant',
+                message: {
+                    content: [
+                        { type: 'tool_use', id: 'tc-bash', name: 'Bash', input: { command: 'npm test' } },
+                    ],
+                },
+            },
+            {
+                type: 'user',
+                message: {
+                    content: [
+                        {
+                            type: 'tool_result',
+                            tool_use_id: 'tc-bash',
+                            content: { stdout: 'tests passed', stderr: 'warning only', interrupted: false },
+                        },
+                    ],
+                },
+            },
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        const toolEvents: object[] = [];
+        const result = await svc.sendMessage({
+            prompt: 'run tests',
+            onToolEvent: (e) => toolEvents.push(e),
+        });
+
+        expect(toolEvents[1]).toMatchObject({
+            type: 'tool-complete',
+            result: 'tests passed\nwarning only',
+        });
+        expect(result.toolCalls?.[0].result).toBe('tests passed\nwarning only');
+    });
+
+    it('completes Claude tools from top-level tool_use_result payloads', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'assistant',
+                message: {
+                    content: [
+                        { type: 'tool_use', id: 'tc-top-level', name: 'Bash', input: { command: 'git status' } },
+                    ],
+                },
+            },
+            {
+                type: 'user',
+                parent_tool_use_id: 'tc-top-level',
+                tool_use_result: { stdout: 'nothing to commit', stderr: '', interrupted: false },
+            },
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        const result = await svc.sendMessage({ prompt: 'status' });
+
+        expect(result.toolCalls?.[0]).toMatchObject({
+            id: 'tc-top-level',
+            status: 'completed',
+            result: 'nothing to commit',
+        });
+    });
+
+    it('marks Claude tool_result blocks with is_error as failed', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'assistant',
+                message: {
+                    content: [
+                        { type: 'tool_use', id: 'tc-fail', name: 'Bash', input: { command: 'false' } },
+                    ],
+                },
+            },
+            {
+                type: 'user',
+                message: {
+                    content: [
+                        {
+                            type: 'tool_result',
+                            tool_use_id: 'tc-fail',
+                            content: 'Command failed with exit code 1',
+                            is_error: true,
+                        },
+                    ],
+                },
+            },
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        const toolEvents: object[] = [];
+        const result = await svc.sendMessage({
+            prompt: 'fail',
+            onToolEvent: (e) => toolEvents.push(e),
+        });
+
+        expect(toolEvents[1]).toMatchObject({
+            type: 'tool-failed',
+            toolCallId: 'tc-fail',
+            error: 'Command failed with exit code 1',
+        });
+        expect(result.toolCalls?.[0]).toMatchObject({
+            status: 'failed',
+            error: 'Command failed with exit code 1',
+        });
     });
 
     it('returns failure when result subtype is not success', async () => {

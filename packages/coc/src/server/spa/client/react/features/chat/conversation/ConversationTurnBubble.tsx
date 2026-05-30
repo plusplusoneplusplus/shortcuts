@@ -1353,7 +1353,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                                     // Detect commits for individual (ungrouped) shell tool calls
                                     const tool = assistantRender.toolById.get(chunk.toolId);
                                     const toolName = tool?.toolName ?? '';
-                                    if ((toolName === 'powershell' || toolName === 'shell') && tool?.result) {
+                                    if ((toolName === 'powershell' || toolName === 'shell' || toolName === 'bash') && tool?.result) {
                                         const commits = detectCommitsInToolGroup([{
                                             id: chunk.toolId,
                                             toolName,

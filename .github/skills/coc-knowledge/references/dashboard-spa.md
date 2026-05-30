@@ -91,6 +91,12 @@ Inside `WhisperCollapsedGroup`, tool calls render as compact "whisper-row" varia
 - Single flat row: kind pill + truncated summary + duration + chevron
 - Color-coded pills: Read/blue, Grep/Glob/green, Edit/Write/amber, Shell/PS/SQL/purple, Skill/grey
 
+Chat commit strips are detected from real shell output on `powershell`, `shell`,
+and `bash` tool calls. The detector only treats commit-creating commands
+(`git commit`, `git merge`, `git cherry-pick`, `git revert`) with native git
+output such as `[branch abc1234] subject` as commits; assistant prose and
+read-only git command output are ignored.
+
 Completed `ask_user` tool calls render as read-only historical question cards via
 `AskUserHistoryCard` inside `ConversationTurnBubble`. Live unanswered questions
 remain owned by `ChatDetail`/`ConversationArea` through `processDetails.pendingAskUser`

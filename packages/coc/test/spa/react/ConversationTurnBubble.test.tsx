@@ -1501,6 +1501,43 @@ describe('ConversationTurnBubble — commit strip on individual shell tool calls
         expect(strip!.textContent).toContain('fix: stuff');
     });
 
+    it('shows commit strip for an ungrouped bash tool call with git commit output', () => {
+        const turn = makeTurn({
+            role: 'assistant',
+            content: '',
+            timeline: [
+                {
+                    type: 'tool-start',
+                    toolCall: {
+                        id: 'bash1',
+                        toolName: 'bash',
+                        args: { command: 'git add . && git commit -m "fix: bash commit"' },
+                    },
+                    timestamp: '2026-01-15T10:30:00Z',
+                },
+                {
+                    type: 'tool-complete',
+                    toolCall: {
+                        id: 'bash1',
+                        toolName: 'bash',
+                        args: { command: 'git add . && git commit -m "fix: bash commit"' },
+                        result: '[feature/test def5678] fix: bash commit\n 2 files changed, 3 insertions(+)',
+                        status: 'completed',
+                        startTime: '2026-01-15T10:30:00Z',
+                        endTime: '2026-01-15T10:30:01Z',
+                    },
+                    timestamp: '2026-01-15T10:30:01Z',
+                },
+            ] as any,
+        });
+
+        const { container } = render(<ConversationTurnBubble turn={turn} wsId="ws-test" />);
+        const strip = container.querySelector('[data-testid="commit-strip"]');
+        expect(strip).toBeTruthy();
+        expect(strip!.textContent).toContain('def5678');
+        expect(strip!.textContent).toContain('fix: bash commit');
+    });
+
     it('does not show commit strip for non-commit shell tool calls', () => {
         const turn = makeTurn({
             role: 'assistant',
