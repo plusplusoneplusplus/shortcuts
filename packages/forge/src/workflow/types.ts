@@ -352,8 +352,6 @@ export interface WorkflowSettings {
     timeoutMs?: number;
     /** Default error handling strategy for all nodes. */
     onError?: 'abort' | 'warn';
-    /** Enable tool-call caching for AI nodes. */
-    toolCallCache?: boolean;
     /** Default working directory for AI invocations and script nodes. */
     workingDirectory?: string;
 }

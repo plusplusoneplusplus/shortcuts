@@ -5,7 +5,6 @@
 
 import type { PromptItem as MRPromptItem } from '../ai/types';
 import type { OutputFormat as MROutputFormat } from '../map-reduce/shared-types';
-import type { ToolCallCacheConfig } from '../memory/tool-call-cache-types';
 
 /**
  * Single AI job configuration (alternative to map-reduce pipeline)
@@ -52,8 +51,6 @@ export interface PipelineConfig {
     job?: JobConfig;
     /** Top-level parameters available for template substitution in job mode */
     parameters?: PipelineParameter[];
-    /** Optional tool call cache configuration for capturing explore-like tool calls */
-    toolCallCache?: ToolCallCacheConfig;
 }
 
 /**

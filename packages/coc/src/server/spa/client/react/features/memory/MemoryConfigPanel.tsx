@@ -7,7 +7,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Button, Card, Spinner } from '../../ui';
-import { ExploreCachePanel } from './ExploreCachePanel';
 import { memoryApi, type MemoryConfig } from './memoryApi';
 
 export function MemoryConfigPanel() {
@@ -153,7 +152,6 @@ export function MemoryConfigPanel() {
                     {saveError && <span className="text-sm text-red-500">{saveError}</span>}
                 </div>
             </Card>
-            <ExploreCachePanel />
         </div>
     );
 }

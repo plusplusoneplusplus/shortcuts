@@ -7411,7 +7411,7 @@ describe('CLITaskExecutor — run-script tasks', () => {
     });
 });
 
-describe('ToolCallCapture integration', () => {
+describe('CLITaskExecutor integration', () => {
     let store: ReturnType<typeof createMockProcessStore>;
 
     beforeEach(() => {
@@ -7424,62 +7424,6 @@ describe('ToolCallCapture integration', () => {
             response: 'AI response text',
             sessionId: 'session-123',
         });
-    });
-
-    it('should call ToolCallCapture.createToolEventHandler with tool events during executeWithAI', async () => {
-        const { FileToolCallCacheStore: Store } = await import('@plusplusoneplusplus/forge');
-        const mockWriteRaw = vi.fn().mockResolvedValue('123-view.json');
-        vi.spyOn(Store.prototype, 'writeRaw').mockImplementation(mockWriteRaw);
-
-        const toolStartEvent = { type: 'tool-start', toolCallId: 'tc1', toolName: 'task', parameters: { prompt: 'Explain /foo.ts' } };
-        const toolCompleteEvent = { type: 'tool-complete', toolCallId: 'tc1', toolName: 'task', result: 'file content' };
-
-        mockSendMessage.mockImplementation(async (opts: any) => {
-            opts.onToolEvent?.(toolStartEvent);
-            opts.onToolEvent?.(toolCompleteEvent);
-            return { success: true, response: 'ok', sessionId: 'sess-1' };
-        });
-
-        const executor = new CLITaskExecutor(store);
-        const task: QueuedTask = {
-            id: 'task-cap-1',
-            type: 'chat',
-            priority: 'normal',
-            status: 'running',
-            createdAt: Date.now(),
-            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'Explain this code' },
-            config: { timeoutMs: 5000 },
-            displayName: 'Capture test',
-        };
-
-        await executor.execute(task);
-
-        expect(mockWriteRaw).toHaveBeenCalledOnce();
-        const entry = mockWriteRaw.mock.calls[0][0];
-        expect(entry.toolName).toBe('task');
-        expect(entry.question).toContain('/foo.ts');
-        expect(entry.answer).toBe('file content');
-    });
-
-    it('should not capture suggest_follow_ups events (not in TASK_FILTER)', async () => {
-        const { FileToolCallCacheStore: Store } = await import('@plusplusoneplusplus/forge');
-        const mockWriteRaw = vi.fn().mockResolvedValue('ts.json');
-        vi.spyOn(Store.prototype, 'writeRaw').mockImplementation(mockWriteRaw);
-
-        mockSendMessage.mockImplementation(async (opts: any) => {
-            opts.onToolEvent?.({ type: 'tool-start', toolCallId: 'sfup1', toolName: 'suggest_follow_ups', parameters: {} });
-            opts.onToolEvent?.({ type: 'tool-complete', toolCallId: 'sfup1', toolName: 'suggest_follow_ups', result: '{"suggestions":[]}' });
-            return { success: true, response: 'ok', sessionId: 'sess-2' };
-        });
-
-        const executor = new CLITaskExecutor(store);
-        await executor.execute({
-            id: 'task-noc-1', type: 'chat', priority: 'normal',
-            status: 'running', createdAt: Date.now(),
-            payload: { kind: 'chat' as const, mode: 'ask', prompt: 'test' }, config: {}, displayName: 'no capture',
-        });
-
-        expect(mockWriteRaw).not.toHaveBeenCalled();
     });
 
     // ========================================================================

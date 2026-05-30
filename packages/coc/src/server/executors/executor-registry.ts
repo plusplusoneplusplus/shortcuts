@@ -1,4 +1,4 @@
-import type { ConversationTurn, ISDKService, FileToolCallCacheStore, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
+import type { ConversationTurn, ISDKService, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import { approveAllPermissions, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../tasks/task-types';
 import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext, hasCommitChatContext, hasNoteChatContext, hasNoteCreateContext, hasClassifyDiffContext, isPrClassificationPayload } from '../tasks/task-types';
@@ -40,7 +40,6 @@ export interface ExecutorRegistryOptions {
      * receiving the RuntimeConfigService directly.
      */
     resolveAiServiceForProvider?: (provider: import('../tasks/task-types').ChatProvider) => ISDKService;
-    toolCallCacheStore: FileToolCallCacheStore;
     resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
     onTitleNeeded: (processId: string, turns: ConversationTurn[]) => void;
@@ -92,7 +91,6 @@ export class ExecutorRegistry {
             defaultTimeoutMs: options.defaultTimeoutMs,
             followUpSuggestions: options.followUpSuggestions,
             askUser: options.askUser,
-            toolCallCacheStore: options.toolCallCacheStore,
             resolveSkillConfig: options.resolveSkillConfig,
             resolveWorkspaceIdForPath: options.resolveWorkspaceIdForPath,
             getLoopInfra: options.getLoopInfra,

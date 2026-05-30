@@ -70,7 +70,6 @@ function makeOptions(
         aiService: sdkMocks.service as any,
         defaultTimeoutMs: 30_000,
         followUpSuggestions: { enabled: true, count: 3 },
-        toolCallCacheStore: { options: {} } as any,
         resolveSkillConfig: vi.fn().mockResolvedValue({ skillDirectories: undefined, disabledSkills: undefined }),
         resolveWorkspaceIdForPath: vi.fn().mockResolvedValue('ws-id'),
         ...overrides,

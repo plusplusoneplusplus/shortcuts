@@ -13,10 +13,6 @@ import {
     approveAllPermissions,
     denyAllPermissions,
     DEFAULT_AI_TIMEOUT_MS,
-    ToolCallCapture,
-    FileToolCallCacheStore,
-    resolveToolCallCacheOptions,
-    TASK_FILTER,
 } from '@plusplusoneplusplus/forge';
 import type {
     AIInvoker,
@@ -51,10 +47,6 @@ export interface CLIAIInvokerOptions {
     onChunk?: (chunk: string) => void;
     /** Custom tools to expose to the AI session */
     tools?: Tool<any>[];
-    /** Override for the cache store data dir; defaults to ~/.coc/memory */
-    cacheDataDir?: string;
-    /** Current git HEAD hash for staleness tracking; optional — cache still works without it */
-    gitHash?: string;
     /** Optional AI service override; if omitted, resolves via sdkServiceRegistry */
     aiService?: import('@plusplusoneplusplus/forge').ISDKService;
 }
@@ -143,23 +135,7 @@ export function createCLIAIInvoker(options: CLIAIInvokerOptions = {}): AIInvoker
         }
     };
 
-    const store = new FileToolCallCacheStore(
-        resolveToolCallCacheOptions(options.workingDirectory, options.cacheDataDir),
-    );
-    const capture = new ToolCallCapture(store, TASK_FILTER, {
-        gitHash: options.gitHash,
-    });
-    const captureHandler = capture.createToolEventHandler();
-
-    return (prompt: string, invokerOptions?: AIInvokerOptions): Promise<AIInvokerResult> => {
-        const mergedOptions: AIInvokerOptions = {
-            ...invokerOptions,
-            onToolEvent: invokerOptions?.onToolEvent
-                ? (event) => { invokerOptions.onToolEvent!(event); captureHandler(event); }
-                : captureHandler,
-        };
-        return invoker(prompt, mergedOptions);
-    };
+    return invoker;
 }
 
 /**

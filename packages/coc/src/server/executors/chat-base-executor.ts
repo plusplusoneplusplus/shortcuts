@@ -28,19 +28,15 @@ import type {
     SDKInvocationResult,
     SystemMessageConfig,
     TimelineItem,
-    ToolEvent,
 } from '@plusplusoneplusplus/forge';
 import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import {
     approveAllPermissions,
-    FileToolCallCacheStore,
     getLogger,
     LogCategory,
     mergeConsecutiveContentItems,
     modelMetadataStore,
     resolveReasoningSelection,
-    TASK_FILTER,
-    ToolCallCapture,
     rewriteLargePrompt,
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
@@ -131,8 +127,6 @@ export interface ChatModeExecutorOptions {
     followUpSuggestions: { enabled: boolean; count: number };
     /** Ask-user interactive tool configuration */
     askUser?: { enabled: boolean };
-    /** Shared store for tool-call Q&A capture (explore cache) */
-    toolCallCacheStore: FileToolCallCacheStore;
     /** Resolve skill configuration for a workspace */
     resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     /** Resolve workspace ID for a root path */
@@ -186,7 +180,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly defaultTimeoutMs: number;
     protected readonly followUpSuggestions: { enabled: boolean; count: number };
     protected readonly askUser: { enabled: boolean };
-    protected readonly toolCallCacheStore: FileToolCallCacheStore;
     protected readonly resolveSkillConfigFn: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     protected readonly resolveWorkspaceIdForPathFn: (rootPath: string) => Promise<string>;
     protected readonly getLoopInfra?: () => LoopInfraDeps | undefined;
@@ -204,7 +197,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.defaultTimeoutMs = options.defaultTimeoutMs;
         this.followUpSuggestions = options.followUpSuggestions;
         this.askUser = options.askUser ?? { enabled: false };
-        this.toolCallCacheStore = options.toolCallCacheStore;
         this.resolveSkillConfigFn = options.resolveSkillConfig;
         this.resolveWorkspaceIdForPathFn = options.resolveWorkspaceIdForPath;
         this.getLoopInfra = options.getLoopInfra;
@@ -506,14 +498,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 resolveSelectedSkillReferences(selectedSkillNames, skillDirectories, disabledSkills),
             );
 
-            let captureHandler: ((event: ToolEvent) => void) | undefined;
-            try {
-                const capture = new ToolCallCapture(this.toolCallCacheStore, TASK_FILTER);
-                captureHandler = capture.createToolEventHandler();
-            } catch (err) {
-                getLogger().warn(LogCategory.AI, `[ChatModeExecutor] ToolCallCapture setup failed: ${err}`);
-            }
-
             const toolEventHandler = this.buildToolEventHandler(
                 processId,
                 () => 1,
@@ -577,12 +561,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                     }
                     this.checkThrottleAndFlush(processId);
                 },
-                onToolEvent: captureHandler
-                    ? (event: ToolEvent) => {
-                        try { toolEventHandler(event); } catch { /* non-fatal */ }
-                        try { captureHandler!(event); } catch { /* non-fatal */ }
-                    }
-                    : toolEventHandler,
+                onToolEvent: toolEventHandler,
                 onBackgroundTasksChanged: this.buildBackgroundTaskHandler(processId),
                 onMcpOAuthRequired: (() => {
                     const manager = this.getMcpOauthManager?.();

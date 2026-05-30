@@ -1014,45 +1014,6 @@ The plan file should include:
             description: 'Injection/exfiltration patterns blocked before memory writes are accepted',
             text: SECURITY_PATTERNS_DESCRIPTION,
         },
-        'tool-call-cache': {
-            id: 'tool-call-cache',
-            title: 'Tool-call Cache',
-            group: 'Memory',
-            source: 'forge/memory/tool-call-cache-aggregator.ts',
-            description: '7-step clustering/dedup instructions, output JSON schema',
-            text: `You are a tool-call cache consolidator. Your job is to merge raw Q&A pairs into a deduplicated, clustered, normalized index.
-
-## Existing Consolidated Entries
-\${existingSection}
-
-## New Raw Entries (\${count} entries)
-\${rawSection}
-
-## Instructions
-1. **Deduplicate**: Merge entries with near-identical questions (e.g. "list files in src" vs "list files in the src directory"). Keep the best answer.
-2. **Cluster by topic**: Assign 1-3 topic tags per entry (e.g. ["file-structure", "git"], ["testing", "vitest"]).
-3. **Normalize questions**: Rewrite questions to be generic and reusable. Remove repo-specific paths where possible, but preserve the semantic intent.
-4. **Preserve tool sources**: Union all toolSources from merged entries.
-5. **Set confidence**: 1.0 for entries with consistent answers, lower for entries with conflicting answers.
-6. **Merge with existing**: If an existing consolidated entry covers the same question, update its answer and increment hitCount.
-7. **Prune**: Drop entries that appear trivial or overly specific to a single context.
-
-## Output Format
-Respond with ONLY a JSON array of consolidated entries. No markdown fences, no explanation.
-Each entry must have this exact shape:
-\`\`\`
-{
-  "id": "<unique-kebab-case-id>",
-  "question": "<normalized question>",
-  "answer": "<best answer>",
-  "topics": ["<topic1>", "<topic2>"],
-  "gitHash": "<most-recent-git-hash-or-null>",
-  "toolSources": ["<tool1>", "<tool2>"],
-  "createdAt": "<ISO-8601>",
-  "hitCount": <number>
-}
-\`\`\``,
-        },
         'follow-up-suggestions': {
             id: 'follow-up-suggestions',
             title: 'Follow-up Suggestions',

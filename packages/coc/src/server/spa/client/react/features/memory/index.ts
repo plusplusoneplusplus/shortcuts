@@ -2,8 +2,6 @@ export { memoryApi } from './memoryApi';
 export type { FeedItem, RawDbTableInfo, RawDbColumnInfo, RawDbTableData } from './memoryApi';
 export { MemoryView } from './MemoryView';
 export { MemoryConfigPanel } from './MemoryConfigPanel';
-export { ExploreCachePanel } from './ExploreCachePanel';
-export { ExploreCacheBrowserPanel } from './ExploreCacheBrowserPanel';
 export { MemoryV2Panel } from './MemoryV2Panel';
 export { MemoryV2FactsTab } from './MemoryV2FactsTab';
 export { MemoryV2ReviewTab } from './MemoryV2ReviewTab';
