@@ -348,19 +348,17 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             .appendNoteFile(notePath)
             .build();
 
-        // When this is a Ralph grilling session, append the goal-spec instruction.
-        if (payload.context?.ralph?.phase === 'grilling' && systemMessage) {
-            const ralphGrillSuffix = RALPH_GRILL_SUFFIX;
-            systemMessage.content = systemMessage.content
-                ? systemMessage.content + '\n\n' + ralphGrillSuffix
-                : ralphGrillSuffix;
-        }
+        // When this is a Ralph grilling session, prepend the skill pointer to
+        // the user prompt so the model receives it on every grilling turn (AC-03).
+        const effectivePrompt = payload.context?.ralph?.phase === 'grilling'
+            ? `${RALPH_GRILL_SUFFIX}\n\n${prompt}`
+            : prompt;
 
         return {
             agentMode: mode === 'plan' ? 'plan' as AgentMode : 'interactive' as AgentMode,
             systemMessage,
             tools: ctx.tools,
-            effectivePrompt: prompt,
+            effectivePrompt,
             excludedTools: ctx.excludedTools,
             dispose: ctx.dispose,
         };

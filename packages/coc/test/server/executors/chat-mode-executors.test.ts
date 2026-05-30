@@ -601,7 +601,7 @@ describe('ChatExecutor ralph grilling phase', () => {
         };
     }
 
-    it('appends grilling-specific ask_user directive to the system message', async () => {
+    it('prepends the grilling skill pointer to the user prompt (not system message)', async () => {
         const executor = new ChatExecutor(store, makeOptions(store, {
             askUser: { enabled: true },
         } as any));
@@ -611,11 +611,15 @@ describe('ChatExecutor ralph grilling phase', () => {
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         const systemContent = call.systemMessage?.content ?? '';
-        // The grilling directive now references the bundled ultra-ralph skill's grill section.
-        expect(systemContent).toContain('ultra-ralph');
-        expect(systemContent).toContain('`grill` section');
-        // The machine contract for the final goal-spec block is still inlined.
-        expect(systemContent).toContain('## Goal');
+        const userPrompt = call.prompt ?? '';
+        // System message must NOT contain Ralph/grilling content (AC-03)
+        expect(systemContent).not.toContain('ultra-ralph');
+        expect(systemContent).not.toContain('`grill` section');
+        expect(systemContent).not.toContain('## Goal');
+        // User prompt MUST contain the grill skill pointer and machine contract (AC-03)
+        expect(userPrompt).toContain('ultra-ralph');
+        expect(userPrompt).toContain('`grill` section');
+        expect(userPrompt).toContain('## Goal');
     });
 
     it('exposes the ask_user tool to grilling tasks when askUser is enabled', async () => {
@@ -641,8 +645,11 @@ describe('ChatExecutor ralph grilling phase', () => {
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         const systemContent = call.systemMessage?.content ?? '';
+        const userPrompt = call.prompt ?? '';
         expect(systemContent).not.toContain('ultra-ralph');
         expect(systemContent).not.toContain('## Goal');
+        expect(userPrompt).not.toContain('ultra-ralph');
+        expect(userPrompt).not.toContain('## Goal');
     });
 });
 

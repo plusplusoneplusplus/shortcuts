@@ -31,8 +31,6 @@ export const RALPH_SYNTHESIS_HINT_MAX_LENGTH = 2000;
 export interface BuildRalphSynthesisPromptInput {
     /** Optional one-line hint typed by the user into the message box. */
     extraGuidance?: string;
-    /** Override text from admin prompts; replaces RALPH_SYNTHESIS_PROMPT_BASE when provided. */
-    promptOverride?: string;
     /** Pre-existing `## Goal` block extracted from the last assistant turn. When present, the
      *  model is instructed to treat it as authoritative and preserve all `[decision]` tags
      *  and constraints verbatim. */
@@ -40,7 +38,7 @@ export interface BuildRalphSynthesisPromptInput {
 }
 
 export function buildRalphSynthesisPrompt(input: BuildRalphSynthesisPromptInput = {}): string {
-    const base = input.promptOverride ?? RALPH_SYNTHESIS_PROMPT_BASE;
+    const base = RALPH_SYNTHESIS_PROMPT_BASE;
     let result = base;
 
     const seed = (input.seedGoal ?? '').trim();

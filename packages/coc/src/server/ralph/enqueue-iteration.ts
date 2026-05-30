@@ -8,6 +8,7 @@
  */
 
 import { buildRalphIterationPrompt } from './iteration-prompt';
+import { RalphSessionStore } from './ralph-session-store';
 import type { ChatProvider } from '../tasks/task-types';
 
 export interface BuildRalphIterationTaskInput {
@@ -20,7 +21,7 @@ export interface BuildRalphIterationTaskInput {
     maxIterations: number;
     /** Optional pre-built prompt; when omitted, uses {@link buildRalphIterationPrompt}. */
     prompt?: string;
-    /** Repo-scoped data root; used to resolve admin prompt overrides. */
+    /** Repo-scoped data root; used to resolve the progress-journal path. */
     dataDir?: string;
     /** Optional carry-over context (e.g. previous attachments, additional ralph fields). */
     extraContext?: Record<string, unknown>;
@@ -39,8 +40,15 @@ export interface BuildRalphIterationTaskInput {
 }
 
 export function buildRalphIterationTask(input: BuildRalphIterationTaskInput) {
+    const progressPath = (input.dataDir && input.workspaceId)
+        ? new RalphSessionStore({ dataDir: input.dataDir }).getProgressPath(input.workspaceId, input.sessionId)
+        : undefined;
+
     const prompt = input.prompt ?? buildRalphIterationPrompt({
         originalGoal: input.originalGoal,
+        progressPath,
+        currentIteration: input.iteration,
+        maxIterations: input.maxIterations,
     });
     const displayName = input.displayName
         ?? `Ralph iteration ${input.iteration} (${input.sessionId})`;
