@@ -34,16 +34,17 @@ describe('WorkItemHierarchyNode — type system', () => {
         src = fs.readFileSync(NODE_SRC_PATH, 'utf-8');
     });
 
-    it('exports WorkItemTypeLabel type with all 5 hierarchy types', () => {
-        expect(src).toContain("'epic' | 'feature' | 'pbi' | 'work-item' | 'bug'");
+    it('exports WorkItemTypeLabel type with all 6 hierarchy types including goal', () => {
+        expect(src).toContain("'epic' | 'feature' | 'pbi' | 'work-item' | 'bug' | 'goal'");
     });
 
-    it('exports TYPE_LABELS map with all 5 human-readable labels', () => {
+    it('exports TYPE_LABELS map with all 6 human-readable labels', () => {
         expect(src).toContain("epic: 'Epic'");
         expect(src).toContain("feature: 'Feature'");
         expect(src).toContain("pbi: 'PBI'");
         expect(src).toContain("'work-item': 'Work Item'");
         expect(src).toContain("bug: 'Bug'");
+        expect(src).toContain("goal: 'Goal'");
     });
 
     it('uses distinct prefix characters for each type', () => {
@@ -52,6 +53,7 @@ describe('WorkItemHierarchyNode — type system', () => {
         expect(src).toContain("pbi: 'PBI'");
         expect(src).toContain("'work-item': 'WI'");
         expect(src).toContain("bug: 'BUG'");
+        expect(src).toContain("goal: 'GOAL'");
     });
 
     it('has distinct CSS classes for each type pill', () => {
@@ -60,6 +62,7 @@ describe('WorkItemHierarchyNode — type system', () => {
         expect(src).toContain('bg-cyan-100');      // pbi
         expect(src).toContain('bg-gray-100');      // work-item
         expect(src).toContain('bg-red-100');       // bug
+        expect(src).toContain('bg-orange-100');    // goal
     });
 
     it('renders a collapse toggle button', () => {
@@ -215,6 +218,7 @@ describe('WorkItemDetail — container vs leaf', () => {
         expect(src).toContain("effectiveType === 'epic' ? 'E'");
         expect(src).toContain("effectiveType === 'feature' ? 'F'");
         expect(src).toContain("effectiveType === 'bug' ? 'BUG'");
+        expect(src).toContain("effectiveType === 'goal' ? 'GOAL'");
         expect(src).toContain("'WI'");
     });
 

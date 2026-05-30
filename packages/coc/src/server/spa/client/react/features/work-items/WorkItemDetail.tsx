@@ -20,6 +20,7 @@ import { WorkItemParentPicker } from './WorkItemParentPicker';
 
 const STATUS_LABELS: Record<string, { label: string; badgeStatus: string }> = {
     created:          { label: 'Created',          badgeStatus: 'queued' },
+    drafting:         { label: 'Drafting',          badgeStatus: 'warning' },
     planning:         { label: 'Planning',          badgeStatus: 'warning' },
     readyToExecute:   { label: 'Ready to Execute',  badgeStatus: 'completed' },
     executing:        { label: 'Executing',         badgeStatus: 'running' },
@@ -30,8 +31,9 @@ const STATUS_LABELS: Record<string, { label: string; badgeStatus: string }> = {
 };
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
-    created:        ['planning', 'readyToExecute', 'done', 'failed'],
-    planning:       ['readyToExecute', 'created', 'done', 'failed'],
+    created:        ['drafting', 'planning', 'readyToExecute', 'done', 'failed'],
+    drafting:       ['planning', 'readyToExecute', 'created', 'failed'],
+    planning:       ['readyToExecute', 'drafting', 'created', 'done', 'failed'],
     readyToExecute: ['executing', 'planning', 'done', 'failed'],
     executing:      ['aiDone', 'aiFailed', 'failed', 'readyToExecute'],
     aiDone:         ['readyToExecute', 'done', 'failed'],
@@ -57,6 +59,8 @@ interface WorkItemFull {
     id: string; workItemNumber?: number; title: string; description: string; status: string;
     type?: string;
     parentId?: string;
+    successCriteria?: string;
+    grillSessionId?: string;
     priority?: string; source?: string; sourceId?: string;
     createdAt: string; updatedAt: string; completedAt?: string;
     pinnedAt?: string; archivedAt?: string;
@@ -100,6 +104,10 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const [editError, setEditError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [showParentPicker, setShowParentPicker] = useState(false);
+    // ── Success criteria edit state (goal items only) ──
+    const [editingCriteria, setEditingCriteria] = useState(false);
+    const [criteriaDraft, setCriteriaDraft] = useState('');
+    const [savingCriteria, setSavingCriteria] = useState(false);
 
     const fetchItem = useCallback(async () => {
         setLoading(true);
@@ -352,6 +360,22 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         }
     }, [editTitle, editDescription, editPriority, editTags, editParentId, workspaceId, workItemId, dispatch, fetchItem]);
 
+    const handleCriteriaSave = useCallback(async () => {
+        setSavingCriteria(true);
+        try {
+            const updated = await getSpaCocClient().workItems.update(workspaceId, workItemId, {
+                successCriteria: criteriaDraft,
+            } as any);
+            dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item: updated as any });
+            await fetchItem();
+            setEditingCriteria(false);
+        } catch {
+            // Keep the editor open on failure; the next fetch surfaces detail-level errors.
+        } finally {
+            setSavingCriteria(false);
+        }
+    }, [criteriaDraft, workspaceId, workItemId, dispatch, fetchItem]);
+
     if (loading) {
         return <div className="flex items-center justify-center h-full text-sm text-[#848484]">Loading…</div>;
     }
@@ -395,6 +419,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                     : effectiveType === 'feature' ? 'F'
                                     : effectiveType === 'pbi' ? 'PBI'
                                     : effectiveType === 'bug' ? 'BUG'
+                                    : effectiveType === 'goal' ? 'GOAL'
                                     : 'WI'}-{item.workItemNumber}
                             </span>
                         )}
@@ -591,7 +616,47 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     )}
                 </section>
 
-                {/* Priority + Tags in edit mode */}
+                {/* Success Criteria — goal items only */}
+                {effectiveType === 'goal' && (
+                    <section data-testid="wi-success-criteria">
+                        <div className="flex items-center justify-between mb-1">
+                            <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase">Success Criteria</h3>
+                            {!editingCriteria && (
+                                <button
+                                    className="text-[11px] text-[#0078d4] dark:text-[#3794ff] hover:underline"
+                                    onClick={() => { setCriteriaDraft(item.successCriteria || ''); setEditingCriteria(true); }}
+                                    data-testid="wi-success-criteria-edit-btn"
+                                >
+                                    Edit
+                                </button>
+                            )}
+                        </div>
+                        {editingCriteria ? (
+                            <div className="space-y-2">
+                                <textarea
+                                    className="w-full min-h-[80px] text-sm p-2 rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] resize-y focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
+                                    value={criteriaDraft}
+                                    onChange={e => setCriteriaDraft(e.target.value)}
+                                    disabled={savingCriteria}
+                                    placeholder="What defines this goal as achieved?"
+                                    data-testid="wi-success-criteria-input"
+                                />
+                                <div className="flex items-center gap-2">
+                                    <Button variant="primary" size="sm" onClick={handleCriteriaSave} disabled={savingCriteria} loading={savingCriteria} data-testid="wi-success-criteria-save-btn">
+                                        Save
+                                    </Button>
+                                    <Button variant="ghost" size="sm" onClick={() => setEditingCriteria(false)} disabled={savingCriteria}>
+                                        Cancel
+                                    </Button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-sm whitespace-pre-wrap text-[#3c3c3c] dark:text-[#cccccc]">
+                                {item.successCriteria || <span className="italic text-[#848484]">No success criteria defined</span>}
+                            </div>
+                        )}
+                    </section>
+                )}
                 {isEditing && isContainer && (
                     <section className="space-y-3" data-testid="wi-edit-fields">
                         <div>

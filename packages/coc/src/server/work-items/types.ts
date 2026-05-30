@@ -15,12 +15,18 @@
 // Status & Source Enums
 // ============================================================================
 
-/** Work item lifecycle status. */
-export type WorkItemStatus = 'created' | 'planning' | 'readyToExecute' | 'executing' | 'aiDone' | 'aiFailed' | 'done' | 'failed';
+/**
+ * Work item lifecycle status.
+ *
+ * `drafting` is an optional pre-planning phase used by `goal` items while their
+ * spec is developed interactively (e.g. a Ralph grilling session). Other types
+ * skip it and start at `created`.
+ */
+export type WorkItemStatus = 'created' | 'drafting' | 'planning' | 'readyToExecute' | 'executing' | 'aiDone' | 'aiFailed' | 'done' | 'failed';
 
 /** All valid work item statuses (useful for validation). */
 export const WORK_ITEM_STATUSES: readonly WorkItemStatus[] = Object.freeze([
-    'created', 'planning', 'readyToExecute', 'executing', 'aiDone', 'aiFailed', 'done', 'failed',
+    'created', 'drafting', 'planning', 'readyToExecute', 'executing', 'aiDone', 'aiFailed', 'done', 'failed',
 ]);
 
 /** Terminal statuses that cannot transition further. */
@@ -36,14 +42,16 @@ export type WorkItemPriority = 'high' | 'normal' | 'low';
 
 /**
  * Work item type.
- * - `work-item`, `bug`: leaf types that can be planned and executed.
+ * - `work-item`, `bug`, `goal`: leaf types that can be planned and executed.
+ *   A `goal` is outcome-oriented and may first be spec'd out via a drafting
+ *   phase before execution.
  * - `epic`, `feature`, `pbi`: hierarchy container types (planning only).
  */
-export type WorkItemType = 'work-item' | 'bug' | 'epic' | 'feature' | 'pbi';
+export type WorkItemType = 'work-item' | 'bug' | 'goal' | 'epic' | 'feature' | 'pbi';
 
 /** All valid work item types (useful for validation). */
 export const WORK_ITEM_TYPES: readonly WorkItemType[] = Object.freeze([
-    'work-item', 'bug', 'epic', 'feature', 'pbi',
+    'work-item', 'bug', 'goal', 'epic', 'feature', 'pbi',
 ]);
 
 /** Container types — hierarchy planning containers, not directly executable. */
@@ -53,7 +61,7 @@ export const HIERARCHY_CONTAINER_TYPES: ReadonlySet<WorkItemType> = new Set<Work
 
 /** Leaf types — executable items that support plan/execution flows. */
 export const LEAF_WORK_ITEM_TYPES: ReadonlySet<WorkItemType> = new Set<WorkItemType>([
-    'work-item', 'bug',
+    'work-item', 'bug', 'goal',
 ]);
 
 /**
@@ -67,6 +75,7 @@ export const ALLOWED_PARENT_TYPES: Record<WorkItemType, readonly WorkItemType[]>
     pbi:         ['feature'],
     'work-item': ['pbi'],
     bug:         ['pbi'],
+    goal:        ['pbi'],
 };
 
 /**
@@ -76,9 +85,10 @@ export const ALLOWED_PARENT_TYPES: Record<WorkItemType, readonly WorkItemType[]>
 export const ALLOWED_CHILD_TYPES: Record<WorkItemType, readonly WorkItemType[]> = {
     epic:        ['feature'],
     feature:     ['pbi'],
-    pbi:         ['work-item', 'bug'],
+    pbi:         ['work-item', 'bug', 'goal'],
     'work-item': [],
     bug:         [],
+    goal:        [],
 };
 
 // ============================================================================
@@ -208,7 +218,7 @@ export interface WorkItem {
     description: string;
     /** Current lifecycle status. */
     status: WorkItemStatus;
-    /** Work item type — 'work-item' (default), 'bug', 'epic', 'feature', or 'pbi'. */
+    /** Work item type — 'work-item' (default), 'bug', 'goal', 'epic', 'feature', or 'pbi'. */
     type?: WorkItemType;
     /** Parent work item ID (hierarchy). Only set when hierarchy is enabled. */
     parentId?: string;
@@ -232,6 +242,18 @@ export interface WorkItem {
     // Plan
     /** Current plan version (if any). */
     plan?: WorkItemPlan;
+
+    // Goal-specific
+    /**
+     * Success criteria defining what "done" looks like for a `goal` item.
+     * Markdown. Ignored for non-goal types.
+     */
+    successCriteria?: string;
+    /**
+     * Process ID of the linked spec-drafting (Ralph grilling) chat session for a
+     * `goal` item, set while the goal is in the `drafting` phase.
+     */
+    grillSessionId?: string;
 
     // Execution tracking
     /** Queue task ID of the currently executing task. */
@@ -392,8 +414,9 @@ export function isTerminalStatus(status: WorkItemStatus): boolean {
 
 /** Valid status transitions. */
 export const VALID_TRANSITIONS: Record<WorkItemStatus, readonly WorkItemStatus[]> = {
-    created:        ['planning', 'readyToExecute', 'done', 'failed'],
-    planning:       ['readyToExecute', 'created', 'done', 'failed'],
+    created:        ['drafting', 'planning', 'readyToExecute', 'done', 'failed'],
+    drafting:       ['planning', 'readyToExecute', 'created', 'failed'],
+    planning:       ['readyToExecute', 'drafting', 'created', 'done', 'failed'],
     readyToExecute: ['executing', 'planning', 'done', 'failed'],
     executing:      ['aiDone', 'aiFailed', 'failed', 'readyToExecute'],
     aiDone:         ['readyToExecute', 'done', 'failed'],
