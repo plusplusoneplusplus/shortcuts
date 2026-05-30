@@ -444,6 +444,7 @@ export const DEFAULT_BUNDLED_SKILLS: readonly string[] = [
     'map-reduce',
     'grill-me',
     'loop',
+    'ultra-ralph',
 ];
 
 /** Default configuration values */

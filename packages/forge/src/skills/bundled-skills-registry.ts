@@ -98,5 +98,10 @@ export const BUNDLED_SKILLS_REGISTRY: readonly BundledSkill[] = [
         name: 'excalidraw-diagram',
         description: 'Generate, read, and iteratively modify Excalidraw diagrams (flowcharts, relationships, mind maps, architecture, DFD, swimlane, class, sequence, ER) with interactive inline previews via excalidraw:// links; ships with templates, schema references, and Python helper scripts',
         relativePath: 'excalidraw-diagram',
-    }
+    },
+    {
+        name: 'ultra-ralph',
+        description: 'Core instruction sets for Ralph autonomous coding loop phases — grill (clarification), synthesis (goal extraction), execution (iteration), iteration (user prompt), and final-check (read-only validation)',
+        relativePath: 'ultra-ralph',
+    },
 ];

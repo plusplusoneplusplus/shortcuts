@@ -12,11 +12,11 @@ import { buildClassificationPrompt } from '../../src/server/repos/pr-classificat
 import { TaskDefs } from '../../src/server/tasks/task-types';
 
 // Mock the prompt override module so we can test override-aware rendering
-vi.mock('../../src/server/admin/ralph-prompt-overrides', () => ({
+vi.mock('../../src/server/admin/admin-prompt-overrides', () => ({
     getPromptOverride: vi.fn(),
 }));
 
-import { getPromptOverride } from '../../src/server/admin/ralph-prompt-overrides';
+import { getPromptOverride } from '../../src/server/admin/admin-prompt-overrides';
 
 const mockedGetOverride = vi.mocked(getPromptOverride);
 

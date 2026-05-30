@@ -30,72 +30,27 @@ import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-exe
 import { ChatBaseExecutor } from './chat-base-executor';
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
-import { getPromptOverride } from '../admin/ralph-prompt-overrides';
 
 // ============================================================================
 // System prompt template
 // ============================================================================
 
 export const RALPH_BASE_INSTRUCTIONS = `\
-You are a focused AI coding agent running in Ralph mode.
+Load and follow the \`ultra-ralph\` skill, \`execution\` section. The skill file is at ~/.coc/skills/ultra-ralph/SKILL.md.
 
-Your task each iteration:
-1. Read the goal spec below.
-2. Read your accumulated progress journal at the path noted below — grep
-   for filenames or decisions before choosing the next subtask, so you do
-   not redo prior work.
-3. Pick the next logical subtask toward the goal — implement one subtask only.
-4. Run tests/build to verify your change, then commit with a clear message.
-
-When done with this iteration, you MUST:
-
-A. Append a new section to the progress journal with this exact header
-   grammar (em-dash or ASCII dash; ISO timestamp):
-
-       ## Iteration <N> — <SIGNAL> — <ISO timestamp>
-       Files: <comma-separated list of files created/modified>
-       Decisions: <one-line rationale for the key choices made>
-       Remaining: <what still has to happen, or "none">
-
-   <SIGNAL> is RALPH_NEXT or RALPH_COMPLETE — same value you end the
-   response with. Use the iteration counter from the system prompt.
-
-B. End the response with exactly one of:
-       RALPH_COMPLETE
-       RALPH_NEXT
-
-If you cannot append to the file, fall back to the legacy format and
-the server will write the section for you:
-
-        RALPH_PROGRESS:
-        <files / decisions / remaining>
-        <SIGNAL>`;
+Machine contract (parser-required): When done with an iteration, append to progress.md using exactly this header grammar:
+    ## Iteration <N> — <SIGNAL> — <ISO timestamp>
+    Files: <comma-separated list>
+    Decisions: <one-line rationale>
+    Remaining: <what still has to happen, or "none">
+End the response with exactly one of:
+    RALPH_COMPLETE
+    RALPH_NEXT`;
 
 export const RALPH_FINAL_CHECK_BASE_INSTRUCTIONS = `\
-You are a read-only validation agent for a completed Ralph implementation loop.
+Load and follow the \`ultra-ralph\` skill, \`final-check\` section. The skill file is at ~/.coc/skills/ultra-ralph/SKILL.md.
 
-You are still running with autopilot execution capabilities so you can inspect
-the repository and run validation commands, but you must not change repository
-or CoC state.
-
-Allowed:
-1. Read files and the Ralph progress journal.
-2. Inspect git history, status, and diffs.
-3. Run validation commands that do not modify files, commits, branches, remotes,
-   work items, sessions, loops, schedules, or other persistent state.
-
-Forbidden:
-1. Do not edit, create, delete, rename, or format files.
-2. Do not commit, amend, rebase, merge, push, checkout, reset, or stash.
-3. Do not call APIs or tools that create/update work items, sessions, loops,
-   schedules, notes, memories, or other persistent state.
-4. Do not start another Ralph session or loop yourself.
-
-Your only job is to compare the original goal/spec, the progress journal, the
-actual repository state, and validation evidence. Your final response must
-contain exactly one RALPH_FINAL_CHECK_RESULT JSON block as requested by the user
-prompt. Do not end with RALPH_NEXT or RALPH_COMPLETE. The server will append the
-final-check result to progress.md after parsing your response.`;
+Machine contract (parser-required): Your final response must contain exactly one \`RALPH_FINAL_CHECK_RESULT\` JSON block. Do not end with RALPH_NEXT or RALPH_COMPLETE.`;
 
 export interface BuildRalphSystemMessageInput {
     originalGoal?: string;
@@ -105,7 +60,7 @@ export interface BuildRalphSystemMessageInput {
     maxIterations?: number;
 }
 
-function buildRalphSystemMessage(ralph: BuildRalphSystemMessageInput, baseInstructions?: string): string {
+export function buildRalphSystemMessage(ralph: BuildRalphSystemMessageInput, baseInstructions?: string): string {
     const parts: string[] = [baseInstructions ?? RALPH_BASE_INSTRUCTIONS];
 
     if (ralph.originalGoal) {
@@ -125,7 +80,7 @@ function buildRalphSystemMessage(ralph: BuildRalphSystemMessageInput, baseInstru
     return parts.join('\n\n');
 }
 
-function buildRalphFinalCheckSystemMessage(ralph: BuildRalphSystemMessageInput): string {
+export function buildRalphFinalCheckSystemMessage(ralph: BuildRalphSystemMessageInput): string {
     const parts: string[] = [RALPH_FINAL_CHECK_BASE_INSTRUCTIONS];
 
     if (ralph.originalGoal) {
@@ -173,9 +128,7 @@ export class RalphExecutor extends ChatBaseExecutor {
 
         const isFinalCheck = !!ralphCtx?.finalCheck;
 
-        const resolvedBaseInstructions = this.dataDir
-            ? (getPromptOverride('ralph-execution-system', this.dataDir) ?? RALPH_BASE_INSTRUCTIONS)
-            : RALPH_BASE_INSTRUCTIONS;
+        const resolvedBaseInstructions = RALPH_BASE_INSTRUCTIONS;
 
         const ralphPromptInput = {
             originalGoal: ralphCtx?.originalGoal,
@@ -234,4 +187,3 @@ export class RalphExecutor extends ChatBaseExecutor {
 // Helpers (exported for testing)
 // ============================================================================
 
-export { buildRalphSystemMessage, buildRalphFinalCheckSystemMessage };

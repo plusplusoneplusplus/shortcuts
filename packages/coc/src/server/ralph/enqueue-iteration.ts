@@ -8,7 +8,6 @@
  */
 
 import { buildRalphIterationPrompt } from './iteration-prompt';
-import { getPromptOverride } from '../admin/ralph-prompt-overrides';
 import type { ChatProvider } from '../tasks/task-types';
 
 export interface BuildRalphIterationTaskInput {
@@ -34,12 +33,8 @@ export interface BuildRalphIterationTaskInput {
 }
 
 export function buildRalphIterationTask(input: BuildRalphIterationTaskInput) {
-    const promptOverride = input.dataDir
-        ? (getPromptOverride('ralph-iteration-user', input.dataDir) ?? undefined)
-        : undefined;
     const prompt = input.prompt ?? buildRalphIterationPrompt({
         originalGoal: input.originalGoal,
-        promptOverride,
     });
     const displayName = input.displayName
         ?? `Ralph iteration ${input.iteration} (${input.sessionId})`;

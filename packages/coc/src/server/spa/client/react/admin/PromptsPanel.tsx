@@ -26,7 +26,7 @@ interface PromptsPanelProps {
     onError: (msg: string) => void;
 }
 
-const GROUP_ORDER = ['Pipeline', 'Memory', 'UI', 'Ralph', 'Diff Classification'];
+const GROUP_ORDER = ['Pipeline', 'Memory', 'UI', 'Diff Classification'];
 
 export function PromptsPanel({ onError }: PromptsPanelProps) {
     const [prompts, setPrompts] = useState<BuiltInPrompt[]>([]);

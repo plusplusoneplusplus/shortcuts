@@ -7,7 +7,7 @@ import {
 describe('buildRalphSynthesisPrompt', () => {
     it('returns the base prompt when no extraGuidance is supplied', () => {
         const prompt = buildRalphSynthesisPrompt();
-        expect(prompt).toContain('Ralph grilling phase');
+        expect(prompt).toContain('ultra-ralph');
         expect(prompt).toContain('## Goal');
         expect(prompt).not.toContain('user added this guidance');
     });
@@ -35,13 +35,10 @@ describe('buildRalphSynthesisPrompt', () => {
         expect(prompt).toMatch(/…$/);
     });
 
-    it('improved base prompt explicitly mentions decisions, constraints, and ACs with DoD', () => {
+    it('base prompt references ultra-ralph skill', () => {
         const prompt = buildRalphSynthesisPrompt();
-        expect(prompt).toContain('Do not include preamble');
-        expect(prompt).toContain('[decision]');
-        expect(prompt).toContain('constraint');
-        expect(prompt).toContain('Acceptance criteria');
-        expect(prompt).toContain('Definition of Done');
+        expect(prompt).toContain('ultra-ralph');
+        expect(prompt).toContain('## Goal');
     });
 
     // ── Seed goal (AC-01) ──

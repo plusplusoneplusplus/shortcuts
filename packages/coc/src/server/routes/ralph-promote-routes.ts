@@ -31,7 +31,6 @@ import {
     RALPH_SYNTHESIS_HINT_MAX_LENGTH,
 } from '../ralph/synthesis-prompt';
 import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
-import { getPromptOverride } from '../admin/ralph-prompt-overrides';
 
 export interface RalphPromoteRouteContext {
     bridge: MultiRepoQueueRouter;
@@ -209,9 +208,6 @@ export function registerRalphPromoteRoutes(routes: Route[], ctx: RalphPromoteRou
                         prompt: buildRalphSynthesisPrompt({
                             seedGoal,
                             extraGuidance,
-                            promptOverride: dataDir
-                                ? (getPromptOverride('ralph-synthesis', dataDir) ?? undefined)
-                                : undefined,
                         }),
                         processId: proc.id,
                         workspaceId: wsId,

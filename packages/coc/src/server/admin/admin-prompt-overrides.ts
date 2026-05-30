@@ -1,31 +1,14 @@
 /**
- * Ralph Prompt Override Persistence
+ * Admin Prompt Override Persistence
  *
  * Reads and writes per-prompt admin overrides from/to a global JSON file at
  * `<dataDir>/admin-prompt-overrides.json`.  Absent file = all built-in
  * defaults.  Any read / write failure is handled silently so the server
  * never crashes over a missing or corrupt overrides file.
- *
- * Callers
- *  - `admin-handler.ts` — GET /api/admin/prompts (read), PUT/DELETE (write)
- *  - `chat-base-executor.ts` — grilling phase suffix
- *  - `ralph-executor.ts` — execution system prompt
- *  - `synthesis-prompt.ts` caller — synthesis base
- *  - `iteration-prompt.ts` caller — iteration user prompt
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-
-/** IDs for the four tunable Ralph prompt blocks. */
-export const RALPH_PROMPT_IDS = [
-    'ralph-grill-suffix',
-    'ralph-synthesis',
-    'ralph-execution-system',
-    'ralph-iteration-user',
-] as const;
-
-export type RalphPromptId = typeof RALPH_PROMPT_IDS[number];
 
 export function getPromptOverridesPath(dataDir: string): string {
     return path.join(dataDir, 'admin-prompt-overrides.json');
