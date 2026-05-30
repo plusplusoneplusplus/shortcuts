@@ -611,14 +611,11 @@ describe('ChatExecutor ralph grilling phase', () => {
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         const systemContent = call.systemMessage?.content ?? '';
-        expect(systemContent).toContain('Ralph Grilling Phase');
-        expect(systemContent).toContain('`ask_user` tool for EVERY clarification');
-        expect(systemContent).toContain('Batch related questions');
-        expect(systemContent).toContain('ignore the earlier "Do NOT use ask_user for simple yes/no" guidance');
-        // Final goal-spec template is still present, but only emitted at the end.
+        // The grilling directive now references the bundled ultra-ralph skill's grill section.
+        expect(systemContent).toContain('ultra-ralph');
+        expect(systemContent).toContain('`grill` section');
+        // The machine contract for the final goal-spec block is still inlined.
         expect(systemContent).toContain('## Goal');
-        expect(systemContent).toContain('## Acceptance Criteria');
-        expect(systemContent).toContain('## Out of Scope');
     });
 
     it('exposes the ask_user tool to grilling tasks when askUser is enabled', async () => {
@@ -644,8 +641,8 @@ describe('ChatExecutor ralph grilling phase', () => {
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         const systemContent = call.systemMessage?.content ?? '';
-        expect(systemContent).not.toContain('Ralph Grilling Phase');
-        expect(systemContent).not.toContain('`ask_user` tool for EVERY clarification');
+        expect(systemContent).not.toContain('ultra-ralph');
+        expect(systemContent).not.toContain('## Goal');
     });
 });
 
