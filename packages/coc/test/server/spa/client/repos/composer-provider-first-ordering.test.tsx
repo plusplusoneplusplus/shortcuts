@@ -50,6 +50,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isRalphEnabled: () => false,
     isLoopsEnabled: () => false,
     getDefaultProvider: () => mockDefaultProvider,
+    isEffortLevelsEnabled: () => false,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -61,7 +62,8 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
             patchRepo: vi.fn().mockResolvedValue({}),
         },
         skills: { listAllWorkspace: vi.fn().mockResolvedValue({ merged: [] }) },
-        agentProviders: { list: vi.fn().mockResolvedValue({ providers: mockAgentProviders }), getReasoningEfforts: vi.fn().mockResolvedValue({ reasoningEfforts: {} }) },
+        agentProviders: { list: vi.fn().mockResolvedValue({ providers: mockAgentProviders }), getReasoningEfforts: vi.fn().mockResolvedValue({ reasoningEfforts: {} }),
+            getEffortTiers: vi.fn().mockResolvedValue({ effortTiers: {} }) },
     }),
     getSpaCocClientErrorMessage: (err: any, fallback: string) =>
         (err instanceof Error ? err.message : undefined) || fallback,

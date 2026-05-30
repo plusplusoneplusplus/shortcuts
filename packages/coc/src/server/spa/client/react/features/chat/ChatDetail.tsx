@@ -51,9 +51,12 @@ import { ScratchpadPanel } from './scratchpad/ScratchpadPanel';
 import { MobileScratchpadTabBar } from './scratchpad/MobileScratchpadTabBar';
 import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
 import { isChatMode, resolveLoadedTaskMode } from './chatMode';
-import { isRalphEnabled, isLoopsEnabled, getDefaultProvider } from '../../utils/config';
+import { isRalphEnabled, isLoopsEnabled, getDefaultProvider, isEffortLevelsEnabled } from '../../utils/config';
 import type { ChatMode } from '../../repos/modeConfig';
 import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
+import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
+import type { EffortTierKey } from '../../hooks/useProviderEffortTiers';
+import { resolveEffortTier, resolveEffectiveTier } from '../../utils/resolveEffortTier';
 import { deriveEffort } from '../../utils/effortUtils';
 import { RalphStartPanel } from './RalphStartPanel';
 import { ImplementPlanCard } from './ImplementPlanCard';
@@ -141,6 +144,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [copied, setCopied] = useState(false);
     const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
+    const [selectedFollowUpEffortTier, setSelectedFollowUpEffortTier] = useState<EffortTierKey>('medium');
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [sessionTokenLimit, setSessionTokenLimit] = useState<number | undefined>(undefined);
     const [sessionCurrentTokens, setSessionCurrentTokens] = useState<number | undefined>(undefined);
@@ -197,6 +201,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const { models: availableModels } = useModels(sessionProvider);
     // Per-provider, per-model reasoning-effort preferences for mid-conversation model-swap re-derive.
     const reasoningEfforts = useProviderReasoningEfforts(sessionProvider);
+    const { tiers: followUpEffortTierMap, loading: followUpEffortTiersLoading } = useProviderEffortTiers(sessionProvider);
+    const followUpHasTiers = !followUpEffortTiersLoading && (['low', 'medium', 'high'] as EffortTierKey[]).some(k => !!followUpEffortTierMap[k]?.model);
+    const useFollowUpEffortTierMode = isEffortLevelsEnabled() && followUpHasTiers;
     const pickableModels = selectPickableModels(availableModels);
     const modelCommand = useModelCommand(pickableModels);
     const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isLoopsEnabled())), [skills]);
@@ -549,6 +556,32 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         setEffortOverride(effort);
     }, []);
 
+    // Restore last-picked effort tier from localStorage on workspace switch.
+    useEffect(() => {
+        const key = `coc:effort-tier:${workspaceId ?? 'default'}`;
+        const stored = localStorage.getItem(key);
+        if (stored === 'low' || stored === 'medium' || stored === 'high') {
+            setSelectedFollowUpEffortTier(stored);
+        } else {
+            setSelectedFollowUpEffortTier('medium');
+        }
+    }, [workspaceId]);
+
+    // When the selected tier becomes unconfigured, fall back to the first configured tier.
+    useEffect(() => {
+        if (!useFollowUpEffortTierMode) return;
+        const effective = resolveEffectiveTier(selectedFollowUpEffortTier, followUpEffortTierMap);
+        if (effective !== selectedFollowUpEffortTier) {
+            setSelectedFollowUpEffortTier(effective);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [useFollowUpEffortTierMode, followUpEffortTierMap]);
+
+    function handleFollowUpEffortTierChange(tier: EffortTierKey) {
+        setSelectedFollowUpEffortTier(tier);
+        localStorage.setItem(`coc:effort-tier:${workspaceId ?? 'default'}`, tier);
+    }
+
     const pinnedFile = createdFiles.at(-1);
 
     const setTurnsAndRef = useCallback((next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => {
@@ -616,6 +649,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         void refreshConversation(processId);
     }, [task?.status, processId, refreshConversation]);
 
+    // Resolve effective model + effort for follow-up sends: tier mode takes priority over legacy controls.
+    const followUpTierPayload = useFollowUpEffortTierMode
+        ? resolveEffortTier(selectedFollowUpEffortTier, followUpEffortTierMap)
+        : null;
+    const effectiveFollowUpModelOverride = followUpTierPayload?.model ?? modelCommand.modelOverride ?? null;
+    const effectiveFollowUpEffort = (followUpTierPayload !== null
+        ? followUpTierPayload.reasoningEffort as EffortLevel | null
+        : effortOverride);
+
     const { sendFollowUp, closeFollowUpStream, onSendComplete } = useSendMessage({
         processId,
         taskId,
@@ -644,8 +686,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         setTask,
         getAttachedContext: attachedContext.getItems,
         clearAttachedContext: attachedContext.clear,
-        modelOverride: modelCommand.modelOverride,
-        effortOverride,
+        modelOverride: effectiveFollowUpModelOverride,
+        effortOverride: effectiveFollowUpEffort,
         workspaceId,
         // After a successful Ralph promotion the follow-up area's `allowedModes`
         // recomputes (the chat now has a ralph context) and the Ralph pill
@@ -1482,6 +1524,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             effortOptions={effortOptions}
                             effortDisabled={effortPickerDisabled}
                              onEffortChange={handleEffortChange}
+                            useEffortTierMode={useFollowUpEffortTierMode}
+                            effortTierMap={followUpEffortTierMap}
+                            selectedEffortTier={selectedFollowUpEffortTier}
+                            onEffortTierChange={handleFollowUpEffortTierChange}
                         />
                     )}
                 </div>
@@ -1594,6 +1640,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     effortOptions={effortOptions}
                     effortDisabled={effortPickerDisabled}
                     onEffortChange={handleEffortChange}
+                    useEffortTierMode={useFollowUpEffortTierMode}
+                    effortTierMap={followUpEffortTierMap}
+                    selectedEffortTier={selectedFollowUpEffortTier}
+                    onEffortTierChange={handleFollowUpEffortTierChange}
                 />
             )}
             {isMobileScratchpad && (

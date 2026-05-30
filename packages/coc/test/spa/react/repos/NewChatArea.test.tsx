@@ -69,6 +69,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isRalphEnabled: () => mockRalphEnabled.value,
     isLoopsEnabled: () => false,
     getDefaultProvider: () => 'copilot' as const,
+    isEffortLevelsEnabled: () => false,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -84,7 +85,8 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
             { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
             { id: 'codex', label: 'Codex', enabled: false, available: false },
             { id: 'claude', label: 'Claude', enabled: false, available: false, reason: 'Claude Code not installed' },
-        ] }), getReasoningEfforts: vi.fn().mockResolvedValue({ reasoningEfforts: {} }) },
+        ] }), getReasoningEfforts: vi.fn().mockResolvedValue({ reasoningEfforts: {} }),
+            getEffortTiers: vi.fn().mockResolvedValue({ effortTiers: {} }) },
     }),
     getSpaCocClientErrorMessage: (err: any, fallback: string) =>
         (err instanceof Error ? err.message : undefined) || fallback,

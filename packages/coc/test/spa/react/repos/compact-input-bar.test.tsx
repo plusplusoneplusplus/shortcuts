@@ -62,6 +62,23 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isCodexEnabled: () => false,
     getDefaultProvider: () => 'copilot',
     getActiveProvider: () => 'copilot',
+    isEffortLevelsEnabled: () => false,
+}));
+
+vi.mock('../../../../src/server/spa/client/react/hooks/useProviderEffortTiers', () => ({
+    useProviderEffortTiers: () => ({
+        tiers: {},
+        loading: false,
+        error: null,
+        saveError: null,
+        saving: false,
+        dirty: false,
+        setTier: vi.fn(),
+        clearTier: vi.fn(),
+        save: vi.fn(),
+        cancel: vi.fn(),
+        reload: vi.fn(),
+    }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({
