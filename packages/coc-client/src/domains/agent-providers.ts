@@ -101,6 +101,17 @@ export class AgentProvidersClient {
     );
   }
 
+  /** Full-map replace: sends all configured tiers at once; omitted tiers are cleared. */
+  replaceEffortTiers(
+    provider: string,
+    effortTiers: Partial<Record<'low' | 'medium' | 'high', { model: string; reasoningEffort?: string | null }>>,
+  ): Promise<ProviderEffortTiersResponse> {
+    return this.transport.request<ProviderEffortTiersResponse>(
+      `/agent-providers/${encodeURIComponent(provider)}/effort-tiers`,
+      { method: 'PUT', body: { effortTiers } },
+    );
+  }
+
   queryModel(provider: string, request: ModelQueryRequest): Promise<ProviderModelQueryResponse> {
     return this.transport.request<ProviderModelQueryResponse>(
       `/agent-providers/${encodeURIComponent(provider)}/models/query`,
