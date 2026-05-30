@@ -655,7 +655,10 @@ suite('ShortcutsCommands Integration Tests', function() {
             }
         });
 
-        test('should delete group with items', async () => {
+        test('should delete group with items', async function() {
+            // Increase timeout for this flaky test (slow macOS runners)
+            this.timeout(10000);
+
             // Setup: Create a group with items
             await configManager.createLogicalGroup('Group With Items To Delete');
             await configManager.addToLogicalGroup('Group With Items To Delete', testFolder, 'Test Folder', 'folder');
@@ -663,7 +666,7 @@ suite('ShortcutsCommands Integration Tests', function() {
 
             // Trigger the extension to refresh its view and wait for file system to settle
             await vscode.commands.executeCommand('shortcuts.refresh');
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await new Promise(resolve => setTimeout(resolve, 300));
 
             provider.refresh();
 
@@ -679,11 +682,18 @@ suite('ShortcutsCommands Integration Tests', function() {
             try {
                 await vscode.commands.executeCommand('shortcuts.deleteLogicalGroup', groupItem);
 
-                // Wait for file system operations to complete
-                await new Promise(resolve => setTimeout(resolve, 100));
-                configManager.invalidateCache();
-                const config = await configManager.loadConfiguration();
-                const exists = config.logicalGroups.some(g => g.name === 'Group With Items To Delete');
+                // Poll for the deletion to be reflected on disk + cache
+                // (fixed 100ms sleep was racing slow macOS file watchers — caused
+                // intermittent `true !== false` failures in CI).
+                const deadline = Date.now() + 3000;
+                let exists = true;
+                while (Date.now() < deadline) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    configManager.invalidateCache();
+                    const config = await configManager.loadConfiguration();
+                    exists = config.logicalGroups.some(g => g.name === 'Group With Items To Delete');
+                    if (!exists) break;
+                }
                 assert.strictEqual(exists, false, 'Group should be deleted');
 
             } finally {

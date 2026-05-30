@@ -111,7 +111,11 @@ describe('ProviderModelsSection', () => {
         await waitFor(() => {
             expect(screen.getByTestId('provider-models-section')).toBeDefined();
         });
-        const cards = screen.getAllByTestId('provider-model-card');
+        // Cards are populated from localModels, which the hook syncs in a
+        // useEffect that runs after `loading` flips false — so the section can
+        // render one tick before the cards exist. Wait for them instead of
+        // querying synchronously.
+        const cards = await screen.findAllByTestId('provider-model-card');
         expect(cards).toHaveLength(2);
         expect(screen.getByTestId('provider-models-count').textContent).toBe('2 models');
         expect(screen.getByTestId('provider-models-enabled-count').textContent).toContain('1 of 2 enabled');

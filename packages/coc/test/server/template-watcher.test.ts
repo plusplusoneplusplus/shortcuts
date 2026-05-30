@@ -135,6 +135,11 @@ describe('TemplateWatcher', () => {
         cleanupWatchers.push(watcher);
         watcher.watchWorkspace('ws1', root);
 
+        // Let the watcher fully register before writing (macOS FSEvents can be
+        // slow to attach; without this the rapid writes below can all land
+        // before the watch is established, yielding 0 callbacks).
+        await wait(200);
+
         const templatesDir = path.join(root, '.vscode', 'templates');
 
         // Rapid-fire 10 writes within 100ms
