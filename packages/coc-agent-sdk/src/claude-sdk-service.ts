@@ -40,6 +40,8 @@ import { CocToolRuntime } from './llm-tools/coc-tool-runtime';
 import { cocToolBridgeServer } from './llm-tools/bridge-server';
 import { buildCocLlmToolsMcpConfig, COC_LLM_TOOLS_MCP_SERVER_NAME } from './llm-tools/mcp-config';
 import * as crypto from 'crypto';
+import * as os from 'os';
+import * as path from 'path';
 
 // ============================================================================
 // @anthropic-ai/claude-agent-sdk type stubs
@@ -147,6 +149,8 @@ interface ClaudeQueryOptions {
     options?: {
         cwd?: string;
         model?: string;
+        /** Extra absolute directories Claude may access beyond `cwd`. */
+        additionalDirectories?: string[];
         customSystemPrompt?: string;
         appendSystemPrompt?: string;
         permissionMode?: ClaudePermissionMode;
@@ -418,6 +422,7 @@ export class ClaudeSDKService implements ISDKService {
                 abortController,
                 options: {
                     ...(options.workingDirectory ? { cwd: options.workingDirectory } : {}),
+                    additionalDirectories: this.resolveAdditionalDirectories(options),
                     ...(model ? { model } : {}),
                     ...(options.systemMessage?.mode === 'append' ? { appendSystemPrompt: options.systemMessage.content } : {}),
                     ...(options.systemMessage?.mode === 'replace' ? { customSystemPrompt: options.systemMessage.content } : {}),
@@ -779,6 +784,33 @@ export class ClaudeSDKService implements ISDKService {
         // Only pass through Claude model IDs; reject Copilot/Codex model IDs.
         if (normalized.startsWith('claude')) return trimmed;
         return undefined;
+    }
+
+    /**
+     * Builds the list of absolute directories Claude may access beyond its
+     * working directory. Always includes `~/.coc` (CoC's data/skills dir) and
+     * the system temp directory so out-of-repo skill files and temp artifacts
+     * are readable, plus any caller-provided directories. Paths are resolved
+     * to absolute form and de-duplicated (case-insensitively on Windows).
+     */
+    private resolveAdditionalDirectories(options: SendMessageOptions): string[] {
+        const candidates = [
+            ...(options.additionalDirectories ?? []),
+            path.join(os.homedir(), '.coc'),
+            os.tmpdir(),
+        ];
+
+        const seen = new Set<string>();
+        const result: string[] = [];
+        for (const dir of candidates) {
+            if (!dir) continue;
+            const resolved = path.resolve(dir);
+            const key = process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            result.push(resolved);
+        }
+        return result;
     }
 
     private resolveClaudePermissionOptions(

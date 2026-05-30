@@ -12,6 +12,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import * as os from 'os';
+import * as path from 'path';
 import {
     ClaudeSDKService,
     mapClaudeAccountInfoToQuota,
@@ -519,6 +521,37 @@ describe('ClaudeSDKService.sendMessage', () => {
                 options: expect.objectContaining({ cwd: '/my/project' }),
             }),
         );
+    });
+
+    it('always grants access to ~/.coc and the system temp dir via additionalDirectories', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        await svc.sendMessage({ prompt: 'test', workingDirectory: '/my/project' });
+
+        const dirs: string[] = queryFn.mock.calls[0][0].options.additionalDirectories;
+        expect(dirs).toContain(path.join(os.homedir(), '.coc'));
+        expect(dirs).toContain(path.resolve(os.tmpdir()));
+    });
+
+    it('includes caller-provided additionalDirectories and de-duplicates them', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        const cocDir = path.join(os.homedir(), '.coc');
+        await svc.sendMessage({
+            prompt: 'test',
+            additionalDirectories: ['/extra/dir', cocDir],
+        });
+
+        const dirs: string[] = queryFn.mock.calls[0][0].options.additionalDirectories;
+        expect(dirs).toContain(path.resolve('/extra/dir'));
+        expect(dirs).toContain(cocDir);
+        expect(dirs).toContain(path.resolve(os.tmpdir()));
+        // ~/.coc supplied by caller must not be duplicated by the auto-injected entry.
+        expect(dirs.filter((d) => d === cocDir)).toHaveLength(1);
     });
 
     it('creates new Claude sessions with the caller-visible sessionId', async () => {
