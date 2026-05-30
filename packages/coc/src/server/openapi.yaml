@@ -846,6 +846,94 @@ paths:
                   `data:` fields. Event types: history (LogEntry[]),
                   log-entry (LogEntry), heartbeat ({}).
 
+  # ── Agent-provider effort tiers ─────────────────────────────────────
+
+  /api/agent-providers/{provider}/effort-tiers:
+    get:
+      operationId: getProviderEffortTiers
+      tags: [agent-providers]
+      summary: Get effort-tier configuration for a provider
+      description: >-
+        Returns the current effort-tier map (low / medium / high) for the
+        specified agent provider. Each tier maps to a model ID and an optional
+        reasoning-effort level. If no tiers have been configured, an empty
+        object is returned.
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          description: Provider identifier (copilot, codex, or claude)
+          schema:
+            type: string
+            enum: [copilot, codex, claude]
+      responses:
+        '200':
+          description: Effort-tier configuration for the provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderEffortTiersResponse'
+        '400':
+          description: Invalid provider identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      operationId: updateProviderEffortTiers
+      tags: [agent-providers]
+      summary: Update effort-tier configuration for a provider
+      description: >-
+        Updates the effort-tier map for the specified agent provider. Accepts
+        either a single-tier upsert (`tier` + `model` + optional
+        `reasoningEffort`) or a full-map replace (`effortTiers` object). For
+        a single-tier upsert, the provided tier is merged into the existing
+        map. For a full-map replace, the entire `effortTiers` map is replaced.
+        Models are validated against the live provider catalog when available.
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          description: Provider identifier (copilot, codex, or claude)
+          schema:
+            type: string
+            enum: [copilot, codex, claude]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/EffortTierUpsertRequest'
+                - $ref: '#/components/schemas/EffortTiersMapRequest'
+      responses:
+        '200':
+          description: Updated effort-tier configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderEffortTiersResponse'
+        '400':
+          description: >-
+            Validation error — invalid provider, invalid tier key, missing
+            model, model not in catalog, or unsupported reasoning effort.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   schemas:
     ErrorResponse:
@@ -855,6 +943,70 @@ components:
         error:
           type: string
           description: Human-readable error message
+
+    EffortTierEntry:
+      type: object
+      description: Model and optional reasoning-effort level for a single effort tier
+      required: [model]
+      properties:
+        model:
+          type: string
+          description: Model identifier
+        reasoningEffort:
+          type: string
+          nullable: true
+          description: >-
+            Reasoning effort level (e.g. low, medium, high). Null clears a
+            previously set value; omitting the field leaves it unchanged.
+
+    EffortTiersMap:
+      type: object
+      description: >-
+        Map of effort tier keys to their model/reasoning-effort configuration.
+        Any combination of low, medium, and high may be present.
+      properties:
+        low:
+          $ref: '#/components/schemas/EffortTierEntry'
+        medium:
+          $ref: '#/components/schemas/EffortTierEntry'
+        high:
+          $ref: '#/components/schemas/EffortTierEntry'
+
+    ProviderEffortTiersResponse:
+      type: object
+      description: Current effort-tier configuration for an agent provider
+      required: [provider, effortTiers]
+      properties:
+        provider:
+          type: string
+          description: Provider identifier (copilot, codex, or claude)
+        effortTiers:
+          $ref: '#/components/schemas/EffortTiersMap'
+
+    EffortTierUpsertRequest:
+      type: object
+      description: Single-tier upsert — merges one tier into the existing map
+      required: [tier, model]
+      properties:
+        tier:
+          type: string
+          enum: [low, medium, high]
+          description: Tier key to upsert
+        model:
+          type: string
+          description: Model identifier for this tier
+        reasoningEffort:
+          type: string
+          nullable: true
+          description: Optional reasoning-effort level for this tier
+
+    EffortTiersMapRequest:
+      type: object
+      description: Full-map replace — replaces the entire effort-tiers map for the provider
+      required: [effortTiers]
+      properties:
+        effortTiers:
+          $ref: '#/components/schemas/EffortTiersMap'
 
     HealthResponse:
       type: object
