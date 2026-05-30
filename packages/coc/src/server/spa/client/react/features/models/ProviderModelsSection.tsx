@@ -31,9 +31,15 @@ interface ProviderModelsSectionProps {
     provider: AgentProvider;
     available: boolean;
     unavailableMessage?: string;
+    /** All providers to show in the toolbar tab bar. When set, renders provider-switching tabs. */
+    allProviders?: AgentProvider[];
+    /** Called when the user clicks a provider tab. */
+    onProviderChange?: (provider: AgentProvider) => void;
 }
 
-export function ProviderModelsSection({ provider, available, unavailableMessage }: ProviderModelsSectionProps) {
+const PROVIDER_TAB_LABELS: Record<AgentProvider, string> = { copilot: 'Copilot', codex: 'Codex', claude: 'Claude' };
+
+export function ProviderModelsSection({ provider, available, unavailableMessage, allProviders, onProviderChange }: ProviderModelsSectionProps) {
     const { models, loading, error, saving, reload, toggleModel, reasoningEfforts, setReasoningEffort } = useProviderModelConfig(provider);
     const [search, setSearch] = useState('');
     const [capFilter, setCapFilter] = useState<CapFilter>('all');
@@ -158,7 +164,45 @@ export function ProviderModelsSection({ provider, available, unavailableMessage 
             </header>
 
             {/* Toolbar */}
-            <div className="aip-toolbar" aria-label="Model controls">
+            <div className={`aip-toolbar ${allProviders ? 'aip-toolbar-5col' : ''}`} aria-label="Model controls">
+                {allProviders && onProviderChange && (
+                    <div className="aip-seg" role="tablist" aria-label="Provider">
+                        {allProviders.map(p => (
+                            <button
+                                key={p}
+                                type="button"
+                                className={provider === p ? 'is-active' : ''}
+                                onClick={() => onProviderChange(p)}
+                                role="tab"
+                                aria-selected={provider === p}
+                                data-testid={`provider-tab-${p}`}
+                            >
+                                {PROVIDER_TAB_LABELS[p]}
+                            </button>
+                        ))}
+                    </div>
+                )}
+                <input
+                    className="aip-search"
+                    type="search"
+                    placeholder="Search models by name or ID"
+                    aria-label="Search models"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    data-testid="provider-models-search"
+                />
+                <select
+                    className="aip-select"
+                    aria-label="Capability filter"
+                    value={capFilter}
+                    onChange={e => setCapFilter(e.target.value as CapFilter)}
+                    data-testid="provider-models-filter"
+                >
+                    <option value="all">All capabilities</option>
+                    <option value="vision">Vision</option>
+                    <option value="reasoning">Reasoning</option>
+                    <option value="enabled">Enabled</option>
+                </select>
                 <div className="aip-seg" role="tablist" aria-label="Model view">
                     <button
                         type="button"
@@ -181,36 +225,6 @@ export function ProviderModelsSection({ provider, available, unavailableMessage 
                         Query
                     </button>
                 </div>
-                <input
-                    className="aip-search"
-                    type="search"
-                    placeholder="Search models by name or ID"
-                    aria-label="Search models"
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
-                    data-testid="provider-models-search"
-                />
-                <select
-                    className="aip-select"
-                    aria-label="Capability filter"
-                    value={capFilter}
-                    onChange={e => setCapFilter(e.target.value as CapFilter)}
-                    data-testid="provider-models-filter"
-                >
-                    <option value="all">All capabilities</option>
-                    <option value="vision">Vision</option>
-                    <option value="reasoning">Reasoning</option>
-                    <option value="enabled">Enabled</option>
-                </select>
-                <button
-                    type="button"
-                    className="ar-btn ar-btn-secondary ar-btn-sm"
-                    onClick={reload}
-                    title="Refresh Models"
-                    data-testid="provider-models-refresh-btn"
-                >
-                    ↻
-                </button>
             </div>
 
             {viewMode === 'catalog' ? (

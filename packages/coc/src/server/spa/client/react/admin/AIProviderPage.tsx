@@ -7,7 +7,7 @@
  * This component is pure UI — all state, handlers, and API calls remain in
  * `AdminPanel.tsx` and are passed as props.
  */
-import { Suspense, lazy, type ReactNode } from 'react';
+import { Suspense, lazy, useState, type ReactNode } from 'react';
 import { Spinner } from '../ui';
 import type { ProviderInstallStatus, AgentProvidersQuotaResponse } from '@plusplusoneplusplus/coc-client';
 
@@ -237,6 +237,8 @@ export function AIProviderPage(props: AIProviderPageProps) {
         dirty, saving, onSave, onCancel,
         quotaData, quotaLoading, quotaError, onRefreshQuota,
     } = props;
+
+    const [activeModelProvider, setActiveModelProvider] = useState<Provider>(defaultProvider);
 
     const providers: Array<{
         id: Provider;
@@ -494,18 +496,20 @@ export function AIProviderPage(props: AIProviderPageProps) {
             {/* Provider-scoped model catalog and query */}
             <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading models…</div>}>
                 <ProviderModelsSection
-                    provider={defaultProvider}
+                    provider={activeModelProvider}
                     available={
-                        defaultProvider === 'copilot'
+                        activeModelProvider === 'copilot'
                             ? true
-                            : (providerAvailability[defaultProvider]?.available ?? false)
-                                && (defaultProvider === 'codex' ? codexEnabled : claudeEnabled)
+                            : (providerAvailability[activeModelProvider]?.available ?? false)
+                                && (activeModelProvider === 'codex' ? codexEnabled : claudeEnabled)
                     }
                     unavailableMessage={
-                        defaultProvider !== 'copilot' && !(defaultProvider === 'codex' ? codexEnabled : claudeEnabled)
-                            ? `Enable the ${defaultProvider === 'codex' ? 'Codex' : 'Claude'} provider above to access its model catalog.`
-                            : providerAvailability[defaultProvider]?.error
+                        activeModelProvider !== 'copilot' && !(activeModelProvider === 'codex' ? codexEnabled : claudeEnabled)
+                            ? `Enable the ${activeModelProvider === 'codex' ? 'Codex' : 'Claude'} provider above to access its model catalog.`
+                            : providerAvailability[activeModelProvider]?.error
                     }
+                    allProviders={PROVIDER_IDS}
+                    onProviderChange={setActiveModelProvider}
                 />
             </Suspense>
         </div>

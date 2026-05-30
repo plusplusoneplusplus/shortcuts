@@ -8,9 +8,19 @@ import React, { Suspense } from 'react';
 import type { AIProviderPageProps } from '../../../../src/server/spa/client/react/admin/AIProviderPage';
 
 vi.mock('../../../../src/server/spa/client/react/features/models/ProviderModelsSection', () => ({
-    ProviderModelsSection: ({ provider, available, unavailableMessage }: { provider: string; available: boolean; unavailableMessage?: string }) => (
+    ProviderModelsSection: ({ provider, available, unavailableMessage, allProviders, onProviderChange }: {
+        provider: string; available: boolean; unavailableMessage?: string;
+        allProviders?: string[]; onProviderChange?: (p: string) => void;
+    }) => (
         <div data-testid="mock-provider-models-section" data-provider={provider} data-available={String(available)}>
             {unavailableMessage && <span data-testid="mock-unavailable-msg">{unavailableMessage}</span>}
+            {allProviders && (
+                <div data-testid="mock-provider-tabs">
+                    {allProviders.map(p => (
+                        <button key={p} data-testid={`mock-provider-tab-${p}`} onClick={() => onProviderChange?.(p)}>{p}</button>
+                    ))}
+                </div>
+            )}
         </div>
     ),
 }));
@@ -527,5 +537,44 @@ describe('AIProviderPage', () => {
     it('renders restart required badge', () => {
         renderPage();
         expect(screen.getByText('Restart required for default changes')).toBeDefined();
+    });
+
+    // ────────────── Model provider tabs ──────────────
+    it('passes allProviders to ProviderModelsSection', () => {
+        renderPage();
+        expect(screen.getByTestId('mock-provider-tabs')).toBeDefined();
+        expect(screen.getByTestId('mock-provider-tab-copilot')).toBeDefined();
+        expect(screen.getByTestId('mock-provider-tab-codex')).toBeDefined();
+        expect(screen.getByTestId('mock-provider-tab-claude')).toBeDefined();
+    });
+
+    it('defaults model provider tab to defaultProvider', () => {
+        renderPage({ defaultProvider: 'codex' });
+        const section = screen.getByTestId('mock-provider-models-section');
+        expect(section.getAttribute('data-provider')).toBe('codex');
+    });
+
+    it('switches model provider when tab is clicked', () => {
+        renderPage({ defaultProvider: 'copilot' });
+        expect(screen.getByTestId('mock-provider-models-section').getAttribute('data-provider')).toBe('copilot');
+
+        fireEvent.click(screen.getByTestId('mock-provider-tab-claude'));
+
+        expect(screen.getByTestId('mock-provider-models-section').getAttribute('data-provider')).toBe('claude');
+    });
+
+    it('updates availability when switching to a disabled provider tab', () => {
+        renderPage({
+            defaultProvider: 'copilot',
+            claudeEnabled: false,
+            providerAvailability: { codex: { available: true }, claude: { available: true } },
+        });
+
+        fireEvent.click(screen.getByTestId('mock-provider-tab-claude'));
+
+        const section = screen.getByTestId('mock-provider-models-section');
+        expect(section.getAttribute('data-available')).toBe('false');
+        const msg = screen.getByTestId('mock-unavailable-msg');
+        expect(msg.textContent).toContain('Enable the Claude provider');
     });
 });

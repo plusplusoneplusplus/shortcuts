@@ -296,4 +296,67 @@ describe('ProviderModelsSection', () => {
         expect(mocks.agentProviders.listModels).toHaveBeenCalledWith('copilot');
         expect(mocks.agentProviders.getReasoningEfforts).toHaveBeenCalledWith('copilot');
     });
+
+    it('renders provider tabs when allProviders is passed', async () => {
+        mocks.agentProviders.listModels.mockResolvedValue({
+            provider: 'copilot',
+            models: SAMPLE_MODELS,
+        });
+        const onProviderChange = vi.fn();
+        render(
+            <ProviderModelsSection
+                provider="copilot"
+                available={true}
+                allProviders={['copilot', 'codex', 'claude']}
+                onProviderChange={onProviderChange}
+            />
+        );
+        await waitFor(() => {
+            expect(screen.getByTestId('provider-models-section')).toBeDefined();
+        });
+
+        expect(screen.getByTestId('provider-tab-copilot')).toBeDefined();
+        expect(screen.getByTestId('provider-tab-codex')).toBeDefined();
+        expect(screen.getByTestId('provider-tab-claude')).toBeDefined();
+
+        const activeTab = screen.getByTestId('provider-tab-copilot');
+        expect(activeTab.getAttribute('aria-selected')).toBe('true');
+    });
+
+    it('calls onProviderChange when a provider tab is clicked', async () => {
+        mocks.agentProviders.listModels.mockResolvedValue({
+            provider: 'copilot',
+            models: SAMPLE_MODELS,
+        });
+        const onProviderChange = vi.fn();
+        render(
+            <ProviderModelsSection
+                provider="copilot"
+                available={true}
+                allProviders={['copilot', 'codex', 'claude']}
+                onProviderChange={onProviderChange}
+            />
+        );
+        await waitFor(() => {
+            expect(screen.getByTestId('provider-models-section')).toBeDefined();
+        });
+
+        fireEvent.click(screen.getByTestId('provider-tab-codex'));
+        expect(onProviderChange).toHaveBeenCalledWith('codex');
+    });
+
+    it('does not render provider tabs when allProviders is not passed', async () => {
+        mocks.agentProviders.listModels.mockResolvedValue({
+            provider: 'copilot',
+            models: SAMPLE_MODELS,
+        });
+        render(
+            <ProviderModelsSection provider="copilot" available={true} />
+        );
+        await waitFor(() => {
+            expect(screen.getByTestId('provider-models-section')).toBeDefined();
+        });
+
+        expect(screen.queryByTestId('provider-tab-copilot')).toBeNull();
+    });
 });

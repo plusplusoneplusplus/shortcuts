@@ -1538,6 +1538,9 @@
   align-items: center;
   background: var(--ar-bg-1);
 }
+.admin-redesign .aip-toolbar.aip-toolbar-5col {
+  grid-template-columns: auto minmax(180px, 1fr) auto auto;
+}
 .admin-redesign .aip-seg {
   display: inline-flex;
   border: 1px solid var(--ar-border);
