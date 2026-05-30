@@ -39,9 +39,13 @@ import { getSDKLogger } from './logger';
 import { CocToolRuntime } from './llm-tools/coc-tool-runtime';
 import { cocToolBridgeServer } from './llm-tools/bridge-server';
 import { buildCocLlmToolsMcpConfig, COC_LLM_TOOLS_MCP_SERVER_NAME } from './llm-tools/mcp-config';
+import { spawn } from 'child_process';
+import { createRequire } from 'module';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import * as readline from 'readline';
 
 // ============================================================================
 // @anthropic-ai/claude-agent-sdk type stubs
@@ -212,6 +216,8 @@ interface ActiveClaudeSession {
 // ============================================================================
 
 const CLAUDE_AGENT_SDK_PACKAGE = '@anthropic-ai/claude-agent-sdk';
+const CLAUDE_MODEL_DISCOVERY_TIMEOUT_MS = 15_000;
+const runtimeRequire = createRequire(__filename);
 
 /**
  * Provider for the optional `@anthropic-ai/claude-agent-sdk` package.
@@ -309,7 +315,7 @@ export class ClaudeSDKService implements ISDKService {
     // ── Model discovery ───────────────────────────────────────────────────────
 
     /**
-     * Return available Claude models from the SDK control API when possible.
+     * Return available Claude models from Claude Code's stream protocol when possible.
      * Falls back to a curated baseline list if dynamic model discovery fails.
      */
     public async listModels(): Promise<IModelInfo[]> {
@@ -325,29 +331,147 @@ export class ClaudeSDKService implements ISDKService {
             { id: 'claude-provider-default', name: 'Claude Provider Default' },
         ];
 
-        const queryFn = this.queryFn;
-        if (!queryFn) return fallbackModels;
-
         try {
-            const handle = queryFn({ prompt: '' });
-            const sdkModels = await handle.supportedModels?.();
-            await handle.return?.();
-
-            if (!sdkModels || sdkModels.length === 0) return fallbackModels;
-
-            const mapped = sdkModels
-                .map(model => {
-                    const value = model.value?.trim();
-                    const displayName = model.displayName?.trim();
-                    if (!value || !displayName) return null;
-                    return { id: value, name: displayName } as IModelInfo;
-                })
-                .filter((model): model is IModelInfo => model !== null);
-
-            return mapped.length > 0 ? mapped : fallbackModels;
+            const cliModels = await this.listModelsViaClaudeCli();
+            return cliModels && cliModels.length > 0 ? cliModels : fallbackModels;
         } catch {
             return fallbackModels;
         }
+    }
+
+    private async listModelsViaClaudeCli(): Promise<IModelInfo[] | null> {
+        const cli = this.resolveClaudeCliCommand();
+        return new Promise<IModelInfo[]>((resolve, reject) => {
+            const child = spawn(cli.command, [
+                ...cli.args,
+                '--output-format',
+                'stream-json',
+                '--verbose',
+                '--input-format',
+                'stream-json',
+                '--setting-sources=',
+                '--tools',
+                '',
+            ], {
+                stdio: ['pipe', 'pipe', 'ignore'],
+                windowsHide: true,
+            });
+
+            if (!child.stdout || !child.stdin) {
+                child.kill('SIGTERM');
+                reject(new Error('Claude CLI did not expose stdio pipes'));
+                return;
+            }
+
+            const rl = readline.createInterface({ input: child.stdout });
+            let settled = false;
+
+            const cleanup = () => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                rl.close();
+                child.stdin?.destroy();
+                child.kill('SIGTERM');
+            };
+
+            const fail = (err: Error) => {
+                cleanup();
+                reject(err);
+            };
+
+            const succeed = (models: IModelInfo[]) => {
+                cleanup();
+                resolve(models);
+            };
+
+            const timer = setTimeout(() => {
+                fail(new Error('Claude model discovery timed out'));
+            }, CLAUDE_MODEL_DISCOVERY_TIMEOUT_MS);
+
+            child.on('error', fail);
+            child.on('exit', () => {
+                if (!settled) fail(new Error('Claude CLI exited before returning model metadata'));
+            });
+
+            rl.on('line', (line) => {
+                let msg: unknown;
+                try {
+                    msg = JSON.parse(line);
+                } catch {
+                    return;
+                }
+
+                if (!this.isClaudeInitializeResponse(msg)) return;
+                const models = this.mapClaudeCliModels(msg.response.response.models);
+                if (!models) {
+                    fail(new Error('Claude CLI initialize response did not include valid model metadata'));
+                    return;
+                }
+                succeed(models);
+            });
+
+            try {
+                child.stdin.write(JSON.stringify({
+                    type: 'control_request',
+                    request_id: 'init-1',
+                    request: { subtype: 'initialize' },
+                }) + '\n');
+                child.stdin.end();
+            } catch (err) {
+                fail(err instanceof Error ? err : new Error(String(err)));
+            }
+        });
+    }
+
+    private resolveClaudeCliCommand(): { command: string; args: string[] } {
+        const binaryName = process.platform === 'win32' ? 'claude.exe' : 'claude';
+        const nativePackageName = `${CLAUDE_AGENT_SDK_PACKAGE}-${process.platform}-${process.arch}`;
+        try {
+            const packageJsonPath = runtimeRequire.resolve(`${nativePackageName}/package.json`);
+            const packageDir = path.dirname(packageJsonPath);
+            for (const candidate of [
+                path.join(packageDir, binaryName),
+                path.join(packageDir, 'bin', binaryName),
+            ]) {
+                if (fs.existsSync(candidate)) {
+                    return { command: candidate, args: [] };
+                }
+            }
+        } catch {
+            // Fall through to PATH lookup below.
+        }
+
+        return { command: 'claude', args: [] };
+    }
+
+    private isClaudeInitializeResponse(msg: unknown): msg is {
+        type: 'control_response';
+        request_id: 'init-1';
+        response: { response: { models: unknown } };
+    } {
+        if (typeof msg !== 'object' || msg === null) return false;
+        const record = msg as Record<string, unknown>;
+        if (record.type !== 'control_response' || record.request_id !== 'init-1') return false;
+        const response = record.response;
+        if (typeof response !== 'object' || response === null) return false;
+        const nested = (response as Record<string, unknown>).response;
+        return typeof nested === 'object' && nested !== null && 'models' in nested;
+    }
+
+    private mapClaudeCliModels(models: unknown): IModelInfo[] | null {
+        if (!Array.isArray(models)) return null;
+        const mapped = models
+            .map(model => {
+                if (typeof model !== 'object' || model === null) return null;
+                const record = model as Record<string, unknown>;
+                const value = typeof record.value === 'string' ? record.value.trim() : '';
+                const displayName = typeof record.displayName === 'string' ? record.displayName.trim() : '';
+                if (!value || !displayName) return null;
+                return { id: value, name: displayName } as IModelInfo;
+            })
+            .filter((model): model is IModelInfo => model !== null);
+        return mapped.length > 0 ? mapped : null;
     }
 
     // ── Account quota from Claude rate-limit events ───────────────────────────
