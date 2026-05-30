@@ -83,6 +83,12 @@ export interface CLIConfig {
         providers?: Record<string, {
             enabled?: string[];
             reasoningEfforts?: Record<string, string>;
+            /** Per-provider effort-tier mappings (tier → model + reasoningEffort). */
+            effortTiers?: {
+                low?: { model: string; reasoningEffort?: string | null };
+                medium?: { model: string; reasoningEffort?: string | null };
+                high?: { model: string; reasoningEffort?: string | null };
+            };
         }>;
     };
     /** Logging configuration */
@@ -298,6 +304,12 @@ export interface ResolvedCLIConfig {
         providers?: Record<string, {
             enabled?: string[];
             reasoningEfforts?: Record<string, string>;
+            /** Per-provider effort-tier mappings (tier → model + reasoningEffort). */
+            effortTiers?: {
+                low?: { model: string; reasoningEffort?: string | null };
+                medium?: { model: string; reasoningEffort?: string | null };
+                high?: { model: string; reasoningEffort?: string | null };
+            };
         }>;
     };
     /** Logging config passed through from file (not fully resolved — use resolveLoggingConfig) */

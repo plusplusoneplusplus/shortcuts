@@ -78,3 +78,15 @@ export interface ProviderModelQueryResponse {
   sessionId?: string;
   durationMs: number;
 }
+
+/** A single effort-tier entry: model + optional reasoning effort. */
+export interface EffortTierEntry {
+  model: string;
+  reasoningEffort?: string | null;
+}
+
+/** Response from GET/PUT /api/agent-providers/:provider/effort-tiers */
+export interface ProviderEffortTiersResponse {
+  provider: string;
+  effortTiers: Partial<Record<'low' | 'medium' | 'high', EffortTierEntry>>;
+}
