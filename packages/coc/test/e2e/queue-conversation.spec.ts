@@ -806,6 +806,20 @@ test.describe('Queue Task Conversation – Scroll', () => {
             await gotoQueueTask(page, serverUrl, wsId, taskId);
             await waitForConversation(page, 2);
 
+            // Wait for the initial auto-scroll-to-bottom (a deferred
+            // requestAnimationFrame in ChatDetail) to settle, and for the
+            // conversation to overflow enough that scrolling to the top yields
+            // dist > 100. Otherwise that pending rAF can fire *after* we scroll
+            // up, snapping back to the bottom and clearing isScrolledUp before
+            // the assertion runs.
+            await page.waitForFunction(() => {
+                const el = document.querySelector('[data-testid="activity-chat-conversation"]');
+                if (!el) return false;
+                const overflow = el.scrollHeight - el.clientHeight;
+                const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+                return overflow > 150 && distFromBottom < 80;
+            }, { timeout: 5000 });
+
             // Scroll to top programmatically
             await page.evaluate(() => {
                 const el = document.querySelector('[data-testid="activity-chat-conversation"]');
