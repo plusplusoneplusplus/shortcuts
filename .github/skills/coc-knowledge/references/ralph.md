@@ -138,6 +138,13 @@ final-check result to `progress.md`, reads the session once, and persists a
 `sourceIteration`, `taskId`, `processId`, `startedAt`, `completedAt`) plus
 outcome-specific metadata.
 
+Final-check tasks are still queued as Ralph chat tasks and still use autopilot
+capability, but `RalphExecutor` switches to validation-only system instructions
+when `context.ralph.finalCheck` is present. Those instructions allow inspection
+and read-only validation commands, forbid file edits/commits/state-changing
+tools, and require a `RALPH_FINAL_CHECK_RESULT` response instead of
+`RALPH_NEXT`/`RALPH_COMPLETE`.
+
 Terminal paths broadcast `ralph-session-complete`: clean checks use
 `reason='signal'`, cap-reached checks use `reason='cap'`, parse failures use
 `reason='final-check-failed'`, final-check setup failures use

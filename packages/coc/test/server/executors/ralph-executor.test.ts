@@ -1,12 +1,12 @@
 /**
  * Ralph Executor Tests
  *
- * Tests for RalphExecutor and buildRalphSystemMessage.
+ * Tests for RalphExecutor and Ralph system-message builders.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
-import { RalphExecutor, buildRalphSystemMessage } from '../../../src/server/executors/ralph-executor';
+import { RalphExecutor, buildRalphFinalCheckSystemMessage, buildRalphSystemMessage } from '../../../src/server/executors/ralph-executor';
 import type { ChatModeExecutorOptions } from '../../../src/server/executors/chat-base-executor';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
@@ -68,6 +68,12 @@ function makeRalphTask(ralphCtx?: {
     currentIteration?: number;
     maxIterations?: number;
     sessionId?: string;
+    finalCheck?: {
+        kind: 'goal-gap-check';
+        checkIndex: number;
+        sourceIteration: number;
+        loopIndex: number;
+    };
 }, id = 'ralph-task-1'): QueuedTask {
     return {
         id,
@@ -167,6 +173,50 @@ describe('buildRalphSystemMessage', () => {
 });
 
 // ============================================================================
+// buildRalphFinalCheckSystemMessage unit tests
+// ============================================================================
+
+describe('buildRalphFinalCheckSystemMessage', () => {
+    it('keeps final-check autopilot read-only and validation-focused', () => {
+        const msg = buildRalphFinalCheckSystemMessage({});
+
+        expect(msg).toContain('read-only validation agent');
+        expect(msg).toContain('autopilot execution capabilities');
+        expect(msg).toMatch(/must not change repository\s+or CoC state/);
+        expect(msg).toContain('Do not edit, create, delete, rename, or format files');
+        expect(msg).toContain('Do not commit');
+        expect(msg).toContain('RALPH_FINAL_CHECK_RESULT');
+    });
+
+    it('does not include normal Ralph implementation-loop instructions', () => {
+        const msg = buildRalphFinalCheckSystemMessage({});
+
+        expect(msg).not.toContain('Pick the next logical subtask');
+        expect(msg).not.toContain('implement one subtask');
+        expect(msg).not.toContain('then commit');
+        expect(msg).not.toContain('RALPH_PROGRESS:');
+        expect(msg).not.toContain('End the response with exactly one of');
+        expect(msg).toContain('Do not end with RALPH_NEXT or RALPH_COMPLETE');
+    });
+
+    it('references the goal and progress journal as read-only evidence', () => {
+        const msg = buildRalphFinalCheckSystemMessage({
+            originalGoal: 'Ship the feature',
+            progressPath: 'C:\\tmp\\ralph\\progress.md',
+            currentIteration: 4,
+            maxIterations: 4,
+        });
+
+        expect(msg).toContain('## Goal Spec');
+        expect(msg).toContain('Ship the feature');
+        expect(msg).toContain('## Progress Journal');
+        expect(msg).toContain('C:\\tmp\\ralph\\progress.md');
+        expect(msg).toContain('Do not append to or edit it');
+        expect(msg).toContain('Final check for Ralph iteration 4 of 4.');
+    });
+});
+
+// ============================================================================
 // RalphExecutor integration tests
 // ============================================================================
 
@@ -205,6 +255,33 @@ describe('RalphExecutor', () => {
         expect(call.systemMessage).toBeDefined();
         expect(call.systemMessage.content).toContain('RALPH_PROGRESS:');
         expect(call.systemMessage.content).toContain('Build a REST API');
+    });
+
+    it('keeps final-check tasks in autopilot but uses validation-only system instructions', async () => {
+        const executor = new RalphExecutor(store, makeOptions(store));
+        const task = makeRalphTask({
+            originalGoal: 'Validate completed work',
+            sessionId: 'sess-final-check',
+            currentIteration: 3,
+            maxIterations: 3,
+            finalCheck: {
+                kind: 'goal-gap-check',
+                checkIndex: 1,
+                sourceIteration: 3,
+                loopIndex: 1,
+            },
+        });
+
+        await executor.execute(task, 'Run final check');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.mode).toBe('autopilot');
+        expect(call.systemMessage.content).toContain('read-only validation agent');
+        expect(call.systemMessage.content).toContain('RALPH_FINAL_CHECK_RESULT');
+        expect(call.systemMessage.content).toContain('Do not edit, create, delete, rename, or format files');
+        expect(call.systemMessage.content).not.toContain('Pick the next logical subtask');
+        expect(call.systemMessage.content).not.toContain('RALPH_PROGRESS:');
+        expect(call.systemMessage.content).toContain('Do not end with RALPH_NEXT or RALPH_COMPLETE');
     });
 
     it('includes accumulated-progress journal path in system message', async () => {

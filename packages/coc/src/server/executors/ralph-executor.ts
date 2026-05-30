@@ -67,9 +67,35 @@ B. End the response with exactly one of:
 If you cannot append to the file, fall back to the legacy format and
 the server will write the section for you:
 
-       RALPH_PROGRESS:
-       <files / decisions / remaining>
-       <SIGNAL>`;
+        RALPH_PROGRESS:
+        <files / decisions / remaining>
+        <SIGNAL>`;
+
+export const RALPH_FINAL_CHECK_BASE_INSTRUCTIONS = `\
+You are a read-only validation agent for a completed Ralph implementation loop.
+
+You are still running with autopilot execution capabilities so you can inspect
+the repository and run validation commands, but you must not change repository
+or CoC state.
+
+Allowed:
+1. Read files and the Ralph progress journal.
+2. Inspect git history, status, and diffs.
+3. Run validation commands that do not modify files, commits, branches, remotes,
+   work items, sessions, loops, schedules, or other persistent state.
+
+Forbidden:
+1. Do not edit, create, delete, rename, or format files.
+2. Do not commit, amend, rebase, merge, push, checkout, reset, or stash.
+3. Do not call APIs or tools that create/update work items, sessions, loops,
+   schedules, notes, memories, or other persistent state.
+4. Do not start another Ralph session or loop yourself.
+
+Your only job is to compare the original goal/spec, the progress journal, the
+actual repository state, and validation evidence. Your final response must
+contain exactly one RALPH_FINAL_CHECK_RESULT JSON block as requested by the user
+prompt. Do not end with RALPH_NEXT or RALPH_COMPLETE. The server will append the
+final-check result to progress.md after parsing your response.`;
 
 export interface BuildRalphSystemMessageInput {
     originalGoal?: string;
@@ -95,6 +121,26 @@ function buildRalphSystemMessage(ralph: BuildRalphSystemMessageInput, baseInstru
     const current = ralph.currentIteration ?? 1;
     const max = ralph.maxIterations ?? 20;
     parts.push(`Iteration ${current} of ${max}.`);
+
+    return parts.join('\n\n');
+}
+
+function buildRalphFinalCheckSystemMessage(ralph: BuildRalphSystemMessageInput): string {
+    const parts: string[] = [RALPH_FINAL_CHECK_BASE_INSTRUCTIONS];
+
+    if (ralph.originalGoal) {
+        parts.push(`## Goal Spec\n${ralph.originalGoal}`);
+    }
+
+    if (ralph.progressPath) {
+        parts.push(
+            `## Progress Journal\nRead the Ralph progress journal at:\n  ${ralph.progressPath}\nUse it only as input evidence. Do not append to or edit it.`,
+        );
+    }
+
+    const current = ralph.currentIteration ?? 1;
+    const max = ralph.maxIterations ?? current;
+    parts.push(`Final check for Ralph iteration ${current} of ${max}.`);
 
     return parts.join('\n\n');
 }
@@ -125,16 +171,22 @@ export class RalphExecutor extends ChatBaseExecutor {
 
         const progressPath = this.resolveProgressPath(payload.workspaceId, ralphCtx?.sessionId);
 
+        const isFinalCheck = !!ralphCtx?.finalCheck;
+
         const resolvedBaseInstructions = this.dataDir
             ? (getPromptOverride('ralph-execution-system', this.dataDir) ?? RALPH_BASE_INSTRUCTIONS)
             : RALPH_BASE_INSTRUCTIONS;
 
-        const ralphSystemPrompt = buildRalphSystemMessage({
+        const ralphPromptInput = {
             originalGoal: ralphCtx?.originalGoal,
             progressPath,
             currentIteration: ralphCtx?.currentIteration,
             maxIterations: ralphCtx?.maxIterations,
-        }, resolvedBaseInstructions);
+        };
+
+        const ralphSystemPrompt = isFinalCheck
+            ? buildRalphFinalCheckSystemMessage(ralphPromptInput)
+            : buildRalphSystemMessage(ralphPromptInput, resolvedBaseInstructions);
 
         const processId = toQueueProcessId(task.id);
         const loopDeps = this.buildLoopToolDeps(processId);
@@ -155,7 +207,7 @@ export class RalphExecutor extends ChatBaseExecutor {
 
         const systemMessage = await systemMessageBuilder()
             .append(ralphSystemPrompt)
-            .withRepoInstructions(workingDirectory, 'ralph')
+            .withRepoInstructions(workingDirectory, isFinalCheck ? 'ask' : 'ralph')
             .appendMemoryV2(ctx.memoryV2)
             .appendToolGuidance(ctx.toolGuidance)
             .build();
@@ -182,4 +234,4 @@ export class RalphExecutor extends ChatBaseExecutor {
 // Helpers (exported for testing)
 // ============================================================================
 
-export { buildRalphSystemMessage };
+export { buildRalphSystemMessage, buildRalphFinalCheckSystemMessage };
