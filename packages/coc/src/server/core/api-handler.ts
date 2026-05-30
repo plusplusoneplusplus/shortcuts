@@ -283,7 +283,7 @@ export function registerApiRoutes(
 
         registerApiWorkspaceRoutes(ctx);
         registerApiGitRoutes(ctx);
-        registerApiFsRoutes(routes, { dataDir: dataDir ?? undefined });
+        registerApiFsRoutes(routes, { dataDir: dataDir ?? undefined, workspaceProvider: store });
         registerApiProcessRoutes(ctx);
         registerCommitChatRoutes(ctx);
         registerPrChatRoutes(ctx);

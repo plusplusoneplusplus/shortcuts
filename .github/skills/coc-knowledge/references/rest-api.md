@@ -39,6 +39,14 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | GET | `/api/workspaces/:id/endev/status` | Cached EnDev xDPU eligibility status; `?refresh=true` revalidates |
 | POST | `/api/workspaces/:id/endev/revalidate` | Force EnDev xDPU eligibility revalidation |
 
+## Filesystem
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/fs/browse` | Browse local directories for repo path selection |
+| GET | `/api/fs/browse-helper` | Same-origin helper page for container-mode directory browsing |
+| GET | `/api/fs/blob?path=<absolute>` | Read a single file when the absolute path is under CoC trusted data directories or inside any registered workspace/repo root; rejects arbitrary filesystem paths |
+
 ## Processes
 
 | Method | Path | Description |
