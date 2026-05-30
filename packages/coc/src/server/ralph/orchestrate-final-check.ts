@@ -192,6 +192,7 @@ export async function orchestrateFinalCheck(input: OrchestrateFinalCheckInput): 
         maxIterations: newLoopRecord.maxIterations,
         dataDir,
         provider: deps.provider,
+        continuationOfSessionId: sessionId,
         extraContext: { ...(deps.extraContext ?? {}), ralph: { loopIndex: newLoopIndex } },
     });
 

@@ -30,6 +30,12 @@ export interface BuildRalphIterationTaskInput {
     priority?: 'normal' | 'low' | 'high';
     /** AI provider to use for this Ralph execution task. */
     provider?: ChatProvider;
+    /**
+     * When set, the enqueued task is tagged as a continuation of this Ralph
+     * session, allowing the queue manager to admit it ahead of unrelated
+     * exclusive backlog. Should be the session's `sessionId`.
+     */
+    continuationOfSessionId?: string;
 }
 
 export function buildRalphIterationTask(input: BuildRalphIterationTaskInput) {
@@ -43,6 +49,7 @@ export function buildRalphIterationTask(input: BuildRalphIterationTaskInput) {
         priority: input.priority ?? ('normal' as const),
         repoId: input.workspaceId,
         folderPath: input.folderPath,
+        continuationOfSessionId: input.continuationOfSessionId,
         displayName,
         config: {},
         payload: {

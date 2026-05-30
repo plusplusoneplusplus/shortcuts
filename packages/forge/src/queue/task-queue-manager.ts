@@ -1119,16 +1119,51 @@ export class TaskQueueManager extends EventEmitter {
     }
 
     /**
-     * Route a task to the correct insertion method based on exclusivity.
-     * Non-exclusive tasks jump before the first exclusive task so they are not
-     * blocked behind an exclusive-limiter backlog. Exclusive tasks use standard
-     * priority insertion.
+     * Route a task to the correct insertion method based on exclusivity and
+     * Ralph-session continuation status.
+     *
+     * Priority:
+     *  1. If the task is a Ralph-session continuation, insert it before the
+     *     first exclusive task that does not belong to the same session, so the
+     *     session chain is not interrupted by unrelated exclusive backlog.
+     *  2. Non-exclusive tasks jump before the first exclusive task so they are
+     *     not blocked behind an exclusive-limiter backlog.
+     *  3. All other exclusive tasks use standard priority insertion.
      */
     private insertTask(task: QueuedTask): void {
-        if (this.isExclusiveFn && !this.isExclusiveFn(task)) {
+        if (task.continuationOfSessionId) {
+            this.insertAsContinuation(task, task.continuationOfSessionId);
+        } else if (this.isExclusiveFn && !this.isExclusiveFn(task)) {
             this.insertBeforeFirstExclusive(task);
         } else {
             this.insertByPriority(task);
+        }
+    }
+
+    /**
+     * Insert a Ralph-session continuation task before the first exclusive task
+     * in the queue that does not belong to the same session.
+     *
+     * This keeps the same-session chain (next iteration → final check →
+     * gap-fix loop) ahead of unrelated exclusive work already in the queue,
+     * without starving that unrelated work once the session terminates.
+     *
+     * Falls back to standard priority insertion when no unrelated exclusive
+     * task is present (i.e. the queue is empty or all queued exclusive tasks
+     * already belong to this session).
+     */
+    private insertAsContinuation(task: QueuedTask, sessionId: string): void {
+        const idx = this.queue.findIndex(item => {
+            if (isPauseMarker(item)) return false;
+            const t = item as QueuedTask;
+            if (t.frozen) return false;
+            const isExclusive = !this.isExclusiveFn || this.isExclusiveFn(t);
+            return isExclusive && t.continuationOfSessionId !== sessionId;
+        });
+        if (idx === -1) {
+            this.insertByPriority(task);
+        } else {
+            this.queue.splice(idx, 0, task);
         }
     }
 

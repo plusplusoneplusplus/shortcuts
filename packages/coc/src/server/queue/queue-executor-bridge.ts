@@ -224,6 +224,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 type: 'chat',
                 repoId: completedTask.repoId,
                 priority: 'normal',
+                continuationOfSessionId: sessionId ?? processId,
                 payload: {
                     kind: 'chat' as const,
                     mode: 'ralph' as const,

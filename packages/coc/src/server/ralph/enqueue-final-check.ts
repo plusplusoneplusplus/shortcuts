@@ -114,6 +114,7 @@ export function buildFinalCheckTaskPayload(input: BuildFinalCheckTaskInput) {
         priority: 'normal' as const,
         repoId,
         folderPath,
+        continuationOfSessionId: sessionId,
         displayName: `Ralph final check ${checkIndex} (${sessionId})`,
         config: {},
         payload: {
@@ -148,7 +149,7 @@ export function buildFinalCheckTaskPayload(input: BuildFinalCheckTaskInput) {
 // Start-record builder
 // ============================================================================
 
-/** Build the initial (status=running) RalphFinalCheckRecord before the task runs. */
+/** Build the initial (status=queued) RalphFinalCheckRecord before the task runs. */
 export function buildFinalCheckStartRecord(
     checkIndex: number,
     loopIndex: number,
@@ -164,6 +165,6 @@ export function buildFinalCheckStartRecord(
         taskId,
         processId,
         startedAt: nowIso ?? new Date().toISOString(),
-        status: 'running',
+        status: 'queued',
     };
 }

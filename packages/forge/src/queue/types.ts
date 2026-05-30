@@ -139,6 +139,13 @@ export interface QueuedTask {
 
     /** Whether this task has been admitted to run despite autopilot being paused */
     admitted?: boolean;
+
+    /**
+     * When set, this task is a continuation of the named Ralph session.
+     * The queue manager will admit it ahead of unrelated exclusive tasks in
+     * the same workspace so the session chain is not interrupted.
+     */
+    continuationOfSessionId?: string;
 }
 
 /**
