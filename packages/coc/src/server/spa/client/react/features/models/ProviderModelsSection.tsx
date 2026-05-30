@@ -52,7 +52,7 @@ export function ProviderModelsSection({ provider, available, unavailableMessage 
         if (capFilter === 'vision') list = list.filter(m => m.capabilities?.supports?.vision);
         if (capFilter === 'reasoning') list = list.filter(m => m.capabilities?.supports?.reasoningEffort);
         if (capFilter === 'enabled') list = list.filter(m => m.enabled);
-        return list;
+        return [...list].sort((a, b) => (b.enabled ? 1 : 0) - (a.enabled ? 1 : 0));
     }, [models, search, capFilter]);
 
     const enabledCount = useMemo(() => models.filter(m => m.enabled).length, [models]);

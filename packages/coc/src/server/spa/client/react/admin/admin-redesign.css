@@ -1343,10 +1343,19 @@
   background: #1f2328;
 }
 .admin-redesign .aip-avatar-codex {
-  background: var(--ar-accent);
+  background: #000;
+  color: #fff;
+}
+[data-theme="light"] .admin-redesign .aip-avatar-codex {
+  background: #000;
 }
 .admin-redesign .aip-avatar-claude {
-  background: #8250df;
+  background: #f5ebe4;
+  color: #d97757;
+}
+[data-theme="light"] .admin-redesign .aip-avatar-claude {
+  background: #f5ebe4;
+  color: #d97757;
 }
 .admin-redesign .aip-provider-main {
   min-width: 0;

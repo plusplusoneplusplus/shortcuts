@@ -259,6 +259,28 @@ describe('ProviderModelsSection', () => {
         });
     });
 
+    it('sorts enabled models before disabled models', async () => {
+        mocks.agentProviders.listModels.mockResolvedValue({
+            provider: 'copilot',
+            models: [
+                { id: 'disabled-first', name: 'Alpha Model', enabled: false },
+                { id: 'enabled-second', name: 'Beta Model', enabled: true },
+                { id: 'disabled-third', name: 'Gamma Model', enabled: false },
+            ],
+        });
+        render(
+            <ProviderModelsSection provider="copilot" available={true} />
+        );
+        await waitFor(() => {
+            expect(screen.getByTestId('provider-models-section')).toBeDefined();
+        });
+
+        const rows = screen.getAllByTestId('provider-model-card');
+        expect(rows).toHaveLength(3);
+        const names = rows.map(r => r.querySelector('[data-testid^="model-copy-"]')?.textContent);
+        expect(names[0]).toBe('Beta Model');
+    });
+
     it('calls provider-scoped API — not the old global models API', async () => {
         mocks.agentProviders.listModels.mockResolvedValue({
             provider: 'copilot',
