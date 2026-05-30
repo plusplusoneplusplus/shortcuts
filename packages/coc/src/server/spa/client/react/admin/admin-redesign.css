@@ -1330,12 +1330,10 @@
   width: 32px;
   height: 32px;
   border-radius: 6px;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: #fff;
-  font-family: var(--ar-font-mono);
-  font-size: 11px;
-  font-weight: 600;
   flex: 0 0 auto;
 }
 .admin-redesign .aip-avatar-copilot {
@@ -1521,6 +1519,224 @@
   font-size: 11px;
 }
 
+/* ── Model catalog toolbar ──────────────────────────────────── */
+.admin-redesign .aip-toolbar {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--ar-border);
+  display: grid;
+  grid-template-columns: auto minmax(200px, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  background: var(--ar-bg-1);
+}
+.admin-redesign .aip-seg {
+  display: inline-flex;
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  overflow: hidden;
+  background: var(--ar-bg-1);
+}
+.admin-redesign .aip-seg button {
+  min-height: 30px;
+  border: 0;
+  border-right: 1px solid var(--ar-border);
+  background: var(--ar-bg-1);
+  padding: 5px 12px;
+  font-size: 13px;
+  color: var(--ar-text);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.admin-redesign .aip-seg button:last-child { border-right: 0; }
+.admin-redesign .aip-seg button.is-active {
+  background: var(--ar-accent);
+  color: #fff;
+  font-weight: 600;
+}
+.admin-redesign .aip-search {
+  min-height: 32px;
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  background: var(--ar-bg-1);
+  color: var(--ar-text);
+  padding: 5px 10px;
+  width: 100%;
+  font-size: 13px;
+  outline: 0;
+}
+.admin-redesign .aip-search:focus {
+  border-color: var(--ar-accent);
+  box-shadow: 0 0 0 3px var(--ar-accent-bg);
+}
+.admin-redesign .aip-select {
+  min-height: 32px;
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  background: var(--ar-bg-1);
+  color: var(--ar-text);
+  padding: 5px 10px;
+  font-size: 13px;
+  outline: 0;
+  min-width: 150px;
+}
+.admin-redesign .aip-select:focus {
+  border-color: var(--ar-accent);
+  box-shadow: 0 0 0 3px var(--ar-accent-bg);
+}
+
+/* ── Model table ───────────────────────────────────────────── */
+.admin-redesign .aip-model-table {
+  min-width: 0;
+  overflow-x: auto;
+}
+.admin-redesign .aip-model-table table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+.admin-redesign .aip-model-table th,
+.admin-redesign .aip-model-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--ar-border);
+  text-align: left;
+  vertical-align: middle;
+}
+.admin-redesign .aip-model-table th {
+  font-size: 10.5px;
+  color: var(--ar-text-mute);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--ar-bg-2);
+}
+.admin-redesign .aip-model-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.admin-redesign .aip-model-table tbody tr:hover td {
+  background: var(--ar-bg-hover);
+}
+
+/* ── Model name cell ───────────────────────────────────────── */
+.admin-redesign .aip-model-name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.admin-redesign .aip-model-name button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ar-accent);
+  text-align: left;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+}
+.admin-redesign .aip-model-name button:hover { text-decoration: underline; }
+.admin-redesign .aip-model-name .aip-mono {
+  font-family: var(--ar-font-mono);
+  font-size: 11px;
+  color: var(--ar-text-mute);
+}
+
+/* ── Capability badges ─────────────────────────────────────── */
+.admin-redesign .aip-cap-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+/* ── Effort control ────────────────────────────────────────── */
+.admin-redesign .aip-effort {
+  display: inline-flex;
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  overflow: hidden;
+  background: var(--ar-bg-1);
+}
+.admin-redesign .aip-effort button {
+  border: 0;
+  border-right: 1px solid var(--ar-border);
+  background: transparent;
+  padding: 3px 7px;
+  font-family: var(--ar-font-mono);
+  font-size: 11px;
+  color: var(--ar-text-mute);
+  cursor: pointer;
+}
+.admin-redesign .aip-effort button:last-child { border-right: 0; }
+.admin-redesign .aip-effort button.is-active {
+  color: #fff;
+  background: var(--ar-accent);
+}
+
+/* ── Query view ────────────────────────────────────────────── */
+.admin-redesign .aip-query-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 430px) minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px;
+}
+.admin-redesign .aip-query-card {
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  background: var(--ar-bg-2);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.admin-redesign .aip-field {
+  display: grid;
+  gap: 5px;
+}
+.admin-redesign .aip-field label {
+  color: var(--ar-text-mute);
+  font-size: 12px;
+  font-weight: 600;
+}
+.admin-redesign .aip-textarea {
+  min-height: 140px;
+  resize: vertical;
+  font-family: var(--ar-font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  background: var(--ar-bg-1);
+  color: var(--ar-text);
+  padding: 8px 10px;
+  outline: 0;
+}
+.admin-redesign .aip-textarea:focus {
+  border-color: var(--ar-accent);
+  box-shadow: 0 0 0 3px var(--ar-accent-bg);
+}
+.admin-redesign .aip-result {
+  min-height: 234px;
+  white-space: pre-wrap;
+  font-family: var(--ar-font-mono);
+  font-size: 12px;
+  color: var(--ar-text);
+  background: var(--ar-bg-1);
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius-sm);
+  padding: 12px;
+  overflow: auto;
+}
+.admin-redesign .aip-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--ar-text-mute);
+  font-size: 13px;
+}
+
+/* ── Context mono ──────────────────────────────────────────── */
+.admin-redesign .aip-mono {
+  font-family: var(--ar-font-mono);
+  font-size: 12px;
+}
+
 /* ── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 900px) {
   .admin-redesign .aip-summary-grid {
@@ -1540,6 +1756,9 @@
   .admin-redesign .aip-panel-actions {
     justify-content: flex-start;
   }
+  .admin-redesign .aip-query-grid {
+    grid-template-columns: 1fr;
+  }
 }
 @media (max-width: 600px) {
   .admin-redesign .aip-summary-grid {
@@ -1554,5 +1773,14 @@
   }
   .admin-redesign .aip-page-head {
     grid-template-columns: 1fr;
+  }
+  .admin-redesign .aip-toolbar {
+    grid-template-columns: 1fr;
+  }
+  .admin-redesign .aip-seg {
+    width: 100%;
+  }
+  .admin-redesign .aip-seg button {
+    flex: 1;
   }
 }
