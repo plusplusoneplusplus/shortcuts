@@ -38,6 +38,7 @@ import {
 } from './pr-attention-groups';
 import { getMockQueueRisk, type QueueFilter, type QueueFilterCounts } from './pr-mock-data';
 import type { PullRequest, PrStatus } from './pr-utils';
+import { matchWorkspaceForPrUrl, parsePrInput, type WorkspaceLike } from './pr-open-utils';
 
 export interface PullRequestsTabProps {
     repoId: string;
@@ -128,6 +129,11 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     const [batchMode, setBatchMode] = useState(false);
     const [queueCollapsed, setQueueCollapsed] = useState<boolean>(() => loadQueueCollapsed());
     const [now, setNow] = useState(() => Date.now());
+
+    // ── Open PR by number or URL ────────────────────────────────
+    const [openPrInput, setOpenPrInput] = useState('');
+    const [openPrError, setOpenPrError] = useState<string | null>(null);
+    const [openPrLoading, setOpenPrLoading] = useState(false);
 
     // ── PR suggestions state ─────────────────────────────────────
     const suggestionsEnabled = isPullRequestsSuggestionsEnabled();
@@ -391,6 +397,60 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
         if (isMobile) setMobileShowDetail(true);
     }
 
+    /** Navigate to a PR detail page after validating that the PR exists. */
+    const openPrInRepo = useCallback(async (targetRepoId: string, prNumber: number) => {
+        try {
+            await getSpaCocClient().pullRequests.get(targetRepoId, String(prNumber));
+        } catch (err) {
+            if (err instanceof CocApiError && err.status === 404) {
+                throw new Error(`Pull request #${prNumber} not found.`);
+            }
+            throw new Error(getSpaCocClientErrorMessage(err, `Failed to open pull request #${prNumber}.`));
+        }
+        dispatch({ type: 'SET_SELECTED_PR', prId: prNumber });
+        dispatch({ type: 'SET_PR_DETAIL_TAB', tab: 'overview' });
+        window.location.hash = `#repos/${encodeURIComponent(targetRepoId)}/pull-requests/${prNumber}/overview`;
+        if (isMobile) setMobileShowDetail(true);
+    }, [dispatch, isMobile]);
+
+    const handleOpenPr = useCallback(async () => {
+        if (openPrLoading) return;
+        setOpenPrError(null);
+        const parsed = parsePrInput(openPrInput);
+        if (parsed.kind === 'invalid') {
+            setOpenPrError(parsed.reason);
+            return;
+        }
+
+        let targetRepoId: string;
+        let prNumber: number;
+        if (parsed.kind === 'number') {
+            targetRepoId = repoId;
+            prNumber = parsed.number;
+        } else {
+            const ws = matchWorkspaceForPrUrl(
+                (state.workspaces ?? []) as WorkspaceLike[],
+                parsed,
+            );
+            if (!ws) {
+                setOpenPrError('Repository is not registered as a workspace.');
+                return;
+            }
+            targetRepoId = ws.id;
+            prNumber = parsed.number;
+        }
+
+        setOpenPrLoading(true);
+        try {
+            await openPrInRepo(targetRepoId, prNumber);
+            setOpenPrInput('');
+        } catch (err) {
+            setOpenPrError(err instanceof Error ? err.message : String(err));
+        } finally {
+            setOpenPrLoading(false);
+        }
+    }, [openPrInput, openPrLoading, openPrInRepo, repoId, state.workspaces]);
+
     function handlePrSelect(id: string, checked: boolean, shiftKey: boolean, sectionPrs: PullRequest[]) {
         const sectionIds = sectionPrs.map(getPrSelectionId);
         const anchorIndex = anchorPrId === null ? -1 : sectionIds.indexOf(anchorPrId);
@@ -458,6 +518,50 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
     const queuePanel = (
         <>
             {queueHeader}
+            {!queueCollapsed && (
+                <div
+                    className="flex shrink-0 flex-col gap-1 border-b border-gray-200 px-2.5 py-1 dark:border-gray-700"
+                    data-testid="pr-open-row"
+                >
+                    <div className="flex items-center gap-1.5">
+                        <input
+                            className="min-w-0 flex-1 rounded-md border border-gray-300 bg-white px-1.5 py-0.5 text-xs text-gray-900 outline-none placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                            placeholder="Open PR by # or URL"
+                            value={openPrInput}
+                            disabled={openPrLoading}
+                            onChange={e => {
+                                setOpenPrInput(e.target.value);
+                                if (openPrError) setOpenPrError(null);
+                            }}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    void handleOpenPr();
+                                }
+                            }}
+                            data-testid="open-pr-input"
+                        />
+                        <button
+                            type="button"
+                            onClick={() => { void handleOpenPr(); }}
+                            disabled={openPrLoading || openPrInput.trim().length === 0}
+                            data-testid="open-pr-button"
+                            className="inline-flex h-[22px] shrink-0 items-center rounded-md border border-blue-500 bg-blue-50 px-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-500 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50"
+                        >
+                            {openPrLoading ? 'Opening…' : 'Open'}
+                        </button>
+                    </div>
+                    {openPrError && (
+                        <div
+                            className="text-[11px] text-red-600 dark:text-red-400"
+                            data-testid="open-pr-error"
+                            role="alert"
+                        >
+                            {openPrError}
+                        </div>
+                    )}
+                </div>
+            )}
             {!queueCollapsed && (
                 <div
                     className="flex shrink-0 items-center gap-1.5 border-b border-gray-200 px-2.5 py-1.5 dark:border-gray-700"

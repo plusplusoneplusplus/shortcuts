@@ -20,8 +20,9 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
 // Mock AppContext to avoid full context setup.
 const mockDispatch = vi.fn();
 let mockSelectedPrId: number | string | null = null;
+let mockWorkspaces: Array<{ id: string; remoteUrl?: string }> = [];
 vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => ({
-    useApp: () => ({ state: { selectedPrId: mockSelectedPrId }, dispatch: mockDispatch }),
+    useApp: () => ({ state: { selectedPrId: mockSelectedPrId, workspaces: mockWorkspaces }, dispatch: mockDispatch }),
 }));
 
 // Default to desktop layout.
@@ -87,6 +88,7 @@ beforeEach(() => {
     configMock.pullRequestsSuggestionsEnabled = false;
     mockDispatch.mockReset();
     mockSelectedPrId = null;
+    mockWorkspaces = [];
 });
 
 // ── Loading state ──────────────────────────────────────────────────────────────
@@ -739,6 +741,169 @@ describe('last sync time in header', () => {
         mockFetchOk([], {});
         await act(async () => { await renderTab(); });
         expect(screen.queryByTestId('fetched-at')).not.toBeInTheDocument();
+    });
+});
+
+// ── Open PR by number or URL ──────────────────────────────────────────────────
+
+describe('open PR by number or URL', () => {
+    beforeEach(() => {
+        try { localStorage.removeItem('pr-queue-collapsed'); } catch { /* ignore */ }
+    });
+
+    it('renders the Open PR input row with placeholder and a disabled Open button when empty', async () => {
+        mockFetchOk([]);
+        await act(async () => { await renderTab(); });
+        const input = screen.getByTestId('open-pr-input') as HTMLInputElement;
+        const button = screen.getByTestId('open-pr-button') as HTMLButtonElement;
+        expect(input.placeholder).toMatch(/PR/i);
+        expect(button).toBeDisabled();
+    });
+
+    it('opens a PR by bare number on Enter, validating via /pull-requests/:n first', async () => {
+        const fetchMock = vi.fn()
+            // initial list fetch
+            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ pullRequests: [] }) } as any)
+            // open-pr validation fetch
+            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ id: 7, number: 7 }) } as any);
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        const input = screen.getByTestId('open-pr-input');
+        fireEvent.change(input, { target: { value: '7' } });
+
+        await act(async () => {
+            fireEvent.keyDown(input, { key: 'Enter' });
+        });
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+        expect(String(fetchMock.mock.calls[1][0])).toContain('/repos/repo-1/pull-requests/7');
+        await waitFor(() =>
+            expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_PR', prId: 7 }),
+        );
+        expect(window.location.hash).toContain('#repos/repo-1/pull-requests/7/overview');
+    });
+
+    it('opens a PR by bare number when the Open button is clicked', async () => {
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ pullRequests: [] }) } as any)
+            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ id: 12, number: 12 }) } as any);
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        fireEvent.change(screen.getByTestId('open-pr-input'), { target: { value: '12' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('open-pr-button'));
+        });
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+        expect(String(fetchMock.mock.calls[1][0])).toContain('/repos/repo-1/pull-requests/12');
+        expect(window.location.hash).toContain('pull-requests/12/overview');
+    });
+
+    it('opens a PR from a full GitHub URL matched to another registered workspace', async () => {
+        mockWorkspaces = [
+            { id: 'ws-1', remoteUrl: 'https://github.com/acme/web.git' },
+            { id: 'ws-2', remoteUrl: 'git@github.com:acme/api.git' },
+        ];
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ pullRequests: [] }) } as any)
+            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ id: 99, number: 99 }) } as any);
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        fireEvent.change(screen.getByTestId('open-pr-input'), {
+            target: { value: 'https://github.com/acme/api/pull/99' },
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('open-pr-button'));
+        });
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+        expect(String(fetchMock.mock.calls[1][0])).toContain('/repos/ws-2/pull-requests/99');
+        await waitFor(() =>
+            expect(window.location.hash).toContain('#repos/ws-2/pull-requests/99/overview'),
+        );
+    });
+
+    it('opens closed/merged or non-listed PRs (validation succeeds even if missing from list)', async () => {
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ pullRequests: [] }) } as any)
+            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ id: 50, number: 50, status: 'merged' }) } as any);
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        fireEvent.change(screen.getByTestId('open-pr-input'), { target: { value: '50' } });
+        await act(async () => { fireEvent.click(screen.getByTestId('open-pr-button')); });
+
+        await waitFor(() => expect(window.location.hash).toContain('pull-requests/50/overview'));
+        expect(screen.queryByTestId('open-pr-error')).not.toBeInTheDocument();
+    });
+
+    it('shows an inline error and does not navigate when validation returns 404', async () => {
+        const originalHash = window.location.hash;
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ pullRequests: [] }) } as any)
+            .mockResolvedValueOnce({ ok: false, status: 404, json: () => Promise.resolve({ error: 'not found' }) } as any);
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        fireEvent.change(screen.getByTestId('open-pr-input'), { target: { value: '404' } });
+        await act(async () => { fireEvent.click(screen.getByTestId('open-pr-button')); });
+
+        await waitFor(() => expect(screen.getByTestId('open-pr-error')).toBeInTheDocument());
+        expect(screen.getByTestId('open-pr-error').textContent).toMatch(/404/);
+        expect(mockDispatch).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'SET_SELECTED_PR' }),
+        );
+        expect(window.location.hash).toBe(originalHash);
+    });
+
+    it('shows an inline error for invalid input and does not call the API', async () => {
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ pullRequests: [] }) } as any);
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        fireEvent.change(screen.getByTestId('open-pr-input'), { target: { value: 'not a pr' } });
+        await act(async () => { fireEvent.click(screen.getByTestId('open-pr-button')); });
+
+        await waitFor(() => expect(screen.getByTestId('open-pr-error')).toBeInTheDocument());
+        expect(fetchMock).toHaveBeenCalledTimes(1); // only initial list fetch
+    });
+
+    it('shows a "repository not registered" error for a URL with no matching workspace and does not call PR API', async () => {
+        mockWorkspaces = [{ id: 'ws-1', remoteUrl: 'https://github.com/acme/web.git' }];
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ pullRequests: [] }) } as any);
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        fireEvent.change(screen.getByTestId('open-pr-input'), {
+            target: { value: 'https://github.com/unknown/repo/pull/1' },
+        });
+        await act(async () => { fireEvent.click(screen.getByTestId('open-pr-button')); });
+
+        await waitFor(() => expect(screen.getByTestId('open-pr-error')).toBeInTheDocument());
+        expect(screen.getByTestId('open-pr-error').textContent).toMatch(/not registered/i);
+        // No PR validation request was made.
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('clears the error when the user edits the input again', async () => {
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ pullRequests: [] }) } as any);
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        fireEvent.change(screen.getByTestId('open-pr-input'), { target: { value: 'bad' } });
+        await act(async () => { fireEvent.click(screen.getByTestId('open-pr-button')); });
+        await waitFor(() => expect(screen.getByTestId('open-pr-error')).toBeInTheDocument());
+
+        fireEvent.change(screen.getByTestId('open-pr-input'), { target: { value: 'bad2' } });
+        expect(screen.queryByTestId('open-pr-error')).not.toBeInTheDocument();
     });
 });
 
