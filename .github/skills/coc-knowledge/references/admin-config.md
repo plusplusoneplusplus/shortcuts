@@ -50,6 +50,7 @@ When adding UI to the admin page, prefer the existing primitives:
 - **Section cards:** `<SettingsCard title=… description=… badge=… dirty saving onSave onCancel data-testid=…>` (renders `.ar-card` with header/body/footer).
 - **Settings rows:** the local `AdminRow`, `AdminToggle`, `AdminSeg`, `AdminInputSuffix`, and `SourceBadge` helpers defined at the bottom of `AdminPanel.tsx`. They wrap raw inputs in the new visual chrome while preserving `data-testid`s and `id`s used by tests.
 - **Free-form sections** inside a card use `.ar-section`, `.ar-section-head`, and the inline helpers `.ar-input`, `.ar-select`, `.ar-btn`, `.ar-btn-primary` / `-secondary` / `-ghost` / `-danger`(`-outline`), `.ar-pill`, `.ar-badge`, `.ar-pre`, `.ar-code`, `.ar-mono`.
+- **AI Provider page:** the `agents` tab content lives in `AIProviderPage.tsx` (not inline in `AdminPanel`). It renders a summary grid (`.aip-summary-grid`), a provider routing table (`.aip-routing-table`) with toggle-based enable/disable and per-row default-provider buttons, and the lazy-loaded `ProviderModelsSection`. All styles use `aip-*` classes in `admin-redesign.css`.
 - **New top-level tabs:** add to `AdminSubTab`, `TAB_LABELS`, `TAB_ICONS`, and `TAB_DESCRIPTIONS`, then place the destination in the grouped `navGroups` definition near the bottom of `AdminPanel.tsx` so the sidebar and mobile select expose it in the right user-intent group.
 
 Avoid introducing Tailwind utilities or inline `bg-*`/`text-*` classes for admin-only UI — extend `admin-redesign.css` instead so the look stays cohesive.

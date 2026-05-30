@@ -1193,8 +1193,8 @@ describe('AdminPanel', () => {
             });
 
             await waitFor(() => expect(screen.getByTestId('toggle-claude-enabled')).toBeDefined());
-            const toggle = screen.getByTestId('toggle-claude-enabled') as HTMLInputElement;
-            expect(toggle.checked).toBe(false);
+            const toggle = screen.getByTestId('toggle-claude-enabled');
+            expect(toggle.getAttribute('aria-checked')).toBe('false');
         });
 
         it('claude toggle reflects enabled=true from config', async () => {
@@ -1206,8 +1206,8 @@ describe('AdminPanel', () => {
             });
 
             await waitFor(() => expect(screen.getByTestId('toggle-claude-enabled')).toBeDefined());
-            const toggle = screen.getByTestId('toggle-claude-enabled') as HTMLInputElement;
-            expect(toggle.checked).toBe(true);
+            const toggle = screen.getByTestId('toggle-claude-enabled');
+            expect(toggle.getAttribute('aria-checked')).toBe('true');
         });
 
         it('default provider select includes "claude" option', async () => {
@@ -1218,12 +1218,10 @@ describe('AdminPanel', () => {
                 fireEvent.click(screen.getByTestId('admin-tab-agents'));
             });
 
-            await waitFor(() => expect(screen.getByTestId('select-default-provider')).toBeDefined());
-            const select = screen.getByTestId('select-default-provider') as HTMLSelectElement;
-            const options = Array.from(select.options).map(o => o.value);
-            expect(options).toContain('copilot');
-            expect(options).toContain('codex');
-            expect(options).toContain('claude');
+            await waitFor(() => expect(screen.getByTestId('select-default-provider-copilot')).toBeDefined());
+            expect(screen.getByTestId('select-default-provider-copilot')).toBeDefined();
+            expect(screen.getByTestId('select-default-provider-codex')).toBeDefined();
+            expect(screen.getByTestId('select-default-provider-claude')).toBeDefined();
         });
 
         it('saves claude.enabled when toggling and saving', async () => {

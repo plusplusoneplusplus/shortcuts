@@ -42,6 +42,7 @@ const UsageStatsView = lazy(() => import('../features/stats/UsageStatsView').the
 const ServersView = lazy(() => import('../features/servers/ServersView').then(m => ({ default: m.ServersView })));
 const MemoryV2Panel = lazy(() => import('../features/memory/MemoryV2Panel').then(m => ({ default: m.MemoryV2Panel })));
 const ProviderModelsSection = lazy(() => import('../features/models/ProviderModelsSection').then(m => ({ default: m.ProviderModelsSection })));
+import { AIProviderPage } from './AIProviderPage';
 
 function formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
@@ -2019,211 +2020,27 @@ export function AdminPanel() {
                         )}
 
                         {activeTab === 'agents' && !isContainerMode() && (
-                            <>
-                                <SettingsCard
-                                    title="Default Provider"
-                                    description="Provider preselected for new chats and tasks unless an individual chat overrides it."
-                                    dirty={defaultProviderDirty}
-                                    saving={defaultProviderSaving}
-                                    onSave={handleSaveDefaultProvider}
-                                    onCancel={handleCancelDefaultProvider}
-                                    data-testid="settings-default-provider"
-                                >
-                                    <AdminRow
-                                        name={<>Codex Provider <span className="ar-badge ar-badge-accent">Experimental</span> <span className="ar-badge ar-badge-warning">Restart</span></>}
-                                        hint="Enable the optional @openai/codex-sdk provider. Requires a server restart."
-                                    >
-                                        {sdkInstallStatuses['codex'] && (
-                                            <SdkInstallBadge status={sdkInstallStatuses['codex']} />
-                                        )}
-                                        {(!sdkInstallStatuses['codex'] || sdkInstallStatuses['codex'] === 'not-installed' || sdkInstallStatuses['codex'] === 'install-failed') && (
-                                            <button
-                                                type="button"
-                                                className="ar-btn ar-btn-secondary"
-                                                style={{ fontSize: 11, padding: '2px 10px' }}
-                                                onClick={() => handleInstallSdk('codex')}
-                                                data-testid="btn-install-codex"
-                                            >
-                                                Install
-                                            </button>
-                                        )}
-                                        {sdkInstallStatuses['codex'] === 'installing' && <Spinner size="sm" />}
-                                        <SourceBadge source={sources['codex.enabled']} />
-                                        <AdminToggle checked={codexEnabled} onChange={setCodexEnabled} data-testid="toggle-codex-enabled" />
-                                    </AdminRow>
-                                    {sdkInstallStatuses['codex'] === 'install-failed' && sdkInstallErrors['codex'] && (
-                                        <div style={{ margin: '4px 0 8px', padding: '6px 10px', borderRadius: 4, background: 'var(--ar-danger-bg)', border: '1px solid var(--ar-danger-border)', color: 'var(--ar-danger)', fontSize: 11 }} data-testid="codex-install-error">
-                                            ✕ {sdkInstallErrors['codex']}
-                                        </div>
-                                    )}
-                                    <AdminRow
-                                        name={<>Claude Provider <span className="ar-badge ar-badge-accent">Experimental</span> <span className="ar-badge ar-badge-warning">Restart</span></>}
-                                        hint="Enable the optional @anthropic-ai/claude-agent-sdk provider. Requires Claude Code to be installed and authenticated on the server."
-                                    >
-                                        {sdkInstallStatuses['claude'] && (
-                                            <SdkInstallBadge status={sdkInstallStatuses['claude']} />
-                                        )}
-                                        {(!sdkInstallStatuses['claude'] || sdkInstallStatuses['claude'] === 'not-installed' || sdkInstallStatuses['claude'] === 'install-failed') && (
-                                            <button
-                                                type="button"
-                                                className="ar-btn ar-btn-secondary"
-                                                style={{ fontSize: 11, padding: '2px 10px' }}
-                                                onClick={() => handleInstallSdk('claude')}
-                                                data-testid="btn-install-claude"
-                                            >
-                                                Install
-                                            </button>
-                                        )}
-                                        {sdkInstallStatuses['claude'] === 'installing' && <Spinner size="sm" />}
-                                        <SourceBadge source={sources['claude.enabled']} />
-                                        <AdminToggle checked={claudeEnabled} onChange={setClaudeEnabled} data-testid="toggle-claude-enabled" />
-                                    </AdminRow>
-                                    {sdkInstallStatuses['claude'] === 'install-failed' && sdkInstallErrors['claude'] && (
-                                        <div style={{ margin: '4px 0 8px', padding: '6px 10px', borderRadius: 4, background: 'var(--ar-danger-bg)', border: '1px solid var(--ar-danger-border)', color: 'var(--ar-danger)', fontSize: 11 }} data-testid="claude-install-error">
-                                            ✕ {sdkInstallErrors['claude']}
-                                        </div>
-                                    )}
-                                    <AdminRow
-                                        name={<>Default Provider <span className="ar-badge ar-badge-warning">Restart</span></>}
-                                        hint="Provider preselected for new chats and tasks. Individual chats can override this. Existing chats continue using the provider they started with. Requires a server restart for API-created tasks that do not set a provider."
-                                    >
-                                        <select
-                                            id="admin-config-default-provider"
-                                            className="ar-select ar-med"
-                                            value={defaultProvider}
-                                            onChange={e => setDefaultProvider(e.target.value as 'copilot' | 'codex' | 'claude')}
-                                            data-testid="select-default-provider"
-                                        >
-                                            <option value="copilot">Copilot</option>
-                                            <option value="codex">Codex</option>
-                                            <option value="claude">Claude</option>
-                                        </select>
-                                        <SourceBadge source={sources['defaultProvider']} />
-                                    </AdminRow>
-                                    {defaultProvider === 'codex' && providerAvailability['codex'] && !providerAvailability['codex'].available && (
-                                        <div
-                                            data-testid="codex-sdk-unavailable-banner"
-                                            style={{
-                                                margin: '8px 0 4px',
-                                                padding: '8px 12px',
-                                                borderRadius: 4,
-                                                background: 'var(--ar-warn-bg, #fffbe6)',
-                                                border: '1px solid var(--ar-warn-border, #ffe58f)',
-                                                color: 'var(--ar-warn-text, #7c5200)',
-                                                fontSize: 12,
-                                                lineHeight: 1.5,
-                                                whiteSpace: 'pre-wrap',
-                                                fontFamily: 'inherit',
-                                            }}
-                                        >
-                                            ⚠ {providerAvailability['codex'].error}
-                                        </div>
-                                    )}
-                                    {defaultProvider === 'claude' && providerAvailability['claude'] && !providerAvailability['claude'].available && (
-                                        <div
-                                            data-testid="claude-sdk-unavailable-banner"
-                                            style={{
-                                                margin: '8px 0 4px',
-                                                padding: '8px 12px',
-                                                borderRadius: 4,
-                                                background: 'var(--ar-warn-bg, #fffbe6)',
-                                                border: '1px solid var(--ar-warn-border, #ffe58f)',
-                                                color: 'var(--ar-warn-text, #7c5200)',
-                                                fontSize: 12,
-                                                lineHeight: 1.5,
-                                                whiteSpace: 'pre-wrap',
-                                                fontFamily: 'inherit',
-                                            }}
-                                        >
-                                            ⚠ {providerAvailability['claude'].error}
-                                        </div>
-                                    )}
-                                    {/* Quota section */}
-                                    <div style={{ marginTop: 12 }}>
-                                        <button
-                                            type="button"
-                                            className="ar-btn ar-btn-secondary"
-                                            onClick={handleRefreshQuota}
-                                            disabled={quotaLoading}
-                                            data-testid="btn-refresh-quota"
-                                        >
-                                            {quotaLoading ? <Spinner size="sm" /> : '↻'} Refresh Quota
-                                        </button>
-                                        {quotaError && (
-                                            <div className="ar-row" style={{ marginTop: 8, color: 'var(--ar-danger)', fontSize: 12 }}>
-                                                ⚠ {quotaError}
-                                            </div>
-                                        )}
-                                        {quotaData && (
-                                            <div data-testid="quota-results" style={{ marginTop: 12 }}>
-                                                {quotaData.providers.map(provider => (
-                                                    <div key={provider.id} style={{ marginBottom: 12 }}>
-                                                        <div style={{ fontWeight: 600, fontSize: 12.5, marginBottom: 6, color: 'var(--ar-text-2)', textTransform: 'capitalize' }}>
-                                                            {provider.id === 'copilot' ? 'Copilot' : provider.id === 'claude' ? 'Claude' : 'Codex'}
-                                                        </div>
-                                                        {provider.error ? (
-                                                            <div style={{ fontSize: 12, color: 'var(--ar-danger)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                                ⚠ {provider.error}
-                                                            </div>
-                                                        ) : provider.quotaTypes.length === 0 ? (
-                                                            <div style={{ fontSize: 12, color: 'var(--ar-text-mute)' }}>Quota not available for this provider.</div>
-                                                        ) : (
-                                                            provider.quotaTypes.map(qt => (
-                                                                <div key={qt.type} style={{ marginBottom: 8 }} data-testid={`quota-type-${qt.type}`}>
-                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-                                                                        <span style={{ fontSize: 12, color: 'var(--ar-text-2)', textTransform: 'capitalize' }}>{qt.type}</span>
-                                                                        {qt.isUnlimitedEntitlement ? (
-                                                                            <span className="ar-badge ar-badge-success">Unlimited</span>
-                                                                        ) : (
-                                                                            <span style={{ fontSize: 11, color: 'var(--ar-text-mute)' }}>{qt.usedRequests} / {qt.entitlementRequests} used</span>
-                                                                        )}
-                                                                    </div>
-                                                                    {!qt.isUnlimitedEntitlement && (
-                                                                        <>
-                                                                            <div className="ar-quota-bar-track">
-                                                                                <div
-                                                                                    className={`ar-quota-bar-fill ${qt.remainingPercentage >= 0.5 ? 'ar-quota-green' : qt.remainingPercentage >= 0.2 ? 'ar-quota-amber' : 'ar-quota-red'}`}
-                                                                                    style={{ width: `${Math.max(0, Math.min(100, qt.remainingPercentage * 100))}%` }}
-                                                                                />
-                                                                            </div>
-                                                                            {qt.resetDate && (
-                                                                                <div style={{ fontSize: 11, color: 'var(--ar-text-mute)', marginTop: 2 }}>
-                                                                                    Resets {new Date(qt.resetDate).toLocaleDateString()}
-                                                                                </div>
-                                                                            )}
-                                                                            {qt.usageAllowedWithExhaustedQuota && qt.remainingPercentage === 0 && (
-                                                                                <span className="ar-pill" style={{ marginTop: 4, display: 'inline-flex', fontSize: 11, color: 'var(--ar-warning)' }}>Overage allowed</span>
-                                                                            )}
-                                                                        </>
-                                                                    )}
-                                                                </div>
-                                                            ))
-                                                        )}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                </SettingsCard>
-
-                                {/* Provider-scoped model catalog and query */}
-                                <Suspense fallback={<div className="text-xs text-[#888] mt-4">Loading models…</div>}>
-                                    <ProviderModelsSection
-                                        provider={defaultProvider}
-                                        available={
-                                            defaultProvider === 'copilot'
-                                                ? true
-                                                : (providerAvailability[defaultProvider]?.available ?? false)
-                                                    && (defaultProvider === 'codex' ? codexEnabled : claudeEnabled)
-                                        }
-                                        unavailableMessage={
-                                            defaultProvider !== 'copilot' && !(defaultProvider === 'codex' ? codexEnabled : claudeEnabled)
-                                                ? `Enable the ${defaultProvider === 'codex' ? 'Codex' : 'Claude'} provider above to access its model catalog.`
-                                                : providerAvailability[defaultProvider]?.error
-                                        }
-                                    />
-                                </Suspense>
-                            </>
+                            <AIProviderPage
+                                defaultProvider={defaultProvider}
+                                setDefaultProvider={setDefaultProvider}
+                                codexEnabled={codexEnabled}
+                                setCodexEnabled={setCodexEnabled}
+                                claudeEnabled={claudeEnabled}
+                                setClaudeEnabled={setClaudeEnabled}
+                                providerAvailability={providerAvailability}
+                                sdkInstallStatuses={sdkInstallStatuses}
+                                sdkInstallErrors={sdkInstallErrors}
+                                onInstallSdk={handleInstallSdk}
+                                dirty={defaultProviderDirty}
+                                saving={defaultProviderSaving}
+                                onSave={handleSaveDefaultProvider}
+                                onCancel={handleCancelDefaultProvider}
+                                quotaData={quotaData}
+                                quotaLoading={quotaLoading}
+                                quotaError={quotaError}
+                                onRefreshQuota={handleRefreshQuota}
+                                sources={sources}
+                            />
                         )}
 
                         {activeTab === 'messaging' && isContainerMode() && (

@@ -1180,3 +1180,379 @@
 .admin-redesign .ar-quota-bar-fill.ar-quota-red {
   background: var(--ar-danger);
 }
+
+/* ═════════════════════════════════════════════════════════════
+   AI Provider Page — redesigned table-based layout
+   (`.aip-*` prefix to avoid collisions with the existing
+   card/row primitives above)
+   ═════════════════════════════════════════════════════════════ */
+
+.admin-redesign .aip-page {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-redesign .aip-page-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ── Summary grid ───────────────────────────────────────────── */
+.admin-redesign .aip-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--ar-border);
+  border-radius: var(--ar-radius);
+  background: var(--ar-bg-1);
+  overflow: hidden;
+}
+.admin-redesign .aip-summary-card {
+  padding: 10px 14px;
+  border-right: 1px solid var(--ar-border);
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "label value"
+    "note note";
+  column-gap: 8px;
+  row-gap: 2px;
+  align-items: baseline;
+}
+.admin-redesign .aip-summary-card:last-child {
+  border-right: 0;
+}
+.admin-redesign .aip-summary-label {
+  grid-area: label;
+  color: var(--ar-text-mute);
+  font-size: 10.5px;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.admin-redesign .aip-summary-value {
+  grid-area: value;
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--ar-text);
+}
+.admin-redesign .aip-summary-note {
+  grid-area: note;
+  color: var(--ar-text-mute);
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Panel header ───────────────────────────────────────────── */
+.admin-redesign .aip-panel-head {
+  min-height: 52px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--ar-border);
+  background: var(--ar-bg-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.admin-redesign .aip-panel-title {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.25;
+  font-weight: 600;
+  color: var(--ar-text);
+}
+.admin-redesign .aip-panel-desc {
+  margin: 2px 0 0;
+  color: var(--ar-text-mute);
+  font-size: 12px;
+}
+.admin-redesign .aip-panel-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── Routing table ──────────────────────────────────────────── */
+.admin-redesign .aip-routing-table {
+  min-width: 0;
+  overflow-x: auto;
+}
+.admin-redesign .aip-routing-table table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 860px;
+}
+.admin-redesign .aip-routing-table th,
+.admin-redesign .aip-routing-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--ar-border);
+  text-align: left;
+  vertical-align: middle;
+}
+.admin-redesign .aip-routing-table th {
+  font-size: 10.5px;
+  color: var(--ar-text-mute);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--ar-bg-2);
+}
+.admin-redesign .aip-routing-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.admin-redesign .aip-routing-table tbody tr:hover td {
+  background: var(--ar-bg-hover);
+}
+
+/* ── Provider cell ──────────────────────────────────────────── */
+.admin-redesign .aip-provider-cell {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+.admin-redesign .aip-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-family: var(--ar-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+.admin-redesign .aip-avatar-copilot {
+  background: var(--ar-text);
+}
+[data-theme="light"] .admin-redesign .aip-avatar-copilot {
+  background: #1f2328;
+}
+.admin-redesign .aip-avatar-codex {
+  background: var(--ar-accent);
+}
+.admin-redesign .aip-avatar-claude {
+  background: #8250df;
+}
+.admin-redesign .aip-provider-main {
+  min-width: 0;
+  display: block;
+  font-weight: 600;
+  line-height: 1.3;
+  font-size: 13.5px;
+  color: var(--ar-text);
+}
+.admin-redesign .aip-provider-meta {
+  color: var(--ar-text-mute);
+  font-size: 11.5px;
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+.admin-redesign .aip-provider-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.admin-redesign .aip-provider-source {
+  flex: 0 0 auto;
+  color: var(--ar-text-mute);
+  font-family: var(--ar-font-mono);
+  font-size: 10px;
+  line-height: 16px;
+  border: 1px solid var(--ar-border);
+  border-radius: 999px;
+  padding: 0 6px;
+  background: var(--ar-bg-2);
+}
+
+/* ── Status cell ────────────────────────────────────────────── */
+.admin-redesign .aip-status-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* ── Dot indicator ──────────────────────────────────────────── */
+.admin-redesign .aip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  display: inline-block;
+}
+
+/* ── Toggle ─────────────────────────────────────────────────── */
+.admin-redesign .aip-toggle {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.admin-redesign .aip-toggle[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.admin-redesign .aip-toggle-track {
+  width: 36px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid var(--ar-border-strong);
+  background: var(--ar-border-strong);
+  padding: 2px;
+  position: relative;
+  transition: background 0.12s, border-color 0.12s;
+  display: flex;
+  align-items: center;
+}
+.admin-redesign .aip-toggle-track.is-on {
+  background: var(--ar-success);
+  border-color: var(--ar-success);
+}
+.admin-redesign .aip-toggle-knob {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: transform 0.12s;
+}
+.admin-redesign .aip-toggle-track.is-on .aip-toggle-knob {
+  transform: translateX(16px);
+}
+
+/* ── Quota cell ─────────────────────────────────────────────── */
+.admin-redesign .aip-quota-cell {
+  min-width: 200px;
+  display: grid;
+  gap: 3px;
+}
+.admin-redesign .aip-quota-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.admin-redesign .aip-quota-value {
+  font-weight: 600;
+  font-family: var(--ar-font-mono);
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: nowrap;
+  color: var(--ar-text);
+}
+.admin-redesign .aip-quota-caption {
+  color: var(--ar-text-mute);
+  font-size: 10.5px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.admin-redesign .aip-bar {
+  width: 100%;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--ar-bg-3);
+  overflow: hidden;
+  margin-top: 4px;
+}
+.admin-redesign .aip-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--ar-success);
+  border-radius: inherit;
+  transition: width 0.3s ease;
+}
+.admin-redesign .aip-bar.aip-bar-warning > span {
+  background: var(--ar-warning);
+}
+.admin-redesign .aip-bar.aip-bar-danger > span {
+  background: var(--ar-danger);
+}
+
+/* ── Error / unavailable banners ────────────────────────────── */
+.admin-redesign .aip-error-banner {
+  padding: 8px 20px;
+  background: var(--ar-danger-bg);
+  border-bottom: 1px solid var(--ar-danger-border);
+  color: var(--ar-danger);
+  font-size: 12px;
+}
+.admin-redesign .aip-unavailable-banner {
+  padding: 10px 20px;
+  background: var(--ar-warning-bg);
+  border-top: 1px solid rgba(245, 185, 66, 0.2);
+  color: var(--ar-warning);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.admin-redesign .aip-install-error {
+  margin: 4px 0 0;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--ar-danger-bg);
+  border: 1px solid var(--ar-danger-border);
+  color: var(--ar-danger);
+  font-size: 11px;
+}
+
+/* ── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .admin-redesign .aip-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .admin-redesign .aip-summary-card:nth-child(2) {
+    border-right: 0;
+  }
+  .admin-redesign .aip-summary-card:nth-child(-n+2) {
+    border-bottom: 1px solid var(--ar-border);
+  }
+  .admin-redesign .aip-panel-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .admin-redesign .aip-panel-actions {
+    justify-content: flex-start;
+  }
+}
+@media (max-width: 600px) {
+  .admin-redesign .aip-summary-grid {
+    grid-template-columns: 1fr;
+  }
+  .admin-redesign .aip-summary-card {
+    border-right: 0;
+    border-bottom: 1px solid var(--ar-border);
+  }
+  .admin-redesign .aip-summary-card:last-child {
+    border-bottom: 0;
+  }
+  .admin-redesign .aip-page-head {
+    grid-template-columns: 1fr;
+  }
+}
