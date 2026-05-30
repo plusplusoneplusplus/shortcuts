@@ -218,8 +218,10 @@ Provider wiring (per request, only when `options.tools` is non-empty; disposed i
 `finally`):
 - **Copilot:** native `SendMessageOptions.tools` (unchanged; no bridge).
 - **Codex:** a fresh `Codex` client is built with
-  `config.mcp_servers.coc_llm_tools = { command, args, env }`. Bridged calls arrive
-  as `mcp_tool_call` items and report bare tool names via existing normalization.
+  `config.mcp_servers.coc_llm_tools = { command, args, env, enabled_tools }`, where
+  `enabled_tools` is the de-duplicated set of CoC LLM tool names passed into the
+  current request. Bridged calls arrive as `mcp_tool_call` items and report bare
+  tool names via existing normalization.
 - **Claude:** the stdio bridge entry is injected into `query({ options: { mcpServers } })`
   under `coc_llm_tools` with `alwaysLoad: true`; caller-provided `mcpServers` are
   also forwarded (normalized to Claude's shape). Each bridged tool is added to
