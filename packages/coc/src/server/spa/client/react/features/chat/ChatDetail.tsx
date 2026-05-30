@@ -37,6 +37,7 @@ import { ChatHeader } from './ChatHeader';
 import { ConversationArea } from './ConversationArea';
 import { FollowUpInputArea } from './FollowUpInputArea';
 import { buildEffortOptionsForModel } from './EffortPillSelector';
+import type { EffortLevel } from './EffortPillSelector';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { ConversationMiniMap } from './conversation/ConversationMiniMap';
 import { useConversationSelection } from './hooks/useConversationSelection';
@@ -52,6 +53,8 @@ import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
 import { isChatMode, resolveLoadedTaskMode } from './chatMode';
 import { isRalphEnabled, isLoopsEnabled, getDefaultProvider } from '../../utils/config';
 import type { ChatMode } from '../../repos/modeConfig';
+import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
+import { deriveEffort } from '../../utils/effortUtils';
 import { RalphStartPanel } from './RalphStartPanel';
 import { ImplementPlanCard } from './ImplementPlanCard';
 import type { ImplementationRecord, ExistingRun, RunLiveStatus } from './ImplementPlanCard';
@@ -137,7 +140,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [processDetails, setProcessDetails] = useState<any>(null);
     const [copied, setCopied] = useState(false);
     const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
-    const [effortOverride, setEffortOverride] = useState<'low' | 'medium' | 'high' | 'xhigh' | null>(null);
+    const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [sessionTokenLimit, setSessionTokenLimit] = useState<number | undefined>(undefined);
     const [sessionCurrentTokens, setSessionCurrentTokens] = useState<number | undefined>(undefined);
@@ -161,6 +164,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const turnsContainerRef = useRef<HTMLDivElement>(null);
     const scratchpadContainerRef = useRef<HTMLDivElement>(null);
     const isInitialLoadRef = useRef(true);
+    /** Set to true the first time we initialise effortOverride from processDetails.config.
+     *  Reset to false on taskId change so every new conversation gets a fresh init. */
+    const effortInitializedRef = useRef(false);
+    /** Tracks first mount of the model-override effect so we don't re-derive on initial render. */
+    const modelOverrideMountedRef = useRef(false);
 
     const { attachments, images, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
     const textPaste = useTextPaste();
@@ -187,6 +195,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         ? rawSessionProvider
         : getDefaultProvider();
     const { models: availableModels } = useModels(sessionProvider);
+    // Per-provider, per-model reasoning-effort preferences for mid-conversation model-swap re-derive.
+    const reasoningEfforts = useProviderReasoningEfforts(sessionProvider);
     const pickableModels = selectPickableModels(availableModels);
     const modelCommand = useModelCommand(pickableModels);
     const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isLoopsEnabled())), [skills]);
@@ -357,6 +367,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     useEffect(() => {
         planPatchedRef.current = false;
         goalPatchedRef.current = false;
+        effortInitializedRef.current = false;
+        modelOverrideMountedRef.current = false;
+        setEffortOverride(null);
         setInvalidScratchpadPaths(new Set());
     }, [taskId]);
 
@@ -466,20 +479,76 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         }
     }, [availableModels, sessionModel, sessionTokenLimit]);
 
-    // Derive effort picker options from session model's supported reasoning efforts.
+    // Derive effort picker options from the effective model (override or session model).
+    // `chatEffectiveModelInfo` drives both option-set and disabled state so that
+    // switching model mid-conversation updates the pill immediately.
+    const chatEffectiveModelId = modelCommand.modelOverride ?? sessionModel;
+    const chatEffectiveModelInfo = availableModels.find((m: ModelInfo) => m.id === chatEffectiveModelId);
     const sessionModelInfo = availableModels.find((m: ModelInfo) => m.id === sessionModel);
-    const effortOptions = buildEffortOptionsForModel(sessionModelInfo?.supportedReasoningEfforts);
+    const effortOptions = buildEffortOptionsForModel(chatEffectiveModelInfo?.supportedReasoningEfforts);
     // Disable the effort picker when the model's capabilities explicitly report no reasoning support.
-    const effortPickerDisabled = Boolean(sessionModelInfo && sessionModelInfo.capabilities?.supports.reasoningEffort === false);
+    const effortPickerDisabled = Boolean(chatEffectiveModelInfo && chatEffectiveModelInfo.capabilities?.supports.reasoningEffort === false);
 
-    // Reset effort override when session model changes and the selected effort is no longer supported.
+    // ── Effort initialisation from processDetails.config.reasoningEffort (§5.1) ──
+    // Fires once per task load when processDetails becomes available.
+    // `sessionModelInfo` is included so that if models load after processDetails,
+    // the validation against supportedReasoningEfforts still runs.
     useEffect(() => {
-        if (!effortOverride || !sessionModelInfo) return;
-        const supported = sessionModelInfo.supportedReasoningEfforts;
+        if (!processDetails || effortInitializedRef.current) return;
+        effortInitializedRef.current = true;
+        const configEffort = (processDetails as any)?.config?.reasoningEffort as string | undefined;
+        const supported = sessionModelInfo?.supportedReasoningEfforts;
+        const capSupports = !sessionModelInfo || sessionModelInfo.capabilities?.supports.reasoningEffort !== false;
+        const derived = deriveEffort(configEffort, supported, capSupports);
+        setEffortOverride(derived);
+        if (derived !== null) {
+            console.debug('[coc-effort-auto-derive]', {
+                trigger: 'existing-chat-init',
+                modelId: sessionModel,
+                derivedEffort: derived,
+            });
+        }
+    }, [processDetails, sessionModelInfo]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ── Mid-conversation model-override swap re-derive (§5.4) ──
+    // Fires when the user picks a different model override.
+    // Skipped on initial mount so it doesn't clobber the init effect above.
+    useEffect(() => {
+        if (!modelOverrideMountedRef.current) {
+            modelOverrideMountedRef.current = true;
+            return;
+        }
+        const preferred = reasoningEfforts[chatEffectiveModelId ?? ''];
+        const supported = chatEffectiveModelInfo?.supportedReasoningEfforts;
+        const capSupports = !chatEffectiveModelInfo || chatEffectiveModelInfo.capabilities?.supports.reasoningEffort !== false;
+        const derived = deriveEffort(preferred, supported, capSupports);
+        setEffortOverride(derived);
+        if (derived !== null) {
+            console.debug('[coc-effort-auto-derive]', {
+                trigger: 'model-swap',
+                modelId: chatEffectiveModelId,
+                derivedEffort: derived,
+            });
+        }
+    }, [modelCommand.modelOverride]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ── Validation guard: clear effort when model loads and stored effort is unsupported (§5.1 edge) ──
+    // Handles the case where processDetails loaded before models, so the init ran
+    // with an unknown model. Once models load, re-validate.
+    useEffect(() => {
+        if (!effortOverride || !chatEffectiveModelInfo) return;
+        const supported = chatEffectiveModelInfo.supportedReasoningEfforts;
         if (supported && supported.length > 0 && !supported.includes(effortOverride)) {
             setEffortOverride(null);
         }
-    }, [sessionModelInfo, effortOverride]);
+    }, [chatEffectiveModelInfo, effortOverride]);
+
+    /** Records that the user has explicitly picked — prevents mid-conversation
+     *  re-derives from accidentally overwriting an in-flight pick. */
+    const handleEffortChange = useCallback((effort: EffortLevel | null) => {
+        setEffortOverride(effort);
+    }, []);
+
     const pinnedFile = createdFiles.at(-1);
 
     const setTurnsAndRef = useCallback((next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => {
@@ -1412,7 +1481,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             effortOverride={effortOverride}
                             effortOptions={effortOptions}
                             effortDisabled={effortPickerDisabled}
-                            onEffortChange={setEffortOverride}
+                             onEffortChange={handleEffortChange}
                         />
                     )}
                 </div>
@@ -1524,7 +1593,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     effortOverride={effortOverride}
                     effortOptions={effortOptions}
                     effortDisabled={effortPickerDisabled}
-                    onEffortChange={setEffortOverride}
+                    onEffortChange={handleEffortChange}
                 />
             )}
             {isMobileScratchpad && (
