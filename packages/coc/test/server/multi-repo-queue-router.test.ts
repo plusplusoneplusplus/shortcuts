@@ -332,6 +332,112 @@ describe('MultiRepoQueueRouter', () => {
     });
 
     // --------------------------------------------------------------------
+    // per-process bridge dispatch
+    // --------------------------------------------------------------------
+
+    describe('per-process bridge dispatch', () => {
+        it('routes executeFollowUp to the first live bridge and forwards reasoningEffort', async () => {
+            const { bridge } = createBridge();
+            const repoA = bridge.getOrCreateBridge('/repo/follow-a');
+            const repoB = bridge.getOrCreateBridge('/repo/follow-b');
+
+            vi.spyOn(repoA, 'isSessionAlive').mockResolvedValue(false);
+            vi.spyOn(repoB, 'isSessionAlive').mockResolvedValue(true);
+            const executeA = vi.spyOn(repoA, 'executeFollowUp').mockResolvedValue(undefined);
+            const executeB = vi.spyOn(repoB, 'executeFollowUp').mockResolvedValue(undefined);
+
+            await bridge.executeFollowUp(
+                'proc-follow',
+                'follow-up',
+                undefined,
+                'ask',
+                'immediate',
+                ['image-1'],
+                ['impl'],
+                'gpt-5.5',
+                undefined,
+                'high',
+            );
+
+            expect(executeA).not.toHaveBeenCalled();
+            expect(executeB).toHaveBeenCalledWith(
+                'proc-follow',
+                'follow-up',
+                undefined,
+                'ask',
+                'immediate',
+                ['image-1'],
+                ['impl'],
+                'gpt-5.5',
+                undefined,
+                'high',
+            );
+
+            bridge.dispose();
+        });
+
+        it('throws when no bridge accepts a follow-up process', async () => {
+            const { bridge } = createBridge();
+            const repoA = bridge.getOrCreateBridge('/repo/follow-miss-a');
+            const repoB = bridge.getOrCreateBridge('/repo/follow-miss-b');
+
+            vi.spyOn(repoA, 'isSessionAlive').mockResolvedValue(false);
+            vi.spyOn(repoB, 'isSessionAlive').mockResolvedValue(false);
+            const executeA = vi.spyOn(repoA, 'executeFollowUp').mockResolvedValue(undefined);
+            const executeB = vi.spyOn(repoB, 'executeFollowUp').mockResolvedValue(undefined);
+
+            await expect(bridge.executeFollowUp('proc-missing', 'follow-up'))
+                .rejects.toThrow('No active session found for process proc-missing');
+            expect(executeA).not.toHaveBeenCalled();
+            expect(executeB).not.toHaveBeenCalled();
+
+            bridge.dispose();
+        });
+
+        it('steerProcess stops after the first bridge that accepts the process', async () => {
+            const { bridge } = createBridge();
+            const repoA = bridge.getOrCreateBridge('/repo/steer-a');
+            const repoB = bridge.getOrCreateBridge('/repo/steer-b');
+            const repoC = bridge.getOrCreateBridge('/repo/steer-c');
+
+            const steerA = vi.spyOn(repoA, 'steerProcess').mockResolvedValue(false);
+            const steerB = vi.spyOn(repoB, 'steerProcess').mockResolvedValue(true);
+            const steerC = vi.spyOn(repoC, 'steerProcess').mockResolvedValue(true);
+
+            await expect(bridge.steerProcess('proc-steer', 'go left')).resolves.toBe(true);
+            expect(steerA).toHaveBeenCalledWith('proc-steer', 'go left');
+            expect(steerB).toHaveBeenCalledWith('proc-steer', 'go left');
+            expect(steerC).not.toHaveBeenCalled();
+
+            bridge.dispose();
+        });
+
+        it('ask-user helpers return true from the first bridge that resolves the request', async () => {
+            const { bridge } = createBridge();
+            const repoA = bridge.getOrCreateBridge('/repo/ask-a');
+            const repoB = bridge.getOrCreateBridge('/repo/ask-b');
+            const answers = [{ questionId: 'q1', answer: 'yes' }];
+
+            vi.spyOn(repoA, 'answerAskUserQuestion').mockResolvedValue(false);
+            const answerB = vi.spyOn(repoB, 'answerAskUserQuestion').mockResolvedValue(true);
+            await expect(bridge.answerAskUserQuestion('proc-ask', 'q1', 'yes')).resolves.toBe(true);
+            expect(answerB).toHaveBeenCalledWith('proc-ask', 'q1', 'yes');
+
+            vi.spyOn(repoA, 'skipAskUserQuestion').mockResolvedValue(false);
+            const skipB = vi.spyOn(repoB, 'skipAskUserQuestion').mockResolvedValue(true);
+            await expect(bridge.skipAskUserQuestion('proc-ask', 'q1')).resolves.toBe(true);
+            expect(skipB).toHaveBeenCalledWith('proc-ask', 'q1');
+
+            vi.spyOn(repoA, 'answerAskUserQuestions').mockResolvedValue(false);
+            const batchB = vi.spyOn(repoB, 'answerAskUserQuestions').mockResolvedValue(true);
+            await expect(bridge.answerAskUserQuestions('proc-ask', 'batch-1', answers)).resolves.toBe(true);
+            expect(batchB).toHaveBeenCalledWith('proc-ask', 'batch-1', answers);
+
+            bridge.dispose();
+        });
+    });
+
+    // --------------------------------------------------------------------
     // createAggregateQueueFacade — resolveManager repoId-to-path lookup
     // --------------------------------------------------------------------
 

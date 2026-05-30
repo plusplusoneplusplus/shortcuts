@@ -163,6 +163,12 @@ export interface GroupOptions {
     groupSingleLineMessages?: boolean;
 }
 
+function isVisibleAskUserTool(tool: ToolLike | undefined): boolean {
+    if (!tool) return false;
+    return normalizeToolName(tool.toolName) === 'ask_user'
+        && (tool.status === 'completed' || tool.result !== undefined);
+}
+
 /**
  * Collapses runs of same-category sibling tool chunks into single `tool-group` chunks.
  *
@@ -545,7 +551,7 @@ export function filterWhisperChunks(
         }
         if (c.kind === 'tool' && c.toolId) {
             const tool = toolById.get(c.toolId);
-            if (tool && tool.toolName === 'task_complete') {
+            if (tool && (tool.toolName === 'task_complete' || isVisibleAskUserTool(tool))) {
                 taskCompleteIndices.add(i);
             }
         }

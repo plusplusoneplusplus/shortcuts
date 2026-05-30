@@ -128,7 +128,11 @@ Claude Code expects hyphenated model IDs for version aliases (for example, `clau
 
 Claude Code permission mode is mapped at the provider boundary: CoC `autopilot` sends `permissionMode: 'bypassPermissions'` plus `allowDangerouslySkipPermissions: true`, while CoC `plan` sends `permissionMode: 'plan'`. Interactive/ask mode leaves Claude Code's default permission behavior in place.
 
+`ClaudeSDKService` widens the agent's filesystem permission scope via the SDK's `additionalDirectories` option (`resolveAdditionalDirectories`). It always grants access to `~/.coc` (CoC data/skills dir) and the system temp directory (`os.tmpdir()`) so out-of-repo skill files and temp artifacts remain readable beyond the per-request `workingDirectory`/`cwd`. Any caller-supplied `SendMessageOptions.additionalDirectories` are merged in; all entries are resolved to absolute paths and de-duplicated (case-insensitively on Windows).
+
 `ClaudeSDKService` wires CoC LLM tools and any caller-provided `mcpServers` into `query({ options: { mcpServers } })`; CoC tools ride a stdio bridge entry (`coc_llm_tools`, `alwaysLoad: true`), are pre-approved via `options.allowedTools` (`mcp__coc_llm_tools__<tool>`) so Claude Code never prompts for them, and bridged `tool_use` names are de-namespaced (see *CoC LLM Tools over MCP*).
+
+Claude tool-call capture treats assistant `tool_use` blocks as start events and user `tool_result` / `tool_use_result` payloads as terminal events. Stored tool calls keep the original input parameters in `args` and preserve the actual tool output in `result` or `error`; the adapter does not synthesize completion results from tool input JSON.
 
 ## RequestRunner — sendMessage() Flow (Copilot)
 
@@ -218,8 +222,10 @@ Provider wiring (per request, only when `options.tools` is non-empty; disposed i
 `finally`):
 - **Copilot:** native `SendMessageOptions.tools` (unchanged; no bridge).
 - **Codex:** a fresh `Codex` client is built with
-  `config.mcp_servers.coc_llm_tools = { command, args, env }`. Bridged calls arrive
-  as `mcp_tool_call` items and report bare tool names via existing normalization.
+  `config.mcp_servers.coc_llm_tools = { command, args, env, enabled_tools }`, where
+  `enabled_tools` is the de-duplicated set of CoC LLM tool names passed into the
+  current request. Bridged calls arrive as `mcp_tool_call` items and report bare
+  tool names via existing normalization.
 - **Claude:** the stdio bridge entry is injected into `query({ options: { mcpServers } })`
   under `coc_llm_tools` with `alwaysLoad: true`; caller-provided `mcpServers` are
   also forwarded (normalized to Claude's shape). Each bridged tool is added to

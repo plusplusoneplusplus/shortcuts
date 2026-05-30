@@ -50,6 +50,10 @@ all have their own `references/*.md`.
 - **MCP REST surface** must never expose secrets (`env`, headers, full `args`).
 - **Ralph iteration prompts** must not hard-code implementation skill names
   or set `context.skills`; the `<work_intent>` block must stay generic.
+- **Ralph final-check tasks** still run with autopilot capability, but
+  `RalphExecutor` must use validation-only system instructions whenever
+  `context.ralph.finalCheck` is present. Do not route final checks through the
+  normal implementation-loop system prompt.
 - **Loop ticks** must route completion through
   `ProcessLifecycleRunner → onLoopTickComplete → LoopExecutor.onTickComplete`;
   bookkeeping errors must never mask the follow-up's actual result.

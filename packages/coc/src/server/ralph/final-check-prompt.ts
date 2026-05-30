@@ -28,15 +28,7 @@ export interface BuildFinalCheckPromptInput {
     sourceIteration: number;
 }
 
-const READ_ONLY_INSTRUCTIONS = `You are a read-only final-check agent for a Ralph autonomous coding session.
-
-IMPORTANT CONSTRAINTS — you must not:
-- Edit, create, delete, or rename any files.
-- Run git commit, git push, or any command that modifies repository state.
-- Call any API endpoint (new-loop, work-items, etc.).
-- Start a new Ralph session or loop yourself.
-
-Your only job is to evaluate whether the delivered changes satisfy the original goal/spec, then emit a structured RALPH_FINAL_CHECK_RESULT block.`;
+const READ_ONLY_INSTRUCTIONS = `Load and follow the \`ultra-ralph\` skill, \`final-check\` section. The skill file is at ~/.coc/skills/ultra-ralph/SKILL.md.`;
 
 const EVALUATION_INSTRUCTIONS = `## Evaluation Steps
 

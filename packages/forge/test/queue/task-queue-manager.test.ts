@@ -2893,6 +2893,131 @@ describe('TaskQueueManager.reActivate from queue', () => {
 });
 
 // ============================================================================
+// Ralph-session continuation ordering (AC-01 / AC-02 / AC-03 / AC-04)
+// ============================================================================
+
+describe('Ralph-session continuation ordering', () => {
+    // All tests use a manager with an isExclusive function so the
+    // insertAsContinuation logic knows which tasks are exclusive.
+    function isExclusive(task: QueuedTask): boolean {
+        // ralph and autopilot tasks are exclusive; ask tasks are shared
+        return (task.payload as any)?.mode !== 'ask';
+    }
+
+    function makeManager() {
+        return createTaskQueueManager({ isExclusive });
+    }
+
+    function makeExclusiveTask(overrides: Partial<CreateTaskInput> = {}): CreateTaskInput {
+        return createTestTask({
+            payload: { promptFilePath: '/exclusive.md', mode: 'autopilot' },
+            ...overrides,
+        });
+    }
+
+    function makeRalphTask(sessionId: string, overrides: Partial<CreateTaskInput> = {}): CreateTaskInput {
+        return createTestTask({
+            continuationOfSessionId: sessionId,
+            payload: { promptFilePath: '/ralph.md', mode: 'ralph' },
+            ...overrides,
+        });
+    }
+
+    it('continuation task is inserted before unrelated exclusive backlog', () => {
+        const m = makeManager();
+        // Two unrelated exclusive tasks already in queue
+        const unrelatedId1 = m.enqueue(makeExclusiveTask({ displayName: 'unrelated-1' }));
+        const unrelatedId2 = m.enqueue(makeExclusiveTask({ displayName: 'unrelated-2' }));
+
+        // Enqueue a Ralph continuation for session A
+        const continuationId = m.enqueue(makeRalphTask('session-A', { displayName: 'ralph-continuation' }));
+
+        const queued = m.getQueued();
+        expect(queued[0].id).toBe(continuationId);
+        expect(queued[1].id).toBe(unrelatedId1);
+        expect(queued[2].id).toBe(unrelatedId2);
+    });
+
+    it('multiple same-session continuations stack before unrelated exclusive tasks', () => {
+        const m = makeManager();
+        const unrelatedId = m.enqueue(makeExclusiveTask({ displayName: 'unrelated' }));
+
+        const cont1 = m.enqueue(makeRalphTask('session-A', { displayName: 'cont-1' }));
+        const cont2 = m.enqueue(makeRalphTask('session-A', { displayName: 'cont-2' }));
+
+        const queued = m.getQueued();
+        expect(queued[0].id).toBe(cont1);
+        expect(queued[1].id).toBe(cont2);
+        expect(queued[2].id).toBe(unrelatedId);
+    });
+
+    it('continuation task for session A does not reorder session B exclusive tasks', () => {
+        const m = makeManager();
+        // Two sessions already have continuation tasks in queue
+        const sessionBId = m.enqueue(makeRalphTask('session-B', { displayName: 'session-b-cont' }));
+
+        // Now enqueue a continuation for session A
+        const sessionAId = m.enqueue(makeRalphTask('session-A', { displayName: 'session-a-cont' }));
+
+        // session-A continuation goes before session-B continuation
+        // because session-B is an unrelated exclusive w.r.t. session-A
+        const queued = m.getQueued();
+        expect(queued[0].id).toBe(sessionAId);
+        expect(queued[1].id).toBe(sessionBId);
+    });
+
+    it('continuation without any exclusive backlog uses priority insertion', () => {
+        const m = makeManager();
+        // No exclusive tasks yet — continuation should land normally
+        const cont = m.enqueue(makeRalphTask('session-A'));
+        expect(m.getQueued()[0].id).toBe(cont);
+        expect(m.size()).toBe(1);
+    });
+
+    it('continuation preserves repo-scope isolation (AC-04): another workspace unaffected', () => {
+        // Two separate managers simulate two different workspaces
+        const mA = makeManager();
+        const mB = makeManager();
+
+        const unrelatedInA = mA.enqueue(makeExclusiveTask({ displayName: 'unrelated-in-A' }));
+        const unrelatedInB = mB.enqueue(makeExclusiveTask({ displayName: 'unrelated-in-B' }));
+
+        // Ralph continuation in workspace A
+        const contA = mA.enqueue(makeRalphTask('session-A', { displayName: 'ralph-in-A' }));
+
+        // workspace B queue is unchanged
+        const queuedB = mB.getQueued();
+        expect(queuedB).toHaveLength(1);
+        expect(queuedB[0].id).toBe(unrelatedInB);
+
+        // workspace A queue has continuation before unrelated
+        const queuedA = mA.getQueued();
+        expect(queuedA[0].id).toBe(contA);
+        expect(queuedA[1].id).toBe(unrelatedInA);
+    });
+
+    it('non-exclusive (ask) tasks remain unaffected by continuation ordering', () => {
+        const m = makeManager();
+        const exclusiveId = m.enqueue(makeExclusiveTask({ displayName: 'exclusive' }));
+        const askId = m.enqueue(createTestTask({
+            payload: { promptFilePath: '/ask.md', mode: 'ask' },
+            displayName: 'ask-task',
+        }));
+        const contId = m.enqueue(makeRalphTask('session-A', { displayName: 'ralph-cont' }));
+
+        // ask task should appear before the exclusive task (non-exclusive fast path)
+        // ralph continuation should appear before the exclusive task too
+        const queued = m.getQueued();
+        // Both ask and continuation are before the unrelated exclusive task
+        const exclusivePos = queued.findIndex(t => t.id === exclusiveId);
+        const askPos = queued.findIndex(t => t.id === askId);
+        const contPos = queued.findIndex(t => t.id === contId);
+        expect(exclusivePos).toBeGreaterThan(askPos);
+        expect(exclusivePos).toBeGreaterThan(contPos);
+    });
+});
+
+// ============================================================================
 // Test Helpers
 // ============================================================================
 

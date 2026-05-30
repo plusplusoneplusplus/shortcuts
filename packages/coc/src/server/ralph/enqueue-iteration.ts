@@ -8,7 +8,6 @@
  */
 
 import { buildRalphIterationPrompt } from './iteration-prompt';
-import { getPromptOverride } from '../admin/ralph-prompt-overrides';
 import type { ChatProvider } from '../tasks/task-types';
 
 export interface BuildRalphIterationTaskInput {
@@ -31,15 +30,17 @@ export interface BuildRalphIterationTaskInput {
     priority?: 'normal' | 'low' | 'high';
     /** AI provider to use for this Ralph execution task. */
     provider?: ChatProvider;
+    /**
+     * When set, the enqueued task is tagged as a continuation of this Ralph
+     * session, allowing the queue manager to admit it ahead of unrelated
+     * exclusive backlog. Should be the session's `sessionId`.
+     */
+    continuationOfSessionId?: string;
 }
 
 export function buildRalphIterationTask(input: BuildRalphIterationTaskInput) {
-    const promptOverride = input.dataDir
-        ? (getPromptOverride('ralph-iteration-user', input.dataDir) ?? undefined)
-        : undefined;
     const prompt = input.prompt ?? buildRalphIterationPrompt({
         originalGoal: input.originalGoal,
-        promptOverride,
     });
     const displayName = input.displayName
         ?? `Ralph iteration ${input.iteration} (${input.sessionId})`;
@@ -48,7 +49,9 @@ export function buildRalphIterationTask(input: BuildRalphIterationTaskInput) {
         priority: input.priority ?? ('normal' as const),
         repoId: input.workspaceId,
         folderPath: input.folderPath,
+        continuationOfSessionId: input.continuationOfSessionId,
         displayName,
+        config: {},
         payload: {
             kind: 'chat' as const,
             mode: 'ralph' as const,

@@ -12,11 +12,11 @@ import {
 } from '../../src/server/repos/classification-prompt';
 
 // Mock the prompt override module
-vi.mock('../../src/server/admin/ralph-prompt-overrides', () => ({
+vi.mock('../../src/server/admin/admin-prompt-overrides', () => ({
     getPromptOverride: vi.fn(),
 }));
 
-import { getPromptOverride } from '../../src/server/admin/ralph-prompt-overrides';
+import { getPromptOverride } from '../../src/server/admin/admin-prompt-overrides';
 
 const mockedGetOverride = vi.mocked(getPromptOverride);
 

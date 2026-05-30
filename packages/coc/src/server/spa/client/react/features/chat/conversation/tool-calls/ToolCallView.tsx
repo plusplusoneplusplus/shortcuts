@@ -70,6 +70,27 @@ function parseArgsObject(args: any): Record<string, any> | null {
     return null;
 }
 
+function truncateSummary(value: string, maxLength = 80): string {
+    return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
+}
+
+function getAskUserQuestionSummary(args: Record<string, any>): string {
+    if (typeof args.question === 'string' && args.question.trim()) {
+        return truncateSummary(args.question.trim());
+    }
+    if (Array.isArray(args.questions)) {
+        const questions = args.questions
+            .filter((question: unknown): question is Record<string, any> => !!question && typeof question === 'object' && !Array.isArray(question))
+            .map(question => typeof question.question === 'string' ? question.question.trim() : '')
+            .filter(Boolean);
+        if (questions.length > 0) {
+            const suffix = questions.length > 1 ? ` (+${questions.length - 1} more)` : '';
+            return `${truncateSummary(questions[0], 80 - suffix.length)}${suffix}`;
+        }
+    }
+    return '';
+}
+
 function shortenPath(p: string): string {
     return shortenFilePath(p);
 }
@@ -208,11 +229,7 @@ function getToolSummary(toolName: string, args: any, rawArgs?: any): string {
             return '';
         }
         case 'ask_user': {
-            if (typeof args.question === 'string') {
-                const q = args.question.trim();
-                return q.length > 80 ? `${q.slice(0, 77)}...` : q;
-            }
-            return 'Ask user';
+            return getAskUserQuestionSummary(args) || 'Ask user';
         }
         default: {
             for (const key of ['path', 'filePath', 'file', 'pattern', 'query', 'command', 'url']) {

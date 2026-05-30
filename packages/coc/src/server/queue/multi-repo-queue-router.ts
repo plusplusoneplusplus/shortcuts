@@ -28,6 +28,7 @@ import {
     QueueExecutorBridgeOptions,
     QueueExecutorBridge,
     createQueueExecutorBridge,
+    type RalphSessionCompleteEvent,
 } from './queue-executor-bridge';
 
 // ============================================================================
@@ -101,7 +102,14 @@ export class MultiRepoQueueRouter extends EventEmitter {
         const { executor, bridge } = createQueueExecutorBridge(
             queueManager,
             this.store,
-            { ...this.defaultOptions, workingDirectory: normalized },
+            {
+                ...this.defaultOptions,
+                workingDirectory: normalized,
+                onRalphSessionComplete: (event) => {
+                    this.defaultOptions.onRalphSessionComplete?.(event);
+                    this.emit('ralphSessionComplete', event);
+                },
+            },
         );
 
         this.bridges.set(normalized, { executor, bridge });
@@ -236,15 +244,31 @@ export class MultiRepoQueueRouter extends EventEmitter {
     }
 
     /**
+     * Route a process-scoped operation to the first per-repo bridge that
+     * accepts ownership of the request.
+     */
+    private async dispatchToOwnerBridge<T>(
+        condition: (bridge: QueueExecutorBridge) => Promise<boolean>,
+        action: (bridge: QueueExecutorBridge) => Promise<T>,
+    ): Promise<{ value: T } | undefined> {
+        for (const { bridge } of this.bridges.values()) {
+            if (await condition(bridge)) {
+                return { value: await action(bridge) };
+            }
+        }
+        return undefined;
+    }
+
+    /**
      * Execute a follow-up message on an existing AI session.
      * Searches across all per-repo bridges for the process.
      */
-    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource): Promise<void> {
-        for (const { bridge } of this.bridges.values()) {
-            if (await bridge.isSessionAlive(processId)) {
-                return bridge.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource);
-            }
-        }
+    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'): Promise<void> {
+        const handled = await this.dispatchToOwnerBridge(
+            (bridge) => bridge.isSessionAlive(processId),
+            (bridge) => bridge.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource, reasoningEffort),
+        );
+        if (handled) return;
         throw new Error(`No active session found for process ${processId}`);
     }
 
@@ -253,37 +277,38 @@ export class MultiRepoQueueRouter extends EventEmitter {
      * Searches across all per-repo bridges for the process.
      */
     async steerProcess(processId: string, message: string): Promise<boolean> {
-        for (const { bridge } of this.bridges.values()) {
-            if (bridge.steerProcess) {
-                const steered = await bridge.steerProcess(processId, message);
-                if (steered) return true;
-            }
-        }
-        return false;
+        const handled = await this.dispatchToOwnerBridge(
+            async (bridge) => await bridge.steerProcess?.(processId, message) === true,
+            async () => true,
+        );
+        return handled?.value ?? false;
     }
 
     /** Answer a pending ask-user question across all per-repo bridges. */
     async answerAskUserQuestion(processId: string, questionId: string, answer: string | string[] | boolean): Promise<boolean> {
-        for (const { bridge } of this.bridges.values()) {
-            if (await bridge.answerAskUserQuestion?.(processId, questionId, answer)) return true;
-        }
-        return false;
+        const handled = await this.dispatchToOwnerBridge(
+            async (bridge) => await bridge.answerAskUserQuestion?.(processId, questionId, answer) === true,
+            async () => true,
+        );
+        return handled?.value ?? false;
     }
 
     /** Skip a pending ask-user question across all per-repo bridges. */
     async skipAskUserQuestion(processId: string, questionId: string): Promise<boolean> {
-        for (const { bridge } of this.bridges.values()) {
-            if (await bridge.skipAskUserQuestion?.(processId, questionId)) return true;
-        }
-        return false;
+        const handled = await this.dispatchToOwnerBridge(
+            async (bridge) => await bridge.skipAskUserQuestion?.(processId, questionId) === true,
+            async () => true,
+        );
+        return handled?.value ?? false;
     }
 
     /** Resolve a pending ask-user question batch across all per-repo bridges. */
     async answerAskUserQuestions(processId: string, batchId: string, answers: Array<{ questionId: string; answer?: string | string[] | boolean; skipped?: boolean }>): Promise<boolean> {
-        for (const { bridge } of this.bridges.values()) {
-            if (await bridge.answerAskUserQuestions?.(processId, batchId, answers)) return true;
-        }
-        return false;
+        const handled = await this.dispatchToOwnerBridge(
+            async (bridge) => await bridge.answerAskUserQuestions?.(processId, batchId, answers) === true,
+            async () => true,
+        );
+        return handled?.value ?? false;
     }
 
     /**
@@ -527,6 +552,44 @@ export class MultiRepoQueueRouter extends EventEmitter {
             return totals;
         };
 
+        type FacadeListener = (...args: any[]) => void;
+        const facadeListeners = new Map<string, Map<FacadeListener, FacadeListener>>();
+        const addForwardedListener = (event: string, targetEvent: string, listener: FacadeListener): void => {
+            const wrapped = (...args: any[]) => {
+                if (event === 'ralphSessionComplete') {
+                    listener(...args);
+                    return;
+                }
+                listener(...args.slice(1));
+            };
+            if (!facadeListeners.has(event)) facadeListeners.set(event, new Map());
+            facadeListeners.get(event)!.set(listener, wrapped);
+            if (event === 'ralphSessionComplete') {
+                bridgeRef.on(targetEvent, wrapped);
+            } else {
+                reg.on(targetEvent, wrapped);
+            }
+        };
+        const removeForwardedListener = (event: string, targetEvent: string, listener: FacadeListener): void => {
+            const wrapped = facadeListeners.get(event)?.get(listener);
+            if (!wrapped) return;
+            if (event === 'ralphSessionComplete') {
+                bridgeRef.off(targetEvent, wrapped);
+            } else {
+                reg.off(targetEvent, wrapped);
+            }
+            facadeListeners.get(event)!.delete(listener);
+        };
+        const forwardedQueueEvents = new Set([
+            'taskAdded',
+            'taskRemoved',
+            'taskUpdated',
+            'taskStarted',
+            'taskCompleted',
+            'taskFailed',
+            'taskCancelled',
+        ]);
+
         // Build a duck-typed facade
         const facade = {
             enqueue: (input: CreateTaskInput): string => {
@@ -596,13 +659,29 @@ export class MultiRepoQueueRouter extends EventEmitter {
             },
             reset: (): void => { for (const m of allManagers()) m.reset(); },
             on: (event: string, listener: (...args: any[]) => void) => {
-                // Delegate 'change' events through the registry
                 if (event === 'change') {
-                    reg.on('queueChange', (_repoPath: string, ...args: any[]) => listener(...args));
+                    addForwardedListener(event, 'queueChange', listener);
+                } else if (forwardedQueueEvents.has(event)) {
+                    addForwardedListener(event, event, listener);
+                } else if (event === 'ralphSessionComplete') {
+                    addForwardedListener(event, event, listener as (event: RalphSessionCompleteEvent) => void);
                 }
                 return facade;
             },
-            removeListener: (_event: string, _listener: (...args: any[]) => void) => facade,
+            off: (event: string, listener: (...args: any[]) => void) => {
+                if (event === 'change') {
+                    removeForwardedListener(event, 'queueChange', listener);
+                } else if (forwardedQueueEvents.has(event)) {
+                    removeForwardedListener(event, event, listener);
+                } else if (event === 'ralphSessionComplete') {
+                    removeForwardedListener(event, event, listener);
+                }
+                return facade;
+            },
+            removeListener: (event: string, listener: (...args: any[]) => void) => {
+                facade.off(event, listener);
+                return facade;
+            },
         };
 
         return facade as unknown as TaskQueueManager;

@@ -36,6 +36,7 @@ import { NoteEditCard } from './NoteEditCard';
 import { ScriptTerminalBlock } from './ScriptTerminalBlock';
 import { parseScriptOutput, describeScriptExit } from './scriptOutputParser';
 import { getProviderAvatarClasses, type ChatProvider } from '../ProviderBadge';
+import { AskUserHistoryCard, hasAskUserHistory } from '../AskUserHistoryCard';
 
 function escapeAttr(value: string): string {
     return value
@@ -961,6 +962,10 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
         // Hide suggest_follow_ups — its output is rendered as suggestion chips, not as a tool call.
         if (toolCall.toolName === 'suggest_follow_ups') return null;
 
+        if (hasAskUserHistory(toolCall)) {
+            return <AskUserHistoryCard key={toolId} toolCall={toolCall} />;
+        }
+
         const childChunks = assistantRender!.chunksByParent.get(toolId) ?? [];
         const hasSubtools = childChunks.length > 0;
         const isCollapsed = collapsedTaskIds[toolId] ?? true;
@@ -1348,7 +1353,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, processType, wsI
                                     // Detect commits for individual (ungrouped) shell tool calls
                                     const tool = assistantRender.toolById.get(chunk.toolId);
                                     const toolName = tool?.toolName ?? '';
-                                    if ((toolName === 'powershell' || toolName === 'shell') && tool?.result) {
+                                    if ((toolName === 'powershell' || toolName === 'shell' || toolName === 'bash') && tool?.result) {
                                         const commits = detectCommitsInToolGroup([{
                                             id: chunk.toolId,
                                             toolName,

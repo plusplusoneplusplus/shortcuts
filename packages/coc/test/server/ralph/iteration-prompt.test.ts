@@ -97,14 +97,10 @@ describe('buildRalphIterationPrompt', () => {
         expect(prompt).toContain('tests');
     });
 
-    it('embeds the spec contract that honors decision tags and Definition of Done', () => {
+    it('embeds the spec contract that delegates to ultra-ralph skill', () => {
         const prompt = buildRalphIterationPrompt({ originalGoal: 'a goal' });
         expect(prompt).toContain(RALPH_SPEC_CONTRACT_PROMPT);
-        expect(prompt).toContain('[decision]');
-        expect(prompt).toContain('[assumption]');
-        expect(prompt).toContain('[open]');
-        expect(prompt).toContain('Definition of Done');
-        expect(prompt).toContain('progress.md');
+        expect(prompt).toContain('ultra-ralph');
         // Spec contract must sit before the goal block so the goal text
         // remains the dominant retrieval signal at the end of the prompt.
         expect(prompt.indexOf('<spec_contract>')).toBeGreaterThan(

@@ -3,7 +3,7 @@
 **Document type:** Formal UX Specification  
 **Scope:** CoC Dashboard → Repository Detail → Activity Tab  
 **Purpose:** Authoritative reference for validating any future UI/UX changes to the Activity tab.  
-**Version:** 1.1.0
+**Version:** 1.2.0
 
 ---
 
@@ -15,12 +15,20 @@ The **Repository Activity Tab** is the primary workspace for monitoring and inte
 
 | Property | Value |
 |---|---|
-| Tab label | `Activity` |
+| Tab key (classic layout) | `activity` |
+| Tab key (dev-workflow layout) | `chats` |
+| Tab label (classic layout) | `Activity` |
+| Tab label (dev-workflow layout) | `Chats` |
 | Tab position | First (leftmost) tab in `RepoDetail` |
-| Default tab | No — default is `settings`; tab state is persisted per-repo, so Activity is shown on return if last used |
+| Default tab | No — default is `settings`; tab state is persisted per-repo, so Activity/Chats is shown on return if last used |
 | Keyboard shortcut | `Alt+A` |
-| URL fragment | `#repos/<workspaceId>/activity` |
-| Deep-link URL | `#repos/<workspaceId>/activity/<taskId>` |
+| URL fragment (classic) | `#repos/<workspaceId>/activity` |
+| URL fragment (dev-workflow) | `#repos/<workspaceId>/chats` |
+| Deep-link URL (classic) | `#repos/<workspaceId>/activity/<taskId>` |
+| Deep-link URL (dev-workflow) | `#repos/<workspaceId>/chats/<taskId>` |
+| Implementing component | `RepoChatTab` (with `mode="chats"` in dev-workflow, no mode prop in classic) |
+
+> The `Activity` and `Chats` tabs are the **same surface** rendered under two labels. The dashboard accepts both URL keys as aliases regardless of the active layout mode (classic users opening a `…/chats/<id>` deep-link, or dev-workflow users opening `…/activity/<id>`, both succeed). Layout mode switching is a label/URL preference only — the underlying data, history, and queue are unchanged.
 
 ---
 
@@ -589,3 +597,4 @@ The Activity tab depends on the following server endpoints. Any change to these 
 |---|---|---|
 | 1.0.0 | 2026-03-24 | Initial golden state specification |
 | 1.1.0 | 2026-04-05 | Fix default tab (settings, not activity), five-section layout (Running→Queued→Pinned→Completed→Archived), default follow-up mode (autopilot), rewrite context menu per codebase, add pin/unpin and swipe-to-archive features, add draft badge |
+| 1.2.0 | 2026-05-29 | Document dual labeling: tab key is `activity` in classic layout and `chats` in dev-workflow layout (same surface, both URL keys are accepted as aliases) |

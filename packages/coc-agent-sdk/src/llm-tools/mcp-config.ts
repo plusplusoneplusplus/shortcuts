@@ -24,6 +24,8 @@ export interface CocLlmToolsMcpServerConfig {
     command: string;
     args: string[];
     env: Record<string, string>;
+    /** Codex MCP allow-list for tools exposed by this server. */
+    enabled_tools?: string[];
 }
 
 let bridgePathOverride: string | undefined;
@@ -60,6 +62,8 @@ export function buildCocLlmToolsMcpConfig(options: {
     command?: string;
     /** Explicit bridge script path. Defaults to {@link resolveCocLlmToolsBridgePath}. */
     bridgePath?: string;
+    /** Optional Codex MCP allow-list for tools exposed by the bridge. */
+    enabledTools?: string[];
 }): CocLlmToolsMcpServerConfig {
     return {
         command: options.command ?? process.execPath,
@@ -68,5 +72,6 @@ export function buildCocLlmToolsMcpConfig(options: {
             [COC_LLM_TOOLS_ENDPOINT_ENV]: options.endpoint,
             [COC_LLM_TOOLS_TOKEN_ENV]: options.token,
         },
+        ...(options.enabledTools?.length ? { enabled_tools: options.enabledTools } : {}),
     };
 }

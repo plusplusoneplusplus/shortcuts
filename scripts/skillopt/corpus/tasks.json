@@ -1,0 +1,44 @@
+{
+  "tasks": [
+    {
+      "id": "impl-string-utils",
+      "prompt": "Create a new file `src/utils/string-utils.ts` that exports three utility functions:\n1. `reverseString(s: string): string` — returns the string reversed.\n2. `capitalize(s: string): string` — capitalises the first letter of each word.\n3. `truncate(s: string, maxLen: number, ellipsis?: string): string` — truncates to maxLen, appending ellipsis (default '…') if truncated.\nAll functions must be exported as named exports with JSDoc comments.",
+      "visibleTests": "npx tsx -e \"const { reverseString, capitalize, truncate } = require('./src/utils/string-utils.ts'); if (reverseString('hello') !== 'olleh') throw new Error('reverseString failed');\"",
+      "hiddenTests": "npx tsx -e \"const { reverseString, capitalize, truncate } = require('./src/utils/string-utils.ts'); const assert = (v, m) => { if (!v) throw new Error(m); }; assert(reverseString('') === '', 'empty reverse'); assert(reverseString('abc') === 'cba', 'reverse abc'); assert(capitalize('hello world') === 'Hello World', 'capitalize'); assert(truncate('hello world', 5) === 'hello…', 'truncate'); assert(truncate('hi', 10) === 'hi', 'no truncate'); console.log('all hidden tests passed');\"",
+      "judgeRubric": "Did the agent create all three functions correctly? Are they type-safe, well-named, and include JSDoc? Is the implementation idiomatic TypeScript?",
+      "split": "train"
+    },
+    {
+      "id": "impl-number-utils",
+      "prompt": "Create a new file `src/utils/number-utils.ts` that exports:\n1. `clamp(n: number, min: number, max: number): number` — clamps n to [min, max].\n2. `lerp(a: number, b: number, t: number): number` — linear interpolation between a and b.\n3. `roundTo(n: number, decimals: number): number` — rounds to a given number of decimal places.\nAll functions must be exported as named exports with JSDoc.",
+      "visibleTests": "npx tsx -e \"const { clamp, lerp, roundTo } = require('./src/utils/number-utils.ts'); if (clamp(5, 0, 3) !== 3) throw new Error('clamp failed');\"",
+      "hiddenTests": "npx tsx -e \"const { clamp, lerp, roundTo } = require('./src/utils/number-utils.ts'); const assert = (v, m) => { if (!v) throw new Error(m); }; assert(clamp(5, 0, 3) === 3, 'clamp high'); assert(clamp(-1, 0, 3) === 0, 'clamp low'); assert(clamp(2, 0, 3) === 2, 'clamp within'); assert(lerp(0, 10, 0.5) === 5, 'lerp mid'); assert(roundTo(3.14159, 2) === 3.14, 'roundTo 2'); console.log('all hidden tests passed');\"",
+      "judgeRubric": "Did the agent create all three numeric utilities correctly? Are they type-safe, have JSDoc, and handle edge cases (negative numbers, zero decimals, etc.)?",
+      "split": "train"
+    },
+    {
+      "id": "impl-array-utils",
+      "prompt": "Create a new file `src/utils/array-utils.ts` that exports:\n1. `unique<T>(arr: T[]): T[]` — returns a deduplicated array preserving insertion order.\n2. `groupBy<T>(arr: T[], key: (item: T) => string): Record<string, T[]>` — groups items by key.\n3. `chunk<T>(arr: T[], size: number): T[][]` — splits array into chunks of given size.\nAll functions must be generic, exported as named exports, with JSDoc.",
+      "visibleTests": "npx tsx -e \"const { unique } = require('./src/utils/array-utils.ts'); const r = unique([1,2,2,3]); if (r.length !== 3) throw new Error('unique failed');\"",
+      "hiddenTests": "npx tsx -e \"const { unique, groupBy, chunk } = require('./src/utils/array-utils.ts'); const assert = (v, m) => { if (!v) throw new Error(m); }; assert(JSON.stringify(unique([1,2,2,3])) === '[1,2,3]', 'unique'); assert(JSON.stringify(groupBy(['a','bb','c'], s => String(s.length))) === '{\\\"1\\\":[\\\"a\\\",\\\"c\\\"],\\\"2\\\":[\\\"bb\\\"]}', 'groupBy'); assert(JSON.stringify(chunk([1,2,3,4,5], 2)) === '[[1,2],[3,4],[5]]', 'chunk'); console.log('all hidden tests passed');\"",
+      "judgeRubric": "Did the agent create all three array utilities correctly with proper TypeScript generics and JSDoc? Does chunk handle uneven arrays? Does groupBy preserve order?",
+      "split": "train"
+    },
+    {
+      "id": "impl-async-retry",
+      "prompt": "Create a new file `src/utils/async-retry.ts` that exports:\n`retry<T>(fn: () => Promise<T>, options?: { maxAttempts?: number; delayMs?: number }): Promise<T>`\n— retries the async function up to maxAttempts times (default 3), waiting delayMs ms (default 100) between attempts. Throws the last error if all attempts fail. Include JSDoc.",
+      "visibleTests": "npx tsx -e \"const { retry } = require('./src/utils/async-retry.ts'); let n = 0; retry(() => { n++; if (n < 2) throw new Error('fail'); return Promise.resolve(42); }).then(v => { if (v !== 42) throw new Error('wrong value'); });\"",
+      "hiddenTests": "npx tsx -e \"const { retry } = require('./src/utils/async-retry.ts'); async function run() { let n = 0; const v = await retry(() => { n++; if (n < 3) return Promise.reject(new Error('fail')); return Promise.resolve('ok'); }); if (v !== 'ok' || n !== 3) throw new Error('retry count wrong'); let threw = false; try { await retry(() => Promise.reject(new Error('always fail')), { maxAttempts: 2 }); } catch { threw = true; } if (!threw) throw new Error('should have thrown'); } run().then(() => console.log('all hidden tests passed')).catch(e => { console.error(e); process.exit(1); });\"",
+      "judgeRubric": "Did the agent implement retry with correct attempt counting, delay, and error propagation? Is it type-safe? Does it handle edge cases like maxAttempts=1?",
+      "split": "selection"
+    },
+    {
+      "id": "impl-debounce",
+      "prompt": "Create a new file `src/utils/debounce.ts` that exports:\n`debounce<T extends (...args: unknown[]) => void>(fn: T, waitMs: number): T`\n— returns a debounced version of fn that only fires after waitMs milliseconds of inactivity. Include JSDoc.",
+      "visibleTests": "npx tsx -e \"const { debounce } = require('./src/utils/debounce.ts'); let count = 0; const d = debounce(() => count++, 50); d(); d(); d(); setTimeout(() => { if (count !== 1) throw new Error('debounce failed: count=' + count); }, 200);\"",
+      "hiddenTests": "npx tsx -e \"const { debounce } = require('./src/utils/debounce.ts'); async function run() { let count = 0; const d = debounce(() => count++, 50); d(); d(); d(); await new Promise(r => setTimeout(r, 200)); if (count !== 1) throw new Error('should fire once, got ' + count); d(); await new Promise(r => setTimeout(r, 200)); if (count !== 2) throw new Error('should fire again, got ' + count); console.log('all hidden tests passed'); } run().catch(e => { console.error(e); process.exit(1); });\"",
+      "judgeRubric": "Did the agent implement debounce correctly with TypeScript generics? Does it preserve the 'this' context and pass arguments? Is the timer properly cleared on successive calls?",
+      "split": "selection"
+    }
+  ]
+}

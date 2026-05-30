@@ -964,6 +964,7 @@ timeout: 300
                   "features": {
                     "autoMemoryPromotion": true,
                     "focusedDiff": true,
+                    "gitCommitLookup": false,
                   },
                   "groupSingleLineMessages": false,
                   "logging": {

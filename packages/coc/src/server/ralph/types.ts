@@ -64,7 +64,7 @@ export interface ParsedProgressSection {
 // Final-check types (AC-01, AC-03)
 // ============================================================================
 
-export type RalphFinalCheckStatus = 'running' | 'completed' | 'failed';
+export type RalphFinalCheckStatus = 'queued' | 'running' | 'completed' | 'failed';
 
 /** Metadata record for one final-check run within a Ralph session. */
 export interface RalphFinalCheckRecord {

@@ -172,6 +172,10 @@ export function serializeTaskSummary(task: QueuedTask): Record<string, unknown> 
         workItemId: payload?.workItemId,
         imagesCount,
         hasImages: imagesCount > 0 || !!payload?.imagesFilePath,
+        // Required by ChatListPane to color-code running/queued tasks by provider
+        // (Copilot=green, Codex=indigo, Claude=coral). Without it, getTaskChatProvider
+        // returns undefined and every running task defaults to Copilot green.
+        provider: payload?.provider,
     };
 
     // Nested payload fields used by SPA

@@ -1,12 +1,12 @@
 /**
  * Ralph Executor Tests
  *
- * Tests for RalphExecutor and buildRalphSystemMessage.
+ * Tests for RalphExecutor and Ralph system-message builders.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
-import { RalphExecutor, buildRalphSystemMessage } from '../../../src/server/executors/ralph-executor';
+import { RalphExecutor, buildRalphFinalCheckSystemMessage, buildRalphSystemMessage, RALPH_BASE_INSTRUCTIONS, RALPH_FINAL_CHECK_BASE_INSTRUCTIONS } from '../../../src/server/executors/ralph-executor';
 import type { ChatModeExecutorOptions } from '../../../src/server/executors/chat-base-executor';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
@@ -68,6 +68,12 @@ function makeRalphTask(ralphCtx?: {
     currentIteration?: number;
     maxIterations?: number;
     sessionId?: string;
+    finalCheck?: {
+        kind: 'goal-gap-check';
+        checkIndex: number;
+        sourceIteration: number;
+        loopIndex: number;
+    };
 }, id = 'ralph-task-1'): QueuedTask {
     return {
         id,
@@ -88,13 +94,40 @@ function makeRalphTask(ralphCtx?: {
 }
 
 // ============================================================================
+// Constant tests
+// ============================================================================
+
+describe('RALPH_BASE_INSTRUCTIONS', () => {
+    it('references ultra-ralph skill', () => {
+        expect(RALPH_BASE_INSTRUCTIONS).toContain('ultra-ralph');
+    });
+
+    it('contains the machine contract with signal grammar', () => {
+        expect(RALPH_BASE_INSTRUCTIONS).toContain('RALPH_COMPLETE');
+        expect(RALPH_BASE_INSTRUCTIONS).toContain('RALPH_NEXT');
+        expect(RALPH_BASE_INSTRUCTIONS).toContain('## Iteration <N>');
+    });
+});
+
+describe('RALPH_FINAL_CHECK_BASE_INSTRUCTIONS', () => {
+    it('references ultra-ralph skill', () => {
+        expect(RALPH_FINAL_CHECK_BASE_INSTRUCTIONS).toContain('ultra-ralph');
+    });
+
+    it('contains the machine contract for final-check', () => {
+        expect(RALPH_FINAL_CHECK_BASE_INSTRUCTIONS).toContain('RALPH_FINAL_CHECK_RESULT');
+        expect(RALPH_FINAL_CHECK_BASE_INSTRUCTIONS).toContain('Do not end with RALPH_NEXT or RALPH_COMPLETE');
+    });
+});
+
+// ============================================================================
 // buildRalphSystemMessage unit tests
 // ============================================================================
 
 describe('buildRalphSystemMessage', () => {
-    it('always includes base Ralph instructions', () => {
+    it('always includes base Ralph instructions referencing ultra-ralph skill', () => {
         const msg = buildRalphSystemMessage({});
-        expect(msg).toContain('Ralph mode');
+        expect(msg).toContain('ultra-ralph');
         expect(msg).toContain('RALPH_COMPLETE');
         expect(msg).toContain('RALPH_NEXT');
     });
@@ -105,11 +138,6 @@ describe('buildRalphSystemMessage', () => {
         expect(msg).toContain('Files:');
         expect(msg).toContain('Decisions:');
         expect(msg).toContain('Remaining:');
-    });
-
-    it('keeps RALPH_PROGRESS: as a documented fallback', () => {
-        const msg = buildRalphSystemMessage({});
-        expect(msg).toContain('RALPH_PROGRESS:');
     });
 
     it('includes goal spec when originalGoal is provided', () => {
@@ -167,6 +195,47 @@ describe('buildRalphSystemMessage', () => {
 });
 
 // ============================================================================
+// buildRalphFinalCheckSystemMessage unit tests
+// ============================================================================
+
+describe('buildRalphFinalCheckSystemMessage', () => {
+    it('references ultra-ralph skill and includes RALPH_FINAL_CHECK_RESULT contract', () => {
+        const msg = buildRalphFinalCheckSystemMessage({});
+
+        expect(msg).toContain('ultra-ralph');
+        expect(msg).toContain('RALPH_FINAL_CHECK_RESULT');
+        expect(msg).toContain('Do not end with RALPH_NEXT or RALPH_COMPLETE');
+    });
+
+    it('does not include normal Ralph implementation-loop instructions', () => {
+        const msg = buildRalphFinalCheckSystemMessage({});
+
+        expect(msg).not.toContain('Pick the next logical subtask');
+        expect(msg).not.toContain('implement one subtask');
+        expect(msg).not.toContain('then commit');
+        expect(msg).not.toContain('RALPH_PROGRESS:');
+        expect(msg).not.toContain('End the response with exactly one of');
+        expect(msg).toContain('Do not end with RALPH_NEXT or RALPH_COMPLETE');
+    });
+
+    it('references the goal and progress journal as read-only evidence', () => {
+        const msg = buildRalphFinalCheckSystemMessage({
+            originalGoal: 'Ship the feature',
+            progressPath: 'C:\\tmp\\ralph\\progress.md',
+            currentIteration: 4,
+            maxIterations: 4,
+        });
+
+        expect(msg).toContain('## Goal Spec');
+        expect(msg).toContain('Ship the feature');
+        expect(msg).toContain('## Progress Journal');
+        expect(msg).toContain('C:\\tmp\\ralph\\progress.md');
+        expect(msg).toContain('Do not append to or edit it');
+        expect(msg).toContain('Final check for Ralph iteration 4 of 4.');
+    });
+});
+
+// ============================================================================
 // RalphExecutor integration tests
 // ============================================================================
 
@@ -203,8 +272,34 @@ describe('RalphExecutor', () => {
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         expect(call.systemMessage).toBeDefined();
-        expect(call.systemMessage.content).toContain('RALPH_PROGRESS:');
+        expect(call.systemMessage.content).toContain('ultra-ralph');
         expect(call.systemMessage.content).toContain('Build a REST API');
+    });
+
+    it('keeps final-check tasks in autopilot but uses validation-only system instructions', async () => {
+        const executor = new RalphExecutor(store, makeOptions(store));
+        const task = makeRalphTask({
+            originalGoal: 'Validate completed work',
+            sessionId: 'sess-final-check',
+            currentIteration: 3,
+            maxIterations: 3,
+            finalCheck: {
+                kind: 'goal-gap-check',
+                checkIndex: 1,
+                sourceIteration: 3,
+                loopIndex: 1,
+            },
+        });
+
+        await executor.execute(task, 'Run final check');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.mode).toBe('autopilot');
+        expect(call.systemMessage.content).toContain('ultra-ralph');
+        expect(call.systemMessage.content).toContain('RALPH_FINAL_CHECK_RESULT');
+        expect(call.systemMessage.content).not.toContain('Pick the next logical subtask');
+        expect(call.systemMessage.content).not.toContain('RALPH_PROGRESS:');
+        expect(call.systemMessage.content).toContain('Do not end with RALPH_NEXT or RALPH_COMPLETE');
     });
 
     it('includes accumulated-progress journal path in system message', async () => {
@@ -243,7 +338,7 @@ describe('RalphExecutor', () => {
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         expect(call.mode).toBe('autopilot');
-        expect(call.systemMessage?.content).toContain('Ralph mode');
+        expect(call.systemMessage?.content).toContain('ultra-ralph');
         expect(call.systemMessage?.content).not.toContain('## Goal Spec');
     });
 });

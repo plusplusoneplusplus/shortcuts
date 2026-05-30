@@ -74,6 +74,7 @@ describe('CodexSDKService MCP tool wiring', () => {
         expect(entry).toBeDefined();
         expect(entry.command).toBe(process.execPath);
         expect(Array.isArray(entry.args)).toBe(true);
+        expect(entry.enabled_tools).toEqual(['ask_user', 'create_work_item']);
         expect(entry.env[COC_LLM_TOOLS_ENDPOINT_ENV]).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
         expect(typeof entry.env[COC_LLM_TOOLS_TOKEN_ENV]).toBe('string');
         expect(entry.env[COC_LLM_TOOLS_TOKEN_ENV].length).toBeGreaterThan(0);
@@ -81,6 +82,20 @@ describe('CodexSDKService MCP tool wiring', () => {
         // The per-request client (not the default) ran the thread.
         expect(instances[0].client.startThread).toHaveBeenCalledTimes(1);
         expect(defaultClient.startThread).not.toHaveBeenCalled();
+    });
+
+    it('deduplicates the Codex MCP enabled_tools allow-list', async () => {
+        svc = new CodexSDKService();
+        const { ctor, instances } = makeCodexCtor();
+        (svc as unknown as { sdk: unknown }).sdk = { startThread: vi.fn(() => makeThread()), resumeThread: vi.fn() };
+        (svc as unknown as { codexCtor: unknown }).codexCtor = ctor;
+        (svc as unknown as { availabilityCache: unknown }).availabilityCache = { available: true };
+
+        await svc.sendMessage({ prompt: 'hi', tools: [tool('ask_user'), tool('ask_user'), tool('search_conversations')] });
+
+        const built = instances[0].options as { config?: { mcp_servers?: Record<string, any> } };
+        const entry = built.config?.mcp_servers?.[COC_LLM_TOOLS_MCP_SERVER_NAME];
+        expect(entry.enabled_tools).toEqual(['ask_user', 'search_conversations']);
     });
 
     it('tears down the bridge registration after the turn completes', async () => {

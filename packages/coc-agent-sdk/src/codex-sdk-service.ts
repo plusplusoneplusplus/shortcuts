@@ -328,15 +328,18 @@ export class CodexSDKService implements ISDKService {
         const mcpConfig = buildCocLlmToolsMcpConfig({
             endpoint: registration.endpoint,
             token: registration.token,
+            enabledTools: Array.from(new Set(tools.map(tool => tool.name).filter(Boolean))),
         });
+        const serverConfig = {
+            command: mcpConfig.command,
+            args: mcpConfig.args,
+            env: mcpConfig.env,
+            ...(mcpConfig.enabled_tools ? { enabled_tools: mcpConfig.enabled_tools } : {}),
+        };
         const client = new this.codexCtor({
             config: {
                 mcp_servers: {
-                    [COC_LLM_TOOLS_MCP_SERVER_NAME]: {
-                        command: mcpConfig.command,
-                        args: mcpConfig.args,
-                        env: mcpConfig.env,
-                    },
+                    [COC_LLM_TOOLS_MCP_SERVER_NAME]: serverConfig,
                 },
             },
         });

@@ -115,6 +115,20 @@ best-effort recovery of `workingDirectory` / `folderPath` from the latest
 iteration process. Final-check gap-fix loops use the same additional-iteration
 resolver so per-repo `maxRalphIterations` fallback stays consistent.
 
+## Scheduled Ralph Runs
+
+Prompt schedules with `mode='ralph'` seed a repo-scoped Ralph session before
+enqueueing the first iteration. The queued task carries `context.scheduleId`,
+`context.scheduleRunId`, and `context.ralph.sessionId`; continuation, final-check,
+and gap-fix tasks preserve the schedule context so the originating schedule run
+can stay active for the whole Ralph session.
+
+The queue bridge exposes an internal `ralphSessionComplete` callback in addition
+to broadcasting the dashboard WebSocket event. `ScheduleExecutor` uses that
+callback to finalize scheduled Ralph runs only when the session reaches a
+terminal reason. Queue failures or terminal final-check failure reasons mark the
+schedule run failed; clean, capped, or normal terminal reasons complete it.
+
 ## Final Check Automation
 
 `orchestrateFinalCheck(...)` in
@@ -124,9 +138,18 @@ final-check result to `progress.md`, reads the session once, and persists a
 `sourceIteration`, `taskId`, `processId`, `startedAt`, `completedAt`) plus
 outcome-specific metadata.
 
+Final-check tasks are still queued as Ralph chat tasks and still use autopilot
+capability, but `RalphExecutor` switches to validation-only system instructions
+when `context.ralph.finalCheck` is present. Those instructions allow inspection
+and read-only validation commands, forbid file edits/commits/state-changing
+tools, and require a `RALPH_FINAL_CHECK_RESULT` response instead of
+`RALPH_NEXT`/`RALPH_COMPLETE`.
+
 Terminal paths broadcast `ralph-session-complete`: clean checks use
 `reason='signal'`, cap-reached checks use `reason='cap'`, parse failures use
-`reason='final-check-failed'`, gap-loop creation failures use
-`reason='final-check-gap-loop-start-failed'`, and gap-loop enqueue failures use
-`reason='final-check-gap-enqueue-failed'`. A successful gap-fix enqueue does
-not broadcast completion because the next loop continues the session.
+`reason='final-check-failed'`, final-check setup failures use
+`reason='final-check-enqueue-failed'` or `reason='final-check-session-missing'`,
+gap-loop creation failures use `reason='final-check-gap-loop-start-failed'`,
+and gap-loop enqueue failures use `reason='final-check-gap-enqueue-failed'`. A
+successful gap-fix enqueue does not broadcast completion because the next loop
+continues the session.

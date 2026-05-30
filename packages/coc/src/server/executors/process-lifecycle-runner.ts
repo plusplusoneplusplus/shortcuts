@@ -138,7 +138,7 @@ export interface LifecycleRunnerOptions {
      * The bridge uses this to parse RALPH_NEXT/RALPH_COMPLETE and enqueue the
      * next iteration (or emit a session-complete event).
      */
-    onRalphNext?: (processId: string, task: QueuedTask, responseText: string) => void;
+    onRalphNext?: (processId: string, task: QueuedTask, responseText: string) => void | Promise<void>;
     /**
      * Called after a loop-originated follow-up task finishes (success or failure).
      * The bridge uses this to invoke `LoopExecutor.onTickComplete()` so the
@@ -486,7 +486,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 // Trigger Ralph auto-loop for ralph-mode tasks
                 if (finalStatus === 'completed' && opts.onRalphNext && isRalphMode(task.payload)) {
                     try {
-                        opts.onRalphNext(processId, task, responseText);
+                        await opts.onRalphNext(processId, task, responseText);
                     } catch (err) {
                         logger.debug(LogCategory.AI, `[QueueExecutor] Failed to trigger Ralph next iteration for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
                     }

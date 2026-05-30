@@ -31,7 +31,6 @@ import {
     RALPH_SYNTHESIS_HINT_MAX_LENGTH,
 } from '../ralph/synthesis-prompt';
 import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
-import { getPromptOverride } from '../admin/ralph-prompt-overrides';
 
 export interface RalphPromoteRouteContext {
     bridge: MultiRepoQueueRouter;
@@ -108,6 +107,20 @@ export function registerRalphPromoteRoutes(routes: Route[], ctx: RalphPromoteRou
             const hasAssistantTurn = turns.some((t: any) => t?.role === 'assistant');
             if (!hasAssistantTurn) {
                 return sendError(res, 400, 'Process has no assistant turns to synthesize');
+            }
+
+            // Detect a pre-existing ## Goal block in the last assistant turn so the
+            // synthesis prompt can treat it as authoritative (AC-02).
+            const lastAssistantTurn = [...turns].reverse().find((t: any) => t?.role === 'assistant');
+            let seedGoal: string | undefined;
+            if (lastAssistantTurn) {
+                const content = typeof lastAssistantTurn.content === 'string'
+                    ? lastAssistantTurn.content
+                    : '';
+                const goalMatch = content.match(/(##\s+Goal[\s\S]*)/);
+                if (goalMatch) {
+                    seedGoal = goalMatch[1].trim() || undefined;
+                }
             }
 
             const wsId: string | undefined = workspaceId
@@ -193,10 +206,8 @@ export function registerRalphPromoteRoutes(routes: Route[], ctx: RalphPromoteRou
                         kind: 'chat',
                         mode: 'ask',
                         prompt: buildRalphSynthesisPrompt({
+                            seedGoal,
                             extraGuidance,
-                            promptOverride: dataDir
-                                ? (getPromptOverride('ralph-synthesis', dataDir) ?? undefined)
-                                : undefined,
                         }),
                         processId: proc.id,
                         workspaceId: wsId,

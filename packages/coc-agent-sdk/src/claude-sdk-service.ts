@@ -40,6 +40,8 @@ import { CocToolRuntime } from './llm-tools/coc-tool-runtime';
 import { cocToolBridgeServer } from './llm-tools/bridge-server';
 import { buildCocLlmToolsMcpConfig, COC_LLM_TOOLS_MCP_SERVER_NAME } from './llm-tools/mcp-config';
 import * as crypto from 'crypto';
+import * as os from 'os';
+import * as path from 'path';
 
 // ============================================================================
 // @anthropic-ai/claude-agent-sdk type stubs
@@ -59,7 +61,14 @@ interface ClaudeToolUseBlock {
     input: unknown;
 }
 
-type ClaudeContentBlock = ClaudeTextBlock | ClaudeToolUseBlock;
+interface ClaudeToolResultBlock {
+    type: 'tool_result';
+    tool_use_id: string;
+    content?: unknown;
+    is_error?: boolean;
+}
+
+type ClaudeContentBlock = ClaudeTextBlock | ClaudeToolUseBlock | ClaudeToolResultBlock | Record<string, unknown>;
 
 interface ClaudeAssistantMessage {
     type: 'assistant';
@@ -93,6 +102,16 @@ interface ClaudeSystemMessage {
     [key: string]: unknown;
 }
 
+interface ClaudeUserMessage {
+    type: 'user';
+    message?: {
+        content?: unknown;
+    };
+    parent_tool_use_id?: string | null;
+    tool_use_result?: unknown;
+    session_id?: string;
+}
+
 export interface ClaudeRateLimitInfo {
     status: 'allowed' | 'allowed_warning' | 'rejected';
     resetsAt?: number;
@@ -110,7 +129,7 @@ interface ClaudeRateLimitEvent {
     session_id?: string;
 }
 
-type ClaudeSDKMessage = ClaudeAssistantMessage | ClaudeResultMessage | ClaudeSystemMessage | ClaudeRateLimitEvent | Record<string, unknown>;
+type ClaudeSDKMessage = ClaudeAssistantMessage | ClaudeUserMessage | ClaudeResultMessage | ClaudeSystemMessage | ClaudeRateLimitEvent | Record<string, unknown>;
 type ClaudePermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | 'auto';
 
 /**
@@ -130,6 +149,8 @@ interface ClaudeQueryOptions {
     options?: {
         cwd?: string;
         model?: string;
+        /** Extra absolute directories Claude may access beyond `cwd`. */
+        additionalDirectories?: string[];
         customSystemPrompt?: string;
         appendSystemPrompt?: string;
         permissionMode?: ClaudePermissionMode;
@@ -401,6 +422,7 @@ export class ClaudeSDKService implements ISDKService {
                 abortController,
                 options: {
                     ...(options.workingDirectory ? { cwd: options.workingDirectory } : {}),
+                    additionalDirectories: this.resolveAdditionalDirectories(options),
                     ...(model ? { model } : {}),
                     ...(options.systemMessage?.mode === 'append' ? { appendSystemPrompt: options.systemMessage.content } : {}),
                     ...(options.systemMessage?.mode === 'replace' ? { customSystemPrompt: options.systemMessage.content } : {}),
@@ -418,13 +440,15 @@ export class ClaudeSDKService implements ISDKService {
                 publishProviderSessionId(this.extractSessionId(msg));
                 if (this.isAssistantMessage(msg)) {
                     for (const block of msg.message.content) {
-                        if (block.type === 'text') {
+                        if (this.isClaudeTextBlock(block)) {
                             chunks.push(block.text);
                             options.onStreamingChunk?.(block.text);
-                        } else if (block.type === 'tool_use') {
+                        } else if (this.isClaudeToolUseBlock(block)) {
                             this.handleClaudeToolUse(block, options, toolCalls, startedToolCalls);
                         }
                     }
+                } else if (this.isUserMessage(msg)) {
+                    this.handleClaudeUserToolResults(msg, options, toolCalls);
                 } else if (this.isResultMessage(msg)) {
                     if (msg.subtype !== 'success' || msg.is_error) {
                         const errText = typeof msg.result === 'string' && msg.result
@@ -546,6 +570,33 @@ export class ClaudeSDKService implements ISDKService {
         );
     }
 
+    private isClaudeTextBlock(block: ClaudeContentBlock): block is ClaudeTextBlock {
+        return (
+            typeof block === 'object' &&
+            block !== null &&
+            (block as Record<string, unknown>).type === 'text' &&
+            typeof (block as Record<string, unknown>).text === 'string'
+        );
+    }
+
+    private isClaudeToolUseBlock(block: ClaudeContentBlock): block is ClaudeToolUseBlock {
+        return (
+            typeof block === 'object' &&
+            block !== null &&
+            (block as Record<string, unknown>).type === 'tool_use' &&
+            typeof (block as Record<string, unknown>).id === 'string' &&
+            typeof (block as Record<string, unknown>).name === 'string'
+        );
+    }
+
+    private isUserMessage(msg: ClaudeSDKMessage): msg is ClaudeUserMessage {
+        return (
+            typeof msg === 'object' &&
+            msg !== null &&
+            (msg as Record<string, unknown>).type === 'user'
+        );
+    }
+
     private isResultMessage(msg: ClaudeSDKMessage): msg is ClaudeResultMessage {
         return (
             typeof msg === 'object' &&
@@ -593,20 +644,108 @@ export class ClaudeSDKService implements ISDKService {
                 parameters,
             });
         }
+    }
 
-        // Claude Code SDK emits tool_use blocks in assistant messages when the tool
-        // completes. Mark it complete immediately.
-        const existing = toolCalls.get(id);
-        if (existing) {
-            existing.status = 'completed';
-            existing.endTime = new Date();
+    private handleClaudeUserToolResults(
+        msg: ClaudeUserMessage,
+        options: SendMessageOptions,
+        toolCalls: Map<string, ToolCall>,
+    ): void {
+        const handledIds = new Set<string>();
+        for (const block of this.getToolResultBlocks(msg)) {
+            handledIds.add(block.tool_use_id);
+            this.handleClaudeToolResult(block.tool_use_id, block.content, !!block.is_error, options, toolCalls);
         }
-        this.emitToolEvent(options, {
-            type: 'tool-complete',
-            toolCallId: id,
-            toolName,
-            result: JSON.stringify(parameters),
-        });
+
+        const fallbackId = typeof msg.parent_tool_use_id === 'string' && msg.parent_tool_use_id
+            ? msg.parent_tool_use_id
+            : undefined;
+        if (fallbackId && !handledIds.has(fallbackId) && msg.tool_use_result !== undefined) {
+            this.handleClaudeToolResult(fallbackId, msg.tool_use_result, false, options, toolCalls);
+        }
+    }
+
+    private getToolResultBlocks(msg: ClaudeUserMessage): ClaudeToolResultBlock[] {
+        const content = msg.message?.content;
+        if (!Array.isArray(content)) return [];
+        return content.filter((block): block is ClaudeToolResultBlock => (
+            typeof block === 'object' &&
+            block !== null &&
+            (block as Record<string, unknown>).type === 'tool_result' &&
+            typeof (block as Record<string, unknown>).tool_use_id === 'string'
+        ));
+    }
+
+    private handleClaudeToolResult(
+        toolCallId: string,
+        content: unknown,
+        isError: boolean,
+        options: SendMessageOptions,
+        toolCalls: Map<string, ToolCall>,
+    ): void {
+        const existing = toolCalls.get(toolCallId);
+        const toolName = existing?.name ?? 'unknown_tool';
+        const result = this.stringifyClaudeToolResult(content);
+        const now = new Date();
+
+        if (existing) {
+            existing.status = isError ? 'failed' : 'completed';
+            existing.endTime = now;
+            if (isError) {
+                existing.error = result || 'Claude tool failed';
+            } else {
+                existing.result = result;
+            }
+        } else {
+            toolCalls.set(toolCallId, {
+                id: toolCallId,
+                name: toolName,
+                status: isError ? 'failed' : 'completed',
+                startTime: now,
+                endTime: now,
+                args: {},
+                ...(isError ? { error: result || 'Claude tool failed' } : { result }),
+            });
+        }
+
+        this.emitToolEvent(options, isError
+            ? {
+                type: 'tool-failed',
+                toolCallId,
+                toolName,
+                error: result || 'Claude tool failed',
+            }
+            : {
+                type: 'tool-complete',
+                toolCallId,
+                toolName,
+                result,
+            });
+    }
+
+    private stringifyClaudeToolResult(content: unknown): string {
+        if (content == null) return '';
+        if (typeof content === 'string') return content;
+        if (Array.isArray(content)) {
+            return content
+                .map(item => this.stringifyClaudeToolResult(item))
+                .filter(text => text.length > 0)
+                .join('\n');
+        }
+        if (typeof content === 'object') {
+            const record = content as Record<string, unknown>;
+            if (record.type === 'text' && typeof record.text === 'string') return record.text;
+            const stdout = typeof record.stdout === 'string' ? record.stdout : '';
+            const stderr = typeof record.stderr === 'string' ? record.stderr : '';
+            if (stdout || stderr) return [stdout, stderr].filter(Boolean).join('\n');
+            if (typeof record.output === 'string') return record.output;
+            if (typeof record.result === 'string') return record.result;
+        }
+        try {
+            return JSON.stringify(content);
+        } catch {
+            return String(content);
+        }
     }
 
     private emitToolEvent(options: SendMessageOptions, event: ToolEvent): void {
@@ -645,6 +784,33 @@ export class ClaudeSDKService implements ISDKService {
         // Only pass through Claude model IDs; reject Copilot/Codex model IDs.
         if (normalized.startsWith('claude')) return trimmed;
         return undefined;
+    }
+
+    /**
+     * Builds the list of absolute directories Claude may access beyond its
+     * working directory. Always includes `~/.coc` (CoC's data/skills dir) and
+     * the system temp directory so out-of-repo skill files and temp artifacts
+     * are readable, plus any caller-provided directories. Paths are resolved
+     * to absolute form and de-duplicated (case-insensitively on Windows).
+     */
+    private resolveAdditionalDirectories(options: SendMessageOptions): string[] {
+        const candidates = [
+            ...(options.additionalDirectories ?? []),
+            path.join(os.homedir(), '.coc'),
+            os.tmpdir(),
+        ];
+
+        const seen = new Set<string>();
+        const result: string[] = [];
+        for (const dir of candidates) {
+            if (!dir) continue;
+            const resolved = path.resolve(dir);
+            const key = process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            result.push(resolved);
+        }
+        return result;
     }
 
     private resolveClaudePermissionOptions(

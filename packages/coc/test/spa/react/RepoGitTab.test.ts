@@ -1755,6 +1755,119 @@ describe('RepoGitTab', () => {
         });
     });
 
+    describe('git commit lookup feature', () => {
+        it('imports isGitCommitLookupEnabled from config utils', () => {
+            expect(source).toContain("import { isGitCommitLookupEnabled }");
+        });
+
+        it('declares commitLookupLoading state', () => {
+            expect(source).toContain('const [commitLookupLoading, setCommitLookupLoading] = useState(false)');
+        });
+
+        it('declares commitLookupError state', () => {
+            expect(source).toContain('const [commitLookupError, setCommitLookupError] = useState<string | null>(null)');
+        });
+
+        it('declares openedCommit state', () => {
+            expect(source).toContain('const [openedCommit, setOpenedCommit]');
+        });
+
+        it('defines handleCommitLookup callback', () => {
+            expect(source).toContain('const handleCommitLookup = useCallback');
+        });
+
+        it('handleCommitLookup validates SHA pattern before lookup', () => {
+            const block = source.match(/const handleCommitLookup = useCallback[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('/^[0-9a-f]{7,40}$/');
+        });
+
+        it('handleCommitLookup calls getCommit API with workspaceId', () => {
+            const block = source.match(/const handleCommitLookup = useCallback[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('getCommit(workspaceId');
+        });
+
+        it('handleCommitLookup sets openedCommit on success', () => {
+            const block = source.match(/const handleCommitLookup = useCallback[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('setOpenedCommit');
+        });
+
+        it('handleCommitLookup sets commitLookupError on failure', () => {
+            const block = source.match(/const handleCommitLookup = useCallback[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('setCommitLookupError');
+        });
+
+        it('search onKeyDown triggers handleCommitLookup on Enter with SHA-shaped query', () => {
+            expect(source).toContain('isGitCommitLookupEnabled() && /^[0-9a-f]{7,40}$/i.test(searchQuery.trim())');
+            expect(source).toContain('void handleCommitLookup(searchQuery.trim())');
+        });
+
+        it('shows SHA lookup hint with data-testid when query looks like SHA and feature enabled', () => {
+            expect(source).toContain('data-testid="git-commit-lookup-hint"');
+            expect(source).toContain('↵ open commit');
+        });
+
+        it('shows loading indicator with data-testid during lookup', () => {
+            expect(source).toContain('data-testid="git-commit-lookup-loading"');
+            expect(source).toContain('Looking up…');
+        });
+
+        it('shows inline error with data-testid on lookup failure', () => {
+            expect(source).toContain('data-testid="git-commit-lookup-error"');
+            expect(source).toContain('{commitLookupError}');
+        });
+
+        it('shows opened commit section with data-testid when openedCommit is set', () => {
+            expect(source).toContain('data-testid="git-opened-commit-section"');
+        });
+
+        it('shows opened commit row with data-testid', () => {
+            expect(source).toContain('data-testid="git-opened-commit-row"');
+        });
+
+        it('opened commit row shows shortHash and subject', () => {
+            const block = source.match(/data-testid="git-opened-commit-row"[\s\S]*?<\/div>/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('openedCommit.shortHash');
+            expect(block![0]).toContain('openedCommit.subject');
+        });
+
+        it('opened commit row calls handleSelect when clicked', () => {
+            expect(source).toContain('onClick={() => handleSelect(openedCommit)');
+        });
+
+        it('deep-link effect attempts lookup via getCommit when commit not in list', () => {
+            const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[^\]]*\]/);
+            expect(effectBlock).toBeTruthy();
+            expect(effectBlock![0]).toContain('isGitCommitLookupEnabled()');
+            expect(effectBlock![0]).toContain('getCommit(workspaceId');
+        });
+
+        it('deep-link lookup sets openedCommit on success', () => {
+            const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[^\]]*\]/);
+            expect(effectBlock).toBeTruthy();
+            expect(effectBlock![0]).toContain('setOpenedCommit');
+        });
+
+        it('feature flag check uses isGitCommitLookupEnabled function', () => {
+            // The function must be used (not inline config check) for consistency
+            expect(source).toContain('isGitCommitLookupEnabled()');
+        });
+
+        it('handleCommitLookup does not call any state-changing git commands', () => {
+            const block = source.match(/const handleCommitLookup = useCallback[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            // The lookup callback must only read; must not call git mutating operations
+            expect(block![0]).not.toContain('.reset(');
+            expect(block![0]).not.toContain('cherry-pick');
+            expect(block![0]).not.toContain('.rebase(');
+            expect(block![0]).not.toContain('.checkout(');
+        });
+    });
+
     describe('task payload workspaceId regression', () => {
         it('handleConfirmSkillRun includes workspaceId in queue task payload', () => {
             const block = source.match(/const handleConfirmSkillRun = useCallback[\s\S]*?\}, \[/);

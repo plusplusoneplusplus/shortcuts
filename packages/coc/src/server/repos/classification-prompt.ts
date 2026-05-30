@@ -13,7 +13,7 @@
  *   ${saveInstruction}     — call saveClassification exactly once
  */
 
-import { getPromptOverride } from '../admin/ralph-prompt-overrides';
+import { getPromptOverride } from '../admin/admin-prompt-overrides';
 
 // ── Default template ─────────────────────────────────────────────────────────
 

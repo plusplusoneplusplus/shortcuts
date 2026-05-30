@@ -3,13 +3,13 @@
 **Document type:** Formal UX Specification  
 **Scope:** CoC Dashboard → Processes (Top-Level Tab)  
 **Purpose:** Authoritative reference for validating any future UI/UX changes to the Processes tab.  
-**Version:** 1.0.0
+**Version:** 1.1.0
 
 ---
 
 ## 1. Overview
 
-The **Processes Tab** is a top-level dashboard tab providing a global view of all AI task queue activity across all repositories. It reuses the same `ActivityListPane` + `ActivityDetailPane` pattern as the per-repo Activity tab but operates at the global scope. It shows running, queued, and historical tasks with full conversation detail, SSE streaming, follow-up messaging, queue management (pause/resume/reorder/freeze/cancel), and process detail with workflow DAG visualization.
+The **Processes Tab** is a top-level dashboard tab providing a global view of all AI task queue activity across all repositories. It reuses the same `ChatListPane` + `ChatDetailPane` pattern as the per-repo Activity/Chats tab (formerly named `ActivityListPane` / `ActivityDetailPane`) but operates at the global scope. It shows running, queued, and historical tasks with full conversation detail, SSE streaming, follow-up messaging, queue management (pause/resume/reorder/freeze/cancel), and process detail with workflow DAG visualization. While the initial fetch is in flight, a `ProcessesViewSkeleton` placeholder is rendered (with a 300 ms minimum display time so the skeleton is always perceptible).
 
 ### 1.1 Tab Identity
 
@@ -164,7 +164,7 @@ The **Processes Tab** is a top-level dashboard tab providing a global view of al
 
 ## 4. Feature Inventory & Acceptance Criteria
 
-### 4.1 List Pane (ActivityListPane)
+### 4.1 List Pane (ChatListPane)
 
 | Feature | Acceptance Criteria |
 |---|---|
@@ -177,7 +177,7 @@ The **Processes Tab** is a top-level dashboard tab providing a global view of al
 | Drag-and-drop | Reorder queued tasks only |
 | Pause indicator | Shown when queue is paused |
 
-### 4.2 Detail Pane (ActivityDetailPane → ActivityChatDetail)
+### 4.2 Detail Pane (ChatDetailPane)
 
 | Feature | Acceptance Criteria |
 |---|---|
@@ -194,7 +194,7 @@ The **Processes Tab** is a top-level dashboard tab providing a global view of al
 |---|---|
 | Desktop | Split pane: ~`w-64` (tablet) / `w-80` (desktop) list + detail |
 | Mobile | List or detail with back navigation |
-| Loading | "Loading queue…" until first fetch |
+| Loading | `ProcessesViewSkeleton` shimmer placeholder (≥300 ms) until first queue + history fetch resolves |
 
 ---
 
@@ -263,7 +263,7 @@ The **Processes Tab** is a top-level dashboard tab providing a global view of al
 | Queued section empty | Section hidden |
 | History section empty | Section hidden |
 | No task selected | Detail pane shows placeholder |
-| Loading | "Loading queue…" |
+| Loading | `ProcessesViewSkeleton` (shimmer placeholder, ≥300 ms) |
 
 ---
 
@@ -296,3 +296,4 @@ The **Processes Tab** is a top-level dashboard tab providing a global view of al
 | Version | Date | Summary |
 |---|---|---|
 | 1.0.0 | 2026-03-25 | Initial specification |
+| 1.1.0 | 2026-05-29 | Renamed `ActivityListPane` / `ActivityDetailPane` → `ChatListPane` / `ChatDetailPane` to match implementation; documented `ProcessesViewSkeleton` loading state |

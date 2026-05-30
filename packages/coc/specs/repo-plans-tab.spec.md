@@ -1,26 +1,38 @@
-# Repository Plans Tab — UI/UX Specification
+# Repository Plans/Tasks Tab — UI/UX Specification
 
 **Document type:** Formal UX Specification  
-**Scope:** CoC Dashboard → Repository Detail → Plans Tab  
-**Purpose:** Authoritative reference for validating any future UI/UX changes to the Plans tab.  
-**Version:** 1.0.0
+**Scope:** CoC Dashboard → Repository Detail → Plans/Tasks Tab (deprecated)  
+**Purpose:** Authoritative reference for validating any future UI/UX changes to the Plans/Tasks tab.  
+**Version:** 2.0.0
 
 ---
 
+> ⚠️ **Status: deprecated.** The tab is still rendered in both UI layout modes but its label is suffixed with `(Dep.)` (`"Plans (Dep.)"` in classic layout, `"Tasks (Dep.)"` in dev-workflow layout). New work should be tracked via the **Work Items** tab and per-repo **Notes**, not the Plans/Tasks tree. Existing tasks remain editable; this spec documents what continues to be supported.
+
 ## 1. Overview
 
-The **Repository Plans Tab** (labeled "Plans" in the UI, backed by the tasks subsystem) provides hierarchical task and document management using a Miller-column layout. It supports creating, organizing, previewing, and editing markdown-based task documents grouped by type suffix (plan, spec, test, notes, todo, design, impl, review, checklist, requirements, analysis). Documents can be annotated with inline comments, processed by AI skills, and moved across repositories.
+The **Repository Plans/Tasks Tab** is a deprecated surface for hierarchical task and document management that still ships in the dashboard for backward compatibility. Its rendering depends on the active UI layout mode:
+
+- **Classic layout** — renders `TasksPanel`, the original Miller-column markdown task tree described in this spec. Supports creating, organizing, previewing, and editing markdown task documents grouped by type suffix (plan, spec, test, notes, todo, design, impl, review, checklist, requirements, analysis), with inline comments, AI skills, and cross-repo moves.
+- **Dev-workflow layout** — renders `RepoChatTab` in `mode="tasks"`, a chat-style task surface that reuses the chats UI (history, queue, follow-ups). The Miller-column tree is **not** shown in this mode.
+
+Both modes share the same underlying `tasks` REST API and the same `tasks-changed` WebSocket events.
 
 ### 1.1 Tab Identity
 
 | Property | Value |
 |---|---|
-| Tab label | `Plans` |
-| Tab position | Third tab in `RepoDetail` |
+| Tab key | `tasks` |
+| Tab label (classic) | `Plans (Dep.)` |
+| Tab label (dev-workflow) | `Tasks (Dep.)` |
+| Tab position | Listed after Pull Requests; appears between Pull Requests and Notes by default |
 | Default tab | No |
+| Keyboard shortcut | `Alt+T` |
 | URL fragment | `#repos/<workspaceId>/tasks` |
 | Deep-link URL | `#repos/<workspaceId>/tasks/<encodedPath>` |
 | Deep-link with mode | `#repos/<workspaceId>/tasks/<encodedPath>?mode=source` |
+| Implementing component (classic) | `TasksPanel` (`tasks/TasksPanel.tsx`) |
+| Implementing component (dev-workflow) | `RepoChatTab mode="tasks"` (chat-based UI; see chat-tab spec) |
 
 ---
 
@@ -412,8 +424,23 @@ The **Repository Plans Tab** (labeled "Plans" in the UI, backed by the tasks sub
 
 ---
 
+## 11. Layout Mode Behavior (added in v2.0.0)
+
+| Property | `classic` | `dev-workflow` |
+|---|---|---|
+| Component | `TasksPanel` | `RepoChatTab mode="tasks"` |
+| Tab label | `Plans (Dep.)` | `Tasks (Dep.)` |
+| Surface | Miller-column markdown tree (this spec) | Chat-style queue UI (see chat-tab spec) |
+| Sections 2–10 of this spec apply | Yes | No (refer to chat-tab spec) |
+| Deep-links | Honored — open the document in the preview pane | Best-effort — the chat UI does not understand `<encodedPath>` deep-links |
+
+The deprecation banner ("(Dep.)" suffix) appears in the desktop tab strip and the mobile tab bar. The internal `tasks` key, URL fragment, REST endpoints, and WebSocket events are unchanged from v1.0.0.
+
+---
+
 ## Revision History
 
 | Version | Date | Summary |
 |---|---|---|
 | 1.0.0 | 2026-03-25 | Initial specification |
+| 2.0.0 | 2026-05-29 | Marked tab as deprecated (`(Dep.)` label suffix); documented dual rendering — classic mode keeps the `TasksPanel` Miller-column tree, dev-workflow mode renders `RepoChatTab` in `mode="tasks"`. Recommended new work move to Work Items + Notes |

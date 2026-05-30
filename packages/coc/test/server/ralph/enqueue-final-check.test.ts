@@ -197,12 +197,25 @@ describe('buildFinalCheckTaskPayload', () => {
         expect(result.displayName).toContain('2');
         expect(result.displayName).toContain('sess-01');
     });
+
+    it('sets continuationOfSessionId to sessionId for queue-continuity (AC-02)', () => {
+        const result = buildFinalCheckTaskPayload({
+            workspaceId: 'ws-01',
+            sessionId: 'sess-01',
+            originalGoal: 'Goal.',
+            checkIndex: 1,
+            sourceIteration: 4,
+            loopIndex: 1,
+            progressPath: '/progress.md',
+        });
+        expect(result.continuationOfSessionId).toBe('sess-01');
+    });
 });
 
 // ── buildFinalCheckStartRecord ────────────────────────────────────────────────
 
 describe('buildFinalCheckStartRecord', () => {
-    it('builds a running-status record', () => {
+    it('builds a queued-status record', () => {
         const nowIso = '2026-01-01T12:00:00.000Z';
         const rec = buildFinalCheckStartRecord(1, 1, 4, 'task-123', 'proc-456', nowIso);
         expect(rec.checkIndex).toBe(1);
@@ -211,7 +224,7 @@ describe('buildFinalCheckStartRecord', () => {
         expect(rec.taskId).toBe('task-123');
         expect(rec.processId).toBe('proc-456');
         expect(rec.startedAt).toBe(nowIso);
-        expect(rec.status).toBe('running');
+        expect(rec.status).toBe('queued');
         expect(rec.hasGaps).toBeUndefined();
     });
 

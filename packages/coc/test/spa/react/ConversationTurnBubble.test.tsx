@@ -508,6 +508,88 @@ describe('ConversationTurnBubble — suggest_follow_ups hidden', () => {
     });
 });
 
+describe('ConversationTurnBubble — ask_user history', () => {
+    it('renders completed ask_user calls as read-only history cards', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'assistant',
+                    content: '',
+                    timeline: [
+                        {
+                            type: 'tool-complete',
+                            toolCall: {
+                                id: 'ask-1',
+                                toolName: 'ask_user',
+                                args: {
+                                    questions: [
+                                        {
+                                            question: 'Which git tab should this capability live in?',
+                                            type: 'select',
+                                            options: [
+                                                {
+                                                    value: 'coc-dashboard-git-tab',
+                                                    label: 'Existing CoC dashboard Git tab',
+                                                    description: 'Add the capability to the CoC dashboard Git tab.',
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                },
+                                status: 'completed',
+                                result: JSON.stringify([
+                                    { questionId: 'generated-question-id', answer: 'coc-dashboard-git-tab', skipped: false },
+                                ]),
+                            },
+                        },
+                    ],
+                })}
+            />
+        );
+
+        expect(screen.getByTestId('ask-user-history-card')).toBeTruthy();
+        expect(screen.getByText('Asked user')).toBeTruthy();
+        expect(screen.getByText('Which git tab should this capability live in?')).toBeTruthy();
+        expect(screen.getByText('Existing CoC dashboard Git tab')).toBeTruthy();
+        expect(screen.getByTestId('ask-user-history-answer').textContent).toContain('Existing CoC dashboard Git tab (coc-dashboard-git-tab)');
+        expect(container.querySelector('[data-testid="ask-user-submit-all-btn"]')).toBeNull();
+        expect(container.querySelector('[data-testid="ask-user-skip-all-btn"]')).toBeNull();
+        expect(container.querySelector('[data-tool-id="ask-1"]')).toBeNull();
+    });
+
+    it('renders skipped ask_user answers clearly', () => {
+        render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    role: 'assistant',
+                    content: '',
+                    toolCalls: [
+                        {
+                            id: 'ask-skipped',
+                            toolName: 'ask_user',
+                            args: {
+                                questions: [
+                                    { question: 'Should this optional step be skipped?', type: 'confirm' },
+                                ],
+                            },
+                            status: 'completed',
+                            result: JSON.stringify([
+                                { questionId: 'generated-question-id', skipped: true },
+                            ]),
+                        },
+                    ],
+                    timeline: [],
+                })}
+            />
+        );
+
+        const answer = screen.getByTestId('ask-user-history-answer');
+        expect(screen.getByText('Should this optional step be skipped?')).toBeTruthy();
+        expect(answer.getAttribute('data-skipped')).toBe('true');
+        expect(answer.textContent).toContain('Question skipped');
+    });
+});
+
 import { afterEach } from 'vitest';
 
 describe('ConversationTurnBubble — copy button feedback', () => {
@@ -1417,6 +1499,43 @@ describe('ConversationTurnBubble — commit strip on individual shell tool calls
         expect(strip).toBeTruthy();
         expect(strip!.textContent).toContain('abc1234');
         expect(strip!.textContent).toContain('fix: stuff');
+    });
+
+    it('shows commit strip for an ungrouped bash tool call with git commit output', () => {
+        const turn = makeTurn({
+            role: 'assistant',
+            content: '',
+            timeline: [
+                {
+                    type: 'tool-start',
+                    toolCall: {
+                        id: 'bash1',
+                        toolName: 'bash',
+                        args: { command: 'git add . && git commit -m "fix: bash commit"' },
+                    },
+                    timestamp: '2026-01-15T10:30:00Z',
+                },
+                {
+                    type: 'tool-complete',
+                    toolCall: {
+                        id: 'bash1',
+                        toolName: 'bash',
+                        args: { command: 'git add . && git commit -m "fix: bash commit"' },
+                        result: '[feature/test def5678] fix: bash commit\n 2 files changed, 3 insertions(+)',
+                        status: 'completed',
+                        startTime: '2026-01-15T10:30:00Z',
+                        endTime: '2026-01-15T10:30:01Z',
+                    },
+                    timestamp: '2026-01-15T10:30:01Z',
+                },
+            ] as any,
+        });
+
+        const { container } = render(<ConversationTurnBubble turn={turn} wsId="ws-test" />);
+        const strip = container.querySelector('[data-testid="commit-strip"]');
+        expect(strip).toBeTruthy();
+        expect(strip!.textContent).toContain('def5678');
+        expect(strip!.textContent).toContain('fix: bash commit');
     });
 
     it('does not show commit strip for non-commit shell tool calls', () => {

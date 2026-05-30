@@ -209,6 +209,36 @@ describe('serializeTaskSummary', () => {
         expect(p.imagesCount).toBe(0);
         expect(p.hasImages).toBe(false);
     });
+
+    // Regression: provider was omitted from slimPayload, causing running/queued
+    // Codex and Claude tasks to always render with Copilot green in ChatListPane.
+    it('preserves provider=codex in slim payload', () => {
+        const task = makeTask({ payload: { mode: 'autopilot', provider: 'codex' } });
+        const out = serializeTaskSummary(task);
+        const p = out.payload as Record<string, unknown>;
+        expect(p.provider).toBe('codex');
+    });
+
+    it('preserves provider=claude in slim payload', () => {
+        const task = makeTask({ payload: { mode: 'autopilot', provider: 'claude' } });
+        const out = serializeTaskSummary(task);
+        const p = out.payload as Record<string, unknown>;
+        expect(p.provider).toBe('claude');
+    });
+
+    it('preserves provider=copilot in slim payload', () => {
+        const task = makeTask({ payload: { provider: 'copilot' } });
+        const out = serializeTaskSummary(task);
+        const p = out.payload as Record<string, unknown>;
+        expect(p.provider).toBe('copilot');
+    });
+
+    it('provider is undefined when not set in payload', () => {
+        const task = makeTask({ payload: { mode: 'autopilot' } });
+        const out = serializeTaskSummary(task);
+        const p = out.payload as Record<string, unknown>;
+        expect(p.provider).toBeUndefined();
+    });
 });
 
 describe('serializeQueueItemSummary', () => {

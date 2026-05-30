@@ -14,6 +14,8 @@
  */
 
 import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // Partial mock of fs — allows overriding existsSync/readFileSync per test
@@ -39,6 +41,10 @@ import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/forge';
 import { CLITaskExecutor, createQueueExecutorBridge, defaultIsExclusive } from '../../src/server/queue/queue-executor-bridge';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore, createCompletedProcessWithSession } from '../helpers/mock-process-store';
+import { RalphSessionStore } from '../../src/server/ralph/ralph-session-store';
+import { _clearFinalCheckEnqueuedSet } from '../../src/server/ralph/enqueue-final-check';
+import { ScheduleManager } from '../../src/server/schedule/schedule-manager';
+import { ScheduleYamlPersistence } from '../../src/server/schedule/schedule-yaml-persistence';
 
 // ============================================================================
 // Mock CopilotSDKService
@@ -121,6 +127,26 @@ vi.mock('child_process', () => ({
 
 function delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+    });
+    return { promise, resolve, reject };
+}
+
+async function waitForCondition(predicate: () => boolean, timeoutMs = 3000): Promise<void> {
+    const start = Date.now();
+    while (!predicate()) {
+        if (Date.now() - start > timeoutMs) {
+            throw new Error('Timed out waiting for condition');
+        }
+        await delay(25);
+    }
 }
 
 // ============================================================================
@@ -6684,8 +6710,466 @@ describe('createQueueExecutorBridge dual-limiter options', () => {
     });
 });
 
+describe('createQueueExecutorBridge scheduled Ralph session completion', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    let dataDir: string;
+
+    const workspaceId = 'ws-scheduled-ralph';
+    const sessionId = 'ralph-scheduled-session';
+    const scheduleId = 'sch_scheduled_ralph';
+    const scheduleRunId = 'run_scheduled_ralph';
+    const marker = 'RALPH_FINAL_CHECK_RESULT';
+
+    function cleanFinalCheckResponse(): string {
+        return `RALPH_FINAL_CHECK_RESULT\n\`\`\`json\n${JSON.stringify({
+            marker,
+            hasGaps: false,
+            summary: 'All schedule acceptance criteria are satisfied.',
+            gaps: [],
+        }, null, 2)}\n\`\`\``;
+    }
+
+    function gapFinalCheckResponse(): string {
+        return `RALPH_FINAL_CHECK_RESULT\n\`\`\`json\n${JSON.stringify({
+            marker,
+            hasGaps: true,
+            summary: 'One gap remains.',
+            gaps: [
+                {
+                    id: 'GAP-01',
+                    title: 'Missing validation evidence',
+                    evidence: 'No final validation output was recorded.',
+                    recommendedAction: 'Run the required validation and record it.',
+                },
+            ],
+            gapFixGoal: 'Fix only GAP-01 and rerun the required validation.',
+        }, null, 2)}\n\`\`\``;
+    }
+
+    beforeEach(async () => {
+        store = createMockProcessStore();
+        dataDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'scheduled-ralph-bridge-'));
+        _clearFinalCheckEnqueuedSet();
+        mockSendMessage.mockReset();
+        mockSendMessage
+            .mockResolvedValueOnce({
+                success: true,
+                response: 'Implementation slice done.\n\nRALPH_PROGRESS:\nFiles: a\nDecisions: d\nRemaining: final check\nRALPH_COMPLETE',
+                sessionId: 'sdk-iter-1',
+            })
+            .mockResolvedValueOnce({
+                success: true,
+                response: gapFinalCheckResponse(),
+                sessionId: 'sdk-check-1',
+            })
+            .mockResolvedValueOnce({
+                success: true,
+                response: 'Gap fixed.\n\nRALPH_PROGRESS:\nFiles: b\nDecisions: d\nRemaining: final check\nRALPH_COMPLETE',
+                sessionId: 'sdk-gap-1',
+            })
+            .mockResolvedValueOnce({
+                success: true,
+                response: cleanFinalCheckResponse(),
+                sessionId: 'sdk-check-2',
+            });
+    });
+
+    afterEach(async () => {
+        _clearFinalCheckEnqueuedSet();
+        await fs.promises.rm(dataDir, { recursive: true, force: true });
+    });
+
+    it('emits Ralph session completion only after final check and gap-fix loops finish', async () => {
+        const sessionStore = new RalphSessionStore({ dataDir });
+        await sessionStore.initSession(workspaceId, sessionId, {
+            originalGoal: 'Complete the scheduled Ralph goal.',
+            maxIterations: 2,
+        });
+
+        const queueManager = new TaskQueueManager();
+        const completions: any[] = [];
+        const { executor } = createQueueExecutorBridge(queueManager, store, {
+            dataDir,
+            sharedConcurrency: 5,
+            exclusiveConcurrency: 1,
+            onRalphSessionComplete: event => completions.push(event),
+        });
+
+        queueManager.enqueue({
+            type: 'chat',
+            priority: 'normal',
+            repoId: workspaceId,
+            payload: {
+                kind: 'chat',
+                mode: 'ralph',
+                prompt: 'Continue the scheduled Ralph session.',
+                workspaceId,
+                workingDirectory: '',
+                context: {
+                    scheduleId,
+                    scheduleRunId,
+                    ralph: {
+                        phase: 'executing',
+                        sessionId,
+                        originalGoal: 'Complete the scheduled Ralph goal.',
+                        currentIteration: 1,
+                        maxIterations: 2,
+                    },
+                },
+            },
+            config: {},
+            displayName: 'Scheduled Ralph iteration 1',
+        });
+
+        await waitForCondition(() => completions.length === 1, 5000);
+
+        expect(completions[0]).toEqual(expect.objectContaining({
+            workspaceId,
+            sessionId,
+            reason: 'signal',
+        }));
+        expect(mockSendMessage).toHaveBeenCalledTimes(4);
+
+        const record = await sessionStore.readSessionRecord(workspaceId, sessionId);
+        expect(record?.finalChecks).toHaveLength(2);
+        expect(record?.finalChecks?.[0]).toEqual(expect.objectContaining({
+            hasGaps: true,
+            gapLoopStarted: true,
+        }));
+        expect(record?.finalChecks?.[1]).toEqual(expect.objectContaining({
+            hasGaps: false,
+            gapLoopStarted: false,
+        }));
+        expect(record?.loops).toHaveLength(2);
+
+        executor.dispose();
+    });
+
+    it('keeps a scheduled Ralph run active through final-check gap loops', async () => {
+        mockSendMessage.mockReset();
+        const gapCheck = deferred<{ success: boolean; response: string; sessionId: string }>();
+        const gapFix = deferred<{ success: boolean; response: string; sessionId: string }>();
+        const cleanCheck = deferred<{ success: boolean; response: string; sessionId: string }>();
+        mockSendMessage
+            .mockResolvedValueOnce({
+                success: true,
+                response: 'Implementation slice done.\n\nRALPH_PROGRESS:\nFiles: a\nDecisions: d\nRemaining: final check\nRALPH_COMPLETE',
+                sessionId: 'sdk-iter-1',
+            })
+            .mockImplementationOnce(() => gapCheck.promise)
+            .mockImplementationOnce(() => gapFix.promise)
+            .mockImplementationOnce(() => cleanCheck.promise);
+
+        const queueManager = new TaskQueueManager();
+        const persistence = new ScheduleYamlPersistence(dataDir);
+        await fs.promises.mkdir(path.join(dataDir, 'repos', workspaceId, 'schedules'), { recursive: true });
+        const manager = new ScheduleManager(persistence, queueManager, null, dataDir);
+        const events: any[] = [];
+        manager.on('change', (event: any) => events.push(event));
+        const { executor } = createQueueExecutorBridge(queueManager, store, {
+            dataDir,
+            sharedConcurrency: 5,
+            exclusiveConcurrency: 1,
+            onRalphSessionComplete: event => queueManager.emit('ralphSessionComplete', event),
+        });
+
+        try {
+            const schedule = manager.addSchedule(workspaceId, {
+                name: 'Scheduled Ralph Gap Loop',
+                target: 'goal.md',
+                cron: '0 9 * * *',
+                params: { flavor: 'gap-loop' },
+                onFailure: 'notify',
+                status: 'paused',
+                mode: 'ralph',
+            });
+            const runPromise = manager.triggerRun(workspaceId, schedule.id);
+
+            await waitForCondition(() => mockSendMessage.mock.calls.length === 2, 5000);
+            const run = manager.getRunHistory(schedule.id)[0];
+            const completionEvents = () => events.filter(event => event.type === 'schedule-run-complete');
+
+            expect(run.status).toBe('running');
+            expect(manager.isRunning(schedule.id, workspaceId)).toBe(true);
+            expect(completionEvents()).toHaveLength(0);
+
+            const finalCheckTask = queueManager.getRunning()[0];
+            expect(finalCheckTask?.payload?.context?.scheduleId).toBe(schedule.id);
+            expect(finalCheckTask?.payload?.context?.scheduleRunId).toBe(run.id);
+
+            gapCheck.resolve({
+                success: true,
+                response: gapFinalCheckResponse(),
+                sessionId: 'sdk-check-1',
+            });
+            await waitForCondition(() => mockSendMessage.mock.calls.length === 3, 5000);
+
+            expect(manager.getRunHistory(schedule.id)[0].status).toBe('running');
+            expect(manager.isRunning(schedule.id, workspaceId)).toBe(true);
+            expect(completionEvents()).toHaveLength(0);
+
+            const gapFixTask = queueManager.getRunning()[0];
+            expect(gapFixTask?.payload?.context?.scheduleId).toBe(schedule.id);
+            expect(gapFixTask?.payload?.context?.scheduleRunId).toBe(run.id);
+
+            gapFix.resolve({
+                success: true,
+                response: 'Gap fixed.\n\nRALPH_PROGRESS:\nFiles: b\nDecisions: d\nRemaining: final check\nRALPH_COMPLETE',
+                sessionId: 'sdk-gap-1',
+            });
+            await waitForCondition(() => mockSendMessage.mock.calls.length === 4, 5000);
+
+            expect(manager.getRunHistory(schedule.id)[0].status).toBe('running');
+            expect(manager.isRunning(schedule.id, workspaceId)).toBe(true);
+            expect(completionEvents()).toHaveLength(0);
+
+            const cleanCheckTask = queueManager.getRunning()[0];
+            expect(cleanCheckTask?.payload?.context?.scheduleId).toBe(schedule.id);
+            expect(cleanCheckTask?.payload?.context?.scheduleRunId).toBe(run.id);
+
+            cleanCheck.resolve({
+                success: true,
+                response: cleanFinalCheckResponse(),
+                sessionId: 'sdk-check-2',
+            });
+
+            const completedRun = await runPromise;
+            expect(completedRun.status).toBe('completed');
+            expect(completedRun.ralphSessionId).toBeDefined();
+            expect(manager.isRunning(schedule.id, workspaceId)).toBe(false);
+            expect(completionEvents()).toHaveLength(1);
+            expect(completionEvents()[0].run).toEqual(expect.objectContaining({
+                id: completedRun.id,
+                status: 'completed',
+            }));
+        } finally {
+            executor.dispose();
+            manager.dispose();
+        }
+    });
+});
+
 // ============================================================================
-// Follow-up Suggestions Tool Wiring
+// Ralph session continuation queue ordering (AC-01 / AC-02 / AC-03)
+// ============================================================================
+
+describe('Ralph session queue continuity', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    let dataDir: string;
+
+    const workspaceId = 'ws-continuity';
+    const sessionId = 'sess-continuity';
+
+    beforeEach(async () => {
+        store = createMockProcessStore();
+        dataDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ralph-continuity-'));
+        _clearFinalCheckEnqueuedSet();
+        mockSendMessage.mockReset();
+        mockIsAvailable.mockReset();
+        mockIsAvailable.mockResolvedValue({ available: true });
+    });
+
+    afterEach(async () => {
+        _clearFinalCheckEnqueuedSet();
+        await fs.promises.rm(dataDir, { recursive: true, force: true });
+    });
+
+    it('RALPH_NEXT enqueue sets continuationOfSessionId on the follow-on task (AC-01)', async () => {
+        const iterDone = deferred<{ success: boolean; response: string; sessionId: string }>();
+        const nextIterDone = deferred<{ success: boolean; response: string; sessionId: string }>();
+        mockSendMessage
+            .mockImplementationOnce(() => iterDone.promise)
+            .mockImplementationOnce(() => nextIterDone.promise);
+
+        const queueManager = new TaskQueueManager({ isExclusive: defaultIsExclusive });
+
+        // Capture the continuation task the moment it is enqueued (taskAdded is
+        // synchronous so there is no race with the executor dequeue loop).
+        let capturedContTask: QueuedTask | undefined;
+        queueManager.on('taskAdded', (task: QueuedTask) => {
+            if (task.continuationOfSessionId === sessionId) {
+                capturedContTask = { ...task };
+            }
+        });
+
+        const { executor } = createQueueExecutorBridge(queueManager, store, {
+            dataDir,
+            exclusiveConcurrency: 1,
+        });
+
+        // Enqueue Ralph iteration 1
+        queueManager.enqueue({
+            type: 'chat',
+            priority: 'normal',
+            repoId: workspaceId,
+            payload: {
+                kind: 'chat',
+                mode: 'ralph',
+                prompt: 'Do the work.',
+                workspaceId,
+                workingDirectory: '',
+                context: {
+                    ralph: {
+                        phase: 'executing',
+                        sessionId,
+                        originalGoal: 'Complete the goal.',
+                        currentIteration: 1,
+                        maxIterations: 3,
+                    },
+                },
+            } as any,
+            config: {},
+            displayName: 'Ralph iteration 1',
+        });
+
+        // Wait for iteration 1 to start
+        await waitForCondition(() => mockSendMessage.mock.calls.length >= 1, 3000);
+
+        // Enqueue an unrelated exclusive task while iter 1 is running — this
+        // represents work that should NOT jump ahead of the continuation.
+        queueManager.enqueue({
+            type: 'chat',
+            priority: 'normal',
+            repoId: workspaceId,
+            payload: { kind: 'chat', mode: 'autopilot', prompt: 'Unrelated work', workspaceId } as any,
+            config: {},
+            displayName: 'Unrelated exclusive',
+        });
+
+        // Resolve iter 1 with RALPH_NEXT → bridge enqueues iter 2 as continuation
+        iterDone.resolve({
+            success: true,
+            response: 'Progress.\n\nRALPH_PROGRESS:\nFiles: x\nDecisions: d\nRemaining: more\nRALPH_NEXT',
+            sessionId: 'sdk-iter-1',
+        });
+
+        // Wait for the continuation task (iter 2) to be captured
+        await waitForCondition(() => capturedContTask !== undefined, 3000);
+
+        // The follow-on task must carry the continuation marker so insertAsContinuation
+        // can place it ahead of unrelated exclusive backlog (ordering tested in forge unit tests).
+        expect(capturedContTask?.continuationOfSessionId).toBe(sessionId);
+
+        // Allow iter 2 to complete so teardown is clean
+        nextIterDone.resolve({
+            success: true,
+            response: 'Progress.\n\nRALPH_PROGRESS:\nFiles: y\nDecisions: e\nRemaining: none\nRALPH_NEXT',
+            sessionId: 'sdk-iter-2',
+        });
+
+        executor.dispose();
+    });
+
+    it('RALPH_COMPLETE final-check task sets continuationOfSessionId (AC-02)', async () => {
+        // Initialize the session record so enqueueFinalCheckAfterComplete can read it.
+        const sessionStore = new RalphSessionStore({ dataDir });
+        await sessionStore.initSession(workspaceId, sessionId, {
+            originalGoal: 'Complete goal.',
+            maxIterations: 1,
+        });
+
+        const firstDone = deferred<{ success: boolean; response: string; sessionId: string }>();
+        const finalCheckDone = deferred<{ success: boolean; response: string; sessionId: string }>();
+        mockSendMessage
+            .mockImplementationOnce(() => firstDone.promise)
+            .mockImplementationOnce(() => finalCheckDone.promise);
+
+        const queueManager = new TaskQueueManager({ isExclusive: defaultIsExclusive });
+
+        // Capture tasks the moment they are added — taskAdded fires synchronously
+        // inside queueManager.enqueue() so there is no race with the executor.
+        const allAddedTasks: QueuedTask[] = [];
+        queueManager.on('taskAdded', (task: QueuedTask) => {
+            allAddedTasks.push({ ...task });
+        });
+
+        const { executor } = createQueueExecutorBridge(queueManager, store, {
+            dataDir,
+            exclusiveConcurrency: 1,
+        });
+
+        queueManager.enqueue({
+            type: 'chat',
+            priority: 'normal',
+            repoId: workspaceId,
+            payload: {
+                kind: 'chat',
+                mode: 'ralph',
+                prompt: 'Do the work.',
+                workspaceId,
+                workingDirectory: '',
+                context: {
+                    ralph: {
+                        phase: 'executing',
+                        sessionId,
+                        originalGoal: 'Complete goal.',
+                        currentIteration: 1,
+                        maxIterations: 1,
+                    },
+                },
+            } as any,
+            config: {},
+            displayName: 'Ralph iteration 1',
+        });
+
+        // Wait for iteration 1 to start running
+        await waitForCondition(() => mockSendMessage.mock.calls.length >= 1, 3000);
+
+        // Enqueue an unrelated exclusive task while iteration 1 is running — this
+        // represents work that should NOT jump ahead of the final-check continuation.
+        queueManager.enqueue({
+            type: 'chat',
+            priority: 'normal',
+            repoId: workspaceId,
+            payload: { kind: 'chat', mode: 'autopilot', prompt: 'Unrelated work', workspaceId } as any,
+            config: {},
+            displayName: 'Unrelated exclusive',
+        });
+
+        // Resolve iteration 1 with RALPH_COMPLETE.
+        // The bridge awaits onRalphNext (which calls enqueueFinalCheckAfterComplete)
+        // *before* releasing the exclusive slot, so the final-check task is inserted
+        // into the queue before any other task can start.
+        firstDone.resolve({
+            success: true,
+            response: 'Done.\n\nRALPH_PROGRESS:\nFiles: f\nDecisions: d\nRemaining: none\nRALPH_COMPLETE',
+            sessionId: 'sdk-iter-1',
+        });
+
+        // Wait for the final-check task to appear in allAddedTasks.
+        // taskAdded fires synchronously at enqueue time so this reflects the exact
+        // moment enqueueFinalCheckAfterComplete calls queueManager.enqueue().
+        await waitForCondition(
+            () => allAddedTasks.some(t => (t.payload as any)?.context?.ralph?.finalCheck !== undefined),
+            5000,
+        );
+
+        const finalCheckTask = allAddedTasks.find(t =>
+            (t.payload as any)?.context?.ralph?.finalCheck !== undefined
+        );
+
+        // The final-check task must carry the continuation marker so insertAsContinuation
+        // places it ahead of unrelated exclusive backlog (ordering verified in forge unit tests).
+        expect(finalCheckTask).toBeDefined();
+        expect(finalCheckTask?.continuationOfSessionId).toBe(sessionId);
+
+        // Resolve the final-check so the executor can clean up its slot before dispose.
+        finalCheckDone.resolve({
+            success: true,
+            response: `RALPH_FINAL_CHECK_RESULT\n\`\`\`json\n${JSON.stringify({
+                marker: 'RALPH_FINAL_CHECK_RESULT',
+                hasGaps: false,
+                summary: 'All good.',
+                gaps: [],
+            })}\n\`\`\``,
+            sessionId: 'sdk-check-1',
+        });
+
+        executor.dispose();
+    });
+});
+
+
 // ============================================================================
 
 describe('suggest_follow_ups tool wiring', () => {

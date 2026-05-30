@@ -52,6 +52,8 @@ export interface OrchestrateFinalCheckDeps {
     provider?: import('../tasks/task-types').ChatProvider;
     /** repoId for gap-fix iteration tasks. */
     repoId?: string;
+    /** Non-Ralph context to preserve when enqueueing gap-fix iterations. */
+    extraContext?: Record<string, unknown>;
 }
 
 export interface OrchestrateFinalCheckInput {
@@ -190,7 +192,8 @@ export async function orchestrateFinalCheck(input: OrchestrateFinalCheckInput): 
         maxIterations: newLoopRecord.maxIterations,
         dataDir,
         provider: deps.provider,
-        extraContext: { ralph: { loopIndex: newLoopIndex } },
+        continuationOfSessionId: sessionId,
+        extraContext: { ...(deps.extraContext ?? {}), ralph: { loopIndex: newLoopIndex } },
     });
 
     let newTaskId: string;

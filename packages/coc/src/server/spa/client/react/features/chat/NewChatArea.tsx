@@ -37,6 +37,8 @@ import { getDraft, setDraft, clearDraft, newChatDraftKey } from './hooks/useDraf
 import { useAgentProviders } from '../../hooks/useAgentProviders';
 import { AgentSelectorChip } from './AgentSelectorChip';
 import type { ChatProvider } from './AgentSelectorChip';
+import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
+import { deriveEffort } from '../../utils/effortUtils';
 
 export interface NewChatAreaProps {
     workspaceId?: string;
@@ -65,6 +67,10 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     const richTextRef = useRef<RichTextInputHandle>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
+    /** Tracks the (provider, modelId) for which the user last explicitly picked an effort.
+     *  When set, prevents auto-derive from overwriting the user's pick for the same model.
+     *  Cleared on provider or model change (triggering re-derive for the new model). */
+    const userPickedForModelRef = useRef<{ provider: ChatProvider; modelId: string } | null>(null);
 
     const { attachments, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
 
@@ -74,6 +80,10 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
 
     // Agent providers for the agent selector chip
     const { providers: agentProviders, loading: providersLoading } = useAgentProviders();
+
+    // Per-provider, per-model reasoning-effort preferences (from Admin → AI Provider → Models).
+    // Used to auto-fill the effort picker when the user changes provider or model.
+    const reasoningEfforts = useProviderReasoningEfforts(selectedProvider);
 
     // Model command support
     const { models: availableModels, loading: modelsLoading } = useModels(selectedProvider);
@@ -90,7 +100,10 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
 
     const VALID_MODES: ChatMode[] = ['ask', 'plan', 'autopilot', 'ralph'];
 
-    // Restore draft from localStorage on mount / workspace switch
+    // Restore draft from localStorage on mount / workspace switch.
+    // effortOverride is intentionally NOT restored from the draft — it is
+    // always re-derived from the current provider/model preferences so that
+    // Admin → AI Provider settings updated since the last draft take effect.
     const draftKey = useMemo(() => newChatDraftKey(workspaceId), [workspaceId]);
     useEffect(() => {
         const draft = getDraft(draftKey);
@@ -104,16 +117,11 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
             if (draft.modelOverride) {
                 modelCommand.setModelOverride(draft.modelOverride);
             }
-            if (draft.effortOverride === 'low' || draft.effortOverride === 'medium' || draft.effortOverride === 'high' || draft.effortOverride === 'xhigh') {
-                setEffortOverride(draft.effortOverride);
-            } else {
-                setEffortOverride(null);
-            }
+            // effortOverride is NOT restored — auto-derive handles it
         } else {
             setInput('');
             setCursorPos(0);
             setSelectedMode('ask');
-            setEffortOverride(null);
         }
     }, [draftKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -197,14 +205,47 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     // Disable the effort picker when the model's capabilities explicitly report no reasoning support.
     const effortPickerDisabled = Boolean(effectiveModelInfo && effectiveModelInfo.capabilities?.supports.reasoningEffort === false);
 
-    // Reset effort override when provider/model changes and the selected effort is no longer supported.
+    // Auto-derive the effort override whenever the provider, effective model, or the
+    // stored preferences change.  Stable string keys are used in deps so the effect
+    // only fires when values actually change, not on every render.
+    //
+    // If the user has explicitly picked an effort for the current (provider, model)
+    // combo (tracked via userPickedForModelRef), their pick is preserved.  Any
+    // provider or model change clears the ref and re-derives.
+    const _supportedEffortsKey = effectiveModelInfo?.supportedReasoningEfforts?.join(',') ?? '';
+    const _capSupportsReasoning = !effectiveModelInfo || effectiveModelInfo.capabilities?.supports.reasoningEffort !== false;
     useEffect(() => {
-        if (!effortOverride) return;
-        const supported = effectiveModelInfo?.supportedReasoningEfforts;
-        if (supported && supported.length > 0 && !supported.includes(effortOverride)) {
-            setEffortOverride(null);
+        const currentModelId = effectiveModelId ?? '';
+        const pick = userPickedForModelRef.current;
+        if (pick && pick.provider === selectedProvider && pick.modelId === currentModelId) {
+            // User explicitly picked for this (provider, model) — preserve their choice.
+            return;
         }
-    }, [effectiveModelId, effectiveModelInfo, effortOverride]);
+        const preferred = reasoningEfforts[currentModelId];
+        const derived = deriveEffort(
+            preferred,
+            effectiveModelInfo?.supportedReasoningEfforts,
+            _capSupportsReasoning,
+        );
+        setEffortOverride(derived);
+        userPickedForModelRef.current = null;
+        if (derived !== null) {
+            console.debug('[coc-effort-auto-derive]', {
+                trigger: pick ? 'model-or-provider-swap' : 'init',
+                provider: selectedProvider,
+                modelId: currentModelId,
+                derivedEffort: derived,
+            });
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedProvider, effectiveModelId, reasoningEfforts, _supportedEffortsKey, _capSupportsReasoning]);
+
+    /** Wraps setEffortOverride to record that the user explicitly picked for the
+     *  current (provider, model) combo, preventing auto-derive from overwriting. */
+    function handleEffortChange(effort: EffortLevel | null) {
+        setEffortOverride(effort);
+        userPickedForModelRef.current = { provider: selectedProvider, modelId: effectiveModelId ?? '' };
+    }
 
     function handleProviderChange(provider: ChatProvider) {
         setSelectedProvider(provider);
@@ -569,7 +610,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
                              persisted/SDK default. */}
                         <EffortPillSelector
                             value={effortOverride}
-                            onChange={setEffortOverride}
+                            onChange={handleEffortChange}
                             options={effortOptions}
                             disabled={effortPickerDisabled}
                             disabledTitle="This model does not support reasoning effort selection"

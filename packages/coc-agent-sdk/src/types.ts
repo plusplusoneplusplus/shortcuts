@@ -437,6 +437,14 @@ export interface SendMessageOptions {
     sessionId?: string;
     /** Optional working directory for context (set at client level) */
     workingDirectory?: string;
+    /**
+     * Extra absolute directories the agent is allowed to access beyond the
+     * working directory. Currently consumed by the Claude provider, which maps
+     * these to the SDK's `additionalDirectories` permission scope. The Claude
+     * service additionally always grants access to `~/.coc` and the system
+     * temp directory.
+     */
+    additionalDirectories?: string[];
     /** Optional timeout in milliseconds (default: DEFAULT_AI_TIMEOUT_MS = 6 hours) */
     timeoutMs?: number;
     /** Abort signal for cooperative request cancellation. */

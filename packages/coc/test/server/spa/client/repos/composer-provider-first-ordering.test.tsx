@@ -61,7 +61,7 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
             patchRepo: vi.fn().mockResolvedValue({}),
         },
         skills: { listAllWorkspace: vi.fn().mockResolvedValue({ merged: [] }) },
-        agentProviders: { list: vi.fn().mockResolvedValue({ providers: mockAgentProviders }) },
+        agentProviders: { list: vi.fn().mockResolvedValue({ providers: mockAgentProviders }), getReasoningEfforts: vi.fn().mockResolvedValue({ reasoningEfforts: {} }) },
     }),
     getSpaCocClientErrorMessage: (err: any, fallback: string) =>
         (err instanceof Error ? err.message : undefined) || fallback,

@@ -123,6 +123,7 @@ export const CLIConfigSchema = z.object({
     features: z.object({
         autoMemoryPromotion: z.boolean().optional(),
         focusedDiff: z.boolean().optional(),
+        gitCommitLookup: z.boolean().optional(),
     }).passthrough().optional(),
     memoryPromotion: z.object({
         batchSize: z.number().int().positive().optional(),

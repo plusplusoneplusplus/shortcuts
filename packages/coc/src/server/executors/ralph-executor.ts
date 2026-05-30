@@ -30,46 +30,27 @@ import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-exe
 import { ChatBaseExecutor } from './chat-base-executor';
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
-import { getPromptOverride } from '../admin/ralph-prompt-overrides';
 
 // ============================================================================
 // System prompt template
 // ============================================================================
 
 export const RALPH_BASE_INSTRUCTIONS = `\
-You are a focused AI coding agent running in Ralph mode.
+Load and follow the \`ultra-ralph\` skill, \`execution\` section. The skill file is at ~/.coc/skills/ultra-ralph/SKILL.md.
 
-Your task each iteration:
-1. Read the goal spec below.
-2. Read your accumulated progress journal at the path noted below — grep
-   for filenames or decisions before choosing the next subtask, so you do
-   not redo prior work.
-3. Pick the next logical subtask toward the goal — implement one subtask only.
-4. Run tests/build to verify your change, then commit with a clear message.
+Machine contract (parser-required): When done with an iteration, append to progress.md using exactly this header grammar:
+    ## Iteration <N> — <SIGNAL> — <ISO timestamp>
+    Files: <comma-separated list>
+    Decisions: <one-line rationale>
+    Remaining: <what still has to happen, or "none">
+End the response with exactly one of:
+    RALPH_COMPLETE
+    RALPH_NEXT`;
 
-When done with this iteration, you MUST:
+export const RALPH_FINAL_CHECK_BASE_INSTRUCTIONS = `\
+Load and follow the \`ultra-ralph\` skill, \`final-check\` section. The skill file is at ~/.coc/skills/ultra-ralph/SKILL.md.
 
-A. Append a new section to the progress journal with this exact header
-   grammar (em-dash or ASCII dash; ISO timestamp):
-
-       ## Iteration <N> — <SIGNAL> — <ISO timestamp>
-       Files: <comma-separated list of files created/modified>
-       Decisions: <one-line rationale for the key choices made>
-       Remaining: <what still has to happen, or "none">
-
-   <SIGNAL> is RALPH_NEXT or RALPH_COMPLETE — same value you end the
-   response with. Use the iteration counter from the system prompt.
-
-B. End the response with exactly one of:
-       RALPH_COMPLETE
-       RALPH_NEXT
-
-If you cannot append to the file, fall back to the legacy format and
-the server will write the section for you:
-
-       RALPH_PROGRESS:
-       <files / decisions / remaining>
-       <SIGNAL>`;
+Machine contract (parser-required): Your final response must contain exactly one \`RALPH_FINAL_CHECK_RESULT\` JSON block. Do not end with RALPH_NEXT or RALPH_COMPLETE.`;
 
 export interface BuildRalphSystemMessageInput {
     originalGoal?: string;
@@ -79,7 +60,7 @@ export interface BuildRalphSystemMessageInput {
     maxIterations?: number;
 }
 
-function buildRalphSystemMessage(ralph: BuildRalphSystemMessageInput, baseInstructions?: string): string {
+export function buildRalphSystemMessage(ralph: BuildRalphSystemMessageInput, baseInstructions?: string): string {
     const parts: string[] = [baseInstructions ?? RALPH_BASE_INSTRUCTIONS];
 
     if (ralph.originalGoal) {
@@ -95,6 +76,26 @@ function buildRalphSystemMessage(ralph: BuildRalphSystemMessageInput, baseInstru
     const current = ralph.currentIteration ?? 1;
     const max = ralph.maxIterations ?? 20;
     parts.push(`Iteration ${current} of ${max}.`);
+
+    return parts.join('\n\n');
+}
+
+export function buildRalphFinalCheckSystemMessage(ralph: BuildRalphSystemMessageInput): string {
+    const parts: string[] = [RALPH_FINAL_CHECK_BASE_INSTRUCTIONS];
+
+    if (ralph.originalGoal) {
+        parts.push(`## Goal Spec\n${ralph.originalGoal}`);
+    }
+
+    if (ralph.progressPath) {
+        parts.push(
+            `## Progress Journal\nRead the Ralph progress journal at:\n  ${ralph.progressPath}\nUse it only as input evidence. Do not append to or edit it.`,
+        );
+    }
+
+    const current = ralph.currentIteration ?? 1;
+    const max = ralph.maxIterations ?? current;
+    parts.push(`Final check for Ralph iteration ${current} of ${max}.`);
 
     return parts.join('\n\n');
 }
@@ -125,16 +126,20 @@ export class RalphExecutor extends ChatBaseExecutor {
 
         const progressPath = this.resolveProgressPath(payload.workspaceId, ralphCtx?.sessionId);
 
-        const resolvedBaseInstructions = this.dataDir
-            ? (getPromptOverride('ralph-execution-system', this.dataDir) ?? RALPH_BASE_INSTRUCTIONS)
-            : RALPH_BASE_INSTRUCTIONS;
+        const isFinalCheck = !!ralphCtx?.finalCheck;
 
-        const ralphSystemPrompt = buildRalphSystemMessage({
+        const resolvedBaseInstructions = RALPH_BASE_INSTRUCTIONS;
+
+        const ralphPromptInput = {
             originalGoal: ralphCtx?.originalGoal,
             progressPath,
             currentIteration: ralphCtx?.currentIteration,
             maxIterations: ralphCtx?.maxIterations,
-        }, resolvedBaseInstructions);
+        };
+
+        const ralphSystemPrompt = isFinalCheck
+            ? buildRalphFinalCheckSystemMessage(ralphPromptInput)
+            : buildRalphSystemMessage(ralphPromptInput, resolvedBaseInstructions);
 
         const processId = toQueueProcessId(task.id);
         const loopDeps = this.buildLoopToolDeps(processId);
@@ -155,7 +160,7 @@ export class RalphExecutor extends ChatBaseExecutor {
 
         const systemMessage = await systemMessageBuilder()
             .append(ralphSystemPrompt)
-            .withRepoInstructions(workingDirectory, 'ralph')
+            .withRepoInstructions(workingDirectory, isFinalCheck ? 'ask' : 'ralph')
             .appendMemoryV2(ctx.memoryV2)
             .appendToolGuidance(ctx.toolGuidance)
             .build();
@@ -182,4 +187,3 @@ export class RalphExecutor extends ChatBaseExecutor {
 // Helpers (exported for testing)
 // ============================================================================
 
-export { buildRalphSystemMessage };

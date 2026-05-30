@@ -380,8 +380,8 @@ export class ScheduleManager extends EventEmitter {
     /**
      * Check if a schedule is currently running.
      */
-    isRunning(scheduleId: string): boolean {
-        return this.executor.isRunning(scheduleId);
+    isRunning(scheduleId: string, repoId?: string): boolean {
+        return this.executor.isRunning(scheduleId, repoId);
     }
 
     /**
@@ -575,12 +575,19 @@ export class ScheduleManager extends EventEmitter {
             }
 
             // Skip if previous run still active
-            if (this.executor.isRunning(schedule.id)) {
+            if (this.executor.isRunning(schedule.id, repoId)) {
+                const missedReason = 'Previous schedule run still active';
+                this.executor.recordMissedRun(repoId, current, missedReason);
                 getServerLogger().info(
                     { scheduleName: schedule.name, scheduleId: schedule.id },
                     '[ScheduleManager] Skipped run: previous run still active',
                 );
-                this.scheduleNextRun(repoId, current);
+                this.executor.whenIdle(schedule.id, repoId).then(() => {
+                    const latest = this.getSchedule(repoId, schedule.id);
+                    if (latest && latest.status === 'active') {
+                        this.scheduleNextRun(repoId, latest);
+                    }
+                });
                 return;
             }
 

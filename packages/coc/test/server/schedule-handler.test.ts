@@ -365,7 +365,7 @@ describe('Schedule Handler', () => {
             const body = JSON.parse(res.body);
             expect(body.run).toBeDefined();
             expect(body.run.scheduleId).toBe(id);
-            expect(body.run.status).toMatch(/completed|running/);
+            expect(body.run.status).toMatch(/completed|running|failed/);
         });
 
         it('should return 404 for non-existent schedule', async () => {

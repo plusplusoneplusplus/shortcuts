@@ -30,10 +30,6 @@ import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { Route } from '../types';
 import { sendSSE } from '../wiki/ask-handler';
 import { ADMIN_CONFIG_FIELDS, ADMIN_EDITABLE_KEYS, getAdminFieldMetadata } from './admin-config-fields';
-import { RALPH_GRILL_SUFFIX } from '../executors/chat-base-executor';
-import { RALPH_BASE_INSTRUCTIONS } from '../executors/ralph-executor';
-import { RALPH_SYNTHESIS_PROMPT_BASE } from '../ralph/synthesis-prompt';
-import { RALPH_ITERATION_PROMPT_DEFAULT_HEAD } from '../ralph/iteration-prompt';
 import {
     DIFF_CLASSIFICATION_DEFAULT_TEMPLATE,
     DIFF_CLASSIFICATION_PROMPT_ID,
@@ -43,8 +39,7 @@ import {
     getAllPromptOverrides,
     savePromptOverride as writeSavedPromptOverride,
     deletePromptOverride as removePromptOverride,
-    RALPH_PROMPT_IDS,
-} from './ralph-prompt-overrides';
+} from './admin-prompt-overrides';
 
 // ============================================================================
 // Token Management
@@ -1021,46 +1016,6 @@ The plan file should include:
             source: 'coc/server/suggest-follow-ups-tool.ts',
             description: 'Tool description controlling when/how AI calls suggest_follow_ups',
             text: 'After completing your response, call this tool to suggest 2-3 brief follow-up actions the user might want to take next. Each suggestion should be a short, direct action phrase (imperative, not a question) that continues the conversation — e.g., "Show an example", "Explain the config options", "Generate the fix". IMPORTANT: Never list follow-up suggestions in your response text. Always call this tool instead.',
-        },
-        'ralph-grill-suffix': {
-            id: 'ralph-grill-suffix',
-            title: 'Ralph — Grilling Phase Suffix',
-            group: 'Ralph',
-            source: 'coc/server/executors/chat-base-executor.ts',
-            description: 'System-prompt suffix appended during the Ralph grilling phase; guides the model to interview the user via ask_user',
-            text: RALPH_GRILL_SUFFIX,
-            editable: true,
-            templateVars: [],
-        },
-        'ralph-synthesis': {
-            id: 'ralph-synthesis',
-            title: 'Ralph — Synthesis Prompt',
-            group: 'Ralph',
-            source: 'coc/server/ralph/synthesis-prompt.ts',
-            description: 'User prompt sent to synthesise the grilling conversation into a ## Goal block',
-            text: RALPH_SYNTHESIS_PROMPT_BASE,
-            editable: true,
-            templateVars: [],
-        },
-        'ralph-execution-system': {
-            id: 'ralph-execution-system',
-            title: 'Ralph — Execution System Prompt',
-            group: 'Ralph',
-            source: 'coc/server/executors/ralph-executor.ts',
-            description: 'Base system-prompt block injected at the start of every Ralph execution iteration',
-            text: RALPH_BASE_INSTRUCTIONS,
-            editable: true,
-            templateVars: [],
-        },
-        'ralph-iteration-user': {
-            id: 'ralph-iteration-user',
-            title: 'Ralph — Iteration User Prompt',
-            group: 'Ralph',
-            source: 'coc/server/ralph/iteration-prompt.ts',
-            description: 'User-turn prompt (prefix + work_intent + spec_contract) sent each iteration; the <goal> block is appended dynamically',
-            text: RALPH_ITERATION_PROMPT_DEFAULT_HEAD,
-            editable: true,
-            templateVars: [],
         },
         [DIFF_CLASSIFICATION_PROMPT_ID]: {
             id: DIFF_CLASSIFICATION_PROMPT_ID,
