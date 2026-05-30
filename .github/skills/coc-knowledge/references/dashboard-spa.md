@@ -91,6 +91,14 @@ Inside `WhisperCollapsedGroup`, tool calls render as compact "whisper-row" varia
 - Single flat row: kind pill + truncated summary + duration + chevron
 - Color-coded pills: Read/blue, Grep/Glob/green, Edit/Write/amber, Shell/PS/SQL/purple, Skill/grey
 
+Completed `ask_user` tool calls render as read-only historical question cards via
+`AskUserHistoryCard` inside `ConversationTurnBubble`. Live unanswered questions
+remain owned by `ChatDetail`/`ConversationArea` through `processDetails.pendingAskUser`
+and `AskUserInline`; the history card only displays persisted `args.questions[]`
+plus the completed answer/skip result and is kept visible outside whisper
+collapse. Generic `ToolCallView` still handles `ask_user` as a fallback and
+summarizes `args.questions[0].question` when present.
+
 `toolNormalization.ts` → `normalizeToolName()` canonicalises SDK-specific names before display and storage. Notable aliases: `read_file`/`open_file` → `view`, `edit_file`/`str_replace`/`str_replace_editor` → `edit`, `write_file`/`create_file` → `create`, `command_execution` → `shell`, `file_change` → `apply_patch`, `Skill` (Claude Code SDK PascalCase) → `skill`. All downstream logic (`getToolKindInfo`, `getToolSummary`, `filterWhisperChunks` skill counting) operates on the normalised lowercase name.
 
 ## Input Area

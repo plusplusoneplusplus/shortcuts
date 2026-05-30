@@ -393,4 +393,48 @@ describe('ConversationTurnBubble — compact tool grouping', () => {
         expect(whisper?.getAttribute('data-commit-count')).toBe('0');
         expect(whisper?.getAttribute('data-pr-count')).toBe('0');
     });
+
+    it('keeps completed ask_user history visible when toolCompactness === 3', () => {
+        mockToolCompactness = 3;
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    content: 'Final answer',
+                    timeline: [
+                        ...makeLeafReadTimeline(['t1', 't2']),
+                        {
+                            type: 'tool-complete' as const,
+                            toolCall: {
+                                id: 'ask-compact',
+                                toolName: 'ask_user',
+                                args: {
+                                    questions: [
+                                        {
+                                            question: 'What should happen when a commit id is entered?',
+                                            type: 'select',
+                                            options: [
+                                                { value: 'metadata-files-diff', label: 'Show metadata, changed files, and diff' },
+                                            ],
+                                        },
+                                    ],
+                                },
+                                status: 'completed',
+                                result: JSON.stringify([
+                                    { questionId: 'generated-question-id', answer: 'metadata-files-diff', skipped: false },
+                                ]),
+                            },
+                        },
+                        { type: 'content' as const, content: 'Final answer' },
+                    ],
+                })}
+            />
+        );
+
+        const whisper = container.querySelector('[data-testid="whisper-collapsed-group"]');
+        expect(whisper).toBeTruthy();
+        expect(whisper?.getAttribute('data-tool-count')).toBe('2');
+        expect(screen.getByTestId('ask-user-history-card')).toBeTruthy();
+        expect(screen.getByText('What should happen when a commit id is entered?')).toBeTruthy();
+        expect(screen.getByTestId('ask-user-history-answer').textContent).toContain('Show metadata, changed files, and diff');
+    });
 });

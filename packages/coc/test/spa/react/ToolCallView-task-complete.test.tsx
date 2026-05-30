@@ -39,6 +39,21 @@ function makeSuggestFollowUpsCall(overrides: Record<string, any> = {}) {
     };
 }
 
+function makeAskUserCall(overrides: Record<string, any> = {}) {
+    return {
+        id: 'tc-ask-user-1',
+        toolName: 'ask_user',
+        args: {
+            questions: [
+                { question: 'Which git tab should render this question?', type: 'select' },
+            ],
+        },
+        status: 'completed',
+        result: JSON.stringify([{ questionId: 'q1', answer: 'activity' }]),
+        ...overrides,
+    };
+}
+
 function getHeader(container: HTMLElement) {
     return container.querySelector('.tool-call-header');
 }
@@ -135,6 +150,32 @@ describe('ToolCallView — suggest_follow_ups summary', () => {
         );
         const header = getHeader(container)!;
         expect(header.textContent).toContain('Run the tests · Review the diff · Deploy to staging');
+    });
+});
+
+describe('ToolCallView — ask_user summary', () => {
+    it('shows the first args.questions question in the collapsed header', () => {
+        const { container } = render(
+            <ToolCallView toolCall={makeAskUserCall()} />
+        );
+        const header = getHeader(container)!;
+        expect(header.textContent).toContain('Which git tab should render this question?');
+        expect(header.textContent).not.toContain('Ask user');
+    });
+
+    it('shows how many additional questions are present', () => {
+        const { container } = render(
+            <ToolCallView toolCall={makeAskUserCall({
+                args: {
+                    questions: [
+                        { question: 'First question?', type: 'text' },
+                        { question: 'Second question?', type: 'text' },
+                    ],
+                },
+            })} />
+        );
+        const header = getHeader(container)!;
+        expect(header.textContent).toContain('First question? (+1 more)');
     });
 });
 
