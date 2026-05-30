@@ -155,6 +155,9 @@ export const CLIConfigSchema = z.object({
             enabled: z.boolean().optional(),
         }).passthrough().optional(),
     }).passthrough().optional(),
+    effortLevels: z.object({
+        enabled: z.boolean().optional(),
+    }).passthrough().optional(),
 }).passthrough();
 
 /**

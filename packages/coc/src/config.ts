@@ -211,6 +211,10 @@ export interface CLIConfig {
             enabled?: boolean;
         };
     };
+    /** Effort Tiers configuration — single Low/Medium/High selector replacing model picker + effort pill. Disabled by default. */
+    effortLevels?: {
+        enabled?: boolean;
+    };
 }
 
 // ============================================================================
@@ -418,6 +422,10 @@ export interface ResolvedCLIConfig {
             enabled: boolean;
         };
     };
+    /** Effort Tiers configuration — single Low/Medium/High selector replacing model picker + effort pill. */
+    effortLevels: {
+        enabled: boolean;
+    };
 }
 
 // ============================================================================
@@ -560,6 +568,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         hierarchy: {
             enabled: false,
         },
+    },
+    effortLevels: {
+        enabled: false,
     },
 };
 

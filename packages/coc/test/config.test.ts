@@ -830,6 +830,8 @@ timeout: 300
                 'workItems:',
                 '  hierarchy:',
                 '    enabled: true',
+                'effortLevels:',
+                '  enabled: true',
             ].join('\n'));
             const result = getResolvedConfigWithSource(configPath);
 
@@ -958,6 +960,9 @@ timeout: 300
                     "enabled": false,
                   },
                   "defaultProvider": "copilot",
+                  "effortLevels": {
+                    "enabled": false,
+                  },
                   "excalidraw": {
                     "enabled": false,
                   },
@@ -1089,6 +1094,7 @@ timeout: 300
                   "codex.enabled": "default",
                   "containerDefaultAgent.enabled": "default",
                   "defaultProvider": "default",
+                  "effortLevels.enabled": "default",
                   "excalidraw.enabled": "default",
                   "features.autoMemoryPromotion": "file",
                   "features.focusedDiff": "file",

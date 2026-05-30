@@ -43,6 +43,7 @@ export type ResolvedConfigNamespaceValues = Pick<
     | 'monitoring'
     | 'skills'
     | 'workItems'
+    | 'effortLevels'
 >;
 
 const CHAT_FOLLOW_UP_SOURCE_KEYS = [
@@ -81,6 +82,7 @@ const CODEX_SOURCE_KEYS = ['codex.enabled'] as const;
 const CLAUDE_SOURCE_KEYS = ['claude.enabled'] as const;
 const FEATURES_SOURCE_KEYS = ['features.autoMemoryPromotion', 'features.focusedDiff'] as const;
 const WORK_ITEMS_HIERARCHY_SOURCE_KEYS = ['workItems.hierarchy.enabled'] as const;
+const EFFORT_LEVELS_SOURCE_KEYS = ['effortLevels.enabled'] as const;
 
 const MEMORY_PROMOTION_SOURCE_KEYS = [
     'memoryPromotion.batchSize',
@@ -119,6 +121,7 @@ export const CONFIG_NAMESPACE_SOURCE_KEYS = [
     ...MEMORY_PROMOTION_SOURCE_KEYS,
     ...MEMORY_PROMOTION_AI_NORMALIZATION_SOURCE_KEYS,
     ...WORK_ITEMS_HIERARCHY_SOURCE_KEYS,
+    ...EFFORT_LEVELS_SOURCE_KEYS,
 ] as const;
 
 const source = (
@@ -375,6 +378,11 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
                     },
                 },
             }),
+        },
+        {
+            name: 'effortLevels',
+            sourceDescriptors: [source('effortLevels.', ['effortLevels'], EFFORT_LEVELS_SOURCE_KEYS)],
+            merge: (base, override) => ({ effortLevels: { enabled: override?.effortLevels?.enabled ?? base.effortLevels?.enabled ?? false } }),
         },
     ];
 }

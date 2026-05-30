@@ -38,6 +38,8 @@ interface DashboardConfig {
     workItemsHierarchyEnabled?: boolean;
     /** Whether direct commit SHA lookup in the Git tab is enabled (feature flag). */
     gitCommitLookupEnabled?: boolean;
+    /** Whether the Effort Tiers selector (Low/Medium/High) is enabled in the composer. Disabled by default. */
+    effortLevelsEnabled?: boolean;
 }
 
 /** Cached runtime config loaded from the API. */
@@ -100,6 +102,7 @@ async function _doLoadRuntimeConfig(): Promise<void> {
             defaultProvider: data.features.defaultProvider,
             workItemsHierarchyEnabled: data.features.workItemsHierarchyEnabled,
             gitCommitLookupEnabled: data.features.gitCommitLookupEnabled,
+            effortLevelsEnabled: data.features.effortLevelsEnabled,
             hostname: data.hostname ?? bootstrap.hostname,
             bindAddress: data.bindAddress ?? bootstrap.bindAddress,
         };
@@ -240,6 +243,11 @@ export function isWorkItemsHierarchyEnabled(): boolean {
 /** Returns true when direct commit SHA lookup in the Git tab is enabled. */
 export function isGitCommitLookupEnabled(): boolean {
     return getConfig().gitCommitLookupEnabled === true;
+}
+
+/** Returns true when the Effort Tiers selector is enabled (replaces model picker + effort pill). */
+export function isEffortLevelsEnabled(): boolean {
+    return getConfig().effortLevelsEnabled === true;
 }
 
 /** Returns the configured default AI provider for new chats/tasks. */

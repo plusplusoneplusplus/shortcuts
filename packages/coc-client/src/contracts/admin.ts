@@ -71,6 +71,7 @@ export interface AdminResolvedConfig {
   defaultProvider?: 'copilot' | 'codex' | 'claude';
   mcpOauth?: { enabled?: boolean };
   workItems?: { hierarchy?: { enabled?: boolean } };
+  effortLevels?: { enabled?: boolean };
   [key: string]: unknown;
 }
 
@@ -126,6 +127,7 @@ export interface AdminConfigUpdate {
   'claude.enabled'?: boolean;
   defaultProvider?: 'copilot' | 'codex' | 'claude';
   'workItems.hierarchy.enabled'?: boolean;
+  'effortLevels.enabled'?: boolean;
   [key: string]: unknown;
 }
 
@@ -159,6 +161,7 @@ export interface RuntimeDashboardConfig {
     defaultProvider: 'copilot' | 'codex' | 'claude';
     workItemsHierarchyEnabled: boolean;
     gitCommitLookupEnabled: boolean;
+    effortLevelsEnabled: boolean;
   };
   hostname?: string;
   bindAddress?: string;
