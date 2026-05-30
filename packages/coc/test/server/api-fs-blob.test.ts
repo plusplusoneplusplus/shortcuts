@@ -16,16 +16,26 @@ import type { Route } from '../../src/server/types';
 let server: http.Server;
 let baseUrl: string;
 let tmpDir: string;
+let cleanupDirs: string[] = [];
 
-function makeServer(dataDir?: string): http.Server {
+function makeServer(dataDir?: string, workspaceRoots: string[] = []): http.Server {
     const routes: Route[] = [];
-    registerApiFsRoutes(routes, { dataDir });
+    registerApiFsRoutes(routes, {
+        dataDir,
+        workspaceProvider: {
+            getWorkspaces: async () => workspaceRoots.map((rootPath, index) => ({
+                id: `repo-${index}`,
+                name: path.basename(rootPath),
+                rootPath,
+            })),
+        },
+    });
     const handler = createRouter({ routes, spaHtml: '' });
     return http.createServer(handler);
 }
 
-async function startServer(dataDir?: string): Promise<void> {
-    server = makeServer(dataDir);
+async function startServer(dataDir?: string, workspaceRoots: string[] = []): Promise<void> {
+    server = makeServer(dataDir, workspaceRoots);
     return new Promise((resolve, reject) => {
         server.on('error', reject);
         server.listen(0, '127.0.0.1', () => {
@@ -54,6 +64,7 @@ beforeEach(async () => {
     // Create a temp directory under ~/.copilot for trusted access
     tmpDir = path.join(os.homedir(), '.copilot', '_test_fs_blob_' + Date.now());
     fs.mkdirSync(tmpDir, { recursive: true });
+    cleanupDirs = [];
 });
 
 afterEach(async () => {
@@ -61,6 +72,11 @@ afterEach(async () => {
     // Clean up temp files
     if (tmpDir && fs.existsSync(tmpDir)) {
         fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+    for (const dir of cleanupDirs) {
+        if (fs.existsSync(dir)) {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
     }
 });
 
@@ -139,6 +155,41 @@ describe('GET /api/fs/blob', () => {
         } finally {
             fs.rmSync(dataDirTmp, { recursive: true, force: true });
         }
+    });
+
+    it('accepts absolute paths within registered workspaces', async () => {
+        const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), '_test_fs_blob_repo_'));
+        cleanupDirs.push(repoDir);
+        const filePath = path.join(repoDir, 'plans', 'goal.md');
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        fs.writeFileSync(filePath, '## Goal\nAllow repo files');
+
+        await startServer(undefined, [repoDir]);
+
+        const { status, body } = await apiGet(`/api/fs/blob?path=${encodeURIComponent(filePath)}`);
+
+        expect(status).toBe(200);
+        expect(body.content).toBe('## Goal\nAllow repo files');
+        expect(body.encoding).toBe('utf-8');
+        expect(body.mimeType).toBe('text/markdown');
+    });
+
+    it('rejects sibling paths outside registered workspaces', async () => {
+        const parentDir = fs.mkdtempSync(path.join(os.tmpdir(), '_test_fs_blob_parent_'));
+        cleanupDirs.push(parentDir);
+        const repoDir = path.join(parentDir, 'repo');
+        const siblingDir = path.join(parentDir, 'repo-sibling');
+        fs.mkdirSync(repoDir, { recursive: true });
+        fs.mkdirSync(siblingDir, { recursive: true });
+        const filePath = path.join(siblingDir, 'secret.md');
+        fs.writeFileSync(filePath, 'not in repo');
+
+        await startServer(undefined, [repoDir]);
+
+        const { status, body } = await apiGet(`/api/fs/blob?path=${encodeURIComponent(filePath)}`);
+
+        expect(status).toBe(403);
+        expect(body.error).toContain('outside trusted directories');
     });
 
     it('expands tilde in paths', async () => {

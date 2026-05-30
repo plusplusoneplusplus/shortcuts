@@ -10,7 +10,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
 import { execFileSync } from 'child_process';
-import { getDefaultWslDistro, getWslExecutablePath } from '@plusplusoneplusplus/forge';
+import { getDefaultWslDistro, getWslExecutablePath, isWithinDirectory } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJSON } from '../core/api-handler';
 import { handleAPIError, notFound } from '../errors';
@@ -190,6 +190,47 @@ function fsBlobIsBinary(buffer: Buffer): boolean {
 
 export interface RegisterApiFsRoutesOptions {
     dataDir?: string;
+    workspaceProvider?: {
+        getWorkspaces(): Promise<Array<{ rootPath: string }>>;
+    };
+}
+
+async function readRegisteredWorkspaceRoots(options?: RegisterApiFsRoutesOptions): Promise<string[]> {
+    if (options?.workspaceProvider) {
+        const workspaces = await options.workspaceProvider.getWorkspaces();
+        return workspaces.map(workspace => workspace.rootPath).filter(Boolean);
+    }
+
+    if (!options?.dataDir) {
+        return [];
+    }
+
+    const workspacesPath = path.join(options.dataDir, 'workspaces.json');
+    try {
+        const raw = await fs.promises.readFile(workspacesPath, 'utf-8');
+        const parsed: unknown = JSON.parse(raw);
+        if (!Array.isArray(parsed)) {
+            return [];
+        }
+        return parsed
+            .map(workspace => {
+                if (workspace && typeof workspace === 'object' && typeof (workspace as { rootPath?: unknown }).rootPath === 'string') {
+                    return (workspace as { rootPath: string }).rootPath;
+                }
+                return '';
+            })
+            .filter(Boolean);
+    } catch (err) {
+        if (err && typeof err === 'object' && (err as NodeJS.ErrnoException).code === 'ENOENT') {
+            return [];
+        }
+        throw err;
+    }
+}
+
+async function isWithinRegisteredWorkspace(target: string, options?: RegisterApiFsRoutesOptions): Promise<boolean> {
+    const roots = await readRegisteredWorkspaceRoots(options);
+    return roots.some(root => isWithinDirectory(target, root));
 }
 
 export function registerApiFsRoutes(routes: Route[], options?: RegisterApiFsRoutesOptions): void {
@@ -280,7 +321,10 @@ export function registerApiFsRoutes(routes: Route[], options?: RegisterApiFsRout
 
             const resolved = path.resolve(rawPath.replace(/^~(\/|\\|$)/, os.homedir() + path.sep));
 
-            if (!isWithinTrustedReadOnlyDir(resolved, options?.dataDir)) {
+            if (
+                !isWithinTrustedReadOnlyDir(resolved, options?.dataDir) &&
+                !(await isWithinRegisteredWorkspace(resolved, options))
+            ) {
                 res.writeHead(403, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: 'Path is outside trusted directories' }));
                 return;
