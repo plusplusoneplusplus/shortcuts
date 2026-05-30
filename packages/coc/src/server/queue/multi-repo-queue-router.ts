@@ -244,15 +244,31 @@ export class MultiRepoQueueRouter extends EventEmitter {
     }
 
     /**
+     * Route a process-scoped operation to the first per-repo bridge that
+     * accepts ownership of the request.
+     */
+    private async dispatchToOwnerBridge<T>(
+        condition: (bridge: QueueExecutorBridge) => Promise<boolean>,
+        action: (bridge: QueueExecutorBridge) => Promise<T>,
+    ): Promise<{ value: T } | undefined> {
+        for (const { bridge } of this.bridges.values()) {
+            if (await condition(bridge)) {
+                return { value: await action(bridge) };
+            }
+        }
+        return undefined;
+    }
+
+    /**
      * Execute a follow-up message on an existing AI session.
      * Searches across all per-repo bridges for the process.
      */
-    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource): Promise<void> {
-        for (const { bridge } of this.bridges.values()) {
-            if (await bridge.isSessionAlive(processId)) {
-                return bridge.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource);
-            }
-        }
+    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh'): Promise<void> {
+        const handled = await this.dispatchToOwnerBridge(
+            (bridge) => bridge.isSessionAlive(processId),
+            (bridge) => bridge.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource, reasoningEffort),
+        );
+        if (handled) return;
         throw new Error(`No active session found for process ${processId}`);
     }
 
@@ -261,37 +277,38 @@ export class MultiRepoQueueRouter extends EventEmitter {
      * Searches across all per-repo bridges for the process.
      */
     async steerProcess(processId: string, message: string): Promise<boolean> {
-        for (const { bridge } of this.bridges.values()) {
-            if (bridge.steerProcess) {
-                const steered = await bridge.steerProcess(processId, message);
-                if (steered) return true;
-            }
-        }
-        return false;
+        const handled = await this.dispatchToOwnerBridge(
+            async (bridge) => await bridge.steerProcess?.(processId, message) === true,
+            async () => true,
+        );
+        return handled?.value ?? false;
     }
 
     /** Answer a pending ask-user question across all per-repo bridges. */
     async answerAskUserQuestion(processId: string, questionId: string, answer: string | string[] | boolean): Promise<boolean> {
-        for (const { bridge } of this.bridges.values()) {
-            if (await bridge.answerAskUserQuestion?.(processId, questionId, answer)) return true;
-        }
-        return false;
+        const handled = await this.dispatchToOwnerBridge(
+            async (bridge) => await bridge.answerAskUserQuestion?.(processId, questionId, answer) === true,
+            async () => true,
+        );
+        return handled?.value ?? false;
     }
 
     /** Skip a pending ask-user question across all per-repo bridges. */
     async skipAskUserQuestion(processId: string, questionId: string): Promise<boolean> {
-        for (const { bridge } of this.bridges.values()) {
-            if (await bridge.skipAskUserQuestion?.(processId, questionId)) return true;
-        }
-        return false;
+        const handled = await this.dispatchToOwnerBridge(
+            async (bridge) => await bridge.skipAskUserQuestion?.(processId, questionId) === true,
+            async () => true,
+        );
+        return handled?.value ?? false;
     }
 
     /** Resolve a pending ask-user question batch across all per-repo bridges. */
     async answerAskUserQuestions(processId: string, batchId: string, answers: Array<{ questionId: string; answer?: string | string[] | boolean; skipped?: boolean }>): Promise<boolean> {
-        for (const { bridge } of this.bridges.values()) {
-            if (await bridge.answerAskUserQuestions?.(processId, batchId, answers)) return true;
-        }
-        return false;
+        const handled = await this.dispatchToOwnerBridge(
+            async (bridge) => await bridge.answerAskUserQuestions?.(processId, batchId, answers) === true,
+            async () => true,
+        );
+        return handled?.value ?? false;
     }
 
     /**
