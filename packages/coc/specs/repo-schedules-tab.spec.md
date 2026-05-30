@@ -3,7 +3,7 @@
 **Document type:** Formal UX Specification  
 **Scope:** CoC Dashboard → Repository Detail → Schedules Tab  
 **Purpose:** Authoritative reference for validating any future UI/UX changes to the Schedules tab.  
-**Version:** 1.0.0
+**Version:** 1.1.0
 
 ---
 
@@ -15,11 +15,15 @@ The **Repository Schedules Tab** provides an interface for creating, managing, a
 
 | Property | Value |
 |---|---|
-| Tab label | `Schedules` |
-| Tab position | Eighth tab in `RepoDetail` |
+| Tab key | `schedules` |
+| Tab label (classic layout) | `Schedules` |
+| Tab label (dev-workflow layout) | `Jobs` |
+| Tab position | Position depends on layout mode (`classic` keeps the historical position; `dev-workflow` places it in its custom-ordered tab strip after Work Items) |
 | Default tab | No |
+| Keyboard shortcut | `Alt+S` |
 | URL fragment | `#repos/<workspaceId>/schedules` |
 | Deep-link URL | `#repos/<workspaceId>/schedules/<scheduleId>` |
+| Implementing component | `RepoSchedulesTab` |
 
 ---
 
@@ -284,3 +288,4 @@ The **Repository Schedules Tab** provides an interface for creating, managing, a
 | Version | Date | Summary |
 |---|---|---|
 | 1.0.0 | 2026-03-25 | Initial specification |
+| 1.1.0 | 2026-05-29 | Document `Jobs` label in dev-workflow layout (key/URL/component unchanged), add keyboard shortcut and implementing-component reference |

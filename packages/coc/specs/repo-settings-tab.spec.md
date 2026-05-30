@@ -3,23 +3,33 @@
 **Document type:** Formal UX Specification  
 **Scope:** CoC Dashboard → Repository Detail → Settings Tab  
 **Purpose:** Authoritative reference for validating any future UI/UX changes to the Settings tab.  
-**Version:** 1.0.0
+**Version:** 2.0.0
 
 ---
 
 ## 1. Overview
 
-The **Repository Settings Tab** provides a centralized configuration interface for a repository's metadata, preferences, MCP servers, agent skills, custom instructions, memory settings, and run-script templates. It uses a left sidebar navigation with section-specific content panels on the right.
+The **Repository Settings Tab** provides a centralized configuration interface for a repository. The sidebar splits sections into two groups:
+
+- **Repository** — `Info`, `Preferences`, `Plans Folder`, `Notes` (or `Sync` for virtual workspaces)
+- **Agent** — `MCP Servers`, `Agent Skills`, `LLM Tools`, `Custom Instructions`, `Memory`
+
+A client-side filter narrows the navigation list. Each section renders a header (title + description + optional save/refresh affordances) followed by the section content inside a `SectionCard`.
 
 ### 1.1 Tab Identity
 
 | Property | Value |
 |---|---|
+| Tab key | `settings` |
 | Tab label | `Settings` |
-| Tab position | Fifth tab in `RepoDetail` |
-| Default tab | No |
+| Tab position | Listed after Notes; default tab for newly-opened repos |
+| Default tab | Yes — `settings` is the default for a fresh repo selection |
+| Keyboard shortcut | `Alt+C` |
 | URL fragment | `#repos/<workspaceId>/settings` |
 | Deep-link URL | `#repos/<workspaceId>/settings/<section>` |
+| Implementing component | `RepoSettingsTab` (`features/repo-settings/RepoSettingsTab.tsx`) |
+| Section keys | `info`, `preferences`, `mcp`, `skills`, `llm-tools`, `instructions`, `memory`, `tasks`, `notes` |
+| Legacy redirect | `#repos/<id>/settings/run-script-template` → `#repos/<id>/workflows` |
 
 ---
 
@@ -129,14 +139,45 @@ The **Repository Settings Tab** provides a centralized configuration interface f
 
 ---
 
-### 3.7 Run Script Templates Section
+### 3.7 LLM Tools Section
 
-**US-09 — View run-script templates**
-> As a developer, I want to see configured run-script templates.
+**US-09 — Toggle LLM tools**
+> As an AI operator, I want to enable or disable individual tools available to the agent.
 
-- **Given** the Run Script Templates section is selected
-- **When** templates exist
-- **Then** read-only cards show: name, script path, arguments, working directory, model chip, and "pause on failure" indicator
+- **Given** the LLM Tools section is selected
+- **When** the section loads
+- **Then** an `LlmToolsPanel` lists every available tool with a toggle, grouped by category
+- **When** the user toggles a tool
+- **Then** the change is auto-saved per workspace and survives page reloads
+
+---
+
+### 3.8 Plans Folder Section (`tasks`)
+
+**US-10 — Configure plans folder**
+> As a planner, I want to configure where AI-generated plans/tasks are stored for this repository.
+
+- **Given** the Plans Folder section is selected
+- **When** the section loads
+- **Then** `TasksSettingsSection` shows the current tasks folder path with edit/move affordances and validation errors
+
+---
+
+### 3.9 Notes / Sync Section
+
+**US-11 — Configure notes auto-commit (regular workspace)**
+> As a developer, I want to configure notebook auto-commit and git settings.
+
+- **Given** the Notes section is selected on a regular workspace
+- **When** the section loads
+- **Then** `NotesSettingsSection` shows auto-commit cadence, branch, and commit-message template controls
+
+**US-12 — Configure sync (virtual workspace)**
+> As a user of a virtual workspace (`my_work`, `my_life`), I want to configure cross-device sync for my notes/work-items.
+
+- **Given** the Notes section is selected on a virtual workspace (`my_work` or `my_life`)
+- **When** the section loads
+- **Then** `SyncSettingsSection` is shown instead of `NotesSettingsSection` (the menu label remains "Notes" but the body covers cross-device sync)
 
 ---
 
@@ -146,10 +187,14 @@ The **Repository Settings Tab** provides a centralized configuration interface f
 
 | Feature | Acceptance Criteria |
 |---|---|
-| Nav items | Info, Preferences, MCP Servers, Agent Skills, Custom Instructions, Memory, Run Script Templates, Plans Folder |
+| Nav groups | Two groups with labels: **Repository** (Info, Preferences, Plans Folder, Notes) and **Agent** (MCP Servers, Agent Skills, LLM Tools, Custom Instructions, Memory) |
+| Search filter | Text input filters nav items client-side; non-matching items are hidden, group headers stay |
 | Badges | MCP: count of enabled servers; Skills: installed count; Instructions: blue dot if any mode has content |
 | Section routing | Hash updates to `#repos/<workspaceId>/settings/<section>` |
 | Sidebar width | Fixed `w-52` |
+| Section header | Title + description rendered above the content card; optional save/refresh affordances |
+| Content surface | Each section's body is wrapped in a `SectionCard` |
+| Virtual-workspace handling | `notes` section automatically swaps `NotesSettingsSection` ↔ `SyncSettingsSection` based on `isVirtualWorkspaceId(workspaceId)` |
 
 ### 4.2 Info Section
 
@@ -197,7 +242,15 @@ The **Repository Settings Tab** provides a centralized configuration interface f
 | Linked repos | Multi-repo skill linking via `PATCH .../preferences` with `linkedRepoIds` |
 | Error handling | Delete shows toast + JSON error; toggles revert on failure |
 
-### 4.6 Custom Instructions Section
+### 4.6 LLM Tools Section
+
+| Feature | Acceptance Criteria |
+|---|---|
+| Tool list | Every available tool is rendered as a row with name, description, and toggle |
+| Persistence | Toggle state is auto-saved per workspace via `PATCH /api/workspaces/:id/preferences` (`disabledLlmTools` set) |
+| Empty state | "No LLM tools available" if the catalog is empty |
+
+### 4.7 Custom Instructions Section
 
 | Feature | Acceptance Criteria |
 |---|---|
@@ -206,13 +259,19 @@ The **Repository Settings Tab** provides a centralized configuration interface f
 | Delete | `DELETE .../instructions/:mode` |
 | Error handling | Toast on save/delete failure |
 
-### 4.7 Run Script Templates Section
+### 4.8 Plans Folder Section (`tasks`)
 
 | Feature | Acceptance Criteria |
 |---|---|
-| Read-only cards | Name, script path, args, cwd, model chip, pause-on-failure indicator |
-| Loading state | Spinner |
-| Empty state | No templates message |
+| Path input | Shows current tasks folder; edit triggers a Save call to `tasks/settings` |
+| Validation | Inline errors for non-existent or non-writable paths |
+
+### 4.9 Notes / Sync Section
+
+| Feature | Acceptance Criteria |
+|---|---|
+| Notes settings (regular workspace) | Auto-commit cadence selector, branch input, commit-message template, save button |
+| Sync settings (virtual workspace) | Replaces the notes UI with cross-device sync configuration when `workspaceId ∈ { 'my_work', 'my_life' }` |
 
 ---
 
@@ -224,7 +283,9 @@ The **Repository Settings Tab** provides a centralized configuration interface f
 | INV-02 | MCP server toggle with `null` means all servers are enabled (default) |
 | INV-03 | Skill toggles and linked repo changes revert on API failure |
 | INV-04 | Custom instructions blue dot in nav reflects whether any mode has content |
-| INV-05 | Run Script Templates section is read-only |
+| INV-05 | The `notes` section transparently swaps to `SyncSettingsSection` when the workspace is virtual (`my_work` / `my_life`); the menu label stays "Notes" |
+| INV-06 | Legacy `#repos/<id>/settings/run-script-template` deep-links are redirected to `#repos/<id>/workflows` (handled in Router); script templates no longer live in Settings |
+| INV-07 | The settings sidebar is grouped (`Repository`, `Agent`); all navigation items are filterable via a search input |
 
 ---
 
@@ -307,7 +368,12 @@ The **Repository Settings Tab** provides a centralized configuration interface f
 | `GET /api/workspaces/:id/instructions` | Instructions list | US-07 |
 | `PUT /api/workspaces/:id/instructions/:mode` | Save instructions | US-07 |
 | `DELETE /api/workspaces/:id/instructions/:mode` | Delete instructions | US-07 |
-| `GET /api/workspaces/:id/tasks/settings` | Tasks folder info | US-01 |
+| `GET /api/workspaces/:id/tasks/settings` | Tasks folder info | US-01, US-10 |
+| `PATCH /api/workspaces/:id/tasks/settings` | Update tasks folder | US-10 |
+| `GET /api/workspaces/:id/llm-tools` | LLM Tools catalog | US-09 |
+| `PATCH /api/workspaces/:id/preferences` (disabledLlmTools) | Toggle LLM tools | US-09 |
+| `GET/PATCH /api/workspaces/:id/notes/settings` | Notes auto-commit settings | US-11 |
+| `GET/PATCH /api/workspaces/:id/sync/settings` | Cross-device sync settings (virtual workspaces only) | US-12 |
 
 ---
 
@@ -317,3 +383,4 @@ The **Repository Settings Tab** provides a centralized configuration interface f
 |---|---|---|
 | 1.0.0 | 2026-03-25 | Initial specification |
 | 1.1.0 | 2026-04-05 | Preferences section is now editable (models, depth, effort, skills, linked repos); removed INV-05 |
+| 2.0.0 | 2026-05-29 | Sidebar is now grouped (`Repository`, `Agent`) with a client-side filter; removed `Run Script Templates` (now lives in Workflows tab — legacy URL redirects); added `LLM Tools`, `Plans Folder`, and `Notes` sections (with virtual-workspace `Sync` swap); documented `settings` as the default tab for new repos and added implementation-component reference |

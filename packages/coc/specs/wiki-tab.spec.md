@@ -1,25 +1,31 @@
 # Wiki Tab — UI/UX Specification
 
 **Document type:** Formal UX Specification  
-**Scope:** CoC Dashboard → Wiki (Top-Level Tab)  
+**Scope:** CoC Dashboard → Wiki (Top-Level Tab + embedded inside RepoDetail)  
 **Purpose:** Authoritative reference for validating any future UI/UX changes to the Wiki tab.  
-**Version:** 1.0.0
+**Version:** 1.1.0
 
 ---
 
 ## 1. Overview
 
-The **Wiki Tab** is a top-level dashboard tab for managing AI-generated documentation wikis. It provides a wiki registry (list view) for adding, editing, and deleting wikis, and a wiki detail view with four sub-tabs: Browse (component tree + articles), Ask (AI Q&A), Graph (component graph visualization), and Admin (generation pipeline, seeds, config, delete). Wikis are generated via a six-phase AI pipeline and can be in pending, generating, loaded, or error states.
+The **Wiki feature** manages AI-generated documentation wikis. It surfaces in two places:
+
+- A top-level dashboard tab (`#wiki`), gated by `SHOW_WIKI_TAB` in `layout/TopBar.tsx`. It is **disabled by default** (`SHOW_WIKI_TAB = false`) — the top-level tab and bottom-nav row are hidden until the flag is flipped to `true`.
+- An embedded view inside `RepoDetail` (`#repos/<repoId>/wiki`), where it shares the same registry + detail components but receives the `embedded` prop and an `onHashChange` callback so the surrounding repo shell drives the URL.
+
+In both surfaces it shows a wiki registry (list view) for adding, editing, and deleting wikis, and a wiki detail view with four project tabs: **Browse** (component tree + articles), **Ask** (AI Q&A), **Graph** (component graph visualization), and **Admin** (generation pipeline, seeds, config, delete). Wikis are generated via the six-phase AI pipeline (see `references/deep-wiki.md`) and can be in `pending`, `generating`, `loaded`, or `error` states.
 
 ### 1.1 Tab Identity
 
 | Property | Value |
 |---|---|
 | Tab label | `Wiki` |
-| Tab position | Top-level tab (conditionally visible via `SHOW_WIKI_TAB`) |
+| Tab position | Top-level tab (gated by `SHOW_WIKI_TAB`; default `false`) and `RepoDetail` sub-tab (gated by `VISIBLE_SUB_TABS`) |
 | Default tab | No |
 | URL fragment | `#wiki` |
-| Deep-link URL | `#wiki/<wikiId>`, `#wiki/<wikiId>/<tab>`, `#wiki/<wikiId>/component/<componentId>` |
+| Deep-link URLs | `#wiki/<wikiId>`, `#wiki/<wikiId>/<tab>` (for `tab` ∈ `ask` \| `graph` \| `admin`), `#wiki/<wikiId>/component/<componentId>` (Browse), `#wiki/<wikiId>/admin/<adminSubTab>` (for `adminSubTab` ∈ `seeds` \| `config` \| `delete`; `generate` is the default and uses `#wiki/<wikiId>/admin`) |
+| Embedded inside repo | `#repos/<repoId>/wiki[...]` reuses the same hash schema with `<wikiId>` replaced by the repo's wiki id |
 
 ---
 
@@ -236,7 +242,10 @@ The **Wiki Tab** is a top-level dashboard tab for managing AI-generated document
 | INV-04 | Wiki registration requires an existing directory; `component-graph.json` is needed for loaded status |
 | INV-05 | The `wikiAutoGenerate` flag is consumed once and cleared |
 | INV-06 | Last-visited tab per wiki is restored from `wikiTabState` (except Browse which is default) |
-| INV-07 | `SHOW_WIKI_TAB` controls visibility of the Wiki tab in the top bar and bottom nav |
+| INV-07 | `SHOW_WIKI_TAB` controls visibility of the Wiki tab in the top bar, bottom nav, and the `RepoDetail` sub-tab list (`VISIBLE_SUB_TABS`); default value is `false` |
+| INV-08 | When rendered embedded inside `RepoDetail` (`embedded` prop), `WikiDetail` does not write to global wiki state (`SET_WIKI_TAB`) and instead forwards URL changes via the `onHashChange` callback |
+| INV-09 | The Admin sub-tab `generate` is the default and uses the bare `#wiki/<wikiId>/admin` URL; only `seeds`, `config`, `delete` produce `…/admin/<sub>` URLs |
+| INV-10 | Selecting a component overrides the active tab — `#wiki/<wikiId>/component/<componentId>` always opens Browse with that component selected, regardless of the previously active tab |
 
 ---
 
@@ -345,3 +354,4 @@ Wiki Detail:
 | Version | Date | Summary |
 |---|---|---|
 | 1.0.0 | 2026-03-25 | Initial specification |
+| 1.1.0 | 2026-05-29 | Documented `SHOW_WIKI_TAB` default-off feature flag, embedded-mode rendering inside `RepoDetail` (`embedded` + `onHashChange`), exact deep-link format produced by `buildWikiHash` (e.g. `#wiki/<id>/admin/<sub>` only for non-default admin sub-tabs), and component deep-link override behavior. Added invariants INV-08…INV-10. |

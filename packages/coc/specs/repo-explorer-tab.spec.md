@@ -3,7 +3,7 @@
 **Document type:** Formal UX Specification  
 **Scope:** CoC Dashboard → Repository Detail → Explorer Tab  
 **Purpose:** Authoritative reference for validating any future UI/UX changes to the Explorer tab.  
-**Version:** 1.0.0
+**Version:** 1.1.0
 
 ---
 
@@ -16,10 +16,12 @@ The **Repository Explorer Tab** provides a file browser for navigating, searchin
 | Property | Value |
 |---|---|
 | Tab label | `Explorer` |
-| Tab position | Sixth tab in `RepoDetail` |
+| Tab position | Sixth in `RepoDetail` (Classic order); reorders in `dev-workflow` UI layout mode but keeps `explorer` between `schedules` and `workflows` |
+| Keyboard shortcut | `Alt+E` to switch to Explorer when `RepoDetail` is focused |
 | Default tab | No |
 | URL fragment | `#repos/<workspaceId>/explorer` |
-| Deep-link URL | `#repos/<workspaceId>/explorer/<filePath>` |
+| Deep-link URL | `#repos/<workspaceId>/explorer/<filePath>` (paths whose last segment contains a `.` are auto-opened in the preview pane) |
+| Component panel | `ExplorerPanel` (`features/repo-detail/explorer/ExplorerPanel.tsx`) backed by `explorerApi` (`getSpaCocClient().explorer`) |
 
 ---
 
@@ -304,3 +306,4 @@ The **Repository Explorer Tab** provides a file browser for navigating, searchin
 | Version | Date | Summary |
 |---|---|---|
 | 1.0.0 | 2026-03-25 | Initial specification |
+| 1.1.0 | 2026-05-29 | Added explicit keyboard shortcut (`Alt+E`), clarified that `dev-workflow` UI layout reorders the surrounding tab strip while keeping Explorer adjacent to Schedules and Workflows, named the implementing component (`ExplorerPanel`) and the API wrapper (`explorerApi` over `getSpaCocClient().explorer`), and noted the deep-link auto-preview heuristic (paths with `.` in the last segment). |
