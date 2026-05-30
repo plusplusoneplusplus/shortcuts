@@ -300,6 +300,7 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
                 features: {
                     autoMemoryPromotion: override?.features?.autoMemoryPromotion ?? base.features?.autoMemoryPromotion ?? false,
                     focusedDiff: override?.features?.focusedDiff ?? base.features?.focusedDiff ?? false,
+                    gitCommitLookup: override?.features?.gitCommitLookup ?? base.features?.gitCommitLookup ?? false,
                 },
             }),
         },

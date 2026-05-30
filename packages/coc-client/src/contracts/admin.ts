@@ -158,6 +158,7 @@ export interface RuntimeDashboardConfig {
     claudeEnabled: boolean;
     defaultProvider: 'copilot' | 'codex' | 'claude';
     workItemsHierarchyEnabled: boolean;
+    gitCommitLookupEnabled: boolean;
   };
   hostname?: string;
   bindAddress?: string;

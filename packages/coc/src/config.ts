@@ -170,6 +170,8 @@ export interface CLIConfig {
     features?: {
         autoMemoryPromotion?: boolean;
         focusedDiff?: boolean;
+        /** Direct commit SHA lookup in the Git tab. Disabled by default. */
+        gitCommitLookup?: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion?: {
@@ -375,6 +377,8 @@ export interface ResolvedCLIConfig {
     features: {
         autoMemoryPromotion: boolean;
         focusedDiff: boolean;
+        /** Direct commit SHA lookup in the Git tab. Disabled by default. */
+        gitCommitLookup: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion: {
@@ -524,6 +528,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     features: {
         autoMemoryPromotion: false,
         focusedDiff: false,
+        gitCommitLookup: false,
     },
     memoryPromotion: {
         batchSize: 50,

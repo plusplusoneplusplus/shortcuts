@@ -44,6 +44,7 @@ import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextM
 import type { BranchRangeInfo } from './branches/BranchChanges';
 import { buildFixupGroups } from './fixup-utils';
 import { rankSkillsByRecency, MRU_SKILL_LIMIT } from './skill-menu-ranking';
+import { isGitCommitLookupEnabled } from '../../utils/config';
 
 /**
  * Best-effort rebind of commit-chat binding when a hash changes.
@@ -170,6 +171,11 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
     const [searchQuery, setSearchQuery] = useState('');
     const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
+
+    // Commit lookup state (feature-gated: gitCommitLookup)
+    const [commitLookupLoading, setCommitLookupLoading] = useState(false);
+    const [commitLookupError, setCommitLookupError] = useState<string | null>(null);
+    const [openedCommit, setOpenedCommit] = useState<GitCommitItem | null>(null);
 
     // Branch-range state (lifted from BranchChanges)
     const [branchRangeData, setBranchRangeData] = useState<BranchRangeInfo | null>(null);
@@ -338,8 +344,31 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     } else if (target) {
                         setRightPanelView({ type: 'commit', commit: target });
                     } else {
-                        // Default to empty right panel; user must click to open something.
-                        setRightPanelView(null);
+                        // Deep-link SHA not found in loaded list — attempt direct lookup if enabled
+                        if (initialCommitHash && isGitCommitLookupEnabled() && /^[0-9a-f]{7,40}$/i.test(initialCommitHash)) {
+                            setCommitLookupLoading(true);
+                            setCommitLookupError(null);
+                            getSpaCocClient().git.getCommit(workspaceId, initialCommitHash)
+                                .then(result => {
+                                    const commit: GitCommitItem = {
+                                        hash: result.hash,
+                                        shortHash: result.shortHash,
+                                        subject: result.subject,
+                                        author: result.author,
+                                        authorEmail: result.authorEmail,
+                                        date: result.date,
+                                        parentHashes: result.parentHashes,
+                                        body: result.body,
+                                    };
+                                    setOpenedCommit(commit);
+                                    setRightPanelView({ type: 'commit', commit });
+                                })
+                                .catch(() => setCommitLookupError('Commit not found'))
+                                .finally(() => setCommitLookupLoading(false));
+                        } else {
+                            // Default to empty right panel; user must click to open something.
+                            setRightPanelView(null);
+                        }
                     }
                 }
             })
@@ -355,14 +384,38 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         if (hash === consumedDeepLinkRef.current) return;
         consumedDeepLinkRef.current = hash;
         const target = commits.find(c => c.hash.startsWith(hash));
-        if (!target) return;
+        if (!target) {
+            // Commit not in loaded list — attempt direct lookup if feature enabled
+            if (isGitCommitLookupEnabled() && /^[0-9a-f]{7,40}$/i.test(hash)) {
+                setCommitLookupLoading(true);
+                setCommitLookupError(null);
+                getSpaCocClient().git.getCommit(workspaceId, hash)
+                    .then(result => {
+                        const commit: GitCommitItem = {
+                            hash: result.hash,
+                            shortHash: result.shortHash,
+                            subject: result.subject,
+                            author: result.author,
+                            authorEmail: result.authorEmail,
+                            date: result.date,
+                            parentHashes: result.parentHashes,
+                            body: result.body,
+                        };
+                        setOpenedCommit(commit);
+                        setRightPanelView({ type: 'commit', commit });
+                    })
+                    .catch(() => setCommitLookupError('Commit not found'))
+                    .finally(() => setCommitLookupLoading(false));
+            }
+            return;
+        }
         const filePath = state.selectedGitFilePath;
         if (filePath) {
             setRightPanelView({ type: 'commit-file', hash: target.hash, filePath });
         } else {
             setRightPanelView({ type: 'commit', commit: target });
         }
-    }, [state.selectedGitCommitHash, state.selectedGitFilePath, loading, commits]);
+    }, [state.selectedGitCommitHash, state.selectedGitFilePath, loading, commits, workspaceId]);
 
     // Fetch skills once per workspace
     useEffect(() => {
@@ -672,6 +725,49 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: commit.hash });
         dispatch({ type: 'CLEAR_GIT_FILE_PATH' });
     }, [workspaceId, dispatch]);
+
+    /** Direct commit SHA lookup — used by search-input Enter and deep-link misses. */
+    const handleCommitLookup = useCallback(async (sha: string) => {
+        if (!isGitCommitLookupEnabled()) return;
+        const normalizedSha = sha.toLowerCase().trim();
+        if (!/^[0-9a-f]{7,40}$/.test(normalizedSha)) return;
+
+        // If already in the loaded list, just select it normally
+        const existing = commits.find(c => c.hash.startsWith(normalizedSha) || normalizedSha.startsWith(c.hash.slice(0, normalizedSha.length)));
+        if (existing) {
+            handleSelect(existing);
+            setOpenedCommit(null);
+            setCommitLookupError(null);
+            return;
+        }
+
+        setCommitLookupLoading(true);
+        setCommitLookupError(null);
+
+        try {
+            const result = await getSpaCocClient().git.getCommit(workspaceId, normalizedSha);
+            const commit: GitCommitItem = {
+                hash: result.hash,
+                shortHash: result.shortHash,
+                subject: result.subject,
+                author: result.author,
+                authorEmail: result.authorEmail,
+                date: result.date,
+                parentHashes: result.parentHashes,
+                body: result.body,
+            };
+            setOpenedCommit(commit);
+            setRightPanelView({ type: 'commit', commit });
+            location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/' + commit.hash;
+            dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: commit.hash });
+            dispatch({ type: 'CLEAR_GIT_FILE_PATH' });
+        } catch {
+            // Failure: preserve current state — URL is unchanged (only set on success above)
+            setCommitLookupError('Commit not found or ambiguous SHA');
+        } finally {
+            setCommitLookupLoading(false);
+        }
+    }, [workspaceId, commits, handleSelect, dispatch]);
 
     const handleMultiSelect = useCallback((selectedCommits: GitCommitItem[]) => {
         if (selectedCommits.length === 0) {
@@ -1587,6 +1683,12 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                                     } else {
                                         searchInputRef.current?.blur();
                                     }
+                                    return;
+                                }
+                                // SHA lookup on Enter (feature-gated)
+                                if (e.key === 'Enter' && isGitCommitLookupEnabled() && /^[0-9a-f]{7,40}$/i.test(searchQuery.trim())) {
+                                    e.preventDefault();
+                                    void handleCommitLookup(searchQuery.trim());
                                 }
                             }}
                             placeholder="Search subject, hash, author, path…"
@@ -1595,15 +1697,34 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                             aria-label="Search commits by subject, hash, author, or path"
                         />
                         {searchQuery ? (
-                            <button
-                                onClick={() => setSearchQuery('')}
-                                className="shrink-0 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] leading-none px-1"
-                                data-testid="git-search-clear"
-                                aria-label="Clear search"
-                                type="button"
-                            >
-                                ×
-                            </button>
+                            <>
+                                {isGitCommitLookupEnabled() && /^[0-9a-f]{7,40}$/i.test(searchQuery.trim()) && (
+                                    commitLookupLoading ? (
+                                        <span
+                                            className="shrink-0 text-[11px] text-[#848484] dark:text-[#888] leading-none pr-1 whitespace-nowrap animate-pulse"
+                                            data-testid="git-commit-lookup-loading"
+                                        >
+                                            Looking up…
+                                        </span>
+                                    ) : (
+                                        <span
+                                            className="shrink-0 text-[11px] text-[#0078d4] dark:text-[#3794ff] leading-none pr-1 whitespace-nowrap"
+                                            data-testid="git-commit-lookup-hint"
+                                        >
+                                            ↵ open commit
+                                        </span>
+                                    )
+                                )}
+                                <button
+                                    onClick={() => { setSearchQuery(''); setCommitLookupError(null); }}
+                                    className="shrink-0 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] leading-none px-1"
+                                    data-testid="git-search-clear"
+                                    aria-label="Clear search"
+                                    type="button"
+                                >
+                                    ×
+                                </button>
+                            </>
                         ) : (
                             <span
                                 className="shrink-0 inline-flex items-center justify-center min-w-[16px] h-[18px] px-1 font-mono text-[11px] leading-none text-[#999] dark:text-[#888] border border-[#d0d0d0] dark:border-[#3c3c3c] rounded bg-[#f5f5f5] dark:bg-[#252526]"
@@ -1707,6 +1828,39 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                             >
                                 Cancel
                             </button>
+                        </div>
+                    </div>
+                )}
+                {commitLookupError && (
+                    <div className="px-4 py-1.5 text-xs text-[#d32f2f] dark:text-[#f48771] bg-[#fdecea] dark:bg-[#3c2020] border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex items-center justify-between" data-testid="git-commit-lookup-error">
+                        <span>{commitLookupError}</span>
+                        <button
+                            onClick={() => setCommitLookupError(null)}
+                            className="ml-2 text-[#d32f2f] dark:text-[#f48771] hover:opacity-70 leading-none"
+                            aria-label="Dismiss error"
+                            data-testid="git-commit-lookup-error-dismiss"
+                            type="button"
+                        >
+                            ×
+                        </button>
+                    </div>
+                )}
+                {openedCommit && (
+                    <div className="border-b border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="git-opened-commit-section">
+                        <div className="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold text-[#0078d4] dark:text-[#3794ff] tracking-wide uppercase">
+                            Opened commit
+                        </div>
+                        <div
+                            role="button"
+                            tabIndex={0}
+                            className={`flex items-center gap-2 px-2.5 py-2 text-[13px] cursor-pointer select-none hover:bg-[#e8f0fe] dark:hover:bg-[#1a2744] focus:outline-none focus:bg-[#e8f0fe] dark:focus:bg-[#1a2744]${selectedHashes.has(openedCommit.hash) ? ' bg-[#e8f0fe] dark:bg-[#1a2744] border-l-2 border-[#0078d4]' : ''}`}
+                            onClick={() => handleSelect(openedCommit)}
+                            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelect(openedCommit); } }}
+                            data-testid="git-opened-commit-row"
+                        >
+                            <span className="font-mono text-[11px] text-[#0078d4] dark:text-[#3794ff] shrink-0">{openedCommit.shortHash}</span>
+                            <span className="flex-1 truncate text-[#1e1e1e] dark:text-[#ccc]">{openedCommit.subject}</span>
+                            <span className="shrink-0 text-[10px] px-1 py-px rounded border border-[#0078d4]/40 text-[#0078d4] dark:text-[#3794ff] bg-[#0078d4]/5 leading-tight">by ID</span>
                         </div>
                     </div>
                 )}

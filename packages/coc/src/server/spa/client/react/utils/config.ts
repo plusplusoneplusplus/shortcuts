@@ -36,6 +36,8 @@ interface DashboardConfig {
     defaultProvider?: 'copilot' | 'codex' | 'claude';
     /** Whether the Work Items hierarchy board is enabled (feature flag). */
     workItemsHierarchyEnabled?: boolean;
+    /** Whether direct commit SHA lookup in the Git tab is enabled (feature flag). */
+    gitCommitLookupEnabled?: boolean;
 }
 
 /** Cached runtime config loaded from the API. */
@@ -97,6 +99,7 @@ async function _doLoadRuntimeConfig(): Promise<void> {
             codexEnabled: data.features.codexEnabled,
             defaultProvider: data.features.defaultProvider,
             workItemsHierarchyEnabled: data.features.workItemsHierarchyEnabled,
+            gitCommitLookupEnabled: data.features.gitCommitLookupEnabled,
             hostname: data.hostname ?? bootstrap.hostname,
             bindAddress: data.bindAddress ?? bootstrap.bindAddress,
         };
@@ -232,6 +235,11 @@ export function isCodexEnabled(): boolean {
 /** Returns true when the Work Items hierarchy board feature flag is enabled. */
 export function isWorkItemsHierarchyEnabled(): boolean {
     return getConfig().workItemsHierarchyEnabled === true;
+}
+
+/** Returns true when direct commit SHA lookup in the Git tab is enabled. */
+export function isGitCommitLookupEnabled(): boolean {
+    return getConfig().gitCommitLookupEnabled === true;
 }
 
 /** Returns the configured default AI provider for new chats/tasks. */
