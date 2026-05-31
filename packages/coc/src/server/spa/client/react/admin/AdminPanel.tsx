@@ -147,7 +147,7 @@ export const ALL_TOOL_NAV_ITEMS: ToolNavItem[] = [
 export const TOOL_TAB_GROUP_LABELS: Partial<Record<DashboardTab, string>> = {
     memory: 'Knowledge',
     skills: 'Knowledge',
-    servers: 'Connections',
+    servers: 'Configure',
     stats: 'Operations',
     logs: 'Operations',
 };
@@ -172,7 +172,7 @@ interface AdminNavGroup {
 }
 
 const ADMIN_TAB_GROUP_LABELS: Partial<Record<AdminSubTab, string>> = {
-    providers: 'Connections',
+    providers: 'Configure',
     messaging: 'Connections',
     server: 'Operations',
     data: 'Operations',
@@ -1098,6 +1098,8 @@ export function AdminPanel() {
                     action: { kind: 'settings', subTab: DEFAULT_SETTINGS_SUBTAB } as AdminNavAction,
                 },
                 ...nonContainerAgentsNavItem,
+                adminNavItem('providers'),
+                ...serversNavItems,
             ],
         },
         {
@@ -1110,8 +1112,6 @@ export function AdminPanel() {
         {
             label: 'Connections',
             items: [
-                adminNavItem('providers'),
-                ...serversNavItems,
                 ...containerNavItems,
                 ...containerAgentsNavItem,
             ],
