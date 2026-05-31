@@ -32,6 +32,7 @@ import { spawn } from 'child_process';
 import { createRequire } from 'module';
 import * as readline from 'readline';
 import * as path from 'path';
+import * as os from 'os';
 
 // ============================================================================
 // Install mode detection
@@ -803,15 +804,57 @@ export class CodexSDKService implements ISDKService {
 
     private buildThreadOptions(options: SendMessageOptions): CodexStartThreadOptions {
         const model = this.normalizeCodexModel(options.model);
+        const additionalDirectories = this.resolveCodexAdditionalDirectories(options);
         return {
             ...(model ? { model } : {}),
             ...(options.workingDirectory ? { workingDirectory: options.workingDirectory } : {}),
-            ...(options.skillDirectories?.length ? { additionalDirectories: options.skillDirectories } : {}),
+            ...(additionalDirectories.length ? { additionalDirectories } : {}),
             ...(options.reasoningEffort ? { reasoningLevel: options.reasoningEffort } : {}),
             skipGitRepoCheck: true,
+            ...this.resolveCodexModeOptions(options.mode),
+        };
+    }
+
+    /**
+     * Builds the list of directories Codex may access beyond its working
+     * directory. Always includes `~/.coc` (CoC's data/skills dir) so out-of-repo
+     * skill and data files are reachable, plus any caller-provided skill or
+     * additional directories. Caller-provided paths are preserved verbatim;
+     * `~/.coc` is only appended when not already present (compared
+     * case-insensitively on Windows).
+     */
+    private resolveCodexAdditionalDirectories(options: SendMessageOptions): string[] {
+        const dirs = [
+            ...(options.skillDirectories ?? []),
+            ...(options.additionalDirectories ?? []),
+        ].filter((dir): dir is string => !!dir);
+
+        const cocDir = path.join(os.homedir(), '.coc');
+        const sameDir = (a: string, b: string): boolean => {
+            const ra = path.resolve(a);
+            const rb = path.resolve(b);
+            return process.platform === 'win32' ? ra.toLowerCase() === rb.toLowerCase() : ra === rb;
+        };
+        if (!dirs.some(dir => sameDir(dir, cocDir))) {
+            dirs.push(cocDir);
+        }
+        return dirs;
+    }
+
+    private resolveCodexModeOptions(
+        mode: SendMessageOptions['mode'],
+    ): Pick<CodexStartThreadOptions, 'approvalPolicy' | 'sandboxMode' | 'networkAccessEnabled'> {
+        if (mode === 'plan' || mode === 'autopilot') {
+            return {
+                approvalPolicy: 'never',
+                sandboxMode: 'danger-full-access',
+                networkAccessEnabled: true,
+            };
+        }
+        return {
             approvalPolicy: 'never',
-            sandboxMode: 'danger-full-access',
-            networkAccessEnabled: true,
+            sandboxMode: 'read-only',
+            networkAccessEnabled: false,
         };
     }
 

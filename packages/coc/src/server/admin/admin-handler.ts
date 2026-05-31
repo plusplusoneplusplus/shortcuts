@@ -31,11 +31,6 @@ import type { Route } from '../types';
 import { sendSSE } from '../wiki/ask-handler';
 import { ADMIN_CONFIG_FIELDS, ADMIN_EDITABLE_KEYS, getAdminFieldMetadata } from './admin-config-fields';
 import {
-    DIFF_CLASSIFICATION_DEFAULT_TEMPLATE,
-    DIFF_CLASSIFICATION_PROMPT_ID,
-    DIFF_CLASSIFICATION_TEMPLATE_VARS,
-} from '../repos/classification-prompt';
-import {
     getAllPromptOverrides,
     savePromptOverride as writeSavedPromptOverride,
     deletePromptOverride as removePromptOverride,
@@ -1016,16 +1011,6 @@ The plan file should include:
             source: 'coc/server/suggest-follow-ups-tool.ts',
             description: 'Tool description controlling when/how AI calls suggest_follow_ups',
             text: 'After completing your response, call this tool to suggest 2-3 brief follow-up actions the user might want to take next. Each suggestion should be a short, direct action phrase (imperative, not a question) that continues the conversation — e.g., "Show an example", "Explain the config options", "Generate the fix". IMPORTANT: Never list follow-up suggestions in your response text. Always call this tool instead.',
-        },
-        [DIFF_CLASSIFICATION_PROMPT_ID]: {
-            id: DIFF_CLASSIFICATION_PROMPT_ID,
-            title: 'Diff Classification - User Prompt',
-            group: 'Diff Classification',
-            source: 'coc/server/repos/classification-prompt.ts',
-            description: 'User prompt template for AI diff hunk classification (PR, commit, branch-range). Variables are substituted per classification target.',
-            text: DIFF_CLASSIFICATION_DEFAULT_TEMPLATE,
-            editable: true,
-            templateVars: DIFF_CLASSIFICATION_TEMPLATE_VARS,
         },
     };
 }

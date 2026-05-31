@@ -17,6 +17,7 @@ const TYPE_PREFIX: Record<WorkItemTypeLabel, string> = {
     pbi: 'PBI',
     'work-item': 'WI',
     bug: 'BUG',
+    goal: 'GOAL',
 };
 
 interface ParentCandidate {

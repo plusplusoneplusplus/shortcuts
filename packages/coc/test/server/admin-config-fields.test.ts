@@ -45,6 +45,7 @@ describe('ADMIN_EDITABLE_KEYS', () => {
             'mcpOauth.enabled',
             'codex.enabled',
             'defaultProvider',
+            'effortLevels.enabled',
         ];
         for (const k of expected) {
             expect(ADMIN_EDITABLE_KEYS).toContain(k);
@@ -207,6 +208,7 @@ describe('validate()', () => {
         'servers.enabled', 'ralph.enabled', 'vimNavigation.enabled', 'loops.enabled',
         'excalidraw.enabled',
         'mcpOauth.enabled',
+        'effortLevels.enabled',
     ];
 
     for (const key of booleanFields) {
@@ -343,6 +345,7 @@ describe('apply()', () => {
         ['loops.enabled', (c) => c.loops?.enabled],
         ['excalidraw.enabled', (c) => c.excalidraw?.enabled],
         ['mcpOauth.enabled', (c) => c.mcpOauth?.enabled],
+        ['effortLevels.enabled', (c) => c.effortLevels?.enabled],
     ];
 
     for (const [key, getter] of nestedBoolFields) {

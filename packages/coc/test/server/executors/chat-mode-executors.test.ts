@@ -22,6 +22,7 @@ import { READ_ONLY_SYSTEM_MESSAGE } from '@plusplusoneplusplus/forge';
 import { ChatExecutor } from '../../../src/server/executors/chat-executor';
 import { PlanExecutor } from '../../../src/server/executors/plan-executor';
 import { AutopilotExecutor } from '../../../src/server/executors/autopilot-executor';
+import { ClassificationExecutor } from '../../../src/server/executors/classification-executor';
 import type { ChatModeExecutorOptions } from '../../../src/server/executors/chat-base-executor';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
@@ -601,7 +602,7 @@ describe('ChatExecutor ralph grilling phase', () => {
         };
     }
 
-    it('appends grilling-specific ask_user directive to the system message', async () => {
+    it('prepends the grilling skill pointer to the user prompt (not system message)', async () => {
         const executor = new ChatExecutor(store, makeOptions(store, {
             askUser: { enabled: true },
         } as any));
@@ -611,11 +612,15 @@ describe('ChatExecutor ralph grilling phase', () => {
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         const systemContent = call.systemMessage?.content ?? '';
-        // The grilling directive now references the bundled ultra-ralph skill's grill section.
-        expect(systemContent).toContain('ultra-ralph');
-        expect(systemContent).toContain('`grill` section');
-        // The machine contract for the final goal-spec block is still inlined.
-        expect(systemContent).toContain('## Goal');
+        const userPrompt = call.prompt ?? '';
+        // System message must NOT contain Ralph/grilling content (AC-03)
+        expect(systemContent).not.toContain('ultra-ralph');
+        expect(systemContent).not.toContain('`grill` section');
+        expect(systemContent).not.toContain('## Goal');
+        // User prompt MUST contain the grill skill pointer and machine contract (AC-03)
+        expect(userPrompt).toContain('ultra-ralph');
+        expect(userPrompt).toContain('`grill` section');
+        expect(userPrompt).toContain('## Goal');
     });
 
     it('exposes the ask_user tool to grilling tasks when askUser is enabled', async () => {
@@ -641,8 +646,11 @@ describe('ChatExecutor ralph grilling phase', () => {
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         const systemContent = call.systemMessage?.content ?? '';
+        const userPrompt = call.prompt ?? '';
         expect(systemContent).not.toContain('ultra-ralph');
         expect(systemContent).not.toContain('## Goal');
+        expect(userPrompt).not.toContain('ultra-ralph');
+        expect(userPrompt).not.toContain('## Goal');
     });
 });
 
@@ -789,6 +797,75 @@ describe('ChatBaseExecutor selected skills', () => {
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         expect(call.prompt).toContain('The user explicitly selected these skills: skill-a, skill-b.');
         expect(call.prompt).not.toContain('<skill name=');
+    });
+
+    it('reads top-level skills from pr-classification payloads', async () => {
+        const executor = new ClassificationExecutor(store, makeOptions(store));
+        const task: QueuedTask = {
+            id: 'task-classify-skill',
+            type: 'pr-classification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: {
+                kind: 'pr-classification',
+                prompt: 'Classify PR #42',
+                workspaceId: 'ws-1',
+                repoId: 'repo-1',
+                prId: '42',
+                headSha: 'deadbeef',
+                workingDirectory: '/fake/ws',
+                skills: ['classify-diff'],
+            },
+            config: {},
+            displayName: 'classification skill test',
+        } as unknown as QueuedTask;
+
+        await executor.execute(task, 'Classify PR #42');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.prompt).toContain('<selected_skills>');
+        expect(call.prompt).toContain('The user explicitly selected these skills: classify-diff.');
+        expect(call.prompt).toContain('Classify PR #42');
+        expect(call.prompt.indexOf('<selected_skills>')).toBeLessThan(call.prompt.indexOf('Classify PR #42'));
+        expect(call.mode).toBe('autopilot');
+    });
+
+    it('adds resolved SKILL.md paths for top-level classification skills', async () => {
+        const skillsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-classify-skill-'));
+        try {
+            fs.mkdirSync(path.join(skillsDir, 'classify-diff'), { recursive: true });
+            fs.writeFileSync(path.join(skillsDir, 'classify-diff', 'SKILL.md'), '# Classify diff');
+            const executor = new ClassificationExecutor(store, makeOptions(store, {
+                resolveSkillConfig: vi.fn().mockResolvedValue({ skillDirectories: [skillsDir], disabledSkills: undefined }),
+            }));
+            const task: QueuedTask = {
+                id: 'task-classify-skill-path',
+                type: 'pr-classification',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'pr-classification',
+                    prompt: 'Classify commit abc123',
+                    workspaceId: 'ws-1',
+                    repoId: 'repo-1',
+                    prId: '42',
+                    headSha: 'deadbeef',
+                    workingDirectory: '/fake/ws',
+                    skills: ['classify-diff'],
+                },
+                config: {},
+                displayName: 'classification skill path test',
+            } as unknown as QueuedTask;
+
+            await executor.execute(task, 'Classify commit abc123');
+
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            expect(call.prompt).toContain(`- classify-diff: ${path.join(skillsDir, 'classify-diff', 'SKILL.md')}`);
+        } finally {
+            fs.rmSync(skillsDir, { recursive: true, force: true });
+        }
     });
 });
 

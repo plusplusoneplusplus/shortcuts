@@ -12,8 +12,11 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { spawn } from 'child_process';
+import { EventEmitter } from 'events';
 import * as os from 'os';
 import * as path from 'path';
+import { PassThrough, Writable } from 'stream';
 import {
     ClaudeSDKService,
     mapClaudeAccountInfoToQuota,
@@ -35,8 +38,13 @@ vi.mock('../../src/sdk-esm-loader', () => ({
     dynamicImportModule: vi.fn(),
 }));
 
+vi.mock('child_process', () => ({
+    spawn: vi.fn(),
+}));
+
 import { dynamicImportModule } from '../../src/sdk-esm-loader';
 const mockDynamicImport = vi.mocked(dynamicImportModule);
+const mockSpawn = vi.mocked(spawn);
 
 // ============================================================================
 // Helper: build an async generator from an array of messages
@@ -61,6 +69,40 @@ function makeQueryHandle(
         return: vi.fn(async (value?: unknown) => ({ done: true as const, value })),
     };
     return handle;
+}
+
+class MockClaudeCliChild extends EventEmitter {
+    public readonly stdout = new PassThrough();
+    public readonly stdinWrites: string[] = [];
+    public readonly stdin: Writable;
+    public readonly kill = vi.fn(() => true);
+
+    public constructor() {
+        super();
+        this.stdin = new Writable({
+            write: (chunk, _encoding, callback) => {
+                this.stdinWrites.push(Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk));
+                callback();
+            },
+        });
+    }
+
+    public writeStdoutLine(line: string): void {
+        this.stdout.write(line + '\n');
+    }
+}
+
+function mockClaudeCliSpawn(): MockClaudeCliChild {
+    const child = new MockClaudeCliChild();
+    mockSpawn.mockReturnValueOnce(child as any);
+    return child;
+}
+
+async function waitForClaudeCliSpawn(child?: MockClaudeCliChild): Promise<void> {
+    for (let i = 0; i < 10; i++) {
+        await Promise.resolve();
+        if (!child || child.listenerCount('error') > 0) return;
+    }
 }
 
 // ============================================================================
@@ -187,6 +229,7 @@ describe('ClaudeSDKService.listModels', () => {
     beforeEach(() => {
         svc = new ClaudeSDKService();
         mockDynamicImport.mockReset();
+        mockSpawn.mockReset();
         queryFn.mockReset();
         mockDynamicImport.mockResolvedValue({ query: queryFn });
     });
@@ -195,30 +238,125 @@ describe('ClaudeSDKService.listModels', () => {
         svc.dispose();
     });
 
-    it('returns dynamic model list from Claude SDK supportedModels()', async () => {
-        const supportedModelsFn = vi.fn().mockResolvedValue([
-            { value: 'claude-opus-4-7', displayName: 'Claude Opus 4.7', description: 'Premium' },
-            { value: 'claude-sonnet-4-6', displayName: 'Claude Sonnet 4.6', description: 'Balanced' },
-        ]);
-        queryFn.mockReturnValueOnce(makeQueryHandle([], undefined, supportedModelsFn));
+    it('spawns Claude CLI stream protocol and maps initialize models', async () => {
+        const child = mockClaudeCliSpawn();
+        const modelsPromise = svc.listModels();
+        await waitForClaudeCliSpawn(child);
 
-        const models = await svc.listModels();
+        child.writeStdoutLine('Claude Code starting');
+        child.writeStdoutLine(JSON.stringify({
+            type: 'control_response',
+            request_id: 'init-1',
+            response: {
+                response: {
+                    models: [
+                        { value: 'claude-opus-4-7', displayName: 'Claude Opus 4.7' },
+                        { value: 'claude-sonnet-4-6', displayName: 'Claude Sonnet 4.6' },
+                    ],
+                },
+            },
+        }));
 
-        expect(supportedModelsFn).toHaveBeenCalled();
+        const models = await modelsPromise;
+
+        expect(mockSpawn).toHaveBeenCalledWith(expect.stringMatching(/claude(\.exe)?$/), [
+            '--output-format',
+            'stream-json',
+            '--verbose',
+            '--input-format',
+            'stream-json',
+            '--setting-sources=',
+            '--tools',
+            '',
+        ], expect.objectContaining({ stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true }));
+        expect(child.stdinWrites.join('')).toBe(
+            JSON.stringify({
+                type: 'control_request',
+                request_id: 'init-1',
+                request: { subtype: 'initialize' },
+            }) + '\n',
+        );
         expect(models).toContainEqual({ id: 'claude-opus-4-7', name: 'Claude Opus 4.7' });
         expect(models).toContainEqual({ id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' });
         expect(models).not.toContainEqual({ id: 'claude-provider-default', name: 'Claude Provider Default' });
+        expect(queryFn).not.toHaveBeenCalled();
+        expect(child.kill).toHaveBeenCalledWith('SIGTERM');
     });
 
-    it('falls back to curated models when supportedModels is unavailable', async () => {
-        queryFn.mockReturnValueOnce(makeMessages([]));
+    it('ignores malformed stdout until the matching initialize response arrives', async () => {
+        const child = mockClaudeCliSpawn();
+        const modelsPromise = svc.listModels();
+        await waitForClaudeCliSpawn(child);
 
-        const models = await svc.listModels();
+        child.writeStdoutLine('{not-json');
+        child.writeStdoutLine(JSON.stringify({
+            type: 'control_response',
+            request_id: 'other-request',
+            response: { response: { models: [{ value: 'ignored', displayName: 'Ignored' }] } },
+        }));
+        child.writeStdoutLine(JSON.stringify({
+            type: 'control_response',
+            request_id: 'init-1',
+            response: {
+                response: {
+                    models: [{ value: 'claude-haiku-4-5', displayName: 'Claude Haiku 4.5' }],
+                },
+            },
+        }));
+
+        await expect(modelsPromise).resolves.toEqual([
+            { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
+        ]);
+    });
+
+    it('falls back to curated models when Claude CLI spawn fails', async () => {
+        const child = mockClaudeCliSpawn();
+        const modelsPromise = svc.listModels();
+        await waitForClaudeCliSpawn(child);
+        child.emit('error', new Error('spawn failed'));
+
+        const models = await modelsPromise;
 
         expect(models).toContainEqual({ id: 'claude-opus-4-7', name: 'Claude Opus 4.7' });
         expect(models).toContainEqual({ id: 'claude-opus-4-6', name: 'Claude Opus 4.6' });
         expect(models).toContainEqual({ id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' });
         expect(models).toContainEqual({ id: 'claude-provider-default', name: 'Claude Provider Default' });
+        expect(queryFn).not.toHaveBeenCalledWith({ prompt: '' });
+        expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+    });
+
+    it('falls back to curated models when Claude CLI initialize response is malformed', async () => {
+        const child = mockClaudeCliSpawn();
+        const modelsPromise = svc.listModels();
+        await waitForClaudeCliSpawn(child);
+
+        child.writeStdoutLine(JSON.stringify({
+            type: 'control_response',
+            request_id: 'init-1',
+            response: { response: { models: [{ value: '', displayName: '' }] } },
+        }));
+
+        const models = await modelsPromise;
+
+        expect(models).toContainEqual({ id: 'claude-provider-default', name: 'Claude Provider Default' });
+        expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+    });
+
+    it('falls back to curated models and cleans up when Claude CLI times out', async () => {
+        vi.useFakeTimers();
+        try {
+            const child = mockClaudeCliSpawn();
+            const modelsPromise = svc.listModels();
+            await waitForClaudeCliSpawn(child);
+
+            await vi.advanceTimersByTimeAsync(15_000);
+            const models = await modelsPromise;
+
+            expect(models).toContainEqual({ id: 'claude-provider-default', name: 'Claude Provider Default' });
+            expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });
 

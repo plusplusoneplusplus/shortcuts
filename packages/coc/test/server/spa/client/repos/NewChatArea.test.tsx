@@ -43,12 +43,16 @@ vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => 
     }),
 }));
 
+let mockEffortLevelsEnabled = false;
+let mockEffortTiers: Record<string, { model: string; reasoningEffort?: string | null }> = {};
+
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => 'http://localhost:4000/api',
     isRalphEnabled: () => false,
     isLoopsEnabled: () => false,
     getDefaultProvider: () => mockDefaultProvider,
+    isEffortLevelsEnabled: () => mockEffortLevelsEnabled,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -60,7 +64,13 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
             patchRepo: vi.fn().mockResolvedValue({}),
         },
         skills: { listAllWorkspace: vi.fn().mockResolvedValue({ merged: [] }) },
-        agentProviders: { list: vi.fn().mockResolvedValue({ providers: mockAgentProviders }), getReasoningEfforts: vi.fn().mockResolvedValue({ reasoningEfforts: {} }) },
+        agentProviders: {
+            list: vi.fn().mockResolvedValue({ providers: mockAgentProviders }),
+            getReasoningEfforts: vi.fn().mockResolvedValue({ reasoningEfforts: {} }),
+            getEffortTiers: vi.fn().mockImplementation(() =>
+                Promise.resolve({ provider: 'copilot', effortTiers: mockEffortTiers }),
+            ),
+        },
     }),
     getSpaCocClientErrorMessage: (err: any, fallback: string) =>
         (err instanceof Error ? err.message : undefined) || fallback,
@@ -237,6 +247,8 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         mockModelOverride = null;
         mockUseModelsProviders = [];
         mockUseDefaultModelArgs = [];
+        mockEffortLevelsEnabled = false;
+        mockEffortTiers = {};
         mockAgentProviders = [
             { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
             { id: 'codex', label: 'Codex', enabled: false, available: false },
@@ -456,3 +468,155 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         expect(body.payload.model).toBe('shared-model');
     });
 });
+
+// ---------------------------------------------------------------------------
+// Effort Tier selector tests (AC-04)
+// ---------------------------------------------------------------------------
+
+describe('NewChatArea – Effort Tier selector', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockDefaultProvider = 'copilot';
+        mockRepoPreferences = {};
+        mockModelOverride = null;
+        mockUseModelsProviders = [];
+        mockUseDefaultModelArgs = [];
+        mockEffortLevelsEnabled = false;
+        mockEffortTiers = {};
+        mockAgentProviders = [
+            { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+            { id: 'codex', label: 'Codex', enabled: false, available: false },
+            { id: 'claude', label: 'Claude', enabled: false, available: false },
+        ];
+        mockEnqueueTask.mockResolvedValue({ task: { id: 'queue_tier-test' } });
+        localStorage.clear();
+    });
+
+    it('shows legacy model picker when effortLevels flag is OFF', async () => {
+        mockEffortLevelsEnabled = false;
+        renderNewChatArea();
+        await waitFor(() => expect(screen.getByTestId('model-picker-chip-container')).toBeTruthy());
+        expect(screen.queryByTestId('effort-tier-selector')).toBeNull();
+    });
+
+    it('shows legacy model picker when flag is ON but provider has zero tiers', async () => {
+        mockEffortLevelsEnabled = true;
+        mockEffortTiers = {};
+        renderNewChatArea();
+        // Tiers load asynchronously — wait a tick then check legacy controls are still present
+        await waitFor(() => expect(screen.getByTestId('model-picker-chip-container')).toBeTruthy());
+        expect(screen.queryByTestId('effort-tier-selector')).toBeNull();
+    });
+
+    it('shows effort tier selector when flag is ON and provider has tiers configured', async () => {
+        mockEffortLevelsEnabled = true;
+        mockEffortTiers = {
+            medium: { model: 'balanced-model', reasoningEffort: null },
+        };
+        renderNewChatArea();
+        await waitFor(() => expect(screen.getByTestId('effort-tier-selector')).toBeTruthy());
+        expect(screen.queryByTestId('model-picker-chip-container')).toBeNull();
+    });
+
+    it('defaults to "medium" tier on first use (no localStorage)', async () => {
+        mockEffortLevelsEnabled = true;
+        mockEffortTiers = {
+            low: { model: 'fast', reasoningEffort: 'low' },
+            medium: { model: 'balanced', reasoningEffort: null },
+            high: { model: 'deep', reasoningEffort: 'high' },
+        };
+        renderNewChatArea();
+        await waitFor(() => expect(screen.getByTestId('effort-tier-selector')).toBeTruthy());
+        expect(screen.getByTestId('effort-tier-trigger-btn').textContent).toContain('Effort: Medium');
+    });
+
+    it('restores last-picked tier from localStorage', async () => {
+        localStorage.setItem('coc:effort-tier:ws-1', 'high');
+        mockEffortLevelsEnabled = true;
+        mockEffortTiers = {
+            low: { model: 'fast', reasoningEffort: 'low' },
+            medium: { model: 'balanced', reasoningEffort: null },
+            high: { model: 'deep', reasoningEffort: 'high' },
+        };
+        renderNewChatArea('ws-1');
+        await waitFor(() => expect(screen.getByTestId('effort-tier-selector')).toBeTruthy());
+        expect(screen.getByTestId('effort-tier-trigger-btn').textContent).toContain('Effort: High');
+    });
+
+    it('saves selected tier to localStorage on tier change', async () => {
+        mockEffortLevelsEnabled = true;
+        mockEffortTiers = {
+            low: { model: 'fast', reasoningEffort: 'low' },
+            medium: { model: 'balanced', reasoningEffort: null },
+            high: { model: 'deep', reasoningEffort: 'high' },
+        };
+        renderNewChatArea('ws-1');
+        await waitFor(() => expect(screen.getByTestId('effort-tier-selector')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+        fireEvent.click(screen.getByTestId('effort-tier-option-low'));
+
+        expect(localStorage.getItem('coc:effort-tier:ws-1')).toBe('low');
+    });
+
+    it('sends resolved model+effort from selected tier in enqueue payload', async () => {
+        mockEffortLevelsEnabled = true;
+        mockEffortTiers = {
+            medium: { model: 'balanced-model', reasoningEffort: 'medium' },
+        };
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'queue_abc' } });
+
+        renderNewChatArea('ws-1');
+        await waitFor(() => expect(screen.getByTestId('effort-tier-selector')).toBeTruthy());
+
+        typeInInput('Hello tier');
+        await clickSend();
+
+        await waitFor(() => {
+            expect(mockEnqueueTask).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    payload: expect.objectContaining({
+                        model: 'balanced-model',
+                        reasoningEffort: 'medium',
+                    }),
+                }),
+            );
+        });
+    });
+
+    it('sends model from tier with no reasoningEffort when tier effort is empty', async () => {
+        mockEffortLevelsEnabled = true;
+        mockEffortTiers = {
+            medium: { model: 'auto-model', reasoningEffort: null },
+        };
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'queue_abc' } });
+
+        renderNewChatArea('ws-1');
+        await waitFor(() => expect(screen.getByTestId('effort-tier-selector')).toBeTruthy());
+
+        typeInInput('Hello');
+        await clickSend();
+
+        await waitFor(() => {
+            const body = mockEnqueueTask.mock.calls[0][0];
+            expect(body.payload.model).toBe('auto-model');
+            expect(body.payload.reasoningEffort).toBeUndefined();
+        });
+    });
+
+    it('unconfigured tier option is disabled in the selector dropdown', async () => {
+        mockEffortLevelsEnabled = true;
+        mockEffortTiers = {
+            medium: { model: 'balanced', reasoningEffort: null },
+            high: { model: 'deep', reasoningEffort: 'high' },
+        };
+        renderNewChatArea();
+        await waitFor(() => expect(screen.getByTestId('effort-tier-selector')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+        const lowOption = screen.getByTestId('effort-tier-option-low');
+        expect(lowOption.getAttribute('aria-disabled')).toBe('true');
+        expect(lowOption.getAttribute('data-configured')).toBe('false');
+    });
+});
+

@@ -213,6 +213,9 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 priority: VALID_PRIORITIES.has(body.priority) ? body.priority : undefined,
                 tags: Array.isArray(body.tags) ? body.tags : undefined,
                 autoExecute: body.autoExecute === true,
+                successCriteria: typeof body.successCriteria === 'string' && body.successCriteria.trim()
+                    ? body.successCriteria
+                    : undefined,
             };
 
             if (body.plan?.content) {
@@ -294,6 +297,8 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             if (body.autoExecute !== undefined) updates.autoExecute = body.autoExecute;
             if (body.completedAt !== undefined) updates.completedAt = body.completedAt;
             if (body.reviewComments !== undefined) updates.reviewComments = body.reviewComments;
+            if (body.successCriteria !== undefined) updates.successCriteria = body.successCriteria;
+            if (body.grillSessionId !== undefined) updates.grillSessionId = body.grillSessionId;
 
             // Handle parentId reparenting when hierarchy is enabled
             if ('parentId' in body) {

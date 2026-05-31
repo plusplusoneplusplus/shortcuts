@@ -254,6 +254,11 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         if (!cfg.workItems.hierarchy) { cfg.workItems.hierarchy = {}; }
         cfg.workItems.hierarchy.enabled = v;
     }),
+
+    bool('effortLevels.enabled', (cfg, v) => {
+        if (!cfg.effortLevels) { cfg.effortLevels = {}; }
+        cfg.effortLevels.enabled = v;
+    }),
 ];
 
 /** Flat keys accepted by PUT /api/admin/config — derived from the registry. */

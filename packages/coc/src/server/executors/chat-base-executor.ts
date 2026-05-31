@@ -40,7 +40,7 @@ import {
     rewriteLargePrompt,
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
-import type { ChatPayload, ChatProvider } from '../tasks/task-types';
+import type { ChatPayload, ChatProvider, PrClassificationPayload } from '../tasks/task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
 import type { BroadcastWorkItemFn } from '../llm-tools/create-work-item-tool';
 import { BaseExecutor } from './base-executor';
@@ -348,19 +348,17 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             .appendNoteFile(notePath)
             .build();
 
-        // When this is a Ralph grilling session, append the goal-spec instruction.
-        if (payload.context?.ralph?.phase === 'grilling' && systemMessage) {
-            const ralphGrillSuffix = RALPH_GRILL_SUFFIX;
-            systemMessage.content = systemMessage.content
-                ? systemMessage.content + '\n\n' + ralphGrillSuffix
-                : ralphGrillSuffix;
-        }
+        // When this is a Ralph grilling session, prepend the skill pointer to
+        // the user prompt so the model receives it on every grilling turn (AC-03).
+        const effectivePrompt = payload.context?.ralph?.phase === 'grilling'
+            ? `${RALPH_GRILL_SUFFIX}\n\n${prompt}`
+            : prompt;
 
         return {
             agentMode: mode === 'plan' ? 'plan' as AgentMode : 'interactive' as AgentMode,
             systemMessage,
             tools: ctx.tools,
-            effectivePrompt: prompt,
+            effectivePrompt,
             excludedTools: ctx.excludedTools,
             dispose: ctx.dispose,
         };
@@ -463,7 +461,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             const timeoutMs = task.config.timeoutMs || this.defaultTimeoutMs;
             const taskWorkspaceId = payload.workspaceId;
             const { skillDirectories, disabledSkills } = await this.resolveSkillConfigFn(taskWorkspaceId, workingDirectory);
-            const selectedSkillNames = (payload as ChatPayload).context?.skills;
+            const selectedSkillNames = resolvePayloadSkillNames(payload as unknown as ChatPayload | PrClassificationPayload);
             effectivePrompt = prependSelectedSkillsDirective(
                 effectivePrompt,
                 selectedSkillNames,
@@ -634,4 +632,12 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             await this.persistOutput(processId, buffer, payload.workspaceId);
         }
     }
+}
+
+function resolvePayloadSkillNames(payload: ChatPayload | PrClassificationPayload): string[] | undefined {
+    const topLevelSkills = (payload as unknown as { skills?: unknown }).skills;
+    if (Array.isArray(topLevelSkills)) {
+        return topLevelSkills.filter((skill): skill is string => typeof skill === 'string');
+    }
+    return (payload as ChatPayload).context?.skills;
 }

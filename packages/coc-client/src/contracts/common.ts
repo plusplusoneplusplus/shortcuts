@@ -78,3 +78,27 @@ export interface ProviderModelQueryResponse {
   sessionId?: string;
   durationMs: number;
 }
+
+/** A single effort-tier entry: model + optional reasoning effort. */
+export interface EffortTierEntry {
+  model: string;
+  reasoningEffort?: string | null;
+  /**
+   * Where this tier came from. `'config'` means the admin saved it (stored
+   * config wins); `'default'` means the hardcoded provider default is being
+   * surfaced because no config exists for this tier.
+   */
+  source?: 'config' | 'default';
+}
+
+/** Response from GET/PUT /api/agent-providers/:provider/effort-tiers */
+export interface ProviderEffortTiersResponse {
+  provider: string;
+  effortTiers: Partial<Record<'low' | 'medium' | 'high', EffortTierEntry>>;
+  /**
+   * Hardcoded provider defaults that fill any unset tier (or that the client
+   * can revert to when clearing a configured tier). Empty `{}` for unknown
+   * providers.
+   */
+  defaults: Partial<Record<'low' | 'medium' | 'high', { model: string; reasoningEffort: string | null }>>;
+}

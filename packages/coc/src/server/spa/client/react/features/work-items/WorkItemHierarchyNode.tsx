@@ -10,7 +10,7 @@ import { formatRelativeTime } from '../../utils/format';
 
 // ── Type display config ──────────────────────────────────────────────────────
 
-export type WorkItemTypeLabel = 'epic' | 'feature' | 'pbi' | 'work-item' | 'bug';
+export type WorkItemTypeLabel = 'epic' | 'feature' | 'pbi' | 'work-item' | 'bug' | 'goal';
 
 export const TYPE_LABELS: Record<WorkItemTypeLabel, string> = {
     epic: 'Epic',
@@ -18,6 +18,7 @@ export const TYPE_LABELS: Record<WorkItemTypeLabel, string> = {
     pbi: 'PBI',
     'work-item': 'Work Item',
     bug: 'Bug',
+    goal: 'Goal',
 };
 
 const TYPE_PREFIX: Record<WorkItemTypeLabel, string> = {
@@ -26,6 +27,7 @@ const TYPE_PREFIX: Record<WorkItemTypeLabel, string> = {
     pbi: 'PBI',
     'work-item': 'WI',
     bug: 'BUG',
+    goal: 'GOAL',
 };
 
 const TYPE_PILL_CLASS: Record<WorkItemTypeLabel, string> = {
@@ -34,10 +36,12 @@ const TYPE_PILL_CLASS: Record<WorkItemTypeLabel, string> = {
     pbi:         'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300',
     'work-item': 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
     bug:         'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+    goal:        'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
 };
 
 const STATUS_CHIP_CLASS: Record<string, string> = {
     created:          'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+    drafting:         'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
     planning:         'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
     readyToExecute:   'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
     executing:        'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
@@ -49,6 +53,7 @@ const STATUS_CHIP_CLASS: Record<string, string> = {
 
 const STATUS_LABEL: Record<string, string> = {
     created: 'Created',
+    drafting: 'Drafting',
     planning: 'Planning',
     readyToExecute: 'Ready',
     executing: 'Executing',
@@ -69,6 +74,10 @@ export interface WorkItemHierarchyNodeProps {
     onSelect: (id: string) => void;
     onToggleCollapse: (id: string) => void;
     onContextMenu: (e: React.MouseEvent, node: WorkItemTreeNode) => void;
+    /** Mobile only: fires when the inline '+' add-child button is tapped. */
+    onAddChild?: (node: WorkItemTreeNode) => void;
+    /** When true the '+' add-child button is always visible (no hover). */
+    isMobile?: boolean;
     children?: ReactNode;
 }
 
@@ -81,6 +90,8 @@ export function WorkItemHierarchyNode({
     onSelect,
     onToggleCollapse,
     onContextMenu,
+    onAddChild,
+    isMobile = false,
     children,
 }: WorkItemHierarchyNodeProps) {
     const { item, rollup } = node;
@@ -160,6 +171,18 @@ export function WorkItemHierarchyNode({
                 >
                     {statusLabel}
                 </span>
+
+                {/* Mobile add-child button — containers only, always visible on mobile */}
+                {isMobile && isContainer && (
+                    <button
+                        className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-[11px] font-bold text-[#007acc] bg-[#007acc]/10 hover:bg-[#007acc]/20 active:bg-[#007acc]/30"
+                        onClick={e => { e.stopPropagation(); onAddChild?.(node); }}
+                        data-testid={`hierarchy-node-add-child-${item.id}`}
+                        aria-label="Add child"
+                    >
+                        +
+                    </button>
+                )}
 
                 {/* Updated time */}
                 <span className="flex-shrink-0 text-[10px] text-[#848484] dark:text-[#999] opacity-0 group-hover:opacity-100 transition-opacity">

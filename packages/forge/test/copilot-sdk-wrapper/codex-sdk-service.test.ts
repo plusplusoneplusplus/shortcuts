@@ -537,14 +537,26 @@ describe('CodexSDKService — SDK mocked', () => {
         );
     });
 
-    it('sendMessage always starts Codex threads with danger-full-access sandbox', async () => {
+    it('sendMessage starts interactive Codex threads with read-only sandbox', async () => {
         const codexMock = svc['sdk'] as ReturnType<typeof makeCodexSdkMock>;
 
         await svc.sendMessage({ prompt: 'ask mode', mode: 'interactive' });
+
+        expect(codexMock.startThread).toHaveBeenCalledOnce();
+        expect(codexMock.startThread.mock.calls[0][0]).toEqual(expect.objectContaining({
+            approvalPolicy: 'never',
+            sandboxMode: 'read-only',
+            networkAccessEnabled: false,
+        }));
+    });
+
+    it('sendMessage starts plan and autopilot Codex threads with danger-full-access sandbox', async () => {
+        const codexMock = svc['sdk'] as ReturnType<typeof makeCodexSdkMock>;
+
         await svc.sendMessage({ prompt: 'plan mode', mode: 'plan' });
         await svc.sendMessage({ prompt: 'autopilot mode', mode: 'autopilot' });
 
-        expect(codexMock.startThread).toHaveBeenCalledTimes(3);
+        expect(codexMock.startThread).toHaveBeenCalledTimes(2);
         for (const call of codexMock.startThread.mock.calls) {
             expect(call[0]).toEqual(expect.objectContaining({
                 approvalPolicy: 'never',

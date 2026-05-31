@@ -17,9 +17,13 @@ import type { DiffComment } from '../../../comments/diff-comment-types';
 import { computeStorageKey, patchDiffComment } from '../../utils/diffCommentApi';
 import { isWorkItemsHierarchyEnabled } from '../../utils/config';
 import { WorkItemParentPicker } from './WorkItemParentPicker';
+import { ALLOWED_CHILD_TYPES } from '@plusplusoneplusplus/coc-client';
+import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
+import { TYPE_LABELS } from './WorkItemHierarchyNode';
 
 const STATUS_LABELS: Record<string, { label: string; badgeStatus: string }> = {
     created:          { label: 'Created',          badgeStatus: 'queued' },
+    drafting:         { label: 'Drafting',          badgeStatus: 'warning' },
     planning:         { label: 'Planning',          badgeStatus: 'warning' },
     readyToExecute:   { label: 'Ready to Execute',  badgeStatus: 'completed' },
     executing:        { label: 'Executing',         badgeStatus: 'running' },
@@ -30,8 +34,9 @@ const STATUS_LABELS: Record<string, { label: string; badgeStatus: string }> = {
 };
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
-    created:        ['planning', 'readyToExecute', 'done', 'failed'],
-    planning:       ['readyToExecute', 'created', 'done', 'failed'],
+    created:        ['drafting', 'planning', 'readyToExecute', 'done', 'failed'],
+    drafting:       ['planning', 'readyToExecute', 'created', 'failed'],
+    planning:       ['readyToExecute', 'drafting', 'created', 'done', 'failed'],
     readyToExecute: ['executing', 'planning', 'done', 'failed'],
     executing:      ['aiDone', 'aiFailed', 'failed', 'readyToExecute'],
     aiDone:         ['readyToExecute', 'done', 'failed'],
@@ -51,12 +56,18 @@ interface WorkItemDetailProps {
     onViewCommit?: (sha: string) => void;
     /** Called when the user wants to view a completed task in the Tasks tab. */
     onNavigateToTasksTab?: (taskId: string) => void;
+    /** When true, renders the mobile 'Add Child' button for container items. */
+    isMobile?: boolean;
+    /** Open the create dialog for a given child type with this item as parent. */
+    onCreateChild?: (type: WorkItemTypeLabel, parentId: string) => void;
 }
 
 interface WorkItemFull {
     id: string; workItemNumber?: number; title: string; description: string; status: string;
     type?: string;
     parentId?: string;
+    successCriteria?: string;
+    grillSessionId?: string;
     priority?: string; source?: string; sourceId?: string;
     createdAt: string; updatedAt: string; completedAt?: string;
     pinnedAt?: string; archivedAt?: string;
@@ -79,7 +90,7 @@ interface WorkItemFull {
     }>;
 }
 
-export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, onViewTask, onViewCommit, onNavigateToTasksTab }: WorkItemDetailProps) {
+export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, onViewTask, onViewCommit, onNavigateToTasksTab, isMobile = false, onCreateChild }: WorkItemDetailProps) {
     const [item, setItem] = useState<WorkItemFull | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -100,6 +111,12 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const [editError, setEditError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [showParentPicker, setShowParentPicker] = useState(false);
+    // ── Mobile add-child type picker state ──
+    const [showChildTypePicker, setShowChildTypePicker] = useState(false);
+    // ── Success criteria edit state (goal items only) ──
+    const [editingCriteria, setEditingCriteria] = useState(false);
+    const [criteriaDraft, setCriteriaDraft] = useState('');
+    const [savingCriteria, setSavingCriteria] = useState(false);
 
     const fetchItem = useCallback(async () => {
         setLoading(true);
@@ -352,6 +369,22 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         }
     }, [editTitle, editDescription, editPriority, editTags, editParentId, workspaceId, workItemId, dispatch, fetchItem]);
 
+    const handleCriteriaSave = useCallback(async () => {
+        setSavingCriteria(true);
+        try {
+            const updated = await getSpaCocClient().workItems.update(workspaceId, workItemId, {
+                successCriteria: criteriaDraft,
+            } as any);
+            dispatch({ type: 'WORK_ITEM_UPDATED', repoId: workspaceId, item: updated as any });
+            await fetchItem();
+            setEditingCriteria(false);
+        } catch {
+            // Keep the editor open on failure; the next fetch surfaces detail-level errors.
+        } finally {
+            setSavingCriteria(false);
+        }
+    }, [criteriaDraft, workspaceId, workItemId, dispatch, fetchItem]);
+
     if (loading) {
         return <div className="flex items-center justify-center h-full text-sm text-[#848484]">Loading…</div>;
     }
@@ -395,6 +428,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                     : effectiveType === 'feature' ? 'F'
                                     : effectiveType === 'pbi' ? 'PBI'
                                     : effectiveType === 'bug' ? 'BUG'
+                                    : effectiveType === 'goal' ? 'GOAL'
                                     : 'WI'}-{item.workItemNumber}
                             </span>
                         )}
@@ -469,6 +503,25 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                 Edit
                             </Button>
                         )
+                    )}
+                    {/* Mobile add-child button — container items, not gated by hierarchyEnabled */}
+                    {isMobile && isContainer && !isEditing && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                                const childTypes = ALLOWED_CHILD_TYPES[effectiveType as WorkItemTypeLabel] ?? [];
+                                if (childTypes.length === 0) return;
+                                if (childTypes.length === 1) {
+                                    onCreateChild?.(childTypes[0] as WorkItemTypeLabel, item.id);
+                                } else {
+                                    setShowChildTypePicker(true);
+                                }
+                            }}
+                            data-testid="wi-add-child-btn"
+                        >
+                            + Add Child
+                        </Button>
                     )}
                     {!isContainer && (
                         <>
@@ -591,7 +644,47 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     )}
                 </section>
 
-                {/* Priority + Tags in edit mode */}
+                {/* Success Criteria — goal items only */}
+                {effectiveType === 'goal' && (
+                    <section data-testid="wi-success-criteria">
+                        <div className="flex items-center justify-between mb-1">
+                            <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase">Success Criteria</h3>
+                            {!editingCriteria && (
+                                <button
+                                    className="text-[11px] text-[#0078d4] dark:text-[#3794ff] hover:underline"
+                                    onClick={() => { setCriteriaDraft(item.successCriteria || ''); setEditingCriteria(true); }}
+                                    data-testid="wi-success-criteria-edit-btn"
+                                >
+                                    Edit
+                                </button>
+                            )}
+                        </div>
+                        {editingCriteria ? (
+                            <div className="space-y-2">
+                                <textarea
+                                    className="w-full min-h-[80px] text-sm p-2 rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] resize-y focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
+                                    value={criteriaDraft}
+                                    onChange={e => setCriteriaDraft(e.target.value)}
+                                    disabled={savingCriteria}
+                                    placeholder="What defines this goal as achieved?"
+                                    data-testid="wi-success-criteria-input"
+                                />
+                                <div className="flex items-center gap-2">
+                                    <Button variant="primary" size="sm" onClick={handleCriteriaSave} disabled={savingCriteria} loading={savingCriteria} data-testid="wi-success-criteria-save-btn">
+                                        Save
+                                    </Button>
+                                    <Button variant="ghost" size="sm" onClick={() => setEditingCriteria(false)} disabled={savingCriteria}>
+                                        Cancel
+                                    </Button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-sm whitespace-pre-wrap text-[#3c3c3c] dark:text-[#cccccc]">
+                                {item.successCriteria || <span className="italic text-[#848484]">No success criteria defined</span>}
+                            </div>
+                        )}
+                    </section>
+                )}
                 {isEditing && isContainer && (
                     <section className="space-y-3" data-testid="wi-edit-fields">
                         <div>
@@ -963,6 +1056,43 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     onParentChanged={(newParentId) => setEditParentId(newParentId)}
                     onClose={() => setShowParentPicker(false)}
                 />
+            )}
+            {/* ── Mobile child type picker ── */}
+            {showChildTypePicker && (
+                <div
+                    className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
+                    onClick={() => setShowChildTypePicker(false)}
+                    data-testid="wi-child-type-picker-overlay"
+                >
+                    <div
+                        className="w-full max-w-sm bg-white dark:bg-[#1e1e1e] rounded-t-xl p-4 pb-8 shadow-2xl"
+                        onClick={e => e.stopPropagation()}
+                        data-testid="wi-child-type-picker-modal"
+                    >
+                        <p className="text-xs font-medium text-[#848484] dark:text-[#999] mb-3 uppercase tracking-wide">
+                            Add child to "{item.title}"
+                        </p>
+                        <div className="flex flex-col gap-2">
+                            {(ALLOWED_CHILD_TYPES[effectiveType as WorkItemTypeLabel] ?? []).map(childType => (
+                                <button
+                                    key={childType}
+                                    className="w-full text-left px-3 py-2.5 rounded-lg border border-[#e0e0e0] dark:border-[#444] text-sm text-[#3c3c3c] dark:text-[#cccccc] hover:bg-[#f5f5f5] dark:hover:bg-[#2a2d2e] active:bg-[#e8e8e8] dark:active:bg-[#333]"
+                                    onClick={() => { onCreateChild?.(childType as WorkItemTypeLabel, item.id); setShowChildTypePicker(false); }}
+                                    data-testid={`wi-child-type-option-${childType}`}
+                                >
+                                    {TYPE_LABELS[childType as WorkItemTypeLabel] ?? childType}
+                                </button>
+                            ))}
+                        </div>
+                        <button
+                            className="mt-3 w-full text-center text-xs text-[#848484] py-2"
+                            onClick={() => setShowChildTypePicker(false)}
+                            data-testid="wi-child-type-picker-cancel"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
             )}
         </div>
     );

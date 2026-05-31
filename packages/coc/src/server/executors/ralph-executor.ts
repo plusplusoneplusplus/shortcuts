@@ -5,13 +5,16 @@
  *
  * Ralph mode is a structured AI orchestration loop:
  * - agentMode: 'autopilot' (full read/write permissions)
- * - systemMessage: Ralph framework instructions + goal spec + a *file path*
- *   to the per-session progress journal (no inlined history)
+ * - systemMessage: generic non-Ralph blocks only (repo instructions, memory,
+ *   tool guidance) — no Ralph-specific content
+ * - Each iteration's user message is built fresh from buildRalphIterationPrompt,
+ *   carrying the ultra-ralph skill pointer, progress path, iteration counter,
+ *   and goal (AC-01)
  * - Each task is one iteration; the loop is driven by RALPH_NEXT / RALPH_COMPLETE signals
  *
  * Per-iteration history lives in `progress.md` under
  *   `~/.coc/repos/<workspaceId>/ralph-sessions/<sessionId>/`
- * and is referenced by absolute path in the system prompt — see
+ * and is referenced by absolute path in the user prompt — see
  * AGENTS.md: "Prefer use file path in the prompt instead of expanding the
  * prompt with file's content."
  *
@@ -30,75 +33,7 @@ import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-exe
 import { ChatBaseExecutor } from './chat-base-executor';
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
-
-// ============================================================================
-// System prompt template
-// ============================================================================
-
-export const RALPH_BASE_INSTRUCTIONS = `\
-Load and follow the \`ultra-ralph\` skill, \`execution\` section. The skill file is at ~/.coc/skills/ultra-ralph/SKILL.md.
-
-Machine contract (parser-required): When done with an iteration, append to progress.md using exactly this header grammar:
-    ## Iteration <N> — <SIGNAL> — <ISO timestamp>
-    Files: <comma-separated list>
-    Decisions: <one-line rationale>
-    Remaining: <what still has to happen, or "none">
-End the response with exactly one of:
-    RALPH_COMPLETE
-    RALPH_NEXT`;
-
-export const RALPH_FINAL_CHECK_BASE_INSTRUCTIONS = `\
-Load and follow the \`ultra-ralph\` skill, \`final-check\` section. The skill file is at ~/.coc/skills/ultra-ralph/SKILL.md.
-
-Machine contract (parser-required): Your final response must contain exactly one \`RALPH_FINAL_CHECK_RESULT\` JSON block. Do not end with RALPH_NEXT or RALPH_COMPLETE.`;
-
-export interface BuildRalphSystemMessageInput {
-    originalGoal?: string;
-    /** Absolute path to the per-session `progress.md` (when known). */
-    progressPath?: string;
-    currentIteration?: number;
-    maxIterations?: number;
-}
-
-export function buildRalphSystemMessage(ralph: BuildRalphSystemMessageInput, baseInstructions?: string): string {
-    const parts: string[] = [baseInstructions ?? RALPH_BASE_INSTRUCTIONS];
-
-    if (ralph.originalGoal) {
-        parts.push(`## Goal Spec\n${ralph.originalGoal}`);
-    }
-
-    if (ralph.progressPath) {
-        parts.push(
-            `## Progress Journal\nYour accumulated progress journal is at:\n  ${ralph.progressPath}\nRead and grep this file before deciding the next subtask. It is append-only Markdown with one \`## Iteration N — SIGNAL — TIMESTAMP\` section per completed iteration.`,
-        );
-    }
-
-    const current = ralph.currentIteration ?? 1;
-    const max = ralph.maxIterations ?? 20;
-    parts.push(`Iteration ${current} of ${max}.`);
-
-    return parts.join('\n\n');
-}
-
-export function buildRalphFinalCheckSystemMessage(ralph: BuildRalphSystemMessageInput): string {
-    const parts: string[] = [RALPH_FINAL_CHECK_BASE_INSTRUCTIONS];
-
-    if (ralph.originalGoal) {
-        parts.push(`## Goal Spec\n${ralph.originalGoal}`);
-    }
-
-    if (ralph.progressPath) {
-        parts.push(
-            `## Progress Journal\nRead the Ralph progress journal at:\n  ${ralph.progressPath}\nUse it only as input evidence. Do not append to or edit it.`,
-        );
-    }
-
-    const current = ralph.currentIteration ?? 1;
-    const max = ralph.maxIterations ?? current;
-    parts.push(`Final check for Ralph iteration ${current} of ${max}.`);
-
-    return parts.join('\n\n');
-}
+import { buildRalphIterationPrompt } from '../ralph/iteration-prompt';
 
 // ============================================================================
 // RalphExecutor
@@ -128,19 +63,6 @@ export class RalphExecutor extends ChatBaseExecutor {
 
         const isFinalCheck = !!ralphCtx?.finalCheck;
 
-        const resolvedBaseInstructions = RALPH_BASE_INSTRUCTIONS;
-
-        const ralphPromptInput = {
-            originalGoal: ralphCtx?.originalGoal,
-            progressPath,
-            currentIteration: ralphCtx?.currentIteration,
-            maxIterations: ralphCtx?.maxIterations,
-        };
-
-        const ralphSystemPrompt = isFinalCheck
-            ? buildRalphFinalCheckSystemMessage(ralphPromptInput)
-            : buildRalphSystemMessage(ralphPromptInput, resolvedBaseInstructions);
-
         const processId = toQueueProcessId(task.id);
         const loopDeps = this.buildLoopToolDeps(processId);
 
@@ -158,18 +80,32 @@ export class RalphExecutor extends ChatBaseExecutor {
             loopTools: loopDeps.loopTools,
         });
 
+        // System message carries only generic, non-Ralph blocks. All Ralph
+        // framing lives in the user message (AC-01, AC-02).
         const systemMessage = await systemMessageBuilder()
-            .append(ralphSystemPrompt)
             .withRepoInstructions(workingDirectory, isFinalCheck ? 'ask' : 'ralph')
             .appendMemoryV2(ctx.memoryV2)
             .appendToolGuidance(ctx.toolGuidance)
             .build();
 
+        // Build a fresh user prompt on every execution so the iteration counter
+        // and progress path are always current (the bridge re-enqueues with the
+        // original stored prompt; overriding here ensures correctness for every
+        // iteration).
+        const effectivePrompt = isFinalCheck
+            ? prompt
+            : buildRalphIterationPrompt({
+                originalGoal: ralphCtx?.originalGoal,
+                progressPath,
+                currentIteration: ralphCtx?.currentIteration,
+                maxIterations: ralphCtx?.maxIterations,
+            });
+
         return {
             agentMode: 'autopilot' as AgentMode,
             systemMessage,
             tools: ctx.tools,
-            effectivePrompt: prompt,
+            effectivePrompt,
             excludedTools: ctx.excludedTools,
             dispose: ctx.dispose,
         };

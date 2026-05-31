@@ -91,7 +91,9 @@ Each `sendMessage()` call creates its **own `CopilotClient`** child process — 
 
 Codex quota and model catalog lookups spawn the `@openai/codex` CLI that ships as a dependency of `@openai/codex-sdk`; the bin path is resolved at runtime relative to `coc-agent-sdk`.
 
-Codex SDK thread options do not expose Copilot's native `skillDirectories` or `disabledSkills` fields. CoC maps resolved skill directories to Codex `additionalDirectories` so external/global skill folders are available to the Codex process. For explicitly selected skills, CoC keeps prompts path-based by adding the resolved `SKILL.md` file paths to the `<selected_skills>` directive rather than inlining skill bodies.
+Codex SDK thread options do not expose Copilot's native `skillDirectories` or `disabledSkills` fields. CoC maps resolved skill directories (and any caller-supplied `additionalDirectories`) to Codex `additionalDirectories` so external/global skill folders are available to the Codex process, and always appends `~/.coc` (CoC data/skills dir) so out-of-repo data and skill files remain reachable. The `~/.coc` entry is only added when not already present (compared case-insensitively on Windows); caller-supplied paths are preserved verbatim. For explicitly selected skills, CoC keeps prompts path-based by adding the resolved `SKILL.md` file paths to the `<selected_skills>` directive rather than inlining skill bodies.
+
+Codex permission mode is mapped at the provider boundary with `approvalPolicy: 'never'` for every CoC mode. Interactive/ask mode and omitted mode use `sandboxMode: 'read-only'` with network access disabled. Plan mode uses the same full-access Codex sandbox as autopilot (`sandboxMode: 'danger-full-access'`, network access enabled) and relies on CoC's read-only/plan system prompt rather than Codex sandbox enforcement.
 
 **Thread ↔ session mapping:** Every CoC session ID maps to exactly one Codex thread. The mapping is created on the first `sendMessage()` call for a session and removed on abort or dispose.
 
@@ -125,6 +127,8 @@ If neither signal is available the result is `{ quotaSnapshots: {} }`.
 Claude session persistence uses the Claude Code SDK transcript session ID. New `sendMessage()` calls pass a generated UUID as `options.sessionId`, persist any `session_id` emitted by the SDK stream, and follow-up calls pass the stored ID as `options.resume` so Claude Code reloads the prior transcript. `forkSession()` delegates to the SDK's `forkSession` export and returns the forked session ID.
 
 Claude Code expects hyphenated model IDs for version aliases (for example, `claude-sonnet-4-6`). `ClaudeSDKService` normalizes CoC's shared dotted Claude registry IDs (`claude-sonnet-4.6`, `claude-haiku-4.5`, `claude-opus-4.6`) to that Claude Code form before passing `options.model` to the SDK. Non-Claude model IDs and `claude-provider-default` are omitted so Claude Code can use its configured default.
+
+Claude model catalog discovery spawns the Claude Code CLI in `stream-json` protocol mode and sends a single `control_request` initialize message, then maps `response.response.models` into `IModelInfo`. The resolver prefers the platform-specific native binary bundled beside `@anthropic-ai/claude-agent-sdk` and falls back to `claude` on `PATH`. Discovery uses `--setting-sources=` and `--tools ''` to avoid loading user/project/local settings or tools; malformed output, spawn errors, timeouts, or protocol changes fall back to the curated Claude model list.
 
 Claude Code permission mode is mapped at the provider boundary: CoC `autopilot` sends `permissionMode: 'bypassPermissions'` plus `allowDangerouslySkipPermissions: true`, while CoC `plan` sends `permissionMode: 'plan'`. Interactive/ask mode leaves Claude Code's default permission behavior in place.
 

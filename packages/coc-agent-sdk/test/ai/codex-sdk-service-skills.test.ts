@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as os from 'os';
+import * as path from 'path';
 import { CodexSDKService } from '../../src/codex-sdk-service';
 
 function makeCodexSdkMock() {
@@ -27,7 +29,7 @@ describe('CodexSDKService skills', () => {
         svc = undefined;
     });
 
-    it('maps skillDirectories to Codex additionalDirectories', async () => {
+    it('maps skillDirectories to Codex additionalDirectories and always grants ~/.coc', async () => {
         svc = new CodexSDKService();
         const codexMock = makeCodexSdkMock();
         (svc as unknown as { sdk: unknown }).sdk = codexMock;
@@ -40,7 +42,113 @@ describe('CodexSDKService skills', () => {
 
         expect(codexMock.startThread).toHaveBeenCalledWith(
             expect.objectContaining({
-                additionalDirectories: ['/repo/.github/skills', '/Users/test/.coc/skills'],
+                additionalDirectories: [
+                    '/repo/.github/skills',
+                    '/Users/test/.coc/skills',
+                    path.join(os.homedir(), '.coc'),
+                ],
+            }),
+        );
+    });
+
+    it('grants ~/.coc even when no skillDirectories are provided', async () => {
+        svc = new CodexSDKService();
+        const codexMock = makeCodexSdkMock();
+        (svc as unknown as { sdk: unknown }).sdk = codexMock;
+        (svc as unknown as { availabilityCache: unknown }).availabilityCache = { available: true };
+
+        await svc.sendMessage({ prompt: 'test' });
+
+        expect(codexMock.startThread).toHaveBeenCalledWith(
+            expect.objectContaining({
+                additionalDirectories: [path.join(os.homedir(), '.coc')],
+            }),
+        );
+    });
+
+    it('does not duplicate ~/.coc when already supplied by the caller', async () => {
+        svc = new CodexSDKService();
+        const codexMock = makeCodexSdkMock();
+        (svc as unknown as { sdk: unknown }).sdk = codexMock;
+        (svc as unknown as { availabilityCache: unknown }).availabilityCache = { available: true };
+
+        const cocDir = path.join(os.homedir(), '.coc');
+        await svc.sendMessage({
+            prompt: 'test',
+            additionalDirectories: [cocDir],
+        });
+
+        expect(codexMock.startThread).toHaveBeenCalledWith(
+            expect.objectContaining({
+                additionalDirectories: [cocDir],
+            }),
+        );
+    });
+
+    it('uses read-only Codex sandbox options for interactive mode', async () => {
+        svc = new CodexSDKService();
+        const codexMock = makeCodexSdkMock();
+        (svc as unknown as { sdk: unknown }).sdk = codexMock;
+        (svc as unknown as { availabilityCache: unknown }).availabilityCache = { available: true };
+
+        await svc.sendMessage({ prompt: 'test', mode: 'interactive' });
+
+        expect(codexMock.startThread).toHaveBeenCalledWith(
+            expect.objectContaining({
+                approvalPolicy: 'never',
+                sandboxMode: 'read-only',
+                networkAccessEnabled: false,
+            }),
+        );
+    });
+
+    it('uses read-only Codex sandbox options when mode is omitted', async () => {
+        svc = new CodexSDKService();
+        const codexMock = makeCodexSdkMock();
+        (svc as unknown as { sdk: unknown }).sdk = codexMock;
+        (svc as unknown as { availabilityCache: unknown }).availabilityCache = { available: true };
+
+        await svc.sendMessage({ prompt: 'test' });
+
+        expect(codexMock.startThread).toHaveBeenCalledWith(
+            expect.objectContaining({
+                approvalPolicy: 'never',
+                sandboxMode: 'read-only',
+                networkAccessEnabled: false,
+            }),
+        );
+    });
+
+    it('uses full-access Codex sandbox options for plan mode', async () => {
+        svc = new CodexSDKService();
+        const codexMock = makeCodexSdkMock();
+        (svc as unknown as { sdk: unknown }).sdk = codexMock;
+        (svc as unknown as { availabilityCache: unknown }).availabilityCache = { available: true };
+
+        await svc.sendMessage({ prompt: 'test', mode: 'plan' });
+
+        expect(codexMock.startThread).toHaveBeenCalledWith(
+            expect.objectContaining({
+                approvalPolicy: 'never',
+                sandboxMode: 'danger-full-access',
+                networkAccessEnabled: true,
+            }),
+        );
+    });
+
+    it('uses full-access Codex sandbox options for autopilot mode', async () => {
+        svc = new CodexSDKService();
+        const codexMock = makeCodexSdkMock();
+        (svc as unknown as { sdk: unknown }).sdk = codexMock;
+        (svc as unknown as { availabilityCache: unknown }).availabilityCache = { available: true };
+
+        await svc.sendMessage({ prompt: 'test', mode: 'autopilot' });
+
+        expect(codexMock.startThread).toHaveBeenCalledWith(
+            expect.objectContaining({
+                approvalPolicy: 'never',
+                sandboxMode: 'danger-full-access',
+                networkAccessEnabled: true,
             }),
         );
     });

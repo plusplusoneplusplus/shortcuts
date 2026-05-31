@@ -13,6 +13,8 @@ import { ModePillSelector, DEFAULT_MODE_PILL_OPTIONS, RALPH_MODE_PILL_OPTION } f
 import type { ModePillOption } from './ModePillSelector';
 import { EffortPillSelector } from './EffortPillSelector';
 import type { EffortLevel, EffortPillOption } from './EffortPillSelector';
+import { EffortTierSelector } from './EffortTierSelector';
+import type { EffortTierKey, LocalEffortTiersMap } from '../../hooks/useProviderEffortTiers';
 import { ComposerMetaStrip } from './ComposerMetaStrip';
 import { useModifierKey } from '../../hooks/ui/useModifierKey';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
@@ -124,10 +126,17 @@ export interface FollowUpInputAreaProps {
      */
     effortOptions?: readonly EffortPillOption[];
     /**
-     * When true, the effort picker is rendered disabled.
-     * Set when the active session model's `capabilities.supports.reasoningEffort === false`.
+     * When true, the Effort Tier selector replaces the model picker and effort
+     * pill. Requires `effortTierMap`, `selectedEffortTier`, and
+     * `onEffortTierChange` to be set.
      */
-    effortDisabled?: boolean;
+    useEffortTierMode?: boolean;
+    /** Tier map for the active provider. Used when `useEffortTierMode` is true. */
+    effortTierMap?: LocalEffortTiersMap;
+    /** Currently selected effort tier. Used when `useEffortTierMode` is true. */
+    selectedEffortTier?: EffortTierKey;
+    /** Called when the user picks a tier. Used when `useEffortTierMode` is true. */
+    onEffortTierChange?: (tier: EffortTierKey) => void;
 }
 
 export function FollowUpInputArea({
@@ -170,6 +179,10 @@ export function FollowUpInputArea({
     onEffortChange,
     effortOptions,
     effortDisabled = false,
+    useEffortTierMode = false,
+    effortTierMap,
+    selectedEffortTier,
+    onEffortTierChange,
 }: FollowUpInputAreaProps) {
     const inputWrapperRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -622,16 +635,24 @@ export function FollowUpInputArea({
                                     />
                                 </div>
                             )}
-                            {/* Divider between the mode zone and the model zone. */}
-                            {!hideModeSelector && modelCommand && (
+                            {/* Divider between the mode zone and the model/tier zone. */}
+                            {!hideModeSelector && (modelCommand || useEffortTierMode) && (
                                 <span aria-hidden="true" data-testid="chat-toolbar-divider-mode" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                             )}
+                            {/* Effort Tier selector — shown when effortLevels.enabled is true
+                                 and the active provider has at least one configured tier.
+                                 Replaces the model picker chip and effort pill. */}
+                            {useEffortTierMode && selectedEffortTier && onEffortTierChange && effortTierMap && (
+                                <EffortTierSelector
+                                    tiers={effortTierMap}
+                                    selectedTier={selectedEffortTier}
+                                    onChange={onEffortTierChange}
+                                    data-testid="follow-up-effort-tier-selector"
+                                />
+                            )}
                             {/* Model selector chip — shows the active model
-                                 (override or session). Clicking opens the
-                                 picker; the chip is the single source of
-                                 truth for the active model — no separate
-                                 override badge is rendered. */}
-                            {modelCommand && (
+                                 (override or session). Hidden when tier mode is active. */}
+                            {!useEffortTierMode && modelCommand && (
                                 <div className="relative shrink-0" data-testid="model-picker-chip-container">
                                     <button
                                         type="button"
@@ -697,9 +718,8 @@ export function FollowUpInputArea({
                             {/* Effort pill — picks the per-turn
                                  `reasoningEffort` sent with this follow-up.
                                  Hidden when the parent has not wired
-                                 `onEffortChange`, so legacy callers (e.g.
-                                 the side-panel commit chat) render unchanged. */}
-                            {onEffortChange && (
+                                 `onEffortChange` or when tier mode is active. */}
+                            {!useEffortTierMode && onEffortChange && (
                                 <EffortPillSelector
                                     value={effortOverride}
                                     onChange={onEffortChange}

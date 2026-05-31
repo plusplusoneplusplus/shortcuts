@@ -395,7 +395,16 @@ describe('Admin Handler', () => {
 
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            expect(Object.keys(body)).toHaveLength(8);
+            expect(Object.keys(body).sort()).toEqual([
+                'follow-up-suggestions',
+                'memory-security-patterns',
+                'memory-tool-schema',
+                'plan-generation',
+                'read-only-mode',
+                'skill-prompt-wrapper',
+                'task-creation',
+            ]);
+            expect(body).not.toHaveProperty('diff-classification-user');
             expect(body['read-only-mode']).toBeDefined();
             expect(body['read-only-mode'].title).toBe('Read-only Mode');
             expect(body['read-only-mode'].group).toBe('Pipeline');

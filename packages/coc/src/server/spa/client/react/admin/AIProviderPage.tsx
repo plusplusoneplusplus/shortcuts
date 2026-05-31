@@ -12,6 +12,7 @@ import { Spinner } from '../ui';
 import type { ProviderInstallStatus, AgentProvidersQuotaResponse } from '@plusplusoneplusplus/coc-client';
 
 const ProviderModelsSection = lazy(() => import('../features/models/ProviderModelsSection').then(m => ({ default: m.ProviderModelsSection })));
+const ProviderEffortTiersSection = lazy(() => import('../features/models/ProviderEffortTiersSection').then(m => ({ default: m.ProviderEffortTiersSection })));
 
 type Provider = 'copilot' | 'codex' | 'claude';
 
@@ -511,6 +512,11 @@ export function AIProviderPage(props: AIProviderPageProps) {
                     allProviders={PROVIDER_IDS}
                     onProviderChange={setActiveModelProvider}
                 />
+            </Suspense>
+
+            {/* Per-provider effort tier editor */}
+            <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading effort tiers…</div>}>
+                <ProviderEffortTiersSection provider={activeModelProvider} />
             </Suspense>
         </div>
     );

@@ -34,6 +34,7 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     getWsUrl: () => 'ws://localhost/ws',
     isRalphEnabled: () => true,
     isLoopsEnabled: () => false,
+    isEffortLevelsEnabled: () => false,
     getDefaultProvider: () => 'copilot' as const,
     getActiveProvider: () => 'copilot' as const,
 }));

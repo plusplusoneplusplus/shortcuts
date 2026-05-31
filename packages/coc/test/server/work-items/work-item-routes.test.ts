@@ -156,6 +156,29 @@ describe('Work Item Routes', () => {
             expect(res.body.priority).toBe('high');
         });
 
+        it('creates a goal with type and successCriteria', async () => {
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Improve onboarding',
+                type: 'goal',
+                successCriteria: 'New users complete setup in under 5 minutes',
+            });
+
+            expect(res.status).toBe(201);
+            expect(res.body.type).toBe('goal');
+            expect(res.body.successCriteria).toBe('New users complete setup in under 5 minutes');
+        });
+
+        it('omits blank successCriteria on create', async () => {
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Goal without criteria',
+                type: 'goal',
+                successCriteria: '   ',
+            });
+
+            expect(res.status).toBe(201);
+            expect(res.body.successCriteria).toBeUndefined();
+        });
+
         it('rejects hierarchy container types when hierarchy flag is disabled', async () => {
             const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
                 title: 'Invalid type',
@@ -519,6 +542,26 @@ describe('Work Item Routes', () => {
                 status: 'invalid-status',
             });
             expect(res.status).toBe(400);
+        });
+
+        it('updates successCriteria and grillSessionId', async () => {
+            const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${itemId}`, {
+                successCriteria: 'Ship the feature behind a flag',
+                grillSessionId: 'queue_proc-abc',
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body.successCriteria).toBe('Ship the feature behind a flag');
+            expect(res.body.grillSessionId).toBe('queue_proc-abc');
+        });
+
+        it('allows the created → drafting transition (goal spec phase)', async () => {
+            const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${itemId}`, {
+                status: 'drafting',
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body.status).toBe('drafting');
         });
 
         it('returns 404 for non-existent item', async () => {

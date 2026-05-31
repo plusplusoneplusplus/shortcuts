@@ -4,7 +4,7 @@ import { Button } from '../../ui';
 import { getSpaCocClient } from '../../api/cocClient';
 import { isWorkItemsHierarchyEnabled } from '../../utils/config';
 
-type WorkItemTypeAll = 'work-item' | 'bug' | 'epic' | 'feature' | 'pbi';
+type WorkItemTypeAll = 'work-item' | 'bug' | 'goal' | 'epic' | 'feature' | 'pbi';
 
 const TYPE_LABELS: Record<WorkItemTypeAll, string> = {
     epic:        'Epic',
@@ -12,6 +12,7 @@ const TYPE_LABELS: Record<WorkItemTypeAll, string> = {
     pbi:         'PBI / Story',
     'work-item': 'Work Item',
     bug:         'Bug',
+    goal:        'Goal',
 };
 
 export interface CreateWorkItemDialogProps {
@@ -32,6 +33,7 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
     const [description, setDescription] = useState('');
     const [priority, setPriority] = useState<'normal' | 'high' | 'low'>('normal');
     const [tags, setTags] = useState('');
+    const [successCriteria, setSuccessCriteria] = useState('');
     const [selectedType, setSelectedType] = useState<WorkItemTypeAll>(itemType);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -43,6 +45,7 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
             setDescription('');
             setPriority('normal');
             setTags('');
+            setSuccessCriteria('');
             setSelectedType(itemType);
             setLoading(false);
             setError(null);
@@ -69,6 +72,7 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
                     tags: parsedTags.length > 0 ? parsedTags : undefined,
                     source: 'manual',
                     type: selectedType,
+                    successCriteria: (selectedType === 'goal' && successCriteria.trim()) ? successCriteria.trim() : undefined,
                     parentId: (hierarchyEnabled && parentId) ? parentId : undefined,
                 });
             }
@@ -79,7 +83,7 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
         } finally {
             setLoading(false);
         }
-    }, [workspaceId, fromChatId, title, description, priority, tags, selectedType, hierarchyEnabled, parentId, onCreated, onClose]);
+    }, [workspaceId, fromChatId, title, description, priority, tags, successCriteria, selectedType, hierarchyEnabled, parentId, onCreated, onClose]);
 
     const effectiveType = selectedType;
     const isBug = effectiveType === 'bug';
@@ -128,6 +132,7 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
                                 <option value="pbi">PBI / Story</option>
                                 <option value="work-item">Work Item</option>
                                 <option value="bug">Bug</option>
+                                <option value="goal">Goal</option>
                             </select>
                         </div>
                     )}
@@ -161,6 +166,20 @@ export function CreateWorkItemDialog({ open, onClose, workspaceId, onCreated, fr
                             data-testid="create-work-item-description"
                         />
                     </div>
+                    {effectiveType === 'goal' && (
+                        <div>
+                            <label className="block text-xs font-medium text-[#848484] dark:text-[#999] mb-1">Success Criteria</label>
+                            <textarea
+                                className="w-full rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-sm text-[#1e1e1e] dark:text-[#cccccc] p-2 resize-none focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
+                                rows={3}
+                                value={successCriteria}
+                                onChange={e => setSuccessCriteria(e.target.value)}
+                                placeholder="What defines this goal as achieved?"
+                                disabled={loading}
+                                data-testid="create-work-item-success-criteria"
+                            />
+                        </div>
+                    )}
                     <div>
                         <label className="block text-xs font-medium text-[#848484] dark:text-[#999] mb-1">Priority</label>
                         <select

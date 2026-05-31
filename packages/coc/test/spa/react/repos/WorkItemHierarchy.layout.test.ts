@@ -34,16 +34,17 @@ describe('WorkItemHierarchyNode — type system', () => {
         src = fs.readFileSync(NODE_SRC_PATH, 'utf-8');
     });
 
-    it('exports WorkItemTypeLabel type with all 5 hierarchy types', () => {
-        expect(src).toContain("'epic' | 'feature' | 'pbi' | 'work-item' | 'bug'");
+    it('exports WorkItemTypeLabel type with all 6 hierarchy types including goal', () => {
+        expect(src).toContain("'epic' | 'feature' | 'pbi' | 'work-item' | 'bug' | 'goal'");
     });
 
-    it('exports TYPE_LABELS map with all 5 human-readable labels', () => {
+    it('exports TYPE_LABELS map with all 6 human-readable labels', () => {
         expect(src).toContain("epic: 'Epic'");
         expect(src).toContain("feature: 'Feature'");
         expect(src).toContain("pbi: 'PBI'");
         expect(src).toContain("'work-item': 'Work Item'");
         expect(src).toContain("bug: 'Bug'");
+        expect(src).toContain("goal: 'Goal'");
     });
 
     it('uses distinct prefix characters for each type', () => {
@@ -52,6 +53,7 @@ describe('WorkItemHierarchyNode — type system', () => {
         expect(src).toContain("pbi: 'PBI'");
         expect(src).toContain("'work-item': 'WI'");
         expect(src).toContain("bug: 'BUG'");
+        expect(src).toContain("goal: 'GOAL'");
     });
 
     it('has distinct CSS classes for each type pill', () => {
@@ -60,6 +62,7 @@ describe('WorkItemHierarchyNode — type system', () => {
         expect(src).toContain('bg-cyan-100');      // pbi
         expect(src).toContain('bg-gray-100');      // work-item
         expect(src).toContain('bg-red-100');       // bug
+        expect(src).toContain('bg-orange-100');    // goal
     });
 
     it('renders a collapse toggle button', () => {
@@ -215,6 +218,7 @@ describe('WorkItemDetail — container vs leaf', () => {
         expect(src).toContain("effectiveType === 'epic' ? 'E'");
         expect(src).toContain("effectiveType === 'feature' ? 'F'");
         expect(src).toContain("effectiveType === 'bug' ? 'BUG'");
+        expect(src).toContain("effectiveType === 'goal' ? 'GOAL'");
         expect(src).toContain("'WI'");
     });
 
@@ -276,8 +280,169 @@ describe('WorkItemsTab — hierarchy flag conditional', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SPA config — feature flag plumbing
+// Mobile add-child feature — AC-01, AC-02, AC-03, AC-04
 // ─────────────────────────────────────────────────────────────────────────────
+
+describe('WorkItemHierarchyNode — mobile add-child button (AC-01 / AC-04)', () => {
+    let src: string;
+
+    beforeAll(() => {
+        src = fs.readFileSync(NODE_SRC_PATH, 'utf-8');
+    });
+
+    it('accepts isMobile prop', () => {
+        expect(src).toContain('isMobile');
+    });
+
+    it('accepts onAddChild callback prop', () => {
+        expect(src).toContain('onAddChild');
+    });
+
+    it('renders add-child button only for container nodes on mobile', () => {
+        expect(src).toContain('isContainer');
+        expect(src).toContain('isMobile');
+        expect(src).toContain('onAddChild?.(node)');
+    });
+
+    it('uses testid hierarchy-node-add-child-<id> on the button', () => {
+        expect(src).toContain('hierarchy-node-add-child-');
+    });
+
+    it('button does not depend on hover — no opacity/group-hover class', () => {
+        // The add-child button must be always visible (no group-hover opacity trick)
+        const btnIdx = src.indexOf('hierarchy-node-add-child-');
+        expect(btnIdx).toBeGreaterThan(-1);
+        // check there's no group-hover hidden class right near the button
+        const excerpt = src.slice(Math.max(0, btnIdx - 200), btnIdx + 200);
+        expect(excerpt).not.toContain('opacity-0');
+    });
+});
+
+describe('WorkItemHierarchyTree — type-picker modal for mobile add-child (AC-02 / AC-04)', () => {
+    let src: string;
+
+    beforeAll(() => {
+        src = fs.readFileSync(TREE_SRC_PATH, 'utf-8');
+    });
+
+    it('accepts isMobile prop', () => {
+        expect(src).toContain('isMobile');
+    });
+
+    it('has handleAddChild callback that calls onCreateItem directly for single-type parents', () => {
+        expect(src).toContain('handleAddChild');
+        expect(src).toContain('onCreateItem');
+    });
+
+    it('opens a type-picker when parent has multiple allowed child types', () => {
+        expect(src).toContain('typePicker');
+        expect(src).toContain('setTypePicker');
+    });
+
+    it('renders type-picker overlay with testid type-picker-overlay', () => {
+        expect(src).toContain('type-picker-overlay');
+    });
+
+    it('renders type-picker modal with testid type-picker-modal', () => {
+        expect(src).toContain('type-picker-modal');
+    });
+
+    it('renders per-type options with testid type-picker-option-<type>', () => {
+        expect(src).toContain('type-picker-option-');
+    });
+
+    it('renders a cancel button in the type picker', () => {
+        expect(src).toContain('type-picker-cancel');
+    });
+
+    it('passes isMobile and onAddChild to WorkItemHierarchyNode', () => {
+        expect(src).toContain('isMobile={isMobile}');
+        expect(src).toContain('onAddChild={handleAddChild}');
+    });
+});
+
+describe('WorkItemDetail — mobile Add Child button (AC-03 / AC-04)', () => {
+    let src: string;
+
+    beforeAll(() => {
+        src = fs.readFileSync(DETAIL_SRC_PATH, 'utf-8');
+    });
+
+    it('accepts isMobile prop', () => {
+        expect(src).toContain('isMobile');
+    });
+
+    it('accepts onCreateChild callback prop', () => {
+        expect(src).toContain('onCreateChild');
+    });
+
+    it('renders Add Child button guarded by isMobile and isContainer', () => {
+        expect(src).toContain('wi-add-child-btn');
+        const btnIdx = src.indexOf('wi-add-child-btn');
+        expect(btnIdx).toBeGreaterThan(-1);
+        // Check that isMobile and isContainer guards appear before this button
+        const before = src.slice(0, btnIdx);
+        expect(before).toContain('isMobile');
+        expect(before).toContain('isContainer');
+    });
+
+    it('does not gate the Add Child button by hierarchyEnabled', () => {
+        // The button should exist outside the isContainer && hierarchyEnabled block.
+        // Find the nearest isMobile && isContainer guard before the button testid.
+        const addChildIdx = src.indexOf('wi-add-child-btn');
+        expect(addChildIdx).toBeGreaterThan(-1);
+        // The isMobile && isContainer guard must appear somewhere before the testid
+        const before = src.slice(0, addChildIdx);
+        expect(before).toContain('isMobile && isContainer');
+        // The guard controlling the button must NOT be coupled to hierarchyEnabled
+        // Find the last occurrence of the isMobile guard before the testid
+        const isMobileGuardIdx = before.lastIndexOf('isMobile && isContainer');
+        const excerpt = src.slice(isMobileGuardIdx, addChildIdx + 20);
+        expect(excerpt).not.toContain('hierarchyEnabled &&');
+    });
+
+    it('renders child type picker overlay with testid wi-child-type-picker-overlay', () => {
+        expect(src).toContain('wi-child-type-picker-overlay');
+    });
+
+    it('renders child type picker modal with testid wi-child-type-picker-modal', () => {
+        expect(src).toContain('wi-child-type-picker-modal');
+    });
+
+    it('imports ALLOWED_CHILD_TYPES from coc-client', () => {
+        expect(src).toContain("ALLOWED_CHILD_TYPES");
+        expect(src).toContain('@plusplusoneplusplus/coc-client');
+    });
+});
+
+describe('WorkItemsTab — passes isMobile to tree and detail (AC-04)', () => {
+    let src: string;
+
+    beforeAll(() => {
+        src = fs.readFileSync(TAB_SRC_PATH, 'utf-8');
+    });
+
+    it('passes isMobile to WorkItemHierarchyTree', () => {
+        const treeIdx = src.indexOf('<WorkItemHierarchyTree');
+        expect(treeIdx).toBeGreaterThan(-1);
+        const treeBlock = src.slice(treeIdx, src.indexOf('/>', treeIdx) + 2);
+        expect(treeBlock).toContain('isMobile={isMobile}');
+    });
+
+    it('passes isMobile to WorkItemDetail', () => {
+        const detailIdx = src.indexOf('<WorkItemDetail');
+        expect(detailIdx).toBeGreaterThan(-1);
+        const detailBlock = src.slice(detailIdx, src.indexOf('/>', detailIdx) + 2);
+        expect(detailBlock).toContain('isMobile={isMobile}');
+    });
+
+    it('passes onCreateChild to WorkItemDetail', () => {
+        const detailIdx = src.indexOf('<WorkItemDetail');
+        expect(detailIdx).toBeGreaterThan(-1);
+        const detailBlock = src.slice(detailIdx, src.indexOf('/>', detailIdx) + 2);
+        expect(detailBlock).toContain('onCreateChild');
+    });
+});
 
 describe('SPA config — workItemsHierarchyEnabled', () => {
     let src: string;

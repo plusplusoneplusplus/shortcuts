@@ -4,69 +4,84 @@
 import { describe, it, expect } from 'vitest';
 import {
     buildRalphIterationPrompt,
-    RALPH_WORK_INTENT_PROMPT,
-    RALPH_SPEC_CONTRACT_PROMPT,
 } from '../../../src/server/ralph/iteration-prompt';
 
-// The Copilot host CLI's embedding retriever explicitly skips messages
-// beginning with these tags when looking for the most recent user query.
-// Source: node_modules/@github/copilot/app.js (DAs constant).
-const RETRIEVER_SKIP_PREFIXES = [
-    '<available_skills>',
-    '<additional_tool_instructions>',
-    '<skill-context',
-];
-
 describe('buildRalphIterationPrompt', () => {
-    function goalSection(prompt: string): string {
-        return prompt.split('<goal>\n')[1].split('\n</goal>')[0];
-    }
+    it('starts with the ultra-ralph skill pointer', () => {
+        const prompt = buildRalphIterationPrompt({ originalGoal: 'do x' });
+        expect(prompt).toMatch(/^Load and follow the `ultra-ralph` skill/);
+        expect(prompt).toContain('execution');
+        expect(prompt).toContain('~/.coc/skills/ultra-ralph/SKILL.md');
+    });
 
-    it('embeds the goal verbatim inside a <goal> block', () => {
+    it('embeds the goal inside a <goal> block at the end', () => {
         const goal = 'Implement diff providers in forge/src/diff and add tests.';
         const prompt = buildRalphIterationPrompt({ originalGoal: goal });
         expect(prompt).toContain('<goal>');
         expect(prompt).toContain(goal);
         expect(prompt).toContain('</goal>');
+        // goal block must be last
+        const goalIdx = prompt.lastIndexOf('<goal>');
+        const endIdx = prompt.lastIndexOf('</goal>');
+        expect(goalIdx).toBeGreaterThan(-1);
+        expect(endIdx).toBeGreaterThan(goalIdx);
+        expect(endIdx + '</goal>'.length).toBe(prompt.length);
     });
 
-    it('includes the iteration directive prefix so the model knows to act', () => {
+    it('includes progress path and iteration counter when both are provided', () => {
+        const prompt = buildRalphIterationPrompt({
+            originalGoal: 'Build a feature',
+            progressPath: '/tmp/ralph-sessions/sess-1/progress.md',
+            currentIteration: 3,
+            maxIterations: 10,
+        });
+        expect(prompt).toContain('/tmp/ralph-sessions/sess-1/progress.md');
+        expect(prompt).toContain('Iteration 3 of 10.');
+        expect(prompt).toContain('Progress journal:');
+    });
+
+    it('includes progress path and iteration counter before the <goal> block', () => {
+        const prompt = buildRalphIterationPrompt({
+            originalGoal: 'goal text',
+            progressPath: '/p/progress.md',
+            currentIteration: 2,
+            maxIterations: 5,
+        });
+        const pathIdx = prompt.indexOf('/p/progress.md');
+        const goalIdx = prompt.indexOf('<goal>');
+        expect(pathIdx).toBeGreaterThan(-1);
+        expect(pathIdx).toBeLessThan(goalIdx);
+    });
+
+    it('uses default iteration 1 of 20 when neither currentIteration nor maxIterations is supplied', () => {
+        const prompt = buildRalphIterationPrompt({
+            originalGoal: 'do x',
+            progressPath: '/p/progress.md',
+        });
+        expect(prompt).toContain('Iteration 1 of 20.');
+    });
+
+    it('omits the progress/iteration line when no progressPath and no counter are given', () => {
         const prompt = buildRalphIterationPrompt({ originalGoal: 'do x' });
-        expect(prompt).toMatch(/Continue the Ralph execution loop/);
-        expect(prompt).toMatch(/progress journal/);
-        expect(prompt).toMatch(/commit/);
+        expect(prompt).not.toContain('Progress journal:');
+        expect(prompt).not.toContain('Iteration');
     });
 
-    it('includes repository-agnostic work intent before the goal', () => {
-        const prompt = buildRalphIterationPrompt({ originalGoal: 'Build a feature' });
-        expect(prompt).toContain(RALPH_WORK_INTENT_PROMPT);
-        expect(prompt.indexOf('<work_intent>')).toBeGreaterThan(
-            prompt.indexOf('Continue the Ralph execution loop'),
-        );
-        expect(prompt.indexOf('</work_intent>')).toBeLessThan(prompt.indexOf('<goal>'));
-        expect(prompt).not.toContain('<selected_skills>');
-        expect(prompt).not.toMatch(/\bimpl\b/);
+    it('includes iteration counter without progress path when counter-only fields supplied', () => {
+        const prompt = buildRalphIterationPrompt({
+            originalGoal: 'do x',
+            currentIteration: 4,
+            maxIterations: 8,
+        });
+        expect(prompt).toContain('Iteration 4 of 8.');
+        expect(prompt).not.toContain('Progress journal:');
     });
 
-    it('keeps work intent when the goal is empty or whitespace', () => {
+    it('omits the <goal> block when goal is empty or whitespace', () => {
         for (const goal of ['', '   ', '\n\t', undefined]) {
             const prompt = buildRalphIterationPrompt({ originalGoal: goal });
             expect(prompt).not.toContain('<goal>');
-            expect(prompt).toContain('<work_intent>');
-            expect(prompt).toMatch(/Continue the Ralph execution loop/);
-        }
-    });
-
-    it('does not start with any retriever-skipped prefix', () => {
-        const cases = [
-            buildRalphIterationPrompt({ originalGoal: 'normal goal' }),
-            buildRalphIterationPrompt({ originalGoal: '' }),
-            buildRalphIterationPrompt({ originalGoal: 'a'.repeat(50_000) }),
-        ];
-        for (const prompt of cases) {
-            for (const prefix of RETRIEVER_SKIP_PREFIXES) {
-                expect(prompt.startsWith(prefix)).toBe(false);
-            }
+            expect(prompt).toMatch(/^Load and follow the `ultra-ralph` skill/);
         }
     });
 
@@ -74,8 +89,7 @@ describe('buildRalphIterationPrompt', () => {
         const goal = 'x'.repeat(50_000);
         const prompt = buildRalphIterationPrompt({ originalGoal: goal });
         expect(prompt).not.toContain('[truncated]');
-        expect(goalSection(prompt)).toBe(goal);
-        expect(prompt).toContain(RALPH_WORK_INTENT_PROMPT);
+        expect(prompt).toContain(goal);
     });
 
     it('preserves non-ASCII characters in the goal', () => {
@@ -84,36 +98,18 @@ describe('buildRalphIterationPrompt', () => {
         expect(prompt).toContain(goal);
     });
 
-    it('produces output rich enough to surface skill keywords for retrieval', () => {
-        // Regression for the original bug: the placeholder
-        // "Begin Ralph execution loop." had no semantic overlap with skill
-        // descriptions, so retrieval surfaced nothing. The new prompt MUST
-        // carry the goal text, which is what retrieval queries against.
-        const goal =
-            'Implement PR diff provider tests and run the forge test suite.';
-        const prompt = buildRalphIterationPrompt({ originalGoal: goal });
-        expect(prompt).not.toBe('Begin Ralph execution loop.');
-        expect(prompt).toContain('Implement');
-        expect(prompt).toContain('tests');
+    it('does not contain old WORK_INTENT or SPEC_CONTRACT scaffolding', () => {
+        const prompt = buildRalphIterationPrompt({ originalGoal: 'some goal' });
+        expect(prompt).not.toContain('<work_intent>');
+        expect(prompt).not.toContain('<spec_contract>');
+        expect(prompt).not.toContain('RALPH_NEXT');
+        expect(prompt).not.toContain('RALPH_COMPLETE');
+        expect(prompt).not.toContain('## Iteration <N>');
     });
 
-    it('embeds the spec contract that delegates to ultra-ralph skill', () => {
-        const prompt = buildRalphIterationPrompt({ originalGoal: 'a goal' });
-        expect(prompt).toContain(RALPH_SPEC_CONTRACT_PROMPT);
-        expect(prompt).toContain('ultra-ralph');
-        // Spec contract must sit before the goal block so the goal text
-        // remains the dominant retrieval signal at the end of the prompt.
-        expect(prompt.indexOf('<spec_contract>')).toBeGreaterThan(
-            prompt.indexOf('<work_intent>'),
-        );
-        expect(prompt.indexOf('</spec_contract>')).toBeLessThan(
-            prompt.indexOf('<goal>'),
-        );
-    });
-
-    it('includes the spec contract even when the goal is empty', () => {
-        const prompt = buildRalphIterationPrompt({ originalGoal: '' });
-        expect(prompt).toContain(RALPH_SPEC_CONTRACT_PROMPT);
+    it('returns empty input as just the skill pointer line', () => {
+        const prompt = buildRalphIterationPrompt({});
+        expect(prompt).toMatch(/^Load and follow the `ultra-ralph` skill/);
         expect(prompt).not.toContain('<goal>');
     });
 });

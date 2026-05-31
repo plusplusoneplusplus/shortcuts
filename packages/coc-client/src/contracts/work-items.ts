@@ -2,6 +2,7 @@ import type { JsonObject } from './common';
 
 export type WorkItemStatus =
   | 'created'
+  | 'drafting'
   | 'planning'
   | 'readyToExecute'
   | 'executing'
@@ -12,7 +13,7 @@ export type WorkItemStatus =
   | string;
 export type WorkItemPriority = 'high' | 'normal' | 'low';
 export type WorkItemSource = 'manual' | 'chat' | 'schedule';
-export type WorkItemType = 'work-item' | 'bug' | 'epic' | 'feature' | 'pbi';
+export type WorkItemType = 'work-item' | 'bug' | 'goal' | 'epic' | 'feature' | 'pbi';
 
 /**
  * Allowed parent types for each work item type.
@@ -25,6 +26,7 @@ export const ALLOWED_PARENT_TYPES: Record<WorkItemType, readonly WorkItemType[]>
   pbi:         ['feature'],
   'work-item': ['pbi'],
   bug:         ['pbi'],
+  goal:        ['pbi'],
 };
 
 /**
@@ -34,9 +36,10 @@ export const ALLOWED_PARENT_TYPES: Record<WorkItemType, readonly WorkItemType[]>
 export const ALLOWED_CHILD_TYPES: Record<WorkItemType, readonly WorkItemType[]> = {
   epic:        ['feature'],
   feature:     ['pbi'],
-  pbi:         ['work-item', 'bug'],
+  pbi:         ['work-item', 'bug', 'goal'],
   'work-item': [],
   bug:         [],
+  goal:        [],
 };
 
 export interface WorkItemPlan {
@@ -93,6 +96,10 @@ export interface WorkItem {
   autoReExecuteCycles?: number;
   plan?: WorkItemPlan;
   planVersion?: number;
+  /** Success criteria defining "done" for a `goal` item (markdown). */
+  successCriteria?: string;
+  /** Linked spec-drafting (Ralph grilling) chat process ID for a `goal` item. */
+  grillSessionId?: string;
   taskId?: string;
   processId?: string;
   executionHistory?: WorkItemExecution[];
@@ -134,6 +141,8 @@ export interface CreateWorkItemRequest {
   priority?: WorkItemPriority;
   tags?: string[];
   autoExecute?: boolean;
+  /** Success criteria for a `goal` item (markdown). */
+  successCriteria?: string;
   plan?: { content: string; resolvedBy?: string };
 }
 
@@ -150,6 +159,10 @@ export interface CreateWorkItemFromChatRequest extends JsonObject {
 export interface UpdateWorkItemRequest extends Partial<Pick<WorkItem, 'title' | 'description' | 'status' | 'priority' | 'tags' | 'autoExecute'>> {
   completedAt?: string;
   reviewComments?: unknown[];
+  /** Update success criteria for a `goal` item (markdown). */
+  successCriteria?: string;
+  /** Link a spec-drafting chat process to a `goal` item. */
+  grillSessionId?: string;
   /** Update parent link (hierarchy). Only accepted when hierarchy flag is enabled. */
   parentId?: string | null;
 }
@@ -238,9 +251,11 @@ export interface WorkItemRollup {
     pbi: number;
     'work-item': number;
     bug: number;
+    goal: number;
   };
   byStatus: {
     created: number;
+    drafting: number;
     planning: number;
     readyToExecute: number;
     executing: number;

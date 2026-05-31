@@ -83,6 +83,12 @@ export interface CLIConfig {
         providers?: Record<string, {
             enabled?: string[];
             reasoningEfforts?: Record<string, string>;
+            /** Per-provider effort-tier mappings (tier → model + reasoningEffort). */
+            effortTiers?: {
+                low?: { model: string; reasoningEffort?: string | null };
+                medium?: { model: string; reasoningEffort?: string | null };
+                high?: { model: string; reasoningEffort?: string | null };
+            };
         }>;
     };
     /** Logging configuration */
@@ -211,6 +217,10 @@ export interface CLIConfig {
             enabled?: boolean;
         };
     };
+    /** Effort Tiers configuration — single Low/Medium/High selector replacing model picker + effort pill. Disabled by default. */
+    effortLevels?: {
+        enabled?: boolean;
+    };
 }
 
 // ============================================================================
@@ -294,6 +304,12 @@ export interface ResolvedCLIConfig {
         providers?: Record<string, {
             enabled?: string[];
             reasoningEfforts?: Record<string, string>;
+            /** Per-provider effort-tier mappings (tier → model + reasoningEffort). */
+            effortTiers?: {
+                low?: { model: string; reasoningEffort?: string | null };
+                medium?: { model: string; reasoningEffort?: string | null };
+                high?: { model: string; reasoningEffort?: string | null };
+            };
         }>;
     };
     /** Logging config passed through from file (not fully resolved — use resolveLoggingConfig) */
@@ -418,6 +434,10 @@ export interface ResolvedCLIConfig {
             enabled: boolean;
         };
     };
+    /** Effort Tiers configuration — single Low/Medium/High selector replacing model picker + effort pill. */
+    effortLevels: {
+        enabled: boolean;
+    };
 }
 
 // ============================================================================
@@ -445,6 +465,7 @@ export const DEFAULT_BUNDLED_SKILLS: readonly string[] = [
     'grill-me',
     'loop',
     'ultra-ralph',
+    'classify-diff',
 ];
 
 /** Default configuration values */
@@ -560,6 +581,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         hierarchy: {
             enabled: false,
         },
+    },
+    effortLevels: {
+        enabled: false,
     },
 };
 

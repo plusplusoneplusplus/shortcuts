@@ -126,6 +126,11 @@ export function registerRalphRoutes(routes: Route[], ctx: QueueRalphRouteContext
                     mode: 'ralph',
                     prompt: buildRalphIterationPrompt({
                         originalGoal: goalSpec,
+                        progressPath: (dataDir && wsId && ralphCtx.sessionId)
+                            ? new RalphSessionStore({ dataDir }).getProgressPath(wsId, ralphCtx.sessionId)
+                            : undefined,
+                        currentIteration: 1,
+                        maxIterations,
                     }),
                     workspaceId: wsId,
                     workingDirectory,

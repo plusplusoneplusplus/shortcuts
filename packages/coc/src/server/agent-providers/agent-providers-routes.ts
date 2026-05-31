@@ -20,7 +20,7 @@ import { sendJson, send400, send500 } from '../shared/router';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
 import type { AgentProviderStatus, AgentProvidersResponse, AgentProvidersQuotaResponse, ProviderQuotaType } from '@plusplusoneplusplus/coc-client';
 import type { CopilotSDKService, IAvailabilityResult, CodexSDKService, ClaudeSDKService, IAccountQuotaResult, ModelInfo, ISDKService } from '@plusplusoneplusplus/forge';
-import { getLogger, LogCategory, getAllModels, modelMetadataStore, sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, SDK_PROVIDER_CLAUDE } from '@plusplusoneplusplus/forge';
+import { getLogger, LogCategory, getAllModels, modelMetadataStore, sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, SDK_PROVIDER_CLAUDE, mergeEffortTiersWithDefaults, getDefaultEffortTiers, type MergedEffortTiersMap, type EffortTierDefaultsMap } from '@plusplusoneplusplus/forge';
 import { getResolvedInstallState } from '../providers/provider-install-routes';
 import type { CLIConfig } from '../../config';
 
@@ -141,6 +141,17 @@ export async function buildAgentProvidersResponse(ctx: AgentProvidersRouteContex
     return { providers: [copilot, codexProvider, claudeProvider] };
 }
 
+// ── Effort-tier types ────────────────────────────────────────────────────────
+
+export interface EffortTierEntry {
+    model: string;
+    reasoningEffort?: string | null;
+}
+
+export type EffortTiersMap = Partial<Record<'low' | 'medium' | 'high', EffortTierEntry>>;
+
+const VALID_TIER_KEYS = new Set<string>(['low', 'medium', 'high']);
+
 // ── Provider-scoped model helpers ────────────────────────────────────────────
 
 const VALID_PROVIDERS = new Set(['copilot', 'codex', 'claude']);
@@ -150,12 +161,13 @@ const PROVIDER_SDK_KEYS: Record<string, string> = {
     claude: SDK_PROVIDER_CLAUDE,
 };
 
-function getProviderModelSettings(cfg: CLIConfig | undefined, provider: string): { enabled: string[]; reasoningEfforts: Record<string, string> } {
+function getProviderModelSettings(cfg: CLIConfig | undefined, provider: string): { enabled: string[]; reasoningEfforts: Record<string, string>; effortTiers: EffortTiersMap } {
     const providerSettings = cfg?.models?.providers?.[provider];
     if (providerSettings) {
         return {
             enabled: providerSettings.enabled ?? [],
             reasoningEfforts: providerSettings.reasoningEfforts ?? {},
+            effortTiers: (providerSettings.effortTiers ?? {}) as EffortTiersMap,
         };
     }
     // Legacy migration: treat global models.enabled/reasoningEfforts as Copilot defaults
@@ -163,15 +175,16 @@ function getProviderModelSettings(cfg: CLIConfig | undefined, provider: string):
         return {
             enabled: cfg?.models?.enabled ?? [],
             reasoningEfforts: cfg?.models?.reasoningEfforts ?? {},
+            effortTiers: {},
         };
     }
-    return { enabled: [], reasoningEfforts: {} };
+    return { enabled: [], reasoningEfforts: {}, effortTiers: {} };
 }
 
 function writeProviderModelSettings(
     cfg: CLIConfig,
     provider: string,
-    update: Partial<{ enabled: string[]; reasoningEfforts: Record<string, string> }>,
+    update: Partial<{ enabled: string[]; reasoningEfforts: Record<string, string>; effortTiers: EffortTiersMap }>,
 ): CLIConfig {
     const existing = cfg.models?.providers?.[provider] ?? {};
     const updated = { ...existing, ...update };
@@ -231,6 +244,21 @@ function getModelQueryError(error: string | undefined): string {
         // Non-JSON provider errors are already displayable.
     }
     return error;
+}
+
+/** Resolve the model catalog for a provider for write-time validation. Returns [] when unavailable — callers must skip validation when empty. */
+async function getProviderCatalog(ctx: AgentProvidersRouteContext, provider: string): Promise<ModelInfo[]> {
+    if (provider === 'copilot') {
+        // Only use the live metadata store; if it hasn't been populated yet, return [] to skip validation.
+        return modelMetadataStore.getAll();
+    }
+    const sdkService = getProviderSdkService(ctx, provider);
+    if (!sdkService) return [];
+    try {
+        return await sdkService.listModels() as unknown as ModelInfo[];
+    } catch {
+        return [];
+    }
 }
 
 export function registerAgentProvidersRoutes(routes: Route[], ctx: AgentProvidersRouteContext): void {
@@ -464,6 +492,125 @@ export function registerAgentProvidersRoutes(routes: Route[], ctx: AgentProvider
                     sendJson(res, { provider, reasoningEfforts: existing });
                 } catch (err) {
                     send500(res, err instanceof Error ? err.message : 'Failed to update reasoning effort');
+                }
+            });
+        },
+    });
+
+    // GET /api/agent-providers/:provider/effort-tiers
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/agent-providers\/([^/]+)\/effort-tiers$/,
+        handler: (_req, res, match) => {
+            const provider = match ? decodeURIComponent(match[1] ?? '') : '';
+            if (!VALID_PROVIDERS.has(provider)) {
+                send400(res, `Invalid provider: ${provider}. Valid providers: ${[...VALID_PROVIDERS].join(', ')}`);
+                return;
+            }
+            try {
+                const cfg = ctx.loadConfigFile(ctx.configPath);
+                const settings = getProviderModelSettings(cfg, provider);
+                const effortTiers: MergedEffortTiersMap = mergeEffortTiersWithDefaults(provider, settings.effortTiers);
+                const defaults: EffortTierDefaultsMap | Record<string, never> = getDefaultEffortTiers(provider) ?? {};
+                sendJson(res, { provider, effortTiers, defaults });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : 'Failed to retrieve effort tiers');
+            }
+        },
+    });
+
+    // PUT /api/agent-providers/:provider/effort-tiers
+    routes.push({
+        method: 'PUT',
+        pattern: /^\/api\/agent-providers\/([^/]+)\/effort-tiers$/,
+        handler: (req, res, match) => {
+            const provider = match ? decodeURIComponent(match[1] ?? '') : '';
+            if (!VALID_PROVIDERS.has(provider)) {
+                send400(res, `Invalid provider: ${provider}. Valid providers: ${[...VALID_PROVIDERS].join(', ')}`);
+                return;
+            }
+            let body = '';
+            req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+            req.on('end', async () => {
+                try {
+                    const parsed = JSON.parse(body || '{}') as Record<string, unknown>;
+                    // Build the update map from either single-tier or full-map body
+                    let updateMap: EffortTiersMap;
+                    if (typeof parsed.tier === 'string') {
+                        // Single-tier upsert: { tier, model, reasoningEffort? }
+                        const tier = parsed.tier as string;
+                        if (!VALID_TIER_KEYS.has(tier)) {
+                            send400(res, `Invalid tier: ${tier}. Valid tiers: low, medium, high`);
+                            return;
+                        }
+                        if (typeof parsed.model !== 'string' || !parsed.model) {
+                            send400(res, 'model is required');
+                            return;
+                        }
+                        const reasoningEffort = parsed.reasoningEffort !== undefined
+                            ? (parsed.reasoningEffort === null || typeof parsed.reasoningEffort === 'string' ? parsed.reasoningEffort : undefined)
+                            : undefined;
+                        updateMap = { [tier]: { model: parsed.model, reasoningEffort } } as EffortTiersMap;
+                    } else if (parsed.effortTiers !== null && typeof parsed.effortTiers === 'object') {
+                        // Full-map replace
+                        const raw = parsed.effortTiers as Record<string, unknown>;
+                        const validated: EffortTiersMap = {};
+                        for (const key of Object.keys(raw)) {
+                            if (!VALID_TIER_KEYS.has(key)) {
+                                send400(res, `Invalid tier key: ${key}. Valid tiers: low, medium, high`);
+                                return;
+                            }
+                            const entry = raw[key] as Record<string, unknown>;
+                            if (typeof entry?.model !== 'string' || !entry.model) {
+                                send400(res, `model is required for tier: ${key}`);
+                                return;
+                            }
+                            const effort = entry.reasoningEffort !== undefined
+                                ? (entry.reasoningEffort === null || typeof entry.reasoningEffort === 'string' ? entry.reasoningEffort as string | null : undefined)
+                                : undefined;
+                            validated[key as 'low' | 'medium' | 'high'] = { model: entry.model as string, reasoningEffort: effort };
+                        }
+                        updateMap = validated;
+                    } else {
+                        send400(res, 'Request must include either "tier" (single upsert) or "effortTiers" (full map)');
+                        return;
+                    }
+
+                    // Validate model(s) against the provider catalog
+                    const catalog = await getProviderCatalog(ctx, provider);
+                    if (catalog.length > 0) {
+                        const catalogMap = new Map(catalog.map(m => [m.id, m]));
+                        for (const [tier, entry] of Object.entries(updateMap)) {
+                            if (!entry) continue;
+                            const modelInfo = catalogMap.get(entry.model);
+                            if (!modelInfo) {
+                                send400(res, `Model "${entry.model}" is not in the ${provider} catalog`);
+                                return;
+                            }
+                            if (entry.reasoningEffort != null) {
+                                const supported = modelInfo.supportedReasoningEfforts;
+                                if (Array.isArray(supported) && supported.length > 0 && !supported.includes(entry.reasoningEffort)) {
+                                    send400(res, `Reasoning effort "${entry.reasoningEffort}" is not supported by model "${entry.model}" for tier "${tier}". Supported: ${supported.join(', ')}`);
+                                    return;
+                                }
+                            }
+                        }
+                    }
+
+                    const filePath = ctx.getConfigFilePath();
+                    const cfg = ctx.loadConfigFile(ctx.configPath) ?? {};
+                    const currentSettings = getProviderModelSettings(cfg, provider);
+                    // Merge: full-map body replaces, single-tier upsert merges into existing
+                    const mergedTiers: EffortTiersMap = typeof parsed.tier === 'string'
+                        ? { ...currentSettings.effortTiers, ...updateMap }
+                        : updateMap;
+                    const updated = writeProviderModelSettings(cfg, provider, { effortTiers: mergedTiers });
+                    ctx.writeConfigFile(filePath, updated);
+                    const responseTiers: MergedEffortTiersMap = mergeEffortTiersWithDefaults(provider, mergedTiers);
+                    const defaults: EffortTierDefaultsMap | Record<string, never> = getDefaultEffortTiers(provider) ?? {};
+                    sendJson(res, { provider, effortTiers: responseTiers, defaults });
+                } catch (err) {
+                    send500(res, err instanceof Error ? err.message : 'Failed to update effort tiers');
                 }
             });
         },

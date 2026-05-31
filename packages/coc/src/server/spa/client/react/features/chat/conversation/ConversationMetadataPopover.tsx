@@ -97,6 +97,7 @@ export function buildRows(process: any, turnsCount?: number): MetaRow[] {
     push('Model', process?.metadata?.model || process?.config?.model || process?.model || 'default');
     push('Mode', process?.metadata?.mode || process?.mode);
     push('Agent Provider', getAgentNameFromProcess(process));
+    push('Reasoning Effort', process?.config?.reasoningEffort || process?.metadata?.reasoningEffort);
     push('Session ID', sessionId, { breakAll: true, mono: true, link: sessionId ? `#logs?sessionId=${encodeURIComponent(sessionId)}` : undefined });
     push('Backend', process?.metadata?.backend);
     push('Started', formatTimestamp(startedAt));

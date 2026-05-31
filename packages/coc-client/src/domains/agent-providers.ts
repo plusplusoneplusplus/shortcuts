@@ -4,6 +4,7 @@ import type {
   ProviderModelsResponse,
   ProviderEnabledModelsResponse,
   ProviderReasoningEffortsResponse,
+  ProviderEffortTiersResponse,
   ModelQueryRequest,
   ProviderModelQueryResponse,
 } from '../contracts';
@@ -79,6 +80,35 @@ export class AgentProvidersClient {
     return this.transport.request<ProviderReasoningEffortsResponse>(
       `/agent-providers/${encodeURIComponent(provider)}/models/reasoning-efforts`,
       { method: 'PUT', body: { modelId, effort } },
+    );
+  }
+
+  getEffortTiers(provider: string): Promise<ProviderEffortTiersResponse> {
+    return this.transport.request<ProviderEffortTiersResponse>(
+      `/agent-providers/${encodeURIComponent(provider)}/effort-tiers`,
+    );
+  }
+
+  setEffortTier(
+    provider: string,
+    tier: 'low' | 'medium' | 'high',
+    model: string,
+    reasoningEffort?: string | null,
+  ): Promise<ProviderEffortTiersResponse> {
+    return this.transport.request<ProviderEffortTiersResponse>(
+      `/agent-providers/${encodeURIComponent(provider)}/effort-tiers`,
+      { method: 'PUT', body: { tier, model, reasoningEffort: reasoningEffort ?? null } },
+    );
+  }
+
+  /** Full-map replace: sends all configured tiers at once; omitted tiers are cleared. */
+  replaceEffortTiers(
+    provider: string,
+    effortTiers: Partial<Record<'low' | 'medium' | 'high', { model: string; reasoningEffort?: string | null }>>,
+  ): Promise<ProviderEffortTiersResponse> {
+    return this.transport.request<ProviderEffortTiersResponse>(
+      `/agent-providers/${encodeURIComponent(provider)}/effort-tiers`,
+      { method: 'PUT', body: { effortTiers } },
     );
   }
 

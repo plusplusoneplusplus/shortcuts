@@ -1682,6 +1682,58 @@
   background: var(--ar-accent);
 }
 
+/* ── Effort Tiers editor ────────────────────────────────────── */
+.admin-redesign .aip-tier-table {
+  min-width: 0;
+  overflow-x: auto;
+}
+.admin-redesign .aip-tier-table table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 480px;
+}
+.admin-redesign .aip-tier-table th,
+.admin-redesign .aip-tier-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--ar-border);
+  text-align: left;
+  vertical-align: middle;
+}
+.admin-redesign .aip-tier-table th {
+  font-size: 10.5px;
+  color: var(--ar-text-mute);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.admin-redesign .aip-tier-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.admin-redesign .aip-tier-table tbody tr:hover td {
+  background: var(--ar-bg-hover);
+}
+.admin-redesign .aip-tier-label {
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 52px;
+  display: inline-block;
+}
+
+.admin-redesign .aip-tier-default-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  background: var(--ar-color-surface-subtle, rgba(127, 127, 127, 0.12));
+  color: var(--ar-color-text-muted, #6b7280);
+  border: 1px solid var(--ar-color-border-subtle, rgba(127, 127, 127, 0.25));
+  vertical-align: middle;
+}
+
 /* ── Query view ────────────────────────────────────────────── */
 .admin-redesign .aip-query-grid {
   display: grid;

@@ -53,6 +53,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isLoopsEnabled: () => false,
     getDefaultProvider: () => 'copilot' as const,
     getActiveProvider: () => 'copilot' as const,
+    isEffortLevelsEnabled: () => false,
 }));
 
 // Display settings
@@ -151,6 +152,23 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => 
 // useModels — return empty list so ChatDetail renders without a real API
 vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({
     useModels: () => ({ models: [], loading: false, error: null, reload: vi.fn() }),
+}));
+
+// useProviderEffortTiers — return empty tier map so ChatDetail renders without a real API
+vi.mock('../../../../src/server/spa/client/react/hooks/useProviderEffortTiers', () => ({
+    useProviderEffortTiers: () => ({
+        tiers: {},
+        loading: false,
+        error: null,
+        saveError: null,
+        saving: false,
+        dirty: false,
+        setTier: vi.fn(),
+        clearTier: vi.fn(),
+        save: vi.fn(),
+        cancel: vi.fn(),
+        reload: vi.fn(),
+    }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useContainerWidth', () => ({

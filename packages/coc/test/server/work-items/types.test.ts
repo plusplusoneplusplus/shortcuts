@@ -43,7 +43,7 @@ describe('Work Item Types', () => {
     describe('WORK_ITEM_STATUSES', () => {
         it('contains all expected statuses', () => {
             expect(WORK_ITEM_STATUSES).toEqual([
-                'created', 'planning', 'readyToExecute', 'executing', 'aiDone', 'aiFailed', 'done', 'failed',
+                'created', 'drafting', 'planning', 'readyToExecute', 'executing', 'aiDone', 'aiFailed', 'done', 'failed',
             ]);
         });
 
@@ -89,6 +89,22 @@ describe('Work Item Types', () => {
     describe('isValidTransition', () => {
         it('allows created → planning', () => {
             expect(isValidTransition('created', 'planning')).toBe(true);
+        });
+
+        it('allows created → drafting (goal spec phase)', () => {
+            expect(isValidTransition('created', 'drafting')).toBe(true);
+        });
+
+        it('allows drafting → planning (spec ready)', () => {
+            expect(isValidTransition('drafting', 'planning')).toBe(true);
+        });
+
+        it('allows drafting → readyToExecute (skip planning)', () => {
+            expect(isValidTransition('drafting', 'readyToExecute')).toBe(true);
+        });
+
+        it('allows planning → drafting (back to refine spec)', () => {
+            expect(isValidTransition('planning', 'drafting')).toBe(true);
         });
 
         it('allows created → readyToExecute (skip planning)', () => {
@@ -299,9 +315,10 @@ describe('Work Item Types', () => {
     });
 
     describe('Hierarchy type constants', () => {
-        it('WORK_ITEM_TYPES includes all five types', () => {
+        it('WORK_ITEM_TYPES includes all six types', () => {
             expect(WORK_ITEM_TYPES).toContain('work-item');
             expect(WORK_ITEM_TYPES).toContain('bug');
+            expect(WORK_ITEM_TYPES).toContain('goal');
             expect(WORK_ITEM_TYPES).toContain('epic');
             expect(WORK_ITEM_TYPES).toContain('feature');
             expect(WORK_ITEM_TYPES).toContain('pbi');
@@ -313,11 +330,13 @@ describe('Work Item Types', () => {
             expect(HIERARCHY_CONTAINER_TYPES.has('pbi')).toBe(true);
             expect(HIERARCHY_CONTAINER_TYPES.has('work-item')).toBe(false);
             expect(HIERARCHY_CONTAINER_TYPES.has('bug')).toBe(false);
+            expect(HIERARCHY_CONTAINER_TYPES.has('goal')).toBe(false);
         });
 
-        it('LEAF_WORK_ITEM_TYPES contains work-item and bug', () => {
+        it('LEAF_WORK_ITEM_TYPES contains work-item, bug, and goal', () => {
             expect(LEAF_WORK_ITEM_TYPES.has('work-item')).toBe(true);
             expect(LEAF_WORK_ITEM_TYPES.has('bug')).toBe(true);
+            expect(LEAF_WORK_ITEM_TYPES.has('goal')).toBe(true);
             expect(LEAF_WORK_ITEM_TYPES.has('epic')).toBe(false);
             expect(LEAF_WORK_ITEM_TYPES.has('feature')).toBe(false);
             expect(LEAF_WORK_ITEM_TYPES.has('pbi')).toBe(false);
@@ -329,6 +348,7 @@ describe('Work Item Types', () => {
             expect(ALLOWED_PARENT_TYPES.pbi).toEqual(['feature']);
             expect(ALLOWED_PARENT_TYPES['work-item']).toEqual(['pbi']);
             expect(ALLOWED_PARENT_TYPES.bug).toEqual(['pbi']);
+            expect(ALLOWED_PARENT_TYPES.goal).toEqual(['pbi']);
         });
 
         it('ALLOWED_CHILD_TYPES defines correct hierarchy', () => {
@@ -336,8 +356,10 @@ describe('Work Item Types', () => {
             expect(ALLOWED_CHILD_TYPES.feature).toEqual(['pbi']);
             expect(ALLOWED_CHILD_TYPES.pbi).toContain('work-item');
             expect(ALLOWED_CHILD_TYPES.pbi).toContain('bug');
+            expect(ALLOWED_CHILD_TYPES.pbi).toContain('goal');
             expect(ALLOWED_CHILD_TYPES['work-item']).toEqual([]);
             expect(ALLOWED_CHILD_TYPES.bug).toEqual([]);
+            expect(ALLOWED_CHILD_TYPES.goal).toEqual([]);
         });
     });
 
@@ -347,7 +369,7 @@ describe('Work Item Types', () => {
         });
 
         it('returns the type when provided', () => {
-            const types: WorkItemType[] = ['work-item', 'bug', 'epic', 'feature', 'pbi'];
+            const types: WorkItemType[] = ['work-item', 'bug', 'goal', 'epic', 'feature', 'pbi'];
             for (const t of types) {
                 expect(getEffectiveType(t)).toBe(t);
             }
@@ -364,6 +386,7 @@ describe('Work Item Types', () => {
         it('returns false for leaf types', () => {
             expect(isContainerType('work-item')).toBe(false);
             expect(isContainerType('bug')).toBe(false);
+            expect(isContainerType('goal')).toBe(false);
         });
     });
 
@@ -371,6 +394,7 @@ describe('Work Item Types', () => {
         it('returns true for leaf types', () => {
             expect(isLeafType('work-item')).toBe(true);
             expect(isLeafType('bug')).toBe(true);
+            expect(isLeafType('goal')).toBe(true);
         });
 
         it('returns false for container types', () => {
@@ -397,6 +421,14 @@ describe('Work Item Types', () => {
             expect(isValidParentChildTypes('bug', 'pbi')).toBe(true);
         });
 
+        it('allows goal under pbi', () => {
+            expect(isValidParentChildTypes('goal', 'pbi')).toBe(true);
+        });
+
+        it('rejects goal under epic (skip levels)', () => {
+            expect(isValidParentChildTypes('goal', 'epic')).toBe(false);
+        });
+
         it('rejects skipped levels (work-item under epic)', () => {
             expect(isValidParentChildTypes('work-item', 'epic')).toBe(false);
         });
@@ -410,7 +442,7 @@ describe('Work Item Types', () => {
         });
 
         it('rejects epic having any parent', () => {
-            const types: WorkItemType[] = ['work-item', 'bug', 'epic', 'feature', 'pbi'];
+            const types: WorkItemType[] = ['work-item', 'bug', 'goal', 'epic', 'feature', 'pbi'];
             for (const t of types) {
                 expect(isValidParentChildTypes('epic', t)).toBe(false);
             }

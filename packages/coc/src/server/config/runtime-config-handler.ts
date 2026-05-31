@@ -52,6 +52,7 @@ export function buildRuntimeDashboardConfig(
             defaultProvider: (config.defaultProvider ?? 'copilot') as 'copilot' | 'codex' | 'claude',
             workItemsHierarchyEnabled: config.workItems?.hierarchy?.enabled ?? false,
             gitCommitLookupEnabled: config.features?.gitCommitLookup ?? false,
+            effortLevelsEnabled: config.effortLevels?.enabled ?? false,
         },
         hostname: config.serve?.serverName || shortenHostname(hostname),
         bindAddress,

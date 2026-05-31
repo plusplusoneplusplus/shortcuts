@@ -97,6 +97,18 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.workItemsHierarchyEnabled).toBe(true);
     });
 
+    it('defaults effortLevelsEnabled to false', () => {
+        const svc = createMockRuntimeConfigService();
+        const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
+        expect(result.features.effortLevelsEnabled).toBe(false);
+    });
+
+    it('reflects effortLevels.enabled = true from config', () => {
+        const svc = createMockRuntimeConfigService({ effortLevels: { enabled: true } } as any);
+        const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
+        expect(result.features.effortLevelsEnabled).toBe(true);
+    });
+
     it('uses serve.serverName for hostname when set', () => {
         const svc = createMockRuntimeConfigService({ serve: { serverName: 'custom-name' } } as any);
         const result = buildRuntimeDashboardConfig(svc, 'raw-hostname.local', '127.0.0.1');
@@ -145,6 +157,41 @@ describe('AC-01: workItems.hierarchy.enabled live enablement end-to-end', () => 
 
             // Verify the effect classifies the field as live
             const effect = updateResult.effects.find((e: { field: string }) => e.field === 'workItems.hierarchy.enabled');
+            expect(effect).toBeDefined();
+            expect(effect!.runtime).toBe('live');
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+});
+
+
+describe('AC-01 effortLevels.enabled live enablement end-to-end', () => {
+    it('effortLevels.enabled update through service is reflected in runtime dashboard config', async () => {
+        const fs = await import('fs');
+        const path = await import('path');
+        const os = await import('os');
+        const { RuntimeConfigService } = await import('../../../src/config/runtime-config-service');
+
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-effort-ac01-'));
+        try {
+            const configPath = path.join(tmpDir, 'config.yaml');
+            const svc = new RuntimeConfigService({ configPath });
+
+            // Default: effortLevels disabled
+            const before = buildRuntimeDashboardConfig(svc, 'test-host', '127.0.0.1');
+            expect(before.features.effortLevelsEnabled).toBe(false);
+
+            // Admin enables effort tiers
+            const updateResult = await svc.updateConfig({ 'effortLevels.enabled': true });
+            expect(updateResult.config.effortLevels.enabled).toBe(true);
+
+            // Runtime dashboard config now reflects enabled
+            const after = buildRuntimeDashboardConfig(svc, 'test-host', '127.0.0.1');
+            expect(after.features.effortLevelsEnabled).toBe(true);
+
+            // Field is classified as live (no restart required)
+            const effect = updateResult.effects.find((e: { field: string }) => e.field === 'effortLevels.enabled');
             expect(effect).toBeDefined();
             expect(effect!.runtime).toBe('live');
         } finally {
