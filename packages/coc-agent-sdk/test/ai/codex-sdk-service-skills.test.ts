@@ -44,4 +44,72 @@ describe('CodexSDKService skills', () => {
             }),
         );
     });
+
+    it('uses read-only Codex sandbox options for interactive mode', async () => {
+        svc = new CodexSDKService();
+        const codexMock = makeCodexSdkMock();
+        (svc as unknown as { sdk: unknown }).sdk = codexMock;
+        (svc as unknown as { availabilityCache: unknown }).availabilityCache = { available: true };
+
+        await svc.sendMessage({ prompt: 'test', mode: 'interactive' });
+
+        expect(codexMock.startThread).toHaveBeenCalledWith(
+            expect.objectContaining({
+                approvalPolicy: 'never',
+                sandboxMode: 'read-only',
+                networkAccessEnabled: false,
+            }),
+        );
+    });
+
+    it('uses read-only Codex sandbox options when mode is omitted', async () => {
+        svc = new CodexSDKService();
+        const codexMock = makeCodexSdkMock();
+        (svc as unknown as { sdk: unknown }).sdk = codexMock;
+        (svc as unknown as { availabilityCache: unknown }).availabilityCache = { available: true };
+
+        await svc.sendMessage({ prompt: 'test' });
+
+        expect(codexMock.startThread).toHaveBeenCalledWith(
+            expect.objectContaining({
+                approvalPolicy: 'never',
+                sandboxMode: 'read-only',
+                networkAccessEnabled: false,
+            }),
+        );
+    });
+
+    it('uses full-access Codex sandbox options for plan mode', async () => {
+        svc = new CodexSDKService();
+        const codexMock = makeCodexSdkMock();
+        (svc as unknown as { sdk: unknown }).sdk = codexMock;
+        (svc as unknown as { availabilityCache: unknown }).availabilityCache = { available: true };
+
+        await svc.sendMessage({ prompt: 'test', mode: 'plan' });
+
+        expect(codexMock.startThread).toHaveBeenCalledWith(
+            expect.objectContaining({
+                approvalPolicy: 'never',
+                sandboxMode: 'danger-full-access',
+                networkAccessEnabled: true,
+            }),
+        );
+    });
+
+    it('uses full-access Codex sandbox options for autopilot mode', async () => {
+        svc = new CodexSDKService();
+        const codexMock = makeCodexSdkMock();
+        (svc as unknown as { sdk: unknown }).sdk = codexMock;
+        (svc as unknown as { availabilityCache: unknown }).availabilityCache = { available: true };
+
+        await svc.sendMessage({ prompt: 'test', mode: 'autopilot' });
+
+        expect(codexMock.startThread).toHaveBeenCalledWith(
+            expect.objectContaining({
+                approvalPolicy: 'never',
+                sandboxMode: 'danger-full-access',
+                networkAccessEnabled: true,
+            }),
+        );
+    });
 });

@@ -93,6 +93,8 @@ Codex quota and model catalog lookups spawn the `@openai/codex` CLI that ships a
 
 Codex SDK thread options do not expose Copilot's native `skillDirectories` or `disabledSkills` fields. CoC maps resolved skill directories to Codex `additionalDirectories` so external/global skill folders are available to the Codex process. For explicitly selected skills, CoC keeps prompts path-based by adding the resolved `SKILL.md` file paths to the `<selected_skills>` directive rather than inlining skill bodies.
 
+Codex permission mode is mapped at the provider boundary with `approvalPolicy: 'never'` for every CoC mode. Interactive/ask mode and omitted mode use `sandboxMode: 'read-only'` with network access disabled. Plan mode uses the same full-access Codex sandbox as autopilot (`sandboxMode: 'danger-full-access'`, network access enabled) and relies on CoC's read-only/plan system prompt rather than Codex sandbox enforcement.
+
 **Thread ↔ session mapping:** Every CoC session ID maps to exactly one Codex thread. The mapping is created on the first `sendMessage()` call for a session and removed on abort or dispose.
 
 **Authentication:** CoC does not own a Codex auth store or `/api/codex-auth/*` routes. Codex authentication is handled by the Codex SDK/CLI; hosts may still inject an optional `CodexAuthChecker` if they need a preflight gate before loading the SDK.

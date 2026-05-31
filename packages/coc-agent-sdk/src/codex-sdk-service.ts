@@ -809,9 +809,24 @@ export class CodexSDKService implements ISDKService {
             ...(options.skillDirectories?.length ? { additionalDirectories: options.skillDirectories } : {}),
             ...(options.reasoningEffort ? { reasoningLevel: options.reasoningEffort } : {}),
             skipGitRepoCheck: true,
+            ...this.resolveCodexModeOptions(options.mode),
+        };
+    }
+
+    private resolveCodexModeOptions(
+        mode: SendMessageOptions['mode'],
+    ): Pick<CodexStartThreadOptions, 'approvalPolicy' | 'sandboxMode' | 'networkAccessEnabled'> {
+        if (mode === 'plan' || mode === 'autopilot') {
+            return {
+                approvalPolicy: 'never',
+                sandboxMode: 'danger-full-access',
+                networkAccessEnabled: true,
+            };
+        }
+        return {
             approvalPolicy: 'never',
-            sandboxMode: 'danger-full-access',
-            networkAccessEnabled: true,
+            sandboxMode: 'read-only',
+            networkAccessEnabled: false,
         };
     }
 
