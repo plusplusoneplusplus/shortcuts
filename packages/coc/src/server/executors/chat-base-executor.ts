@@ -28,6 +28,7 @@ import type {
     SDKInvocationResult,
     SystemMessageConfig,
     TimelineItem,
+    TokenUsage,
 } from '@plusplusoneplusplus/forge';
 import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import {
@@ -155,6 +156,8 @@ export interface ChatModeExecutionResult {
     timeline: TimelineItem[];
     /** Follow-up suggestions emitted via suggest_follow_ups tool, if any. */
     pendingSuggestions?: string[];
+    /** Token consumption data returned by the SDK, if available. */
+    tokenUsage?: TokenUsage;
 }
 
 /** Mode-specific AI call parameters supplied by each concrete executor. */
@@ -648,6 +651,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 toolCalls: result.toolCalls,
                 timeline: finalTimeline,
                 pendingSuggestions,
+                tokenUsage: result.tokenUsage,
             };
         } finally {
             if (imageTempDir) { cleanupTempDir(imageTempDir); }
