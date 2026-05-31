@@ -61,6 +61,12 @@ export interface ChatHeaderProps {
     sessionTokenLimit: number | undefined;
     sessionCurrentTokens: number | undefined;
     sessionModel: string | undefined;
+    /** System-prompt token count (Copilot SDK only) */
+    sessionSystemTokens?: number;
+    /** Tool-definition token count (Copilot SDK only) */
+    sessionToolTokens?: number;
+    /** Conversation-history token count (Copilot SDK only) */
+    sessionConversationTokens?: number;
     copied: boolean;
     setCopied: (v: boolean) => void;
     taskId: string;
@@ -113,6 +119,9 @@ function buildOverflowItems(
         sessionTokenLimit: number | undefined;
         sessionCurrentTokens: number | undefined;
         sessionModel: string | undefined;
+        sessionSystemTokens?: number;
+        sessionToolTokens?: number;
+        sessionConversationTokens?: number;
         variant: 'inline' | 'floating';
         isPopOut: boolean;
         isMobile: boolean;
@@ -230,6 +239,9 @@ function buildOverflowItems(
                     currentTokens={props.sessionCurrentTokens}
                     modelName={props.sessionModel}
                     className="flex max-w-[240px]"
+                    systemTokens={props.sessionSystemTokens}
+                    toolDefinitionsTokens={props.sessionToolTokens}
+                    conversationTokens={props.sessionConversationTokens}
                 />
             ),
         });
@@ -293,6 +305,9 @@ export function ChatHeader({
     sessionTokenLimit,
     sessionCurrentTokens,
     sessionModel,
+    sessionSystemTokens,
+    sessionToolTokens,
+    sessionConversationTokens,
     copied,
     setCopied,
     taskId,
@@ -378,6 +393,9 @@ export function ChatHeader({
         sessionTokenLimit,
         sessionCurrentTokens,
         sessionModel,
+        sessionSystemTokens,
+        sessionToolTokens,
+        sessionConversationTokens,
         variant,
         isPopOut,
         isMobile,
@@ -395,7 +413,7 @@ export function ChatHeader({
         onOpenScratchpad,
         onFork,
         forking,
-    }), [tier, task, loading, turns, isPending, resumeSessionId, resumeLaunching, metadataProcess, planPath, createdFiles, sessionTokenLimit, sessionCurrentTokens, sessionModel, variant, isPopOut, isMobile, taskId, copiedHtml, onFloat, onPopOut, onLaunchInteractiveResume, isFloating, wsId, onToggleSelecting, isSelecting, showScratchpadButton, onOpenScratchpad, onFork, forking]); // eslint-disable-line react-hooks/exhaustive-deps
+    }), [tier, task, loading, turns, isPending, resumeSessionId, resumeLaunching, metadataProcess, planPath, createdFiles, sessionTokenLimit, sessionCurrentTokens, sessionModel, sessionSystemTokens, sessionToolTokens, sessionConversationTokens, variant, isPopOut, isMobile, taskId, copiedHtml, onFloat, onPopOut, onLaunchInteractiveResume, isFloating, wsId, onToggleSelecting, isSelecting, showScratchpadButton, onOpenScratchpad, onFork, forking]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
         <div

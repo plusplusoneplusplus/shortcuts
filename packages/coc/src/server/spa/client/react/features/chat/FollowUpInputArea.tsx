@@ -108,6 +108,12 @@ export interface FollowUpInputAreaProps {
     sessionTokenLimit?: number;
     /** Tokens currently occupying the context. Drives the ctx fuel gauge fill + percent. */
     sessionCurrentTokens?: number;
+    /** System-prompt token count (Copilot SDK only). */
+    sessionSystemTokens?: number;
+    /** Tool-definition token count (Copilot SDK only). */
+    sessionToolTokens?: number;
+    /** Conversation-history token count (Copilot SDK only). */
+    sessionConversationTokens?: number;
     /** Active AI provider — shown as a read-only badge in the toolbar when set to 'codex' or 'claude'. */
     activeProvider?: 'copilot' | 'codex' | 'claude';
     /**
@@ -174,6 +180,9 @@ export function FollowUpInputArea({
     workingDirectory,
     sessionTokenLimit,
     sessionCurrentTokens,
+    sessionSystemTokens,
+    sessionToolTokens,
+    sessionConversationTokens,
     activeProvider,
     effortOverride = null,
     onEffortChange,
@@ -787,6 +796,9 @@ export function FollowUpInputArea({
                                 sessionTokenLimit={sessionTokenLimit}
                                 sessionCurrentTokens={sessionCurrentTokens}
                                 sessionModel={sessionModel}
+                                sessionSystemTokens={sessionSystemTokens}
+                                sessionToolTokens={sessionToolTokens}
+                                sessionConversationTokens={sessionConversationTokens}
                             />
                             <span aria-hidden="true" data-testid="chat-toolbar-divider-send" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                             {isActiveGeneration ? stopButton : (
