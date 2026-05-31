@@ -24,6 +24,11 @@ export interface PerRepoPrefsClient extends PerRepoPreferences {
     plan?: string;
     note?: string;
   };
+  /** Last-used provider/model for diff classification, persisted per workspace. */
+  lastClassificationPrefs?: {
+    provider?: string;
+    model?: string;
+  };
 }
 
 /**

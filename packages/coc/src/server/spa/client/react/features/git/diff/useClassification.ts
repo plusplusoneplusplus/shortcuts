@@ -18,8 +18,18 @@ import type {
 } from '../../pull-requests/classification-types';
 import { requestSpaApi } from '../../../api/cocClient';
 import type { ClassificationKey } from './diffSource';
+import { getActiveProvider } from '../../../utils/config';
+import {
+    getWorkspacePreferences,
+    patchWorkspacePreferences,
+} from '../../../hooks/preferences/preferencesApi';
 
 // ── Public types ──────────────────────────────────────────────────────
+
+/** AI provider identifier (mirrors server ChatProvider). */
+export type ChatProvider = 'copilot' | 'codex' | 'claude';
+
+const VALID_PROVIDERS = new Set<string>(['copilot', 'codex', 'claude']);
 
 export type ClassificationStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -58,6 +68,14 @@ export interface UseClassificationReturn {
     isHunkDimmed: (filePath: string, hunkIndex: number) => boolean;
     /** Whether a file should be dimmed (all its hunks are in unchecked categories). */
     isFileDimmed: (filePath: string) => boolean;
+    /** Currently selected AI provider for the next classify call. */
+    provider: ChatProvider;
+    /** Currently selected model override (undefined = use server default). */
+    model: string | undefined;
+    /** Update the selected provider (persists per-repo when workspaceId is provided). */
+    setProvider: (p: ChatProvider) => void;
+    /** Update the selected model override (persists per-repo when workspaceId is provided). */
+    setModel: (m: string | undefined) => void;
 }
 
 // ── Category priority for badge display ───────────────────────────────
@@ -93,14 +111,25 @@ const MAX_POLLS = 200; // 10 min max
  * Generic classification hook that works with any DiffSource via ClassificationKey.
  *
  * Pass `undefined` to disable (no API calls, idle state).
+ * Pass `options.workspaceId` to enable per-repo persistence of provider/model selection.
  */
 export function useClassification(
     classificationKey: ClassificationKey | undefined,
+    options?: { workspaceId?: string },
 ): UseClassificationReturn {
+    const workspaceId = options?.workspaceId;
+
     const [state, setState] = useState<ClassificationState>({
         status: 'idle',
         activeFilters: new Set<HunkCategory>(['logic']),
     });
+
+    // Provider / model selection — persisted per workspaceId
+    const [provider, setProviderState] = useState<ChatProvider>(() => getActiveProvider() as ChatProvider);
+    const [model, setModelState] = useState<string | undefined>(undefined);
+    // Refs so classify() always reads the latest values without re-creating the callback
+    const providerRef = useRef<ChatProvider>(getActiveProvider() as ChatProvider);
+    const modelRef = useRef<string | undefined>(undefined);
 
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const pollCount = useRef(0);
@@ -144,6 +173,28 @@ export function useClassification(
         }
         indexRef.current = { byFile, byHunk, badges };
     }, [state.result]);
+
+    // Load last-used provider/model from preferences when workspaceId is known
+    useEffect(() => {
+        if (!workspaceId) return;
+        let cancelled = false;
+        getWorkspacePreferences(workspaceId)
+            .then(prefs => {
+                if (cancelled) return;
+                const saved = prefs.lastClassificationPrefs;
+                if (saved?.provider && VALID_PROVIDERS.has(saved.provider)) {
+                    const p = saved.provider as ChatProvider;
+                    providerRef.current = p;
+                    setProviderState(p);
+                }
+                if (typeof saved?.model === 'string' && saved.model) {
+                    modelRef.current = saved.model;
+                    setModelState(saved.model);
+                }
+            })
+            .catch(() => { /* preferences are optional */ });
+        return () => { cancelled = true; };
+    }, [workspaceId]);
 
     // Stable stringified key for dependency tracking
     const keyStr = classificationKey
@@ -226,15 +277,19 @@ export function useClassification(
 
         setState(prev => ({ ...prev, status: 'loading', error: undefined }));
 
+        const postBody: Record<string, unknown> = {
+            type: ck.type,
+            identifier: ck.identifier,
+        };
+        if (providerRef.current) postBody.provider = providerRef.current;
+        if (modelRef.current) postBody.model = modelRef.current;
+
         requestSpaApi<ClassifyResponse>(
             buildUrl(''),
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    type: ck.type,
-                    identifier: ck.identifier,
-                }),
+                body: JSON.stringify(postBody),
             },
         )
             .then(resp => {
@@ -281,6 +336,26 @@ export function useClassification(
             .catch(() => { /* no cache — ok */ });
     }, [keyStr, buildUrl, startPolling]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    const setProvider = useCallback((p: ChatProvider) => {
+        providerRef.current = p;
+        setProviderState(p);
+        if (workspaceId) {
+            patchWorkspacePreferences(workspaceId, {
+                lastClassificationPrefs: { provider: p, model: modelRef.current },
+            }).catch(() => {});
+        }
+    }, [workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const setModel = useCallback((m: string | undefined) => {
+        modelRef.current = m;
+        setModelState(m);
+        if (workspaceId) {
+            patchWorkspacePreferences(workspaceId, {
+                lastClassificationPrefs: { provider: providerRef.current, model: m },
+            }).catch(() => {});
+        }
+    }, [workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+
     const toggleFilter = useCallback((cat: HunkCategory) => {
         setState(prev => {
             const next = new Set(prev.activeFilters);
@@ -325,5 +400,9 @@ export function useClassification(
         getHunkClassification,
         isHunkDimmed,
         isFileDimmed,
+        provider,
+        model,
+        setProvider,
+        setModel,
     };
 }

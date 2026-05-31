@@ -320,5 +320,108 @@ describe('registerGenericClassificationRoutes', () => {
             expect(statusCode()).toBe(202);
         });
     });
+
+    // =========================================================================
+    // POST handler — provider/model threading (AC-03)
+    // =========================================================================
+
+    describe('POST handler — provider/model threading', () => {
+        function makePostReq(body: object): IncomingMessage {
+            const emitter = new EventEmitter() as any;
+            emitter.method = 'POST';
+            emitter.url = '/api/repos/repo1/classify-diff';
+            emitter.headers = { host: 'localhost:4000', 'content-type': 'application/json' };
+            setImmediate(() => {
+                emitter.emit('data', Buffer.from(JSON.stringify(body)));
+                emitter.emit('end');
+            });
+            return emitter as IncomingMessage;
+        }
+
+        function setupLocalRoutes(getTaskImpl?: (id: string) => any): { localRoutes: Route[]; enqueueCapture: () => any } {
+            const localRoutes: Route[] = [];
+            let capturedTask: any;
+            const bridge = {
+                getOrCreateBridge: vi.fn(),
+                getRepoIdForPath: vi.fn(() => 'repo1'),
+                getTask: vi.fn(getTaskImpl ?? (() => undefined)),
+                registry: {
+                    getQueueForRepo: vi.fn(() => ({
+                        enqueue: vi.fn((task: any) => { capturedTask = task; return 'task-123'; }),
+                    })),
+                },
+            } as any;
+            registerGenericClassificationRoutes(localRoutes, {
+                dataDir: '/tmp/data',
+                store: mockStore,
+                bridge,
+                repoTreeService: mockRepoTreeService,
+            });
+            return { localRoutes, enqueueCapture: () => capturedTask };
+        }
+
+        it('enqueues task with provider when valid provider is given', async () => {
+            const { localRoutes, enqueueCapture } = setupLocalRoutes();
+            mockedReadClassification.mockReturnValue(undefined);
+            mockedReadPending.mockReturnValue(undefined);
+
+            const { res } = makeCapturingRes();
+            await localRoutes[0].handler(
+                makePostReq({ type: 'pr', identifier: '10:abc123', workspaceId: 'ws1', provider: 'claude' }),
+                res,
+                ['/api/repos/repo1/classify-diff', 'repo1'],
+            );
+
+            expect(enqueueCapture()).toBeDefined();
+            expect(enqueueCapture().payload.provider).toBe('claude');
+        });
+
+        it('enqueues task with model in config when model is given', async () => {
+            const { localRoutes, enqueueCapture } = setupLocalRoutes();
+            mockedReadClassification.mockReturnValue(undefined);
+            mockedReadPending.mockReturnValue(undefined);
+
+            const { res } = makeCapturingRes();
+            await localRoutes[0].handler(
+                makePostReq({ type: 'pr', identifier: '10:abc123', workspaceId: 'ws1', model: 'claude-opus-4.7' }),
+                res,
+                ['/api/repos/repo1/classify-diff', 'repo1'],
+            );
+
+            expect(enqueueCapture()?.config?.model).toBe('claude-opus-4.7');
+        });
+
+        it('does not set provider on payload when invalid provider string given', async () => {
+            const { localRoutes, enqueueCapture } = setupLocalRoutes();
+            mockedReadClassification.mockReturnValue(undefined);
+            mockedReadPending.mockReturnValue(undefined);
+
+            const { res } = makeCapturingRes();
+            await localRoutes[0].handler(
+                makePostReq({ type: 'pr', identifier: '10:abc123', workspaceId: 'ws1', provider: 'not-a-valid-provider' }),
+                res,
+                ['/api/repos/repo1/classify-diff', 'repo1'],
+            );
+
+            expect(enqueueCapture()).toBeDefined();
+            expect(enqueueCapture().payload.provider).toBeUndefined();
+        });
+
+        it('omits provider from payload when not provided (default path unchanged)', async () => {
+            const { localRoutes, enqueueCapture } = setupLocalRoutes();
+            mockedReadClassification.mockReturnValue(undefined);
+            mockedReadPending.mockReturnValue(undefined);
+
+            const { res } = makeCapturingRes();
+            await localRoutes[0].handler(
+                makePostReq({ type: 'pr', identifier: '10:abc123', workspaceId: 'ws1' }),
+                res,
+                ['/api/repos/repo1/classify-diff', 'repo1'],
+            );
+
+            expect(enqueueCapture()).toBeDefined();
+            expect(enqueueCapture().payload.provider).toBeUndefined();
+        });
+    });
 });
 

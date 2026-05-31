@@ -111,7 +111,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
         SHOW_FOCUSED_DIFF && repoId && prId && headSha
             ? { type: 'pr', repoId: String(repoId), identifier: `${prId}:${headSha}` }
             : undefined;
-    const classificationHook = useClassification(classificationKey);
+    const classificationHook = useClassification(classificationKey, { workspaceId });
     const classification = SHOW_FOCUSED_DIFF ? classificationHook : undefined;
 
     // Pop-out context for opening PR review in a separate window

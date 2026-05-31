@@ -27,6 +27,8 @@ import {
     clearPending,
 } from './classification-store';
 import { TaskDefs } from '../tasks/task-types';
+import type { ChatProvider } from '../tasks/task-types';
+import { VALID_CHAT_PROVIDERS } from '../tasks/task-types';
 import { buildClassificationPrompt } from './pr-classification-handler';
 import { renderClassificationPrompt } from './classification-prompt';
 
@@ -45,6 +47,8 @@ interface ClassifyDiffPostBody {
     model?: string;
     /** Workspace ID for queue routing. */
     workspaceId?: string;
+    /** AI provider to use for this classification run (optional; falls back to server default). */
+    provider?: ChatProvider;
 }
 
 export interface GenericClassificationRouteOptions {
@@ -139,6 +143,7 @@ export function registerGenericClassificationRoutes(routes: Route[], opts: Gener
                         ...extractPayloadFields(type, identifier),
                         workingDirectory: rootPath,
                         skills: ['classify-diff'],
+                        ...(body.provider && VALID_CHAT_PROVIDERS.has(body.provider) ? { provider: body.provider } : {}),
                     },
                     config: body.model ? { model: body.model } : {},
                     displayName,
