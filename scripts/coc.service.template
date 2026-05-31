@@ -1,0 +1,71 @@
+# systemd service unit template for running CoC as a daemon on Linux.
+#
+# Setup instructions:
+#   1. Copy this file:
+#        sudo cp scripts/coc.service.template /etc/systemd/system/coc.service
+#
+#   2. Edit /etc/systemd/system/coc.service and replace every placeholder:
+#        <USER>        - the Linux user that should run CoC (e.g. coc-user)
+#        <REPO_PATH>   - absolute path to the shortcuts repo clone
+#                        (e.g. /home/coc-user/projects/shortcuts)
+#
+#   3. Generate the environment file AS THAT USER (not sudo), so that nvm /
+#      custom Node installations on PATH are captured correctly:
+#        printenv | grep -E '^(HOME|PATH|NVM|NPM|NODE)' > ~/.coc-env
+#
+#   4. Enable and start the service:
+#        sudo systemctl daemon-reload
+#        sudo systemctl enable coc
+#        sudo systemctl start coc
+#
+# Useful commands after setup:
+#   sudo systemctl status coc       - show current status
+#   journalctl -u coc -f            - stream live logs
+#   sudo systemctl restart coc      - manual restart
+#   sudo systemctl stop coc         - stop the service
+#
+# Notes:
+#   - CoC binds to 127.0.0.1:4000 by default. Do NOT open port 4000 in your
+#     firewall; use SSH local port forwarding to access it remotely:
+#       ssh -N -L 4000:localhost:4000 <USER>@<SERVER>
+#   - The serve loop handles POST /api/admin/restart internally (exit code 75).
+#     systemd Restart=on-failure only kicks in for unexpected crashes.
+#   - To skip the npm build on every restart, add --skip-initial-build to
+#     ExecStart (safe if you manage builds separately).
+
+[Unit]
+Description=CoC Server
+# Start only after the network is up (required to bind the port).
+After=network.target
+
+[Service]
+Type=simple
+
+# Run as an unprivileged user — never run CoC as root.
+User=<USER>
+
+# Absolute path to the repo root (~ is NOT expanded by systemd).
+WorkingDirectory=<REPO_PATH>
+
+# The serve loop rebuilds and restarts coc on POST /api/admin/restart.
+ExecStart=<REPO_PATH>/scripts/coc-serve-loop.sh
+
+# Restart the service if it exits with a non-zero code (crash).
+# The serve loop exits 0 on clean shutdown, so that won't trigger a restart.
+Restart=on-failure
+RestartSec=5s
+
+# Path to an env-var file that provides the correct PATH (including nvm-managed
+# Node). Generate it once with:
+#   printenv | grep -E '^(HOME|PATH|NVM|NPM|NODE)' > ~/.coc-env
+# systemd does NOT load ~/.bashrc or ~/.profile, so this file is required if
+# you use nvm or any non-system Node installation.
+EnvironmentFile=<USER_HOME>/.coc-env
+
+# Forward stdout/stderr to the system journal (view with journalctl -u coc).
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+# Start this service when the system reaches the normal multi-user runlevel.
+WantedBy=multi-user.target
