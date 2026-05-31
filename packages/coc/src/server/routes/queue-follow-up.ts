@@ -91,6 +91,7 @@ export function registerQueueFollowUpRoutes(routes: Route[], ctx: QueueRouteCont
                         resumedFrom: pid,
                         ...(payload?.workingDirectory ? { workingDirectory: payload.workingDirectory } : {}),
                         ...(payload?.workspaceId ? { workspaceId: payload.workspaceId } : {}),
+                        ...(payload?.provider ? { provider: payload.provider } : {}),
                     },
                     config: {
                         ...(task.config ?? {}),
