@@ -98,7 +98,7 @@ describe('EffortTierSelector', () => {
         };
         renderSelector({ tiers: tiersWithGap, selectedTier: 'medium' });
         fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
-        expect(screen.getByTestId('effort-tier-option-low').title).toBe('Not configured in Admin');
+        expect(screen.getByTestId('effort-tier-option-low').title).toBe('Low: Not configured in Admin');
     });
 
     it('disables the trigger button when disabled=true', () => {
