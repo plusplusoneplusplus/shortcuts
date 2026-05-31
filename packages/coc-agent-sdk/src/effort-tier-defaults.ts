@@ -40,8 +40,8 @@ const CODEX_DEFAULTS: EffortTierDefaultsMap = {
 
 const CLAUDE_DEFAULTS: EffortTierDefaultsMap = {
     low:    { model: 'claude-sonnet-4.6', reasoningEffort: 'high'   },
-    medium: { model: 'claude-opus-4.8',   reasoningEffort: 'medium' },
-    high:   { model: 'claude-opus-4.8',   reasoningEffort: 'xhigh'  },
+    medium: { model: 'claude-opus-4-7',   reasoningEffort: 'medium' },
+    high:   { model: 'claude-opus-4-7',   reasoningEffort: 'xhigh'  },
 };
 
 const PROVIDER_DEFAULTS: Record<DefaultedProvider, EffortTierDefaultsMap> = {

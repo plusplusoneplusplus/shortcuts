@@ -33,8 +33,8 @@ describe('getDefaultEffortTiers', () => {
         const defaults = getDefaultEffortTiers('claude');
         expect(defaults).toEqual({
             low:    { model: 'claude-sonnet-4.6', reasoningEffort: 'high'   },
-            medium: { model: 'claude-opus-4.8',   reasoningEffort: 'medium' },
-            high:   { model: 'claude-opus-4.8',   reasoningEffort: 'xhigh'  },
+            medium: { model: 'claude-opus-4-7',   reasoningEffort: 'medium' },
+            high:   { model: 'claude-opus-4-7',   reasoningEffort: 'xhigh'  },
         });
     });
 
