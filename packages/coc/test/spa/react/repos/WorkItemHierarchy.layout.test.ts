@@ -468,3 +468,58 @@ describe('SPA config — workItemsHierarchyEnabled', () => {
         expect(src).toContain('isWorkItemsHierarchyEnabled');
     });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AI Authoring entry points — WorkItemHierarchyTree (AC-01 item 5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('WorkItemHierarchyTree — AI Authoring entry point', () => {
+    let src: string;
+
+    beforeAll(() => {
+        src = fs.readFileSync(TREE_SRC_PATH, 'utf-8');
+    });
+
+    it('accepts optional onCreateWithAi prop', () => {
+        expect(src).toContain('onCreateWithAi');
+    });
+
+    it('renders hierarchy-create-with-ai-btn when onCreateWithAi is provided', () => {
+        expect(src).toContain('hierarchy-create-with-ai-btn');
+    });
+
+    it('guards the AI button on onCreateWithAi being provided', () => {
+        const btnIdx = src.indexOf('hierarchy-create-with-ai-btn');
+        expect(btnIdx).toBeGreaterThan(-1);
+        // onCreateWithAi guard must appear before the button
+        const before = src.slice(0, btnIdx);
+        expect(before).toContain('onCreateWithAi');
+    });
+
+    it('also exposes Create with AI in the empty state', () => {
+        expect(src).toContain('hierarchy-empty-create-with-ai-btn');
+    });
+});
+
+describe('WorkItemsTab — passes onCreateWithAi to hierarchy tree (AC-01 item 5)', () => {
+    let src: string;
+
+    beforeAll(() => {
+        src = fs.readFileSync(TAB_SRC_PATH, 'utf-8');
+    });
+
+    it('passes onCreateWithAi prop to WorkItemHierarchyTree', () => {
+        const treeIdx = src.indexOf('<WorkItemHierarchyTree');
+        expect(treeIdx).toBeGreaterThan(-1);
+        const treeBlock = src.slice(treeIdx, src.indexOf('/>', treeIdx) + 2);
+        expect(treeBlock).toContain('onCreateWithAi');
+    });
+
+    it('gates onCreateWithAi on the AI authoring feature flag', () => {
+        // The prop value should be conditional on aiAuthoringEnabled
+        expect(src).toContain('aiAuthoringEnabled');
+        const treeIdx = src.indexOf('<WorkItemHierarchyTree');
+        const treeBlock = src.slice(treeIdx, src.indexOf('/>', treeIdx) + 2);
+        expect(treeBlock).toContain('aiAuthoringEnabled');
+    });
+});

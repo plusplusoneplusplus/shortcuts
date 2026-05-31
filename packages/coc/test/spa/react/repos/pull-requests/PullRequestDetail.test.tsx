@@ -9,6 +9,16 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '',
     isRalphEnabled: () => false,
+    getActiveProvider: () => 'copilot',
+}));
+
+const prefsMocks = vi.hoisted(() => ({
+    getWorkspacePreferences: vi.fn().mockResolvedValue({}),
+    patchWorkspacePreferences: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('../../../../../src/server/spa/client/react/hooks/preferences/preferencesApi', () => ({
+    getWorkspacePreferences: prefsMocks.getWorkspacePreferences,
+    patchWorkspacePreferences: prefsMocks.patchWorkspacePreferences,
 }));
 
 const mockDispatch = vi.fn();
@@ -145,6 +155,8 @@ async function renderDetail(props: Partial<any> = {}) {
 beforeEach(() => {
     vi.resetModules();
     vi.resetAllMocks();
+    prefsMocks.getWorkspacePreferences.mockResolvedValue({});
+    prefsMocks.patchWorkspacePreferences.mockResolvedValue(undefined);
     mockDispatch.mockReset();
     Object.defineProperty(window, 'location', {
         writable: true,

@@ -60,6 +60,9 @@ export interface UseChatSSEOptions {
     setSuggestions: (v: string[]) => void;
     setSessionTokenLimit: (v: number | undefined) => void;
     setSessionCurrentTokens: (v: number | undefined) => void;
+    setSessionSystemTokens: (v: number | undefined) => void;
+    setSessionToolTokens: (v: number | undefined) => void;
+    setSessionConversationTokens: (v: number | undefined) => void;
     setBackgroundTasks: (v: BackgroundTasksState | null) => void;
     setTurnsAndRef: SetTurnsAndRef;
     refreshConversation: (pid: string) => Promise<void>;
@@ -84,6 +87,9 @@ export function useChatSSE({
     setSuggestions,
     setSessionTokenLimit,
     setSessionCurrentTokens,
+    setSessionSystemTokens,
+    setSessionToolTokens,
+    setSessionConversationTokens,
     setBackgroundTasks,
     setTurnsAndRef,
     refreshConversation,
@@ -127,6 +133,9 @@ export function useChatSSE({
                 if (data.turns) setTurnsAndRef(data.turns);
                 if (typeof data.sessionTokenLimit === 'number') setSessionTokenLimit(data.sessionTokenLimit);
                 if (typeof data.sessionCurrentTokens === 'number') setSessionCurrentTokens(data.sessionCurrentTokens);
+                if (typeof data.sessionSystemTokens === 'number') setSessionSystemTokens(data.sessionSystemTokens);
+                if (typeof data.sessionToolTokens === 'number') setSessionToolTokens(data.sessionToolTokens);
+                if (typeof data.sessionConversationTokens === 'number') setSessionConversationTokens(data.sessionConversationTokens);
             } catch { /* ignore */ }
         });
 
@@ -300,6 +309,9 @@ export function useChatSSE({
                 const data = JSON.parse((event as MessageEvent).data);
                 if (typeof data.sessionTokenLimit === 'number') setSessionTokenLimit(data.sessionTokenLimit);
                 if (typeof data.sessionCurrentTokens === 'number') setSessionCurrentTokens(data.sessionCurrentTokens);
+                if (typeof data.sessionSystemTokens === 'number') setSessionSystemTokens(data.sessionSystemTokens);
+                if (typeof data.sessionToolTokens === 'number') setSessionToolTokens(data.sessionToolTokens);
+                if (typeof data.sessionConversationTokens === 'number') setSessionConversationTokens(data.sessionConversationTokens);
                 if (data.tokenUsage && typeof data.turnIndex === 'number') {
                     setTurnsAndRef(prev => prev.map(t =>
                         t.turnIndex === data.turnIndex && t.role === 'assistant'

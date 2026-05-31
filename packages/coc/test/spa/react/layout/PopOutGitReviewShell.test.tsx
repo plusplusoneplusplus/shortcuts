@@ -143,7 +143,7 @@ describe('PopOutGitReviewShell: providers', () => {
 
 describe('PopOutGitReviewShell: content components', () => {
     it('renders CommitDetail for commit reviews', () => {
-        expect(SOURCE).toContain('<CommitDetail');
+        expect(SOURCE).toContain('<CommitReviewContent');
     });
 
     it('renders BranchRangeOverview for branch-range reviews', () => {

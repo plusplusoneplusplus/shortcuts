@@ -122,6 +122,12 @@ export interface ProcessOutputEvent {
     sessionTokenLimit?: number;
     /** Session-level current tokens (for 'token-usage' events). */
     sessionCurrentTokens?: number;
+    /** Session-level system-prompt tokens from breakdown (for 'token-usage' events). */
+    sessionSystemTokens?: number;
+    /** Session-level tool-definition tokens from breakdown (for 'token-usage' events). */
+    sessionToolTokens?: number;
+    /** Session-level conversation tokens from breakdown (for 'token-usage' events). */
+    sessionConversationTokens?: number;
     /** Resolved delivery mode (for 'message-queued' events). */
     deliveryMode?: 'immediate' | 'enqueue';
     /** 1-based queue position; 0 for immediate mode (for 'message-queued' events). */

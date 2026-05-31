@@ -362,6 +362,108 @@ describe('WhisperCollapsedGroup', () => {
         });
     });
 
+    // ── Expanded inline commit detection (bash tool) ──────────────────────────
+    describe('bash tool commit detection when expanded', () => {
+        it('shows CommitStrip for a bash tool call with git commit output when expanded', () => {
+            // Regression: WhisperCollapsedGroup was missing 'bash' from its shell-tool
+            // check, so commits from Bash tools were never shown even when the group
+            // was expanded (toolCompactness=3 is the default).
+            const toolId = 'bash-commit-t1';
+            const toolByIdMap = makeToolMap([[
+                toolId,
+                {
+                    toolName: 'bash',
+                    args: { command: 'git add -A && git commit -m "fix: persist setting"' },
+                    result: '[main 3fe0d631] fix: persist setting\n 2 files changed, 10 insertions(+), 1 deletion(-)',
+                    status: 'completed',
+                },
+            ]]);
+            const precedingChunks = [{ kind: 'tool', key: 'chunk-t1', toolId }] as any[];
+
+            const { container } = render(
+                <WhisperCollapsedGroup
+                    {...defaultProps}
+                    precedingChunks={precedingChunks}
+                    toolById={toolByIdMap}
+                    summary={makeSummary()}
+                    renderToolTree={() => <div data-testid="tool-node" />}
+                />,
+            );
+
+            // Before expanding: no CommitStrip
+            expect(container.querySelector('[data-testid="commit-strip"]')).toBeNull();
+
+            fireEvent.click(screen.getByTestId('whisper-toggle'));
+
+            // After expanding: CommitStrip should appear with the detected commit
+            const strip = container.querySelector('[data-testid="commit-strip"]');
+            expect(strip).toBeTruthy();
+            expect(strip!.textContent).toContain('3fe0d631');
+            expect(strip!.textContent).toContain('fix: persist setting');
+        });
+
+        it('also detects Bash (PascalCase) tool name after normalisation', () => {
+            // normalizeToolName('Bash') → 'bash'; the condition must include 'bash'
+            const toolId = 'Bash-commit-t2';
+            const toolByIdMap = makeToolMap([[
+                toolId,
+                {
+                    toolName: 'Bash',
+                    args: { command: 'git commit -m "chore: update deps"' },
+                    result: '[main abc1234] chore: update deps\n 1 file changed, 5 insertions(+)',
+                    status: 'completed',
+                },
+            ]]);
+            const precedingChunks = [{ kind: 'tool', key: 'chunk-t2', toolId }] as any[];
+
+            const { container } = render(
+                <WhisperCollapsedGroup
+                    {...defaultProps}
+                    precedingChunks={precedingChunks}
+                    toolById={toolByIdMap}
+                    summary={makeSummary()}
+                    renderToolTree={() => <div data-testid="tool-node" />}
+                />,
+            );
+
+            fireEvent.click(screen.getByTestId('whisper-toggle'));
+
+            const strip = container.querySelector('[data-testid="commit-strip"]');
+            expect(strip).toBeTruthy();
+            expect(strip!.textContent).toContain('abc1234');
+        });
+
+        it('does not show CommitStrip for powershell with read-only git command', () => {
+            // Ensure the fix does not break the existing false-positive guard
+            const toolId = 'ps-log-t3';
+            const toolByIdMap = makeToolMap([[
+                toolId,
+                {
+                    toolName: 'powershell',
+                    args: { command: 'git log --oneline' },
+                    result: '[main abc1234] Some old commit',
+                    status: 'completed',
+                },
+            ]]);
+            const precedingChunks = [{ kind: 'tool', key: 'chunk-t3', toolId }] as any[];
+
+            const { container } = render(
+                <WhisperCollapsedGroup
+                    {...defaultProps}
+                    precedingChunks={precedingChunks}
+                    toolById={toolByIdMap}
+                    summary={makeSummary()}
+                    renderToolTree={() => <div data-testid="tool-node" />}
+                />,
+            );
+
+            fireEvent.click(screen.getByTestId('whisper-toggle'));
+
+            // commitDetection.ts filters out git log output
+            expect(container.querySelector('[data-testid="commit-strip"]')).toBeNull();
+        });
+    });
+
     // ── File deletion display ──────────────────────────────────────────────
 
     describe('deleted file display', () => {

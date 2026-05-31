@@ -4,11 +4,11 @@
  * Shows the unified diff for the full commit (commit-overview mode).
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { copyToClipboard } from '../../../utils/format';
 import { useCachedDiff } from '../hooks/useCommitDiffCache';
 import { Spinner, Button } from '../../../ui';
-import { UnifiedDiffViewer, HunkNavButtons } from '../diff/UnifiedDiffViewer';
+import { UnifiedDiffViewer, HunkNavButtons, parseDiffFileList } from '../diff/UnifiedDiffViewer';
 import type { UnifiedDiffViewerHandle, DiffLine } from '../diff/UnifiedDiffViewer';
 import { SideBySideDiffViewer } from '../diff/SideBySideDiffViewer';
 import { useDiffViewMode } from '../hooks/useDiffViewMode';
@@ -23,6 +23,15 @@ import { useQueue } from '../../../contexts/QueueContext';
 import { useGitReviewPopOut, gitReviewPopOutKey } from '../../../contexts/GitReviewPopOutContext';
 import { buildGitReviewPopOutUrl } from '../../../layout/Router';
 import { getSpaCocClient } from '../../../api/cocClient';
+import { useClassification } from '../diff/useClassification';
+import type { ChatProvider } from '../diff/useClassification';
+import { usePrReviewProgress } from '../diff/usePrReviewProgress';
+import { pickPriorityFile } from '../diff/prPopoutPriority';
+import { useAgentProviders } from '../../../hooks/useAgentProviders';
+import { useModels } from '../../../hooks/useModels';
+import type { ClassificationKey } from '../diff/diffSource';
+import type { HunkCategory } from '../../pull-requests/classification-types';
+import { HUNK_CATEGORIES, CATEGORY_LABELS } from '../../pull-requests/classification-types';
 import type { DiffComment } from '../../../../comments/diff-comment-types';
 import type { AnyComment } from '../../../../comments/shared-comment-types';
 import type { GitCommitItem } from './CommitList';
@@ -43,6 +52,8 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
             return localStorage.getItem('coc.commitChat.open') === 'true';
         } catch { return false; }
     });
+    // Track currently-navigated file (for priority nav within the unified diff)
+    const [navFilePath, setNavFilePath] = useState<string | null>(null);
 
     const toggleChat = useCallback(() => {
         setChatOpen(prev => {
@@ -70,6 +81,69 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
         : null;
 
     const { diff, loading: diffLoading, error: diffError, retry: handleRetryDiff } = useCachedDiff(diffUrl, workspaceId, hash);
+
+    // File list from diff for classification + priority navigation
+    const fileList = useMemo(() => diff ? parseDiffFileList(diff) : [], [diff]);
+
+    // Classification — session-scoped, mirrors commit popout
+    const classificationKey: ClassificationKey = useMemo(
+        () => ({ type: 'commit', repoId: workspaceId, identifier: hash ?? '' }),
+        [workspaceId, hash],
+    );
+    const classification = useClassification(classificationKey, { workspaceId });
+
+    // Review progress — session-local only (no server persistence)
+    const reviewProgress = usePrReviewProgress(hash ?? '');
+
+    // Provider/model selectors for classification
+    const { providers: agentProviders } = useAgentProviders();
+    const { models: agentModels } = useModels(classification.provider);
+    const selectableProviders = agentProviders.filter(p => p.enabled && p.available);
+    const enabledModels = agentModels.filter(m => m.enabled);
+
+    // Priority navigation (next/prev unreviewed or high-priority file)
+    const classifyStatusForNav = classification.state.status;
+    const priorityNav = useMemo(() => {
+        const ctx = {
+            getFileBadge: classifyStatusForNav === 'ready' ? classification.getFileBadge : () => undefined,
+            reviewedFiles: reviewProgress.state.reviewedFiles,
+        };
+        const filters = classifyStatusForNav === 'ready' ? classification.state.activeFilters : undefined;
+        const next = pickPriorityFile(fileList, ctx, {
+            currentPath: navFilePath,
+            direction: 'next',
+            activeFilters: filters,
+        });
+        const prev = pickPriorityFile(fileList, ctx, {
+            currentPath: navFilePath,
+            direction: 'prev',
+            activeFilters: filters,
+        });
+        return { prevPath: prev.path, nextPath: next.path };
+    }, [
+        classifyStatusForNav,
+        classification.getFileBadge,
+        classification.state.activeFilters,
+        reviewProgress.state.reviewedFiles,
+        fileList,
+        navFilePath,
+    ]);
+
+    const handleNextPriority = useCallback(() => {
+        if (priorityNav.nextPath) {
+            setNavFilePath(priorityNav.nextPath);
+            reviewProgress.markVisited(priorityNav.nextPath);
+            viewerRef.current?.scrollToFile(priorityNav.nextPath);
+        }
+    }, [priorityNav.nextPath, reviewProgress]);
+
+    const handlePrevPriority = useCallback(() => {
+        if (priorityNav.prevPath) {
+            setNavFilePath(priorityNav.prevPath);
+            reviewProgress.markVisited(priorityNav.prevPath);
+            viewerRef.current?.scrollToFile(priorityNav.prevPath);
+        }
+    }, [priorityNav.prevPath, reviewProgress]);
 
     // Commit-level comments (only active when !rangeMode)
     const {
@@ -258,6 +332,127 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
                         </div>
                     </div>
                 </>
+            )}
+            {/* Classification toolbar — mirrors commit popout layout */}
+            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#2a2a2a]" data-testid="commit-classify-bar">
+                {selectableProviders.length > 1 && (
+                    <select
+                        value={classification.provider}
+                        onChange={e => classification.setProvider(e.target.value as ChatProvider)}
+                        disabled={classification.state.status === 'loading'}
+                        className={
+                            classification.state.status === 'loading'
+                                ? 'h-6 rounded border border-gray-200 bg-gray-50 px-1.5 text-[11px] text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500 cursor-not-allowed'
+                                : 'h-6 rounded border border-gray-300 bg-white px-1.5 text-[11px] text-gray-700 hover:border-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200'
+                        }
+                        aria-label="AI provider"
+                        data-testid="commit-classify-provider"
+                    >
+                        {selectableProviders.map(p => (
+                            <option key={p.id} value={p.id}>{p.label}</option>
+                        ))}
+                    </select>
+                )}
+                <select
+                    value={classification.model ?? ''}
+                    onChange={e => classification.setModel(e.target.value || undefined)}
+                    disabled={classification.state.status === 'loading'}
+                    className={
+                        classification.state.status === 'loading'
+                            ? 'h-6 rounded border border-gray-200 bg-gray-50 px-1.5 text-[11px] text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500 cursor-not-allowed'
+                            : 'h-6 rounded border border-gray-300 bg-white px-1.5 text-[11px] text-gray-700 hover:border-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200'
+                    }
+                    aria-label="AI model"
+                    data-testid="commit-classify-model"
+                >
+                    <option value="">Default</option>
+                    {enabledModels.map(m => (
+                        <option key={m.id} value={m.id}>{m.name ?? m.id}</option>
+                    ))}
+                </select>
+                <button
+                    type="button"
+                    onClick={classification.classify}
+                    disabled={classification.state.status === 'loading'}
+                    className={
+                        classification.state.status === 'loading'
+                            ? 'inline-flex h-6 items-center gap-1 rounded border border-gray-300 bg-gray-100 px-2 text-[11px] font-medium text-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-500 cursor-wait'
+                            : 'inline-flex h-6 items-center gap-1 rounded border border-indigo-400 bg-indigo-50 px-2 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500 dark:bg-indigo-900/30 dark:text-indigo-200 dark:hover:bg-indigo-900/50'
+                    }
+                    data-testid="commit-classify-button"
+                >
+                    {classification.state.status === 'loading' ? (
+                        <>
+                            <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                            Classifying…
+                        </>
+                    ) : classification.state.status === 'ready' ? 'Re-classify' : 'Classify'}
+                </button>
+                {/* Priority file navigation — available after classification */}
+                {classification.state.status === 'ready' && (
+                    <>
+                        <button
+                            type="button"
+                            onClick={handlePrevPriority}
+                            disabled={priorityNav.prevPath === null}
+                            className="inline-flex h-6 items-center gap-1 rounded border border-gray-300 bg-white px-2 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                            title="Previous priority file"
+                            data-testid="commit-prev-priority-btn"
+                        >
+                            ↑ Prev
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleNextPriority}
+                            disabled={priorityNav.nextPath === null}
+                            className="inline-flex h-6 items-center gap-1 rounded border border-gray-300 bg-white px-2 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                            title="Next priority file"
+                            data-testid="commit-next-priority-btn"
+                        >
+                            ↓ Next
+                        </button>
+                    </>
+                )}
+                {/* Reviewed count — session-local */}
+                {fileList.length > 0 && (
+                    <span
+                        className="ml-auto text-[10px] text-[#848484] dark:text-[#666] tabular-nums"
+                        data-testid="commit-reviewed-count"
+                    >
+                        {reviewProgress.state.reviewedFiles.size}/{fileList.length} reviewed
+                    </span>
+                )}
+                {classification.state.error && (
+                    <span className="text-[10px] text-red-600 dark:text-red-400">
+                        {classification.state.error}
+                    </span>
+                )}
+            </div>
+            {/* Classification filter bar — visible when classification results are ready */}
+            {classification.state.status === 'ready' && (
+                <div className="flex items-center gap-3 px-3 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#262626]" data-testid="commit-filter-bar">
+                    <span className="text-[10px] text-[#616161] dark:text-[#999] font-medium">Filter:</span>
+                    {HUNK_CATEGORIES.map(cat => {
+                        const active = classification.state.activeFilters.has(cat);
+                        return (
+                            <label
+                                key={cat}
+                                className="flex items-center gap-1 text-[11px] cursor-pointer select-none"
+                                data-testid={`commit-filter-${cat}`}
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={active}
+                                    onChange={() => classification.toggleFilter(cat as HunkCategory)}
+                                    className="h-3 w-3 rounded"
+                                />
+                                <span className={active ? 'text-[#1e1e1e] dark:text-[#ccc]' : 'text-[#848484]'}>
+                                    {CATEGORY_LABELS[cat]}
+                                </span>
+                            </label>
+                        );
+                    })}
+                </div>
             )}
             {/* Toolbar for hunk nav + toggle */}
             <div className="sticky top-0 z-10 px-4 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] flex items-center justify-end">

@@ -320,6 +320,8 @@ export interface PrClassificationPayload {
     prompt: string;
     workingDirectory?: string;
     skills?: string[];
+    /** AI provider to use (optional; falls back to server default). */
+    provider?: ChatProvider;
 }
 
 // ============================================================================

@@ -427,6 +427,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 ?? mergeConsecutiveContentItems(this.sessions.get(processId)?.timelineBuffer || []);
 
             try {
+                const tokenUsage = (result as any)?.tokenUsage;
                 const appendResult = await this.store.appendConversationTurn(
                     processId,
                     (turnIndex) => ({
@@ -437,11 +438,29 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         toolCalls: (result as any)?.toolCalls || undefined,
                         timeline: finalTimeline,
                         suggestions: (result as any)?.pendingSuggestions ?? this.sessions.get(processId)?.pendingSuggestions,
+                        ...(tokenUsage ? { tokenUsage } : {}),
                     }),
                     {
                         filterStreaming: true,
                         additionalUpdates: (current) => {
                             if (TERMINAL_STATUSES.has(current.status)) return {};
+                            const tokenLimit = tokenUsage?.tokenLimit ?? current.tokenLimit;
+                            const currentTokens = tokenUsage?.currentTokens ?? current.currentTokens;
+                            const prevCumulative = current.cumulativeTokenUsage;
+                            const cumulativeTokenUsage = tokenUsage ? {
+                                inputTokens: (prevCumulative?.inputTokens ?? 0) + tokenUsage.inputTokens,
+                                outputTokens: (prevCumulative?.outputTokens ?? 0) + tokenUsage.outputTokens,
+                                cacheReadTokens: (prevCumulative?.cacheReadTokens ?? 0) + tokenUsage.cacheReadTokens,
+                                cacheWriteTokens: (prevCumulative?.cacheWriteTokens ?? 0) + tokenUsage.cacheWriteTokens,
+                                totalTokens: (prevCumulative?.totalTokens ?? 0) + tokenUsage.totalTokens,
+                                turnCount: (prevCumulative?.turnCount ?? 0) + tokenUsage.turnCount,
+                                cost: tokenUsage.cost !== undefined
+                                    ? (prevCumulative?.cost ?? 0) + tokenUsage.cost
+                                    : prevCumulative?.cost,
+                                duration: tokenUsage.duration !== undefined
+                                    ? (prevCumulative?.duration ?? 0) + tokenUsage.duration
+                                    : prevCumulative?.duration,
+                            } : prevCumulative;
                             // If cancellation was requested while executing, finalize as cancelled
                             if (current.status === 'cancelling') {
                                 return {
@@ -449,6 +468,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                     endTime: new Date(),
                                     result: typeof result === 'string' ? result : JSON.stringify(result),
                                     ...(sessionId ? { sdkSessionId: sessionId } : {}),
+                                    ...(tokenLimit !== undefined ? { tokenLimit } : {}),
+                                    ...(currentTokens !== undefined ? { currentTokens } : {}),
+                                    ...(cumulativeTokenUsage ? { cumulativeTokenUsage } : {}),
                                 };
                             }
                             return {
@@ -456,12 +478,32 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                 endTime: new Date(),
                                 result: typeof result === 'string' ? result : JSON.stringify(result),
                                 ...(sessionId ? { sdkSessionId: sessionId } : {}),
+                                ...(tokenLimit !== undefined ? { tokenLimit } : {}),
+                                ...(currentTokens !== undefined ? { currentTokens } : {}),
+                                ...(cumulativeTokenUsage ? { cumulativeTokenUsage } : {}),
                             };
                         },
                     },
                 );
 
                 turnSaved = true;
+
+                if (tokenUsage) {
+                    try {
+                        this.store.emitProcessEvent(processId, {
+                            type: 'token-usage',
+                            turnIndex: appendResult?.turn.turnIndex,
+                            tokenUsage,
+                            sessionTokenLimit: tokenUsage.tokenLimit,
+                            sessionCurrentTokens: tokenUsage.currentTokens,
+                            ...(tokenUsage.systemTokens          != null ? { sessionSystemTokens:     tokenUsage.systemTokens }          : {}),
+                            ...(tokenUsage.toolDefinitionsTokens != null ? { sessionToolTokens:       tokenUsage.toolDefinitionsTokens } : {}),
+                            ...(tokenUsage.conversationTokens    != null ? { sessionConversationTokens: tokenUsage.conversationTokens }  : {}),
+                        });
+                    } catch (err) {
+                        logger.debug(LogCategory.AI, `[QueueExecutor] Failed to emit token usage event for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
+                    }
+                }
 
                 const combinedTurns = appendResult?.allTurns ?? process.conversationTurns ?? initialTurns;
 

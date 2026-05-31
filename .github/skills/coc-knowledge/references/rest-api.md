@@ -221,6 +221,17 @@ See [mcp-settings.md](mcp-settings.md).
 | PATCH | `/api/workspaces/:id/work-items/:itemId` | Update work item |
 | DELETE | `/api/workspaces/:id/work-items/:itemId` | Delete work item |
 
+### AI Authoring (gated by `workItems.aiAuthoring` flag, default `false`)
+
+Draft generation is ephemeral — no data is persisted until the caller explicitly applies it via the standard create/update/plan endpoints.
+
+Response shape: `{ kind: 'clarification', questions: string[], clarificationCount: number }` or `{ kind: 'draft', workItem: {...}, goal?: string, childTasks?: [...] }`.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/workspaces/:id/work-items/ai-draft` | Generate a draft for a **new** work item from a prompt. Body: `{ prompt, type?, parentId?, clarificationAnswers?, clarificationCount? }`. Returns clarification (up to 3 rounds) or a draft. |
+| POST | `/api/workspaces/:id/work-items/:itemId/ai-draft` | Generate an **improvement** draft for an existing work item. Body: `{ prompt, targets?: ['fields','goal','childTasks'], clarificationAnswers?, clarificationCount? }`. Returns clarification or a draft. |
+
 ## Seen State
 
 | Method | Path | Description |

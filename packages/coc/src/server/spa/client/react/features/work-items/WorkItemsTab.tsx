@@ -23,8 +23,9 @@ import { buildFileTree, compactFolders, FileTreeView } from '../git/diff/FileTre
 import { useFileCommentCounts } from '../git/hooks/useFileCommentCounts';
 import { computeDiffCommentKey } from '../../../comments/diff-comment-utils';
 import { buildWorkItemHash, buildWorkItemSessionHash, buildWorkItemCommitHash } from '../../layout/Router';
-import { isWorkItemsHierarchyEnabled } from '../../utils/config';
+import { isWorkItemsHierarchyEnabled, isWorkItemsAiAuthoringEnabled } from '../../utils/config';
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
+import { WorkItemAiComposer } from './WorkItemAiComposer';
 
 export interface WorkItemsTabProps {
     workspaceId: string;
@@ -219,6 +220,9 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
         setShowCreateDialog(true);
     }, []);
 
+    const [showAiComposer, setShowAiComposer] = useState(false);
+    const aiAuthoringEnabled = isWorkItemsAiAuthoringEnabled();
+
     const listPane = hierarchyEnabled ? (
         <WorkItemHierarchyTree
             workspaceId={workspaceId}
@@ -226,6 +230,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
             onSelectWorkItem={handleSelectWorkItem}
             onCreated={handleCreated}
             onCreateItem={openCreateDialog}
+            onCreateWithAi={aiAuthoringEnabled ? () => setShowAiComposer(true) : undefined}
             isMobile={isMobile}
         />
     ) : (
@@ -239,6 +244,11 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                     <Button variant="ghost" size="sm" onClick={() => openCreateDialog('bug')} data-testid="create-bug-btn">
                         🐛 Bug
                     </Button>
+                    {aiAuthoringEnabled && (
+                        <Button variant="ghost" size="sm" onClick={() => setShowAiComposer(true)} data-testid="create-with-ai-btn">
+                            ✨ AI
+                        </Button>
+                    )}
                 </div>
             </div>
             <WorkItemSection
@@ -347,13 +357,18 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
             <div className="text-center space-y-2">
                 <div className="text-3xl">📋</div>
                 <div>Select a work item or bug, or create a new one</div>
-                <div className="flex gap-2 justify-center">
+                <div className="flex gap-2 justify-center flex-wrap">
                     <Button variant="ghost" size="sm" onClick={() => openCreateDialog('work-item')}>
                         + Create Work Item
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => openCreateDialog('bug')}>
                         🐛 Create Bug
                     </Button>
+                    {aiAuthoringEnabled && (
+                        <Button variant="ghost" size="sm" onClick={() => setShowAiComposer(true)} data-testid="create-with-ai-empty-btn">
+                            ✨ Create with AI
+                        </Button>
+                    )}
                 </div>
             </div>
         </div>
@@ -376,6 +391,13 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                     onCreated={handleCreated}
                     itemType={createDialogType}
                     parentId={createDialogParentId}
+                />
+                <WorkItemAiComposer
+                    open={showAiComposer}
+                    onClose={() => setShowAiComposer(false)}
+                    workspaceId={workspaceId}
+                    mode="create"
+                    onCreated={handleCreated}
                 />
             </>
         );
@@ -408,6 +430,13 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                 onCreated={handleCreated}
                 itemType={createDialogType}
                 parentId={createDialogParentId}
+            />
+            <WorkItemAiComposer
+                open={showAiComposer}
+                onClose={() => setShowAiComposer(false)}
+                workspaceId={workspaceId}
+                mode="create"
+                onCreated={handleCreated}
             />
         </>
     );

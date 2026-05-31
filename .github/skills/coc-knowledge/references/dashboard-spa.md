@@ -91,6 +91,15 @@ Inside `WhisperCollapsedGroup`, tool calls render as compact "whisper-row" varia
 - Single flat row: kind pill + truncated summary + duration + chevron
 - Color-coded pills: Read/blue, Grep/Glob/green, Edit/Write/amber, Shell/PS/SQL/purple, Skill/grey
 
+In whisper mode (`toolCompactness === 3`), `filterWhisperChunks` keeps a tail of
+the final assistant message plus any `task_complete`/visible `ask_user` chunks,
+collapsing everything else into one summary group. The final message is the last
+`content` chunk plus earlier content chunks separated from it only by
+non-breaking trailing tools (`suggest_follow_ups`, `report_intent`,
+`task_complete`, `ask_user`); the walk-back stops at the first substantive
+tool/tool-group. This keeps a rich answer visible even when a hidden
+`suggest_follow_ups` call splits it from a trivial closing line.
+
 Chat commit strips are detected from real shell output on `powershell`, `shell`,
 and `bash` tool calls. The detector only treats commit-creating commands
 (`git commit`, `git merge`, `git cherry-pick`, `git revert`) with native git

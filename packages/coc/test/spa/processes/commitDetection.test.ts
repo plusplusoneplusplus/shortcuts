@@ -311,6 +311,26 @@ describe('detectCommitsInToolGroup', () => {
             expect(commits).toHaveLength(0);
         });
 
+        it('accepts "Bash" (capital B) tool name as used by Claude SDK', () => {
+            // Claude SDK stores tool names with capital first letter (e.g. "Bash").
+            // Regression: capitalized names were not matched against SHELL_TOOL_NAMES.
+            const toolCalls = [
+                {
+                    id: 't1',
+                    toolName: 'Bash',
+                    args: { command: 'git commit -m "fix: register config field"' },
+                    result: '[main 798c6902f] fix: register config field\n 2 files changed, 51 insertions(+), 42 deletions(-)',
+                    status: 'completed',
+                },
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(1);
+            expect(commits[0].shortHash).toBe('798c6902f');
+            expect(commits[0].subject).toBe('fix: register config field');
+            expect(commits[0].toolCallId).toBe('t1');
+        });
+
         it('handles unknown command but matching git commit output', () => {
             // When args are missing, we should still try to detect
             const toolCalls = [

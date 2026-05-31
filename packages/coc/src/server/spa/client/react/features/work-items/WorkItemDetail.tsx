@@ -20,6 +20,8 @@ import { WorkItemParentPicker } from './WorkItemParentPicker';
 import { ALLOWED_CHILD_TYPES } from '@plusplusoneplusplus/coc-client';
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
 import { TYPE_LABELS } from './WorkItemHierarchyNode';
+import { WorkItemAiComposer } from './WorkItemAiComposer';
+import { isWorkItemsAiAuthoringEnabled } from '../../utils/config';
 
 const STATUS_LABELS: Record<string, { label: string; badgeStatus: string }> = {
     created:          { label: 'Created',          badgeStatus: 'queued' },
@@ -117,6 +119,9 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const [editingCriteria, setEditingCriteria] = useState(false);
     const [criteriaDraft, setCriteriaDraft] = useState('');
     const [savingCriteria, setSavingCriteria] = useState(false);
+
+    const [showAiComposer, setShowAiComposer] = useState(false);
+    const aiAuthoringEnabled = isWorkItemsAiAuthoringEnabled();
 
     const fetchItem = useCallback(async () => {
         setLoading(true);
@@ -411,83 +416,113 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const validNextStatuses = VALID_TRANSITIONS[item.status] ?? [];
     const hierarchyEnabled = isWorkItemsHierarchyEnabled();
 
+    const typePrefix = effectiveType === 'epic' ? 'E'
+        : effectiveType === 'feature' ? 'F'
+        : effectiveType === 'pbi' ? 'PBI'
+        : effectiveType === 'bug' ? 'BUG'
+        : effectiveType === 'goal' ? 'GOAL'
+        : 'WI';
+
+    const typePillClass = effectiveType === 'epic' ? 'text-[#8250df] bg-[color-mix(in_srgb,#8250df_10%,white)] border-[color-mix(in_srgb,#8250df_20%,white)] dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-700/30'
+        : effectiveType === 'feature' ? 'text-[#0969da] bg-[#ddf4ff] border-[color-mix(in_srgb,#0969da_20%,white)] dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700/30'
+        : effectiveType === 'pbi' ? 'text-[#9a6700] bg-[#fff8c5] border-[color-mix(in_srgb,#9a6700_20%,white)] dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-700/30'
+        : effectiveType === 'bug' ? 'text-[#cf222e] bg-[#ffebe9] border-transparent dark:bg-red-900/30 dark:text-red-400'
+        : 'text-[#656d76] bg-[#f6f8fa] border-[#d0d7de] dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700';
+
+    const statusPillClass = item.status === 'readyToExecute' ? 'bg-[#dafbe1] text-[#1a7f37] border-[color-mix(in_srgb,#1a7f37_30%,#d0d7de)]'
+        : item.status === 'executing' ? 'bg-[#ddf4ff] text-[#0969da] border-[color-mix(in_srgb,#0969da_30%,#d0d7de)]'
+        : item.status === 'aiDone' ? 'bg-[color-mix(in_srgb,#8250df_10%,white)] text-[#8250df] border-[color-mix(in_srgb,#8250df_25%,white)]'
+        : item.status === 'done' ? 'bg-[#1f883d] text-white border-transparent'
+        : 'bg-[#fff8c5] text-[#9a6700] border-[color-mix(in_srgb,#9a6700_30%,#d0d7de)]';
+
     return (
         <div className="flex flex-col h-full" data-testid="work-item-detail">
-            {/* ── Header ── */}
-            <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#474749] flex items-start gap-2">
-                {onBack && (
-                    <button onClick={onBack} className="text-sm text-[#848484] hover:text-[#333] dark:hover:text-[#ccc] mt-0.5 shrink-0" data-testid="work-item-back-btn">
-                        ←
-                    </button>
-                )}
-                <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                        {item.workItemNumber != null && (
-                            <span className="text-xs text-[#848484] dark:text-[#999] font-mono shrink-0" data-testid="work-item-detail-number">
-                                {effectiveType === 'epic' ? 'E'
-                                    : effectiveType === 'feature' ? 'F'
-                                    : effectiveType === 'pbi' ? 'PBI'
-                                    : effectiveType === 'bug' ? 'BUG'
-                                    : effectiveType === 'goal' ? 'GOAL'
-                                    : 'WI'}-{item.workItemNumber}
-                            </span>
-                        )}
-                        {isContainer && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 font-medium">
-                                {effectiveType === 'epic' ? 'Epic' : effectiveType === 'feature' ? 'Feature' : 'PBI / Story'}
-                            </span>
-                        )}
+            {/* ── Detail header ── */}
+            <div className="border-b border-[#d0d7de] dark:border-[#474749] px-5 py-4 bg-white dark:bg-[#1e1e1e] grid gap-3 shrink-0">
+                {/* Breadcrumbs */}
+                <div className="flex items-center gap-1.5 text-[12px] text-[#656d76] dark:text-[#999] min-w-0 flex-wrap" id="crumbs">
+                    {onBack && (
+                        <button onClick={onBack} className="text-[#656d76] hover:text-[#1f2328] dark:hover:text-[#ccc] shrink-0" data-testid="work-item-back-btn" aria-label="Back">
+                            ←
+                        </button>
+                    )}
+                    {item.parentId && (
+                        <>
+                            <span className="font-mono text-[#656d76]">{item.parentId.slice(0, 8)}…</span>
+                            <span>/</span>
+                        </>
+                    )}
+                    {item.workItemNumber != null && (
+                        <strong className="text-[#1f2328] dark:text-[#cccccc] font-semibold" data-testid="work-item-detail-number">
+                            {typePrefix}-{item.workItemNumber}
+                        </strong>
+                    )}
+                </div>
+
+                {/* Title row */}
+                <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0 max-w-[820px]">
                         {isEditing ? (
                             <input
                                 type="text"
-                                className="text-sm font-semibold flex-1 min-w-0 rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
+                                className="text-[20px] font-semibold tracking-[-0.01em] w-full rounded border border-[#d0d7de] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1f2328] dark:text-[#cccccc] px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#0969da]"
                                 value={editTitle}
                                 onChange={e => setEditTitle(e.target.value)}
                                 disabled={saving}
                                 data-testid="wi-edit-title-input"
                             />
                         ) : (
-                            <h2 className="text-sm font-semibold truncate" title={item.title}>{item.title}</h2>
+                            <h2 className="text-[20px] leading-[1.25] font-semibold tracking-[-0.01em] text-[#1f2328] dark:text-[#cccccc]" title={item.title} style={{ textWrap: 'pretty' } as React.CSSProperties}>{item.title}</h2>
                         )}
                     </div>
-                    <div className="flex items-center flex-wrap gap-1.5 text-[10px] text-[#848484] dark:text-[#999] mt-1">
-                        {/* Status dropdown */}
-                        <select
-                            value={item.status}
-                            onChange={e => handleStatusChange(e.target.value)}
-                            className={cn(
-                                'text-[10px] px-1.5 py-0.5 rounded border cursor-pointer appearance-none',
-                                'bg-[#fafafa] dark:bg-[#2d2d2d]',
-                                'border-[#d0d0d0] dark:border-[#555]',
-                                'text-[#3c3c3c] dark:text-[#ccc]',
-                                item.status === 'done'          && '!border-green-500 !text-green-700 dark:!text-green-400',
-                                item.status === 'failed'        && '!border-red-400 !text-red-600 dark:!text-red-400',
-                                item.status === 'executing'     && '!border-blue-400 !text-blue-600 dark:!text-blue-400',
-                                item.status === 'aiDone'        && '!border-purple-400 !text-purple-700 dark:!text-purple-400',
-                                item.status === 'readyToExecute' && '!border-emerald-500 !text-emerald-700 dark:!text-emerald-400',
-                            )}
-                            data-testid="work-item-status-select"
-                        >
-                            {/* Show current status (always) */}
-                            <option value={item.status}>{statusCfg.label}</option>
-                            {/* Show valid next statuses */}
-                            {validNextStatuses.map(s => (
-                                <option key={s} value={s}>{STATUS_LABELS[s]?.label ?? s}</option>
-                            ))}
-                        </select>
-                        {!isEditing && item.priority && item.priority !== 'normal' && (
-                            <span className={cn('px-1.5 py-0.5 rounded text-[10px]',
-                                item.priority === 'high' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                            )}>{item.priority}</span>
-                        )}
-                        {item.plan && <span className="text-[#848484]">plan v{item.plan.version}</span>}
-                        <span>·</span>
-                        <span>{formatRelativeTime(item.updatedAt)}</span>
-                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => {
+                        const childTypes = ALLOWED_CHILD_TYPES[effectiveType as WorkItemTypeLabel] ?? [];
+                        if (childTypes.length === 0) return;
+                        if (childTypes.length === 1) {
+                            onCreateChild?.(childTypes[0] as WorkItemTypeLabel, item.id);
+                        } else {
+                            setShowChildTypePicker(true);
+                        }
+                    }} data-testid="wi-new-child-btn">
+                        + New child
+                    </Button>
                 </div>
-                {/* Execute + Actions in header — leaf items only */}
-                <div className="flex items-center gap-2 shrink-0">
-                    {/* Edit / Save+Cancel for container items with hierarchy enabled */}
+
+                {/* Meta row */}
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className={cn('inline-flex items-center rounded-full text-[11px] leading-[1.25] px-[7px] py-px border whitespace-nowrap', typePillClass)}>
+                        {TYPE_LABELS[effectiveType as WorkItemTypeLabel] ?? effectiveType}
+                    </span>
+                    {/* Status dropdown styled as pill */}
+                    <select
+                        value={item.status}
+                        onChange={e => handleStatusChange(e.target.value)}
+                        className={cn(
+                            'inline-flex items-center rounded-full text-[11px] leading-[1.25] px-[7px] py-px border cursor-pointer appearance-none',
+                            statusPillClass,
+                        )}
+                        data-testid="work-item-status-select"
+                    >
+                        <option value={item.status}>{statusCfg.label}</option>
+                        {validNextStatuses.map(s => (
+                            <option key={s} value={s}>{STATUS_LABELS[s]?.label ?? s}</option>
+                        ))}
+                    </select>
+                    {!isEditing && item.priority && (
+                        <span className="inline-flex items-center gap-1 border border-[#d0d7de] dark:border-[#555] rounded-full px-2 py-px text-[12px] leading-[1.4] text-[#656d76] dark:text-[#999] whitespace-nowrap bg-white dark:bg-transparent">
+                            {item.priority === 'high' ? 'High' : item.priority === 'low' ? 'Low' : 'Normal'} priority
+                        </span>
+                    )}
+                    {item.plan && (
+                        <span className="inline-flex items-center gap-1 border border-[#d0d7de] dark:border-[#555] rounded-full px-2 py-px text-[12px] leading-[1.4] text-[#656d76] dark:text-[#999] whitespace-nowrap bg-white dark:bg-transparent">
+                            Plan v{item.plan.version}
+                        </span>
+                    )}
+                    <span className="text-[12px] leading-[1.4] text-[#656d76] dark:text-[#999]">Updated {formatRelativeTime(item.updatedAt)}</span>
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
                     {isContainer && hierarchyEnabled && (
                         isEditing ? (
                             <>
@@ -504,7 +539,6 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             </Button>
                         )
                     )}
-                    {/* Mobile add-child button — container items, not gated by hierarchyEnabled */}
                     {isMobile && isContainer && !isEditing && (
                         <Button
                             variant="ghost"
@@ -551,6 +585,17 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             </Button>
                         </>
                     )}
+                    {aiAuthoringEnabled && !isEditing && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowAiComposer(true)}
+                            data-testid="work-item-improve-with-ai-btn"
+                            title="Improve with AI"
+                        >
+                            ✨
+                        </Button>
+                    )}
                     <Button variant="ghost" size="sm" data-testid="work-item-pin-btn"
                         title={item.pinnedAt ? 'Unpin' : 'Pin'}
                         onClick={async () => {
@@ -588,7 +633,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
             </div>
 
             {/* ── Body ── */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto">
+                <div className="grid gap-4 px-5 py-4">
                 {error && (
                     <div className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 rounded p-2 flex items-start justify-between gap-2">
                         <span>{error}</span>
@@ -627,22 +673,26 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                 ) : null}
 
                 {/* Description */}
-                <section>
-                    <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">Description</h3>
+                <article className="border border-[color-mix(in_srgb,#0969da_18%,#d0d7de)] dark:border-[#474749] rounded-md overflow-hidden">
+                    <div className="min-h-[44px] px-3 py-2.5 border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] flex items-center justify-between gap-2">
+                        <h3 className="text-[13px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc]">Description</h3>
+                    </div>
+                    <div className="p-4">
                     {isEditing && isContainer ? (
                         <textarea
-                            className="w-full min-h-[80px] text-sm p-2 rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] resize-y focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
+                            className="w-full min-h-[80px] text-sm p-2 rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] resize-y focus:outline-none focus:ring-1 focus:ring-[#0969da]"
                             value={editDescription}
                             onChange={e => setEditDescription(e.target.value)}
                             disabled={saving}
                             data-testid="wi-edit-description-input"
                         />
                     ) : (
-                        <div className="text-sm whitespace-pre-wrap text-[#3c3c3c] dark:text-[#cccccc]">
-                            {item.description || <span className="italic text-[#848484]">No description</span>}
-                        </div>
+                        <p className="max-w-[78ch] text-[14px] leading-[1.6] text-[#1f2328] dark:text-[#cccccc]" style={{ textWrap: 'pretty' } as React.CSSProperties}>
+                            {item.description || <span className="italic text-[#656d76]">No description</span>}
+                        </p>
                     )}
-                </section>
+                    </div>
+                </article>
 
                 {/* Success Criteria — goal items only */}
                 {effectiveType === 'goal' && (
@@ -718,20 +768,24 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
 
                 {/* Plan — leaf items only */}
                 {!isContainer && (
-                <section>
-                    <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-2">
-                        Detail Plan {item.plan ? <span className="text-[#848484] normal-case">(v{item.plan.version})</span> : ''}
-                    </h3>
-                    <WorkItemPlanSection
-                        workspaceId={workspaceId}
-                        workItemId={workItemId}
-                        plan={item.plan}
-                        canEdit={canEditPlan}
-                        onUpdated={fetchItem}
-                        onError={setError}
-                        onNavigateToTasksTab={onNavigateToTasksTab}
-                    />
-                </section>
+                <article className="border border-[#d0d7de] dark:border-[#474749] rounded-md overflow-hidden">
+                    <div className="min-h-[44px] px-3 py-2.5 border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] flex items-center justify-between gap-2">
+                        <h3 className="text-[13px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc]">
+                            Plan preview {item.plan ? <span className="text-[#656d76] font-normal">(v{item.plan.version})</span> : ''}
+                        </h3>
+                    </div>
+                    <div className="p-3">
+                        <WorkItemPlanSection
+                            workspaceId={workspaceId}
+                            workItemId={workItemId}
+                            plan={item.plan}
+                            canEdit={canEditPlan}
+                            onUpdated={fetchItem}
+                            onError={setError}
+                            onNavigateToTasksTab={onNavigateToTasksTab}
+                        />
+                    </div>
+                </article>
                 )}
 
                 {/* AI Review section (aiDone only) */}
@@ -1034,6 +1088,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                         )}
                     </div>
                 </section>
+                </div>
             </div>
 
             {showExecuteDialog && (
@@ -1046,6 +1101,20 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     onExecuted={handleExecuteDialogDone}
                 />
             )}
+            <WorkItemAiComposer
+                open={showAiComposer}
+                onClose={() => setShowAiComposer(false)}
+                workspaceId={workspaceId}
+                mode="improve"
+                existingItem={{
+                    id: item.id,
+                    title: item.title,
+                    description: item.description,
+                    type: item.type,
+                    plan: item.plan,
+                }}
+                onImproved={fetchItem}
+            />
             {showParentPicker && (
                 <WorkItemParentPicker
                     workspaceId={workspaceId}

@@ -9,12 +9,18 @@ const configMock = vi.hoisted(() => ({
     pullRequestsSuggestionsEnabled: false,
 }));
 
+const prefsMocks = vi.hoisted(() => ({
+    getWorkspacePreferences: vi.fn().mockResolvedValue({}),
+    patchWorkspacePreferences: vi.fn().mockResolvedValue(undefined),
+}));
+
 // Mock getApiBase so fetch URLs are predictable.
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '',
     isRalphEnabled: () => false,
     isPullRequestsSuggestionsEnabled: () => configMock.pullRequestsSuggestionsEnabled,
+    getActiveProvider: () => 'copilot',
 }));
 
 // Mock AppContext to avoid full context setup.
@@ -23,6 +29,11 @@ let mockSelectedPrId: number | string | null = null;
 let mockWorkspaces: Array<{ id: string; remoteUrl?: string }> = [];
 vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: { selectedPrId: mockSelectedPrId, workspaces: mockWorkspaces }, dispatch: mockDispatch }),
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/hooks/preferences/preferencesApi', () => ({
+    getWorkspacePreferences: prefsMocks.getWorkspacePreferences,
+    patchWorkspacePreferences: prefsMocks.patchWorkspacePreferences,
 }));
 
 // Default to desktop layout.
@@ -85,6 +96,8 @@ async function renderTab(props: Partial<any> = {}) {
 beforeEach(() => {
     vi.resetModules();
     vi.resetAllMocks();
+    prefsMocks.getWorkspacePreferences.mockResolvedValue({});
+    prefsMocks.patchWorkspacePreferences.mockResolvedValue(undefined);
     configMock.pullRequestsSuggestionsEnabled = false;
     mockDispatch.mockReset();
     mockSelectedPrId = null;

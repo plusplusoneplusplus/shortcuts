@@ -104,18 +104,19 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
     const [aiPassDone, setAiPassDone] = useState(false);
     const [summaryCopied, setSummaryCopied] = useState(false);
 
-    // Classification hook — passes undefined key when feature flag is off
-    const headSha = pr?.headSha ?? pr?.sourceBranch;
+    // Pop-out context for opening PR review in a separate window
+    const { markPoppedOut } = useGitReviewPopOut();
+    const workspaceId = state.workspace ?? String(repoId);
+
+    // Classification hook — passes undefined key when feature flag is off or no real headSha yet.
+    // Never fall back to sourceBranch: two PRs on the same branch would alias to the same key.
+    const headSha = pr?.headSha;
     const classificationKey: ClassificationKey | undefined =
         SHOW_FOCUSED_DIFF && repoId && prId && headSha
             ? { type: 'pr', repoId: String(repoId), identifier: `${prId}:${headSha}` }
             : undefined;
-    const classificationHook = useClassification(classificationKey);
+    const classificationHook = useClassification(classificationKey, { workspaceId });
     const classification = SHOW_FOCUSED_DIFF ? classificationHook : undefined;
-
-    // Pop-out context for opening PR review in a separate window
-    const { markPoppedOut } = useGitReviewPopOut();
-    const workspaceId = state.workspace ?? String(repoId);
 
     const handleFileClick = useCallback((filePath: string) => {
         const url = buildGitPrPopOutUrl(workspaceId, String(repoId), String(prId));

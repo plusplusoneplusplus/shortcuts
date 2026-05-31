@@ -75,4 +75,15 @@ describe('work items SPA client migration', () => {
         expect(executionSession).toContain('queue.resolvedPrompt(taskId)');
         expect(executionSession).toContain('queue.list()');
     });
+
+    it('drafts and improves work items through client.workItems.aiDraft and aiImprove', () => {
+        const composerSrc = fs.readFileSync(
+            path.join(WORK_ITEMS_DIR, 'WorkItemAiComposer.tsx'),
+            'utf-8',
+        );
+        expect(composerSrc).toContain('workItems.aiDraft(workspaceId');
+        expect(composerSrc).toContain('workItems.aiImprove(workspaceId');
+        // Must not hit the AI endpoint URLs directly
+        expect(composerSrc).not.toContain('/ai-draft');
+    });
 });

@@ -104,6 +104,21 @@ describe('createCommitDiffSource', () => {
         const source = createCommitDiffSource(ws, hash);
         expect(source.cacheKey).toBe('commit:abc1234def5678');
     });
+
+    it('classificationKey is set with type commit, repoId = workspaceId, identifier = hash', () => {
+        const source = createCommitDiffSource(ws, hash);
+        expect(source.classificationKey).toEqual({
+            type: 'commit',
+            repoId: 'ws1',
+            identifier: 'abc1234def5678',
+        });
+    });
+
+    it('classificationKey.identifier matches the full hash', () => {
+        const longHash = 'abcdef1234567890abcdef1234567890abcdef12';
+        const source = createCommitDiffSource(ws, longHash);
+        expect(source.classificationKey?.identifier).toBe(longHash);
+    });
 });
 
 describe('createBranchRangeDiffSource', () => {

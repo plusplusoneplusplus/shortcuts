@@ -10,6 +10,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '',
     isRalphEnabled: () => false,
     isPullRequestsSuggestionsEnabled: () => false,
+    getActiveProvider: () => 'copilot',
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({

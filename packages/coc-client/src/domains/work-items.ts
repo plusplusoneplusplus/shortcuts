@@ -3,11 +3,14 @@ import type {
   CreateWorkItemRequest,
   ExecuteWorkItemRequest,
   ExecuteWorkItemResponse,
+  ImproveWorkItemAiDraftRequest,
+  NewWorkItemAiDraftRequest,
   RequestWorkItemChangesRequest,
   RequestWorkItemChangesResponse,
   ResolveWorkItemCommentsRequest,
   UpdateWorkItemRequest,
   WorkItem,
+  WorkItemAiGenerationResponse,
   WorkItemFilter,
   WorkItemGroupedResponse,
   WorkItemListResponse,
@@ -142,5 +145,19 @@ export class WorkItemsClient {
     if (filter?.includeArchived !== undefined) query.includeArchived = filter.includeArchived;
     if (filter?.includeDone !== undefined) query.includeDone = filter.includeDone;
     return this.transport.request<WorkItemTreeResponse>(path(workspaceId, '/tree'), { query });
+  }
+
+  aiDraft(workspaceId: string, request: NewWorkItemAiDraftRequest): Promise<WorkItemAiGenerationResponse> {
+    return this.transport.request<WorkItemAiGenerationResponse>(path(workspaceId, '/ai-draft'), {
+      method: 'POST',
+      body: { ...request },
+    });
+  }
+
+  aiImprove(workspaceId: string, workItemId: string, request: ImproveWorkItemAiDraftRequest): Promise<WorkItemAiGenerationResponse> {
+    return this.transport.request<WorkItemAiGenerationResponse>(
+      path(workspaceId, `/${encodePathSegment(workItemId)}/ai-draft`),
+      { method: 'POST', body: { ...request } },
+    );
   }
 }

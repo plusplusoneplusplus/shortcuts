@@ -147,7 +147,7 @@ export const ALL_TOOL_NAV_ITEMS: ToolNavItem[] = [
 export const TOOL_TAB_GROUP_LABELS: Partial<Record<DashboardTab, string>> = {
     memory: 'Knowledge',
     skills: 'Knowledge',
-    servers: 'Connections',
+    servers: 'Configure',
     stats: 'Operations',
     logs: 'Operations',
 };
@@ -172,7 +172,7 @@ interface AdminNavGroup {
 }
 
 const ADMIN_TAB_GROUP_LABELS: Partial<Record<AdminSubTab, string>> = {
-    providers: 'Connections',
+    providers: 'Configure',
     messaging: 'Connections',
     server: 'Operations',
     data: 'Operations',
@@ -332,6 +332,7 @@ export function AdminPanel() {
     const [mcpOauthEnabled, setMcpOauthEnabled] = useState(false);
     const [focusedDiffEnabled, setFocusedDiffEnabled] = useState(false);
     const [workItemsHierarchyEnabled, setWorkItemsHierarchyEnabled] = useState(false);
+    const [workItemsAiAuthoringEnabled, setWorkItemsAiAuthoringEnabled] = useState(false);
     const [effortLevelsEnabled, setEffortLevelsEnabled] = useState(false);
     const [codexEnabled, setCodexEnabled] = useState(false);
     const [claudeEnabled, setClaudeEnabled] = useState(false);
@@ -378,7 +379,7 @@ export function AdminPanel() {
         taskCardDensity: 'compact' as 'compact' | 'dense',
         historyGrouping: true,
     });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false, workItemsHierarchy: false, effortLevels: false });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false, workItemsHierarchy: false, workItemsAiAuthoring: false, effortLevels: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -491,6 +492,8 @@ export function AdminPanel() {
             setFocusedDiffEnabled(fde);
             const wihe = resolved.workItems?.hierarchy?.enabled ?? false;
             setWorkItemsHierarchyEnabled(wihe);
+            const waae = resolved.workItems?.aiAuthoring?.enabled ?? false;
+            setWorkItemsAiAuthoringEnabled(waae);
             const ele = resolved.effortLevels?.enabled ?? false;
             setEffortLevelsEnabled(ele);
             const cxe = resolved.codex?.enabled ?? false;
@@ -499,7 +502,7 @@ export function AdminPanel() {
             setClaudeEnabled(cle);
             const dp = (resolved.defaultProvider === 'codex' ? 'codex' : resolved.defaultProvider === 'claude' ? 'claude' : 'copilot') as 'copilot' | 'codex' | 'claude';
             setDefaultProvider(dp);
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde, workItemsHierarchy: wihe, effortLevels: ele });
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde, workItemsHierarchy: wihe, workItemsAiAuthoring: waae, effortLevels: ele });
             setAiExecSnapshot({ model: form.model, parallel: form.parallel, timeout: form.timeout, output: form.output });
             setDefaultProviderSnapshot({ provider: dp, codexEnabled: cxe, claudeEnabled: cle });
             const sgr = resolved.sync?.gitRemote ?? '';
@@ -612,6 +615,7 @@ export function AdminPanel() {
         mcpOauthEnabled !== featuresSnapshot.mcpOauth ||
         focusedDiffEnabled !== featuresSnapshot.focusedDiff ||
         workItemsHierarchyEnabled !== featuresSnapshot.workItemsHierarchy ||
+        workItemsAiAuthoringEnabled !== featuresSnapshot.workItemsAiAuthoring ||
         effortLevelsEnabled !== featuresSnapshot.effortLevels;
 
     // ── AI & Execution card ──
@@ -837,17 +841,18 @@ export function AdminPanel() {
                 'mcpOauth.enabled': mcpOauthEnabled,
                 'features.focusedDiff': focusedDiffEnabled,
                 'workItems.hierarchy.enabled': workItemsHierarchyEnabled,
+                'workItems.aiAuthoring.enabled': workItemsAiAuthoringEnabled,
                 'effortLevels.enabled': effortLevelsEnabled,
             });
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled, workItemsHierarchy: workItemsHierarchyEnabled, effortLevels: effortLevelsEnabled });
+            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled, workItemsHierarchy: workItemsHierarchyEnabled, workItemsAiAuthoring: workItemsAiAuthoringEnabled, effortLevels: effortLevelsEnabled });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, workItemsHierarchyEnabled, effortLevelsEnabled, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, workItemsHierarchyEnabled, workItemsAiAuthoringEnabled, effortLevelsEnabled, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setTerminalEnabled(featuresSnapshot.terminal);
@@ -867,6 +872,7 @@ export function AdminPanel() {
         setMcpOauthEnabled(featuresSnapshot.mcpOauth);
         setFocusedDiffEnabled(featuresSnapshot.focusedDiff);
         setWorkItemsHierarchyEnabled(featuresSnapshot.workItemsHierarchy);
+        setWorkItemsAiAuthoringEnabled(featuresSnapshot.workItemsAiAuthoring);
         setEffortLevelsEnabled(featuresSnapshot.effortLevels);
     }, [featuresSnapshot]);
 
@@ -1092,6 +1098,8 @@ export function AdminPanel() {
                     action: { kind: 'settings', subTab: DEFAULT_SETTINGS_SUBTAB } as AdminNavAction,
                 },
                 ...nonContainerAgentsNavItem,
+                adminNavItem('providers'),
+                ...serversNavItems,
             ],
         },
         {
@@ -1104,8 +1112,6 @@ export function AdminPanel() {
         {
             label: 'Connections',
             items: [
-                adminNavItem('providers'),
-                ...serversNavItems,
                 ...containerNavItems,
                 ...containerAgentsNavItem,
             ],
@@ -1704,6 +1710,13 @@ export function AdminPanel() {
                                     >
                                         <SourceBadge source={sources['workItems.hierarchy.enabled']} />
                                         <AdminToggle checked={workItemsHierarchyEnabled} onChange={setWorkItemsHierarchyEnabled} data-testid="toggle-work-items-hierarchy-enabled" />
+                                    </AdminRow>
+                                    <AdminRow
+                                        name={<>Work Items AI Authoring <span className="ar-badge ar-badge-accent">Experimental</span></>}
+                                        hint="Adds AI-assisted work item creation and improvement to the Work Items tab. Disabled by default."
+                                    >
+                                        <SourceBadge source={sources['workItems.aiAuthoring.enabled']} />
+                                        <AdminToggle checked={workItemsAiAuthoringEnabled} onChange={setWorkItemsAiAuthoringEnabled} data-testid="toggle-work-items-ai-authoring-enabled" />
                                     </AdminRow>
                                     <AdminRow
                                         name={<>Effort Tiers <span className="ar-badge ar-badge-accent">Experimental</span></>}

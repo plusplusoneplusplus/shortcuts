@@ -11,7 +11,7 @@
 
 The **Admin shell** is a top-level dashboard tab implementing a Linear-inspired left-sidebar layout (`admin-redesign.css`, scoped under `.admin-redesign`). It owns server administration screens **and** hosts every embedded tool view (Memory, Skills, Logs, Usage & Costs, Servers) so the sidebar stays mounted across navigation.
 
-The sidebar is grouped by user task: **Configure**, **Knowledge**, **Connections**, **Operations**, **Developer / Internals**. Each row dispatches `SET_ADMIN_SUB_TAB` (admin pages), `SET_ACTIVE_TAB` (tool routes), or `SET_ACTIVE_TAB`+settings sub-tab change (the Configure / Advanced rows). When a tool route is active (`activeTab` ∈ {memory, skills, logs, stats, servers}), the right pane mounts the corresponding view inside `.ar-tool-embed`; otherwise it renders the standard admin card grid.
+The sidebar is grouped by user task: **Configure**, **Knowledge**, **Connections** (container-only), **Operations**, **Developer / Internals**. Each row dispatches `SET_ADMIN_SUB_TAB` (admin pages), `SET_ACTIVE_TAB` (tool routes), or `SET_ACTIVE_TAB`+settings sub-tab change (the Configure / Advanced rows). When a tool route is active (`activeTab` ∈ {memory, skills, logs, stats, servers}), the right pane mounts the corresponding view inside `.ar-tool-embed`; otherwise it renders the standard admin card grid.
 
 ### 1.1 Tab Identity
 
@@ -32,7 +32,7 @@ The sidebar is grouped by user task: **Configure**, **Knowledge**, **Connections
 |---|---|---|---|
 | `settings` (Configure / Advanced) | Configure / Developer | "Configure" / "Advanced" | Always shown |
 | `agents` | Configure (or Connections in container) | "AI Provider" / "Agents" | Label flips to "Agents" when `isContainerMode()` is true; placement moves to Connections in container mode |
-| `providers` | Connections | "Providers" | Always shown |
+| `providers` | Configure | "Providers" | Always shown |
 | `messaging` | Connections | "Messaging" | Container-only (`isContainerMode()`) |
 | `data` | Operations | "Backup & Reset" | Always shown |
 | `server` | Operations | "Server" | Always shown |
@@ -342,7 +342,7 @@ Tool routes (separate `DashboardTab`s) sharing the admin shell: `memory`, `skill
 - **Given** the Usage & Costs row is active (`#stats`)
 - **Then** the right pane mounts `UsageStatsView`
 
-**US-28 — Servers (Connections group, gated)**
+**US-28 — Servers (Configure group, gated)**
 > As an operator, I want to browse running CoC servers inside the admin shell.
 
 - **Given** `isServersEnabled()` is true and the Servers row is active (`#servers`)
@@ -358,7 +358,7 @@ Tool routes (separate `DashboardTab`s) sharing the admin shell: `memory`, `skill
 |---|---|
 | Layout | `.ar-shell` with `.ar-sidebar` (left) + `.ar-main` (right) |
 | Brand | Logo + "CoC Admin" + version `vX.Y.Z` from `/api/admin/version` |
-| Nav groups | Configure, Knowledge, Connections, Operations, Developer / Internals (groups with no items are hidden) |
+| Nav groups | Configure, Knowledge, Connections (container-only), Operations, Developer / Internals (groups with no items are hidden) |
 | Active row | `is-active` + `aria-current="page"` |
 | Mobile select | Single `<select>` with `<optgroup>` per group, mirrors sidebar selection |
 | Breadcrumb | `<Group> / <Label>` reflecting `activeBreadcrumbGroup` and `activeTabLabel` (or tool item label when embedded) |
@@ -490,15 +490,13 @@ Tool routes (separate `DashboardTab`s) sharing the admin shell: `memory`, `skill
 │ │ Configure    │  │ [AI*] [Chat] [Appearance] [Features] [Integrations]  │   │
 │ │  ✦ Configure │  │ ┌──────────────────────────────────────────────────┐ │   │
 │ │  ◉ AI Prov.  │  │ │ AI & Execution                                   │ │   │
-│ │              │  │ │ Model        [gpt-…  ]  [file]                   │ │   │
-│ │ Knowledge    │  │ │ Parallelism  [5      ]  [default]                │ │   │
-│ │  ◈ Memory    │  │ │ Timeout      [3600 sec] [default]                │ │   │
-│ │  ⚡ Skills   │  │ │ Output       [table ▾]  [default]                │ │   │
-│ │              │  │ │                                  [Cancel] [Save] │ │   │
-│ │ Connections  │  │ └──────────────────────────────────────────────────┘ │   │
-│ │  ◇ Providers │  └──────────────────────────────────────────────────────┘   │
-│ │  🖥 Servers  │                                                              │
-│ │              │                                                              │
+│ │  ◇ Providers │  │ │ Model        [gpt-…  ]  [file]                   │ │   │
+│ │  🖥 Servers  │  │ │ Parallelism  [5      ]  [default]                │ │   │
+│ │              │  │ │ Timeout      [3600 sec] [default]                │ │   │
+│ │ Knowledge    │  │ │ Output       [table ▾]  [default]                │ │   │
+│ │  ◈ Memory    │  │ │                                  [Cancel] [Save] │ │   │
+│ │  ⚡ Skills   │  │ └──────────────────────────────────────────────────┘ │   │
+│ │              │  └──────────────────────────────────────────────────────┘   │
 │ │ Operations   │                                                              │
 │ │  📊 Usage    │                                                              │
 │ │  📋 Logs     │                                                              │

@@ -70,8 +70,8 @@ describe('TOOL_TAB_GROUP_LABELS', () => {
         expect(TOOL_TAB_GROUP_LABELS['models' as string]).toBeUndefined();
     });
 
-    it('places servers in Connections', () => {
-        expect(TOOL_TAB_GROUP_LABELS['servers']).toBe('Connections');
+    it('places servers in Configure', () => {
+        expect(TOOL_TAB_GROUP_LABELS['servers']).toBe('Configure');
     });
 
     it('places stats in Operations', () => {

@@ -19,11 +19,15 @@ export interface PrChatPanelProps {
     prId: string;
     /** Currently selected file path in the pop-out (for context). */
     filePath?: string;
+    /** Repo identifier the PR belongs to (may differ from workspaceId). */
+    repoId?: string;
+    /** PR title — forwarded to the AI framing sentence. */
+    prTitle?: string;
     onClose: () => void;
 }
 
-export function PrChatPanel({ workspaceId, prId, filePath, onClose }: PrChatPanelProps) {
-    const { taskId, loading, error, createChat } = usePrChatBinding({ workspaceId, prId, filePath });
+export function PrChatPanel({ workspaceId, prId, filePath, repoId, prTitle, onClose }: PrChatPanelProps) {
+    const { taskId, loading, error, createChat } = usePrChatBinding({ workspaceId, prId, filePath, repoId, prTitle });
     const [input, setInput] = useState('');
     const richTextRef = useRef<RichTextInputHandle>(null);
     const { attachments, addFromPaste, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();

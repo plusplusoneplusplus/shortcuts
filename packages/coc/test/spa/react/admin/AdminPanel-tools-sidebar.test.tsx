@@ -60,7 +60,7 @@ describe('AdminPanel — grouped sidebar navigation', () => {
         await act(async () => { renderAdmin(); });
         await waitFor(() => {
             const labels = Array.from(document.querySelectorAll('.ar-sidebar .ar-nav-group-label')).map(node => node.textContent);
-            expect(labels).toEqual(['Configure', 'Knowledge', 'Connections', 'Operations', 'Developer / Internals']);
+            expect(labels).toEqual(['Configure', 'Knowledge', 'Operations', 'Developer / Internals']);
         });
     });
 
@@ -102,9 +102,8 @@ describe('AdminPanel — grouped sidebar navigation', () => {
         }));
 
         expect(groups).toEqual([
-            { label: 'Configure', ids: [] },
+            { label: 'Configure', ids: ['servers-toggle'] },
             { label: 'Knowledge', ids: ['memory-toggle', 'skills-toggle'] },
-            { label: 'Connections', ids: ['servers-toggle'] },
             { label: 'Operations', ids: ['stats-toggle', 'logs-toggle'] },
             { label: 'Developer / Internals', ids: [] },
         ]);

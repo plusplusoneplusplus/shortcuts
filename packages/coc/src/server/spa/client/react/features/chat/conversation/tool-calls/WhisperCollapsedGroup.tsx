@@ -1079,7 +1079,7 @@ export function WhisperCollapsedGroup({
                                     flushContent();
                                     const tool = toolById.get(chunk.toolId);
                                     const toolName = normalizeToolName(tool?.toolName ?? '');
-                                    if ((toolName === 'powershell' || toolName === 'shell') && tool?.result) {
+                                    if ((toolName === 'powershell' || toolName === 'shell' || toolName === 'bash') && tool?.result) {
                                         const commits = detectCommitsInToolGroup([{
                                             id: chunk.toolId,
                                             toolName,

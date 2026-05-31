@@ -33,6 +33,9 @@ export class SessionTelemetry {
     private usageTurnCount = 0;
     private usageTokenLimit: number | undefined;
     private usageCurrentTokens: number | undefined;
+    private usageSystemTokens: number | undefined;
+    private usageToolDefinitionsTokens: number | undefined;
+    private usageConversationTokens: number | undefined;
 
     // ── Tool call tracking ──────────────────────────────────────────────────
     readonly activeToolCalls = new Map<string, ActiveToolCall>();
@@ -69,9 +72,15 @@ export class SessionTelemetry {
     recordUsageInfo(data: {
         tokenLimit?: number;
         currentTokens?: number;
+        systemTokens?: number;
+        toolDefinitionsTokens?: number;
+        conversationTokens?: number;
     }): void {
         if (data.tokenLimit    != null) { this.usageTokenLimit    = data.tokenLimit; }
         if (data.currentTokens != null) { this.usageCurrentTokens = data.currentTokens; }
+        if (data.systemTokens           != null) { this.usageSystemTokens           = data.systemTokens; }
+        if (data.toolDefinitionsTokens  != null) { this.usageToolDefinitionsTokens  = data.toolDefinitionsTokens; }
+        if (data.conversationTokens     != null) { this.usageConversationTokens     = data.conversationTokens; }
     }
 
     buildTokenUsage(): TokenUsage | undefined {
@@ -87,6 +96,9 @@ export class SessionTelemetry {
             turnCount: this.usageTurnCount,
             tokenLimit: this.usageTokenLimit,
             currentTokens: this.usageCurrentTokens,
+            ...(this.usageSystemTokens          != null ? { systemTokens:           this.usageSystemTokens }          : {}),
+            ...(this.usageToolDefinitionsTokens != null ? { toolDefinitionsTokens:  this.usageToolDefinitionsTokens } : {}),
+            ...(this.usageConversationTokens    != null ? { conversationTokens:     this.usageConversationTokens }    : {}),
         };
     }
 

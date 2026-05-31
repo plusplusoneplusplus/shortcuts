@@ -8,8 +8,14 @@
  * Visual style matches the OpenDesign chat-header reference: subtle muted
  * chips that ghost on hover, with the fuel gauge driving green→amber→red
  * thresholds at 60% / 80%.
+ *
+ * When breakdown props (sessionSystemTokens / sessionToolTokens /
+ * sessionConversationTokens) are provided, the ctx bar renders coloured
+ * segments (purple=system, blue=tools, green=conversation, gray=other) and
+ * a breakdown popover appears on hover/tap.
  */
 
+import { useState } from 'react';
 import { cn } from '../../ui/cn';
 
 export interface ComposerMetaStripProps {
@@ -29,6 +35,12 @@ export interface ComposerMetaStripProps {
      */
     activeProvider?: 'copilot' | 'codex' | 'claude';
     className?: string;
+    /** System-prompt token count (Copilot SDK only). */
+    sessionSystemTokens?: number;
+    /** Tool-definition token count (Copilot SDK only). */
+    sessionToolTokens?: number;
+    /** Conversation-history token count (Copilot SDK only). */
+    sessionConversationTokens?: number;
 }
 
 function shortenPath(path: string, maxLen = 32): string {
@@ -50,7 +62,12 @@ export function ComposerMetaStrip({
     sessionModel,
     activeProvider,
     className,
+    sessionSystemTokens,
+    sessionToolTokens,
+    sessionConversationTokens,
 }: ComposerMetaStripProps) {
+    const [ctxPopoverOpen, setCtxPopoverOpen] = useState(false);
+
     const trimmedCwd = workingDirectory?.trim();
     const hasCwd = Boolean(trimmedCwd);
     const showProvider = activeProvider === 'codex' || activeProvider === 'claude';
@@ -75,12 +92,35 @@ export function ComposerMetaStrip({
         ? `Context window: ${formatTokenCount(ctxUsed)} / ${formatTokenCount(ctxLimit)} (${ctxPct.toFixed(1)}%)${sessionModel ? ` · ${sessionModel}` : ''}`
         : 'Context window: not yet known';
 
+    // Breakdown availability (Copilot SDK only)
+    const hasBreakdown =
+        sessionSystemTokens != null &&
+        sessionToolTokens != null &&
+        sessionConversationTokens != null;
+
+    // Segment widths as percentage of ctxLimit (only computed when breakdown present)
+    const sysPct   = hasBreakdown && showCtx ? Math.min(100, (sessionSystemTokens!       / ctxLimit) * 100) : 0;
+    const toolPct  = hasBreakdown && showCtx ? Math.min(100, (sessionToolTokens!         / ctxLimit) * 100) : 0;
+    const convPct  = hasBreakdown && showCtx ? Math.min(100, (sessionConversationTokens! / ctxLimit) * 100) : 0;
+    const knownPct = sysPct + toolPct + convPct;
+    const otherTokens = hasBreakdown
+        ? Math.max(0, ctxUsed - sessionSystemTokens! - sessionToolTokens! - sessionConversationTokens!)
+        : 0;
+    const otherPct = hasBreakdown && showCtx ? Math.max(0, ctxPct - knownPct) : 0;
+
+    const breakdownRows = hasBreakdown ? [
+        { label: 'System prompt',    tokens: sessionSystemTokens!,       dotColor: 'bg-purple-500 dark:bg-purple-400' },
+        { label: 'Tool definitions', tokens: sessionToolTokens!,         dotColor: 'bg-blue-500 dark:bg-blue-400' },
+        { label: 'Conversation',     tokens: sessionConversationTokens!, dotColor: 'bg-green-500 dark:bg-green-400' },
+        { label: 'Other',            tokens: otherTokens,                dotColor: 'bg-gray-400 dark:bg-gray-500' },
+    ] : [];
+
     if (!hasCwd && !showCtx && !showProvider) return null;
 
     return (
         <div
             className={cn(
-                'flex items-center gap-0 min-w-0 overflow-hidden',
+                'flex items-center gap-0 min-w-0 overflow-visible',
                 className,
             )}
             data-testid="composer-meta-strip"
@@ -105,20 +145,56 @@ export function ComposerMetaStrip({
             )}
             {showCtx && (
                 <span
-                    title={ctxTitle}
+                    aria-label={ctxTitle}
                     data-testid="composer-ctx-fuel"
-                    className="inline-flex items-center gap-1.5 h-[22px] px-2 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] flex-shrink-0"
+                    className="relative inline-flex items-center gap-1.5 h-[22px] px-2 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] flex-shrink-0"
+                    onMouseEnter={() => setCtxPopoverOpen(true)}
+                    onMouseLeave={() => setCtxPopoverOpen(false)}
+                    onClick={() => setCtxPopoverOpen(v => !v)}
                 >
                     <span aria-hidden="true" className="font-mono text-[9px] uppercase tracking-wider opacity-60">ctx</span>
                     <span
                         data-testid="composer-ctx-bar"
                         className="relative inline-block w-[64px] h-[6px] rounded-full bg-[#e8e8e8] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] overflow-hidden flex-shrink-0"
                     >
-                        <span
-                            data-testid="composer-ctx-fill"
-                            className={cn('absolute inset-y-0 left-0 rounded-full transition-all duration-300', ctxFillColor)}
-                            style={{ width: `${fillWidth}%` }}
-                        />
+                        {hasBreakdown ? (
+                            <>
+                                {sysPct > 0 && (
+                                    <span
+                                        data-testid="composer-ctx-segment-system"
+                                        className="absolute inset-y-0 left-0 bg-purple-500 dark:bg-purple-400"
+                                        style={{ width: `${sysPct}%` }}
+                                    />
+                                )}
+                                {toolPct > 0 && (
+                                    <span
+                                        data-testid="composer-ctx-segment-tools"
+                                        className="absolute inset-y-0 bg-blue-500 dark:bg-blue-400"
+                                        style={{ left: `${sysPct}%`, width: `${toolPct}%` }}
+                                    />
+                                )}
+                                {convPct > 0 && (
+                                    <span
+                                        data-testid="composer-ctx-segment-conversation"
+                                        className="absolute inset-y-0 bg-green-500 dark:bg-green-400"
+                                        style={{ left: `${sysPct + toolPct}%`, width: `${convPct}%` }}
+                                    />
+                                )}
+                                {otherPct > 0 && (
+                                    <span
+                                        data-testid="composer-ctx-segment-other"
+                                        className="absolute inset-y-0 bg-gray-400 dark:bg-gray-500"
+                                        style={{ left: `${knownPct}%`, width: `${otherPct}%` }}
+                                    />
+                                )}
+                            </>
+                        ) : (
+                            <span
+                                data-testid="composer-ctx-fill"
+                                className={cn('absolute inset-y-0 left-0 rounded-full transition-all duration-300', ctxFillColor)}
+                                style={{ width: `${fillWidth}%` }}
+                            />
+                        )}
                     </span>
                     <span
                         data-testid="composer-ctx-pct"
@@ -126,6 +202,65 @@ export function ComposerMetaStrip({
                     >
                         {ctxPctRounded}%
                     </span>
+
+                    {/* Breakdown popover — shown on hover/tap; full breakdown when available, simple total otherwise */}
+                    {ctxPopoverOpen && (
+                        <div
+                            className="absolute bottom-full left-0 mb-2 z-50 bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded-md shadow-lg p-3 min-w-[220px] text-xs pointer-events-auto"
+                            data-testid="composer-ctx-breakdown-popover"
+                            onMouseEnter={() => setCtxPopoverOpen(true)}
+                            onMouseLeave={() => setCtxPopoverOpen(false)}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <table className="w-full border-collapse">
+                                {hasBreakdown && (
+                                    <thead>
+                                        <tr className="text-[#848484] dark:text-[#999999]">
+                                            <th className="text-left font-medium pb-1.5 pr-3">Category</th>
+                                            <th className="text-right font-medium pb-1.5 pr-2">Tokens</th>
+                                            <th className="text-right font-medium pb-1.5">% of limit</th>
+                                        </tr>
+                                    </thead>
+                                )}
+                                {hasBreakdown && (
+                                    <tbody>
+                                        {breakdownRows.map(row => (
+                                            <tr key={row.label}>
+                                                <td className="py-0.5 pr-3">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className={cn('inline-block w-2 h-2 rounded-sm flex-shrink-0', row.dotColor)} />
+                                                        <span className="text-[#1e1e1e] dark:text-[#cccccc]">{row.label}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="text-right tabular-nums text-[#1e1e1e] dark:text-[#cccccc] py-0.5 pr-2">
+                                                    {formatTokenCount(row.tokens)}
+                                                </td>
+                                                <td className="text-right tabular-nums text-[#848484] dark:text-[#999999] py-0.5">
+                                                    {((row.tokens / ctxLimit) * 100).toFixed(1)}%
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                )}
+                                <tfoot>
+                                    <tr className={cn('font-medium', hasBreakdown && 'border-t border-[#e0e0e0] dark:border-[#3c3c3c]')}>
+                                        <td className="pt-1.5 text-[#1e1e1e] dark:text-[#cccccc]">Total</td>
+                                        <td className="text-right tabular-nums text-[#1e1e1e] dark:text-[#cccccc] pt-1.5 pr-2">
+                                            {formatTokenCount(ctxUsed)}&nbsp;/&nbsp;{formatTokenCount(ctxLimit)}
+                                        </td>
+                                        <td className="text-right tabular-nums text-[#848484] dark:text-[#999999] pt-1.5">
+                                            {ctxPct.toFixed(1)}%
+                                        </td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                            {sessionModel && (
+                                <div className="mt-1.5 pt-1.5 border-t border-[#e0e0e0] dark:border-[#3c3c3c] text-[#848484] dark:text-[#999999] truncate" data-testid="composer-ctx-model-name">
+                                    {sessionModel}
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </span>
             )}
             {showProvider && (hasCwd || showCtx) && (

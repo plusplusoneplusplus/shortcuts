@@ -17,7 +17,7 @@ import { ThemeProvider } from './ThemeProvider';
 import { ToastProvider } from '../contexts/ToastContext';
 import { ToastContainer, useToast } from '../ui';
 import { getSpaCocClient } from '../api/cocClient';
-import { CommitDetail } from '../features/git/commits/CommitDetail';
+import { CommitChatPanel } from '../features/git/commits/CommitChatPanel';
 import { BranchRangeOverview } from '../features/git/branches/BranchRangeOverview';
 import { FileDiffPanel } from '../features/git/diff/FileDiffPanel';
 import { createCommitDiffSource, createBranchRangeDiffSource, createPrDiffSource } from '../features/git/diff/diffSource';
@@ -37,6 +37,7 @@ import {
 import { getHostname } from '../utils/config';
 import { extractFileStatsFromDiff } from '../features/git/diff/diffSource';
 import { useClassification } from '../features/git/diff/useClassification';
+import type { ChatProvider } from '../features/git/diff/useClassification';
 import { usePrReviewProgress } from '../features/git/diff/usePrReviewProgress';
 import { pickPriorityFile } from '../features/git/diff/prPopoutPriority';
 import type { ClassificationKey } from '../features/git/diff/diffSource';
@@ -48,6 +49,8 @@ import type { BranchRangeInfo } from '../features/git/branches/BranchChanges';
 import type { BranchRangeFile } from '../features/git/branches/BranchAllFilesDiff';
 import type { FileChange } from '../features/git/diff/FileTree';
 import type { GitBranchRangeResponse } from '@plusplusoneplusplus/coc-client';
+import { useAgentProviders } from '../hooks/useAgentProviders';
+import { useModels } from '../hooks/useModels';
 
 // ── URL parsing ────────────────────────────────────────────────────────────────
 
@@ -97,21 +100,52 @@ function CommitReviewContent({ workspaceId, commitHash }: { workspaceId: string;
     const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
     const [hunkTarget, setHunkTarget] = useState<'first' | 'last' | undefined>(undefined);
     const [fileCommentMap, setFileCommentMap] = useState<Map<string, number>>(new Map());
+    const [chatOpen, setChatOpen] = useState(false);
+    const [prioritySort, setPrioritySort] = useState(false);
+
+    // Classification hook — uses commit hash as the identifier; session-scoped
+    const classificationKey: ClassificationKey = useMemo(
+        () => ({ type: 'commit', repoId: workspaceId, identifier: commitHash }),
+        [workspaceId, commitHash],
+    );
+    const classification = useClassification(classificationKey, { workspaceId });
+
+    // Review progress — session-local only (no server persistence for commits)
+    const reviewProgress = usePrReviewProgress(commitHash);
+
+    // Provider/model selectors for classification
+    const { providers: agentProviders } = useAgentProviders();
+    const { models: agentModels } = useModels(classification.provider);
+    const selectableProviders = agentProviders.filter(p => p.enabled && p.available);
+    const enabledModels = agentModels.filter(m => m.enabled);
 
     const handleFileSelect = useCallback((filePath: string) => {
         setHunkTarget(undefined);
-        setSelectedFilePath(prev => prev === filePath ? null : filePath);
-    }, []);
+        setSelectedFilePath(prev => {
+            const next = prev === filePath ? null : filePath;
+            if (next) reviewProgress.markVisited(next);
+            return next;
+        });
+    }, [reviewProgress]);
 
     const handleNavigateToFile = useCallback((filePath: string, target: 'first' | 'last') => {
         setSelectedFilePath(filePath);
         setHunkTarget(target);
-    }, []);
+        reviewProgress.markVisited(filePath);
+    }, [reviewProgress]);
 
     const handleBack = useCallback(() => {
         setSelectedFilePath(null);
         setHunkTarget(undefined);
     }, []);
+
+    const handleTogglePrioritySort = useCallback(() => {
+        setPrioritySort(prev => !prev);
+    }, []);
+
+    const handleShowAll = useCallback(() => {
+        classification.setFilters(new Set<HunkCategory>(HUNK_CATEGORIES));
+    }, [classification]);
 
     useEffect(() => {
         setLoading(true);
@@ -126,7 +160,8 @@ function CommitReviewContent({ workspaceId, commitHash }: { workspaceId: string;
     // Fetch the diff to extract file list (shares cache with CommitDetail)
     const diffUrl = getSpaCocClient().git.commitDiffPath(workspaceId, commitHash);
     const { diff } = useCachedDiff(diffUrl, workspaceId, commitHash);
-    const fileList = diff ? parseDiffFileList(diff) : [];
+    const fileList = useMemo(() => diff ? parseDiffFileList(diff) : [], [diff]);
+    const filePaths = useMemo(() => fileList.map(f => f.path), [fileList]);
 
     // Comment counts for the commit diff
     const oldRef = `${commitHash}^`;
@@ -151,6 +186,58 @@ function CommitReviewContent({ workspaceId, commitHash }: { workspaceId: string;
         return () => { cancelled = true; };
     }, [commentCounts, fileList.length, workspaceId, oldRef, commitHash]);
 
+    // Priority navigation (available when classification is ready)
+    const classifyStatusForNav = classification.state.status;
+    const priorityNav = useMemo(() => {
+        if (classifyStatusForNav !== 'ready') {
+            return { prevPath: null as string | null, nextPath: null as string | null };
+        }
+        const ctx = {
+            getFileBadge: classification.getFileBadge,
+            reviewedFiles: reviewProgress.state.reviewedFiles,
+        };
+        const filters = classification.state.activeFilters;
+        const next = pickPriorityFile(fileList, ctx, {
+            currentPath: selectedFilePath,
+            direction: 'next',
+            activeFilters: filters,
+        });
+        const prev = pickPriorityFile(fileList, ctx, {
+            currentPath: selectedFilePath,
+            direction: 'prev',
+            activeFilters: filters,
+        });
+        return { prevPath: prev.path, nextPath: next.path };
+    }, [
+        classifyStatusForNav,
+        classification.getFileBadge,
+        classification.state.activeFilters,
+        reviewProgress.state.reviewedFiles,
+        fileList,
+        selectedFilePath,
+    ]);
+
+    const handleNextPriority = useCallback(() => {
+        if (priorityNav.nextPath) {
+            setSelectedFilePath(priorityNav.nextPath);
+            setHunkTarget('first');
+            reviewProgress.markVisited(priorityNav.nextPath);
+        }
+    }, [priorityNav.nextPath, reviewProgress]);
+
+    const handlePrevPriority = useCallback(() => {
+        if (priorityNav.prevPath) {
+            setSelectedFilePath(priorityNav.prevPath);
+            setHunkTarget('first');
+            reviewProgress.markVisited(priorityNav.prevPath);
+        }
+    }, [priorityNav.prevPath, reviewProgress]);
+
+    // Sync current selection into progress for session tracking
+    useEffect(() => {
+        reviewProgress.setLastSelectedFile(selectedFilePath);
+    }, [selectedFilePath, reviewProgress]);
+
     if (loading) {
         return (
             <div className="flex items-center justify-center flex-1 gap-2 text-xs text-[#848484]">
@@ -159,37 +246,167 @@ function CommitReviewContent({ workspaceId, commitHash }: { workspaceId: string;
         );
     }
 
+    const classifyStatus = classification.state.status;
+    const classifySelectClass = classifyStatus === 'loading'
+        ? 'h-6 rounded border border-gray-200 bg-gray-50 px-1.5 text-[11px] text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500 cursor-not-allowed'
+        : 'h-6 rounded border border-gray-300 bg-white px-1.5 text-[11px] text-gray-700 hover:border-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200';
+
     return (
-        <div className="flex flex-1 min-h-0">
-            <PopOutFilePanel
-                workspaceId={workspaceId}
-                files={fileList}
-                selectedFilePath={selectedFilePath}
-                onFileSelect={handleFileSelect}
-                fileCommentMap={fileCommentMap}
-            />
-            <div className="flex-1 min-w-0 overflow-hidden">
-                {selectedFilePath ? (
-                    <FileDiffPanel
-                        key={`${commitHash}-${selectedFilePath}`}
-                        workspaceId={workspaceId}
-                        filePath={selectedFilePath}
-                        source={createCommitDiffSource(workspaceId, commitHash, {
-                            commit: commit ?? undefined,
-                            files: fileList.map(file => file.path),
-                        })}
-                        onNavigateToFile={handleNavigateToFile}
-                        initialHunkTarget={hunkTarget}
-                        onBack={handleBack}
-                        backLabel="All files"
-                    />
-                ) : (
-                    <CommitDetail
-                        workspaceId={workspaceId}
-                        hash={commitHash}
-                        commit={commit ?? undefined}
-                        isPopOut
-                    />
+        <div className="flex flex-col flex-1 min-h-0">
+            {/* Classification toolbar — mirrors PR layout */}
+            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#2a2a2a]" data-testid="commit-popout-classify-bar">
+                {selectableProviders.length > 1 && (
+                    <select
+                        value={classification.provider}
+                        onChange={e => classification.setProvider(e.target.value as ChatProvider)}
+                        disabled={classifyStatus === 'loading'}
+                        className={classifySelectClass}
+                        aria-label="AI provider"
+                        data-testid="commit-popout-classify-provider"
+                    >
+                        {selectableProviders.map(p => (
+                            <option key={p.id} value={p.id}>{p.label}</option>
+                        ))}
+                    </select>
+                )}
+                <select
+                    value={classification.model ?? ''}
+                    onChange={e => classification.setModel(e.target.value || undefined)}
+                    disabled={classifyStatus === 'loading'}
+                    className={classifySelectClass}
+                    aria-label="AI model"
+                    data-testid="commit-popout-classify-model"
+                >
+                    <option value="">Default</option>
+                    {enabledModels.map(m => (
+                        <option key={m.id} value={m.id}>{m.name ?? m.id}</option>
+                    ))}
+                </select>
+                <button
+                    type="button"
+                    onClick={classification.classify}
+                    disabled={classifyStatus === 'loading'}
+                    className={
+                        classifyStatus === 'loading'
+                            ? 'inline-flex h-6 items-center gap-1 rounded border border-gray-300 bg-gray-100 px-2 text-[11px] font-medium text-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-500 cursor-wait'
+                            : 'inline-flex h-6 items-center gap-1 rounded border border-indigo-400 bg-indigo-50 px-2 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500 dark:bg-indigo-900/30 dark:text-indigo-200 dark:hover:bg-indigo-900/50'
+                    }
+                    data-testid="commit-popout-classify-button"
+                >
+                    {classifyStatus === 'loading' ? (
+                        <>
+                            <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                            Classifying…
+                        </>
+                    ) : classifyStatus === 'ready' ? 'Re-classify' : 'Classify'}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setChatOpen(prev => !prev)}
+                    className={`inline-flex h-6 items-center gap-1 rounded border px-2 text-[11px] font-medium ${
+                        chatOpen
+                            ? 'border-blue-400 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-900/30 dark:text-blue-200'
+                            : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                    }`}
+                    data-testid="commit-popout-chat-toggle"
+                >
+                    💬 Chat
+                </button>
+                {classification.state.error && (
+                    <span className="text-[10px] text-red-600 dark:text-red-400">
+                        {classification.state.error}
+                    </span>
+                )}
+            </div>
+            {/* Classification filter bar — visible when results are ready */}
+            {classifyStatus === 'ready' && (
+                <div className="flex items-center gap-3 px-3 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#262626]" data-testid="commit-popout-filter-bar">
+                    <span className="text-[10px] text-[#616161] dark:text-[#999] font-medium">Filter:</span>
+                    {HUNK_CATEGORIES.map(cat => {
+                        const active = classification.state.activeFilters.has(cat);
+                        return (
+                            <label
+                                key={cat}
+                                className="flex items-center gap-1 text-[11px] cursor-pointer select-none"
+                                data-testid={`commit-popout-filter-${cat}`}
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={active}
+                                    onChange={() => classification.toggleFilter(cat as HunkCategory)}
+                                    className="h-3 w-3 rounded"
+                                />
+                                <span className={active ? 'text-[#1e1e1e] dark:text-[#ccc]' : 'text-[#848484]'}>
+                                    {CATEGORY_LABELS[cat]}
+                                </span>
+                            </label>
+                        );
+                    })}
+                </div>
+            )}
+            {/* Main content — file panel + diff/overview + chat */}
+            <div className="flex flex-1 min-h-0">
+                <PopOutFilePanel
+                    workspaceId={workspaceId}
+                    files={fileList}
+                    selectedFilePath={selectedFilePath}
+                    onFileSelect={handleFileSelect}
+                    fileCommentMap={fileCommentMap}
+                    isFileDimmed={classifyStatus === 'ready' ? classification.isFileDimmed : undefined}
+                    getFileBadge={classifyStatus === 'ready' ? classification.getFileBadge : undefined}
+                    prioritySort={prioritySort}
+                    onTogglePrioritySort={classifyStatus === 'ready' ? handleTogglePrioritySort : undefined}
+                    activeFilters={classifyStatus === 'ready' ? classification.state.activeFilters : undefined}
+                    onShowAll={classifyStatus === 'ready' ? handleShowAll : undefined}
+                    reviewedFiles={reviewProgress.state.reviewedFiles}
+                    visitedFiles={reviewProgress.state.visitedFiles}
+                    onPrevPriorityFile={classifyStatus === 'ready' ? handlePrevPriority : undefined}
+                    onNextPriorityFile={classifyStatus === 'ready' ? handleNextPriority : undefined}
+                    prevPriorityDisabled={priorityNav.prevPath === null}
+                    nextPriorityDisabled={priorityNav.nextPath === null}
+                />
+                <div className="flex-1 min-w-0 overflow-hidden">
+                    {selectedFilePath ? (
+                        <FileDiffPanel
+                            key={`${commitHash}-${selectedFilePath}`}
+                            workspaceId={workspaceId}
+                            filePath={selectedFilePath}
+                            source={createCommitDiffSource(workspaceId, commitHash, {
+                                commit: commit ?? undefined,
+                                files: filePaths,
+                            })}
+                            onNavigateToFile={handleNavigateToFile}
+                            initialHunkTarget={hunkTarget}
+                            onBack={handleBack}
+                            backLabel="All files"
+                            isReviewed={reviewProgress.isReviewed(selectedFilePath)}
+                            onToggleReviewed={() => reviewProgress.toggleReviewed(selectedFilePath)}
+                            getHunkClassification={classifyStatus === 'ready' ? classification.getHunkClassification : undefined}
+                            hunkActiveFilters={classifyStatus === 'ready' ? classification.state.activeFilters : undefined}
+                        />
+                    ) : (
+                        <div className="flex flex-col items-center justify-center flex-1 gap-2 text-xs text-[#848484]">
+                            {commit && (
+                                <div className="text-center max-w-xs px-4">
+                                    <div className="text-sm font-medium text-[#1e1e1e] dark:text-[#ccc] mb-1 break-words">{commit.subject}</div>
+                                    <div className="text-[10px] text-[#848484] mb-2">{commit.author} · {commit.hash.slice(0, 7)}</div>
+                                </div>
+                            )}
+                            <span>Select a file to view its diff</span>
+                            <span className="text-[10px]">{fileList.length} file{fileList.length !== 1 ? 's' : ''} changed</span>
+                        </div>
+                    )}
+                </div>
+                {/* Commit chat panel — same position as PR chat panel */}
+                {chatOpen && (
+                    <div className="w-[340px] shrink-0 border-l border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="commit-popout-chat-container">
+                        <CommitChatPanel
+                            workspaceId={workspaceId}
+                            commitHash={commitHash}
+                            commitMessage={commit?.subject}
+                            onClose={() => setChatOpen(false)}
+                        />
+                    </div>
                 )}
             </div>
         </div>
@@ -345,10 +562,16 @@ function PrReviewContent({ workspaceId, repoId, prId, onTitleLoaded }: { workspa
     // Classification hook for PR diff
     const classificationKey: ClassificationKey | undefined =
         headSha ? { type: 'pr', repoId, identifier: `${prId}:${headSha}` } : undefined;
-    const classification = useClassification(classificationKey);
+    const classification = useClassification(classificationKey, { workspaceId });
     const reviewProgress = usePrReviewProgress(headSha, {
         persistence: { workspaceId, repoId, prId },
     });
+
+    // Provider/model selectors for classification
+    const { providers: agentProviders } = useAgentProviders();
+    const { models: agentModels } = useModels(classification.provider);
+    const selectableProviders = agentProviders.filter(p => p.enabled && p.available);
+    const enabledModels = agentModels.filter(m => m.enabled);
 
     const handleFileSelect = useCallback((filePath: string) => {
         setHunkTarget(undefined);
@@ -469,11 +692,43 @@ function PrReviewContent({ workspaceId, repoId, prId, onTitleLoaded }: { workspa
     }
 
     const classifyStatus = classification.state.status;
+    const classifySelectClass = classifyStatus === 'loading'
+        ? 'h-6 rounded border border-gray-200 bg-gray-50 px-1.5 text-[11px] text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500 cursor-not-allowed'
+        : 'h-6 rounded border border-gray-300 bg-white px-1.5 text-[11px] text-gray-700 hover:border-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200';
 
     return (
         <div className="flex flex-col flex-1 min-h-0">
             {/* Classification toolbar */}
             <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#2a2a2a]" data-testid="pr-popout-classify-bar">
+                {/* Provider selector — only show when multiple providers are available */}
+                {selectableProviders.length > 1 && (
+                    <select
+                        value={classification.provider}
+                        onChange={e => classification.setProvider(e.target.value as ChatProvider)}
+                        disabled={classifyStatus === 'loading'}
+                        className={classifySelectClass}
+                        aria-label="AI provider"
+                        data-testid="pr-popout-classify-provider"
+                    >
+                        {selectableProviders.map(p => (
+                            <option key={p.id} value={p.id}>{p.label}</option>
+                        ))}
+                    </select>
+                )}
+                {/* Model selector */}
+                <select
+                    value={classification.model ?? ''}
+                    onChange={e => classification.setModel(e.target.value || undefined)}
+                    disabled={classifyStatus === 'loading'}
+                    className={classifySelectClass}
+                    aria-label="AI model"
+                    data-testid="pr-popout-classify-model"
+                >
+                    <option value="">Default</option>
+                    {enabledModels.map(m => (
+                        <option key={m.id} value={m.id}>{m.name ?? m.id}</option>
+                    ))}
+                </select>
                 <button
                     type="button"
                     onClick={classification.classify}
@@ -591,6 +846,8 @@ function PrReviewContent({ workspaceId, repoId, prId, onTitleLoaded }: { workspa
                             workspaceId={workspaceId}
                             prId={prId}
                             filePath={selectedFilePath ?? undefined}
+                            repoId={repoId}
+                            prTitle={prTitle}
                             onClose={() => setChatOpen(false)}
                         />
                     </div>

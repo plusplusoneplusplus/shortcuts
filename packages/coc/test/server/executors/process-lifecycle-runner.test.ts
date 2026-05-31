@@ -1340,3 +1340,223 @@ describe('ProcessLifecycleRunner — provider attribution', () => {
         expect(proc?.metadata?.provider).toBe('copilot');
     });
 });
+
+// ============================================================================
+// Token usage persistence on queue path
+// ============================================================================
+
+describe('ProcessLifecycleRunner — token usage persistence', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    let runner: ProcessLifecycleRunner;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        store = createMockProcessStore();
+        runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn());
+    });
+
+    const sampleTokenUsage = {
+        inputTokens: 100,
+        outputTokens: 50,
+        cacheReadTokens: 10,
+        cacheWriteTokens: 5,
+        totalTokens: 165,
+        turnCount: 1,
+        tokenLimit: 8192,
+        currentTokens: 165,
+        cost: 0.002,
+        duration: 1200,
+    };
+
+    it('persists tokenUsage on the assistant turn when executeByType returns it', async () => {
+        const task = makeTask();
+        const opts = makeOpts({
+            executeByTypeFn: vi.fn().mockResolvedValue({
+                response: 'done',
+                tokenUsage: sampleTokenUsage,
+            }),
+        });
+
+        await runner.run(task, opts);
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        const assistantTurn = proc?.conversationTurns?.find(t => t.role === 'assistant');
+        expect(assistantTurn?.tokenUsage).toEqual(sampleTokenUsage);
+    });
+
+    it('does not add a tokenUsage field when executeByType returns none', async () => {
+        const task = makeTask();
+        const opts = makeOpts({
+            executeByTypeFn: vi.fn().mockResolvedValue({ response: 'done' }),
+        });
+
+        await runner.run(task, opts);
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        const assistantTurn = proc?.conversationTurns?.find(t => t.role === 'assistant');
+        expect(assistantTurn).not.toHaveProperty('tokenUsage');
+    });
+
+    it('persists cumulativeTokenUsage on the process', async () => {
+        const task = makeTask();
+        const opts = makeOpts({
+            executeByTypeFn: vi.fn().mockResolvedValue({
+                response: 'done',
+                tokenUsage: sampleTokenUsage,
+            }),
+        });
+
+        await runner.run(task, opts);
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        expect(proc?.cumulativeTokenUsage).toMatchObject({
+            inputTokens: 100,
+            outputTokens: 50,
+            totalTokens: 165,
+            turnCount: 1,
+        });
+    });
+
+    it('accumulates cumulativeTokenUsage across multiple iterations (Ralph-style)', async () => {
+        const processId = 'existing-ralph-proc';
+        store.processes.set(processId, {
+            id: processId,
+            type: 'clarification',
+            promptPreview: 'test',
+            fullPrompt: 'test',
+            status: 'completed',
+            startTime: new Date(),
+            conversationTurns: [],
+            cumulativeTokenUsage: {
+                inputTokens: 200,
+                outputTokens: 100,
+                cacheReadTokens: 20,
+                cacheWriteTokens: 10,
+                totalTokens: 330,
+                turnCount: 2,
+                cost: 0.004,
+                duration: 2400,
+            },
+        } as any);
+
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Next Ralph iteration',
+                processId,
+                workspaceId: 'ws-abc',
+            } as any,
+        });
+
+        const opts = makeOpts({
+            executeFollowUpFn: vi.fn().mockResolvedValue({
+                response: 'iteration done',
+                tokenUsage: sampleTokenUsage,
+            }),
+        });
+
+        // The follow-up path is handled by executeFollowUpFn not executeByType,
+        // so we verify that the runner routes to follow-up when processId is set.
+        // We test the queue (new-process) accumulation path here.
+        const newTask = makeTask({
+            id: 'second-task',
+            payload: {
+                kind: 'chat',
+                prompt: 'second turn',
+                workspaceId: 'ws-abc',
+            } as any,
+        });
+        const newProcessId = `queue_${newTask.id}`;
+        // Pre-seed with existing cumulative data
+        const preExistingCumulative = {
+            inputTokens: 200,
+            outputTokens: 100,
+            cacheReadTokens: 20,
+            cacheWriteTokens: 10,
+            totalTokens: 330,
+            turnCount: 2,
+            cost: 0.004,
+            duration: 2400,
+        };
+        // Inject pre-existing cumulative via store pre-population (addProcess is called during run,
+        // so we intercept additionalUpdates by checking the resulting value):
+        store.addProcess = vi.fn(async (process: any) => {
+            store.processes.set(process.id, {
+                ...process,
+                cumulativeTokenUsage: preExistingCumulative,
+            });
+        });
+
+        const secondOpts = makeOpts({
+            executeByTypeFn: vi.fn().mockResolvedValue({
+                response: 'second done',
+                tokenUsage: sampleTokenUsage,
+            }),
+        });
+
+        await runner.run(newTask, secondOpts);
+
+        const proc = await store.getProcess(newProcessId);
+        expect(proc?.cumulativeTokenUsage).toMatchObject({
+            inputTokens: 200 + 100,  // prev + new
+            outputTokens: 100 + 50,
+            totalTokens: 330 + 165,
+            turnCount: 2 + 1,
+            cost: 0.004 + 0.002,
+            duration: 2400 + 1200,
+        });
+    });
+
+    it('emits a token-usage process event after a successful turn', async () => {
+        const task = makeTask();
+        const opts = makeOpts({
+            executeByTypeFn: vi.fn().mockResolvedValue({
+                response: 'done',
+                tokenUsage: sampleTokenUsage,
+            }),
+        });
+
+        await runner.run(task, opts);
+
+        const processId = `queue_${task.id}`;
+        expect(store.emitProcessEvent).toHaveBeenCalledWith(
+            processId,
+            expect.objectContaining({
+                type: 'token-usage',
+                tokenUsage: sampleTokenUsage,
+                sessionTokenLimit: sampleTokenUsage.tokenLimit,
+                sessionCurrentTokens: sampleTokenUsage.currentTokens,
+            }),
+        );
+    });
+
+    it('does not emit a token-usage event when there is no tokenUsage', async () => {
+        const task = makeTask();
+        const opts = makeOpts({
+            executeByTypeFn: vi.fn().mockResolvedValue({ response: 'done' }),
+        });
+
+        await runner.run(task, opts);
+
+        expect(store.emitProcessEvent).not.toHaveBeenCalledWith(
+            expect.any(String),
+            expect.objectContaining({ type: 'token-usage' }),
+        );
+    });
+
+    it('persists tokenLimit and currentTokens on the process', async () => {
+        const task = makeTask();
+        const opts = makeOpts({
+            executeByTypeFn: vi.fn().mockResolvedValue({
+                response: 'done',
+                tokenUsage: sampleTokenUsage,
+            }),
+        });
+
+        await runner.run(task, opts);
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        expect(proc?.tokenLimit).toBe(sampleTokenUsage.tokenLimit);
+        expect(proc?.currentTokens).toBe(sampleTokenUsage.currentTokens);
+    });
+});

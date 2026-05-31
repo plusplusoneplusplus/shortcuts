@@ -3,7 +3,7 @@ name: grill-me
 description: Interview the user about a plan or design and produce an autonomy-ready spec artifact. Use when the user wants to stress-test a plan, get grilled on a design, mentions "grill me", or when promoting an ask-mode chat into a Ralph loop.
 metadata:
   author: Yiheng Tao
-  version: "0.1.2"
+  version: "0.1.3"
 ---
 
 # Grill Me
@@ -53,10 +53,12 @@ Decision tagging is the single biggest lever for autonomy: it tells the implemen
 
 ## Output Artifact
 
-Write into the conversation's plan area:
+Write the artifact into the **save location your host environment designates**. If the prompt contains a save-location or goal-file directive (for example, an absolute directory path under which to write a `*.goal.md` file), honor that path exactly. Only if no save location is provided, fall back to a `Plans/<area>/<feature>/` directory relative to the working directory.
+
+Within the chosen location, use this structure:
 
 ```
-Plans/<area>/<feature>/
+<save-location>/<area>/<feature>/
   goal.md              # always; north star, ACs, decisions, references, dependency graph
   architecture.md      # only if the feature has non-trivial state or new abstractions
   ac-NN-<slug>.spec.md # one per functional AC, only when the size threshold tripped
@@ -64,7 +66,9 @@ Plans/<area>/<feature>/
   open-questions.md    # only if any [open] items survived grilling
 ```
 
-When promoted into a Ralph synthesis turn (no plan area available), emit a single `## Goal` Markdown block as described by the synthesis prompt, but still carry the decision tags inline.
+If the host designates a single `*.goal.md` filename instead of a `goal.md` inside a folder, write the goal there and keep any sibling artifacts alongside it.
+
+When promoted into a Ralph synthesis turn (no save location available), emit a single `## Goal` Markdown block as described by the synthesis prompt, but still carry the decision tags inline.
 
 ### `goal.md` skeleton
 

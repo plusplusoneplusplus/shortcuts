@@ -876,6 +876,71 @@ describe('filterWhisperChunks', () => {
         expect((result[2] as any).toolId).toBe('tc');
     });
 
+    it('keeps the full final message when split by a hidden suggest_follow_ups tool', () => {
+        // Regression: in whisper mode the rich final answer was collapsed into
+        // the summary because a hidden suggest_follow_ups tool call sat between
+        // the substantive answer and a trivial closing line, so only the
+        // closing line was kept as the tail.
+        const chunks = [
+            { kind: 'content', key: 'c1', html: '<p>Let me investigate...</p>' },
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'content', key: 'c-big', html: '<p>Here is the detailed answer with lots of information.</p>' },
+            { kind: 'tool', key: 'k-sfu', toolId: 'sfu' },
+            { kind: 'content', key: 'c-small', html: '<p>Let me know if you want more.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'grep', status: 'completed' }],
+            ['sfu', { toolName: 'suggest_follow_ups', status: 'completed' }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        // Tail must contain BOTH content chunks of the final message.
+        const tailKeys = result.filter(r => r.kind === 'content').map(r => (r as any).key);
+        expect(tailKeys).toEqual(['c-big', 'c-small']);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.kind).toBe('whisper-group');
+        // Only the first content message (c1) is collapsed.
+        expect(wg.summary.messageCount).toBe(1);
+    });
+
+    it('keeps multiple final content chunks split by report_intent', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'content', key: 'c-a', html: '<p>First part of the answer.</p>' },
+            { kind: 'tool', key: 'k-ri', toolId: 'ri' },
+            { kind: 'content', key: 'c-b', html: '<p>Second part of the answer.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'edit', status: 'completed' }],
+            ['ri', { toolName: 'report_intent', status: 'completed' }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const tailKeys = result.filter(r => r.kind === 'content').map(r => (r as any).key);
+        expect(tailKeys).toEqual(['c-a', 'c-b']);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.messageCount).toBe(0);
+    });
+
+    it('stops capturing the final message at a substantive tool', () => {
+        // A content chunk separated from the final content by a real tool
+        // (e.g. edit) must remain collapsed, not pulled into the tail.
+        const chunks = [
+            { kind: 'content', key: 'c-old', html: '<p>Earlier message.</p>' },
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'content', key: 'c-final', html: '<p>Final answer.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'edit', status: 'completed' }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const tailKeys = result.filter(r => r.kind === 'content').map(r => (r as any).key);
+        expect(tailKeys).toEqual(['c-final']);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.messageCount).toBe(1); // c-old stays collapsed
+    });
+
     it('whisper summary counts tool calls and messages correctly', () => {
         const chunks = [
             { kind: 'content', key: 'c1', html: '<p>msg1</p>' },

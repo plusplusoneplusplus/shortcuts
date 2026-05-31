@@ -70,6 +70,23 @@ describe('detectPullRequestsInToolGroup', () => {
         expect(pullRequests).toEqual([]);
     });
 
+    it('accepts "Bash" (capital B) tool name as used by Claude SDK', () => {
+        // Claude SDK stores tool names with capital first letter (e.g. "Bash").
+        // Regression: capitalized names were not matched against SHELL_TOOL_NAMES.
+        const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-1',
+                toolName: 'Bash',
+                args: { command: 'gh pr create --fill' },
+                result: 'https://github.com/org/repo/pull/42',
+            },
+        ]);
+
+        expect(pullRequests).toHaveLength(1);
+        expect(pullRequests[0].number).toBe(42);
+        expect(pullRequests[0].toolCallId).toBe('tool-1');
+    });
+
     it('handles command strings under args.script', () => {
         const pullRequests = detectPullRequestsInToolGroup([
             {

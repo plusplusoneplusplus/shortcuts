@@ -290,3 +290,78 @@ export interface WorkItemTreeFilter {
   /** When true, items with status "done" are included. Defaults to false. */
   includeDone?: boolean;
 }
+
+// ============================================================================
+// AI Authoring types
+// ============================================================================
+
+/** Fields that an AI draft can carry for a work item (all optional). */
+export interface WorkItemAiDraftFields {
+  title?: string;
+  description?: string;
+  priority?: WorkItemPriority;
+  tags?: string[];
+  /** Markdown plan / goal content (maps to plan.content). */
+  plan?: string;
+  /** For goal type items: success criteria. */
+  successCriteria?: string;
+  /** Work item type suggested by the AI. */
+  type?: WorkItemType;
+}
+
+/** A drafted child task (leaf work item) for a hierarchy breakdown. */
+export interface WorkItemChildTaskDraft {
+  title: string;
+  description?: string;
+  /** 'work-item' or 'bug' — child leaf types. */
+  type?: 'work-item' | 'bug';
+}
+
+/** Response when the AI needs more information before generating a draft. */
+export interface WorkItemAiClarificationResponse {
+  kind: 'clarification';
+  /** Up to 3 concise clarification questions. */
+  questions: string[];
+  /** Total number of clarification rounds completed so far (0-based). */
+  clarificationCount: number;
+}
+
+/** Response when the AI has produced a complete draft. */
+export interface WorkItemAiDraftResult {
+  kind: 'draft';
+  /** The generated work item fields. */
+  workItem: WorkItemAiDraftFields;
+  /** Optional goal/plan markdown stored as plan.content. */
+  goal?: string;
+  /** Optional child task breakdown (only when hierarchy is applicable). */
+  childTasks?: WorkItemChildTaskDraft[];
+}
+
+/** Union of all possible AI draft API responses. */
+export type WorkItemAiGenerationResponse = WorkItemAiClarificationResponse | WorkItemAiDraftResult;
+
+/** Request body for POST /api/workspaces/:id/work-items/ai-draft */
+export interface NewWorkItemAiDraftRequest extends JsonObject {
+  /** Free-text user prompt describing the feature / problem. Required. */
+  prompt: string;
+  /** Hint for the type to generate (defaults to 'work-item'). */
+  type?: WorkItemType;
+  /** Parent work item ID for hierarchy context. */
+  parentId?: string;
+  /** Answers to previous clarification questions. */
+  clarificationAnswers?: string[];
+  /** Number of clarification rounds already completed (0 = first request). */
+  clarificationCount?: number;
+}
+
+/** Request body for POST /api/workspaces/:id/work-items/:workItemId/ai-draft */
+export interface ImproveWorkItemAiDraftRequest extends JsonObject {
+  /** Instruction for what to improve. Required. */
+  prompt: string;
+  /** Which aspects to draft ('fields', 'goal', 'childTasks'). Defaults to ['fields', 'goal']. */
+  targets?: Array<'fields' | 'goal' | 'childTasks'>;
+  /** Answers to previous clarification questions. */
+  clarificationAnswers?: string[];
+  /** Number of clarification rounds already completed. */
+  clarificationCount?: number;
+}

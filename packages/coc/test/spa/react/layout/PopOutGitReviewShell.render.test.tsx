@@ -44,6 +44,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
             listBranchRangeFiles: (...args: unknown[]) => mocks.listBranchRangeFiles(...args),
         },
     }),
+    requestSpaApi: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useCommitDiffCache', () => ({
@@ -112,6 +113,30 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitDeta
     ),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/hooks/useAgentProviders', () => ({
+    useAgentProviders: () => ({
+        providers: [],
+        loading: false,
+        error: null,
+        reload: vi.fn(),
+        copilot: undefined,
+        codex: undefined,
+    }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({
+    useModels: () => ({ models: [], loading: false, error: null, reload: vi.fn() }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/useClassification', () => ({
+    useClassification: () => ({
+        state: { activeFilters: [], activeFilterMode: 'all' },
+        status: 'idle',
+        classification: { getHunkClassification: undefined },
+        getHunkClassification: undefined,
+    }),
+}));
+
 vi.mock('../../../../src/server/spa/client/react/features/git/branches/BranchRangeOverview', () => ({
     BranchRangeOverview: ({ isPopOut }: { isPopOut?: boolean }) => (
         <div data-testid="branch-range-overview" data-popout={String(!!isPopOut)} />
@@ -163,7 +188,7 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
 
         render(<PopOutGitReviewShell />);
 
-        await screen.findByTestId('commit-detail');
+        await screen.findByTestId('popout-file-panel');
         expect(mocks.getCommit).toHaveBeenCalledWith('ws1', 'abc123');
         expect(mocks.commitDiffPath).toHaveBeenCalledWith('ws1', 'abc123');
         fireEvent.click(screen.getByText('src/app.ts'));
@@ -176,7 +201,7 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
         expect(screen.queryByTestId('commit-detail')).toBeNull();
 
         fireEvent.click(screen.getByTestId('file-diff-back-btn'));
-        await waitFor(() => expect(screen.getByTestId('commit-detail')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('popout-file-panel')).toBeTruthy());
     });
 
     it('switches branch-range popout selected files to comment-enabled FileDiffPanel', async () => {

@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
 
 import { ComposerMetaStrip } from '../../../../src/server/spa/client/react/features/chat/ComposerMetaStrip';
@@ -100,13 +100,13 @@ describe('ComposerMetaStrip', () => {
         expect(divider).toBeNull();
     });
 
-    it('includes the model name in the ctx tooltip when provided', () => {
+    it('includes the model name in the ctx aria-label when provided', () => {
         render(<ComposerMetaStrip sessionTokenLimit={200_000} sessionCurrentTokens={100_000} sessionModel="sonnet-4.5" />);
         const fuel = screen.getByTestId('composer-ctx-fuel');
-        const title = fuel.getAttribute('title') ?? '';
-        expect(title).toContain('sonnet-4.5');
-        expect(title).toContain('200');
-        expect(title).toContain('100');
+        const label = fuel.getAttribute('aria-label') ?? '';
+        expect(label).toContain('sonnet-4.5');
+        expect(label).toContain('200');
+        expect(label).toContain('100');
     });
 
     it('renders Codex provider badge when activeProvider is "codex"', () => {
@@ -134,5 +134,133 @@ describe('ComposerMetaStrip', () => {
         const { container } = render(<ComposerMetaStrip workingDirectory="   " />);
         // Strip should render nothing (no cwd, no ctx)
         expect(container.firstChild).toBeNull();
+    });
+
+    // — Segmented bar (breakdown props) —————————————————————————————————
+
+    it('renders coloured segments when breakdown props are provided', () => {
+        render(
+            <ComposerMetaStrip
+                sessionTokenLimit={200000}
+                sessionCurrentTokens={70000}
+                sessionSystemTokens={12000}
+                sessionToolTokens={8000}
+                sessionConversationTokens={47000}
+            />,
+        );
+        expect(screen.getByTestId('composer-ctx-segment-system')).toBeTruthy();
+        expect(screen.getByTestId('composer-ctx-segment-tools')).toBeTruthy();
+        expect(screen.getByTestId('composer-ctx-segment-conversation')).toBeTruthy();
+        // Single fill should not be present when breakdown is shown
+        expect(screen.queryByTestId('composer-ctx-fill')).toBeNull();
+    });
+
+    it('system segment uses purple colour', () => {
+        render(
+            <ComposerMetaStrip
+                sessionTokenLimit={200000}
+                sessionCurrentTokens={30000}
+                sessionSystemTokens={10000}
+                sessionToolTokens={10000}
+                sessionConversationTokens={10000}
+            />,
+        );
+        const seg = screen.getByTestId('composer-ctx-segment-system');
+        expect(seg.className).toContain('bg-purple-500');
+    });
+
+    it('renders other segment when currentTokens exceeds sum of breakdown tokens', () => {
+        render(
+            <ComposerMetaStrip
+                sessionTokenLimit={200000}
+                sessionCurrentTokens={75000}
+                sessionSystemTokens={10000}
+                sessionToolTokens={10000}
+                sessionConversationTokens={50000}
+            />,
+        );
+        expect(screen.getByTestId('composer-ctx-segment-other')).toBeTruthy();
+        const seg = screen.getByTestId('composer-ctx-segment-other');
+        expect(seg.className).toContain('bg-gray-400');
+    });
+
+    it('falls back to single-fill bar when breakdown props are absent', () => {
+        render(<ComposerMetaStrip sessionTokenLimit={200000} sessionCurrentTokens={50000} />);
+        expect(screen.getByTestId('composer-ctx-fill')).toBeTruthy();
+        expect(screen.queryByTestId('composer-ctx-segment-system')).toBeNull();
+    });
+
+    // — Breakdown popover ——————————————————————————————————————————————
+
+    it('shows breakdown popover on hover when breakdown is available', () => {
+        render(
+            <ComposerMetaStrip
+                sessionTokenLimit={200000}
+                sessionCurrentTokens={70000}
+                sessionSystemTokens={12000}
+                sessionToolTokens={8000}
+                sessionConversationTokens={47000}
+            />,
+        );
+        expect(screen.queryByTestId('composer-ctx-breakdown-popover')).toBeNull();
+        fireEvent.mouseEnter(screen.getByTestId('composer-ctx-fuel'));
+        expect(screen.getByTestId('composer-ctx-breakdown-popover')).toBeTruthy();
+    });
+
+    it('hides breakdown popover on mouse leave', () => {
+        render(
+            <ComposerMetaStrip
+                sessionTokenLimit={200000}
+                sessionCurrentTokens={70000}
+                sessionSystemTokens={12000}
+                sessionToolTokens={8000}
+                sessionConversationTokens={47000}
+            />,
+        );
+        const fuel = screen.getByTestId('composer-ctx-fuel');
+        fireEvent.mouseEnter(fuel);
+        fireEvent.mouseLeave(fuel);
+        expect(screen.queryByTestId('composer-ctx-breakdown-popover')).toBeNull();
+    });
+
+    it('shows simple popover with total when breakdown props are absent', () => {
+        render(<ComposerMetaStrip sessionTokenLimit={200000} sessionCurrentTokens={70000} />);
+        fireEvent.mouseEnter(screen.getByTestId('composer-ctx-fuel'));
+        const popover = screen.getByTestId('composer-ctx-breakdown-popover');
+        expect(popover).toBeTruthy();
+        expect(popover.textContent).toContain('Total');
+        expect(popover.textContent).not.toContain('System prompt');
+    });
+
+    it('shows model name in popover when sessionModel is provided', () => {
+        render(<ComposerMetaStrip sessionTokenLimit={200000} sessionCurrentTokens={70000} sessionModel="claude-opus-4.8" />);
+        fireEvent.mouseEnter(screen.getByTestId('composer-ctx-fuel'));
+        const popover = screen.getByTestId('composer-ctx-breakdown-popover');
+        expect(popover.textContent).toContain('claude-opus-4.8');
+    });
+
+    it('does not show model name in popover when sessionModel is absent', () => {
+        render(<ComposerMetaStrip sessionTokenLimit={200000} sessionCurrentTokens={70000} />);
+        fireEvent.mouseEnter(screen.getByTestId('composer-ctx-fuel'));
+        expect(screen.queryByTestId('composer-ctx-model-name')).toBeNull();
+    });
+
+    it('popover lists all four categories', () => {
+        render(
+            <ComposerMetaStrip
+                sessionTokenLimit={200000}
+                sessionCurrentTokens={72300}
+                sessionSystemTokens={12000}
+                sessionToolTokens={8000}
+                sessionConversationTokens={47000}
+            />,
+        );
+        fireEvent.mouseEnter(screen.getByTestId('composer-ctx-fuel'));
+        const popover = screen.getByTestId('composer-ctx-breakdown-popover');
+        expect(popover.textContent).toContain('System prompt');
+        expect(popover.textContent).toContain('Tool definitions');
+        expect(popover.textContent).toContain('Conversation');
+        expect(popover.textContent).toContain('Other');
+        expect(popover.textContent).toContain('Total');
     });
 });

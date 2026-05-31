@@ -2,8 +2,8 @@
 name: classify-diff
 description: Classify every hunk in a pull request diff by change type (logic, mechanical, test, generated) so reviewers can focus on what matters.
 metadata:
-  author: CoC
-  version: "0.0.1"
+  author: Yiheng Tao
+  version: "0.0.2"
 ---
 
 # Classify Diff — Focused PR Review
@@ -61,6 +61,7 @@ You are classifying the hunks of a pull request diff. You have access to git and
    - Files in `test/`, `__tests__/`, `*.test.*`, `*.spec.*` → likely `test`
    - `package-lock.json`, `*.generated.*`, `*.g.ts` → likely `generated`
    - But a hunk in a test file that changes production imports is `logic`, not `test`
+   - A getter/setter that is a direct field passthrough (no validation, transform, lazy init, or side effect) → `mechanical`/`low`; if it validates, transforms, computes lazily, or has side effects → `logic`
 4. **Be precise with intensity**:
    - `high` = reviewer should read this carefully
    - `low` = reviewer can skim or skip

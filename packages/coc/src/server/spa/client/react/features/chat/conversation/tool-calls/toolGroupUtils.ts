@@ -170,6 +170,23 @@ function isVisibleAskUserTool(tool: ToolLike | undefined): boolean {
 }
 
 /**
+ * Tools that may appear between the content chunks of a single trailing
+ * assistant message without splitting it into separate messages. These are
+ * either hidden at render time (suggest_follow_ups renders as chips,
+ * report_intent renders as a pill) or are terminal markers (task_complete,
+ * ask_user). When walking back to capture the final message in whisper mode,
+ * we step over these instead of treating them as a message boundary.
+ */
+function isNonBreakingTrailingTool(tool: ToolLike | undefined): boolean {
+    if (!tool) return false;
+    const name = normalizeToolName(tool.toolName);
+    return name === 'suggest_follow_ups'
+        || name === 'report_intent'
+        || name === 'task_complete'
+        || name === 'ask_user';
+}
+
+/**
  * Collapses runs of same-category sibling tool chunks into single `tool-group` chunks.
  *
  * Grouping rules:
@@ -528,7 +545,14 @@ export interface WhisperGroupChunk {
 
 /**
  * Partitions an array of chunks into a single collapsed Whisper summary group
- * plus the "tail" items (last content chunk + any task_complete tool calls).
+ * plus the "tail" items (the final assistant message + any task_complete tool
+ * calls).
+ *
+ * The final message is the last `content` chunk, plus any earlier content
+ * chunks that are separated from it only by non-breaking trailing tools
+ * (suggest_follow_ups, report_intent, task_complete, ask_user). This keeps a
+ * rich final answer visible even when a hidden tool call (e.g.
+ * suggest_follow_ups) splits it from a trivial closing line.
  *
  * Returns the original array unchanged if there are no preceding items to collapse.
  */
@@ -539,7 +563,7 @@ export function filterWhisperChunks(
     if (chunks.length === 0) return [];
 
     // Identify tail items:
-    //  - The last chunk with kind === 'content' and non-empty html
+    //  - The final assistant message (see below)
     //  - Any chunk whose tool is task_complete
     let lastContentIndex = -1;
     const taskCompleteIndices = new Set<number>();
@@ -557,8 +581,28 @@ export function filterWhisperChunks(
         }
     }
 
+    // Capture the whole final message: starting from the last content chunk,
+    // walk backward absorbing additional content chunks, stepping over
+    // non-breaking trailing tools, and stop at the first substantive tool /
+    // tool-group (e.g. edit, shell) which marks the start of the final message.
+    const finalMessageIndices = new Set<number>();
+    if (lastContentIndex >= 0) {
+        finalMessageIndices.add(lastContentIndex);
+        for (let i = lastContentIndex - 1; i >= 0; i--) {
+            const c = chunks[i];
+            if (c.kind === 'content' && c.html) {
+                finalMessageIndices.add(i);
+                continue;
+            }
+            if (c.kind === 'tool' && c.toolId && isNonBreakingTrailingTool(toolById.get(c.toolId))) {
+                continue;
+            }
+            break;
+        }
+    }
+
     const tailIndices = new Set<number>(taskCompleteIndices);
-    if (lastContentIndex >= 0) tailIndices.add(lastContentIndex);
+    for (const i of finalMessageIndices) tailIndices.add(i);
 
     const preceding: ToolChunk[] = [];
     const tail: ToolChunk[] = [];
