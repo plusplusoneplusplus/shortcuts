@@ -2,8 +2,8 @@
  * Tests for usePrChatBinding hook — localStorage binding, createChat, context pattern.
  *
  * Validates that the hook stores/restores bindings in localStorage,
- * sends correct context shape (workspaceId, prId, filePath) without content,
- * and manages loading/error/taskId states.
+ * sends correct pullRequestChat context (workspaceId, prId, repoId, prTitle) so the
+ * backend prompt-builder emits the PR framing sentence, and manages loading/error/taskId states.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -45,6 +45,14 @@ describe('usePrChatBinding', () => {
         it('accepts optional filePath for context', () => {
             expect(source).toContain('filePath?: string');
         });
+
+        it('accepts optional repoId for multi-repo support', () => {
+            expect(source).toContain('repoId?: string');
+        });
+
+        it('accepts optional prTitle for AI framing sentence', () => {
+            expect(source).toContain('prTitle?: string');
+        });
     });
 
     describe('return shape', () => {
@@ -84,8 +92,21 @@ describe('usePrChatBinding', () => {
     });
 
     describe('createChat context pattern', () => {
-        it('sends context with prChat object (no diff content)', () => {
-            expect(source).toContain('prChat: { prId, filePath }');
+        it('sends pullRequestChat context (not the legacy prChat key)', () => {
+            expect(source).toContain('pullRequestChat: { prId, repoId, prTitle }');
+            expect(source).not.toContain('prChat: {');
+        });
+
+        it('includes prId in pullRequestChat context', () => {
+            expect(source).toContain('pullRequestChat: { prId, repoId, prTitle }');
+        });
+
+        it('includes repoId in pullRequestChat context for multi-repo support', () => {
+            expect(source).toContain('repoId,');
+        });
+
+        it('includes prTitle in pullRequestChat context for AI framing', () => {
+            expect(source).toContain('prTitle }');
         });
 
         it('uses queue.enqueue to create chat task', () => {
@@ -96,7 +117,7 @@ describe('usePrChatBinding', () => {
             expect(source).toContain("mode: 'ask'");
         });
 
-        it('includes workspaceId in payload', () => {
+        it('includes workspaceId in payload so agent CWD resolves to workspace rootPath', () => {
             expect(source).toContain('workspaceId,');
         });
     });

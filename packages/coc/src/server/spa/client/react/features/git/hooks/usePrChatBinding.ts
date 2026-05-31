@@ -7,6 +7,10 @@ export interface UsePrChatBindingOptions {
     prId: string;
     /** Currently selected file — included in chat context for the AI. */
     filePath?: string;
+    /** Repo identifier the PR belongs to (may differ from workspaceId). */
+    repoId?: string;
+    /** PR title — surfaced to the AI framing sentence. */
+    prTitle?: string;
 }
 
 export interface UsePrChatBindingReturn {
@@ -31,11 +35,12 @@ function storeBinding(prId: string, taskId: string): void {
 }
 
 /**
- * Hook for PR-level AI chat. Creates chat tasks with (workspaceId, prId, filePath)
- * context identifiers — the AI determines what to read.
+ * Hook for PR-level AI chat. Creates chat tasks with pullRequestChat context so
+ * the backend prompt-builder emits the PR framing sentence. The AI determines
+ * what to read; no diff content is injected.
  */
 export function usePrChatBinding(opts: UsePrChatBindingOptions): UsePrChatBindingReturn {
-    const { workspaceId, prId, filePath } = opts;
+    const { workspaceId, prId, filePath, repoId, prTitle } = opts;
     const [taskId, setTaskId] = useState<string | null>(() => getStoredBinding(prId));
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -60,7 +65,7 @@ export function usePrChatBinding(opts: UsePrChatBindingOptions): UsePrChatBindin
                     workspaceId,
                     ...(attachments && attachments.length > 0 ? { attachments } : {}),
                     context: {
-                        prChat: { prId, filePath },
+                        pullRequestChat: { prId, repoId, prTitle },
                     },
                 },
             });
@@ -76,7 +81,7 @@ export function usePrChatBinding(opts: UsePrChatBindingOptions): UsePrChatBindin
         } finally {
             setLoading(false);
         }
-    }, [workspaceId, prId, filePath]);
+    }, [workspaceId, prId, repoId, prTitle]);
 
     return { taskId, loading, error, createChat };
 }

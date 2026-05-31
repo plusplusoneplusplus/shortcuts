@@ -632,6 +632,8 @@ function PrReviewContent({ workspaceId, repoId, prId, onTitleLoaded }: { workspa
                             workspaceId={workspaceId}
                             prId={prId}
                             filePath={selectedFilePath ?? undefined}
+                            repoId={repoId}
+                            prTitle={prTitle}
                             onClose={() => setChatOpen(false)}
                         />
                     </div>
