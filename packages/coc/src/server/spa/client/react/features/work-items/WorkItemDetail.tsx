@@ -17,6 +17,9 @@ import type { DiffComment } from '../../../comments/diff-comment-types';
 import { computeStorageKey, patchDiffComment } from '../../utils/diffCommentApi';
 import { isWorkItemsHierarchyEnabled } from '../../utils/config';
 import { WorkItemParentPicker } from './WorkItemParentPicker';
+import { ALLOWED_CHILD_TYPES } from '@plusplusoneplusplus/coc-client';
+import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
+import { TYPE_LABELS } from './WorkItemHierarchyNode';
 
 const STATUS_LABELS: Record<string, { label: string; badgeStatus: string }> = {
     created:          { label: 'Created',          badgeStatus: 'queued' },
@@ -53,6 +56,10 @@ interface WorkItemDetailProps {
     onViewCommit?: (sha: string) => void;
     /** Called when the user wants to view a completed task in the Tasks tab. */
     onNavigateToTasksTab?: (taskId: string) => void;
+    /** When true, renders the mobile 'Add Child' button for container items. */
+    isMobile?: boolean;
+    /** Open the create dialog for a given child type with this item as parent. */
+    onCreateChild?: (type: WorkItemTypeLabel, parentId: string) => void;
 }
 
 interface WorkItemFull {
@@ -83,7 +90,7 @@ interface WorkItemFull {
     }>;
 }
 
-export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, onViewTask, onViewCommit, onNavigateToTasksTab }: WorkItemDetailProps) {
+export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, onViewTask, onViewCommit, onNavigateToTasksTab, isMobile = false, onCreateChild }: WorkItemDetailProps) {
     const [item, setItem] = useState<WorkItemFull | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -104,6 +111,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const [editError, setEditError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [showParentPicker, setShowParentPicker] = useState(false);
+    // ── Mobile add-child type picker state ──
+    const [showChildTypePicker, setShowChildTypePicker] = useState(false);
     // ── Success criteria edit state (goal items only) ──
     const [editingCriteria, setEditingCriteria] = useState(false);
     const [criteriaDraft, setCriteriaDraft] = useState('');
@@ -494,6 +503,25 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                 Edit
                             </Button>
                         )
+                    )}
+                    {/* Mobile add-child button — container items, not gated by hierarchyEnabled */}
+                    {isMobile && isContainer && !isEditing && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                                const childTypes = ALLOWED_CHILD_TYPES[effectiveType as WorkItemTypeLabel] ?? [];
+                                if (childTypes.length === 0) return;
+                                if (childTypes.length === 1) {
+                                    onCreateChild?.(childTypes[0] as WorkItemTypeLabel, item.id);
+                                } else {
+                                    setShowChildTypePicker(true);
+                                }
+                            }}
+                            data-testid="wi-add-child-btn"
+                        >
+                            + Add Child
+                        </Button>
                     )}
                     {!isContainer && (
                         <>
@@ -1028,6 +1056,43 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     onParentChanged={(newParentId) => setEditParentId(newParentId)}
                     onClose={() => setShowParentPicker(false)}
                 />
+            )}
+            {/* ── Mobile child type picker ── */}
+            {showChildTypePicker && (
+                <div
+                    className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
+                    onClick={() => setShowChildTypePicker(false)}
+                    data-testid="wi-child-type-picker-overlay"
+                >
+                    <div
+                        className="w-full max-w-sm bg-white dark:bg-[#1e1e1e] rounded-t-xl p-4 pb-8 shadow-2xl"
+                        onClick={e => e.stopPropagation()}
+                        data-testid="wi-child-type-picker-modal"
+                    >
+                        <p className="text-xs font-medium text-[#848484] dark:text-[#999] mb-3 uppercase tracking-wide">
+                            Add child to "{item.title}"
+                        </p>
+                        <div className="flex flex-col gap-2">
+                            {(ALLOWED_CHILD_TYPES[effectiveType as WorkItemTypeLabel] ?? []).map(childType => (
+                                <button
+                                    key={childType}
+                                    className="w-full text-left px-3 py-2.5 rounded-lg border border-[#e0e0e0] dark:border-[#444] text-sm text-[#3c3c3c] dark:text-[#cccccc] hover:bg-[#f5f5f5] dark:hover:bg-[#2a2d2e] active:bg-[#e8e8e8] dark:active:bg-[#333]"
+                                    onClick={() => { onCreateChild?.(childType as WorkItemTypeLabel, item.id); setShowChildTypePicker(false); }}
+                                    data-testid={`wi-child-type-option-${childType}`}
+                                >
+                                    {TYPE_LABELS[childType as WorkItemTypeLabel] ?? childType}
+                                </button>
+                            ))}
+                        </div>
+                        <button
+                            className="mt-3 w-full text-center text-xs text-[#848484] py-2"
+                            onClick={() => setShowChildTypePicker(false)}
+                            data-testid="wi-child-type-picker-cancel"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
             )}
         </div>
     );

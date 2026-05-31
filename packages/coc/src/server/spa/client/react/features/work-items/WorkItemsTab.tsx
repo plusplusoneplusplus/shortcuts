@@ -226,6 +226,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
             onSelectWorkItem={handleSelectWorkItem}
             onCreated={handleCreated}
             onCreateItem={openCreateDialog}
+            isMobile={isMobile}
         />
     ) : (
         <div className="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
@@ -337,6 +338,8 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                 onViewTask={handleViewTask}
                 onViewCommit={handleViewCommit}
                 onNavigateToTasksTab={onNavigateToTasksTab}
+                isMobile={isMobile}
+                onCreateChild={openCreateDialog}
             />
         )
     ) : (

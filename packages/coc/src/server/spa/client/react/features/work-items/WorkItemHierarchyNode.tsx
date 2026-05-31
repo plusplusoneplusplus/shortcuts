@@ -74,6 +74,10 @@ export interface WorkItemHierarchyNodeProps {
     onSelect: (id: string) => void;
     onToggleCollapse: (id: string) => void;
     onContextMenu: (e: React.MouseEvent, node: WorkItemTreeNode) => void;
+    /** Mobile only: fires when the inline '+' add-child button is tapped. */
+    onAddChild?: (node: WorkItemTreeNode) => void;
+    /** When true the '+' add-child button is always visible (no hover). */
+    isMobile?: boolean;
     children?: ReactNode;
 }
 
@@ -86,6 +90,8 @@ export function WorkItemHierarchyNode({
     onSelect,
     onToggleCollapse,
     onContextMenu,
+    onAddChild,
+    isMobile = false,
     children,
 }: WorkItemHierarchyNodeProps) {
     const { item, rollup } = node;
@@ -165,6 +171,18 @@ export function WorkItemHierarchyNode({
                 >
                     {statusLabel}
                 </span>
+
+                {/* Mobile add-child button — containers only, always visible on mobile */}
+                {isMobile && isContainer && (
+                    <button
+                        className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-[11px] font-bold text-[#007acc] bg-[#007acc]/10 hover:bg-[#007acc]/20 active:bg-[#007acc]/30"
+                        onClick={e => { e.stopPropagation(); onAddChild?.(node); }}
+                        data-testid={`hierarchy-node-add-child-${item.id}`}
+                        aria-label="Add child"
+                    >
+                        +
+                    </button>
+                )}
 
                 {/* Updated time */}
                 <span className="flex-shrink-0 text-[10px] text-[#848484] dark:text-[#999] opacity-0 group-hover:opacity-100 transition-opacity">

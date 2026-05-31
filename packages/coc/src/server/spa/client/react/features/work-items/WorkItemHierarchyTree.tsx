@@ -15,6 +15,7 @@ import type { ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import { ALLOWED_CHILD_TYPES } from '@plusplusoneplusplus/coc-client';
 import type { WorkItemTreeNode, WorkItemTreeResponse } from '@plusplusoneplusplus/coc-client';
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
+import { TYPE_LABELS } from './WorkItemHierarchyNode';
 
 const TYPE_CHILD_LABELS: Record<WorkItemTypeLabel, string> = {
     epic:        'Feature',
@@ -47,6 +48,8 @@ export interface WorkItemHierarchyTreeProps {
     onCreated: (item: any) => void;
     /** Open the create dialog for a given type with an optional parent. */
     onCreateItem: (type: WorkItemTypeLabel, parentId?: string) => void;
+    /** When true, renders the always-visible mobile add-child buttons. */
+    isMobile?: boolean;
 }
 
 export function WorkItemHierarchyTree({
@@ -55,6 +58,7 @@ export function WorkItemHierarchyTree({
     onSelectWorkItem,
     onCreated,
     onCreateItem,
+    isMobile = false,
 }: WorkItemHierarchyTreeProps) {
     const [treeData, setTreeData] = useState<WorkItemTreeNode[]>([]);
     const [total, setTotal] = useState(0);
@@ -75,6 +79,19 @@ export function WorkItemHierarchyTree({
         itemType: WorkItemTypeLabel;
         currentParentId?: string;
     } | null>(null);
+
+    const [typePicker, setTypePicker] = useState<{ node: WorkItemTreeNode } | null>(null);
+
+    const handleAddChild = useCallback((node: WorkItemTreeNode) => {
+        const effectiveType = (node.item.type ?? 'work-item') as WorkItemTypeLabel;
+        const childTypes = ALLOWED_CHILD_TYPES[effectiveType] ?? [];
+        if (childTypes.length === 0) return;
+        if (childTypes.length === 1) {
+            onCreateItem(childTypes[0] as WorkItemTypeLabel, node.item.id);
+        } else {
+            setTypePicker({ node });
+        }
+    }, [onCreateItem]);
 
     const { state: workItemState } = useWorkItems();
     const lastFetchedAt = useRef<string>('');
@@ -254,11 +271,13 @@ export function WorkItemHierarchyTree({
                 onSelect={onSelectWorkItem}
                 onToggleCollapse={handleToggleCollapse}
                 onContextMenu={handleContextMenu}
+                isMobile={isMobile}
+                onAddChild={handleAddChild}
             >
                 {!collapsed && node.children.map(child => renderNode(child, depth + 1))}
             </WorkItemHierarchyNode>
         );
-    }, [collapsedIds, selectedWorkItemId, onSelectWorkItem, handleToggleCollapse, handleContextMenu]);
+    }, [collapsedIds, selectedWorkItemId, onSelectWorkItem, handleToggleCollapse, handleContextMenu, isMobile, handleAddChild]);
 
     // ── Render ────────────────────────────────────────────────────────────────
 
@@ -419,6 +438,44 @@ export function WorkItemHierarchyTree({
                         fetchTree();
                     }}
                 />
+            )}
+
+            {/* ── Type picker (mobile add-child) ── */}
+            {typePicker && (
+                <div
+                    className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
+                    onClick={() => setTypePicker(null)}
+                    data-testid="type-picker-overlay"
+                >
+                    <div
+                        className="w-full max-w-sm bg-white dark:bg-[#1e1e1e] rounded-t-xl p-4 pb-8 shadow-2xl"
+                        onClick={e => e.stopPropagation()}
+                        data-testid="type-picker-modal"
+                    >
+                        <p className="text-xs font-medium text-[#848484] dark:text-[#999] mb-3 uppercase tracking-wide">
+                            Add child to "{typePicker.node.item.title}"
+                        </p>
+                        <div className="flex flex-col gap-2">
+                            {(ALLOWED_CHILD_TYPES[(typePicker.node.item.type ?? 'work-item') as WorkItemTypeLabel] ?? []).map(childType => (
+                                <button
+                                    key={childType}
+                                    className="w-full text-left px-3 py-2.5 rounded-lg border border-[#e0e0e0] dark:border-[#444] text-sm text-[#3c3c3c] dark:text-[#cccccc] hover:bg-[#f5f5f5] dark:hover:bg-[#2a2d2e] active:bg-[#e8e8e8] dark:active:bg-[#333]"
+                                    onClick={() => { onCreateItem(childType as WorkItemTypeLabel, typePicker.node.item.id); setTypePicker(null); }}
+                                    data-testid={`type-picker-option-${childType}`}
+                                >
+                                    {TYPE_LABELS[childType as WorkItemTypeLabel] ?? childType}
+                                </button>
+                            ))}
+                        </div>
+                        <button
+                            className="mt-3 w-full text-center text-xs text-[#848484] py-2"
+                            onClick={() => setTypePicker(null)}
+                            data-testid="type-picker-cancel"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
             )}
         </div>
     );
