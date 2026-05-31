@@ -251,9 +251,9 @@ describe('ProviderEffortTiersSection', () => {
         });
     });
 
-    it('clear button removes the tier entry', async () => {
+    it('clear button removes the tier entry when no default is provided', async () => {
         mockGetEffortTiers.mockResolvedValue(makeEffortTiersResponse({
-            low: { model: 'fast-model', reasoningEffort: null },
+            low: { model: 'fast-model', reasoningEffort: null, source: 'config' },
         }));
 
         render(<ProviderEffortTiersSection provider="copilot" />);
@@ -271,6 +271,65 @@ describe('ProviderEffortTiersSection', () => {
             expect(modelSelect.value).toBe('');
         });
 
+        expect(screen.getByText('Unsaved changes')).toBeTruthy();
+    });
+
+    it('shows Default badge on default-source rows and hides the Clear button', async () => {
+        // GET returns a default entry the admin has not overridden.
+        mockGetEffortTiers.mockResolvedValue({
+            provider: 'copilot',
+            effortTiers: {
+                low: { model: 'fast-model', reasoningEffort: 'high', source: 'default' },
+            },
+            defaults: {
+                low: { model: 'fast-model', reasoningEffort: 'high' },
+            },
+        });
+
+        render(<ProviderEffortTiersSection provider="copilot" />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('effort-tier-default-badge-low')).toBeTruthy();
+        });
+
+        // No Clear button on a row that is already showing a default.
+        expect(screen.queryByTestId('effort-tier-clear-low')).toBeNull();
+    });
+
+    it('Clear on an overridden row reverts to the default (and removes Default badge briefly until source flips)', async () => {
+        mockGetEffortTiers.mockResolvedValue({
+            provider: 'copilot',
+            effortTiers: {
+                low: { model: 'mid-model', reasoningEffort: 'medium', source: 'config' },
+            },
+            defaults: {
+                low: { model: 'fast-model', reasoningEffort: 'high' },
+            },
+        });
+
+        render(<ProviderEffortTiersSection provider="copilot" />);
+
+        await waitFor(() => {
+            const modelSelect = screen.getByTestId('effort-tier-model-select-low') as HTMLSelectElement;
+            expect(modelSelect.value).toBe('mid-model');
+        });
+
+        // The row is an explicit override → Clear button is visible, no Default badge.
+        expect(screen.queryByTestId('effort-tier-default-badge-low')).toBeNull();
+        expect(screen.getByTestId('effort-tier-clear-low')).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('effort-tier-clear-low'));
+
+        await waitFor(() => {
+            const modelSelect = screen.getByTestId('effort-tier-model-select-low') as HTMLSelectElement;
+            // Reverted to default model (not emptied).
+            expect(modelSelect.value).toBe('fast-model');
+        });
+
+        // After revert, the row now shows as default → Default badge appears, Clear hidden.
+        expect(screen.getByTestId('effort-tier-default-badge-low')).toBeTruthy();
+        expect(screen.queryByTestId('effort-tier-clear-low')).toBeNull();
+        // The change is dirty because it differs from the stored remote baseline.
         expect(screen.getByText('Unsaved changes')).toBeTruthy();
     });
 

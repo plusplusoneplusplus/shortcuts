@@ -237,6 +237,17 @@ export {
     isFolderTrusted,
     getCopilotConfigPath,
     setTrustedFolderHomeOverride,
+    // Effort-tier defaults
+    getDefaultEffortTiers,
+    mergeEffortTiersWithDefaults,
+    type EffortTierDefaultEntry,
+    type EffortTierDefaultsMap,
+    type DefaultedProvider,
+    type EffortTierSource,
+    type MergedEffortTierEntry,
+    type MergedEffortTiersMap,
+    type StoredEffortTierEntry,
+    type StoredEffortTiersMap,
     // Timeline Utilities
     mergeConsecutiveContentItems,
     // Token Usage Stats

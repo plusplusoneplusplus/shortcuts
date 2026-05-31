@@ -115,6 +115,7 @@ export function ProviderEffortTiersSection({ provider }: ProviderEffortTiersSect
                             const entry = tiers[tier];
                             const selectedModel = entry?.model ?? '';
                             const selectedEffort = entry?.reasoningEffort ?? '';
+                            const isDefault = entry?.source === 'default';
                             const modelInfo = selectedModel ? modelMap.get(selectedModel) : undefined;
                             const effortOptions = getReasoningEffortOptions(modelInfo);
                             const supportsReasoning = effortOptions.length > 0;
@@ -125,6 +126,15 @@ export function ProviderEffortTiersSection({ provider }: ProviderEffortTiersSect
                                         <span className="aip-tier-label" data-testid={`effort-tier-name-${tier}`}>
                                             {TIER_LABELS[tier]}
                                         </span>
+                                        {isDefault && (
+                                            <span
+                                                className="aip-tier-default-badge"
+                                                data-testid={`effort-tier-default-badge-${tier}`}
+                                                title="Hardcoded provider default. Editing this row creates an explicit override."
+                                            >
+                                                Default
+                                            </span>
+                                        )}
                                     </td>
                                     <td>
                                         <select
@@ -176,12 +186,13 @@ export function ProviderEffortTiersSection({ provider }: ProviderEffortTiersSect
                                         </select>
                                     </td>
                                     <td>
-                                        {selectedModel && (
+                                        {selectedModel && !isDefault && (
                                             <button
                                                 type="button"
                                                 className="ar-btn ar-btn-ghost ar-btn-sm"
                                                 onClick={() => clearTier(tier)}
-                                                aria-label={`Clear ${TIER_LABELS[tier]} tier`}
+                                                aria-label={`Revert ${TIER_LABELS[tier]} tier to default`}
+                                                title="Revert to provider default"
                                                 data-testid={`effort-tier-clear-${tier}`}
                                             >
                                                 Clear

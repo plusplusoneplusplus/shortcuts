@@ -159,7 +159,7 @@ describe('GET /api/agent-providers/:provider/effort-tiers', () => {
         mockGetAll.mockReset();
     });
 
-    it('returns empty effortTiers for fresh provider', async () => {
+    it('returns hardcoded copilot defaults for fresh provider', async () => {
         const cfgFns = makeConfigFunctions({});
         const ctx = makeCtx({ ...cfgFns });
         server = makeServer(ctx);
@@ -167,12 +167,26 @@ describe('GET /api/agent-providers/:provider/effort-tiers', () => {
 
         const { status, body } = await apiGet('/api/agent-providers/copilot/effort-tiers');
         expect(status).toBe(200);
-        const data = body as { provider: string; effortTiers: Record<string, unknown> };
+        const data = body as {
+            provider: string;
+            effortTiers: Record<string, { model: string; reasoningEffort: string | null; source: string }>;
+            defaults: Record<string, { model: string; reasoningEffort: string | null }>;
+        };
         expect(data.provider).toBe('copilot');
-        expect(data.effortTiers).toEqual({});
+        // All three tiers populated from defaults, source: 'default'.
+        expect(data.effortTiers).toEqual({
+            low:    { model: 'claude-sonnet-4.6', reasoningEffort: 'high',  source: 'default' },
+            medium: { model: 'claude-opus-4.8',   reasoningEffort: null,    source: 'default' },
+            high:   { model: 'gpt-5.5',           reasoningEffort: 'xhigh', source: 'default' },
+        });
+        expect(data.defaults).toEqual({
+            low:    { model: 'claude-sonnet-4.6', reasoningEffort: 'high'  },
+            medium: { model: 'claude-opus-4.8',   reasoningEffort: null    },
+            high:   { model: 'gpt-5.5',           reasoningEffort: 'xhigh' },
+        });
     });
 
-    it('returns configured effortTiers for copilot', async () => {
+    it('returns configured effortTiers for copilot with source: config', async () => {
         const cfgFns = makeConfigFunctions({
             models: {
                 providers: {
@@ -193,11 +207,35 @@ describe('GET /api/agent-providers/:provider/effort-tiers', () => {
         const { status, body } = await apiGet('/api/agent-providers/copilot/effort-tiers');
         expect(status).toBe(200);
         const data = body as { provider: string; effortTiers: Record<string, unknown> };
-        expect(data.effortTiers).toMatchObject({
-            low: { model: 'fast-model', reasoningEffort: null },
-            medium: { model: 'mid-model', reasoningEffort: 'medium' },
-            high: { model: 'opus-model', reasoningEffort: 'high' },
+        expect(data.effortTiers).toEqual({
+            low:    { model: 'fast-model', reasoningEffort: null,     source: 'config' },
+            medium: { model: 'mid-model',  reasoningEffort: 'medium', source: 'config' },
+            high:   { model: 'opus-model', reasoningEffort: 'high',   source: 'config' },
         });
+    });
+
+    it('per-tier fallback: configured tier wins, missing tiers use defaults', async () => {
+        const cfgFns = makeConfigFunctions({
+            models: {
+                providers: {
+                    copilot: {
+                        effortTiers: {
+                            medium: { model: 'mid-model', reasoningEffort: 'medium' },
+                        },
+                    },
+                },
+            },
+        });
+        const ctx = makeCtx({ ...cfgFns });
+        server = makeServer(ctx);
+        await startServer();
+
+        const { body } = await apiGet('/api/agent-providers/copilot/effort-tiers');
+        const data = body as { effortTiers: Record<string, { source: string; model: string }> };
+        expect(data.effortTiers.medium).toEqual({ model: 'mid-model', reasoningEffort: 'medium', source: 'config' });
+        expect(data.effortTiers.low.source).toBe('default');
+        expect(data.effortTiers.high.source).toBe('default');
+        expect(data.effortTiers.low.model).toBe('claude-sonnet-4.6');
     });
 
     it('returns 400 for invalid provider', async () => {
@@ -224,7 +262,11 @@ describe('GET /api/agent-providers/:provider/effort-tiers', () => {
 
         const { status, body } = await apiGet('/api/agent-providers/copilot/effort-tiers');
         expect(status).toBe(200);
-        expect((body as { effortTiers: Record<string, unknown> }).effortTiers).toEqual({});
+        // Copilot shows its own defaults — never the codex stored entry.
+        const data = body as { effortTiers: Record<string, { source: string }> };
+        expect(data.effortTiers.low.source).toBe('default');
+        expect(data.effortTiers.medium.source).toBe('default');
+        expect(data.effortTiers.high.source).toBe('default');
     });
 });
 
@@ -384,7 +426,7 @@ describe('PUT /api/agent-providers/:provider/effort-tiers — full-map replace',
         mockGetAll.mockReset();
     });
 
-    it('replaces full tier map', async () => {
+    it('replaces full tier map; unsent tiers revert to defaults', async () => {
         mockGetAll.mockReturnValue([]);
         const cfgFns = makeConfigFunctions({
             models: { providers: { copilot: { effortTiers: { low: { model: 'old-low' } } } } },
@@ -400,12 +442,16 @@ describe('PUT /api/agent-providers/:provider/effort-tiers — full-map replace',
             },
         });
         expect(status).toBe(200);
-        const data = body as { effortTiers: Record<string, unknown> };
-        // full-map replace: old 'low' tier should be gone
-        expect(data.effortTiers).not.toHaveProperty('low');
-        expect(data.effortTiers).toMatchObject({
-            medium: { model: 'new-mid' },
-            high: { model: 'new-high' },
+        const data = body as { effortTiers: Record<string, { model: string; source: string }> };
+        // full-map replace: stored 'low' is cleared, so it surfaces as default
+        expect(data.effortTiers.low.source).toBe('default');
+        expect(data.effortTiers.low.model).toBe('claude-sonnet-4.6');
+        expect(data.effortTiers.medium).toEqual({ model: 'new-mid', reasoningEffort: null, source: 'config' });
+        expect(data.effortTiers.high).toEqual({ model: 'new-high', reasoningEffort: null, source: 'config' });
+        // Stored config carries only the sent tiers — no default leakage.
+        expect(cfgFns.writtenConfig?.models?.providers?.copilot?.effortTiers).toEqual({
+            medium: { model: 'new-mid', reasoningEffort: null },
+            high: { model: 'new-high', reasoningEffort: null },
         });
     });
 

@@ -20,7 +20,7 @@ import { sendJson, send400, send500 } from '../shared/router';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
 import type { AgentProviderStatus, AgentProvidersResponse, AgentProvidersQuotaResponse, ProviderQuotaType } from '@plusplusoneplusplus/coc-client';
 import type { CopilotSDKService, IAvailabilityResult, CodexSDKService, ClaudeSDKService, IAccountQuotaResult, ModelInfo, ISDKService } from '@plusplusoneplusplus/forge';
-import { getLogger, LogCategory, getAllModels, modelMetadataStore, sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, SDK_PROVIDER_CLAUDE } from '@plusplusoneplusplus/forge';
+import { getLogger, LogCategory, getAllModels, modelMetadataStore, sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, SDK_PROVIDER_CLAUDE, mergeEffortTiersWithDefaults, getDefaultEffortTiers, type MergedEffortTiersMap, type EffortTierDefaultsMap } from '@plusplusoneplusplus/forge';
 import { getResolvedInstallState } from '../providers/provider-install-routes';
 import type { CLIConfig } from '../../config';
 
@@ -510,7 +510,9 @@ export function registerAgentProvidersRoutes(routes: Route[], ctx: AgentProvider
             try {
                 const cfg = ctx.loadConfigFile(ctx.configPath);
                 const settings = getProviderModelSettings(cfg, provider);
-                sendJson(res, { provider, effortTiers: settings.effortTiers });
+                const effortTiers: MergedEffortTiersMap = mergeEffortTiersWithDefaults(provider, settings.effortTiers);
+                const defaults: EffortTierDefaultsMap | Record<string, never> = getDefaultEffortTiers(provider) ?? {};
+                sendJson(res, { provider, effortTiers, defaults });
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : 'Failed to retrieve effort tiers');
             }
@@ -604,7 +606,9 @@ export function registerAgentProvidersRoutes(routes: Route[], ctx: AgentProvider
                         : updateMap;
                     const updated = writeProviderModelSettings(cfg, provider, { effortTiers: mergedTiers });
                     ctx.writeConfigFile(filePath, updated);
-                    sendJson(res, { provider, effortTiers: mergedTiers });
+                    const responseTiers: MergedEffortTiersMap = mergeEffortTiersWithDefaults(provider, mergedTiers);
+                    const defaults: EffortTierDefaultsMap | Record<string, never> = getDefaultEffortTiers(provider) ?? {};
+                    sendJson(res, { provider, effortTiers: responseTiers, defaults });
                 } catch (err) {
                     send500(res, err instanceof Error ? err.message : 'Failed to update effort tiers');
                 }

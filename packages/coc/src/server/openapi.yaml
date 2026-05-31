@@ -854,10 +854,12 @@ paths:
       tags: [agent-providers]
       summary: Get effort-tier configuration for a provider
       description: >-
-        Returns the current effort-tier map (low / medium / high) for the
+        Returns the effective effort-tier map (low / medium / high) for the
         specified agent provider. Each tier maps to a model ID and an optional
-        reasoning-effort level. If no tiers have been configured, an empty
-        object is returned.
+        reasoning-effort level, plus a `source` field marking whether the value
+        came from saved config (`config`) or from the hardcoded provider
+        default (`default`). All three tiers are always populated for known
+        providers because defaults fill any unset tier.
       parameters:
         - name: provider
           in: path
@@ -958,6 +960,14 @@ components:
           description: >-
             Reasoning effort level (e.g. low, medium, high). Null clears a
             previously set value; omitting the field leaves it unchanged.
+        source:
+          type: string
+          enum: [config, default]
+          description: >-
+            Origin of this tier entry. `config` means the admin explicitly
+            saved it. `default` means the hardcoded provider default is being
+            surfaced because no config exists for this tier. Only returned by
+            GET/PUT responses; ignored on input.
 
     EffortTiersMap:
       type: object
@@ -975,13 +985,19 @@ components:
     ProviderEffortTiersResponse:
       type: object
       description: Current effort-tier configuration for an agent provider
-      required: [provider, effortTiers]
+      required: [provider, effortTiers, defaults]
       properties:
         provider:
           type: string
           description: Provider identifier (copilot, codex, or claude)
         effortTiers:
           $ref: '#/components/schemas/EffortTiersMap'
+        defaults:
+          $ref: '#/components/schemas/EffortTiersMap'
+          description: >-
+            Hardcoded provider defaults that fill any unset tier and that the
+            admin UI uses when reverting a configured tier. Empty `{}` for
+            unknown providers.
 
     EffortTierUpsertRequest:
       type: object

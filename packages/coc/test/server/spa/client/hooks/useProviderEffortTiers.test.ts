@@ -26,9 +26,24 @@ import { useProviderEffortTiers } from '../../../../../src/server/spa/client/rea
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function makeEffortTiersResponse(tiers: Record<string, unknown> = {}) {
-    return { provider: 'copilot', effortTiers: tiers };
+function makeEffortTiersResponse(
+    tiers: Record<string, unknown> = {},
+    defaults: Record<string, unknown> = {},
+) {
+    return { provider: 'copilot', effortTiers: tiers, defaults };
 }
+
+const COPILOT_DEFAULTS = {
+    low:    { model: 'claude-sonnet-4.6', reasoningEffort: 'high'  },
+    medium: { model: 'claude-opus-4.8',   reasoningEffort: null    },
+    high:   { model: 'gpt-5.5',           reasoningEffort: 'xhigh' },
+};
+
+const COPILOT_DEFAULT_TIERS = {
+    low:    { ...COPILOT_DEFAULTS.low,    source: 'default' },
+    medium: { ...COPILOT_DEFAULTS.medium, source: 'default' },
+    high:   { ...COPILOT_DEFAULTS.high,   source: 'default' },
+};
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
@@ -41,7 +56,7 @@ describe('useProviderEffortTiers', () => {
         vi.restoreAllMocks();
     });
 
-    it('loads empty tier map from server', async () => {
+    it('loads empty tier map from server when no defaults provided', async () => {
         mockGetEffortTiers.mockResolvedValue(makeEffortTiersResponse({}));
 
         const { result } = renderHook(() => useProviderEffortTiers('copilot'));
@@ -53,19 +68,45 @@ describe('useProviderEffortTiers', () => {
         expect(result.current.dirty).toBe(false);
     });
 
+    it('loads merged tiers (config + defaults) and stays non-dirty', async () => {
+        mockGetEffortTiers.mockResolvedValue(makeEffortTiersResponse(COPILOT_DEFAULT_TIERS, COPILOT_DEFAULTS));
+
+        const { result } = renderHook(() => useProviderEffortTiers('copilot'));
+
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        expect(result.current.tiers.low?.source).toBe('default');
+        expect(result.current.tiers.medium?.source).toBe('default');
+        expect(result.current.tiers.high?.source).toBe('default');
+        // Untouched defaults must not count as dirty.
+        expect(result.current.dirty).toBe(false);
+    });
+
     it('normalizes server response correctly', async () => {
         mockGetEffortTiers.mockResolvedValue(makeEffortTiersResponse({
-            low: { model: 'fast-model', reasoningEffort: null },
-            medium: { model: 'mid-model', reasoningEffort: 'medium' },
+            low: { model: 'fast-model', reasoningEffort: null, source: 'config' },
+            medium: { model: 'mid-model', reasoningEffort: 'medium', source: 'config' },
         }));
 
         const { result } = renderHook(() => useProviderEffortTiers('copilot'));
 
         await waitFor(() => expect(result.current.loading).toBe(false));
 
-        expect(result.current.tiers.low).toEqual({ model: 'fast-model', reasoningEffort: '' });
-        expect(result.current.tiers.medium).toEqual({ model: 'mid-model', reasoningEffort: 'medium' });
+        expect(result.current.tiers.low).toEqual({ model: 'fast-model', reasoningEffort: '', source: 'config' });
+        expect(result.current.tiers.medium).toEqual({ model: 'mid-model', reasoningEffort: 'medium', source: 'config' });
         expect(result.current.tiers.high).toBeUndefined();
+    });
+
+    it('treats server entries without explicit source as config (backwards-compatible)', async () => {
+        mockGetEffortTiers.mockResolvedValue(makeEffortTiersResponse({
+            low: { model: 'fast-model', reasoningEffort: null },
+        }));
+
+        const { result } = renderHook(() => useProviderEffortTiers('copilot'));
+
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        expect(result.current.tiers.low?.source).toBe('config');
     });
 
     it('sets error on fetch failure', async () => {
@@ -78,7 +119,7 @@ describe('useProviderEffortTiers', () => {
         expect(result.current.error).toBe('network error');
     });
 
-    it('setTier marks dirty and updates local state', async () => {
+    it('setTier marks dirty and updates local state with source=config', async () => {
         mockGetEffortTiers.mockResolvedValue(makeEffortTiersResponse({}));
 
         const { result } = renderHook(() => useProviderEffortTiers('copilot'));
@@ -89,20 +130,43 @@ describe('useProviderEffortTiers', () => {
             result.current.setTier('medium', 'mid-model', 'medium');
         });
 
-        expect(result.current.tiers.medium).toEqual({ model: 'mid-model', reasoningEffort: 'medium' });
+        expect(result.current.tiers.medium).toEqual({ model: 'mid-model', reasoningEffort: 'medium', source: 'config' });
         expect(result.current.dirty).toBe(true);
     });
 
-    it('clearTier removes the tier entry', async () => {
-        mockGetEffortTiers.mockResolvedValue(makeEffortTiersResponse({
-            low: { model: 'fast-model', reasoningEffort: null },
-        }));
+    it('clearTier reverts to default when defaults are available', async () => {
+        mockGetEffortTiers.mockResolvedValue(makeEffortTiersResponse(
+            { low: { model: 'fast-model', reasoningEffort: null, source: 'config' } },
+            COPILOT_DEFAULTS,
+        ));
 
         const { result } = renderHook(() => useProviderEffortTiers('copilot'));
 
         await waitFor(() => expect(result.current.loading).toBe(false));
 
-        expect(result.current.tiers.low).toBeDefined();
+        expect(result.current.tiers.low).toMatchObject({ model: 'fast-model', source: 'config' });
+
+        act(() => {
+            result.current.clearTier('low');
+        });
+
+        // Reverted to default, not removed.
+        expect(result.current.tiers.low).toEqual({
+            model: 'claude-sonnet-4.6',
+            reasoningEffort: 'high',
+            source: 'default',
+        });
+        expect(result.current.dirty).toBe(true);
+    });
+
+    it('clearTier removes the tier when no default is available', async () => {
+        mockGetEffortTiers.mockResolvedValue(makeEffortTiersResponse({
+            low: { model: 'fast-model', reasoningEffort: null, source: 'config' },
+        }));
+
+        const { result } = renderHook(() => useProviderEffortTiers('copilot'));
+
+        await waitFor(() => expect(result.current.loading).toBe(false));
 
         act(() => {
             result.current.clearTier('low');
@@ -133,7 +197,33 @@ describe('useProviderEffortTiers', () => {
 
         expect(result.current.dirty).toBe(false);
         expect(result.current.tiers.low).toBeUndefined();
-        expect(result.current.tiers.medium).toEqual({ model: 'mid-model', reasoningEffort: 'medium' });
+        expect(result.current.tiers.medium).toEqual({ model: 'mid-model', reasoningEffort: 'medium', source: 'config' });
+    });
+
+    it('save omits unedited defaults from the payload', async () => {
+        mockGetEffortTiers.mockResolvedValue(makeEffortTiersResponse(COPILOT_DEFAULT_TIERS, COPILOT_DEFAULTS));
+        mockReplaceEffortTiers.mockResolvedValue(makeEffortTiersResponse(COPILOT_DEFAULT_TIERS, COPILOT_DEFAULTS));
+
+        const { result } = renderHook(() => useProviderEffortTiers('copilot'));
+
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.dirty).toBe(false);
+
+        // User edits one default tier explicitly.
+        act(() => {
+            result.current.setTier('medium', 'my-mid', 'medium');
+        });
+        expect(result.current.dirty).toBe(true);
+
+        await act(async () => {
+            await result.current.save();
+        });
+
+        // Only the explicitly-edited tier is persisted; the two untouched defaults
+        // must not leak into the payload.
+        expect(mockReplaceEffortTiers).toHaveBeenCalledWith('copilot', {
+            medium: { model: 'my-mid', reasoningEffort: 'medium' },
+        });
     });
 
     it('save calls replaceEffortTiers and updates remote state', async () => {
@@ -276,6 +366,6 @@ describe('useProviderEffortTiers', () => {
         });
 
         await waitFor(() => expect(result.current.loading).toBe(false));
-        expect(result.current.tiers.medium).toEqual({ model: 'mid-model', reasoningEffort: '' });
+        expect(result.current.tiers.medium).toEqual({ model: 'mid-model', reasoningEffort: '', source: 'config' });
     });
 });

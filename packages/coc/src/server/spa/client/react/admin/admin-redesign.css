@@ -1719,6 +1719,21 @@
   display: inline-block;
 }
 
+.admin-redesign .aip-tier-default-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  background: var(--ar-color-surface-subtle, rgba(127, 127, 127, 0.12));
+  color: var(--ar-color-text-muted, #6b7280);
+  border: 1px solid var(--ar-color-border-subtle, rgba(127, 127, 127, 0.25));
+  vertical-align: middle;
+}
+
 /* ── Query view ────────────────────────────────────────────── */
 .admin-redesign .aip-query-grid {
   display: grid;

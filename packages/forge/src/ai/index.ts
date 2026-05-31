@@ -131,6 +131,17 @@ export {
     isFolderTrusted,
     getCopilotConfigPath,
     setTrustedFolderHomeOverride,
+    // Effort-tier defaults
+    getDefaultEffortTiers,
+    mergeEffortTiersWithDefaults,
+    type EffortTierDefaultEntry,
+    type EffortTierDefaultsMap,
+    type DefaultedProvider,
+    type EffortTierSource,
+    type MergedEffortTierEntry,
+    type MergedEffortTiersMap,
+    type StoredEffortTierEntry,
+    type StoredEffortTiersMap,
 } from '@plusplusoneplusplus/coc-agent-sdk';
 
 // AI Command Types

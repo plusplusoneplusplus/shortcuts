@@ -171,6 +171,23 @@ export {
 export { initSDKLogger, resetSDKLogger, getSDKLogger } from './logger';
 
 export {
+    getDefaultEffortTiers,
+    mergeEffortTiersWithDefaults,
+} from './effort-tier-defaults';
+
+export type {
+    EffortTierKey as EffortTierDefaultKey,
+    EffortTierDefaultEntry,
+    EffortTierDefaultsMap,
+    DefaultedProvider,
+    EffortTierSource,
+    MergedEffortTierEntry,
+    MergedEffortTiersMap,
+    StoredEffortTierEntry,
+    StoredEffortTiersMap,
+} from './effort-tier-defaults';
+
+export {
     CocToolRuntime,
     resolveInputSchema,
     normalizeToolResult,
