@@ -105,6 +105,20 @@ The SPA shows a **"Promote to Ralph"** pill in the follow-up area for eligible
 chats and calls this endpoint via `coc-client`'s `processes.promoteToRalph`
 helper.
 
+### Grilling-Phase Prompt Injection
+
+During the `grilling` phase, `chat-base-executor` prepends a directive to the
+**user message** (never the system message) via `buildRalphGrillSuffix(...)`
+(`packages/coc/src/server/executors/chat-base-executor.ts`). It carries the
+`ultra-ralph` grill-section pointer, the `## Goal` machine contract, and — when
+an `AutoFolderContext` resolves — an explicit goal-file save-location directive
+pointing at the repo's `notes/Plans` root (`~/.coc/repos/<workspaceId>/notes/Plans/`)
+with a `*.goal.md` filename. This keeps the goal file out of the repository
+working tree and lets the Notes/scratchpad UI open and edit it (`isGoalFile`
+detects `*.goal.md`). The generic bundled `grill-me` skill stays host-agnostic:
+it defers to whatever save location the host supplies and only falls back to a
+working-directory-relative `Plans/<area>/<feature>/` when none is given.
+
 ## Resume Routes
 
 Session resume endpoints share infrastructure in

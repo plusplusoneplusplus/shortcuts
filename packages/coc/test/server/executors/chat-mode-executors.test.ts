@@ -652,6 +652,40 @@ describe('ChatExecutor ralph grilling phase', () => {
         expect(userPrompt).not.toContain('ultra-ralph');
         expect(userPrompt).not.toContain('## Goal');
     });
+
+    it('injects the goal-file save location (notes/Plans, *.goal.md) into the user prompt — not the system message', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            askUser: { enabled: true },
+        } as any));
+        const task = makeGrillingTask('task-grill-goalfile');
+        // A working directory is required for the auto-folder context to resolve.
+        task.payload = {
+            ...(task.payload as any),
+            workspaceId: 'ws-id',
+            workingDirectory: '/repo/work',
+        } as any;
+
+        await executor.execute(task, 'Grill me on this idea');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        const systemContent = call.systemMessage?.content ?? '';
+        const userPrompt = call.prompt ?? '';
+
+        // The goal-file directive must live in the user message, pointing at the
+        // repo's notes/Plans root with a *.goal.md filename so the Notes/scratchpad
+        // UI can open and edit it — and must NOT write into the repo working tree.
+        expect(userPrompt).toContain('repos/ws-id/notes/Plans');
+        expect(userPrompt).toContain('.goal.md');
+        expect(userPrompt).toContain('repository working tree');
+        // The goal-file directive must never leak into the system message.
+        // (READ_ONLY_SYSTEM_MESSAGE legitimately mentions .goal.md, so assert on
+        // phrasing unique to the injected directive instead.)
+        expect(systemContent).not.toContain('repository working tree');
+        // The generic auto-folder block (which advertises .plan.md) must be
+        // suppressed during grilling so the model gets no contradictory target.
+        expect(systemContent).not.toContain('.plan.md');
+        expect(systemContent).not.toContain('Save location');
+    });
 });
 
 // ============================================================================

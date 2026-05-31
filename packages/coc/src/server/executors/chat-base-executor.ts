@@ -38,6 +38,7 @@ import {
     modelMetadataStore,
     resolveReasoningSelection,
     rewriteLargePrompt,
+    toForwardSlashes,
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
 import type { ChatPayload, ChatProvider, PrClassificationPayload } from '../tasks/task-types';
@@ -61,11 +62,37 @@ import { buildChatTurnContext } from './chat-turn-context-builder';
 // Ralph grilling-phase system message suffix
 // ============================================================================
 
-/** Default system-prompt suffix appended when `payload.context.ralph.phase === 'grilling'`. */
+/** Default user-message suffix prepended when `payload.context.ralph.phase === 'grilling'`. */
 export const RALPH_GRILL_SUFFIX = `\
 Load and follow the \`ultra-ralph\` skill, \`grill\` section. The skill file is at ~/.coc/skills/ultra-ralph/SKILL.md.
 
 Machine contract (parser-required): After gathering answers and before ending, emit exactly one plain-text goal spec block starting with \`## Goal\`.`;
+
+/**
+ * Build the Ralph grilling-phase directive that is prepended to the user
+ * message (never the system message) on every grilling turn.
+ *
+ * When an {@link AutoFolderContext} is supplied (resolved to the repo's
+ * `notes/Plans` root for ask mode), an explicit goal-file save-location
+ * directive is appended so the model persists the final spec as a
+ * `*.goal.md` file under `~/.coc/.../notes/Plans/`. This keeps the goal file
+ * out of the repository working tree and lets the Notes/scratchpad UI open and
+ * manually edit it. The directive lives here in CoC so the generic `grill-me`
+ * skill stays host-agnostic.
+ */
+export function buildRalphGrillSuffix(autoFolderContext?: AutoFolderContext): string {
+    if (!autoFolderContext) return RALPH_GRILL_SUFFIX;
+
+    const root = toForwardSlashes(autoFolderContext.tasksRoot);
+    const filtered = autoFolderContext.existingFolders.filter(
+        f => f !== 'archive' && !f.startsWith('archive/'),
+    );
+    const folderList = filtered.length > 0 ? filtered.join(', ') : '(none yet)';
+    const fileBlock = `\
+Goal file: persist the final goal spec as a file at \`${root}/<chosen-folder>/<descriptive-name>.goal.md\` so it appears in the Notes tab and can be opened and edited manually. Pick the most relevant existing folder or create a new kebab-case one (≤3 words). Existing folders: ${folderList}. Do not write the goal file into the repository working tree.`;
+
+    return `${RALPH_GRILL_SUFFIX}\n\n${fileBlock}`;
+}
 
 // ============================================================================
 // Types
@@ -339,19 +366,29 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             hasPending: ctx.askUser!.hasPending,
         };
 
+        const isGrilling = payload.context?.ralph?.phase === 'grilling';
+
+        // During grilling the goal-file save location is injected into the user
+        // message (see effectivePrompt below) with an explicit `*.goal.md`
+        // directive. Suppress the generic auto-folder system block in that case
+        // so the model does not receive a contradictory `.plan.md` save target.
         const systemMessage = await systemMessageBuilder()
             .append(buildModeSystemMessage(mode)?.content)
             .withRepoInstructions(workingDirectory, mode)
             .appendMemoryV2(ctx.memoryV2)
             .appendToolGuidance(ctx.toolGuidance)
-            .appendAutoFolder(autoFolderContext)
+            .appendAutoFolder(isGrilling ? undefined : autoFolderContext)
             .appendNoteFile(notePath)
             .build();
 
-        // When this is a Ralph grilling session, prepend the skill pointer to
-        // the user prompt so the model receives it on every grilling turn (AC-03).
-        const effectivePrompt = payload.context?.ralph?.phase === 'grilling'
-            ? `${RALPH_GRILL_SUFFIX}\n\n${prompt}`
+        // When this is a Ralph grilling session, prepend the grilling directive
+        // (skill pointer, machine contract, and goal-file save location) to the
+        // user prompt so the model receives it on every grilling turn (AC-03).
+        // The goal-file location is injected here — via the user message, not the
+        // system message — and points at the repo's notes/Plans root so the goal
+        // file lands in the Notes tab rather than the repository working tree.
+        const effectivePrompt = isGrilling
+            ? `${buildRalphGrillSuffix(autoFolderContext)}\n\n${prompt}`
             : prompt;
 
         return {
