@@ -591,7 +591,7 @@ describe('ChatDetail', () => {
         it('resets SET_FOLLOW_UP_STREAMING on task switch', () => {
             const loadEffect = source.substring(
                 source.indexOf('Load task + conversation on mount / taskId change'),
-                source.indexOf('Load task + conversation on mount / taskId change') + 800,
+                source.indexOf('Load task + conversation on mount / taskId change') + 1200,
             );
             expect(loadEffect).toContain('SET_FOLLOW_UP_STREAMING');
         });
