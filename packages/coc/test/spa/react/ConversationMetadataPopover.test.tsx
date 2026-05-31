@@ -553,3 +553,46 @@ describe('buildRows – Ralph orchestration rows', () => {
         expect(goal.endsWith('…')).toBe(true);
     });
 });
+
+describe('buildRows – reasoning effort', () => {
+    it('shows Reasoning Effort row from config.reasoningEffort', () => {
+        const rows = buildRows({ id: 'p-1', config: { reasoningEffort: 'high' } });
+        const row = rows.find(r => r.label === 'Reasoning Effort');
+        expect(row).toBeDefined();
+        expect(row!.value).toBe('high');
+    });
+
+    it('shows Reasoning Effort row from metadata.reasoningEffort', () => {
+        const rows = buildRows({ id: 'p-2', metadata: { reasoningEffort: 'low' } });
+        const row = rows.find(r => r.label === 'Reasoning Effort');
+        expect(row).toBeDefined();
+        expect(row!.value).toBe('low');
+    });
+
+    it('prefers config.reasoningEffort over metadata.reasoningEffort', () => {
+        const rows = buildRows({ id: 'p-3', config: { reasoningEffort: 'medium' }, metadata: { reasoningEffort: 'high' } });
+        const row = rows.find(r => r.label === 'Reasoning Effort');
+        expect(row!.value).toBe('medium');
+    });
+
+    it('omits Reasoning Effort row when neither config nor metadata has it', () => {
+        const rows = buildRows({ id: 'p-4', metadata: { model: 'gpt-4' } });
+        expect(rows.find(r => r.label === 'Reasoning Effort')).toBeUndefined();
+    });
+
+    it('appears in the popover when set', async () => {
+        const proc = { ...BASE_PROCESS, config: { reasoningEffort: 'xhigh' } };
+        render(<ConversationMetadataPopover process={proc} />);
+        const trigger = screen.getByRole('button', { name: /conversation metadata/i });
+        await act(async () => { fireEvent.click(trigger); });
+        expect(screen.getByText('Reasoning Effort')).toBeDefined();
+        expect(screen.getByText('xhigh')).toBeDefined();
+    });
+
+    it('is positioned after Agent Provider row', () => {
+        const rows = buildRows({ id: 'p-5', metadata: { provider: 'copilot' }, config: { reasoningEffort: 'medium' } });
+        const agentIdx = rows.findIndex(r => r.label === 'Agent Provider');
+        const effortIdx = rows.findIndex(r => r.label === 'Reasoning Effort');
+        expect(effortIdx).toBe(agentIdx + 1);
+    });
+});
