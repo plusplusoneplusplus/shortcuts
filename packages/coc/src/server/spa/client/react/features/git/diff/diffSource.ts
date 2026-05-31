@@ -170,6 +170,8 @@ export function createCommitDiffSource(
             const data = await getSpaCocClient().git.listCommitFiles(workspaceId, hash);
             return (data.files ?? []).map(f => f.path).sort();
         },
+
+        classificationKey: { type: 'commit', repoId: workspaceId, identifier: hash },
     };
 }
 
