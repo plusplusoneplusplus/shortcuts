@@ -145,7 +145,7 @@ export function ComposerMetaStrip({
             )}
             {showCtx && (
                 <span
-                    title={ctxTitle}
+                    aria-label={ctxTitle}
                     data-testid="composer-ctx-fuel"
                     className="relative inline-flex items-center gap-1.5 h-[22px] px-2 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] flex-shrink-0"
                     onMouseEnter={() => setCtxPopoverOpen(true)}
@@ -203,8 +203,8 @@ export function ComposerMetaStrip({
                         {ctxPctRounded}%
                     </span>
 
-                    {/* Breakdown popover — shown on hover/tap when breakdown data is available */}
-                    {ctxPopoverOpen && hasBreakdown && (
+                    {/* Breakdown popover — shown on hover/tap; full breakdown when available, simple total otherwise */}
+                    {ctxPopoverOpen && (
                         <div
                             className="absolute bottom-full left-0 mb-2 z-50 bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded-md shadow-lg p-3 min-w-[220px] text-xs pointer-events-auto"
                             data-testid="composer-ctx-breakdown-popover"
@@ -213,33 +213,37 @@ export function ComposerMetaStrip({
                             onClick={(e) => e.stopPropagation()}
                         >
                             <table className="w-full border-collapse">
-                                <thead>
-                                    <tr className="text-[#848484] dark:text-[#999999]">
-                                        <th className="text-left font-medium pb-1.5 pr-3">Category</th>
-                                        <th className="text-right font-medium pb-1.5 pr-2">Tokens</th>
-                                        <th className="text-right font-medium pb-1.5">% of limit</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {breakdownRows.map(row => (
-                                        <tr key={row.label}>
-                                            <td className="py-0.5 pr-3">
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className={cn('inline-block w-2 h-2 rounded-sm flex-shrink-0', row.dotColor)} />
-                                                    <span className="text-[#1e1e1e] dark:text-[#cccccc]">{row.label}</span>
-                                                </div>
-                                            </td>
-                                            <td className="text-right tabular-nums text-[#1e1e1e] dark:text-[#cccccc] py-0.5 pr-2">
-                                                {formatTokenCount(row.tokens)}
-                                            </td>
-                                            <td className="text-right tabular-nums text-[#848484] dark:text-[#999999] py-0.5">
-                                                {((row.tokens / ctxLimit) * 100).toFixed(1)}%
-                                            </td>
+                                {hasBreakdown && (
+                                    <thead>
+                                        <tr className="text-[#848484] dark:text-[#999999]">
+                                            <th className="text-left font-medium pb-1.5 pr-3">Category</th>
+                                            <th className="text-right font-medium pb-1.5 pr-2">Tokens</th>
+                                            <th className="text-right font-medium pb-1.5">% of limit</th>
                                         </tr>
-                                    ))}
-                                </tbody>
+                                    </thead>
+                                )}
+                                {hasBreakdown && (
+                                    <tbody>
+                                        {breakdownRows.map(row => (
+                                            <tr key={row.label}>
+                                                <td className="py-0.5 pr-3">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className={cn('inline-block w-2 h-2 rounded-sm flex-shrink-0', row.dotColor)} />
+                                                        <span className="text-[#1e1e1e] dark:text-[#cccccc]">{row.label}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="text-right tabular-nums text-[#1e1e1e] dark:text-[#cccccc] py-0.5 pr-2">
+                                                    {formatTokenCount(row.tokens)}
+                                                </td>
+                                                <td className="text-right tabular-nums text-[#848484] dark:text-[#999999] py-0.5">
+                                                    {((row.tokens / ctxLimit) * 100).toFixed(1)}%
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                )}
                                 <tfoot>
-                                    <tr className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] font-medium">
+                                    <tr className={cn('font-medium', hasBreakdown && 'border-t border-[#e0e0e0] dark:border-[#3c3c3c]')}>
                                         <td className="pt-1.5 text-[#1e1e1e] dark:text-[#cccccc]">Total</td>
                                         <td className="text-right tabular-nums text-[#1e1e1e] dark:text-[#cccccc] pt-1.5 pr-2">
                                             {formatTokenCount(ctxUsed)}&nbsp;/&nbsp;{formatTokenCount(ctxLimit)}
@@ -250,6 +254,11 @@ export function ComposerMetaStrip({
                                     </tr>
                                 </tfoot>
                             </table>
+                            {sessionModel && (
+                                <div className="mt-1.5 pt-1.5 border-t border-[#e0e0e0] dark:border-[#3c3c3c] text-[#848484] dark:text-[#999999] truncate" data-testid="composer-ctx-model-name">
+                                    {sessionModel}
+                                </div>
+                            )}
                         </div>
                     )}
                 </span>

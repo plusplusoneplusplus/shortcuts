@@ -213,10 +213,13 @@ describe('ContextWindowIndicator', () => {
         expect(screen.queryByTestId('ctx-breakdown-popover')).toBeNull();
     });
 
-    it('does NOT show popover when breakdown props are absent', () => {
+    it('shows simple popover with total when breakdown props are absent', () => {
         render(<ContextWindowIndicator tokenLimit={200000} currentTokens={70000} />);
         fireEvent.mouseEnter(screen.getByTestId('context-window-indicator'));
-        expect(screen.queryByTestId('ctx-breakdown-popover')).toBeNull();
+        const popover = screen.getByTestId('ctx-breakdown-popover');
+        expect(popover).toBeDefined();
+        expect(popover.textContent).toContain('Total');
+        expect(popover.textContent).not.toContain('System prompt');
     });
 
     it('popover lists all four categories', () => {

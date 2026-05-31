@@ -100,13 +100,13 @@ describe('ComposerMetaStrip', () => {
         expect(divider).toBeNull();
     });
 
-    it('includes the model name in the ctx tooltip when provided', () => {
+    it('includes the model name in the ctx aria-label when provided', () => {
         render(<ComposerMetaStrip sessionTokenLimit={200_000} sessionCurrentTokens={100_000} sessionModel="sonnet-4.5" />);
         const fuel = screen.getByTestId('composer-ctx-fuel');
-        const title = fuel.getAttribute('title') ?? '';
-        expect(title).toContain('sonnet-4.5');
-        expect(title).toContain('200');
-        expect(title).toContain('100');
+        const label = fuel.getAttribute('aria-label') ?? '';
+        expect(label).toContain('sonnet-4.5');
+        expect(label).toContain('200');
+        expect(label).toContain('100');
     });
 
     it('renders Codex provider badge when activeProvider is "codex"', () => {
@@ -223,10 +223,26 @@ describe('ComposerMetaStrip', () => {
         expect(screen.queryByTestId('composer-ctx-breakdown-popover')).toBeNull();
     });
 
-    it('does NOT show popover when breakdown props are absent', () => {
+    it('shows simple popover with total when breakdown props are absent', () => {
         render(<ComposerMetaStrip sessionTokenLimit={200000} sessionCurrentTokens={70000} />);
         fireEvent.mouseEnter(screen.getByTestId('composer-ctx-fuel'));
-        expect(screen.queryByTestId('composer-ctx-breakdown-popover')).toBeNull();
+        const popover = screen.getByTestId('composer-ctx-breakdown-popover');
+        expect(popover).toBeTruthy();
+        expect(popover.textContent).toContain('Total');
+        expect(popover.textContent).not.toContain('System prompt');
+    });
+
+    it('shows model name in popover when sessionModel is provided', () => {
+        render(<ComposerMetaStrip sessionTokenLimit={200000} sessionCurrentTokens={70000} sessionModel="claude-opus-4.8" />);
+        fireEvent.mouseEnter(screen.getByTestId('composer-ctx-fuel'));
+        const popover = screen.getByTestId('composer-ctx-breakdown-popover');
+        expect(popover.textContent).toContain('claude-opus-4.8');
+    });
+
+    it('does not show model name in popover when sessionModel is absent', () => {
+        render(<ComposerMetaStrip sessionTokenLimit={200000} sessionCurrentTokens={70000} />);
+        fireEvent.mouseEnter(screen.getByTestId('composer-ctx-fuel'));
+        expect(screen.queryByTestId('composer-ctx-model-name')).toBeNull();
     });
 
     it('popover lists all four categories', () => {
