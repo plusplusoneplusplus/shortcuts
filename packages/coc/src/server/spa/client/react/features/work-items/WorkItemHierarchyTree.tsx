@@ -48,6 +48,8 @@ export interface WorkItemHierarchyTreeProps {
     onCreated: (item: any) => void;
     /** Open the create dialog for a given type with an optional parent. */
     onCreateItem: (type: WorkItemTypeLabel, parentId?: string) => void;
+    /** When provided, renders the "✨ Create with AI" entry point in the tree header and empty state. */
+    onCreateWithAi?: () => void;
     /** When true, renders the always-visible mobile add-child buttons. */
     isMobile?: boolean;
 }
@@ -58,6 +60,7 @@ export function WorkItemHierarchyTree({
     onSelectWorkItem,
     onCreated,
     onCreateItem,
+    onCreateWithAi,
     isMobile = false,
 }: WorkItemHierarchyTreeProps) {
     const [treeData, setTreeData] = useState<WorkItemTreeNode[]>([]);
@@ -314,6 +317,17 @@ export function WorkItemHierarchyTree({
                     >
                         🐛
                     </Button>
+                    {onCreateWithAi && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={onCreateWithAi}
+                            data-testid="hierarchy-create-with-ai-btn"
+                            title="Create with AI"
+                        >
+                            ✨
+                        </Button>
+                    )}
                 </div>
             </div>
 
@@ -380,6 +394,11 @@ export function WorkItemHierarchyTree({
                                 <Button variant="ghost" size="sm" onClick={() => onCreateItem('work-item')}>
                                     + Work Item
                                 </Button>
+                                {onCreateWithAi && (
+                                    <Button variant="ghost" size="sm" onClick={onCreateWithAi} data-testid="hierarchy-empty-create-with-ai-btn">
+                                        ✨ Create with AI
+                                    </Button>
+                                )}
                             </div>
                         )}
                     </div>

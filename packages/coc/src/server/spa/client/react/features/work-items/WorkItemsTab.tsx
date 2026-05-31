@@ -230,6 +230,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
             onSelectWorkItem={handleSelectWorkItem}
             onCreated={handleCreated}
             onCreateItem={openCreateDialog}
+            onCreateWithAi={aiAuthoringEnabled ? () => setShowAiComposer(true) : undefined}
             isMobile={isMobile}
         />
     ) : (
