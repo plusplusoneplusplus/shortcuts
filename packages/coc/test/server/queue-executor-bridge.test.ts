@@ -6967,6 +6967,10 @@ describe('Ralph session queue continuity', () => {
         mockSendMessage.mockReset();
         mockIsAvailable.mockReset();
         mockIsAvailable.mockResolvedValue({ available: true });
+        // Default terminal response so any stray task (e.g. the unrelated
+        // exclusive backlog) resolves quickly during drain instead of hanging
+        // on an undefined mock.
+        mockSendMessage.mockResolvedValue({ success: true, response: 'Idle.', sessionId: 'sdk-idle' });
     });
 
     afterEach(async () => {
@@ -7050,14 +7054,21 @@ describe('Ralph session queue continuity', () => {
         // can place it ahead of unrelated exclusive backlog (ordering tested in forge unit tests).
         expect(capturedContTask?.continuationOfSessionId).toBe(sessionId);
 
-        // Allow iter 2 to complete so teardown is clean
+        // Allow iter 2 to complete with a terminal response (no RALPH_NEXT /
+        // RALPH_COMPLETE) so the bridge does NOT spawn a further iteration or a
+        // final-check task. Spawning iter 3 would leave a ralph-mode iteration
+        // writing into the ralph-sessions directory after the test returns,
+        // racing with the afterEach rm and causing a flaky ENOTEMPTY on rmdir.
         nextIterDone.resolve({
             success: true,
-            response: 'Progress.\n\nRALPH_PROGRESS:\nFiles: y\nDecisions: e\nRemaining: none\nRALPH_NEXT',
+            response: 'Progress.\n\nRALPH_PROGRESS:\nFiles: y\nDecisions: e\nRemaining: none',
             sessionId: 'sdk-iter-2',
         });
 
-        executor.dispose();
+        // Drain all queued + running work (including the unrelated exclusive
+        // backlog) before disposing so every in-flight ralph-session write has
+        // settled before afterEach removes the data directory.
+        await executor.drainAndDispose(5000);
     });
 
     it('RALPH_COMPLETE final-check task sets continuationOfSessionId (AC-02)', async () => {
