@@ -39,6 +39,8 @@ describe('RuntimeConfigService', () => {
         it('should resolve defaults when no config file exists', () => {
             const svc = new RuntimeConfigService({ configPath });
             expect(svc.config.parallel).toBe(DEFAULT_CONFIG.parallel);
+            expect(svc.config.pullRequests.enabled).toBe(true);
+            expect(svc.config.servers.enabled).toBe(true);
             expect(svc.config.ralph.enabled).toBe(false);
             expect(svc.revision).toBe(0);
         });

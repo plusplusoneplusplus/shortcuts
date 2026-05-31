@@ -194,4 +194,4 @@ Local React hooks (`fetchApi`, `useWebSocket`, `seenStateApi`) wrap the client f
 
 ## Pull Request Suggestions
 
-The Pull Requests tab exposes PR review suggestions behind the `pullRequests.suggestions` config flag. The `For You` filter includes a `Generate suggestions`/`Refresh` action that first refreshes review history, then asks the server to rank open PRs. The UI shows inline progress, empty-state guidance, and recovery messages for missing review history or provider errors.
+The Pull Requests tab is enabled by default through `pullRequests.enabled`; PR review suggestions remain behind the separate `pullRequests.suggestions` config flag. The `For You` filter includes a `Generate suggestions`/`Refresh` action that first refreshes review history, then asks the server to rank open PRs. The UI shows inline progress, empty-state guidance, and recovery messages for missing review history or provider errors.

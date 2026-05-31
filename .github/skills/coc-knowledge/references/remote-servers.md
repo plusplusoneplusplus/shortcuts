@@ -46,7 +46,7 @@ For a persistent Windows service, use:
 
 ## Dashboard-side registration
 
-In the CoC dashboard, the Servers view supports two remote server kinds:
+In the CoC dashboard, the Servers view is enabled by default through `servers.enabled` and supports two remote server kinds:
 
 - **Direct URL**: stores a fixed `http://` or `https://` CoC server URL.
 - **DevTunnel ID**: stores a DevTunnel ID and lets CoC establish a local tunnel connection.
