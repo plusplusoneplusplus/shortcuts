@@ -104,13 +104,8 @@ export function useClassification(
 
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const pollCount = useRef(0);
-
-    // Stop polling on unmount
-    useEffect(() => {
-        return () => {
-            if (pollRef.current) clearInterval(pollRef.current);
-        };
-    }, []);
+    // Tracks the "live" key string so stale async closures can self-abort.
+    const currentKeyRef = useRef<string>('');
 
     // Build indices for fast lookup
     const indexRef = useRef<{
@@ -155,6 +150,29 @@ export function useClassification(
         ? `${classificationKey.type}:${classificationKey.repoId}:${classificationKey.identifier}`
         : '';
 
+    // On key change: update the live-key guard, stop any in-flight polling, and
+    // reset hook state so the new PR always starts from a clean slate.
+    // The cleanup function runs both on key change AND on unmount, so there is no
+    // separate mount-only cleanup effect needed.
+    useEffect(() => {
+        currentKeyRef.current = keyStr;
+        if (pollRef.current) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+        }
+        pollCount.current = 0;
+        setState({
+            status: 'idle',
+            activeFilters: new Set<HunkCategory>(['logic']),
+        });
+        return () => {
+            if (pollRef.current) {
+                clearInterval(pollRef.current);
+                pollRef.current = null;
+            }
+        };
+    }, [keyStr]); // eslint-disable-line react-hooks/exhaustive-deps
+
     const buildUrl = useCallback((suffix: string) => {
         if (!classificationKey) return '';
         const base = `/repos/${encodeURIComponent(classificationKey.repoId)}/classify-diff`;
@@ -167,7 +185,14 @@ export function useClassification(
         pollCount.current = 0;
 
         const ck = classificationKey;
+        const capturedKeyStr = keyStr;
         pollRef.current = setInterval(async () => {
+            // Abort if the key has changed (user navigated to another PR).
+            if (currentKeyRef.current !== capturedKeyStr) {
+                if (pollRef.current) clearInterval(pollRef.current);
+                pollRef.current = null;
+                return;
+            }
             pollCount.current++;
             if (pollCount.current > MAX_POLLS) {
                 if (pollRef.current) clearInterval(pollRef.current);
@@ -182,6 +207,7 @@ export function useClassification(
                 const resp = await requestSpaApi<ClassificationGetResponse>(
                     buildUrl(`?${params.toString()}`),
                 );
+                if (currentKeyRef.current !== capturedKeyStr) return; // stale — drop
                 if (resp.status === 'ready' && resp.result) {
                     if (pollRef.current) clearInterval(pollRef.current);
                     setState(prev => ({ ...prev, status: 'ready', result: resp.result, error: undefined }));
@@ -196,6 +222,7 @@ export function useClassification(
     const classify = useCallback(() => {
         if (!classificationKey) return;
         const ck = classificationKey;
+        const capturedKeyStr = keyStr;
 
         setState(prev => ({ ...prev, status: 'loading', error: undefined }));
 
@@ -211,6 +238,7 @@ export function useClassification(
             },
         )
             .then(resp => {
+                if (currentKeyRef.current !== capturedKeyStr) return; // stale — drop
                 if (resp.status === 'ready' && resp.result) {
                     setState(prev => ({ ...prev, status: 'ready', result: resp.result, error: undefined }));
                 } else {
@@ -219,6 +247,7 @@ export function useClassification(
                 }
             })
             .catch(err => {
+                if (currentKeyRef.current !== capturedKeyStr) return; // stale — drop
                 setState(prev => ({
                     ...prev,
                     status: 'error',
@@ -231,6 +260,7 @@ export function useClassification(
     useEffect(() => {
         if (!classificationKey) return;
         const ck = classificationKey;
+        const capturedKeyStr = keyStr;
 
         const params = new URLSearchParams({
             type: ck.type,
@@ -240,6 +270,7 @@ export function useClassification(
             buildUrl(`?${params.toString()}`),
         )
             .then(resp => {
+                if (currentKeyRef.current !== capturedKeyStr) return; // stale — drop
                 if (resp.status === 'ready' && resp.result) {
                     setState(prev => ({ ...prev, status: 'ready', result: resp.result }));
                 } else if (resp.status === 'running') {
