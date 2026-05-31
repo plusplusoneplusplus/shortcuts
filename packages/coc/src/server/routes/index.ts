@@ -63,6 +63,7 @@ import { registerWorkItemHierarchyRoutes } from './work-item-hierarchy-routes';
 import { registerWorkItemPlanRoutes } from './work-item-plan-routes';
 import { registerWorkItemExecutionRoutes } from './work-item-execution-routes';
 import { registerWorkItemChangesRoutes } from './work-item-changes-routes';
+import { registerWorkItemAiRoutes } from './work-item-ai-routes';
 import { FileWorkItemStore } from '../work-items/work-item-store';
 import { handleWorkItemTaskComplete, autoVersionPlanFromResolvedComments } from '../work-items/work-item-executor';
 import type { EnqueueFunction } from '../work-items/work-item-executor';
@@ -433,6 +434,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const getWorkItemsHierarchyEnabled = opts.runtimeConfigService
         ? () => opts.runtimeConfigService!.config.workItems?.hierarchy?.enabled ?? false
         : () => opts.resolvedConfig?.workItems?.hierarchy?.enabled ?? false;
+    const getWorkItemsAiAuthoringEnabled = opts.runtimeConfigService
+        ? () => opts.runtimeConfigService!.config.workItems?.aiAuthoring?.enabled ?? false
+        : () => opts.resolvedConfig?.workItems?.aiAuthoring?.enabled ?? false;
+    // AI-draft route must be registered before generic /:workItemId routes to prevent "ai-draft" from matching as an ID
+    registerWorkItemAiRoutes({ routes, workItemStore, getAiAuthoringEnabled: getWorkItemsAiAuthoringEnabled, getHierarchyEnabled: getWorkItemsHierarchyEnabled });
     // Hierarchy tree route must be registered before generic /:workItemId to win the match
     registerWorkItemHierarchyRoutes({ routes, workItemStore, getHierarchyEnabled: getWorkItemsHierarchyEnabled });
     registerWorkItemRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer, getHierarchyEnabled: getWorkItemsHierarchyEnabled });

@@ -216,6 +216,10 @@ export interface CLIConfig {
         hierarchy?: {
             enabled?: boolean;
         };
+        /** AI-assisted work item authoring — Create/Improve with AI composer. Disabled by default. */
+        aiAuthoring?: {
+            enabled?: boolean;
+        };
     };
     /** Effort Tiers configuration — single Low/Medium/High selector replacing model picker + effort pill. Disabled by default. */
     effortLevels?: {
@@ -433,6 +437,10 @@ export interface ResolvedCLIConfig {
         hierarchy: {
             enabled: boolean;
         };
+        /** AI-assisted work item authoring feature. */
+        aiAuthoring: {
+            enabled: boolean;
+        };
     };
     /** Effort Tiers configuration — single Low/Medium/High selector replacing model picker + effort pill. */
     effortLevels: {
@@ -579,6 +587,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     workItems: {
         hierarchy: {
+            enabled: false,
+        },
+        aiAuthoring: {
             enabled: false,
         },
     },

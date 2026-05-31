@@ -160,6 +160,7 @@ export interface RuntimeDashboardConfig {
     claudeEnabled: boolean;
     defaultProvider: 'copilot' | 'codex' | 'claude';
     workItemsHierarchyEnabled: boolean;
+    workItemsAiAuthoringEnabled: boolean;
     gitCommitLookupEnabled: boolean;
     effortLevelsEnabled: boolean;
   };
