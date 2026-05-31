@@ -99,7 +99,7 @@ export function emitPendingMessageAdded(store: ProcessStore, processId: string, 
  *   event: item-process     → { itemIndex, processId, status, phase, itemLabel?, error? }
  *   event: suggestions       → { suggestions: string[], turnIndex: number }
  *   event: ask-user          → { questionId, question, type, options?, defaultValue?, turnIndex }
- *   event: token-usage       → { turnIndex, tokenUsage, sessionTokenLimit?, sessionCurrentTokens? }
+ *   event: token-usage       → { turnIndex, tokenUsage, sessionTokenLimit?, sessionCurrentTokens?, sessionSystemTokens?, sessionToolTokens?, sessionConversationTokens? }
  *   event: background-tasks  → { backgroundAgents, backgroundShells, backgroundTotalActive, backgroundWaitingForDrain }
  *   event: status             → { status, result?, error?, duration? }
  *   event: done               → { processId }
@@ -233,6 +233,9 @@ export async function handleProcessStream(
                 tokenUsage: event.tokenUsage,
                 sessionTokenLimit: event.sessionTokenLimit,
                 sessionCurrentTokens: event.sessionCurrentTokens,
+                ...(event.sessionSystemTokens     != null ? { sessionSystemTokens:     event.sessionSystemTokens }     : {}),
+                ...(event.sessionToolTokens       != null ? { sessionToolTokens:       event.sessionToolTokens }       : {}),
+                ...(event.sessionConversationTokens != null ? { sessionConversationTokens: event.sessionConversationTokens } : {}),
             });
         } else if (event.type === 'message-queued') {
             sendEvent(res, 'message-queued', {

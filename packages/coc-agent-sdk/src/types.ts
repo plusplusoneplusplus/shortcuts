@@ -361,6 +361,12 @@ export interface TokenUsage {
     tokenLimit?: number;
     /** Session-level current token count (last seen from session.usage_info) */
     currentTokens?: number;
+    /** Tokens consumed by the system prompt (from session.usage_info breakdown) */
+    systemTokens?: number;
+    /** Tokens consumed by tool definitions (from session.usage_info breakdown) */
+    toolDefinitionsTokens?: number;
+    /** Tokens consumed by conversation history (from session.usage_info breakdown) */
+    conversationTokens?: number;
 }
 
 // ============================================================================

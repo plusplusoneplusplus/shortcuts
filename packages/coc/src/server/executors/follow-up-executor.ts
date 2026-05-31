@@ -462,6 +462,9 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                         tokenUsage: result.tokenUsage,
                         sessionTokenLimit: result.tokenUsage.tokenLimit,
                         sessionCurrentTokens: result.tokenUsage.currentTokens,
+                        ...(result.tokenUsage.systemTokens          != null ? { sessionSystemTokens:       result.tokenUsage.systemTokens }          : {}),
+                        ...(result.tokenUsage.toolDefinitionsTokens != null ? { sessionToolTokens:         result.tokenUsage.toolDefinitionsTokens } : {}),
+                        ...(result.tokenUsage.conversationTokens    != null ? { sessionConversationTokens: result.tokenUsage.conversationTokens }    : {}),
                     });
                 } catch (err) {
                     logger.debug(LogCategory.AI, `[FollowUp] Failed to emit token usage event for ${processId}: ${err instanceof Error ? err.message : String(err)}`);

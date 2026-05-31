@@ -79,6 +79,9 @@ export interface ISessionEvent {
         // Session quota (session.usage_info)
         tokenLimit?: number;
         currentTokens?: number;
+        systemTokens?: number;
+        toolDefinitionsTokens?: number;
+        conversationTokens?: number;
         // Tool execution (tool.execution_start / tool.execution_complete)
         toolCallId?: string;
         toolName?: string;
@@ -471,8 +474,11 @@ export class StreamingSession {
 
     private handleUsageInfo(event: ISessionEvent): void {
         this.telemetry.recordUsageInfo({
-            tokenLimit:    event.data?.tokenLimit,
-            currentTokens: event.data?.currentTokens,
+            tokenLimit:            event.data?.tokenLimit,
+            currentTokens:         event.data?.currentTokens,
+            systemTokens:          event.data?.systemTokens,
+            toolDefinitionsTokens: event.data?.toolDefinitionsTokens,
+            conversationTokens:    event.data?.conversationTokens,
         });
         const usage = this.telemetry.buildTokenUsage();
         this.sessionLog.debug(

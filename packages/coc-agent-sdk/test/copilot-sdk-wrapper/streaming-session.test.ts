@@ -409,6 +409,50 @@ describe('StreamingSession — token usage', () => {
         const result = await promise;
         expect(result.tokenUsage).toBeUndefined();
     });
+
+    it('captures session.usage_info breakdown (system, tool, conversation tokens)', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions());
+
+        emit({ type: 'assistant.usage', data: { inputTokens: 1, outputTokens: 1 } });
+        emit({
+            type: 'session.usage_info',
+            data: {
+                tokenLimit: 200000,
+                currentTokens: 70000,
+                systemTokens: 12400,
+                toolDefinitionsTokens: 8100,
+                conversationTokens: 47200,
+            },
+        });
+        emit({ type: 'session.idle' });
+
+        const result = await promise;
+        expect(result.tokenUsage).toBeDefined();
+        expect(result.tokenUsage!.tokenLimit).toBe(200000);
+        expect(result.tokenUsage!.currentTokens).toBe(70000);
+        expect(result.tokenUsage!.systemTokens).toBe(12400);
+        expect(result.tokenUsage!.toolDefinitionsTokens).toBe(8100);
+        expect(result.tokenUsage!.conversationTokens).toBe(47200);
+    });
+
+    it('handles session.usage_info without breakdown fields', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions());
+
+        emit({ type: 'assistant.usage', data: { inputTokens: 1, outputTokens: 1 } });
+        emit({ type: 'session.usage_info', data: { tokenLimit: 100000, currentTokens: 5000 } });
+        emit({ type: 'session.idle' });
+
+        const result = await promise;
+        expect(result.tokenUsage!.tokenLimit).toBe(100000);
+        expect(result.tokenUsage!.currentTokens).toBe(5000);
+        expect(result.tokenUsage!.systemTokens).toBeUndefined();
+        expect(result.tokenUsage!.toolDefinitionsTokens).toBeUndefined();
+        expect(result.tokenUsage!.conversationTokens).toBeUndefined();
+    });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

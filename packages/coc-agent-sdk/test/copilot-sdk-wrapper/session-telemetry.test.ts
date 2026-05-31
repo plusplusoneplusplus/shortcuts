@@ -47,6 +47,48 @@ describe('SessionTelemetry — token usage', () => {
         expect(usage!.tokenLimit).toBe(10000);
         expect(usage!.currentTokens).toBe(500);
     });
+
+    it('records usage info breakdown (system, tool, conversation tokens)', () => {
+        const t = new SessionTelemetry();
+        t.recordUsage({ inputTokens: 1, outputTokens: 1 });
+        t.recordUsageInfo({
+            tokenLimit: 200000,
+            currentTokens: 70000,
+            systemTokens: 12400,
+            toolDefinitionsTokens: 8100,
+            conversationTokens: 47200,
+        });
+
+        const usage = t.buildTokenUsage();
+        expect(usage!.tokenLimit).toBe(200000);
+        expect(usage!.currentTokens).toBe(70000);
+        expect(usage!.systemTokens).toBe(12400);
+        expect(usage!.toolDefinitionsTokens).toBe(8100);
+        expect(usage!.conversationTokens).toBe(47200);
+    });
+
+    it('omits breakdown fields when not provided', () => {
+        const t = new SessionTelemetry();
+        t.recordUsage({ inputTokens: 1, outputTokens: 1 });
+        t.recordUsageInfo({ tokenLimit: 100000, currentTokens: 5000 });
+
+        const usage = t.buildTokenUsage();
+        expect(usage!.systemTokens).toBeUndefined();
+        expect(usage!.toolDefinitionsTokens).toBeUndefined();
+        expect(usage!.conversationTokens).toBeUndefined();
+    });
+
+    it('keeps last seen breakdown values across multiple recordUsageInfo calls', () => {
+        const t = new SessionTelemetry();
+        t.recordUsage({ inputTokens: 1, outputTokens: 1 });
+        t.recordUsageInfo({ tokenLimit: 100000, systemTokens: 5000 });
+        t.recordUsageInfo({ currentTokens: 20000, toolDefinitionsTokens: 3000 });
+
+        const usage = t.buildTokenUsage();
+        expect(usage!.systemTokens).toBe(5000);
+        expect(usage!.toolDefinitionsTokens).toBe(3000);
+        expect(usage!.conversationTokens).toBeUndefined();
+    });
 });
 
 describe('SessionTelemetry — tool call tracking', () => {

@@ -496,6 +496,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                             tokenUsage,
                             sessionTokenLimit: tokenUsage.tokenLimit,
                             sessionCurrentTokens: tokenUsage.currentTokens,
+                            ...(tokenUsage.systemTokens          != null ? { sessionSystemTokens:     tokenUsage.systemTokens }          : {}),
+                            ...(tokenUsage.toolDefinitionsTokens != null ? { sessionToolTokens:       tokenUsage.toolDefinitionsTokens } : {}),
+                            ...(tokenUsage.conversationTokens    != null ? { sessionConversationTokens: tokenUsage.conversationTokens }  : {}),
                         });
                     } catch (err) {
                         logger.debug(LogCategory.AI, `[QueueExecutor] Failed to emit token usage event for ${processId}: ${err instanceof Error ? err.message : String(err)}`);

@@ -148,6 +148,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [sessionTokenLimit, setSessionTokenLimit] = useState<number | undefined>(undefined);
     const [sessionCurrentTokens, setSessionCurrentTokens] = useState<number | undefined>(undefined);
+    const [sessionSystemTokens, setSessionSystemTokens] = useState<number | undefined>(undefined);
+    const [sessionToolTokens, setSessionToolTokens] = useState<number | undefined>(undefined);
+    const [sessionConversationTokens, setSessionConversationTokens] = useState<number | undefined>(undefined);
     const [pendingQueue, setPendingQueue] = useState<QueuedMessage[]>([]);
     const [invalidScratchpadPaths, setInvalidScratchpadPaths] = useState<Set<string>>(() => new Set());
     const [backgroundTasks, setBackgroundTasks] = useState<import('./hooks/useChatSSE').BackgroundTasksState | null>(null);
@@ -717,6 +720,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         setSuggestions,
         setSessionTokenLimit,
         setSessionCurrentTokens,
+        setSessionSystemTokens,
+        setSessionToolTokens,
+        setSessionConversationTokens,
         setBackgroundTasks,
         setTurnsAndRef,
         refreshConversation,
@@ -788,6 +794,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         setResumeFeedback(null);
         setSessionTokenLimit(undefined);
         setSessionCurrentTokens(undefined);
+        setSessionSystemTokens(undefined);
+        setSessionToolTokens(undefined);
+        setSessionConversationTokens(undefined);
         clearAttachments();
         textPaste.clearPaste();
         stopStreaming();
