@@ -100,7 +100,7 @@ export function detectCommitsInToolGroup(toolCalls: ToolCallLike[]): DetectedCom
     const seenHashes = new Set<string>();
 
     for (const tc of toolCalls) {
-        const toolName = tc.toolName || (tc as any).name || '';
+        const toolName = (tc.toolName || (tc as any).name || '').toLowerCase();
         if (!tc.result) continue;
 
         const isShell = SHELL_TOOL_NAMES.has(toolName);

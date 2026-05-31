@@ -87,7 +87,7 @@ export function detectPullRequestsInToolGroup(toolCalls: ToolCallLike[]): Detect
     const seenUrls = new Set<string>();
 
     for (const tc of toolCalls) {
-        const toolName = tc.toolName || tc.name || '';
+        const toolName = (tc.toolName || tc.name || '').toLowerCase();
         if (!SHELL_TOOL_NAMES.has(toolName)) continue;
         if (!tc.result) continue;
 
