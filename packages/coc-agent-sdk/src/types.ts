@@ -439,10 +439,10 @@ export interface SendMessageOptions {
     workingDirectory?: string;
     /**
      * Extra absolute directories the agent is allowed to access beyond the
-     * working directory. Currently consumed by the Claude provider, which maps
-     * these to the SDK's `additionalDirectories` permission scope. The Claude
-     * service additionally always grants access to `~/.coc` and the system
-     * temp directory.
+     * working directory. Consumed by the Claude and Codex providers, which map
+     * these to the SDK's `additionalDirectories` permission scope. Both services
+     * additionally always grant access to `~/.coc`; the Claude service also
+     * always grants the system temp directory.
      */
     additionalDirectories?: string[];
     /** Optional timeout in milliseconds (default: DEFAULT_AI_TIMEOUT_MS = 6 hours) */
