@@ -7,25 +7,13 @@
  * has been removed in favour of the `saveClassification` LLM tool.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { buildClassificationPrompt } from '../../src/server/repos/pr-classification-handler';
 import { TaskDefs } from '../../src/server/tasks/task-types';
-
-// Mock the prompt override module so we can test override-aware rendering
-vi.mock('../../src/server/admin/admin-prompt-overrides', () => ({
-    getPromptOverride: vi.fn(),
-}));
-
-import { getPromptOverride } from '../../src/server/admin/admin-prompt-overrides';
-
-const mockedGetOverride = vi.mocked(getPromptOverride);
 
 // ── buildClassificationPrompt ────────────────────────────────────────────────
 
 describe('buildClassificationPrompt', () => {
-    beforeEach(() => mockedGetOverride.mockReset());
-    afterEach(() => vi.restoreAllMocks());
-
     it('should include the PR number in the prompt', () => {
         const prompt = buildClassificationPrompt('my-repo', '42');
         expect(prompt).toContain('pull request #42');
@@ -42,26 +30,19 @@ describe('buildClassificationPrompt', () => {
         expect(prompt).toContain('gh');
     });
 
-    it('should mention the saveClassification tool', () => {
+    it('should point at the classify-diff skill for schema and persistence rules', () => {
         const prompt = buildClassificationPrompt('repo', '42');
-        expect(prompt).toContain('saveClassification');
+        expect(prompt).toContain('Use the `classify-diff` skill');
+        expect(prompt).toContain('persistence rules');
+        expect(prompt).not.toContain('saveClassification');
+        expect(prompt).not.toContain('hunkIndex');
     });
 
-    it('uses admin override when dataDir is provided and override exists', () => {
-        mockedGetOverride.mockReturnValue(
-            'CUSTOM: ${target} | ${diffInstructions} | ${classificationSchema} | ${saveInstruction}'
-        );
+    it('ignores dataDir because classification prompts are no longer admin-overridable', () => {
         const prompt = buildClassificationPrompt('repo', '99', '/data');
-        expect(prompt).toContain('CUSTOM:');
-        expect(prompt).toContain('pull request #99');
-        expect(prompt).not.toContain('${target}');
-    });
-
-    it('falls back to default template when override is not set', () => {
-        mockedGetOverride.mockReturnValue(undefined);
-        const prompt = buildClassificationPrompt('repo', '42', '/data');
         expect(prompt).toContain('Classify every hunk');
-        expect(prompt).toContain('pull request #42');
+        expect(prompt).toContain('pull request #99');
+        expect(prompt).not.toContain('CUSTOM:');
     });
 
     it('does not contain unexpanded template variables', () => {

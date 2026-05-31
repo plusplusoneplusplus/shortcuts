@@ -6,10 +6,10 @@ import { describe, it, expect } from 'vitest';
 import { getBuiltInPrompts } from '../../src/server/admin/admin-handler';
 
 describe('getBuiltInPrompts', () => {
-    it('returns all 8 built-in prompts', () => {
+    it('returns all 7 built-in prompts', () => {
         const prompts = getBuiltInPrompts();
         const ids = Object.keys(prompts);
-        expect(ids).toHaveLength(8);
+        expect(ids).toHaveLength(7);
         expect(ids).toContain('read-only-mode');
         expect(ids).toContain('task-creation');
         expect(ids).toContain('plan-generation');
@@ -17,7 +17,7 @@ describe('getBuiltInPrompts', () => {
         expect(ids).toContain('memory-tool-schema');
         expect(ids).toContain('memory-security-patterns');
         expect(ids).toContain('follow-up-suggestions');
-        expect(ids).toContain('diff-classification-user');
+        expect(ids).not.toContain('diff-classification-user');
     });
 
     it('each prompt has all required fields', () => {
@@ -34,9 +34,9 @@ describe('getBuiltInPrompts', () => {
         }
     });
 
-    it('groups are Pipeline, Memory, UI, or Diff Classification', () => {
+    it('groups are Pipeline, Memory, or UI', () => {
         const prompts = getBuiltInPrompts();
-        const validGroups = new Set(['Pipeline', 'Memory', 'UI', 'Diff Classification']);
+        const validGroups = new Set(['Pipeline', 'Memory', 'UI']);
         for (const p of Object.values(prompts)) {
             expect(validGroups.has(p.group)).toBe(true);
         }
@@ -60,14 +60,10 @@ describe('getBuiltInPrompts', () => {
         expect(uiPrompts).toHaveLength(1);
     });
 
-    it('Diff Classification group contains 1 editable prompt', () => {
+    it('Diff Classification group is no longer admin-overridable', () => {
         const prompts = getBuiltInPrompts();
         const diffPrompts = Object.values(prompts).filter(p => p.group === 'Diff Classification');
-        expect(diffPrompts).toHaveLength(1);
-        for (const p of diffPrompts) {
-            expect(p.editable).toBe(true);
-            expect(Array.isArray(p.templateVars)).toBe(true);
-        }
+        expect(diffPrompts).toHaveLength(0);
     });
 
     it('Pipeline, Memory, and UI prompts are not editable', () => {

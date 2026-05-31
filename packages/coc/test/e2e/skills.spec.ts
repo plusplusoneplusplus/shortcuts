@@ -39,9 +39,9 @@ async function gotoSkills(page: Page, serverUrl: string): Promise<void> {
 /**
  * Force the global skills directory to a clean empty state.
  *
- * The CoC server auto-installs `DEFAULT_BUNDLED_SKILLS` (rethink, kb-refresh,
- * fresh-written) asynchronously on startup, which races with tests that need
- * to verify the empty state. We poll briefly for that install to settle, then
+ * The CoC server auto-installs `DEFAULT_BUNDLED_SKILLS` asynchronously on
+ * startup, which races with tests that need to verify the empty state. We poll
+ * briefly for that install to settle, then
  * delete every installed skill via the REST API. Subsequent calls are no-ops
  * because deletion happens after the auto-install promise has resolved.
  */

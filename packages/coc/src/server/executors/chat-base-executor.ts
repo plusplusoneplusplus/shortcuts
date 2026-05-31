@@ -40,7 +40,7 @@ import {
     rewriteLargePrompt,
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
-import type { ChatPayload, ChatProvider } from '../tasks/task-types';
+import type { ChatPayload, ChatProvider, PrClassificationPayload } from '../tasks/task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
 import type { BroadcastWorkItemFn } from '../llm-tools/create-work-item-tool';
 import { BaseExecutor } from './base-executor';
@@ -461,7 +461,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             const timeoutMs = task.config.timeoutMs || this.defaultTimeoutMs;
             const taskWorkspaceId = payload.workspaceId;
             const { skillDirectories, disabledSkills } = await this.resolveSkillConfigFn(taskWorkspaceId, workingDirectory);
-            const selectedSkillNames = (payload as ChatPayload).context?.skills;
+            const selectedSkillNames = resolvePayloadSkillNames(payload as unknown as ChatPayload | PrClassificationPayload);
             effectivePrompt = prependSelectedSkillsDirective(
                 effectivePrompt,
                 selectedSkillNames,
@@ -632,4 +632,12 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             await this.persistOutput(processId, buffer, payload.workspaceId);
         }
     }
+}
+
+function resolvePayloadSkillNames(payload: ChatPayload | PrClassificationPayload): string[] | undefined {
+    const topLevelSkills = (payload as unknown as { skills?: unknown }).skills;
+    if (Array.isArray(topLevelSkills)) {
+        return topLevelSkills.filter((skill): skill is string => typeof skill === 'string');
+    }
+    return (payload as ChatPayload).context?.skills;
 }

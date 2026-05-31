@@ -22,6 +22,7 @@ import { READ_ONLY_SYSTEM_MESSAGE } from '@plusplusoneplusplus/forge';
 import { ChatExecutor } from '../../../src/server/executors/chat-executor';
 import { PlanExecutor } from '../../../src/server/executors/plan-executor';
 import { AutopilotExecutor } from '../../../src/server/executors/autopilot-executor';
+import { ClassificationExecutor } from '../../../src/server/executors/classification-executor';
 import type { ChatModeExecutorOptions } from '../../../src/server/executors/chat-base-executor';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
@@ -796,6 +797,75 @@ describe('ChatBaseExecutor selected skills', () => {
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         expect(call.prompt).toContain('The user explicitly selected these skills: skill-a, skill-b.');
         expect(call.prompt).not.toContain('<skill name=');
+    });
+
+    it('reads top-level skills from pr-classification payloads', async () => {
+        const executor = new ClassificationExecutor(store, makeOptions(store));
+        const task: QueuedTask = {
+            id: 'task-classify-skill',
+            type: 'pr-classification',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: {
+                kind: 'pr-classification',
+                prompt: 'Classify PR #42',
+                workspaceId: 'ws-1',
+                repoId: 'repo-1',
+                prId: '42',
+                headSha: 'deadbeef',
+                workingDirectory: '/fake/ws',
+                skills: ['classify-diff'],
+            },
+            config: {},
+            displayName: 'classification skill test',
+        } as unknown as QueuedTask;
+
+        await executor.execute(task, 'Classify PR #42');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.prompt).toContain('<selected_skills>');
+        expect(call.prompt).toContain('The user explicitly selected these skills: classify-diff.');
+        expect(call.prompt).toContain('Classify PR #42');
+        expect(call.prompt.indexOf('<selected_skills>')).toBeLessThan(call.prompt.indexOf('Classify PR #42'));
+        expect(call.mode).toBe('autopilot');
+    });
+
+    it('adds resolved SKILL.md paths for top-level classification skills', async () => {
+        const skillsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-classify-skill-'));
+        try {
+            fs.mkdirSync(path.join(skillsDir, 'classify-diff'), { recursive: true });
+            fs.writeFileSync(path.join(skillsDir, 'classify-diff', 'SKILL.md'), '# Classify diff');
+            const executor = new ClassificationExecutor(store, makeOptions(store, {
+                resolveSkillConfig: vi.fn().mockResolvedValue({ skillDirectories: [skillsDir], disabledSkills: undefined }),
+            }));
+            const task: QueuedTask = {
+                id: 'task-classify-skill-path',
+                type: 'pr-classification',
+                priority: 'normal',
+                status: 'running',
+                createdAt: Date.now(),
+                payload: {
+                    kind: 'pr-classification',
+                    prompt: 'Classify commit abc123',
+                    workspaceId: 'ws-1',
+                    repoId: 'repo-1',
+                    prId: '42',
+                    headSha: 'deadbeef',
+                    workingDirectory: '/fake/ws',
+                    skills: ['classify-diff'],
+                },
+                config: {},
+                displayName: 'classification skill path test',
+            } as unknown as QueuedTask;
+
+            await executor.execute(task, 'Classify commit abc123');
+
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            expect(call.prompt).toContain(`- classify-diff: ${path.join(skillsDir, 'classify-diff', 'SKILL.md')}`);
+        } finally {
+            fs.rmSync(skillsDir, { recursive: true, force: true });
+        }
     });
 });
 

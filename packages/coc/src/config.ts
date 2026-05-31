@@ -465,6 +465,7 @@ export const DEFAULT_BUNDLED_SKILLS: readonly string[] = [
     'grill-me',
     'loop',
     'ultra-ralph',
+    'classify-diff',
 ];
 
 /** Default configuration values */
