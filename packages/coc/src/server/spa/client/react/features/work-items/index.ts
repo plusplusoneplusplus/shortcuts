@@ -8,4 +8,6 @@ export { CreateWorkItemDialog } from './CreateWorkItemDialog';
 export type { CreateWorkItemDialogProps } from './CreateWorkItemDialog';
 export { WorkItemExecuteDialog } from './WorkItemExecuteDialog';
 export type { WorkItemExecuteDialogProps } from './WorkItemExecuteDialog';
+export { WorkItemAiComposer } from './WorkItemAiComposer';
+export type { WorkItemAiComposerProps } from './WorkItemAiComposer';
 export { useWorkItemSearch } from './hooks/useWorkItemSearch';

@@ -20,6 +20,8 @@ import { WorkItemParentPicker } from './WorkItemParentPicker';
 import { ALLOWED_CHILD_TYPES } from '@plusplusoneplusplus/coc-client';
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
 import { TYPE_LABELS } from './WorkItemHierarchyNode';
+import { WorkItemAiComposer } from './WorkItemAiComposer';
+import { isWorkItemsAiAuthoringEnabled } from '../../utils/config';
 
 const STATUS_LABELS: Record<string, { label: string; badgeStatus: string }> = {
     created:          { label: 'Created',          badgeStatus: 'queued' },
@@ -117,6 +119,9 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
     const [editingCriteria, setEditingCriteria] = useState(false);
     const [criteriaDraft, setCriteriaDraft] = useState('');
     const [savingCriteria, setSavingCriteria] = useState(false);
+
+    const [showAiComposer, setShowAiComposer] = useState(false);
+    const aiAuthoringEnabled = isWorkItemsAiAuthoringEnabled();
 
     const fetchItem = useCallback(async () => {
         setLoading(true);
@@ -550,6 +555,18 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                                 ⚡ Start Implementing
                             </Button>
                         </>
+                    )}
+                    {/* AI Improve button */}
+                    {aiAuthoringEnabled && !isEditing && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowAiComposer(true)}
+                            data-testid="work-item-improve-with-ai-btn"
+                            title="Improve with AI"
+                        >
+                            ✨
+                        </Button>
                     )}
                     <Button variant="ghost" size="sm" data-testid="work-item-pin-btn"
                         title={item.pinnedAt ? 'Unpin' : 'Pin'}
@@ -1046,6 +1063,20 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     onExecuted={handleExecuteDialogDone}
                 />
             )}
+            <WorkItemAiComposer
+                open={showAiComposer}
+                onClose={() => setShowAiComposer(false)}
+                workspaceId={workspaceId}
+                mode="improve"
+                existingItem={{
+                    id: item.id,
+                    title: item.title,
+                    description: item.description,
+                    type: item.type,
+                    plan: item.plan,
+                }}
+                onImproved={fetchItem}
+            />
             {showParentPicker && (
                 <WorkItemParentPicker
                     workspaceId={workspaceId}
