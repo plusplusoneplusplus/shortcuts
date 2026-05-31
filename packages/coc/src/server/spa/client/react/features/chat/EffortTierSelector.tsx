@@ -21,6 +21,17 @@ const TIER_LABELS: Record<EffortTierKey, string> = {
 
 const TIER_KEYS: readonly EffortTierKey[] = ['low', 'medium', 'high'];
 
+function formatReasoningEffort(effort: string): string {
+    return effort || 'Auto';
+}
+
+function buildTierTitle(tier: EffortTierKey, tiers: LocalEffortTiersMap): string {
+    const label = TIER_LABELS[tier];
+    const entry = tiers[tier];
+    if (!entry?.model) return `${label}: Not configured in Admin`;
+    return `${label}\nModel: ${entry.model}\nReasoning effort: ${formatReasoningEffort(entry.reasoningEffort)}`;
+}
+
 export interface EffortTierSelectorProps {
     /** Current tier map (from useProviderEffortTiers). */
     tiers: LocalEffortTiersMap;
@@ -58,6 +69,7 @@ export function EffortTierSelector({
     }, [open]);
 
     const selectedLabel = TIER_LABELS[selectedTier];
+    const selectedTitle = buildTierTitle(selectedTier, tiers);
 
     return (
         <div
@@ -78,7 +90,7 @@ export function EffortTierSelector({
                     'min-w-0 max-w-[40vw] sm:max-w-[140px] transition-colors',
                     'disabled:opacity-50 disabled:cursor-not-allowed',
                 )}
-                title={`Effort tier: ${selectedLabel}`}
+                title={`Effort tier: ${selectedTitle}`}
                 data-testid="effort-tier-trigger-btn"
                 aria-haspopup="listbox"
                 aria-expanded={open}
@@ -112,6 +124,7 @@ export function EffortTierSelector({
                     {TIER_KEYS.map(tier => {
                         const isSelected = tier === selectedTier;
                         const isConfigured = !!tiers[tier]?.model;
+                        const tierTitle = buildTierTitle(tier, tiers);
                         return (
                             <button
                                 key={tier}
@@ -120,7 +133,7 @@ export function EffortTierSelector({
                                 aria-selected={isSelected}
                                 aria-disabled={!isConfigured}
                                 disabled={!isConfigured}
-                                title={!isConfigured ? 'Not configured in Admin' : TIER_LABELS[tier]}
+                                title={tierTitle}
                                 onClick={() => {
                                     if (!isConfigured) return;
                                     onChange(tier);
