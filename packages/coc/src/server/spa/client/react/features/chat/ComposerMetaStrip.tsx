@@ -120,7 +120,7 @@ export function ComposerMetaStrip({
     return (
         <div
             className={cn(
-                'flex items-center gap-0 min-w-0 overflow-hidden',
+                'flex items-center gap-0 min-w-0 overflow-visible',
                 className,
             )}
             data-testid="composer-meta-strip"
