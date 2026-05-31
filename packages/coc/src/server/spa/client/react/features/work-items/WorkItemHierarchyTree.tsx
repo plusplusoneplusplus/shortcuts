@@ -286,9 +286,12 @@ export function WorkItemHierarchyTree({
 
     return (
         <div className="flex flex-col h-full" data-testid="work-item-hierarchy-tree">
-            {/* ── Header ── */}
-            <div className="px-3 pt-3 pb-2 flex items-center justify-between gap-2 shrink-0">
-                <h2 className="text-sm font-medium truncate">Work Items Board</h2>
+            {/* ── Pane header ── */}
+            <div className="min-h-[54px] border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] px-3 py-2.5 flex items-center justify-between gap-2 shrink-0">
+                <div className="min-w-0">
+                    <h1 className="text-[16px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc]">Work breakdown</h1>
+                    <p className="text-[12px] leading-[1.4] text-[#656d76] dark:text-[#999]">Select an item to inspect its children.</p>
+                </div>
                 <div className="flex gap-1 shrink-0">
                     <Button
                         variant="primary"
@@ -331,42 +334,61 @@ export function WorkItemHierarchyTree({
                 </div>
             </div>
 
-            {/* ── Search ── */}
-            <div className="px-3 pb-2 shrink-0 flex items-center gap-2">
-                <input
-                    type="text"
-                    className="flex-1 rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[12px] text-[#1e1e1e] dark:text-[#cccccc] px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
-                    placeholder="Search hierarchy…"
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    data-testid="hierarchy-search-input"
-                />
-                <button
-                    className={cn(
-                        'text-[11px] px-1.5 py-0.5 rounded border transition-colors',
-                        showDone
-                            ? 'border-[#007acc] text-[#007acc] bg-[#007acc]/10'
-                            : 'border-[#d0d0d0] dark:border-[#555] text-[#848484] hover:border-[#999]',
-                    )}
-                    onClick={() => setShowDone(p => !p)}
-                    title="Toggle done items"
-                    data-testid="hierarchy-done-toggle"
-                >
-                    ✓
-                </button>
-                <button
-                    className={cn(
-                        'text-[11px] px-1.5 py-0.5 rounded border transition-colors',
-                        showArchived
-                            ? 'border-[#007acc] text-[#007acc] bg-[#007acc]/10'
-                            : 'border-[#d0d0d0] dark:border-[#555] text-[#848484] hover:border-[#999]',
-                    )}
-                    onClick={() => setShowArchived(p => !p)}
-                    title="Toggle archived items"
-                    data-testid="hierarchy-archived-toggle"
-                >
-                    📂
-                </button>
+            {/* ── Search + filter chips ── */}
+            <div className="px-3 py-3 shrink-0 grid gap-2 border-b border-[#eaeef2] dark:border-[#3c3c3c]">
+                <label className="flex items-center gap-2 border border-[#d0d7de] dark:border-[#555] bg-white dark:bg-[#1e1e1e] rounded-md px-2.5 min-h-[32px]">
+                    <svg className="w-4 h-4 text-[#656d76] dark:text-[#999] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m21 21-4.2-4.2" /></svg>
+                    <input
+                        type="search"
+                        className="flex-1 min-w-0 border-0 outline-none bg-transparent text-[12px] text-[#1f2328] dark:text-[#cccccc] placeholder-[#656d76] dark:placeholder-[#999]"
+                        placeholder="Search work items…"
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        data-testid="hierarchy-search-input"
+                    />
+                </label>
+                <div className="flex items-center gap-1.5 flex-wrap" aria-label="Work item filters">
+                    <button
+                        className={cn(
+                            'inline-flex items-center gap-1 border rounded-full px-2 py-px text-[12px] leading-[1.4] whitespace-nowrap transition-colors',
+                            !showDone && !showArchived
+                                ? 'border-[#0969da] text-[#0969da] bg-[#ddf4ff] dark:border-[#0969da] dark:text-[#58a6ff] dark:bg-[#0969da]/15'
+                                : 'border-[#d0d7de] dark:border-[#555] text-[#656d76] dark:text-[#999] bg-white dark:bg-transparent',
+                        )}
+                        onClick={() => { setShowDone(false); setShowArchived(false); }}
+                        type="button"
+                    >
+                        Open branches
+                    </button>
+                    <button
+                        className={cn(
+                            'inline-flex items-center gap-1 border rounded-full px-2 py-px text-[12px] leading-[1.4] whitespace-nowrap transition-colors',
+                            showDone
+                                ? 'border-[color-mix(in_srgb,#1a7f37_35%,#d0d7de)] text-[#1a7f37] bg-[#dafbe1] dark:border-[#1a7f37]/40 dark:text-[#3fb950] dark:bg-[#1a7f37]/15'
+                                : 'border-[#d0d7de] dark:border-[#555] text-[#656d76] dark:text-[#999] bg-white dark:bg-transparent',
+                        )}
+                        onClick={() => setShowDone(p => !p)}
+                        title="Toggle done items"
+                        data-testid="hierarchy-done-toggle"
+                        type="button"
+                    >
+                        Done
+                    </button>
+                    <button
+                        className={cn(
+                            'inline-flex items-center gap-1 border rounded-full px-2 py-px text-[12px] leading-[1.4] whitespace-nowrap transition-colors',
+                            showArchived
+                                ? 'border-[color-mix(in_srgb,#9a6700_30%,#d0d7de)] text-[#9a6700] bg-[#fff8c5] dark:border-[#9a6700]/40 dark:text-[#d29922] dark:bg-[#9a6700]/15'
+                                : 'border-[#d0d7de] dark:border-[#555] text-[#656d76] dark:text-[#999] bg-white dark:bg-transparent',
+                        )}
+                        onClick={() => setShowArchived(p => !p)}
+                        title="Toggle archived items"
+                        data-testid="hierarchy-archived-toggle"
+                        type="button"
+                    >
+                        Archived
+                    </button>
+                </div>
             </div>
 
             {/* ── Tree body ── */}
@@ -403,7 +425,7 @@ export function WorkItemHierarchyTree({
                         )}
                     </div>
                 ) : (
-                    <div data-testid="hierarchy-tree-list">
+                    <div className="p-2" data-testid="hierarchy-tree-list">
                         {/* Rooted nodes (epics and parented items at each level) */}
                         {treeData
                             .filter(n => n.item.type === 'epic' || (n.item.type && ['feature', 'pbi'].includes(n.item.type) && n.item.parentId == null))
@@ -418,7 +440,7 @@ export function WorkItemHierarchyTree({
                             if (unparented.length === 0) return null;
                             return (
                                 <div data-testid="hierarchy-unparented-group">
-                                    <div className="px-3 py-1 mt-2 text-[10px] font-medium text-[#848484] dark:text-[#999] uppercase tracking-wide border-t border-[#e8e8e8] dark:border-[#333]">
+                                    <div className="mx-1.5 mt-3.5 mb-1 pt-2 border-t border-[#eaeef2] dark:border-[#3c3c3c] text-[11px] font-semibold text-[#656d76] dark:text-[#999] uppercase tracking-[0.08em]">
                                         Unparented
                                     </div>
                                     {unparented.map(n => renderNode(n, 0))}
@@ -427,7 +449,7 @@ export function WorkItemHierarchyTree({
                         })()}
 
                         {/* Count */}
-                        <div className="px-3 py-2 text-[10px] text-[#848484] dark:text-[#999]">
+                        <div className="px-2 py-2 text-[10px] text-[#848484] dark:text-[#999]">
                             {total} item{total !== 1 ? 's' : ''}
                         </div>
                     </div>

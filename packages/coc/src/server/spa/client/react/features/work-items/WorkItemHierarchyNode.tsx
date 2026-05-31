@@ -105,77 +105,101 @@ export function WorkItemHierarchyNode({
 
     const indentWidth = depth * 16;
 
+    const depthPadding = depth === 0 ? 8 : depth === 1 ? 28 : depth === 2 ? 48 : 68;
+    const guideLeft = depth === 1 ? 18 : depth === 2 ? 38 : depth === 3 ? 58 : 0;
+
     return (
         <div data-testid={`hierarchy-node-${item.id}`}>
-            <div
+            <button
                 className={cn(
-                    'group flex items-center gap-1 px-2 py-1.5 cursor-pointer text-[12px] rounded-sm transition-colors',
+                    'group w-full grid items-center gap-1.5 rounded-md border border-transparent text-left relative',
+                    'py-[7px] px-2 text-[12px] transition-colors cursor-pointer',
                     selected
-                        ? 'bg-[#007acc]/15 dark:bg-[#007acc]/20'
-                        : 'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2d2e]',
+                        ? 'bg-[#ddf4ff] dark:bg-[#0969da]/20 border-[color-mix(in_srgb,#0969da_42%,#d0d7de)] dark:border-[#0969da]/40'
+                        : 'hover:bg-[#f6f8fa] dark:hover:bg-[#2a2d2e] hover:border-[#eaeef2] dark:hover:border-[#3c3c3c]',
                 )}
-                style={{ paddingLeft: `${8 + indentWidth}px` }}
+                style={{
+                    paddingLeft: `${depthPadding}px`,
+                    gridTemplateColumns: 'auto auto minmax(0, 1fr) auto',
+                }}
                 onClick={() => onSelect(item.id)}
                 onContextMenu={e => { e.preventDefault(); onContextMenu(e, node); }}
                 data-testid={`hierarchy-node-row-${item.id}`}
+                type="button"
             >
+                {/* Guide line for nested depth */}
+                {depth > 0 && (
+                    <span
+                        className="absolute top-[-7px] bottom-[-7px] w-px bg-[#eaeef2] dark:bg-[#3c3c3c]"
+                        style={{ left: `${guideLeft}px` }}
+                        aria-hidden="true"
+                    />
+                )}
+
                 {/* Collapse toggle */}
-                <button
+                <span
                     className={cn(
-                        'flex-shrink-0 w-4 h-4 flex items-center justify-center rounded text-[10px] text-[#848484]',
-                        hasChildren ? 'hover:text-[#333] dark:hover:text-[#ccc]' : 'invisible',
+                        'w-[18px] h-[18px] inline-flex items-center justify-center text-[#656d76] dark:text-[#999] rounded',
+                        hasChildren ? 'hover:bg-[#eaeef2] dark:hover:bg-[#3c3c3c] hover:text-[#1f2328] dark:hover:text-[#ccc] cursor-pointer' : '',
                     )}
                     onClick={e => { e.stopPropagation(); if (hasChildren) onToggleCollapse(item.id); }}
                     data-testid={`hierarchy-node-collapse-${item.id}`}
                     aria-label={collapsed ? 'Expand' : 'Collapse'}
+                    aria-hidden="true"
                 >
-                    {hasChildren ? (collapsed ? '▶' : '▼') : null}
-                </button>
+                    {hasChildren ? (collapsed ? '›' : 'v') : ''}
+                </span>
 
                 {/* Type pill */}
                 <span
-                    className={cn('flex-shrink-0 px-1 py-0.5 rounded text-[9px] font-medium leading-none', pillClass)}
+                    className={cn(
+                        'inline-flex items-center rounded-full text-[11px] leading-[1.25] px-[7px] py-px border border-transparent whitespace-nowrap font-medium',
+                        pillClass,
+                    )}
                     title={typeLabel}
                     data-testid={`hierarchy-node-type-${item.id}`}
                 >
                     {typeLabel}
                 </span>
 
-                {/* Number */}
-                {item.workItemNumber != null && (
-                    <span className="flex-shrink-0 text-[10px] text-[#848484] dark:text-[#999] font-mono">
-                        {typePrefix}-{item.workItemNumber}
+                {/* Tree title — two-line: title + meta subtitle */}
+                <span className="min-w-0 grid gap-px" data-testid={`hierarchy-node-title-${item.id}`}>
+                    <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-[12px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc]">
+                        {item.title}
+                    </strong>
+                    <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[11px] leading-[1.25] text-[#656d76] dark:text-[#999]">
+                        {item.workItemNumber != null && (
+                            <span className="font-mono tabular-nums">{typePrefix}-{item.workItemNumber}</span>
+                        )}
+                        {item.workItemNumber != null && ' · '}
+                        {statusLabel}
+                        {' · updated '}
+                        {formatRelativeTime(item.updatedAt)}
+                        {' ago'}
                     </span>
-                )}
-
-                {/* Title */}
-                <span
-                    className="flex-1 min-w-0 truncate text-[#3c3c3c] dark:text-[#cccccc]"
-                    title={item.title}
-                    data-testid={`hierarchy-node-title-${item.id}`}
-                >
-                    {item.title}
                 </span>
 
                 {/* Rollup summary for containers */}
                 {isContainer && rollup.descendantCount > 0 && (
-                    <span className="flex-shrink-0 text-[10px] text-[#848484] dark:text-[#999]" title="Done / Total descendants">
+                    <span className="shrink-0 text-[11px] text-[#656d76] dark:text-[#999] font-mono tabular-nums whitespace-nowrap" title="Done / Total descendants">
                         {rollup.byStatus.done}/{rollup.descendantCount}
                     </span>
                 )}
 
-                {/* Status chip */}
-                <span
-                    className={cn('flex-shrink-0 px-1 py-0.5 rounded text-[9px] font-medium leading-none', statusChipClass)}
-                    data-testid={`hierarchy-node-status-${item.id}`}
-                >
-                    {statusLabel}
-                </span>
+                {/* Status chip — hidden when rollup is shown */}
+                {!(isContainer && rollup.descendantCount > 0) && (
+                    <span
+                        className={cn('shrink-0 px-1 py-0.5 rounded text-[9px] font-medium leading-none', statusChipClass)}
+                        data-testid={`hierarchy-node-status-${item.id}`}
+                    >
+                        {statusLabel}
+                    </span>
+                )}
 
                 {/* Mobile add-child button — containers only, always visible on mobile */}
                 {isMobile && isContainer && (
                     <button
-                        className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-[11px] font-bold text-[#007acc] bg-[#007acc]/10 hover:bg-[#007acc]/20 active:bg-[#007acc]/30"
+                        className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-[11px] font-bold text-[#0969da] bg-[#0969da]/10 hover:bg-[#0969da]/20 active:bg-[#0969da]/30"
                         onClick={e => { e.stopPropagation(); onAddChild?.(node); }}
                         data-testid={`hierarchy-node-add-child-${item.id}`}
                         aria-label="Add child"
@@ -183,12 +207,7 @@ export function WorkItemHierarchyNode({
                         +
                     </button>
                 )}
-
-                {/* Updated time */}
-                <span className="flex-shrink-0 text-[10px] text-[#848484] dark:text-[#999] opacity-0 group-hover:opacity-100 transition-opacity">
-                    {formatRelativeTime(item.updatedAt)}
-                </span>
-            </div>
+            </button>
 
             {/* Children */}
             {!collapsed && children}
