@@ -828,6 +828,8 @@ timeout: 300
                 '    timeoutMs: 30000',
                 '    model: gpt-normalize',
                 'workItems:',
+                '  aiAuthoring:',
+                '    enabled: true',
                 '  hierarchy:',
                 '    enabled: true',
                 'effortLevels:',
@@ -1077,6 +1079,9 @@ timeout: 300
                     "enabled": true,
                   },
                   "workItems": {
+                    "aiAuthoring": {
+                      "enabled": false,
+                    },
                     "hierarchy": {
                       "enabled": false,
                     },
@@ -1133,6 +1138,7 @@ timeout: 300
                   "timeout": "file",
                   "toolCompactness": "file",
                   "vimNavigation.enabled": "file",
+                  "workItems.aiAuthoring.enabled": "default",
                   "workItems.hierarchy.enabled": "default",
                   "workflows.enabled": "file",
                 },
