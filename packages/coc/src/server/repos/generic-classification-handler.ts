@@ -24,6 +24,7 @@ import {
     readClassification,
     readPending,
     writePending,
+    clearPending,
 } from './classification-store';
 import { TaskDefs } from '../tasks/task-types';
 import { buildClassificationPrompt } from './pr-classification-handler';
@@ -98,13 +99,17 @@ export function registerGenericClassificationRoutes(routes: Route[], opts: Gener
                     });
                 }
 
-                // Check in-flight
+                // Check in-flight — self-heal stale pending markers
                 const pending = readPendingGeneric(dataDir, workspaceId, repoId, type, identifier);
                 if (pending) {
-                    return sendJson(res, {
-                        status: 'running',
-                        processId: pending.processId,
-                    });
+                    if (isTaskAlive(pending.processId, bridge)) {
+                        return sendJson(res, {
+                            status: 'running',
+                            processId: pending.processId,
+                        });
+                    }
+                    // Stale marker: task is gone or terminal — clear it and fall through to re-enqueue
+                    clearPendingGeneric(dataDir, workspaceId, repoId, type, identifier);
                 }
 
                 // Resolve repo
@@ -186,10 +191,14 @@ export function registerGenericClassificationRoutes(routes: Route[], opts: Gener
 
                 const pending = readPendingGeneric(dataDir, workspaceId, repoId, type, identifier);
                 if (pending) {
-                    return sendJson(res, {
-                        status: 'running',
-                        processId: pending.processId,
-                    });
+                    if (isTaskAlive(pending.processId, bridge)) {
+                        return sendJson(res, {
+                            status: 'running',
+                            processId: pending.processId,
+                        });
+                    }
+                    // Stale marker: task is gone or terminal — clear it and report idle
+                    clearPendingGeneric(dataDir, workspaceId, repoId, type, identifier);
                 }
 
                 sendJson(res, { status: 'none' });
@@ -239,6 +248,36 @@ function writePendingGeneric(
 ) {
     const { prId, headSha } = splitIdentifier(type, identifier, repoId);
     writePending(dataDir, workspaceId, repoId, prId, headSha, processId);
+}
+
+function clearPendingGeneric(
+    dataDir: string,
+    workspaceId: string,
+    repoId: string,
+    type: ClassificationType,
+    identifier: string,
+) {
+    const { prId, headSha } = splitIdentifier(type, identifier, repoId);
+    clearPending(dataDir, workspaceId, repoId, prId, headSha);
+}
+
+/**
+ * Check whether the task associated with a pending marker is still alive in
+ * any queue across all repos. Returns `true` (alive) when the task is found
+ * with status `queued` or `running`. Returns `false` (stale) when the task is
+ * missing or in a terminal state (`completed`, `failed`, `cancelled`).
+ *
+ * Fail-safe: any exception from the queue lookup returns `true` so we never
+ * delete a marker we cannot positively prove is stale.
+ */
+function isTaskAlive(processId: string, bridge: MultiRepoQueueRouter): boolean {
+    try {
+        const task = bridge.getTask(processId);
+        if (!task) return false;
+        return task.status === 'queued' || task.status === 'running';
+    } catch {
+        return true;
+    }
 }
 
 /**
