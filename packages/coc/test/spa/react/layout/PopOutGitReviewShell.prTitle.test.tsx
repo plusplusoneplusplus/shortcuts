@@ -50,6 +50,17 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
             get: (...args: unknown[]) => mocks.getPr(...args),
             getDiff: (...args: unknown[]) => mocks.getPrDiff(...args),
         },
+        agentProviders: {
+            list: () => Promise.resolve({ providers: [] }),
+            listModels: () => Promise.resolve({ models: [] }),
+            getReasoningEfforts: () => Promise.resolve([]),
+            setEnabledModels: () => Promise.resolve(),
+            setReasoningEffort: () => Promise.resolve(),
+        },
+        preferences: {
+            getRepo: () => Promise.resolve({}),
+            patchRepo: () => Promise.resolve(),
+        },
     }),
 }));
 vi.mock('../../../../src/server/spa/client/react/contexts/GitReviewPopOutContext', () => ({
@@ -114,6 +125,7 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/diffSource', 
 }));
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getHostname: () => 'localhost',
+    getActiveProvider: () => 'copilot',
 }));
 
 import { PopOutGitReviewShell } from '../../../../src/server/spa/client/react/layout/PopOutGitReviewShell';
