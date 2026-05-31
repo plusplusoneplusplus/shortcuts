@@ -62,6 +62,38 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffVi
         </div>
     ),
     HunkNavButtons: () => null,
+    parseDiffFileList: () => [],
+}));
+
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/useClassification', () => ({
+    useClassification: () => ({
+        state: { status: 'idle', activeFilters: new Set(), error: undefined, result: undefined },
+        classify: vi.fn(),
+        toggleFilter: vi.fn(),
+        setFilters: vi.fn(),
+        isFileDimmed: () => false,
+        getFileBadge: () => undefined,
+        getHunkClassification: () => null,
+        provider: 'copilot',
+        setProvider: vi.fn(),
+        model: undefined,
+        setModel: vi.fn(),
+    }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/hooks/useAgentProviders', () => ({
+    useAgentProviders: () => ({
+        providers: [{ id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true }],
+        loading: false,
+        error: null,
+        reload: vi.fn(),
+        copilot: { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+        codex: undefined,
+    }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({
+    useModels: () => ({ models: [], loading: false, error: null, reload: vi.fn() }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChatPanel', () => ({
