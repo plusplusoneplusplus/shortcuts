@@ -45,6 +45,7 @@ describe('ADMIN_EDITABLE_KEYS', () => {
             'mcpOauth.enabled',
             'codex.enabled',
             'defaultProvider',
+            'workItems.aiAuthoring.enabled',
             'effortLevels.enabled',
         ];
         for (const k of expected) {
@@ -208,6 +209,7 @@ describe('validate()', () => {
         'servers.enabled', 'ralph.enabled', 'vimNavigation.enabled', 'loops.enabled',
         'excalidraw.enabled',
         'mcpOauth.enabled',
+        'workItems.aiAuthoring.enabled',
         'effortLevels.enabled',
     ];
 
@@ -345,6 +347,7 @@ describe('apply()', () => {
         ['loops.enabled', (c) => c.loops?.enabled],
         ['excalidraw.enabled', (c) => c.excalidraw?.enabled],
         ['mcpOauth.enabled', (c) => c.mcpOauth?.enabled],
+        ['workItems.aiAuthoring.enabled', (c) => c.workItems?.aiAuthoring?.enabled],
         ['effortLevels.enabled', (c) => c.effortLevels?.enabled],
     ];
 

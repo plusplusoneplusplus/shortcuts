@@ -255,6 +255,12 @@ export const ADMIN_CONFIG_FIELDS: readonly AdminConfigFieldSpec[] = [
         cfg.workItems.hierarchy.enabled = v;
     }),
 
+    bool('workItems.aiAuthoring.enabled', (cfg, v) => {
+        if (!cfg.workItems) { cfg.workItems = {}; }
+        if (!cfg.workItems.aiAuthoring) { cfg.workItems.aiAuthoring = {}; }
+        cfg.workItems.aiAuthoring.enabled = v;
+    }),
+
     bool('effortLevels.enabled', (cfg, v) => {
         if (!cfg.effortLevels) { cfg.effortLevels = {}; }
         cfg.effortLevels.enabled = v;
