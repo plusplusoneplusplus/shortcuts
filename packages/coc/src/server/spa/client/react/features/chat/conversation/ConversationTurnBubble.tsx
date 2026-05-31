@@ -740,18 +740,28 @@ function fmtTokens(n: number): string {
 function AssistantStatsBadge({ tokenUsage, costTimeMs }: { tokenUsage?: ClientTokenUsage; costTimeMs?: number }) {
     const [expanded, setExpanded] = useState(false);
 
+    // Token usage can arrive partially populated (e.g. an SSE token-usage event
+    // that only carries context-window fields, or an SDK result without a full
+    // per-turn breakdown). Coerce each numeric field so a missing value never
+    // throws on .toLocaleString()/fmtTokens and crashes the whole dashboard.
+    const inputTokens = tokenUsage?.inputTokens ?? 0;
+    const outputTokens = tokenUsage?.outputTokens ?? 0;
+    const cacheReadTokens = tokenUsage?.cacheReadTokens ?? 0;
+    const cacheWriteTokens = tokenUsage?.cacheWriteTokens ?? 0;
+    const totalTokens = tokenUsage?.totalTokens ?? inputTokens + outputTokens;
+
     const parts: string[] = [];
-    if (tokenUsage) parts.push(`↓${fmtTokens(tokenUsage.inputTokens)} ↑${fmtTokens(tokenUsage.outputTokens)}`);
+    if (tokenUsage) parts.push(`↓${fmtTokens(inputTokens)} ↑${fmtTokens(outputTokens)}`);
     if (costTimeMs != null) parts.push(formatCostTime(costTimeMs));
     const summary = parts.join(' · ');
 
     const detailParts: string[] = [];
     if (tokenUsage) {
-        detailParts.push(`Input: ${tokenUsage.inputTokens.toLocaleString()}`);
-        detailParts.push(`Output: ${tokenUsage.outputTokens.toLocaleString()}`);
-        if (tokenUsage.cacheReadTokens > 0) detailParts.push(`Cache read: ${tokenUsage.cacheReadTokens.toLocaleString()}`);
-        if (tokenUsage.cacheWriteTokens > 0) detailParts.push(`Cache write: ${tokenUsage.cacheWriteTokens.toLocaleString()}`);
-        detailParts.push(`Total: ${tokenUsage.totalTokens.toLocaleString()}`);
+        detailParts.push(`Input: ${inputTokens.toLocaleString()}`);
+        detailParts.push(`Output: ${outputTokens.toLocaleString()}`);
+        if (cacheReadTokens > 0) detailParts.push(`Cache read: ${cacheReadTokens.toLocaleString()}`);
+        if (cacheWriteTokens > 0) detailParts.push(`Cache write: ${cacheWriteTokens.toLocaleString()}`);
+        detailParts.push(`Total: ${totalTokens.toLocaleString()}`);
     }
     if (costTimeMs != null) detailParts.push(`Time: ${costTimeMs.toLocaleString()}ms`);
     const detail = detailParts.join(' · ');
