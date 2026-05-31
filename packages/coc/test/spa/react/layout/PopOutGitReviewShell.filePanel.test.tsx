@@ -54,14 +54,14 @@ describe('PopOutGitReviewShell: file panel integration', () => {
         expect(SOURCE).toMatch(/BranchRangeOverview[\s\S]*?isPopOut/);
     });
 
-    it('renders CommitDetail only for commit overview', () => {
+    it('renders FileDiffPanel for selected file, placeholder for commit overview', () => {
         const commitSection = SOURCE.slice(
             SOURCE.indexOf('function CommitReviewContent'),
             SOURCE.indexOf('// ── Branch range review content'),
         );
         expect(commitSection).toMatch(/selectedFilePath \? \(/);
-        expect(commitSection).toMatch(/: \(\s*<CommitDetail/);
-        expect(commitSection).toMatch(/<CommitDetail[\s\S]*?isPopOut/);
+        expect(commitSection).toMatch(/selectedFilePath \? \(\s*<FileDiffPanel/);
+        expect(commitSection).toContain('Select a file to view its diff');
     });
 
     it('renders FileDiffPanel for selected commit files', () => {

@@ -46,6 +46,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
             readBlob: () => Promise.resolve({ content: '', encoding: 'base64', mimeType: 'application/octet-stream' }),
         },
     }),
+    requestSpaApi: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock('react-dom', async (importOriginal) => {
@@ -72,6 +73,7 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffVi
             <button data-testid="hunk-next" onClick={onNext}>Next</button>
         </div>
     ),
+    parseDiffFileList: () => [],
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/git/diff/SideBySideDiffViewer', () => ({
@@ -86,6 +88,25 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/DiffMiniMap',
 
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({ state: { dialogLaunchMode: 'default', dialogMode: 'task' }, dispatch: vi.fn() }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/hooks/useAgentProviders', () => ({
+    useAgentProviders: () => ({
+        providers: [{ id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true }],
+        loading: false,
+        error: null,
+        reload: vi.fn(),
+        copilot: { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+        codex: undefined,
+    }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({
+    useModels: () => ({ models: [], loading: false, error: null, reload: vi.fn() }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChatPanel', () => ({
+    CommitChatPanel: () => null,
 }));
 
 import { CommitDetail } from '../../../../src/server/spa/client/react/features/git/commits/CommitDetail';
