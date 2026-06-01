@@ -1,16 +1,16 @@
 /**
- * WorkItemExecuteDialog — modal for selecting skills and model before
- * executing a work item.  Skill selection is required; model is optional.
+ * WorkItemExecuteDialog — modal for selecting skills plus optional AI
+ * provider/model/reasoning controls before executing a work item.
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { Dialog, Button } from '../../ui';
-import { useModels } from '../../hooks/useModels';
 import { useRecentSkills } from '../../features/skills/hooks/useRecentSkills';
 import { fetchApi } from '../../hooks/useApi';
 import { getSpaCocClient } from '../../api/cocClient';
 import { RunSkillPanel } from '../../shared/RunSkillPanel';
 import type { SkillItem } from '../../shared/RunSkillPanel';
+import { ModalJobAiControls, useModalJobAiSelection } from '../../shared/ModalJobAiControls';
 
 export interface WorkItemExecuteDialogProps {
     open: boolean;
@@ -29,16 +29,12 @@ export function WorkItemExecuteDialog({
     onClose,
     onExecuted,
 }: WorkItemExecuteDialogProps) {
-    const { models: modelInfos } = useModels();
-    const enabledModels = modelInfos.filter(m => m.enabled);
-    const models = (enabledModels.length > 0 ? enabledModels : modelInfos).map(m => m.id);
-
     const { recentItems, trackUsage } = useRecentSkills(workspaceId);
+    const aiSelection = useModalJobAiSelection({ workspaceId, mode: 'autopilot' });
 
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
-    const [model, setModel] = useState('');
     const [additionalInfo, setAdditionalInfo] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -77,7 +73,9 @@ export function WorkItemExecuteDialog({
         try {
             await getSpaCocClient().workItems.execute(workspaceId, workItemId, {
                 skillNames,
-                ...(model ? { model } : {}),
+                provider: aiSelection.resolved.provider,
+                ...(aiSelection.resolved.model ? { model: aiSelection.resolved.model } : {}),
+                ...(aiSelection.resolved.reasoningEffort ? { reasoningEffort: aiSelection.resolved.reasoningEffort } : {}),
             });
 
             // Track skill usage (fire-and-forget)
@@ -93,7 +91,7 @@ export function WorkItemExecuteDialog({
         } finally {
             setSubmitting(false);
         }
-    }, [workspaceId, workItemId, model, trackUsage, onExecuted, onClose]);
+    }, [workspaceId, workItemId, aiSelection.resolved, trackUsage, onExecuted, onClose]);
 
     if (!open) return null;
 
@@ -120,20 +118,27 @@ export function WorkItemExecuteDialog({
                 <RunSkillPanel
                     skills={skills}
                     recentItems={recentItems}
-                    models={models}
+                    models={[]}
                     loading={loading}
                     selectedSkills={selectedSkills}
                     additionalInfo={additionalInfo}
-                    model={model}
+                    model=""
                     submitting={submitting}
                     onSkillToggle={toggleSkill}
                     onSubmitSkills={handleSubmit}
                     onAdditionalInfoChange={setAdditionalInfo}
-                    onModelChange={setModel}
+                    onModelChange={() => {}}
                     selectionMode="multi"
                     submitLabel="⚡ Start Implementing"
                     modelSelectId="wi-exec-model"
                     additionalInfoId="wi-exec-additional-info"
+                    aiControls={
+                        <ModalJobAiControls
+                            selection={aiSelection}
+                            disabled={submitting}
+                            testIdPrefix="wi-exec"
+                        />
+                    }
                 />
 
                 {error && (

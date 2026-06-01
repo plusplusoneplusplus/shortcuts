@@ -9,12 +9,17 @@
 import * as crypto from 'crypto';
 import type { WorkItemStore, WorkItem, WorkItemExecution, WorkItemChange, WorkItemPlanVersion } from './types';
 import { isValidTransition } from './types';
+import type { ChatProvider, ReasoningEffort } from '../tasks/task-types';
 
 import type { SessionCategory } from '@plusplusoneplusplus/forge';
 
 export interface ExecuteWorkItemOptions {
     /** Model override for the AI task. */
     model?: string;
+    /** AI provider override for the chat task. */
+    provider?: ChatProvider;
+    /** Per-turn reasoning-effort override for the chat task. */
+    reasoningEffort?: ReasoningEffort;
     /** Chat mode for execution (default: 'autopilot'). */
     mode?: 'ask' | 'plan' | 'autopilot';
     /** Git HEAD SHA captured immediately before execution enqueued. */
@@ -113,10 +118,13 @@ export async function executeWorkItem(
             workspaceId: item.repoId,
             sessionCategory: 'generating-code' satisfies SessionCategory,
             workItemId: item.id,
+            ...(options?.provider ? { provider: options.provider } : {}),
+            ...(options?.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
             ...(context ? { context } : {}),
         },
         config: {
             ...(options?.model ? { model: options.model } : {}),
+            ...(options?.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
         },
         displayName: `Run #${runNumber}: Code Implement`,
     });

@@ -56,6 +56,8 @@ export interface RunSkillPanelProps {
     additionalInfoId?: string;
     /** Content rendered between the model select and additional info (e.g. workspace switcher). */
     afterModelContent?: React.ReactNode;
+    /** New Chat-compatible AI controls. When provided, replaces the legacy model select. */
+    aiControls?: React.ReactNode;
 }
 
 const ENDEV_XDPU_SKILL_NAME = 'EnDev-xDpu';
@@ -80,6 +82,7 @@ export function RunSkillPanel({
     modelSelectId,
     additionalInfoId,
     afterModelContent,
+    aiControls,
 }: RunSkillPanelProps) {
     const isDisabled = submitting || disabled;
     const availableSkillNames = new Set(skills.map(s => s.name));
@@ -90,21 +93,29 @@ export function RunSkillPanel({
 
     return (
         <>
-            {/* Model select */}
-            <div className="flex flex-col gap-1">
-                <label className="text-xs text-[#616161] dark:text-[#999]">
-                    Model <span className="text-[#848484]">(optional)</span>
-                </label>
-                <select
-                    id={modelSelectId}
-                    className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
-                    value={model}
-                    onChange={e => onModelChange(e.target.value)}
-                >
-                    <option value="">Default</option>
-                    {models.map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
-            </div>
+            {aiControls ? (
+                <div className="flex flex-col gap-1">
+                    <label className="text-xs text-[#616161] dark:text-[#999]">
+                        AI <span className="text-[#848484]">(optional)</span>
+                    </label>
+                    {aiControls}
+                </div>
+            ) : (
+                <div className="flex flex-col gap-1">
+                    <label className="text-xs text-[#616161] dark:text-[#999]">
+                        Model <span className="text-[#848484]">(optional)</span>
+                    </label>
+                    <select
+                        id={modelSelectId}
+                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
+                        value={model}
+                        onChange={e => onModelChange(e.target.value)}
+                    >
+                        <option value="">Default</option>
+                        {models.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                </div>
+            )}
 
             {afterModelContent}
 

@@ -246,6 +246,7 @@ See [mcp-settings.md](mcp-settings.md).
 | GET | `/api/workspaces/:id/work-items/:itemId` | Read work item |
 | PATCH | `/api/workspaces/:id/work-items/:itemId` | Update work item |
 | DELETE | `/api/workspaces/:id/work-items/:itemId` | Delete work item |
+| POST | `/api/workspaces/:id/work-items/:itemId/execute` | Enqueue a work-item implementation run. Body accepts optional `skillNames`, `provider`, `model`, and `reasoningEffort` overrides. |
 
 ### AI Authoring (gated by `workItems.aiAuthoring` flag, default `false`)
 
