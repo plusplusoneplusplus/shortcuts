@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRouter } from '../../src/server/shared/router';
 import type { Route } from '../../src/server/types';
 import { DevTunnelConnector, type DevTunnelChildProcess } from '../../src/server/servers/devtunnel-connector';
+import { SshConnector } from '../../src/server/servers/ssh-connector';
 import { registerRemoteServerRoutes } from '../../src/server/servers/remote-server-routes';
 import { RemoteServerStore } from '../../src/server/servers/remote-server-store';
 import { createExecutionServer } from '../../src/server';
@@ -66,11 +67,12 @@ describe('remote server routes', () => {
         vi.restoreAllMocks();
     });
 
-    async function startApi(connector: DevTunnelConnector): Promise<string> {
+    async function startApi(connector: DevTunnelConnector, sshConnector?: SshConnector): Promise<string> {
         const routes: Route[] = [];
         registerRemoteServerRoutes(routes, {
             store: new RemoteServerStore(dataDir),
             connector,
+            sshConnector,
         });
         apiServer = http.createServer(createRouter({ routes, spaHtml: '' }));
         return (await start(apiServer)).baseUrl;
@@ -207,6 +209,92 @@ describe('remote server routes', () => {
         expect(res.status).toBe(400);
     });
 
+    describe('ssh-kind routes', () => {
+        function makeSshConnector() {
+            const children: FakeChild[] = [];
+            const processStarter = vi.fn(() => {
+                const c = new FakeChild();
+                children.push(c);
+                return c;
+            });
+            const connector = new SshConnector({
+                processStarter,
+                healthChecker: async () => true,
+                readinessPollMs: 1,
+                initialReconnectBackoffMs: 100_000, // prevent auto-reconnect during tests
+            });
+            return { connector, children, processStarter };
+        }
+
+        it('POST /connect calls sshConnector.connect and returns online state', async () => {
+            const { connector: sshConnector } = makeSshConnector();
+            const connectSpy = vi.spyOn(sshConnector, 'connect');
+            const baseUrl = await startApi(new DevTunnelConnector(), sshConnector);
+
+            const created = await request(baseUrl, 'POST', '/api/servers', {
+                kind: 'ssh', label: 'My SSH', host: 'ubuntu-arm', localPort: 4000,
+            });
+            expect(created.status).toBe(201);
+            // Creation auto-connects; reset spy to isolate POST /connect behavior
+            connectSpy.mockClear();
+
+            const res = await request(baseUrl, 'POST', `/api/servers/${created.body.id}/connect`);
+            expect(res.status).toBe(200);
+            expect(connectSpy).toHaveBeenCalledOnce();
+            expect(res.body).toMatchObject({ kind: 'ssh', status: 'online', effectiveUrl: 'http://127.0.0.1:4000' });
+        });
+
+        it('POST /disconnect calls sshConnector.disconnect and returns idle state', async () => {
+            const { connector: sshConnector } = makeSshConnector();
+            const disconnectSpy = vi.spyOn(sshConnector, 'disconnect');
+            const baseUrl = await startApi(new DevTunnelConnector(), sshConnector);
+
+            const created = await request(baseUrl, 'POST', '/api/servers', {
+                kind: 'ssh', label: 'My SSH', host: 'ubuntu-arm', localPort: 4000,
+            });
+            await request(baseUrl, 'POST', `/api/servers/${created.body.id}/connect`);
+
+            const res = await request(baseUrl, 'POST', `/api/servers/${created.body.id}/disconnect`);
+            expect(res.status).toBe(200);
+            expect(disconnectSpy).toHaveBeenCalledWith(created.body.id);
+            expect(res.body).toMatchObject({ kind: 'ssh', status: 'idle' });
+        });
+
+        it('POST /reconnect (success) calls sshConnector.reconnect and returns online state', async () => {
+            const { connector: sshConnector } = makeSshConnector();
+            const reconnectSpy = vi.spyOn(sshConnector, 'reconnect');
+            const baseUrl = await startApi(new DevTunnelConnector(), sshConnector);
+
+            const created = await request(baseUrl, 'POST', '/api/servers', {
+                kind: 'ssh', label: 'My SSH', host: 'ubuntu-arm', localPort: 4000,
+            });
+            await request(baseUrl, 'POST', `/api/servers/${created.body.id}/connect`);
+
+            const res = await request(baseUrl, 'POST', `/api/servers/${created.body.id}/reconnect`);
+            expect(res.status).toBe(200);
+            expect(reconnectSpy).toHaveBeenCalledOnce();
+            expect(res.body).toMatchObject({ kind: 'ssh', status: 'online', effectiveUrl: 'http://127.0.0.1:4000' });
+        });
+
+        it('POST /reconnect (failure) returns failed state when connector throws', async () => {
+            const sshConnector = new SshConnector({
+                processStarter: vi.fn(() => new FakeChild()),
+                healthChecker: async () => false, // always fail health
+                readinessTimeoutMs: 20,
+                readinessPollMs: 5,
+                initialReconnectBackoffMs: 100_000,
+            });
+            const baseUrl = await startApi(new DevTunnelConnector(), sshConnector);
+
+            const created = await request(baseUrl, 'POST', '/api/servers', {
+                kind: 'ssh', label: 'My SSH', host: 'ubuntu-arm', localPort: 4000,
+            });
+            const res = await request(baseUrl, 'POST', `/api/servers/${created.body.id}/reconnect`);
+            expect(res.status).toBe(200);
+            expect(res.body).toMatchObject({ kind: 'ssh', status: 'failed' });
+        });
+    });
+
     it('reconnect returns runtime with online status on success', async () => {
         const portListJson = JSON.stringify({
             ports: [{ portNumber: 4000, protocol: 'http', portUri: 'https://t-4000.usw2.devtunnels.ms' }],
@@ -282,6 +370,27 @@ describe('createExecutionServer remote server lifecycle', () => {
 
         expect(connectSpy).toHaveBeenCalledWith(expect.arrayContaining([
             expect.objectContaining({ kind: 'devtunnel', tunnelId: 'my-remote-coc' }),
+        ]));
+        expect(disposeSpy).toHaveBeenCalled();
+    });
+
+    it('autoconnects configured SSH entries and disposes SshConnector on close', async () => {
+        const store = new RemoteServerStore(dataDir);
+        store.create({ kind: 'ssh', label: 'My SSH Box', host: 'ubuntu-arm', localPort: 4000 });
+        const connectSpy = vi.spyOn(SshConnector.prototype, 'connectConfigured').mockResolvedValue([]);
+        const disposeSpy = vi.spyOn(SshConnector.prototype, 'dispose').mockImplementation(() => {});
+
+        const server = await createExecutionServer({
+            port: 0,
+            host: '127.0.0.1',
+            dataDir,
+            queue: { autoStart: false },
+            fileConfig: { skills: { autoUpdate: false, defaultSkills: [] } },
+        });
+        await server.close();
+
+        expect(connectSpy).toHaveBeenCalledWith(expect.arrayContaining([
+            expect.objectContaining({ kind: 'ssh', host: 'ubuntu-arm', localPort: 4000 }),
         ]));
         expect(disposeSpy).toHaveBeenCalled();
     });

@@ -28,6 +28,7 @@ import { toQueueProcessId } from '../../../../src/server/spa/client/react/utils/
 
 const mockListPane = vi.fn();
 const mockDetailPane = vi.fn();
+const mockRalphPane = vi.fn();
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/ChatListPane', () => ({
     ChatListPane: (props: any) => {
@@ -70,6 +71,30 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/ChatListPane', ()
                 'data-testid': 'dialog-btn',
                 onClick: props.onOpenDialog,
             }, 'Dialog'),
+            props.onNewChat && React.createElement('button', {
+                'data-testid': 'new-chat-btn',
+                onClick: props.onNewChat,
+            }, 'New Chat'),
+            props.onSelectRalphSession && React.createElement('button', {
+                'data-testid': 'select-ralph-btn',
+                onClick: () => props.onSelectRalphSession('ralph-session-1'),
+            }, 'Select Ralph'),
+        );
+    },
+}));
+
+vi.mock('../../../../src/server/spa/client/react/features/chat/RalphWorkflowPaneContainer', () => ({
+    RalphWorkflowPaneContainer: (props: any) => {
+        mockRalphPane(props);
+        return React.createElement('div', {
+            'data-testid': 'mock-ralph-pane',
+            'data-session-id': props.sessionId,
+        },
+            `Ralph: ${props.sessionId}`,
+            props.onClose && React.createElement('button', {
+                'data-testid': 'ralph-close-btn',
+                onClick: props.onClose,
+            }, 'Close Ralph'),
         );
     },
 }));
@@ -1579,5 +1604,124 @@ describe('RepoChatTab: reactive title updates from AppContext', () => {
 
         const propsAfter = mockListPane.mock.calls.at(-1)?.[0]?.history;
         expect(propsAfter).toBe(propsBefore);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// RALPH SESSION + NEW CHAT INTERACTION
+// ═══════════════════════════════════════════════════════════════════════
+
+describe('RepoChatTab: Ralph session and new chat', () => {
+    it('selecting a Ralph session shows the Ralph pane instead of ChatDetailPane', async () => {
+        setupFetchMock();
+        await renderTab();
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('select-ralph-btn'));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('mock-ralph-pane')).toBeTruthy();
+            expect(screen.getByTestId('mock-ralph-pane').getAttribute('data-session-id')).toBe('ralph-session-1');
+        });
+    });
+
+    it('clicking new chat while a Ralph session is selected clears the Ralph pane', async () => {
+        setupFetchMock();
+        await renderTab();
+
+        // Select a Ralph session first
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('select-ralph-btn'));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('mock-ralph-pane')).toBeTruthy();
+        });
+
+        // Click new chat — should clear Ralph pane and show ChatDetailPane
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('new-chat-btn'));
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByTestId('mock-ralph-pane')).toBeNull();
+            expect(screen.getByTestId('mock-detail-pane')).toBeTruthy();
+            expect(screen.getByText('No selection')).toBeTruthy();
+        });
+    });
+
+    it('clicking new chat while a Ralph session is selected updates the URL hash', async () => {
+        setupFetchMock();
+        await renderTab();
+
+        // Select a Ralph session — sets hash to /activity/ralph/<id>
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('select-ralph-btn'));
+        });
+
+        await waitFor(() => {
+            expect(location.hash).toContain('/ralph/ralph-session-1');
+        });
+
+        // Click new chat — hash should no longer contain /ralph/
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('new-chat-btn'));
+        });
+
+        await waitFor(() => {
+            expect(location.hash).not.toContain('/ralph/');
+            expect(location.hash).toContain('#repos/ws-1/activity');
+        });
+    });
+
+    it('clicking new chat in mode="chats" writes /chats path (not /activity/) to URL', async () => {
+        setupFetchMock();
+        await renderTab('ws-1', 'chats');
+
+        // Select Ralph session
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('select-ralph-btn'));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('mock-ralph-pane')).toBeTruthy();
+        });
+
+        // Click new chat
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('new-chat-btn'));
+        });
+
+        await waitFor(() => {
+            expect(location.hash).toContain('#repos/ws-1/chats');
+            expect(location.hash).not.toContain('/ralph/');
+            expect(location.hash).not.toContain('/activity/');
+        });
+    });
+
+    it('selecting a Ralph session then selecting a chat task clears the Ralph pane', async () => {
+        const r1 = makeRunningTask('r1');
+        setupFetchMock({ running: [r1] });
+        await renderTab();
+
+        // Select Ralph session
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('select-ralph-btn'));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('mock-ralph-pane')).toBeTruthy();
+        });
+
+        // Select a regular chat task — Ralph pane should be dismissed
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('task-r1'));
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByTestId('mock-ralph-pane')).toBeNull();
+            expect(screen.getByTestId('mock-detail-pane')).toBeTruthy();
+        });
     });
 });

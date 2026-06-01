@@ -54,6 +54,7 @@ describe('AddServerDialog', () => {
         render(<AddServerDialog open={true} onClose={() => {}} onAdd={() => {}} />);
         expect(screen.getByTestId('add-server-kind-url')).toBeTruthy();
         expect(screen.getByTestId('add-server-kind-devtunnel')).toBeTruthy();
+        expect(screen.getByTestId('add-server-kind-ssh')).toBeTruthy();
         expect(screen.getByTestId('add-server-url-input')).toBeTruthy();
         expect(screen.getByTestId('add-server-label-input')).toBeTruthy();
         expect(screen.getByTestId('add-server-submit-btn')).toBeTruthy();
@@ -64,6 +65,8 @@ describe('AddServerDialog', () => {
         render(<AddServerDialog open={true} onClose={() => {}} onAdd={() => {}} />);
         expect((screen.getByTestId('add-server-submit-btn') as HTMLButtonElement).disabled).toBe(true);
         fireEvent.click(screen.getByTestId('add-server-kind-devtunnel'));
+        expect((screen.getByTestId('add-server-submit-btn') as HTMLButtonElement).disabled).toBe(true);
+        fireEvent.click(screen.getByTestId('add-server-kind-ssh'));
         expect((screen.getByTestId('add-server-submit-btn') as HTMLButtonElement).disabled).toBe(true);
     });
 
@@ -279,5 +282,86 @@ describe('AddServerDialog', () => {
         expect(onClose).not.toHaveBeenCalled();
         expect(screen.getByTestId('edit-server-submit-error').textContent).toContain('update failed');
         expect((screen.getByTestId('edit-server-url-input') as HTMLInputElement).value).toBe('https://edited.example.com/');
+    });
+
+    it('shows SSH Tunnel fields when SSH Tunnel radio is selected', () => {
+        render(<AddServerDialog open={true} onClose={() => {}} onAdd={() => {}} />);
+        fireEvent.click(screen.getByTestId('add-server-kind-ssh'));
+        expect(screen.getByTestId('add-server-ssh-host-input')).toBeTruthy();
+        expect(screen.getByTestId('add-server-ssh-port-input')).toBeTruthy();
+        expect(screen.queryByTestId('add-server-url-input')).toBeNull();
+        expect(screen.queryByTestId('add-server-tunnel-id-input')).toBeNull();
+    });
+
+    it('disables submit when SSH host is filled but port is missing', () => {
+        render(<AddServerDialog open={true} onClose={() => {}} onAdd={() => {}} />);
+        fireEvent.click(screen.getByTestId('add-server-kind-ssh'));
+        fireEvent.change(screen.getByTestId('add-server-ssh-host-input'), { target: { value: 'ubuntu-arm' } });
+        expect((screen.getByTestId('add-server-submit-btn') as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('disables submit when SSH host is empty but port is filled', () => {
+        render(<AddServerDialog open={true} onClose={() => {}} onAdd={() => {}} />);
+        fireEvent.click(screen.getByTestId('add-server-kind-ssh'));
+        fireEvent.change(screen.getByTestId('add-server-ssh-port-input'), { target: { value: '4000' } });
+        expect((screen.getByTestId('add-server-submit-btn') as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('disables submit when SSH port is out of range', () => {
+        render(<AddServerDialog open={true} onClose={() => {}} onAdd={() => {}} />);
+        fireEvent.click(screen.getByTestId('add-server-kind-ssh'));
+        fireEvent.change(screen.getByTestId('add-server-ssh-host-input'), { target: { value: 'ubuntu-arm' } });
+        fireEvent.change(screen.getByTestId('add-server-ssh-port-input'), { target: { value: '99999' } });
+        expect((screen.getByTestId('add-server-submit-btn') as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('enables submit when SSH host and valid port are both filled', () => {
+        render(<AddServerDialog open={true} onClose={() => {}} onAdd={() => {}} />);
+        fireEvent.click(screen.getByTestId('add-server-kind-ssh'));
+        fireEvent.change(screen.getByTestId('add-server-ssh-host-input'), { target: { value: 'ubuntu-arm' } });
+        fireEvent.change(screen.getByTestId('add-server-ssh-port-input'), { target: { value: '4000' } });
+        expect((screen.getByTestId('add-server-submit-btn') as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    it('submit calls onAdd with SSH kind, host, and localPort', async () => {
+        const onAdd = vi.fn().mockResolvedValue(undefined);
+        render(<AddServerDialog open={true} onClose={() => {}} onAdd={onAdd} />);
+        fireEvent.click(screen.getByTestId('add-server-kind-ssh'));
+        fireEvent.change(screen.getByTestId('add-server-ssh-host-input'), { target: { value: '  ubuntu-arm  ' } });
+        fireEvent.change(screen.getByTestId('add-server-ssh-port-input'), { target: { value: '4000' } });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('add-server-submit-btn'));
+        });
+        expect(onAdd).toHaveBeenCalledWith({
+            kind: 'ssh',
+            label: 'ubuntu-arm',
+            host: 'ubuntu-arm',
+            localPort: 4000,
+        });
+    });
+
+    it('shows "Connecting SSH..." indicator when SSH fields are filled', () => {
+        vi.useFakeTimers();
+        render(<AddServerDialog open={true} onClose={() => {}} onAdd={() => {}} />);
+        fireEvent.click(screen.getByTestId('add-server-kind-ssh'));
+        fireEvent.change(screen.getByTestId('add-server-ssh-host-input'), { target: { value: 'ubuntu-arm' } });
+        fireEvent.change(screen.getByTestId('add-server-ssh-port-input'), { target: { value: '4000' } });
+        expect(screen.getByTestId('add-server-test-indicator').textContent).toContain('Connecting SSH');
+    });
+
+    it('EditServerDialog pre-populates SSH fields for ssh-kind server', () => {
+        const server: RemoteServer = {
+            id: 's1',
+            kind: 'ssh',
+            label: 'My SSH Box',
+            host: 'ubuntu-arm',
+            localPort: 4000,
+            addedAt: 1,
+            updatedAt: 1,
+        };
+        render(<EditServerDialog open={true} server={server} onClose={() => {}} onSave={() => {}} />);
+        expect((screen.getByTestId('edit-server-ssh-host-input') as HTMLInputElement).value).toBe('ubuntu-arm');
+        expect((screen.getByTestId('edit-server-ssh-port-input') as HTMLInputElement).value).toBe('4000');
+        expect((screen.getByTestId('edit-server-kind-ssh') as HTMLInputElement).checked).toBe(true);
     });
 });

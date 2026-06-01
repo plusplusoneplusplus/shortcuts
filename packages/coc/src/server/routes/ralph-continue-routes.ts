@@ -1,11 +1,13 @@
 /**
  * POST /api/workspaces/:workspaceId/ralph-sessions/:sessionId/continue
  *
- * Extends a Ralph session that hit its iteration cap (terminalReason
- * `CAP_REACHED`, or `NO_SIGNAL` with `currentIteration === maxIterations`)
- * by N additional iterations. Same `sessionId`, same `progress.md` and
- * `session.json` — appends a continuation banner and enqueues iteration
- * `currentIteration + 1`.
+ * Extends a completed Ralph session by N additional iterations. Covers:
+ *   - `CAP_REACHED` — agent wanted to continue but hit the iteration cap
+ *   - `NO_SIGNAL` — agent stopped without emitting RALPH_NEXT / RALPH_COMPLETE
+ *     (either at the cap or due to an agent failure mid-run)
+ *
+ * Same `sessionId`, same `progress.md` and `session.json` — appends a
+ * continuation banner and enqueues iteration `currentIteration + 1`.
  */
 
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
@@ -39,8 +41,7 @@ export function isResumableTerminalState(record: RalphSessionRecord): boolean {
     if (record.terminalReason === 'CAP_REACHED') {
         return true;
     }
-    if (record.terminalReason === 'NO_SIGNAL'
-        && record.currentIteration >= record.maxIterations) {
+    if (record.terminalReason === 'NO_SIGNAL') {
         return true;
     }
     return false;
@@ -87,8 +88,6 @@ export function registerRalphContinueRoutes(routes: Route[], ctx: RalphContinueR
                     detail = 'Session was marked RALPH_COMPLETE; start a new loop instead';
                 } else if (record.terminalReason === 'CANCELLED') {
                     detail = 'Session was cancelled; start a new loop instead';
-                } else if (record.terminalReason === 'NO_SIGNAL') {
-                    detail = 'NO_SIGNAL session has not yet reached its iteration cap';
                 }
                 return sendError(res, 409, detail);
             }

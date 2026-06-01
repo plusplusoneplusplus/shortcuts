@@ -1,4 +1,4 @@
-export type RemoteServerKind = 'url' | 'devtunnel';
+export type RemoteServerKind = 'url' | 'devtunnel' | 'ssh';
 
 export type RemoteServerRuntimeStatus = 'idle' | 'connecting' | 'online' | 'offline' | 'failed';
 
@@ -20,7 +20,13 @@ export interface DevTunnelRemoteServer extends BaseRemoteServer {
     tunnelId: string;
 }
 
-export type RemoteServer = UrlRemoteServer | DevTunnelRemoteServer;
+export interface SshRemoteServer extends BaseRemoteServer {
+    kind: 'ssh';
+    host: string;       // SSH config alias, e.g. "ubuntu-arm"
+    localPort: number;  // forwarded local port, e.g. 4000
+}
+
+export type RemoteServer = UrlRemoteServer | DevTunnelRemoteServer | SshRemoteServer;
 
 export interface RemoteServerRuntime {
     serverId: string;
@@ -38,11 +44,13 @@ export type RemoteServerWithRuntime = RemoteServer & Partial<Omit<RemoteServerRu
 
 export type RemoteServerCreateInput =
     | { kind: 'url'; label: string; url: string }
-    | { kind: 'devtunnel'; label: string; tunnelId: string };
+    | { kind: 'devtunnel'; label: string; tunnelId: string }
+    | { kind: 'ssh'; label: string; host: string; localPort: number };
 
 export type RemoteServerUpdateInput =
     | { label?: string; kind?: 'url'; url?: string }
-    | { label?: string; kind?: 'devtunnel'; tunnelId?: string };
+    | { label?: string; kind?: 'devtunnel'; tunnelId?: string }
+    | { label?: string; kind?: 'ssh'; host?: string; localPort?: number };
 
 export interface RemoteServerHealth {
     serverId: string;

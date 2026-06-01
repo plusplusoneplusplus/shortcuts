@@ -239,15 +239,20 @@ describe('POST /api/workspaces/:wsId/ralph-sessions/:sessionId/continue', () => 
         expect(res.json().error).toMatch(/cancelled/i);
     });
 
-    it('rejects NO_SIGNAL when currentIteration < maxIterations', async () => {
+    it('continues a NO_SIGNAL session before the cap (early agent failure)', async () => {
         await seedSession(dataDir, 'ws-7', 'sess-mid', {
             terminalReason: 'NO_SIGNAL',
             currentIteration: 4,
             maxIterations: 10,
         });
-        const res = await post(baseUrl, '/api/workspaces/ws-7/ralph-sessions/sess-mid/continue', {});
-        expect(res.status).toBe(409);
-        expect(res.json().error).toMatch(/NO_SIGNAL/);
+        const res = await post(baseUrl, '/api/workspaces/ws-7/ralph-sessions/sess-mid/continue', {
+            additionalIterations: 5,
+        });
+        expect(res.status).toBe(200);
+        const data = res.json();
+        expect(data.resumed).toBe(true);
+        expect(data.nextIteration).toBe(5);
+        expect(data.newMaxIterations).toBe(15);
     });
 
     // -----------------------------------------------------------------------

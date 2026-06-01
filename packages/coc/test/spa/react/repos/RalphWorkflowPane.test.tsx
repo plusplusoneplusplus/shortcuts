@@ -249,7 +249,7 @@ describe('RalphWorkflowPane', () => {
         expect(screen.queryByTestId('ralph-workflow-continue')).toBeNull();
     });
 
-    it('hides the Continue loop button when NO_SIGNAL did not reach the cap', () => {
+    it('shows the Continue loop button when NO_SIGNAL did not reach the cap (early agent failure)', () => {
         const view: RalphSessionView = {
             record: makeRecord({
                 phase: 'complete',
@@ -262,7 +262,7 @@ describe('RalphWorkflowPane', () => {
             sections: [makeSection(4)],
         };
         render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
-        expect(screen.queryByTestId('ralph-workflow-continue')).toBeNull();
+        expect(screen.getByTestId('ralph-workflow-continue')).toBeInTheDocument();
     });
 
     it('opens a confirmation panel and calls onContinue when confirmed', async () => {
@@ -318,6 +318,121 @@ describe('RalphWorkflowPane', () => {
         await user.click(screen.getByTestId('ralph-workflow-continue-cancel'));
         expect(screen.queryByTestId('ralph-workflow-continue-confirm')).toBeNull();
         expect(onContinue).not.toHaveBeenCalled();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Resume UI (stuck executing session)
+// ---------------------------------------------------------------------------
+
+describe('RalphWorkflowPane — resume stuck executing session', () => {
+    function makeStuckView(overrides: Partial<RalphSessionRecord> = {}): RalphSessionView {
+        return {
+            record: makeRecord({
+                phase: 'executing',
+                currentIteration: 3,
+                iterations: [
+                    makeIter(1),
+                    makeIter(2),
+                    makeIter(3),
+                ],
+                ...overrides,
+            }),
+            sections: [makeSection(1), makeSection(2), makeSection(3)],
+        };
+    }
+
+    it('shows Resume button when session is stuck executing', () => {
+        const view = makeStuckView();
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.getByTestId('ralph-workflow-resume')).toBeInTheDocument();
+    });
+
+    it('does not show Resume when an iteration is still running', () => {
+        const view = makeStuckView({
+            iterations: [
+                makeIter(1),
+                makeIter(2),
+                makeIter(3, 'running'),
+            ],
+        });
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.queryByTestId('ralph-workflow-resume')).toBeNull();
+    });
+
+    it('does not show Resume when currentIteration is 0', () => {
+        const view = makeStuckView({ currentIteration: 0, iterations: [] });
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.queryByTestId('ralph-workflow-resume')).toBeNull();
+    });
+
+    it('does not show Resume when phase is complete', () => {
+        const view: RalphSessionView = {
+            record: makeRecord({
+                phase: 'complete',
+                currentIteration: 3,
+                completedAt: new Date().toISOString(),
+                terminalReason: 'RALPH_COMPLETE',
+                iterations: [makeIter(1), makeIter(2), makeIter(3)],
+            }),
+            sections: [makeSection(1), makeSection(2), makeSection(3)],
+        };
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.queryByTestId('ralph-workflow-resume')).toBeNull();
+    });
+
+    it('shows confirmation panel and calls onResume on confirm', async () => {
+        const user = userEvent.setup();
+        const onResume = vi.fn().mockResolvedValue(undefined);
+        const view = makeStuckView();
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={view}
+                onResume={onResume}
+            />,
+        );
+        await user.click(screen.getByTestId('ralph-workflow-resume'));
+        expect(screen.getByTestId('ralph-workflow-resume-confirm')).toBeInTheDocument();
+        expect(screen.getByText(/iteration 4/)).toBeInTheDocument();
+        await user.click(screen.getByTestId('ralph-workflow-resume-confirm-button'));
+        expect(onResume).toHaveBeenCalledOnce();
+    });
+
+    it('cancel button hides the resume confirmation panel', async () => {
+        const user = userEvent.setup();
+        const onResume = vi.fn().mockResolvedValue(undefined);
+        const view = makeStuckView();
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={view}
+                onResume={onResume}
+            />,
+        );
+        await user.click(screen.getByTestId('ralph-workflow-resume'));
+        await user.click(screen.getByTestId('ralph-workflow-resume-cancel'));
+        expect(screen.queryByTestId('ralph-workflow-resume-confirm')).toBeNull();
+        expect(onResume).not.toHaveBeenCalled();
+    });
+
+    it('shows error when resume fails', async () => {
+        const user = userEvent.setup();
+        const onResume = vi.fn().mockRejectedValue(new Error('Network error'));
+        const view = makeStuckView();
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={view}
+                onResume={onResume}
+            />,
+        );
+        await user.click(screen.getByTestId('ralph-workflow-resume'));
+        await user.click(screen.getByTestId('ralph-workflow-resume-confirm-button'));
+        expect(await screen.findByTestId('ralph-workflow-resume-error')).toHaveTextContent('Network error');
     });
 });
 

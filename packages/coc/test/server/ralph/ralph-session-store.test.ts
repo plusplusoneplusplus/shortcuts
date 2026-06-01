@@ -464,3 +464,42 @@ describe('normaliseSessionRecord', () => {
         expect(read!.iterations[0].loopIndex).toBe(1);
     });
 });
+
+describe('RalphSessionStore — appendResumeMarker', () => {
+    it('appends a resume marker to progress.md', async () => {
+        await store.initSession(WS, SID, { originalGoal: 'g', maxIterations: 10 });
+        await store.appendResumeMarker(WS, SID, 3, '2026-06-01T10:00:00Z');
+
+        const md = await store.readProgress(WS, SID);
+        expect(md).toContain('## Session resumed at 2026-06-01T10:00:00Z — picking up from iteration 3');
+    });
+
+    it('is idempotent for same timestamp and iteration', async () => {
+        await store.initSession(WS, SID, { originalGoal: 'g', maxIterations: 10 });
+        await store.appendResumeMarker(WS, SID, 5, '2026-06-01T12:00:00Z');
+        await store.appendResumeMarker(WS, SID, 5, '2026-06-01T12:00:00Z');
+
+        const md = await store.readProgress(WS, SID);
+        const markers = md.match(/Session resumed at/g) ?? [];
+        expect(markers).toHaveLength(1);
+    });
+
+    it('appends a second marker with a different timestamp', async () => {
+        await store.initSession(WS, SID, { originalGoal: 'g', maxIterations: 10 });
+        await store.appendResumeMarker(WS, SID, 3, '2026-06-01T10:00:00Z');
+        await store.appendResumeMarker(WS, SID, 5, '2026-06-01T14:00:00Z');
+
+        const md = await store.readProgress(WS, SID);
+        const markers = md.match(/Session resumed at/g) ?? [];
+        expect(markers).toHaveLength(2);
+    });
+
+    it('creates progress.md if it does not exist', async () => {
+        const dir = store.getSessionDir(WS, SID);
+        await fs.promises.mkdir(dir, { recursive: true });
+        await store.appendResumeMarker(WS, SID, 1, '2026-06-01T08:00:00Z');
+
+        const md = await store.readProgress(WS, SID);
+        expect(md).toContain('Session resumed at 2026-06-01T08:00:00Z');
+    });
+});

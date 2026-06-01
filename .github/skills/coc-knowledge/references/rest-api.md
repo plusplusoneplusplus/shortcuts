@@ -76,6 +76,17 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | POST | `/api/queue/:id/cancel` | Cancel queued task |
 | PATCH | `/api/queue/pause` | Pause/resume queue |
 
+## Ralph Sessions
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/processes/:id/ralph-start` | Start Ralph execution after grilling |
+| POST | `/api/ralph-launch` | Direct Ralph launch (skip grilling) |
+| GET | `/api/workspaces/:wsId/ralph-sessions/:sessionId` | Read session journal (record + progress sections) |
+| POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/continue` | Extend completed session (CAP_REACHED or NO_SIGNAL) by N iterations |
+| POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/new-loop` | New goal loop after RALPH_COMPLETE |
+| POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/resume` | Resume stuck executing session (no in-flight task) |
+
 ## Schedules
 
 | Method | Path | Description |

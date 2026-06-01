@@ -48,6 +48,8 @@ export interface RalphWorkflowPaneProps {
     newLoopDefaultIterations?: number;
     /** Override the new-loop handler (used by tests). When omitted, falls back to the API call. */
     onNewLoop?: (newGoal: string, additionalIterations: number) => Promise<void>;
+    /** Override the resume handler (used by tests). When omitted, calls the API directly. */
+    onResume?: () => Promise<void>;
 }
 
 const PHASE_BADGE: Record<RalphSessionRecord['phase'], { label: string; cls: string }> = {
@@ -79,6 +81,7 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
         onContinue,
         newLoopDefaultIterations,
         onNewLoop,
+        onResume,
     } = props;
 
     const [continueState, setContinueState] = useState<'idle' | 'confirm' | 'submitting'>('idle');
@@ -87,6 +90,9 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
     const [newLoopState, setNewLoopState] = useState<'idle' | 'confirm' | 'submitting'>('idle');
     const [newLoopGoal, setNewLoopGoal] = useState('');
     const [newLoopError, setNewLoopError] = useState<string | null>(null);
+
+    const [resumeState, setResumeState] = useState<'idle' | 'confirm' | 'submitting'>('idle');
+    const [resumeError, setResumeError] = useState<string | null>(null);
 
     if (view === undefined) {
         return (
@@ -126,13 +132,32 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
         ...sections.map(s => s.iteration),
     ])).sort((a, b) => a - b);
 
-    const isCapHit = record.phase === 'complete'
+    const isContinuable = record.phase === 'complete'
         && (record.terminalReason === 'CAP_REACHED'
-            || (record.terminalReason === 'NO_SIGNAL'
-                && record.currentIteration >= record.maxIterations));
+            || record.terminalReason === 'NO_SIGNAL');
 
     const isRalphComplete = record.phase === 'complete'
         && record.terminalReason === 'RALPH_COMPLETE';
+
+    const isStuckExecuting = record.phase === 'executing'
+        && record.currentIteration > 0
+        && !record.iterations.some(i => i.status === 'running');
+
+    const handleResumeConfirmed = async () => {
+        setResumeState('submitting');
+        setResumeError(null);
+        try {
+            if (onResume) {
+                await onResume();
+            } else {
+                await getSpaCocClient().workspaces.resumeRalphSession(workspaceId, sessionId);
+            }
+            setResumeState('idle');
+        } catch (err) {
+            setResumeError(err instanceof Error ? err.message : String(err));
+            setResumeState('confirm');
+        }
+    };
 
     const handleContinueConfirmed = async () => {
         setContinueState('submitting');
@@ -220,7 +245,7 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
                                 {formatRelativeTime(record.completedAt)}
                             </span>
                         )}
-                        {isCapHit && continueState === 'idle' && (
+                        {isContinuable && continueState === 'idle' && (
                             <button
                                 type="button"
                                 onClick={() => { setContinueError(null); setContinueState('confirm'); }}
@@ -228,6 +253,16 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
                                 className="rounded border border-blue-500 bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700 hover:bg-blue-100 dark:border-blue-400 dark:bg-blue-900/30 dark:text-blue-200 dark:hover:bg-blue-900/50"
                             >
                                 ↻ Continue loop
+                            </button>
+                        )}
+                        {isStuckExecuting && resumeState === 'idle' && (
+                            <button
+                                type="button"
+                                onClick={() => { setResumeError(null); setResumeState('confirm'); }}
+                                data-testid="ralph-workflow-resume"
+                                className="rounded border border-amber-500 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700 hover:bg-amber-100 dark:border-amber-400 dark:bg-amber-900/30 dark:text-amber-200 dark:hover:bg-amber-900/50"
+                            >
+                                ↻ Resume
                             </button>
                         )}
                         {RALPH_MULTI_LOOP && isRalphComplete && newLoopState === 'idle' && (
@@ -267,7 +302,46 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
 
             {/* Timeline */}
             <div className="flex-1 overflow-y-auto px-4 py-3" data-testid="ralph-workflow-timeline">
-                {isCapHit && continueState !== 'idle' && (
+                {isStuckExecuting && resumeState !== 'idle' && (
+                    <div
+                        className="mb-3 rounded border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-700 dark:bg-amber-950/40"
+                        data-testid="ralph-workflow-resume-confirm"
+                    >
+                        <p className="mb-2 font-semibold text-amber-900 dark:text-amber-100">
+                            Resume this Ralph session?
+                        </p>
+                        <p className="mb-2 text-amber-800 dark:text-amber-200">
+                            The session appears stuck (no task is running). Resuming will enqueue
+                            iteration {record.currentIteration + 1} to pick up where it left off.
+                        </p>
+                        {resumeError && (
+                            <p className="mb-2 text-red-700 dark:text-red-300" data-testid="ralph-workflow-resume-error">
+                                {resumeError}
+                            </p>
+                        )}
+                        <div className="flex justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => { setResumeState('idle'); setResumeError(null); }}
+                                disabled={resumeState === 'submitting'}
+                                className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                                data-testid="ralph-workflow-resume-cancel"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleResumeConfirmed}
+                                disabled={resumeState === 'submitting'}
+                                className="rounded border border-amber-500 bg-amber-600 px-2 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                                data-testid="ralph-workflow-resume-confirm-button"
+                            >
+                                {resumeState === 'submitting' ? 'Resuming…' : 'Resume'}
+                            </button>
+                        </div>
+                    </div>
+                )}
+                {isContinuable && continueState !== 'idle' && (
                     <div
                         className="mb-3 rounded border border-blue-300 bg-blue-50 p-3 text-xs dark:border-blue-700 dark:bg-blue-950/40"
                         data-testid="ralph-workflow-continue-confirm"

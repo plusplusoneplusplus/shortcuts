@@ -634,6 +634,9 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                 queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
                 setSelectedTask(null);
                 selectedTaskRef.current = null;
+                setSelectedRalphSessionId(null);
+                const tabSegment = mode === 'tasks' ? 'tasks' : mode === 'chats' ? 'chats' : 'activity';
+                location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/' + tabSegment;
                 if (isMobile) setMobileShowDetail(true);
             }}
         />

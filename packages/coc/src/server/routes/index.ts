@@ -78,12 +78,14 @@ import type { TerminalSessionManager } from '../terminal/index';
 import { registerRemoteServerRoutes } from '../servers/remote-server-routes';
 import { RemoteServerStore } from '../servers/remote-server-store';
 import { DevTunnelConnector } from '../servers/devtunnel-connector';
+import type { SshConnector } from '../servers/ssh-connector';
 import { registerRalphRoutes } from './queue-ralph-routes';
 import { registerRalphSessionRoutes } from './ralph-session-routes';
 import { registerRalphContinueRoutes } from './ralph-continue-routes';
 import { registerRalphNewLoopRoutes } from './ralph-new-loop-routes';
 import { registerRalphPromoteRoutes } from './ralph-promote-routes';
 import { registerRalphLaunchRoutes } from './ralph-launch-routes';
+import { registerRalphResumeRoutes } from './ralph-resume-routes';
 import { registerLoopRoutes } from '../loops/loop-handler';
 import type { LoopStore } from '../loops/loop-store';
 import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
@@ -140,6 +142,7 @@ export interface RegisterRoutesOptions {
     runtimeConfigService?: RuntimeConfigService;
     remoteServerStore?: RemoteServerStore;
     remoteServerConnector?: DevTunnelConnector;
+    remoteServerSshConnector?: SshConnector;
     loopStore?: LoopStore;
     loopExecutor?: LoopExecutor;
     mcpOauthManager?: McpOauthManager;
@@ -186,6 +189,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerRemoteServerRoutes(routes, {
         store: opts.remoteServerStore ?? new RemoteServerStore(dataDir),
         connector: opts.remoteServerConnector ?? new DevTunnelConnector(),
+        sshConnector: opts.remoteServerSshConnector,
     });
     registerProviderRoutes(routes, dataDir);
     // Provider SDK install routes (on-demand install of @openai/codex-sdk and @anthropic-ai/claude-agent-sdk).
@@ -428,6 +432,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerRalphNewLoopRoutes(routes, { bridge, store, dataDir });
     registerRalphPromoteRoutes(routes, { bridge, store, dataDir });
     registerRalphLaunchRoutes(routes, { bridge, dataDir });
+    registerRalphResumeRoutes(routes, { bridge, store, dataDir });
 
     // Work item routes
     const workItemStore = new FileWorkItemStore({ dataDir });

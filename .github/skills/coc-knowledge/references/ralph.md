@@ -123,11 +123,30 @@ working-directory-relative `Plans/<area>/<feature>/` when none is given.
 
 Session resume endpoints share infrastructure in
 `packages/coc/src/server/routes/ralph-route-utils.ts`.
-`/continue` and `/new-loop` both use it for in-flight Ralph task scans,
-`additionalIterations` validation/default resolution, resume hard caps, and
-best-effort recovery of `workingDirectory` / `folderPath` from the latest
+`/continue`, `/new-loop`, and `/resume` all use it for in-flight Ralph task
+scans, `additionalIterations` validation/default resolution, resume hard caps,
+and best-effort recovery of `workingDirectory` / `folderPath` from the latest
 iteration process. Final-check gap-fix loops use the same additional-iteration
 resolver so per-repo `maxRalphIterations` fallback stays consistent.
+
+### Resume Stuck Executing Sessions
+
+`POST /api/workspaces/:workspaceId/ralph-sessions/:sessionId/resume`
+(`packages/coc/src/server/routes/ralph-resume-routes.ts`) handles sessions
+stuck in `phase=executing` with no in-flight task — the typical outcome when
+the last iteration's task failed/was cancelled or the server crashed mid-loop.
+
+Eligibility: `phase === 'executing'` AND `currentIteration < maxIterations`
+AND no queued/running task for this `sessionId`.
+
+The endpoint appends a resume marker to `progress.md` (via
+`appendResumeMarker`) and enqueues iteration `currentIteration + 1` without
+changing `maxIterations`. If the session has reached its cap, the endpoint
+returns 409 directing the user to `/continue` instead.
+
+The SPA `RalphWorkflowPane` shows a "Resume" button (amber) when it detects
+a stuck executing session (phase executing, iterations > 0, no iteration with
+status `running`). `coc-client` exposes `resumeRalphSession()`.
 
 ## Scheduled Ralph Runs
 

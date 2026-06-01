@@ -384,6 +384,45 @@ export class RalphSessionStore {
     }
 
     /**
+     * Append a "Session resumed at <ts> — picking up from iteration <N>" banner
+     * to `progress.md`. Idempotent against double-appends within the same tick.
+     */
+    async appendResumeMarker(
+        workspaceId: string,
+        sessionId: string,
+        lastIteration: number,
+        nowIso?: string,
+    ): Promise<void> {
+        const dir = this.getSessionDir(workspaceId, sessionId);
+        await fs.promises.mkdir(dir, { recursive: true });
+        const progressPath = this.getProgressPath(workspaceId, sessionId);
+        const ts = nowIso ?? new Date().toISOString();
+        const marker = `\n---\n## Session resumed at ${ts} — picking up from iteration ${lastIteration}\n`;
+
+        try {
+            const stat = await fs.promises.stat(progressPath);
+            const readBytes = Math.min(stat.size, 1024);
+            if (readBytes > 0) {
+                const fd = await fs.promises.open(progressPath, 'r');
+                try {
+                    const buf = Buffer.alloc(readBytes);
+                    await fd.read(buf, 0, readBytes, stat.size - readBytes);
+                    const tail = buf.toString('utf-8');
+                    if (tail.includes(`## Session resumed at ${ts} — picking up from iteration ${lastIteration}`)) {
+                        return;
+                    }
+                } finally {
+                    await fd.close();
+                }
+            }
+        } catch {
+            // Missing file — fall through and append (which will create it).
+        }
+
+        await fs.promises.appendFile(progressPath, marker, 'utf-8');
+    }
+
+    /**
      * Append a final-check section to `progress.md`.
      *
      * The `content` is raw Markdown. The caller is responsible for formatting

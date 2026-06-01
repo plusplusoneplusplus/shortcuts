@@ -6,6 +6,7 @@ import type {
     RemoteServer,
     RemoteServerCreateInput,
     RemoteServerUpdateInput,
+    SshRemoteServer,
     UrlRemoteServer,
 } from './remote-server-types';
 
@@ -67,6 +68,25 @@ export function normalizeTunnelId(value: unknown): string {
     return trimmed;
 }
 
+export function normalizeSshHost(value: unknown): string {
+    if (typeof value !== 'string') {
+        throw new Error('host must be a string');
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+        throw new Error('host is required');
+    }
+    return trimmed;
+}
+
+export function normalizeSshLocalPort(value: unknown): number {
+    const num = typeof value === 'string' ? parseInt(value, 10) : value;
+    if (typeof num !== 'number' || !Number.isInteger(num) || num < 1 || num > 65535) {
+        throw new Error('localPort must be an integer between 1 and 65535');
+    }
+    return num;
+}
+
 function parseRemoteServer(value: unknown): RemoteServer | undefined {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
         return undefined;
@@ -97,6 +117,17 @@ function parseRemoteServer(value: unknown): RemoteServer | undefined {
             updatedAt,
         };
     }
+    if (item.kind === 'ssh') {
+        return {
+            id: item.id,
+            label: item.label,
+            kind: 'ssh',
+            host: normalizeSshHost(item.host),
+            localPort: normalizeSshLocalPort(item.localPort),
+            addedAt,
+            updatedAt,
+        };
+    }
     return undefined;
 }
 
@@ -109,7 +140,10 @@ function buildCreateInput(value: unknown): RemoteServerCreateInput {
     if (kind === 'devtunnel') {
         return { kind, label: normalizeLabel(body.label), tunnelId: normalizeTunnelId(body.tunnelId) };
     }
-    throw new Error('kind must be "url" or "devtunnel"');
+    if (kind === 'ssh') {
+        return { kind, label: normalizeLabel(body.label), host: normalizeSshHost(body.host), localPort: normalizeSshLocalPort(body.localPort) };
+    }
+    throw new Error('kind must be "url", "devtunnel", or "ssh"');
 }
 
 function buildUpdateInput(value: unknown): RemoteServerUpdateInput {
@@ -119,8 +153,8 @@ function buildUpdateInput(value: unknown): RemoteServerUpdateInput {
         patch.label = normalizeLabel(body.label);
     }
     if ('kind' in body) {
-        if (body.kind !== 'url' && body.kind !== 'devtunnel') {
-            throw new Error('kind must be "url" or "devtunnel"');
+        if (body.kind !== 'url' && body.kind !== 'devtunnel' && body.kind !== 'ssh') {
+            throw new Error('kind must be "url", "devtunnel", or "ssh"');
         }
         patch.kind = body.kind;
     }
@@ -130,7 +164,13 @@ function buildUpdateInput(value: unknown): RemoteServerUpdateInput {
     if ('tunnelId' in body) {
         (patch as { tunnelId?: string }).tunnelId = normalizeTunnelId(body.tunnelId);
     }
-    if (!('label' in patch) && !('kind' in patch) && !('url' in patch) && !('tunnelId' in patch)) {
+    if ('host' in body) {
+        (patch as { host?: string }).host = normalizeSshHost(body.host);
+    }
+    if ('localPort' in body) {
+        (patch as { localPort?: number }).localPort = normalizeSshLocalPort(body.localPort);
+    }
+    if (!('label' in patch) && !('kind' in patch) && !('url' in patch) && !('tunnelId' in patch) && !('host' in patch) && !('localPort' in patch)) {
         throw new Error('Request body must contain at least one editable field');
     }
     return patch;
@@ -162,9 +202,14 @@ export class RemoteServerStore {
     create(value: unknown): RemoteServer {
         const input = buildCreateInput(value);
         const now = Date.now();
-        const server: RemoteServer = input.kind === 'url'
-            ? { id: randomUUID(), kind: 'url', label: input.label, url: input.url, addedAt: now, updatedAt: now }
-            : { id: randomUUID(), kind: 'devtunnel', label: input.label, tunnelId: input.tunnelId, addedAt: now, updatedAt: now };
+        let server: RemoteServer;
+        if (input.kind === 'url') {
+            server = { id: randomUUID(), kind: 'url', label: input.label, url: input.url, addedAt: now, updatedAt: now };
+        } else if (input.kind === 'devtunnel') {
+            server = { id: randomUUID(), kind: 'devtunnel', label: input.label, tunnelId: input.tunnelId, addedAt: now, updatedAt: now };
+        } else {
+            server = { id: randomUUID(), kind: 'ssh', label: input.label, host: input.host, localPort: input.localPort, addedAt: now, updatedAt: now };
+        }
         this.save([...this.list(), server]);
         return server;
     }
@@ -190,11 +235,23 @@ export class RemoteServerStore {
                 }
                 return { id: server.id, kind, label, url, addedAt: server.addedAt, updatedAt: Date.now() } satisfies UrlRemoteServer;
             }
-            const tunnelId = (patch as { tunnelId?: string }).tunnelId ?? (server.kind === 'devtunnel' ? server.tunnelId : undefined);
-            if (!tunnelId) {
-                throw new Error('tunnelId is required when kind is "devtunnel"');
+            if (kind === 'devtunnel') {
+                const tunnelId = (patch as { tunnelId?: string }).tunnelId ?? (server.kind === 'devtunnel' ? server.tunnelId : undefined);
+                if (!tunnelId) {
+                    throw new Error('tunnelId is required when kind is "devtunnel"');
+                }
+                return { id: server.id, kind, label, tunnelId, addedAt: server.addedAt, updatedAt: Date.now() } satisfies DevTunnelRemoteServer;
             }
-            return { id: server.id, kind, label, tunnelId, addedAt: server.addedAt, updatedAt: Date.now() } satisfies DevTunnelRemoteServer;
+            // kind === 'ssh'
+            const host = (patch as { host?: string }).host ?? (server.kind === 'ssh' ? server.host : undefined);
+            if (!host) {
+                throw new Error('host is required when kind is "ssh"');
+            }
+            const localPort = (patch as { localPort?: number }).localPort ?? (server.kind === 'ssh' ? server.localPort : undefined);
+            if (localPort === undefined) {
+                throw new Error('localPort is required when kind is "ssh"');
+            }
+            return { id: server.id, kind, label, host, localPort, addedAt: server.addedAt, updatedAt: Date.now() } satisfies SshRemoteServer;
         });
         if (!found) {
             throw new Error(`Remote server not found: ${id}`);
