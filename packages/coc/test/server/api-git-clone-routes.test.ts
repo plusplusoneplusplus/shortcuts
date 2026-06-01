@@ -80,17 +80,18 @@ describe('Git clone API routes', () => {
         });
 
         const parentDir = path.join(path.sep, 'tmp', 'repos');
+        const resolvedParent = path.resolve(parentDir);
         const res = await request(`${base()}/api/git/clone`, {
             method: 'POST',
             body: { url: 'https://example.com/org/repo.git', parentDir },
         });
 
         expect(res.status).toBe(200);
-        expect(res.json()).toEqual({ clonedPath: path.join(parentDir, 'repo') });
+        expect(res.json()).toEqual({ clonedPath: path.join(resolvedParent, 'repo') });
         expect(mockExecFile).toHaveBeenCalledWith(
             'git',
             ['clone', 'https://example.com/org/repo.git'],
-            expect.objectContaining({ cwd: parentDir }),
+            expect.objectContaining({ cwd: resolvedParent }),
             expect.any(Function),
         );
     });
@@ -99,13 +100,14 @@ describe('Git clone API routes', () => {
         mockExecFile.mockImplementation((_cmd, _args, _options, callback) => callback(null, '', ''));
 
         const parentDir = path.join(path.sep, 'tmp', 'repos');
+        const resolvedParent = path.resolve(parentDir);
         const res = await request(`${base()}/api/git/clone`, {
             method: 'POST',
             body: { url: 'git@example.com:team/service.git', parentDir },
         });
 
         expect(res.status).toBe(200);
-        expect(res.json()).toEqual({ clonedPath: path.join(parentDir, 'service') });
+        expect(res.json()).toEqual({ clonedPath: path.join(resolvedParent, 'service') });
     });
 
     it('surfaces git clone failures in the response body', async () => {

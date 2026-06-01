@@ -15,7 +15,7 @@ test.describe('Mobile Navigation', () => {
         await expect(bottomNav).toBeVisible({ timeout: 10000 });
 
         const tabs = bottomNav.locator('button');
-        await expect(tabs).toHaveCount(4);
+        await expect(tabs).toHaveCount(5);
     });
 
     test('mobile: bottom nav tabs have correct labels', async ({ page, serverUrl }) => {
@@ -24,7 +24,7 @@ test.describe('Mobile Navigation', () => {
         const bottomNav = page.locator('[data-testid="bottom-nav"]');
         await expect(bottomNav).toBeVisible({ timeout: 10000 });
 
-        for (const label of ['Skills', 'Memory', 'Usage', 'Logs']) {
+        for (const label of ['Skills', 'Memory', 'Usage', 'Servers', 'Logs']) {
             await expect(bottomNav.locator('button', { hasText: new RegExp(label, 'i') })).toBeVisible();
         }
     });

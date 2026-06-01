@@ -480,7 +480,7 @@ timeout: 300
 
         it('should preserve servers.enabled default when not overridden', () => {
             const result = mergeConfig(DEFAULT_CONFIG, { model: 'x' });
-            expect(result.servers.enabled).toBe(false);
+            expect(result.servers.enabled).toBe(true);
         });
 
         it('should override servers.enabled from file', () => {
@@ -733,7 +733,7 @@ timeout: 300
             const configPath = path.join(tmpDir, 'no-servers.yaml');
             fs.writeFileSync(configPath, 'model: gpt-4\n');
             const result = getResolvedConfigWithSource(configPath);
-            expect(result.resolved.servers.enabled).toBe(false);
+            expect(result.resolved.servers.enabled).toBe(true);
             expect(result.sources['servers.enabled']).toBe('default');
         });
 
