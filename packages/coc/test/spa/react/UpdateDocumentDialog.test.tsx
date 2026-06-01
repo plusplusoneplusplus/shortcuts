@@ -7,11 +7,23 @@ import { UpdateDocumentDialog } from '../../../src/server/spa/client/react/share
 
 const mockFetch = vi.fn();
 const mockAddToast = vi.fn();
+const mockModalSelection = vi.fn(() => ({
+    resolved: { provider: 'copilot' },
+}));
+
+vi.mock('../../../src/server/spa/client/react/shared/ModalJobAiControls', () => ({
+    useModalJobAiSelection: () => mockModalSelection(),
+    ModalJobAiControls: ({ testIdPrefix = 'modal-job' }: { testIdPrefix?: string }) => (
+        <div data-testid={`${testIdPrefix}-ai-controls`} />
+    ),
+}));
 
 beforeEach(() => {
     vi.restoreAllMocks();
     mockFetch.mockReset();
     mockAddToast.mockReset();
+    mockModalSelection.mockReset();
+    mockModalSelection.mockReturnValue({ resolved: { provider: 'copilot' } });
     global.fetch = mockFetch;
 });
 
@@ -55,30 +67,16 @@ describe('UpdateDocumentDialog', () => {
         expect(screen.getByText('Update Document')).toBeDefined();
     });
 
-    it('populates model select from /models', async () => {
-        mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/models')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ provider: 'copilot', models: [{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3', name: 'claude-3', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }] }),
-                });
-            }
-            return Promise.resolve({
-                ok: true,
-                json: () => Promise.resolve({}),
-            });
+    it('renders shared AI controls', async () => {
+        mockFetch.mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({}),
         });
-
         await act(async () => {
             renderDialog();
         });
 
-        await waitFor(() => {
-            const select = screen.getAllByRole('combobox')[0] as HTMLSelectElement;
-            const options = Array.from(select.options).map(o => o.value);
-            expect(options).toContain('gpt-4');
-            expect(options).toContain('claude-3');
-        });
+        expect(screen.getByTestId('update-doc-ai-controls')).toBeDefined();
     });
 
     it('has a pre-filled prompt textarea containing the resolved file path', async () => {
@@ -135,7 +133,54 @@ describe('UpdateDocumentDialog', () => {
             expect(postCalls.length).toBe(1);
             const body = JSON.parse(postCalls[0][1].body);
             expect(body.type).toBe('custom');
+            expect(body.payload.provider).toBe('copilot');
             expect(body.payload.data.prompt).toContain('task');
+            expect(body.config).toBeUndefined();
+        });
+    });
+
+    it('submits selected provider, model, and reasoning effort overrides', async () => {
+        const onClose = vi.fn();
+        mockModalSelection.mockReturnValue({
+            resolved: {
+                provider: 'codex',
+                model: 'gpt-5.3-codex',
+                reasoningEffort: 'high',
+            },
+        });
+
+        mockFetch.mockImplementation((url: string, opts?: any) => {
+            if (url.includes('/tasks/settings')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
+                });
+            }
+            if (opts?.method === 'POST' && url.includes('/queue')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'q-1' }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        await act(async () => {
+            renderDialog(onClose);
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('Submit'));
+        });
+
+        await waitFor(() => {
+            const postCalls = mockFetch.mock.calls.filter(
+                ([_, opts]: [string, any]) => opts?.method === 'POST' && _.includes('/queue')
+            );
+            expect(postCalls.length).toBe(1);
+            const body = JSON.parse(postCalls[0][1].body);
+            expect(body.payload.provider).toBe('codex');
+            expect(body.config).toEqual({
+                model: 'gpt-5.3-codex',
+                reasoningEffort: 'high',
+            });
         });
     });
 
