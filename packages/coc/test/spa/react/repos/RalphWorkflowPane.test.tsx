@@ -249,7 +249,7 @@ describe('RalphWorkflowPane', () => {
         expect(screen.queryByTestId('ralph-workflow-continue')).toBeNull();
     });
 
-    it('hides the Continue loop button when NO_SIGNAL did not reach the cap', () => {
+    it('shows the Continue loop button when NO_SIGNAL did not reach the cap (early agent failure)', () => {
         const view: RalphSessionView = {
             record: makeRecord({
                 phase: 'complete',
@@ -262,7 +262,7 @@ describe('RalphWorkflowPane', () => {
             sections: [makeSection(4)],
         };
         render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
-        expect(screen.queryByTestId('ralph-workflow-continue')).toBeNull();
+        expect(screen.getByTestId('ralph-workflow-continue')).toBeInTheDocument();
     });
 
     it('opens a confirmation panel and calls onContinue when confirmed', async () => {

@@ -132,10 +132,9 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
         ...sections.map(s => s.iteration),
     ])).sort((a, b) => a - b);
 
-    const isCapHit = record.phase === 'complete'
+    const isContinuable = record.phase === 'complete'
         && (record.terminalReason === 'CAP_REACHED'
-            || (record.terminalReason === 'NO_SIGNAL'
-                && record.currentIteration >= record.maxIterations));
+            || record.terminalReason === 'NO_SIGNAL');
 
     const isRalphComplete = record.phase === 'complete'
         && record.terminalReason === 'RALPH_COMPLETE';
@@ -246,7 +245,7 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
                                 {formatRelativeTime(record.completedAt)}
                             </span>
                         )}
-                        {isCapHit && continueState === 'idle' && (
+                        {isContinuable && continueState === 'idle' && (
                             <button
                                 type="button"
                                 onClick={() => { setContinueError(null); setContinueState('confirm'); }}
@@ -342,7 +341,7 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
                         </div>
                     </div>
                 )}
-                {isCapHit && continueState !== 'idle' && (
+                {isContinuable && continueState !== 'idle' && (
                     <div
                         className="mb-3 rounded border border-blue-300 bg-blue-50 p-3 text-xs dark:border-blue-700 dark:bg-blue-950/40"
                         data-testid="ralph-workflow-continue-confirm"
