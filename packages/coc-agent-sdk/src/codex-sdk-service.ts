@@ -869,9 +869,14 @@ export class CodexSDKService implements ISDKService {
                 networkAccessEnabled: true,
             };
         }
+        // Interactive (ask) mode is constrained at the prompt level by
+        // READ_ONLY_SYSTEM_MESSAGE, which permits writing only the plan file,
+        // the attached note file, and .goal.md specs. Use `workspace-write` so
+        // those permitted writes (within the workspace and additionalDirectories
+        // such as ~/.coc) succeed, while network access stays disabled.
         return {
             approvalPolicy: 'never',
-            sandboxMode: 'read-only',
+            sandboxMode: 'workspace-write',
             networkAccessEnabled: false,
         };
     }
