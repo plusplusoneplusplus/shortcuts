@@ -110,6 +110,47 @@ describe('Git clone API routes', () => {
         expect(res.json()).toEqual({ clonedPath: path.join(resolvedParent, 'service') });
     });
 
+    it('uses a custom dirName when provided, passing it to git and returning the custom cloned path', async () => {
+        mockExecFile.mockImplementation((_cmd, _args, _options, callback) => callback(null, '', ''));
+
+        const parentDir = path.join(path.sep, 'tmp', 'repos');
+        const resolvedParent = path.resolve(parentDir);
+        const res = await request(`${base()}/api/git/clone`, {
+            method: 'POST',
+            body: { url: 'https://example.com/org/repo.git', parentDir, dirName: 'repo-2' },
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.json()).toEqual({ clonedPath: path.join(resolvedParent, 'repo-2') });
+        expect(mockExecFile).toHaveBeenCalledWith(
+            'git',
+            ['clone', 'https://example.com/org/repo.git', 'repo-2'],
+            expect.objectContaining({ cwd: resolvedParent }),
+            expect.any(Function),
+        );
+    });
+
+    it('falls back to the URL-derived name when dirName is blank', async () => {
+        mockExecFile.mockImplementation((_cmd, _args, _options, callback) => callback(null, '', ''));
+
+        const parentDir = path.join(path.sep, 'tmp', 'repos');
+        const resolvedParent = path.resolve(parentDir);
+        const res = await request(`${base()}/api/git/clone`, {
+            method: 'POST',
+            body: { url: 'https://example.com/org/myrepo.git', parentDir, dirName: '   ' },
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.json()).toEqual({ clonedPath: path.join(resolvedParent, 'myrepo') });
+        // Blank dirName → no extra git arg.
+        expect(mockExecFile).toHaveBeenCalledWith(
+            'git',
+            ['clone', 'https://example.com/org/myrepo.git'],
+            expect.objectContaining({ cwd: resolvedParent }),
+            expect.any(Function),
+        );
+    });
+
     it('surfaces git clone failures in the response body', async () => {
         mockExecFile.mockImplementation((_cmd, _args, _options, callback) => {
             const error = new Error('Command failed: git clone');

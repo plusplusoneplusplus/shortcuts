@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Dialog, Button } from '../ui';
 import { useApp } from '../contexts/AppContext';
 import { hashString } from './repoGrouping';
@@ -47,10 +47,48 @@ function joinBrowserPath(basePath: string, childName: string): string {
     return `${basePath}${separator}${childName}`;
 }
 
+/**
+ * Derives the default folder name git would use when cloning a given URL.
+ * Mirrors the server-side `deriveDefaultCloneDirectoryName` so the UI can
+ * predict the clone target without a round-trip.
+ */
+export function deriveRepoName(gitUrl: string): string {
+    const trimmed = gitUrl.trim().replace(/[?#].*$/, '').replace(/[/\\]+$/, '');
+    const lastSeparator = Math.max(
+        trimmed.lastIndexOf('/'),
+        trimmed.lastIndexOf('\\'),
+        trimmed.lastIndexOf(':'),
+    );
+    const lastPart = trimmed.slice(lastSeparator + 1);
+    return lastPart.endsWith('.git') ? lastPart.slice(0, -4) : lastPart;
+}
+
+/**
+ * Returns `baseName` if it is not in `existingNames`; otherwise appends
+ * incrementing suffixes (`-2`, `-3`, …) until a free name is found.
+ */
+export function suggestNonConflictingName(
+    baseName: string,
+    existingNames: ReadonlySet<string>,
+): string {
+    if (!existingNames.has(baseName)) {
+        return baseName;
+    }
+    let counter = 2;
+    while (existingNames.has(`${baseName}-${counter}`)) {
+        counter++;
+    }
+    return `${baseName}-${counter}`;
+}
+
 export function CloneRepoDialog({ open, onClose, onSuccess }: CloneRepoDialogProps) {
     const { dispatch } = useApp();
     const [url, setUrl] = useState('');
     const [parentDir, setParentDir] = useState('');
+    const [folderName, setFolderName] = useState('');
+    const [conflictBaseName, setConflictBaseName] = useState<string | null>(null);
+    // True while the folder name is still auto-derived (not yet manually edited).
+    const isAutoFolderNameRef = useRef(true);
     const [cloning, setCloning] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -89,6 +127,9 @@ export function CloneRepoDialog({ open, onClose, onSuccess }: CloneRepoDialogPro
         }
         setUrl('');
         setParentDir('');
+        setFolderName('');
+        setConflictBaseName(null);
+        isAutoFolderNameRef.current = true;
         setCloning(false);
         setError(null);
         setBrowserPath('');
@@ -100,9 +141,58 @@ export function CloneRepoDialog({ open, onClose, onSuccess }: CloneRepoDialogPro
         void navigateTo('~');
     }, [navigateTo, open]);
 
+    // Stable ref so the browserEntries effect can read the latest value without
+    // re-running every time browserEntries changes.
+    const browserEntriesRef = useRef<BrowserEntry[]>(browserEntries);
+    browserEntriesRef.current = browserEntries;
+
+    // When the URL changes: re-derive the folder name and check for conflicts
+    // against the currently browsed directory.
+    useEffect(() => {
+        const baseName = deriveRepoName(url);
+        isAutoFolderNameRef.current = true;
+        if (!baseName) {
+            setFolderName('');
+            setConflictBaseName(null);
+            return;
+        }
+        const existingNames = new Set(browserEntriesRef.current.map(e => e.name));
+        const suggested = suggestNonConflictingName(baseName, existingNames);
+        setFolderName(suggested);
+        setConflictBaseName(suggested !== baseName ? baseName : null);
+    }, [url]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Stable ref so the browserEntries effect can read the current URL without
+    // becoming a dependency and running on every URL keystroke.
+    const urlRef = useRef(url);
+    urlRef.current = url;
+
+    // When the user navigates to a new folder, re-check the current folder name
+    // for conflicts — but only if the name hasn't been manually edited.
+    useEffect(() => {
+        if (!isAutoFolderNameRef.current) {
+            return;
+        }
+        const baseName = deriveRepoName(urlRef.current);
+        if (!baseName) {
+            return;
+        }
+        const existingNames = new Set(browserEntries.map(e => e.name));
+        const suggested = suggestNonConflictingName(baseName, existingNames);
+        setFolderName(suggested);
+        setConflictBaseName(suggested !== baseName ? baseName : null);
+    }, [browserEntries]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const handleFolderNameChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+        isAutoFolderNameRef.current = false;
+        setFolderName(event.target.value);
+        setConflictBaseName(null);
+    }, []);
+
     const handleClone = useCallback(async () => {
         const trimmedUrl = url.trim();
         const trimmedParentDir = parentDir.trim();
+        const trimmedFolderName = folderName.trim();
         if (!trimmedUrl) {
             setError('Repository URL is required');
             return;
@@ -115,7 +205,11 @@ export function CloneRepoDialog({ open, onClose, onSuccess }: CloneRepoDialogPro
         setCloning(true);
         setError(null);
         try {
-            const { clonedPath } = await cloneRepository({ url: trimmedUrl, parentDir: trimmedParentDir });
+            const { clonedPath } = await cloneRepository({
+                url: trimmedUrl,
+                parentDir: trimmedParentDir,
+                dirName: trimmedFolderName || undefined,
+            });
             const workspace = await registerWorkspace({
                 id: 'ws-' + hashString(clonedPath),
                 name: getPathLeaf(clonedPath) || 'repo',
@@ -131,7 +225,7 @@ export function CloneRepoDialog({ open, onClose, onSuccess }: CloneRepoDialogPro
         } finally {
             setCloning(false);
         }
-    }, [dispatch, onClose, onSuccess, parentDir, url]);
+    }, [dispatch, folderName, onClose, onSuccess, parentDir, url]);
 
     return (
         <Dialog
@@ -263,6 +357,28 @@ export function CloneRepoDialog({ open, onClose, onSuccess }: CloneRepoDialogPro
                         </>
                     )}
                 </div>
+
+                <label className="text-xs font-medium text-[#616161] dark:text-[#999]" htmlFor="clone-folder-name">
+                    Folder name
+                </label>
+                <input
+                    id="clone-folder-name"
+                    data-testid="clone-folder-name"
+                    className="px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]"
+                    value={folderName}
+                    onChange={handleFolderNameChange}
+                    placeholder="my-repo"
+                    disabled={cloning}
+                />
+
+                {conflictBaseName && (
+                    <div
+                        data-testid="clone-folder-conflict-note"
+                        className="text-xs px-2 py-1 rounded bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400"
+                    >
+                        A folder named &quot;{conflictBaseName}&quot; already exists here. We&apos;ve suggested a new name — feel free to change it.
+                    </div>
+                )}
 
                 {error && (
                     <div

@@ -40,11 +40,11 @@ export function deriveDefaultCloneDirectoryName(gitUrl: string): string {
     return lastPart.endsWith('.git') ? lastPart.slice(0, -4) : lastPart;
 }
 
-function cloneRepository(url: string, parentDir: string): Promise<void> {
+function cloneRepository(gitArgs: string[], parentDir: string): Promise<void> {
     return new Promise((resolve, reject) => {
         execFile(
             'git',
-            ['clone', url],
+            gitArgs,
             { cwd: parentDir, maxBuffer: GIT_MAX_BUFFER },
             (error, stdout, stderr) => {
                 if (error) {
@@ -64,6 +64,9 @@ export function registerGitCloneRoutes(ctx: ApiRouteContext): void {
     const { routes } = ctx;
 
     // POST /api/git/clone — Clone an arbitrary git URL into a parent directory.
+    // Optional `dirName` overrides the target folder name (defaults to the name
+    // git derives from the URL). When provided, git receives an extra positional
+    // argument: `git clone <url> <dirName>`.
     routes.push(createRoute({
         method: 'POST',
         pattern: '/api/git/clone',
@@ -86,10 +89,17 @@ export function registerGitCloneRoutes(ctx: ApiRouteContext): void {
 
             const gitUrl = body.url.trim();
             const parentDir = path.resolve(body.parentDir);
-            const cloneDirName = deriveDefaultCloneDirectoryName(gitUrl);
+            const customDirName =
+                typeof body.dirName === 'string' && body.dirName.trim()
+                    ? body.dirName.trim()
+                    : null;
+            const cloneDirName = customDirName ?? deriveDefaultCloneDirectoryName(gitUrl);
+            const gitArgs = customDirName
+                ? ['clone', gitUrl, customDirName]
+                : ['clone', gitUrl];
 
             try {
-                await cloneRepository(gitUrl, parentDir);
+                await cloneRepository(gitArgs, parentDir);
             } catch (error) {
                 const execError = error as ExecFileError;
                 sendJSON(res, 500, {
