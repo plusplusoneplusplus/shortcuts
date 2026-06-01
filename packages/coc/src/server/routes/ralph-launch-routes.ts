@@ -14,8 +14,8 @@ import { toQueueProcessId, getLogger, LogCategory } from '@plusplusoneplusplus/f
 import { RalphSessionStore } from '../ralph/ralph-session-store';
 import { buildRalphIterationTask } from '../ralph/enqueue-iteration';
 import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
-import { VALID_CHAT_PROVIDERS } from '../tasks/task-types';
-import type { ChatProvider } from '../tasks/task-types';
+import { VALID_CHAT_PROVIDERS, VALID_REASONING_EFFORTS } from '../tasks/task-types';
+import type { ChatProvider, ReasoningEffort } from '../tasks/task-types';
 
 export interface RalphLaunchRouteContext {
     bridge: MultiRepoQueueRouter;
@@ -67,6 +67,13 @@ export function registerRalphLaunchRoutes(routes: Route[], ctx: RalphLaunchRoute
             const model = typeof config.model === 'string' && config.model.trim()
                 ? config.model.trim()
                 : undefined;
+            const rawReasoningEffort = config.reasoningEffort ?? body.reasoningEffort;
+            const reasoningEffort = rawReasoningEffort === undefined
+                ? undefined
+                : rawReasoningEffort as ReasoningEffort;
+            if (reasoningEffort !== undefined && !VALID_REASONING_EFFORTS.has(reasoningEffort)) {
+                return sendError(res, 400, `Invalid reasoningEffort: '${String(rawReasoningEffort)}'. Valid reasoningEffort values: ${[...VALID_REASONING_EFFORTS].join(', ')}`);
+            }
 
             // Resolve max iterations: per-repo preference > hardcoded default.
             let prefMax: number | undefined;
@@ -114,6 +121,7 @@ export function registerRalphLaunchRoutes(routes: Route[], ctx: RalphLaunchRoute
                 ...task,
                 config: {
                     ...(model ? { model } : {}),
+                    ...(reasoningEffort ? { reasoningEffort } : {}),
                 },
             });
 

@@ -21,6 +21,7 @@ const {
     mockGetRepoPreferences,
     mockPatchRepoPreferences,
     mockAgentProviders,
+    mockModalSelection,
 } = vi.hoisted(() => ({
     mockGetRepoPreferences: vi.fn().mockResolvedValue({}),
     mockPatchRepoPreferences: vi.fn().mockResolvedValue({}),
@@ -29,6 +30,7 @@ const {
         { id: 'codex', label: 'Codex', enabled: true, available: true },
         { id: 'claude', label: 'Claude', enabled: false, available: false },
     ],
+    mockModalSelection: vi.fn(() => ({ resolved: { provider: 'copilot' } })),
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -52,6 +54,13 @@ const mockModels = [
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/useModels', () => ({
     useModels: () => ({ models: mockModels, loading: false, error: null, reload: vi.fn() }),
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/shared/ModalJobAiControls', () => ({
+    useModalJobAiSelection: () => mockModalSelection(),
+    ModalJobAiControls: ({ testIdPrefix = 'modal-job' }: { testIdPrefix?: string }) => (
+        <div data-testid={`${testIdPrefix}-ai-controls`} />
+    ),
 }));
 
 // ---------------------------------------------------------------------------
@@ -81,6 +90,8 @@ describe('RalphLaunchDialog', () => {
         mockGetRepoPreferences.mockResolvedValue({});
         mockPatchRepoPreferences.mockReset();
         mockPatchRepoPreferences.mockResolvedValue({});
+        mockModalSelection.mockReset();
+        mockModalSelection.mockReturnValue({ resolved: { provider: 'copilot' } });
         vi.stubGlobal('fetch', vi.fn());
     });
 
@@ -102,16 +113,9 @@ describe('RalphLaunchDialog', () => {
         expect(textarea.readOnly).toBe(true);
     });
 
-    it('renders model selector with only enabled models', () => {
+    it('renders shared AI controls', () => {
         render(<RalphLaunchDialog {...defaultProps} />);
-        const select = screen.getByTestId('ralph-model-select') as HTMLSelectElement;
-        const options = Array.from(select.options);
-        // Default + 2 enabled models (model-c is disabled)
-        expect(options).toHaveLength(3);
-        expect(options[0].value).toBe('');
-        expect(options[0].textContent).toBe('Default');
-        expect(options[1].textContent).toBe('Model A');
-        expect(options[2].textContent).toBe('Model B');
+        expect(screen.getByTestId('ralph-launch-ai-controls')).toBeDefined();
     });
 
     it('calls onClose when Cancel is clicked', () => {
@@ -154,19 +158,17 @@ describe('RalphLaunchDialog', () => {
         expect(body.provider).toBe('copilot');
     });
 
-    it('includes model in config when selected', async () => {
+    it('includes resolved model and reasoning effort in config', async () => {
         const mockFetch = vi.fn().mockResolvedValue({
             ok: true,
             json: () => Promise.resolve({ processId: 'pid-456' }),
         });
         vi.stubGlobal('fetch', mockFetch);
+        mockModalSelection.mockReturnValue({
+            resolved: { provider: 'codex', model: 'gpt-5.3-codex', reasoningEffort: 'high' },
+        });
 
         render(<RalphLaunchDialog {...defaultProps} />);
-
-        // Select a model
-        const select = screen.getByTestId('ralph-model-select') as HTMLSelectElement;
-        fireEvent.change(select, { target: { value: 'model-b' } });
-
         fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
 
         await waitFor(() => {
@@ -174,53 +176,27 @@ describe('RalphLaunchDialog', () => {
         });
 
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-        expect(body.config).toEqual({ model: 'model-b' });
+        expect(body.provider).toBe('codex');
+        expect(body.config).toEqual({ model: 'gpt-5.3-codex', reasoningEffort: 'high' });
     });
 
-    it('includes selected provider in launch payload', async () => {
+    it('omits config when no model or reasoning effort override is resolved', async () => {
         const mockFetch = vi.fn().mockResolvedValue({
             ok: true,
-            json: () => Promise.resolve({ processId: 'pid-provider' }),
+            json: () => Promise.resolve({ processId: 'pid-no-config' }),
         });
         vi.stubGlobal('fetch', mockFetch);
 
         render(<RalphLaunchDialog {...defaultProps} />);
-
-        fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
-        fireEvent.click(screen.getByTestId('agent-option-codex'));
         fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
 
         await waitFor(() => {
-            expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-provider');
+            expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-no-config');
         });
 
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-        expect(body.provider).toBe('codex');
-        expect(mockPatchRepoPreferences).toHaveBeenCalledWith('ws-123', { lastChatProvider: 'codex' });
-    });
-
-    it('uses last chat provider preference when selectable', async () => {
-        mockGetRepoPreferences.mockResolvedValue({ lastChatProvider: 'codex' });
-        const mockFetch = vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({ processId: 'pid-last-provider' }),
-        });
-        vi.stubGlobal('fetch', mockFetch);
-
-        render(<RalphLaunchDialog {...defaultProps} />);
-
-        await waitFor(() => {
-            expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Codex');
-        });
-
-        fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
-
-        await waitFor(() => {
-            expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-last-provider');
-        });
-
-        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-        expect(body.provider).toBe('codex');
+        expect(body.provider).toBe('copilot');
+        expect(body.config).toBeUndefined();
     });
 
     it('includes folderPath when provided', async () => {

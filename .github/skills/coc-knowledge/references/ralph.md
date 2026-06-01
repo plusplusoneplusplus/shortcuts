@@ -87,6 +87,16 @@ See `docs/spec-slices.md` for the full slice template, decision-tagging
 convention, and ready-for-Ralph checklist that the bundled `grill-me` skill
 produces.
 
+## Direct Goal-File Launch
+
+`POST /api/ralph-launch` (`packages/coc/src/server/routes/ralph-launch-routes.ts`)
+starts an execution-phase Ralph session directly from an already-written goal
+spec. The SPA `shared/RalphLaunchDialog.tsx` uses `ModalJobAiControls` so
+goal-file launches share New Chat's workspace-scoped provider defaults,
+effort-tier resolution, and legacy model/reasoning-effort controls. The route
+validates optional `provider` and `reasoningEffort` inputs and carries them,
+alongside optional `config.model`, onto the first queued Ralph execution task.
+
 ## Promote Ask-Mode Chat to Ralph
 
 A completed ask-mode chat can be promoted to a Ralph session in place via
