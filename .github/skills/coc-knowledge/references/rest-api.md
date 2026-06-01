@@ -47,6 +47,12 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | GET | `/api/fs/browse-helper` | Same-origin helper page for container-mode directory browsing |
 | GET | `/api/fs/blob?path=<absolute>` | Read a single file when the absolute path is under CoC trusted data directories or inside any registered workspace/repo root; rejects arbitrary filesystem paths |
 
+## Git
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/git/clone` | Clone an arbitrary git URL into a parent directory using the server process's git credentials; returns `clonedPath` on success and `{ error }` on clone failure |
+
 ## Processes
 
 | Method | Path | Description |
