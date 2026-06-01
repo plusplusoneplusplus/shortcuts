@@ -15,3 +15,5 @@ export { useGitInfo } from './useGitInfo';
 export type { GitInfo } from './useGitInfo';
 export { useCommitChatBinding } from './useCommitChatBinding';
 export { useFilesViewMode } from './useFilesViewMode';
+export { useCommitClassificationStatus } from './useCommitClassificationStatus';
+export type { UseCommitClassificationStatusReturn } from './useCommitClassificationStatus';

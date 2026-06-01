@@ -43,9 +43,11 @@ export interface CommitDetailProps {
     isPopOut?: boolean;
     /** When set, the viewer scrolls to the given file's diff section. */
     scrollToFilePath?: string | null;
+    /** Called when a classification result becomes available for this commit. */
+    onClassified?: () => void;
 }
 
-export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFilePath }: CommitDetailProps) {
+export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFilePath, onClassified }: CommitDetailProps) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [chatOpen, setChatOpen] = useState(() => {
         try {
@@ -91,6 +93,15 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
         [workspaceId, hash],
     );
     const classification = useClassification(classificationKey, { workspaceId });
+
+    // Notify parent when a classification result becomes available.
+    const onClassifiedRef = useRef(onClassified);
+    onClassifiedRef.current = onClassified;
+    useEffect(() => {
+        if (classification.state.status === 'ready') {
+            onClassifiedRef.current?.();
+        }
+    }, [classification.state.status]);
 
     // Review progress — session-local only (no server persistence)
     const reviewProgress = usePrReviewProgress(hash ?? '');

@@ -163,6 +163,61 @@ export function registerGenericClassificationRoutes(routes: Route[], opts: Gener
         },
     });
 
+    // -- GET: Batch status (must be registered before the single-item GET) ------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repos\/([^/]+)\/classify-diff\/batch-status$/,
+        handler: async (req, res, match) => {
+            try {
+                const repoId = decodeURIComponent(match![1]);
+                const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`);
+                const type = url.searchParams.get('type') as ClassificationType | null;
+                const rawIdentifiers = url.searchParams.get('identifiers');
+                const workspaceIdParam = url.searchParams.get('workspaceId');
+                const workspaceId = workspaceIdParam || repoId;
+
+                if (!type || !['pr', 'commit', 'branch-range'].includes(type)) {
+                    return send400(res, 'Missing or invalid query parameter: type');
+                }
+                if (!rawIdentifiers) {
+                    return sendJson(res, { statuses: {} });
+                }
+
+                const identifiers = rawIdentifiers
+                    .split(',')
+                    .map(s => s.trim())
+                    .filter(Boolean);
+
+                if (identifiers.length > 200) {
+                    return send400(res, 'Too many identifiers: max 200 per request');
+                }
+                if (identifiers.length === 0) {
+                    return sendJson(res, { statuses: {} });
+                }
+
+                const statuses: Record<string, 'none' | 'ready' | 'running'> = {};
+                for (const identifier of identifiers) {
+                    const cached = readClassificationGeneric(dataDir, workspaceId, repoId, type, identifier);
+                    if (cached) {
+                        statuses[identifier] = 'ready';
+                        continue;
+                    }
+                    const pending = readPendingGeneric(dataDir, workspaceId, repoId, type, identifier);
+                    if (pending && isTaskAlive(pending.processId, bridge)) {
+                        statuses[identifier] = 'running';
+                    } else {
+                        statuses[identifier] = 'none';
+                    }
+                }
+
+                sendJson(res, { statuses });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
     // -- GET: Poll / get cached result ----------------------------------------
 
     routes.push({

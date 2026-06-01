@@ -186,6 +186,14 @@ Users can add up to **10** additional notes roots per workspace — subfolders i
 | GET | `/api/repos/:repoId/pull-requests/suggestions` | Read cached AI-ranked PR suggestions |
 | POST | `/api/repos/:repoId/pull-requests/suggestions/refresh` | Rank open PRs using cached review history |
 
+## Diff Classification
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/repos/:repoId/classify-diff` | Trigger AI hunk classification. Body: `{ type: 'pr'\|'commit'\|'branch-range', identifier, workspaceId?, model?, provider? }`. Returns `{ status: 'started'\|'ready'\|'running', … }`. |
+| GET | `/api/repos/:repoId/classify-diff` | Poll for a single classification result. Query: `type`, `identifier`, `workspaceId?`. Returns `{ status: 'none'\|'ready'\|'running', result? }`. |
+| GET | `/api/repos/:repoId/classify-diff/batch-status` | Batch-check whether multiple identifiers have a stored result. Query: `type`, `identifiers` (comma-separated, max 200), `workspaceId?`. Returns `{ statuses: { [identifier]: 'none'\|'ready'\|'running' } }`. Read-only — never triggers a new classification task. |
+
 ## Loops
 
 See [loops.md](loops.md) for the full subsystem. Gated by `loops.enabled` (default `false`).

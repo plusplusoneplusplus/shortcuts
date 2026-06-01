@@ -223,9 +223,11 @@ export interface CommitListProps {
     onMobileSelectingChange?: (selecting: boolean) => void;
     /** Called when swipe-left action buttons are tapped (Review, Ask AI). */
     onSwipeAction?: (action: 'review' | 'ask-ai' | 'more', commitHash: string) => void;
+    /** Set of commit hashes that have a stored classification result. When provided, a ✓ badge is shown. */
+    classifiedHashes?: ReadonlySet<string>;
 }
 
-export function CommitList({ title, commits, selectedHash, selectedHashes, onMultiSelect, selectedFile, initialExpandedHash, onSelect, onFileSelect, onCommitContextMenu, workspaceId, loading, defaultCollapsed = false, showEmpty = false, emptyMessage, unpushedCount = 0, reorderable = false, onReorder, repoRoot, isMobileSelecting = false, onMobileSelectingChange, onSwipeAction }: CommitListProps) {
+export function CommitList({ title, commits, selectedHash, selectedHashes, onMultiSelect, selectedFile, initialExpandedHash, onSelect, onFileSelect, onCommitContextMenu, workspaceId, loading, defaultCollapsed = false, showEmpty = false, emptyMessage, unpushedCount = 0, reorderable = false, onReorder, repoRoot, isMobileSelecting = false, onMobileSelectingChange, onSwipeAction, classifiedHashes }: CommitListProps) {
     const [collapsed, setCollapsed] = useState(defaultCollapsed);
     const listRef = useRef<HTMLDivElement>(null);
     const [anchorHash, setAnchorHash] = useState<string | null>(null);
@@ -883,6 +885,16 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
                                                 aria-label="Unpushed commit"
                                             >
                                                 ↑
+                                            </span>
+                                        )}
+                                        {classifiedHashes?.has(commit.hash) && (
+                                            <span
+                                                className="inline-flex items-center justify-center w-[15px] h-[15px] rounded-full text-[9px] font-semibold border border-[#a7f3d0]/60 bg-[#d1fae5] dark:bg-[#064e3b]/25 text-[#047857] dark:text-[#34d399]"
+                                                title="Diff classified"
+                                                data-testid={`commit-classified-flag-${commit.shortHash}`}
+                                                aria-label="Diff classified"
+                                            >
+                                                ✓
                                             </span>
                                         )}
                                     </span>
