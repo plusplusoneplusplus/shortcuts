@@ -60,6 +60,8 @@ export function browseWorkspaceFolders(path: string): Promise<BrowseWorkspaceFol
 export interface CloneRepositoryRequest {
     url: string;
     parentDir: string;
+    /** Override the target folder name. Defaults to the name git derives from the URL. */
+    dirName?: string;
 }
 
 export interface CloneRepositoryResponse {

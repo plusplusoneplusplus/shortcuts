@@ -28,6 +28,7 @@ import { execFileAsync } from './internal/exec-utils';
 import { CocToolRuntime } from './llm-tools/coc-tool-runtime';
 import { cocToolBridgeServer } from './llm-tools/bridge-server';
 import { buildCocLlmToolsMcpConfig, COC_LLM_TOOLS_MCP_SERVER_NAME } from './llm-tools/mcp-config';
+import { isSupportedCodexImagePath } from './image-converter';
 import { spawn } from 'child_process';
 import { createRequire } from 'module';
 import * as readline from 'readline';
@@ -83,17 +84,20 @@ export type CodexAuthChecker = () => CodexAuthCheckResult;
 // ============================================================================
 
 /** A running Codex thread that can be used to send messages and stream output. */
+type CodexUserInput = { type: 'text'; text: string } | { type: 'local_image'; path: string };
+type CodexInput = string | CodexUserInput[];
+
 interface CodexThread {
     /** Unique ID assigned by the Codex service after the first turn starts. */
     readonly id: string | null;
     /**
      * Run the thread with a prompt, resolving with the completed turn.
      */
-    run(input: string, options?: CodexTurnOptions): Promise<CodexThreadResult>;
+    run(input: CodexInput, options?: CodexTurnOptions): Promise<CodexThreadResult>;
     /**
      * Run the thread with a prompt and stream structured events.
      */
-    runStreamed(input: string, options?: CodexTurnOptions): Promise<{ events: AsyncGenerator<CodexThreadEvent> }>;
+    runStreamed(input: CodexInput, options?: CodexTurnOptions): Promise<{ events: AsyncGenerator<CodexThreadEvent> }>;
 }
 
 interface CodexTurnOptions {
@@ -519,6 +523,20 @@ export class CodexSDKService implements ISDKService {
         return mapCodexRateLimitsToQuota(result);
     }
 
+    private buildCodexInput(options: SendMessageOptions): CodexInput {
+        const text = options.prompt ?? '';
+        const imagePaths = (options.attachments ?? [])
+            .filter(attachment => attachment.type === 'file' && isSupportedCodexImagePath(attachment.path))
+            .map(attachment => attachment.path);
+
+        if (imagePaths.length === 0) return text;
+
+        return [
+            ...(text ? [{ type: 'text' as const, text }] : []),
+            ...imagePaths.map(imagePath => ({ type: 'local_image' as const, path: imagePath })),
+        ];
+    }
+
     // ── Message dispatch ──────────────────────────────────────────────────────
 
     public async sendMessage(options: SendMessageOptions): Promise<IInvocationResult> {
@@ -595,7 +613,7 @@ export class CodexSDKService implements ISDKService {
             if (thread.id) notifySessionCreated(thread.id);
 
             const chunks: string[] = [];
-            const streamed = await thread.runStreamed(options.prompt ?? '', { signal: abortController.signal });
+            const streamed = await thread.runStreamed(this.buildCodexInput(options), { signal: abortController.signal });
 
             for await (const event of streamed.events) {
                 if (event.type === 'thread.started') {

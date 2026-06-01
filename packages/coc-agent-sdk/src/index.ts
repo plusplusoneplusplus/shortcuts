@@ -71,7 +71,13 @@ export {
     CopilotSDKService,
     resetCopilotSDKService,
     tryConvertImageFileToDataUrl,
+    tryReadImageAsBase64,
 } from './copilot-sdk-service';
+
+export {
+    isImageFilePath,
+    isSupportedCodexImagePath,
+} from './image-converter';
 
 export type { BackgroundTasksInfo, IAccountQuotaSnapshot, IAccountQuotaResult } from './copilot-sdk-service';
 

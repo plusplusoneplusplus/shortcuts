@@ -32,7 +32,7 @@ Location: `packages/coc-agent-sdk/src/`
 | `model-reasoning.ts` | Metadata-aware model/reasoning resolver; variant IDs with `capabilities.family` sent as base model + reasoning effort |
 | `mcp-config-loader.ts` | Loads/merges MCP config from `~/.copilot/mcp-config.json`, workspace `.vscode/mcp.json`, and explicit request options |
 | `trusted-folder.ts` | Pre-registers working directories in `~/.copilot/config.json` |
-| `image-converter.ts` | Image file → data-URL conversion |
+| `image-converter.ts` | Image file detection plus data-URL/base64 conversion helpers |
 | `tool-call.ts` | `ToolCall`, `ToolCallStatus`, `ToolCallPermissionRequest`, serialization types |
 | `model-info.ts` | `ModelInfo` type (id, name, description, tier, …) |
 | `logger.ts` | `initSDKLogger` / `resetSDKLogger` / `getSDKLogger` — pino logger lifecycle |
@@ -95,6 +95,8 @@ Codex SDK thread options do not expose Copilot's native `skillDirectories` or `d
 
 Codex permission mode is mapped at the provider boundary with `approvalPolicy: 'never'` for every CoC mode. Interactive/ask mode and omitted mode use `sandboxMode: 'read-only'` with network access disabled. Plan mode uses the same full-access Codex sandbox as autopilot (`sandboxMode: 'danger-full-access'`, network access enabled) and relies on CoC's read-only/plan system prompt rather than Codex sandbox enforcement.
 
+Codex image attachments are passed at the provider boundary as `@openai/codex-sdk` structured `local_image` inputs. When `SendMessageOptions.attachments` includes file attachments with supported raster image extensions (`png`, `jpg`/`jpeg`, `gif`, `webp`), `CodexSDKService` sends an input array containing the prompt text plus `{ type: 'local_image', path }` entries in attachment order. Directories, non-images, and SVGs are ignored so text-only behavior is preserved.
+
 **Thread ↔ session mapping:** Every CoC session ID maps to exactly one Codex thread. The mapping is created on the first `sendMessage()` call for a session and removed on abort or dispose.
 
 **Authentication:** CoC does not own a Codex auth store or `/api/codex-auth/*` routes. Codex authentication is handled by the Codex SDK/CLI; hosts may still inject an optional `CodexAuthChecker` if they need a preflight gate before loading the SDK.
@@ -131,6 +133,8 @@ Claude Code expects hyphenated model IDs for version aliases (for example, `clau
 Claude model catalog discovery spawns the Claude Code CLI in `stream-json` protocol mode and sends a single `control_request` initialize message, then maps `response.response.models` into `IModelInfo`. The resolver prefers the platform-specific native binary bundled beside `@anthropic-ai/claude-agent-sdk` and falls back to `claude` on `PATH`. Discovery uses `--setting-sources=` and `--tools ''` to avoid loading user/project/local settings or tools; malformed output, spawn errors, timeouts, or protocol changes fall back to the curated Claude model list.
 
 Claude Code permission mode is mapped at the provider boundary: CoC `autopilot` sends `permissionMode: 'bypassPermissions'` plus `allowDangerouslySkipPermissions: true`, CoC `plan` sends `permissionMode: 'plan'`, and all other modes (interactive/ask/undefined) send `permissionMode: 'acceptEdits'`. This ensures ask-mode sessions can create directories and write files within allowed working directories without blocking on permission prompts.
+
+Claude image attachments are converted at the provider boundary. When `SendMessageOptions.attachments` includes readable file images with extensions Claude supports as base64 blocks (`png`, `jpg`/`jpeg`, `gif`, `webp`), `ClaudeSDKService` sends a one-shot streaming user message containing the prompt text plus image blocks. Unsupported files, directories, SVGs, missing files, and files over the shared image conversion limit are ignored so text-only behavior is preserved.
 
 `ClaudeSDKService` widens the agent's filesystem permission scope via the SDK's `additionalDirectories` option (`resolveAdditionalDirectories`). It always grants access to `~/.coc` (CoC data/skills dir) and the system temp directory (`os.tmpdir()`) so out-of-repo skill files and temp artifacts remain readable beyond the per-request `workingDirectory`/`cwd`. Any caller-supplied `SendMessageOptions.additionalDirectories` are merged in; all entries are resolved to absolute paths and de-duplicated (case-insensitively on Windows).
 

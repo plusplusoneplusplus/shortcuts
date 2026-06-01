@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { AppProvider } from '../../../../src/server/spa/client/react/contexts/AppContext';
-import { CloneRepoDialog } from '../../../../src/server/spa/client/react/repos/CloneRepoDialog';
+import {
+    CloneRepoDialog,
+    deriveRepoName,
+    suggestNonConflictingName,
+} from '../../../../src/server/spa/client/react/repos/CloneRepoDialog';
 
 const repositoryServiceMocks = vi.hoisted(() => ({
     browseWorkspaceFolders: vi.fn(),
@@ -21,6 +25,38 @@ vi.mock('../../../../src/server/spa/client/react/repos/repositoryService', () =>
 function Wrap({ children }: { children: ReactNode }) {
     return <AppProvider>{children}</AppProvider>;
 }
+
+describe('deriveRepoName', () => {
+    it('strips .git suffix from HTTPS URLs', () => {
+        expect(deriveRepoName('https://github.com/org/repo.git')).toBe('repo');
+    });
+
+    it('handles URLs without .git suffix', () => {
+        expect(deriveRepoName('https://github.com/org/myproject')).toBe('myproject');
+    });
+
+    it('handles SSH scp-style URLs', () => {
+        expect(deriveRepoName('git@github.com:org/service.git')).toBe('service');
+    });
+
+    it('returns empty string for blank input', () => {
+        expect(deriveRepoName('')).toBe('');
+    });
+});
+
+describe('suggestNonConflictingName', () => {
+    it('returns the base name when no conflict', () => {
+        expect(suggestNonConflictingName('repo', new Set())).toBe('repo');
+    });
+
+    it('appends -2 when base name conflicts', () => {
+        expect(suggestNonConflictingName('repo', new Set(['repo']))).toBe('repo-2');
+    });
+
+    it('increments suffix until a free slot is found', () => {
+        expect(suggestNonConflictingName('repo', new Set(['repo', 'repo-2', 'repo-3']))).toBe('repo-4');
+    });
+});
 
 describe('CloneRepoDialog', () => {
     beforeEach(() => {
@@ -57,6 +93,7 @@ describe('CloneRepoDialog', () => {
         await waitFor(() => expect(repositoryServiceMocks.cloneRepository).toHaveBeenCalledWith({
             url: 'git@github.com:org/repo.git',
             parentDir: '/projects',
+            dirName: 'repo',
         }));
         expect(repositoryServiceMocks.registerWorkspace).toHaveBeenCalledWith({
             id: expect.stringMatching(/^ws-/),
@@ -125,5 +162,181 @@ describe('CloneRepoDialog', () => {
 
         expect(await screen.findByTestId('clone-repo-error')).toHaveTextContent('Repository URL is required');
         expect(repositoryServiceMocks.cloneRepository).not.toHaveBeenCalled();
+    });
+
+    it('auto-derives the folder name from the URL', async () => {
+        render(
+            <Wrap>
+                <CloneRepoDialog open onClose={() => {}} onSuccess={() => {}} />
+            </Wrap>,
+        );
+
+        await screen.findByText('/projects');
+        fireEvent.change(screen.getByTestId('clone-repo-url'), {
+            target: { value: 'https://github.com/org/my-project.git' },
+        });
+
+        expect(screen.getByTestId('clone-folder-name')).toHaveValue('my-project');
+    });
+
+    it('detects a conflict and pre-fills a suffixed folder name with a note', async () => {
+        // Browser returns an entry whose name matches the derived repo name.
+        repositoryServiceMocks.browseWorkspaceFolders.mockResolvedValue({
+            path: '/projects',
+            parent: '/',
+            entries: [{ name: 'shortcuts', isGitRepo: true }],
+        });
+
+        render(
+            <Wrap>
+                <CloneRepoDialog open onClose={() => {}} onSuccess={() => {}} />
+            </Wrap>,
+        );
+
+        await screen.findByText('/projects');
+        fireEvent.change(screen.getByTestId('clone-repo-url'), {
+            target: { value: 'https://github.com/org/shortcuts.git' },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('clone-folder-name')).toHaveValue('shortcuts-2');
+        });
+        expect(screen.getByTestId('clone-folder-conflict-note')).toHaveTextContent(
+            'A folder named "shortcuts" already exists here.',
+        );
+    });
+
+    it('updates the conflict suggestion when the user navigates to a new folder', async () => {
+        // Initial browse: no conflict.
+        repositoryServiceMocks.browseWorkspaceFolders
+            .mockResolvedValueOnce({
+                path: '/projects',
+                parent: '/',
+                entries: [],
+            })
+            // After navigating into a sub-folder that already has the repo.
+            .mockResolvedValueOnce({
+                path: '/projects/work',
+                parent: '/projects',
+                entries: [{ name: 'shortcuts' }],
+            });
+
+        render(
+            <Wrap>
+                <CloneRepoDialog open onClose={() => {}} onSuccess={() => {}} />
+            </Wrap>,
+        );
+
+        await screen.findByText('/projects');
+        fireEvent.change(screen.getByTestId('clone-repo-url'), {
+            target: { value: 'https://github.com/org/shortcuts.git' },
+        });
+
+        // No conflict yet.
+        expect(screen.getByTestId('clone-folder-name')).toHaveValue('shortcuts');
+        expect(screen.queryByTestId('clone-folder-conflict-note')).toBeNull();
+
+        // Simulate navigating to /projects/work (click the ".." entry — here we
+        // call browseWorkspaceFolders directly by clicking the parent button).
+        fireEvent.click(screen.getByText('📁 ..'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('clone-folder-name')).toHaveValue('shortcuts-2');
+        });
+        expect(screen.getByTestId('clone-folder-conflict-note')).toBeInTheDocument();
+    });
+
+    it('does not overwrite a manually-edited folder name when navigating the browser', async () => {
+        repositoryServiceMocks.browseWorkspaceFolders
+            .mockResolvedValueOnce({
+                path: '/projects',
+                parent: '/',
+                entries: [],
+            })
+            .mockResolvedValueOnce({
+                path: '/projects/work',
+                parent: '/projects',
+                entries: [{ name: 'shortcuts' }],
+            });
+
+        render(
+            <Wrap>
+                <CloneRepoDialog open onClose={() => {}} onSuccess={() => {}} />
+            </Wrap>,
+        );
+
+        await screen.findByText('/projects');
+        fireEvent.change(screen.getByTestId('clone-repo-url'), {
+            target: { value: 'https://github.com/org/shortcuts.git' },
+        });
+
+        // User manually renames the folder.
+        fireEvent.change(screen.getByTestId('clone-folder-name'), {
+            target: { value: 'my-shortcuts' },
+        });
+
+        // Navigate to a folder that contains "shortcuts".
+        fireEvent.click(screen.getByText('📁 ..'));
+
+        await waitFor(() =>
+            expect(repositoryServiceMocks.browseWorkspaceFolders).toHaveBeenCalledTimes(2),
+        );
+
+        // Manual name must be preserved.
+        expect(screen.getByTestId('clone-folder-name')).toHaveValue('my-shortcuts');
+        expect(screen.queryByTestId('clone-folder-conflict-note')).toBeNull();
+    });
+
+    it('sends the custom folder name to the clone API', async () => {
+        render(
+            <Wrap>
+                <CloneRepoDialog open onClose={() => {}} onSuccess={() => {}} />
+            </Wrap>,
+        );
+
+        await screen.findByText('/projects');
+        fireEvent.change(screen.getByTestId('clone-repo-url'), {
+            target: { value: 'https://github.com/org/repo.git' },
+        });
+        fireEvent.change(screen.getByTestId('clone-folder-name'), {
+            target: { value: 'my-custom-name' },
+        });
+        fireEvent.click(screen.getByTestId('clone-repo-submit'));
+
+        await waitFor(() => expect(repositoryServiceMocks.cloneRepository).toHaveBeenCalledWith({
+            url: 'https://github.com/org/repo.git',
+            parentDir: '/projects',
+            dirName: 'my-custom-name',
+        }));
+    });
+
+    it('clears the conflict note when the user manually edits the folder name', async () => {
+        repositoryServiceMocks.browseWorkspaceFolders.mockResolvedValue({
+            path: '/projects',
+            parent: '/',
+            entries: [{ name: 'shortcuts' }],
+        });
+
+        render(
+            <Wrap>
+                <CloneRepoDialog open onClose={() => {}} onSuccess={() => {}} />
+            </Wrap>,
+        );
+
+        await screen.findByText('/projects');
+        fireEvent.change(screen.getByTestId('clone-repo-url'), {
+            target: { value: 'https://github.com/org/shortcuts.git' },
+        });
+
+        await waitFor(() =>
+            expect(screen.getByTestId('clone-folder-conflict-note')).toBeInTheDocument(),
+        );
+
+        // User edits the name → note disappears.
+        fireEvent.change(screen.getByTestId('clone-folder-name'), {
+            target: { value: 'shortcuts-personal' },
+        });
+
+        expect(screen.queryByTestId('clone-folder-conflict-note')).toBeNull();
     });
 });
