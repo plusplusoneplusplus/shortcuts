@@ -372,7 +372,8 @@ describe('Tasks Handler', () => {
 
         it('should reject paths outside workspace and task root', async () => {
             const srv = await startServer();
-            const evilDir = fs.mkdtempSync(path.join(os.tmpdir(), 'evil-'));
+            // Use home dir (not ~/.copilot, not os.tmpdir) — genuinely outside all trusted roots.
+            const evilDir = fs.mkdtempSync(path.join(os.homedir(), '_test_tasks_evil_'));
             fs.writeFileSync(path.join(evilDir, 'secret.txt'), 'secret', 'utf-8');
             try {
                 const wsId = await registerWorkspace(srv, workspaceDir);
