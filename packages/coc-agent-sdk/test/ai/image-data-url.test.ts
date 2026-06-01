@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { tryConvertImageFileToDataUrl, tryReadImageAsBase64 } from '../../src/copilot-sdk-service';
+import { isImageFilePath, isSupportedCodexImagePath } from '../../src/image-converter';
 import { CopilotSDKService, resetCopilotSDKService } from '../../src/copilot-sdk-service';
 import { createStreamingMockSDKModule } from '../helpers/mock-sdk';
 
@@ -103,6 +104,33 @@ describe('tryConvertImageFileToDataUrl', () => {
         const filePath = writeTmpFile('PHOTO.PNG', Buffer.from([0x89, 0x50, 0x4e, 0x47]));
         const result = tryConvertImageFileToDataUrl(filePath);
         expect(result).toMatch(/^data:image\/png;base64,/);
+    });
+});
+
+describe('image extension helpers', () => {
+    it.each([
+        ['test.png'],
+        ['photo.jpg'],
+        ['photo.jpeg'],
+        ['anim.gif'],
+        ['image.webp'],
+        ['icon.svg'],
+        ['PHOTO.PNG'],
+    ])('recognizes image paths by extension: %s', (filePath) => {
+        expect(isImageFilePath(filePath)).toBe(true);
+    });
+
+    it('does not recognize non-image paths as images', () => {
+        expect(isImageFilePath('readme.txt')).toBe(false);
+        expect(isImageFilePath('image')).toBe(false);
+    });
+
+    it('recognizes only Codex-supported raster image paths', () => {
+        expect(isSupportedCodexImagePath('test.png')).toBe(true);
+        expect(isSupportedCodexImagePath('photo.JPG')).toBe(true);
+        expect(isSupportedCodexImagePath('image.webp')).toBe(true);
+        expect(isSupportedCodexImagePath('icon.svg')).toBe(false);
+        expect(isSupportedCodexImagePath('readme.txt')).toBe(false);
     });
 });
 

@@ -30,6 +30,18 @@ const CLAUDE_IMAGE_MEDIA_TYPES: Record<string, ClaudeImageSource['media_type']> 
     webp: 'image/webp',
 };
 
+const CODEX_IMAGE_EXTENSIONS = new Set(Object.keys(CLAUDE_IMAGE_MEDIA_TYPES));
+
+export function isImageFilePath(filePath: string): boolean {
+    const ext = path.extname(filePath).replace(/^\./, '').toLowerCase();
+    return ext in IMAGE_EXTENSIONS;
+}
+
+export function isSupportedCodexImagePath(filePath: string): boolean {
+    const ext = path.extname(filePath).replace(/^\./, '').toLowerCase();
+    return CODEX_IMAGE_EXTENSIONS.has(ext);
+}
+
 function readImageFile(filePath: string, mimeByExtension: Record<string, string>): { mime: string; data: Buffer } | null {
     try {
         const ext = path.extname(filePath).replace(/^\./, '').toLowerCase();

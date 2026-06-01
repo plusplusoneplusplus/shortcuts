@@ -32,7 +32,7 @@ Location: `packages/coc-agent-sdk/src/`
 | `model-reasoning.ts` | Metadata-aware model/reasoning resolver; variant IDs with `capabilities.family` sent as base model + reasoning effort |
 | `mcp-config-loader.ts` | Loads/merges MCP config from `~/.copilot/mcp-config.json`, workspace `.vscode/mcp.json`, and explicit request options |
 | `trusted-folder.ts` | Pre-registers working directories in `~/.copilot/config.json` |
-| `image-converter.ts` | Image file → data-URL conversion |
+| `image-converter.ts` | Image file detection plus data-URL/base64 conversion helpers |
 | `tool-call.ts` | `ToolCall`, `ToolCallStatus`, `ToolCallPermissionRequest`, serialization types |
 | `model-info.ts` | `ModelInfo` type (id, name, description, tier, …) |
 | `logger.ts` | `initSDKLogger` / `resetSDKLogger` / `getSDKLogger` — pino logger lifecycle |
@@ -94,6 +94,8 @@ Codex quota and model catalog lookups spawn the `@openai/codex` CLI that ships a
 Codex SDK thread options do not expose Copilot's native `skillDirectories` or `disabledSkills` fields. CoC maps resolved skill directories (and any caller-supplied `additionalDirectories`) to Codex `additionalDirectories` so external/global skill folders are available to the Codex process, and always appends `~/.coc` (CoC data/skills dir) so out-of-repo data and skill files remain reachable. The `~/.coc` entry is only added when not already present (compared case-insensitively on Windows); caller-supplied paths are preserved verbatim. For explicitly selected skills, CoC keeps prompts path-based by adding the resolved `SKILL.md` file paths to the `<selected_skills>` directive rather than inlining skill bodies.
 
 Codex permission mode is mapped at the provider boundary with `approvalPolicy: 'never'` for every CoC mode. Interactive/ask mode and omitted mode use `sandboxMode: 'read-only'` with network access disabled. Plan mode uses the same full-access Codex sandbox as autopilot (`sandboxMode: 'danger-full-access'`, network access enabled) and relies on CoC's read-only/plan system prompt rather than Codex sandbox enforcement.
+
+Codex image attachments are passed at the provider boundary as `@openai/codex-sdk` structured `local_image` inputs. When `SendMessageOptions.attachments` includes file attachments with supported raster image extensions (`png`, `jpg`/`jpeg`, `gif`, `webp`), `CodexSDKService` sends an input array containing the prompt text plus `{ type: 'local_image', path }` entries in attachment order. Directories, non-images, and SVGs are ignored so text-only behavior is preserved.
 
 **Thread ↔ session mapping:** Every CoC session ID maps to exactly one Codex thread. The mapping is created on the first `sendMessage()` call for a session and removed on abort or dispose.
 
