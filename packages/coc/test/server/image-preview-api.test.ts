@@ -277,7 +277,8 @@ describe('Image Preview API', () => {
             const srv = await startServer();
             await registerWorkspace(srv, workspaceDir);
 
-            const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'outside-'));
+            // Use home dir (not ~/.copilot, not os.tmpdir) — genuinely outside all trusted roots.
+            const outsideDir = fs.mkdtempSync(path.join(os.homedir(), '_test_img_outside_'));
             const outsidePath = path.join(outsideDir, 'secret.svg');
             fs.writeFileSync(outsidePath, '<svg></svg>');
 
