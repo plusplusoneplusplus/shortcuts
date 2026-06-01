@@ -50,6 +50,7 @@ import { NotesGitTimerManager } from './notes/git/notes-git-timer-manager';
 import { migrateWorkspaceRegistryIfNeeded } from './storage/startup-workspace-migration';
 import { migrateProcessHistoryIfNeeded } from './storage/startup-process-migration';
 import { DevTunnelConnector } from './servers/devtunnel-connector';
+import { SshConnector } from './servers/ssh-connector';
 import { RemoteServerStore } from './servers/remote-server-store';
 import { pruneAllStaleClassifications } from './repos/classification-store';
 import { SyncEngine } from './sync/sync-engine';
@@ -78,6 +79,7 @@ interface CloseHandlerDeps {
     terminalWsServer?: { closeAll(): void };
     terminalSessionManager?: { destroyAll(): void };
     remoteServerConnector: { dispose(): void };
+    remoteServerSshConnector: { dispose(): void };
     loopExecutor?: { shutdownAll(): void };
     loopInfraDispose?: () => void;
     mcpOauthDispose?: () => void;
@@ -124,6 +126,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.terminalSessionManager?.destroyAll();
         deps.terminalWsServer?.closeAll();
         deps.remoteServerConnector.dispose();
+        deps.remoteServerSshConnector.dispose();
         wsServer.closeAll();
         for (const socket of activeSockets) {
             socket.destroy();
@@ -467,6 +470,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const notesGitTimerManager = new NotesGitTimerManager();
     const remoteServerStore = new RemoteServerStore(dataDir);
     const remoteServerConnector = new DevTunnelConnector();
+    const remoteServerSshConnector = new SshConnector();
 
     // Sync engines — one per virtual workspace, only active when gitRemote is configured.
     const syncEngines = new Map<string, SyncEngine>();
@@ -493,6 +497,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         runtimeConfigService,
         remoteServerStore,
         remoteServerConnector,
+        remoteServerSshConnector,
         loopStore: loopInfra?.loopStore,
         loopExecutor: loopInfra?.loopExecutor,
         mcpOauthManager: mcpOauthInfra?.manager,
@@ -619,8 +624,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     await new Promise<void>((resolve, reject) => { server.on('error', reject); server.listen(port, host, resolve); });
     try {
         void remoteServerConnector.connectConfigured(remoteServerStore.list());
+        void remoteServerSshConnector.connectConfigured(remoteServerStore.list());
     } catch (error) {
-        process.stderr.write(`[servers] Failed to start DevTunnel connectors: ${error instanceof Error ? error.message : String(error)}\n`);
+        process.stderr.write(`[servers] Failed to start remote server connectors: ${error instanceof Error ? error.message : String(error)}\n`);
     }
     cleanupAllStalePasteFiles(dataDir).catch(() => { /* best-effort */ });
     try {
@@ -674,6 +680,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             terminalWsServer: terminalInfra?.terminalWsServer,
             terminalSessionManager: terminalInfra?.terminalSessionManager,
             remoteServerConnector,
+            remoteServerSshConnector,
             loopExecutor: loopInfra?.loopExecutor,
             loopInfraDispose: loopInfra?.dispose,
             mcpOauthDispose: mcpOauthInfra?.dispose,

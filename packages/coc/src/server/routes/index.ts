@@ -78,6 +78,7 @@ import type { TerminalSessionManager } from '../terminal/index';
 import { registerRemoteServerRoutes } from '../servers/remote-server-routes';
 import { RemoteServerStore } from '../servers/remote-server-store';
 import { DevTunnelConnector } from '../servers/devtunnel-connector';
+import type { SshConnector } from '../servers/ssh-connector';
 import { registerRalphRoutes } from './queue-ralph-routes';
 import { registerRalphSessionRoutes } from './ralph-session-routes';
 import { registerRalphContinueRoutes } from './ralph-continue-routes';
@@ -141,6 +142,7 @@ export interface RegisterRoutesOptions {
     runtimeConfigService?: RuntimeConfigService;
     remoteServerStore?: RemoteServerStore;
     remoteServerConnector?: DevTunnelConnector;
+    remoteServerSshConnector?: SshConnector;
     loopStore?: LoopStore;
     loopExecutor?: LoopExecutor;
     mcpOauthManager?: McpOauthManager;
@@ -187,6 +189,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerRemoteServerRoutes(routes, {
         store: opts.remoteServerStore ?? new RemoteServerStore(dataDir),
         connector: opts.remoteServerConnector ?? new DevTunnelConnector(),
+        sshConnector: opts.remoteServerSshConnector,
     });
     registerProviderRoutes(routes, dataDir);
     // Provider SDK install routes (on-demand install of @openai/codex-sdk and @anthropic-ai/claude-agent-sdk).

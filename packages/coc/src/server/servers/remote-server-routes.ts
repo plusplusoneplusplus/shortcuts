@@ -1,6 +1,7 @@
 import type { Route } from '../types';
 import { readJsonBody, send400, send404, send500, sendError, sendJson } from '../shared/router';
 import type { DevTunnelConnector } from './devtunnel-connector';
+import type { SshConnector, SshConnectionState } from './ssh-connector';
 import { checkRemoteServerHealth } from './remote-server-health';
 import type {
     DevTunnelRemoteServer,
@@ -15,9 +16,10 @@ import { RemoteServerStore } from './remote-server-store';
 export interface RegisterRemoteServerRoutesOptions {
     store: RemoteServerStore;
     connector: DevTunnelConnector;
+    sshConnector?: SshConnector;
 }
 
-function toRuntime(server: RemoteServer, connector: DevTunnelConnector): RemoteServerRuntime {
+function toRuntime(server: RemoteServer, connector: DevTunnelConnector, sshConnector?: SshConnector): RemoteServerRuntime {
     if (server.kind === 'url') {
         return {
             serverId: server.id,
@@ -27,12 +29,15 @@ function toRuntime(server: RemoteServer, connector: DevTunnelConnector): RemoteS
         };
     }
     if (server.kind === 'ssh') {
-        // SSH connector is registered separately; runtime managed by SshConnector (AC-02).
+        const state: SshConnectionState | undefined = sshConnector?.getState(server.id);
         return {
             serverId: server.id,
             kind: 'ssh',
-            status: 'idle',
+            effectiveUrl: state?.effectiveUrl,
+            status: state?.status ?? 'idle',
             localPort: server.localPort,
+            lastChecked: state?.lastChecked,
+            lastError: state?.lastError,
         };
     }
     const state = connector.getState(server.tunnelId);
@@ -49,8 +54,8 @@ function toRuntime(server: RemoteServer, connector: DevTunnelConnector): RemoteS
     };
 }
 
-function decorate(server: RemoteServer, connector: DevTunnelConnector): RemoteServerWithRuntime {
-    const runtime = toRuntime(server, connector);
+function decorate(server: RemoteServer, connector: DevTunnelConnector, sshConnector?: SshConnector): RemoteServerWithRuntime {
+    const runtime = toRuntime(server, connector, sshConnector);
     return {
         ...server,
         effectiveUrl: runtime.effectiveUrl,
@@ -74,6 +79,17 @@ async function connectIfDevTunnel(server: RemoteServer, connector: DevTunnelConn
     }
 }
 
+async function connectIfSsh(server: RemoteServer, sshConnector?: SshConnector): Promise<void> {
+    if (server.kind !== 'ssh' || !sshConnector) {
+        return;
+    }
+    try {
+        await sshConnector.connect(server);
+    } catch {
+        // The failed state is stored on the connector and returned to the caller.
+    }
+}
+
 function disconnectIfUnusedTunnel(tunnelId: string, store: RemoteServerStore, connector: DevTunnelConnector): void {
     const stillUsed = store.list().some(server => server.kind === 'devtunnel' && server.tunnelId === tunnelId);
     if (!stillUsed) {
@@ -81,11 +97,14 @@ function disconnectIfUnusedTunnel(tunnelId: string, store: RemoteServerStore, co
     }
 }
 
-async function healthForServer(server: RemoteServer, connector: DevTunnelConnector) {
+async function healthForServer(server: RemoteServer, connector: DevTunnelConnector, sshConnector?: SshConnector) {
     if (server.kind === 'devtunnel') {
         await connectIfDevTunnel(server, connector);
     }
-    const runtime = toRuntime(server, connector);
+    if (server.kind === 'ssh') {
+        await connectIfSsh(server, sshConnector);
+    }
+    const runtime = toRuntime(server, connector, sshConnector);
     const baseUrl = server.kind === 'url' ? server.url : runtime.effectiveUrl;
     return checkRemoteServerHealth({
         serverId: server.id,
@@ -101,14 +120,14 @@ export function registerRemoteServerRoutes(
     routes: Route[],
     options: RegisterRemoteServerRoutesOptions,
 ): void {
-    const { store, connector } = options;
+    const { store, connector, sshConnector } = options;
 
     routes.push({
         method: 'GET',
         pattern: '/api/servers',
         handler: (_req, res) => {
             try {
-                sendJson(res, store.list().map(server => decorate(server, connector)));
+                sendJson(res, store.list().map(server => decorate(server, connector, sshConnector)));
             } catch (error) {
                 send500(res, error instanceof Error ? error.message : String(error));
             }
@@ -122,7 +141,8 @@ export function registerRemoteServerRoutes(
             try {
                 const server = store.create(await readJsonBody(req));
                 await connectIfDevTunnel(server, connector);
-                sendJson(res, decorate(server, connector), 201);
+                await connectIfSsh(server, sshConnector);
+                sendJson(res, decorate(server, connector, sshConnector), 201);
             } catch (error) {
                 send400(res, error instanceof Error ? error.message : String(error));
             }
@@ -144,8 +164,12 @@ export function registerRemoteServerRoutes(
                 if (before.kind === 'devtunnel' && (updated.kind !== 'devtunnel' || updated.tunnelId !== before.tunnelId)) {
                     disconnectIfUnusedTunnel(before.tunnelId, store, connector);
                 }
+                if (before.kind === 'ssh' && updated.kind !== 'ssh') {
+                    sshConnector?.disconnect(before.id);
+                }
                 await connectIfDevTunnel(updated, connector);
-                sendJson(res, decorate(updated, connector));
+                await connectIfSsh(updated, sshConnector);
+                sendJson(res, decorate(updated, connector, sshConnector));
             } catch (error) {
                 send400(res, error instanceof Error ? error.message : String(error));
             }
@@ -164,6 +188,9 @@ export function registerRemoteServerRoutes(
             }
             if (removed.kind === 'devtunnel') {
                 disconnectIfUnusedTunnel(removed.tunnelId, store, connector);
+            }
+            if (removed.kind === 'ssh') {
+                sshConnector?.disconnect(removed.id);
             }
             sendJson(res, { ok: true });
         },
@@ -192,7 +219,7 @@ export function registerRemoteServerRoutes(
                         addedAt: Date.now(),
                         updatedAt: Date.now(),
                     };
-                    sendJson(res, await healthForServer(server, connector));
+                    sendJson(res, await healthForServer(server, connector, sshConnector));
                     return;
                 }
                 // ssh kind: health check against the local forwarded port (no spawn at test time)
@@ -205,7 +232,7 @@ export function registerRemoteServerRoutes(
                     addedAt: Date.now(),
                     updatedAt: Date.now(),
                 };
-                sendJson(res, await healthForServer(server, connector));
+                sendJson(res, await healthForServer(server, connector, sshConnector));
             } catch (error) {
                 send400(res, error instanceof Error ? error.message : String(error));
             }
@@ -222,12 +249,17 @@ export function registerRemoteServerRoutes(
                 send404(res, `Remote server not found: ${id}`);
                 return;
             }
-            if (server.kind !== 'devtunnel') {
+            if (server.kind === 'url') {
                 sendError(res, 400, 'Direct URL servers do not support connect');
                 return;
             }
+            if (server.kind === 'ssh') {
+                await connectIfSsh(server, sshConnector);
+                sendJson(res, toRuntime(server, connector, sshConnector));
+                return;
+            }
             await connectIfDevTunnel(server, connector);
-            sendJson(res, toRuntime(server, connector));
+            sendJson(res, toRuntime(server, connector, sshConnector));
         },
     });
 
@@ -241,8 +273,13 @@ export function registerRemoteServerRoutes(
                 send404(res, `Remote server not found: ${id}`);
                 return;
             }
-            if (server.kind !== 'devtunnel') {
+            if (server.kind === 'url') {
                 sendError(res, 400, 'Direct URL servers do not support disconnect');
+                return;
+            }
+            if (server.kind === 'ssh') {
+                const state = sshConnector?.disconnect(server.id) ?? { serverId: server.id, host: server.host, localPort: server.localPort, status: 'idle' as const };
+                sendJson(res, { kind: 'ssh' as const, ...state });
                 return;
             }
             sendJson(res, {
@@ -263,8 +300,19 @@ export function registerRemoteServerRoutes(
                 send404(res, `Remote server not found: ${id}`);
                 return;
             }
-            if (server.kind !== 'devtunnel') {
+            if (server.kind === 'url') {
                 sendError(res, 400, 'Direct URL servers do not support reconnect');
+                return;
+            }
+            if (server.kind === 'ssh') {
+                if (sshConnector) {
+                    try {
+                        await sshConnector.reconnect(server);
+                    } catch {
+                        // Failed state is stored on the connector.
+                    }
+                }
+                sendJson(res, toRuntime(server, connector, sshConnector));
                 return;
             }
             try {
@@ -272,7 +320,7 @@ export function registerRemoteServerRoutes(
             } catch {
                 // The failed state is stored on the connector and returned below.
             }
-            sendJson(res, toRuntime(server, connector));
+            sendJson(res, toRuntime(server, connector, sshConnector));
         },
     });
 
@@ -286,7 +334,7 @@ export function registerRemoteServerRoutes(
                 send404(res, `Remote server not found: ${id}`);
                 return;
             }
-            sendJson(res, await healthForServer(server, connector));
+            sendJson(res, await healthForServer(server, connector, sshConnector));
         },
     });
 
@@ -300,7 +348,7 @@ export function registerRemoteServerRoutes(
                 send404(res, `Remote server not found: ${id}`);
                 return;
             }
-            sendJson(res, toRuntime(server, connector));
+            sendJson(res, toRuntime(server, connector, sshConnector));
         },
     });
 }
