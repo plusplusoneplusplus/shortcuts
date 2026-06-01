@@ -48,6 +48,7 @@ export interface GitBranchRangeInfo {
 
 export interface GitDefaultBranchResponse {
   onDefaultBranch: true;
+  branchName?: string;
 }
 
 export type GitBranchRangeResponse = GitBranchRangeInfo | GitDefaultBranchResponse;

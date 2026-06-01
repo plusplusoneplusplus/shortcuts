@@ -64,7 +64,8 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
                 const rangeService = getGitRangeService();
                 const range = await rangeService.detectCommitRange(ws.rootPath);
                 if (!range) {
-                    const result = { onDefaultBranch: true };
+                    const branchName = await rangeService.getCurrentBranch(ws.rootPath);
+                    const result = { onDefaultBranch: true as const, branchName };
                     gitCache.set(cacheKey, result);
                     return sendJSON(res, 200, result);
                 }
@@ -75,7 +76,8 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
                 gitCache.set(cacheKey, result);
                 sendJSON(res, 200, result);
             } catch {
-                sendJSON(res, 200, { onDefaultBranch: true });
+                const branchName = await getGitRangeService().getCurrentBranch(ws.rootPath).catch(() => 'HEAD');
+                sendJSON(res, 200, { onDefaultBranch: true, branchName });
             }
         },
     });

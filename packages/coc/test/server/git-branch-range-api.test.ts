@@ -27,6 +27,7 @@ import { gitCache } from '../../src/server/git/git-cache';
 const mockDetectCommitRange = vi.fn();
 const mockGetRangeDiff = vi.fn();
 const mockGetFileDiff = vi.fn();
+const mockGetCurrentBranch = vi.fn().mockResolvedValue('feature/foo');
 
 const mockExecSync = vi.fn();
 vi.mock('child_process', function () { return ({
@@ -41,6 +42,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             detectCommitRange: mockDetectCommitRange,
             getRangeDiff: mockGetRangeDiff,
             getFileDiff: mockGetFileDiff,
+            getCurrentBranch: mockGetCurrentBranch,
         }); }),
     };
 });
@@ -161,6 +163,7 @@ describe('Git Branch Range API endpoints', () => {
         mockGetRangeDiff.mockReset();
         mockGetFileDiff.mockReset();
         mockExecSync.mockReset();
+        mockGetCurrentBranch.mockResolvedValue('feature/foo');
         gitCache.clear();
     });
 
@@ -184,20 +187,22 @@ describe('Git Branch Range API endpoints', () => {
             expect(data.deletions).toBe(2);
         });
 
-        it('returns onDefaultBranch when detectCommitRange returns null', async () => {
+        it('returns onDefaultBranch with branchName when detectCommitRange returns null', async () => {
             mockDetectCommitRange.mockReturnValue(null);
+            mockGetCurrentBranch.mockResolvedValue('pr/some-feature-branch');
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-range`);
             expect(res.status).toBe(200);
-            expect(res.json()).toEqual({ onDefaultBranch: true });
+            expect(res.json()).toEqual({ onDefaultBranch: true, branchName: 'pr/some-feature-branch' });
         });
 
-        it('returns onDefaultBranch on git error', async () => {
+        it('returns onDefaultBranch with branchName on git error', async () => {
             mockDetectCommitRange.mockImplementation(() => { throw new Error('not a git repo'); });
+            mockGetCurrentBranch.mockResolvedValue('my-branch');
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-range`);
             expect(res.status).toBe(200);
-            expect(res.json()).toEqual({ onDefaultBranch: true });
+            expect(res.json()).toEqual({ onDefaultBranch: true, branchName: 'my-branch' });
         });
 
         it('returns 404 for unknown workspace', async () => {
