@@ -60,12 +60,32 @@ function WorkspaceSetter({ workspaces }: { workspaces: any[] }) {
 }
 
 // Helper to open dialog via dispatch
-function DialogOpener({ folderPath, workspaceId, mode, contextFiles }: { folderPath?: string | null; workspaceId?: string | null; mode?: 'task' | 'ask' | 'resolve'; contextFiles?: string[] | null }) {
+function DialogOpener({
+    folderPath,
+    workspaceId,
+    mode,
+    contextFiles,
+    bulkMode,
+    launchMode,
+}: {
+    folderPath?: string | null;
+    workspaceId?: string | null;
+    mode?: 'task' | 'ask' | 'resolve';
+    contextFiles?: string[] | null;
+    bulkMode?: boolean;
+    launchMode?: 'default' | 'floating-chat';
+}) {
     const { dispatch } = useQueue();
     useEffect(() => {
-        dispatch({ type: 'OPEN_DIALOG', folderPath, workspaceId, mode, contextFiles });
+        dispatch({ type: 'OPEN_DIALOG', folderPath, workspaceId, mode, contextFiles, bulkMode, launchMode });
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
     return null;
+}
+
+async function selectModalModel(modelId: string) {
+    fireEvent.click(screen.getByTestId('enqueue-model-picker-chip'));
+    const menu = await screen.findByTestId('model-command-menu');
+    fireEvent.mouseDown(within(menu).getByText(modelId));
 }
 
 // ============================================================================
@@ -222,7 +242,7 @@ describe('EnqueueDialog', () => {
         });
 
         // Select workspace to trigger folder fetch
-        const wsSelect = screen.getAllByRole('combobox')[1];
+        const wsSelect = screen.getByTestId('workspace-select');
         fireEvent.change(wsSelect, { target: { value: 'ws1' } });
 
         await waitFor(() => {
@@ -274,7 +294,7 @@ describe('EnqueueDialog', () => {
         });
 
         // Select workspace
-        const wsSelect = screen.getAllByRole('combobox')[1]; // second select = workspace
+        const wsSelect = screen.getByTestId('workspace-select');
         fireEvent.change(wsSelect, { target: { value: 'ws1' } });
 
         // Wait for folder select to appear
@@ -382,7 +402,7 @@ describe('EnqueueDialog', () => {
         expect(screen.queryByTestId('skill-chips')).toBeNull();
 
         // Select workspace
-        const wsSelect = screen.getAllByRole('combobox')[1];
+        const wsSelect = screen.getByTestId('workspace-select');
         fireEvent.change(wsSelect, { target: { value: 'ws1' } });
 
         // Wait for skill chips area to appear
@@ -438,7 +458,7 @@ describe('EnqueueDialog', () => {
         });
 
         // Select workspace
-        const wsSelect = screen.getAllByRole('combobox')[1];
+        const wsSelect = screen.getByTestId('workspace-select');
         fireEvent.change(wsSelect, { target: { value: 'ws1' } });
 
         // Wait for skill chips
@@ -503,7 +523,7 @@ describe('EnqueueDialog', () => {
         });
 
         // Select workspace
-        const wsSelect = screen.getAllByRole('combobox')[1];
+        const wsSelect = screen.getByTestId('workspace-select');
         fireEvent.change(wsSelect, { target: { value: 'ws1' } });
 
         await waitFor(() => {
@@ -818,8 +838,7 @@ describe('EnqueueDialog', () => {
         });
 
         // Select model (no skill select dropdown, so model=index 0, workspace=index 1)
-        const modelSelect = screen.getAllByRole('combobox')[0];
-        fireEvent.change(modelSelect, { target: { value: 'claude-sonnet' } });
+        await selectModalModel('claude-sonnet');
 
         // Select skill via popover
         fireEvent.click(screen.getByTestId('skill-picker-trigger'));
@@ -900,8 +919,7 @@ describe('EnqueueDialog', () => {
         });
 
         // Select model
-        const modelSelect = screen.getAllByRole('combobox')[0];
-        fireEvent.change(modelSelect, { target: { value: 'gpt-4' } });
+        await selectModalModel('gpt-4');
 
         const textarea = screen.getByTestId('prompt-input');
         textarea.innerText = 'Prompt with model';
@@ -913,6 +931,132 @@ describe('EnqueueDialog', () => {
         });
         expect(postBody.type).toBe('chat');
         expect(postBody.config).toEqual({ model: 'gpt-4' });
+    });
+
+    it('ask submit includes selected provider and legacy reasoning effort without forcing a model override', async () => {
+        let postBody: any = null;
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
+                postBody = JSON.parse(opts?.body || '{}');
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (typeof url === 'string' && url.endsWith('/agent-providers')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ providers: [
+                    { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+                    { id: 'codex', label: 'Codex', enabled: true, available: true },
+                ] }) });
+            }
+            if (typeof url === 'string' && url.includes('/agent-providers/codex') && url.includes('/reasoning-efforts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ reasoningEfforts: { 'codex-default': 'high' } }) });
+            }
+            if (typeof url === 'string' && url.includes('/agent-providers/codex/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'codex', models: [{
+                    id: 'codex-default',
+                    name: 'Codex Default',
+                    enabled: true,
+                    capabilities: { supports: { vision: false, reasoningEffort: true }, limits: { max_context_window_tokens: 128000 } },
+                    supportedReasoningEfforts: ['low', 'medium', 'high'],
+                }] }) });
+            }
+            if (typeof url === 'string' && url.includes('/agent-providers/codex/effort-tiers')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'codex', effortTiers: {}, defaults: {} }) });
+            }
+            if (typeof url === 'string' && url.includes('/preferences') && (!opts || opts.method !== 'PATCH')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({
+                    lastChatProvider: 'codex',
+                    defaultModelsByProvider: { codex: { ask: 'codex-default' } },
+                }) });
+            }
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS', rootPath: '/test' }]}>
+                <DialogOpener mode="ask" workspaceId="ws1" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => expect(screen.getByText('Ask AI (Read-only)')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Codex'));
+        await waitFor(() => expect(screen.getByTestId('effort-pill-selector').getAttribute('data-effort-value')).toBe('high'));
+
+        const textarea = screen.getByTestId('prompt-input');
+        textarea.innerText = 'Explain this file';
+        fireEvent.input(textarea);
+        fireEvent.click(screen.getByText('Ask'));
+
+        await waitFor(() => expect(postBody).toBeTruthy());
+        expect(postBody.payload.provider).toBe('codex');
+        expect(postBody.payload.mode).toBe('ask');
+        expect(postBody.config).toEqual({ reasoningEffort: 'high' });
+    });
+
+    it('bulk context-file submissions reuse the same provider and reasoning effort selection', async () => {
+        const postBodies: any[] = [];
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
+                postBodies.push(JSON.parse(opts?.body || '{}'));
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            if (typeof url === 'string' && url.endsWith('/agent-providers')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ providers: [
+                    { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+                    { id: 'codex', label: 'Codex', enabled: true, available: true },
+                ] }) });
+            }
+            if (typeof url === 'string' && url.includes('/agent-providers/codex') && url.includes('/reasoning-efforts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ reasoningEfforts: { 'codex-default': 'medium' } }) });
+            }
+            if (typeof url === 'string' && url.includes('/agent-providers/codex/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'codex', models: [{
+                    id: 'codex-default',
+                    name: 'Codex Default',
+                    enabled: true,
+                    capabilities: { supports: { vision: false, reasoningEffort: true }, limits: { max_context_window_tokens: 128000 } },
+                    supportedReasoningEfforts: ['low', 'medium', 'high'],
+                }] }) });
+            }
+            if (typeof url === 'string' && url.includes('/agent-providers/codex/effort-tiers')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'codex', effortTiers: {}, defaults: {} }) });
+            }
+            if (typeof url === 'string' && url.includes('/preferences') && (!opts || opts.method !== 'PATCH')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({
+                    lastChatProvider: 'codex',
+                    defaultModelsByProvider: { codex: { task: 'codex-default' } },
+                }) });
+            }
+            if (typeof url === 'string' && url.includes('/summary')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: { name: 'tasks', relativePath: '', children: [] } }) });
+            }
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS', rootPath: '/test' }]}>
+                <DialogOpener
+                    workspaceId="ws1"
+                    contextFiles={['/tasks/a.plan.md', '/tasks/b.plan.md']}
+                    bulkMode
+                />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => expect(screen.getByText('Run Skill')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Codex'));
+        await waitFor(() => expect(screen.getByTestId('effort-pill-selector').getAttribute('data-effort-value')).toBe('medium'));
+
+        fireEvent.click(screen.getByText('Enqueue 2 Tasks'));
+
+        await waitFor(() => expect(postBodies).toHaveLength(2));
+        expect(postBodies.map(body => body.payload.provider)).toEqual(['codex', 'codex']);
+        expect(postBodies.map(body => body.config)).toEqual([{ reasoningEffort: 'medium' }, { reasoningEffort: 'medium' }]);
+        expect(postBodies.map(body => body.payload.context.files)).toEqual([['/tasks/a.plan.md'], ['/tasks/b.plan.md']]);
     });
 
     it('freeform submit uses workspace rootPath as workingDirectory', async () => {
@@ -947,7 +1091,7 @@ describe('EnqueueDialog', () => {
         });
 
         // Select workspace
-        const wsSelect = screen.getAllByRole('combobox')[1];
+        const wsSelect = screen.getByTestId('workspace-select');
         fireEvent.change(wsSelect, { target: { value: 'ws1' } });
 
         const textarea = screen.getByTestId('prompt-input');
@@ -1005,7 +1149,7 @@ describe('EnqueueDialog', () => {
         });
 
         // Select workspace
-        const wsSelect = screen.getAllByRole('combobox')[1];
+        const wsSelect = screen.getByTestId('workspace-select');
         fireEvent.change(wsSelect, { target: { value: 'ws1' } });
 
         // Wait for skill chips
@@ -2094,7 +2238,7 @@ describe('EnqueueDialog mode-switch state isolation', () => {
         expect(screen.queryByTestId('skill-chip-impl')).toBeNull();
     });
 
-    it('switching from task to ask mode applies ask-mode model, not task-mode model', async () => {
+    it('switching from task to ask mode keeps shared AI controls available', async () => {
         setupFetchForModeSwitch({
             taskModel: 'gpt-5.4',
             askModel: 'claude-sonnet',
@@ -2110,12 +2254,7 @@ describe('EnqueueDialog mode-switch state isolation', () => {
         // Open in task mode
         fireEvent.click(screen.getByTestId('open-task'));
         await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
-
-        // Task model should be selected
-        await waitFor(() => {
-            const modelSelect = screen.getAllByRole('combobox')[0] as HTMLSelectElement;
-            expect(modelSelect.value).toBe('gpt-5.4');
-        });
+        await waitFor(() => expect(screen.getByTestId('enqueue-ai-controls')).toBeTruthy());
 
         // Close and reopen in ask mode
         fireEvent.click(screen.getByTestId('close-dialog'));
@@ -2123,12 +2262,7 @@ describe('EnqueueDialog mode-switch state isolation', () => {
 
         fireEvent.click(screen.getByTestId('open-ask'));
         await waitFor(() => expect(screen.getByText('Ask AI (Read-only)')).toBeTruthy());
-
-        // Ask model should be selected, not task model
-        await waitFor(() => {
-            const modelSelect = screen.getAllByRole('combobox')[0] as HTMLSelectElement;
-            expect(modelSelect.value).toBe('claude-sonnet');
-        });
+        await waitFor(() => expect(screen.getByTestId('enqueue-ai-controls')).toBeTruthy());
     });
 
     it('switching from ask to task mode clears ask skills and applies task skills', async () => {
@@ -2202,7 +2336,7 @@ describe('EnqueueDialog mode-switch state isolation', () => {
         expect(screen.queryByTestId('skill-chip-go-deep')).toBeNull();
     });
 
-    it('switching to mode with no saved model resets to default', async () => {
+    it('switching to mode with no saved model keeps server defaults unforced', async () => {
         setupFetchForModeSwitch({
             taskModel: 'gpt-5.4',
             askModel: '',  // no saved ask model
@@ -2215,25 +2349,18 @@ describe('EnqueueDialog mode-switch state isolation', () => {
             </Wrap>,
         );
 
-        // Open in task mode — gpt-5.4 should be selected
+        // Open in task mode — the shared AI controls replace the legacy model select.
         fireEvent.click(screen.getByTestId('open-task'));
         await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
-        await waitFor(() => {
-            const modelSelect = screen.getAllByRole('combobox')[0] as HTMLSelectElement;
-            expect(modelSelect.value).toBe('gpt-5.4');
-        });
+        await waitFor(() => expect(screen.getByTestId('enqueue-ai-controls')).toBeTruthy());
 
-        // Close and reopen in ask mode — no saved ask model, should reset to default ('')
+        // Close and reopen in ask mode — no saved ask model should still leave the shared controls present.
         fireEvent.click(screen.getByTestId('close-dialog'));
         await waitFor(() => expect(screen.queryByText('Enqueue AI Task')).toBeNull());
 
         fireEvent.click(screen.getByTestId('open-ask'));
         await waitFor(() => expect(screen.getByText('Ask AI (Read-only)')).toBeTruthy());
-
-        await waitFor(() => {
-            const modelSelect = screen.getAllByRole('combobox')[0] as HTMLSelectElement;
-            expect(modelSelect.value).toBe('');
-        });
+        await waitFor(() => expect(screen.getByTestId('enqueue-ai-controls')).toBeTruthy());
     });
 });
 
