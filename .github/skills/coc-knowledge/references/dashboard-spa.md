@@ -26,7 +26,7 @@ spa/client/react/
 │   └── terminal/       # Terminal UI: TerminalView, pin/unpin
 ├── processes/          # Process detail, DAG visualization
 ├── queue/              # Queue management (EnqueueDialog, QueueView)
-├── repos/              # Repository views, file explorer, Monaco editor
+├── repos/              # Repository views, clone/add dialogs, file explorer, Monaco editor
 ├── shared/             # Feature-level shared (MarkdownView, RichTextInput, SourceEditor)
 ├── tasks/              # Task/plan management, inline comments
 ├── ui/                 # UI primitives (Button, Card, Dialog, Spinner, Badge, Toast)

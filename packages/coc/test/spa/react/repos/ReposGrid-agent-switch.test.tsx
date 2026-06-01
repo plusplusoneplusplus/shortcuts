@@ -66,7 +66,14 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
 }));
 
 vi.mock('../../../../src/server/spa/client/react/repos/repositoryService', () => ({
+    browseWorkspaceFolders: vi.fn().mockResolvedValue({ path: '', parent: null, entries: [] }),
+    cloneRepository: vi.fn().mockResolvedValue({ clonedPath: '/repo' }),
     getGlobalPreferences: vi.fn().mockResolvedValue({}),
+    getRepositoryApiErrorMessage: vi.fn((error: unknown, fallback: string) => {
+        if (error instanceof Error && error.message) return error.message;
+        return fallback;
+    }),
+    registerWorkspace: vi.fn().mockResolvedValue({}),
     updateGlobalPreferences: vi.fn().mockResolvedValue({}),
 }));
 

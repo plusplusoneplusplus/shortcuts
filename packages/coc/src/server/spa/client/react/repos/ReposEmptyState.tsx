@@ -3,6 +3,7 @@ import { Button } from '../ui/Button';
 
 export interface ReposEmptyStateProps {
     onAddRepo: () => void;
+    onCloneRepo?: () => void;
     compact?: boolean;
 }
 
@@ -26,7 +27,7 @@ function FolderIcon({ size = 40 }: { size?: number }) {
     );
 }
 
-export function ReposEmptyState({ onAddRepo, compact = false }: ReposEmptyStateProps) {
+export function ReposEmptyState({ onAddRepo, onCloneRepo, compact = false }: ReposEmptyStateProps) {
     if (compact) {
         return (
             <div data-testid="repos-empty-compact" className="flex items-center justify-center py-2">
@@ -54,9 +55,16 @@ export function ReposEmptyState({ onAddRepo, compact = false }: ReposEmptyStateP
             <p className="text-xs text-[#848484]">
                 Add a repository to start working with AI workflows.
             </p>
-            <Button variant="primary" size="sm" onClick={onAddRepo}>
-                + Add Repository
-            </Button>
+            <div className="flex items-center gap-2">
+                <Button variant="primary" size="sm" onClick={onAddRepo}>
+                    + Add Repository
+                </Button>
+                {onCloneRepo && (
+                    <Button variant="secondary" size="sm" onClick={onCloneRepo}>
+                        Clone Repository
+                    </Button>
+                )}
+            </div>
         </div>
     );
 }

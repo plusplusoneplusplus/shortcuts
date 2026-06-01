@@ -23,6 +23,18 @@ describe('ReposEmptyState', () => {
         expect(onAddRepo).toHaveBeenCalledOnce();
     });
 
+    it('full variant renders clone CTA when provided', () => {
+        render(<ReposEmptyState onAddRepo={() => {}} onCloneRepo={() => {}} />);
+        expect(screen.getByText('Clone Repository')).toBeTruthy();
+    });
+
+    it('full variant clone CTA calls onCloneRepo on click', () => {
+        const onCloneRepo = vi.fn();
+        render(<ReposEmptyState onAddRepo={() => {}} onCloneRepo={onCloneRepo} />);
+        fireEvent.click(screen.getByText('Clone Repository'));
+        expect(onCloneRepo).toHaveBeenCalledOnce();
+    });
+
     it('compact variant renders icon button with aria-label', () => {
         render(<ReposEmptyState onAddRepo={() => {}} compact />);
         expect(screen.getByTestId('repos-empty-compact')).toBeTruthy();
