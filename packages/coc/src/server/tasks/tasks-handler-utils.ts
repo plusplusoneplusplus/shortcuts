@@ -14,6 +14,9 @@ import type { TasksViewerSettings, TaskFolder } from '@plusplusoneplusplus/forge
  */
 export const TRUSTED_READ_ONLY_DIRS: string[] = [
     path.join(os.homedir(), '.copilot'),
+    // The OS temp directory holds tool-output and other transient files the
+    // dashboard needs to read back (e.g. copilot-tool-output-*.txt).
+    os.tmpdir(),
 ];
 
 /** Return true when `target` is inside any of the trusted read-only directories or the server data directory. */

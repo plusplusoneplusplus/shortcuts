@@ -91,14 +91,29 @@ describe('GET /api/fs/blob', () => {
 
     it('returns 403 for paths outside trusted directories', async () => {
         await startServer();
-        const outsidePath = path.join(os.tmpdir(), 'not-trusted.txt');
+        // Use a directory under the home folder (but not ~/.copilot) so it is
+        // genuinely outside all trusted roots, including the OS temp dir.
+        const outsideDir = path.join(os.homedir(), '_test_fs_blob_untrusted_' + Date.now());
+        fs.mkdirSync(outsideDir, { recursive: true });
+        cleanupDirs.push(outsideDir);
+        const outsidePath = path.join(outsideDir, 'not-trusted.txt');
         fs.writeFileSync(outsidePath, 'secret');
+        const { status, body } = await apiGet(`/api/fs/blob?path=${encodeURIComponent(outsidePath)}`);
+        expect(status).toBe(403);
+        expect(body.error).toContain('outside trusted directories');
+    });
+
+    it('accepts paths within the OS temp directory', async () => {
+        await startServer();
+        const filePath = path.join(os.tmpdir(), 'copilot-tool-output-' + Date.now() + '.txt');
+        fs.writeFileSync(filePath, 'tool output');
         try {
-            const { status, body } = await apiGet(`/api/fs/blob?path=${encodeURIComponent(outsidePath)}`);
-            expect(status).toBe(403);
-            expect(body.error).toContain('outside trusted directories');
+            const { status, body } = await apiGet(`/api/fs/blob?path=${encodeURIComponent(filePath)}`);
+            expect(status).toBe(200);
+            expect(body.content).toBe('tool output');
+            expect(body.encoding).toBe('utf-8');
         } finally {
-            fs.unlinkSync(outsidePath);
+            fs.unlinkSync(filePath);
         }
     });
 
@@ -175,7 +190,9 @@ describe('GET /api/fs/blob', () => {
     });
 
     it('rejects sibling paths outside registered workspaces', async () => {
-        const parentDir = fs.mkdtempSync(path.join(os.tmpdir(), '_test_fs_blob_parent_'));
+        // Place the workspace under the home folder (not the OS temp dir, which
+        // is now trusted) so the sibling is genuinely outside all trusted roots.
+        const parentDir = fs.mkdtempSync(path.join(os.homedir(), '_test_fs_blob_parent_'));
         cleanupDirs.push(parentDir);
         const repoDir = path.join(parentDir, 'repo');
         const siblingDir = path.join(parentDir, 'repo-sibling');

@@ -45,7 +45,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 |--------|------|-------------|
 | GET | `/api/fs/browse` | Browse local directories for repo path selection |
 | GET | `/api/fs/browse-helper` | Same-origin helper page for container-mode directory browsing |
-| GET | `/api/fs/blob?path=<absolute>` | Read a single file when the absolute path is under CoC trusted data directories or inside any registered workspace/repo root; rejects arbitrary filesystem paths |
+| GET | `/api/fs/blob?path=<absolute>` | Read a single file when the absolute path is under CoC trusted data directories (`~/.copilot`, the server data dir, or the OS temp dir) or inside any registered workspace/repo root; rejects arbitrary filesystem paths |
 
 ## Git
 
