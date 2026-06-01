@@ -8,6 +8,7 @@ import type {
     RemoteServerCreateInput,
     RemoteServerRuntime,
     RemoteServerWithRuntime,
+    SshRemoteServer,
 } from './remote-server-types';
 import { RemoteServerStore } from './remote-server-store';
 
@@ -23,6 +24,15 @@ function toRuntime(server: RemoteServer, connector: DevTunnelConnector): RemoteS
             kind: 'url',
             effectiveUrl: server.url,
             status: 'idle',
+        };
+    }
+    if (server.kind === 'ssh') {
+        // SSH connector is registered separately; runtime managed by SshConnector (AC-02).
+        return {
+            serverId: server.id,
+            kind: 'ssh',
+            status: 'idle',
+            localPort: server.localPort,
         };
     }
     const state = connector.getState(server.tunnelId);
@@ -173,11 +183,25 @@ export function registerRemoteServerRoutes(
                     }));
                     return;
                 }
-                const server: DevTunnelRemoteServer = {
+                if (input.kind === 'devtunnel') {
+                    const server: DevTunnelRemoteServer = {
+                        id: 'test',
+                        label: input.label,
+                        kind: 'devtunnel',
+                        tunnelId: input.tunnelId,
+                        addedAt: Date.now(),
+                        updatedAt: Date.now(),
+                    };
+                    sendJson(res, await healthForServer(server, connector));
+                    return;
+                }
+                // ssh kind: health check against the local forwarded port (no spawn at test time)
+                const server: SshRemoteServer = {
                     id: 'test',
                     label: input.label,
-                    kind: 'devtunnel',
-                    tunnelId: input.tunnelId,
+                    kind: 'ssh',
+                    host: input.host,
+                    localPort: input.localPort,
                     addedAt: Date.now(),
                     updatedAt: Date.now(),
                 };
