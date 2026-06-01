@@ -6,6 +6,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo, useContext, type DragEvent as ReactDragEvent } from 'react';
 import { AddRepoDialog } from '../../repos/AddRepoDialog';
 import { AddFolderDialog } from '../../repos/AddFolderDialog';
+import { CloneRepoDialog } from '../../repos/CloneRepoDialog';
 import type { RepoData, RepoGroup } from '../../repos/repoGrouping';
 import { groupReposByRemote, groupReposByAgent, applyGroupOrder } from '../../repos/repoGrouping';
 import { moveRepoTabOrder, moveRepoTabOrderToIndex, resolveRepoTabOrder, sanitizeRepoTabOrder } from '../../repos/repoOrder';
@@ -251,6 +252,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [addOpen, setAddOpen] = useState(false);
     const [addFolderOpen, setAddFolderOpen] = useState(false);
+    const [cloneOpen, setCloneOpen] = useState(false);
     const containerAgentCtx = useContainerAgents();
     const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
     const [editRepoId, setEditRepoId] = useState<string | null>(null);
@@ -1230,6 +1232,14 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                     >
                         ＋ Add specific repository
                     </button>
+                    <button
+                        data-testid="repo-tab-clone-repo-option"
+                        className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
+                        role="menuitem"
+                        onClick={() => { setDropdownOpen(false); setCloneOpen(true); }}
+                    >
+                        ⎘ Clone repository
+                    </button>
                 </div>
             )}
         </div>
@@ -1254,6 +1264,11 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
             open={addFolderOpen}
             onClose={() => setAddFolderOpen(false)}
             onAdded={() => { setAddFolderOpen(false); onRefresh(); }}
+        />
+        <CloneRepoDialog
+            open={cloneOpen}
+            onClose={() => setCloneOpen(false)}
+            onSuccess={() => { setCloneOpen(false); onRefresh(); }}
         />
         <AddRepoDialog
             open={editRepoId !== null}
