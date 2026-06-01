@@ -55,6 +55,14 @@ export function RalphWorkflowPaneContainer(
         [workspaceId, sessionId, refresh],
     );
 
+    const handleResume = useCallback(
+        async () => {
+            await getSpaCocClient().workspaces.resumeRalphSession(workspaceId, sessionId);
+            refresh();
+        },
+        [workspaceId, sessionId, refresh],
+    );
+
     return (
         <RalphWorkflowPane
             workspaceId={workspaceId}
@@ -63,6 +71,7 @@ export function RalphWorkflowPaneContainer(
             onClose={onClose}
             onSelectIteration={onSelectIteration ? handleSelectIteration : undefined}
             onNewLoop={handleNewLoop}
+            onResume={handleResume}
             now={now}
         />
     );

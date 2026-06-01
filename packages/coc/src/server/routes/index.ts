@@ -84,6 +84,7 @@ import { registerRalphContinueRoutes } from './ralph-continue-routes';
 import { registerRalphNewLoopRoutes } from './ralph-new-loop-routes';
 import { registerRalphPromoteRoutes } from './ralph-promote-routes';
 import { registerRalphLaunchRoutes } from './ralph-launch-routes';
+import { registerRalphResumeRoutes } from './ralph-resume-routes';
 import { registerLoopRoutes } from '../loops/loop-handler';
 import type { LoopStore } from '../loops/loop-store';
 import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
@@ -428,6 +429,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerRalphNewLoopRoutes(routes, { bridge, store, dataDir });
     registerRalphPromoteRoutes(routes, { bridge, store, dataDir });
     registerRalphLaunchRoutes(routes, { bridge, dataDir });
+    registerRalphResumeRoutes(routes, { bridge, store, dataDir });
 
     // Work item routes
     const workItemStore = new FileWorkItemStore({ dataDir });

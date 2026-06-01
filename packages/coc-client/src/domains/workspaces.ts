@@ -18,6 +18,7 @@ import type {
   MyWorkSyncResponse,
   RalphContinueResponse,
   RalphNewLoopResponse,
+  RalphResumeResponse,
   RalphSessionResponse,
   RegisterWorkspaceRequest,
   TerminalPinResponse,
@@ -265,6 +266,21 @@ export class WorkspacesClient {
     return this.transport.request<RalphNewLoopResponse>(
       `/workspaces/${encodePathSegment(workspaceId)}/ralph-sessions/${encodePathSegment(sessionId)}/new-loop`,
       { method: 'POST', body },
+    );
+  }
+
+  /**
+   * Resume a Ralph session stuck in `executing` phase with no in-flight task
+   * (e.g. after a task failure or server crash). Enqueues the next iteration
+   * without changing the iteration cap.
+   */
+  resumeRalphSession(
+    workspaceId: string,
+    sessionId: string,
+  ): Promise<RalphResumeResponse> {
+    return this.transport.request<RalphResumeResponse>(
+      `/workspaces/${encodePathSegment(workspaceId)}/ralph-sessions/${encodePathSegment(sessionId)}/resume`,
+      { method: 'POST' },
     );
   }
 
