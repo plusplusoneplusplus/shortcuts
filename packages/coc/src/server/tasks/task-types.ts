@@ -291,6 +291,8 @@ export interface ChatPayload {
      * Supported values: 'copilot' | 'codex' | 'claude'.
      */
     provider?: ChatProvider;
+    /** Per-turn reasoning-effort override, normalized to task config by queue validation. */
+    reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
 }
 
 export interface RunWorkflowPayload {

@@ -78,6 +78,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | GET | `/api/queue` | List queue tasks |
 | GET | `/api/queue/models` | List model IDs for the configured default provider |
 | POST | `/api/queue` | Enqueue a task |
+| POST | `/api/workspaces/:id/queue/generate` | Enqueue a Generate Plan chat task. Body accepts optional `provider`, `model`, and `reasoningEffort` overrides, which are validated through the shared chat queue validation path. |
 | DELETE | `/api/queue/:id` | Remove from queue |
 | POST | `/api/queue/:id/cancel` | Cancel queued task |
 | PATCH | `/api/queue/pause` | Pause/resume queue |

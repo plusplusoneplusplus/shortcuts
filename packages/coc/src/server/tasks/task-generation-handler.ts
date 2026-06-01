@@ -15,7 +15,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import type { ServerResponse } from 'http';
-import type { ProcessStore, CreateTaskInput } from '@plusplusoneplusplus/forge';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from './task-types';
 import {
     buildCreateTaskPrompt,
@@ -39,6 +39,7 @@ import type { Route } from '../types';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import { resolveTaskRoot } from './task-root-resolver';
 import { isValidTaskFolder } from '../executors/auto-folder-utils';
+import { validateAndParseTask } from '../routes/queue-shared';
 
 // ============================================================================
 // SSE Helpers
@@ -291,7 +292,7 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
-            const { prompt, targetFolder, name, model, mode, depth, priority, images } = body || {};
+            const { prompt, targetFolder, name, model, provider, reasoningEffort, mode, depth, priority, images } = body || {};
 
             if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
                 return sendError(res, 400, 'Missing required field: prompt');
@@ -308,7 +309,9 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
                 prompt: prompt.trim(),
                 workingDirectory: ws.rootPath,
                 workspaceId: id,
-                model,
+                ...(typeof model === 'string' && model.trim() ? { model: model.trim() } : {}),
+                ...(typeof provider === 'string' && provider.trim() ? { provider: provider.trim() as ChatPayload['provider'] } : {}),
+                ...(typeof reasoningEffort === 'string' && reasoningEffort.trim() ? { reasoningEffort: reasoningEffort.trim() as ChatPayload['reasoningEffort'] } : {}),
                 // Images must be at the top level for chat-base-executor and
                 // process-lifecycle-runner to forward them to the AI SDK.
                 ...(validImages && validImages.length > 0 ? { images: validImages } : {}),
@@ -323,17 +326,25 @@ export function registerTaskGenerationRoutes(routes: Route[], store: ProcessStor
                 },
             };
 
-            const taskInput: CreateTaskInput = {
+            const taskSpec = {
                 type: 'chat',
                 priority: priority || 'normal',
                 payload: payload as unknown as Record<string, unknown>,
-                config: { model, timeoutMs: DEFAULT_AI_TIMEOUT_MS },
+                config: {
+                    ...(typeof model === 'string' && model.trim() ? { model: model.trim() } : {}),
+                    timeoutMs: DEFAULT_AI_TIMEOUT_MS,
+                    ...(typeof reasoningEffort === 'string' && reasoningEffort.trim() ? { reasoningEffort: reasoningEffort.trim() } : {}),
+                },
                 displayName: name || prompt.trim().slice(0, 60),
             };
+            const validation = validateAndParseTask(taskSpec);
+            if (!validation.valid || !validation.input) {
+                return sendError(res, 400, validation.error || 'Invalid queue task');
+            }
 
             bridge.getOrCreateBridge(ws.rootPath);
             const queueManager = bridge.registry.getQueueForRepo(ws.rootPath);
-            const taskId = queueManager.enqueue(taskInput);
+            const taskId = queueManager.enqueue(validation.input);
 
             sendJSON(res, 201, { taskId, queuedAt: Date.now() });
         },
