@@ -113,6 +113,7 @@ describe('SshConnector', () => {
             processStarter: vi.fn(() => child),
             healthChecker: async () => true,
             readinessPollMs: 1,
+            initialReconnectBackoffMs: 100_000, // disable auto-reconnect in this test
         });
 
         const server = makeServer();
@@ -123,6 +124,35 @@ describe('SshConnector', () => {
 
         expect(connector.getState('srv-1')?.status).toBe('failed');
         expect(connector.getState('srv-1')?.lastError).toMatch(/exited unexpectedly/);
+    });
+
+    it('auto-reconnects after unexpected exit', async () => {
+        const child1 = new FakeChild();
+        const child2 = new FakeChild();
+        let childIdx = 0;
+        const children = [child1, child2];
+        const processStarter = vi.fn(() => children[childIdx++]);
+        const connector = new SshConnector({
+            processStarter,
+            healthChecker: async () => true,
+            readinessPollMs: 1,
+            initialReconnectBackoffMs: 10, // very short for testing
+        });
+
+        const server = makeServer();
+        await connector.connect(server);
+        expect(connector.getState('srv-1')?.status).toBe('online');
+
+        // Simulate unexpected process exit
+        child1.emit('exit', 1, null);
+        expect(connector.getState('srv-1')?.status).toBe('failed');
+
+        // Wait for auto-reconnect to fire and complete
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        expect(connector.getState('srv-1')?.status).toBe('online');
+        expect(processStarter).toHaveBeenCalledTimes(2);
+        expect(child2.killed).toBe(false);
     });
 
     it('reconnect: kills prior child and reconnects successfully', async () => {

@@ -17,6 +17,8 @@ export interface SshConnectorOptions {
     healthChecker?: SshHealthChecker;
     readinessTimeoutMs?: number;
     readinessPollMs?: number;
+    initialReconnectBackoffMs?: number;
+    maxReconnectBackoffMs?: number;
 }
 
 export interface SshConnectionState {
@@ -35,6 +37,8 @@ interface ManagedSshConnection {
     child?: SshChildProcess;
     pending?: Promise<SshConnectionState>;
     intentionalStop?: boolean;
+    reconnectBackoffMs?: number;
+    reconnectTimer?: ReturnType<typeof setTimeout>;
 }
 
 function startProcess(command: string, args: string[]): SshChildProcess {
@@ -83,12 +87,16 @@ export class SshConnector {
     private readonly healthChecker: SshHealthChecker;
     private readonly readinessTimeoutMs: number;
     private readonly readinessPollMs: number;
+    private readonly initialReconnectBackoffMs: number;
+    private readonly maxReconnectBackoffMs: number;
 
     constructor(options: SshConnectorOptions = {}) {
         this.processStarter = options.processStarter ?? startProcess;
         this.healthChecker = options.healthChecker ?? defaultHealthChecker;
         this.readinessTimeoutMs = options.readinessTimeoutMs ?? 15_000;
         this.readinessPollMs = options.readinessPollMs ?? 500;
+        this.initialReconnectBackoffMs = options.initialReconnectBackoffMs ?? 2_000;
+        this.maxReconnectBackoffMs = options.maxReconnectBackoffMs ?? 30_000;
     }
 
     getState(serverId: string): SshConnectionState | undefined {
@@ -128,6 +136,10 @@ export class SshConnector {
         const entry = this.getOrCreateConnection(server);
 
         entry.intentionalStop = true;
+        if (entry.reconnectTimer) {
+            clearTimeout(entry.reconnectTimer);
+            entry.reconnectTimer = undefined;
+        }
         if (entry.child) {
             entry.child.kill();
             entry.child = undefined;
@@ -154,6 +166,10 @@ export class SshConnector {
             return { serverId, host: '', localPort: 0, status: 'idle' };
         }
         entry.intentionalStop = true;
+        if (entry.reconnectTimer) {
+            clearTimeout(entry.reconnectTimer);
+            entry.reconnectTimer = undefined;
+        }
         if (entry.child) {
             entry.child.kill();
             entry.child = undefined;
@@ -204,6 +220,7 @@ export class SshConnector {
                         lastError: `ssh process exited unexpectedly${code !== null ? ` with code ${code}` : ''}${signal ? ` signal ${signal}` : ''}`,
                         lastChecked: Date.now(),
                     };
+                    this.scheduleReconnect(server, entry);
                 });
                 child.once('error', (error) => {
                     if (entry.child !== child) {
@@ -250,6 +267,27 @@ export class SshConnector {
             };
             throw new Error(message);
         }
+    }
+
+    private scheduleReconnect(server: SshRemoteServer, entry: ManagedSshConnection): void {
+        if (entry.intentionalStop) return;
+        if (entry.reconnectTimer) {
+            clearTimeout(entry.reconnectTimer);
+        }
+        const backoff = entry.reconnectBackoffMs ?? this.initialReconnectBackoffMs;
+        entry.reconnectTimer = setTimeout(() => {
+            entry.reconnectTimer = undefined;
+            if (entry.intentionalStop || entry.pending) return;
+            entry.reconnectBackoffMs = Math.min(backoff * 2, this.maxReconnectBackoffMs);
+            entry.pending = this.connectInternal(server, entry)
+                .then(state => {
+                    entry.reconnectBackoffMs = this.initialReconnectBackoffMs;
+                    return state;
+                })
+                .finally(() => {
+                    entry.pending = undefined;
+                });
+        }, backoff);
     }
 
     private getOrCreateConnection(server: SshRemoteServer): ManagedSshConnection {
