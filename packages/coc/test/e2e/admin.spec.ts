@@ -72,6 +72,7 @@ test.describe('Admin Panel (008)', () => {
             'Configure',
             'AI Provider',
             'Providers',
+            'Servers',
         ]);
         expect(byLabel.Knowledge).toEqual(['Memory', 'Skills']);
         expect(byLabel.Operations).toEqual(['Usage & Costs', 'Logs', 'Server', 'Backup & Reset']);

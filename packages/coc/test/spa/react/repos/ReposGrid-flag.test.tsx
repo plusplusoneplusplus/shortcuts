@@ -9,6 +9,7 @@ vi.mock('../../../../src/server/spa/client/react/featureFlags', () => ({
 
 const repositoryServiceMocks = vi.hoisted(() => ({
     browseWorkspaceFolders: vi.fn().mockResolvedValue({ path: '', parent: null, entries: [] }),
+    cloneRepository: vi.fn().mockResolvedValue({ clonedPath: '/repo' }),
     getGlobalPreferences: vi.fn().mockResolvedValue({}),
     getRepositoryApiErrorMessage: vi.fn((error: unknown, fallback: string, networkFallback?: string) => {
         if (error instanceof Error && error.message) return error.message;

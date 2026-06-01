@@ -949,7 +949,7 @@ export class ClaudeSDKService implements ISDKService {
         if (mode === 'plan') {
             return { permissionMode: 'plan' };
         }
-        return {};
+        return { permissionMode: 'acceptEdits' };
     }
 
     public async transform<T = string>(

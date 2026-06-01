@@ -53,6 +53,11 @@ vi.mock('../../../../src/server/spa/client/react/repos/AddFolderDialog', () => (
         open ? <div data-testid="add-folder-dialog" /> : null,
 }));
 
+vi.mock('../../../../src/server/spa/client/react/repos/CloneRepoDialog', () => ({
+    CloneRepoDialog: ({ open }: { open: boolean }) =>
+        open ? <div data-testid="clone-repo-dialog" /> : null,
+}));
+
 vi.mock('../../../../src/server/spa/client/react/tasks/GenerateTaskDialog', () => ({
     GenerateTaskDialog: ({ wsId, initialFolder, onClose }: { wsId: string; initialFolder?: string; onClose: () => void }) => (
         <div data-testid="generate-task-dialog" data-ws-id={wsId} data-folder={initialFolder ?? ''}>
@@ -199,6 +204,7 @@ describe('RepoTabStrip', () => {
         fireEvent.click(screen.getByTestId('repo-tab-add-btn'));
         expect(screen.getByTestId('repo-tab-add-folder-option')).toBeDefined();
         expect(screen.getByTestId('repo-tab-add-repo-option')).toBeDefined();
+        expect(screen.getByTestId('repo-tab-clone-repo-option')).toBeDefined();
     });
 
     it('opens AddFolderDialog when "Add workspace folder" option is clicked', () => {
@@ -232,6 +238,23 @@ describe('RepoTabStrip', () => {
         expect(screen.queryByTestId('add-repo-dialog')).toBeNull();
         fireEvent.click(screen.getByTestId('repo-tab-add-repo-option'));
         expect(screen.getByTestId('add-repo-dialog')).toBeDefined();
+        expect(screen.queryByTestId('repo-tab-add-dropdown')).toBeNull();
+    });
+
+    it('opens CloneRepoDialog when "Clone repository" option is clicked', () => {
+        render(
+            <RepoTabStrip
+                repos={[]}
+                selectedRepoId={null}
+                onSelect={vi.fn()}
+                unseenCounts={{}}
+                onRefresh={vi.fn()}
+            />
+        );
+        fireEvent.click(screen.getByTestId('repo-tab-add-btn'));
+        expect(screen.queryByTestId('clone-repo-dialog')).toBeNull();
+        fireEvent.click(screen.getByTestId('repo-tab-clone-repo-option'));
+        expect(screen.getByTestId('clone-repo-dialog')).toBeDefined();
         expect(screen.queryByTestId('repo-tab-add-dropdown')).toBeNull();
     });
 

@@ -57,6 +57,35 @@ export function browseWorkspaceFolders(path: string): Promise<BrowseWorkspaceFol
     return getSpaCocClient().workspaces.browseFolders(path);
 }
 
+export interface CloneRepositoryRequest {
+    url: string;
+    parentDir: string;
+}
+
+export interface CloneRepositoryResponse {
+    clonedPath: string;
+}
+
+export async function cloneRepository(request: CloneRepositoryRequest): Promise<CloneRepositoryResponse> {
+    try {
+        return await getSpaCocClient().request<CloneRepositoryResponse>('/git/clone', {
+            method: 'POST',
+            body: request,
+        });
+    } catch (error) {
+        if (error instanceof CocApiError) {
+            const body = error.body;
+            if (body && typeof body === 'object') {
+                const message = (body as Record<string, unknown>).error;
+                if (typeof message === 'string' && message.trim()) {
+                    throw new Error(message);
+                }
+            }
+        }
+        throw error;
+    }
+}
+
 export function getWorkspaceSummary(workspaceId: string): Promise<WorkspaceSummaryResponse> {
     return getSpaCocClient().workspaces.summary(workspaceId);
 }

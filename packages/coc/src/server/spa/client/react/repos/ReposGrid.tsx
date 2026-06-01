@@ -15,6 +15,7 @@ import { ReposEmptyState } from './ReposEmptyState';
 import { RepoCard } from './RepoCard';
 import { AddRepoDialog } from './AddRepoDialog';
 import { AddFolderDialog } from './AddFolderDialog';
+import { CloneRepoDialog } from './CloneRepoDialog';
 import { groupReposByRemote, groupReposByAgent, applyGroupOrder, groupKey } from './repoGrouping';
 import type { RepoData, RepoGroup } from './repoGrouping';
 import { getGlobalPreferences, updateGlobalPreferences } from './repositoryService';
@@ -53,6 +54,7 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
     const [expandedState, setExpandedState] = useState<Record<string, boolean>>(loadGroupExpandedState);
     const [addOpen, setAddOpen] = useState(false);
     const [addFolderOpen, setAddFolderOpen] = useState(false);
+    const [cloneOpen, setCloneOpen] = useState(false);
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -358,6 +360,16 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
                                         Add Workspace Folder
                                     </button>
                                 </li>
+                                <li>
+                                    <button
+                                        type="button"
+                                        className="w-full text-left px-3 py-1.5 hover:bg-[#e8e8e8] dark:hover:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#cccccc]"
+                                        data-testid="clone-repository-item"
+                                        onClick={() => { setMenuOpen(false); setCloneOpen(true); }}
+                                    >
+                                        Clone Repository
+                                    </button>
+                                </li>
                             </ul>
                         )}
                     </div>
@@ -370,7 +382,7 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
                     SHOW_WELCOME_TUTORIAL && !state.onboardingProgress?.dismissed ? (
                         <FirstStepsCard onAddRepo={() => setAddOpen(true)} />
                     ) : (
-                        <ReposEmptyState onAddRepo={() => setAddOpen(true)} />
+                        <ReposEmptyState onAddRepo={() => setAddOpen(true)} onCloneRepo={() => setCloneOpen(true)} />
                     )
                 ) : agentGroups ? (
                     /* Container mode: agent sections wrapping remote groups */
@@ -452,6 +464,11 @@ export function ReposGrid({ repos, onRefresh }: ReposGridProps) {
                 open={addFolderOpen}
                 onClose={() => setAddFolderOpen(false)}
                 onAdded={() => { setAddFolderOpen(false); onRefresh(); }}
+            />
+            <CloneRepoDialog
+                open={cloneOpen}
+                onClose={() => setCloneOpen(false)}
+                onSuccess={() => { setCloneOpen(false); onRefresh(); }}
             />
         </div>
     );

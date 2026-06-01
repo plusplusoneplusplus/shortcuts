@@ -163,6 +163,61 @@ export function registerGenericClassificationRoutes(routes: Route[], opts: Gener
         },
     });
 
+    // -- GET: Batch status (must be registered before the single-item GET) ------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repos\/([^/]+)\/classify-diff\/batch-status$/,
+        handler: async (req, res, match) => {
+            try {
+                const repoId = decodeURIComponent(match![1]);
+                const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`);
+                const type = url.searchParams.get('type') as ClassificationType | null;
+                const rawIdentifiers = url.searchParams.get('identifiers');
+                const workspaceIdParam = url.searchParams.get('workspaceId');
+                const workspaceId = workspaceIdParam || repoId;
+
+                if (!type || !['pr', 'commit', 'branch-range'].includes(type)) {
+                    return send400(res, 'Missing or invalid query parameter: type');
+                }
+                if (!rawIdentifiers) {
+                    return sendJson(res, { statuses: {} });
+                }
+
+                const identifiers = rawIdentifiers
+                    .split(',')
+                    .map(s => s.trim())
+                    .filter(Boolean);
+
+                if (identifiers.length > 200) {
+                    return send400(res, 'Too many identifiers: max 200 per request');
+                }
+                if (identifiers.length === 0) {
+                    return sendJson(res, { statuses: {} });
+                }
+
+                const statuses: Record<string, 'none' | 'ready' | 'running'> = {};
+                for (const identifier of identifiers) {
+                    const cached = readClassificationGeneric(dataDir, workspaceId, repoId, type, identifier);
+                    if (cached) {
+                        statuses[identifier] = 'ready';
+                        continue;
+                    }
+                    const pending = readPendingGeneric(dataDir, workspaceId, repoId, type, identifier);
+                    if (pending && isTaskAlive(pending.processId, bridge)) {
+                        statuses[identifier] = 'running';
+                    } else {
+                        statuses[identifier] = 'none';
+                    }
+                }
+
+                sendJson(res, { statuses });
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
     // -- GET: Poll / get cached result ----------------------------------------
 
     routes.push({
@@ -322,7 +377,15 @@ function buildDisplayName(type: ClassificationType, identifier: string): string 
     return `Classify branch range ${identifier}`;
 }
 
-/** Extract extra payload fields for backward compat with ClassificationExecutor. */
+/**
+ * Extract extra payload fields for backward compat with ClassificationExecutor.
+ *
+ * For non-PR types, `prId` and `headSha` are included using the same two-part
+ * key scheme as `splitIdentifier` so that `ClassificationExecutor` can resolve
+ * the classification context and inject the `saveClassification` tool.
+ * Without these fields the tool guard in the executor is skipped and results
+ * are never persisted.
+ */
 function extractPayloadFields(type: ClassificationType, identifier: string): Record<string, string> {
     if (type === 'pr') {
         const colonIdx = identifier.indexOf(':');
@@ -332,7 +395,9 @@ function extractPayloadFields(type: ClassificationType, identifier: string): Rec
         return { prId: identifier, headSha: 'unknown' };
     }
     if (type === 'commit') {
-        return { commitHash: identifier };
+        // prId/_headSha mirror splitIdentifier so the executor resolves the same store key.
+        return { commitHash: identifier, prId: '_commit', headSha: identifier };
     }
-    return { branchRange: identifier };
+    // branch-range
+    return { branchRange: identifier, prId: '_branch-range', headSha: identifier };
 }

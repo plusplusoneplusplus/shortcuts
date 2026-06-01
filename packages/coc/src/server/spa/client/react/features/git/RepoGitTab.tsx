@@ -45,6 +45,7 @@ import type { BranchRangeInfo } from './branches/BranchChanges';
 import { buildFixupGroups } from './fixup-utils';
 import { rankSkillsByRecency, MRU_SKILL_LIMIT } from './skill-menu-ranking';
 import { isGitCommitLookupEnabled } from '../../utils/config';
+import { useCommitClassificationStatus } from './hooks/useCommitClassificationStatus';
 
 /**
  * Best-effort rebind of commit-chat binding when a hash changes.
@@ -207,6 +208,17 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
 
     // Reorder state: pendingReorder holds the new commit order before user confirms
     const [pendingReorder, setPendingReorder] = useState<GitCommitItem[] | null>(null);
+
+    // Classification status — checked in bulk so each commit row can show a ✓ badge.
+    const visibleCommitHashes = useMemo(
+        () => (pendingReorder || commits).map(c => c.hash),
+        [pendingReorder, commits],
+    );
+    const { classifiedHashes, refresh: refreshClassificationStatus } = useCommitClassificationStatus(
+        workspaceId,
+        workspaceId,
+        visibleCommitHashes,
+    );
 
     const fetchRepoState = useCallback(() => {
         getSpaCocClient().git.getRepoState(workspaceId)
@@ -1558,6 +1570,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             isMobileSelecting={isMobileSelecting}
             onMobileSelectingChange={handleMobileSelectingChange}
             onSwipeAction={handleSwipeAction}
+            classifiedHashes={classifiedHashes}
         />
     );
 
@@ -1567,6 +1580,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
             workspaceId={workspaceId}
             hash={rightPanelView.commit.hash}
             commit={rightPanelView.commit}
+            onClassified={refreshClassificationStatus}
         />
     ) : rightPanelView?.type === 'commit-file' ? (
         <FileDiffPanel

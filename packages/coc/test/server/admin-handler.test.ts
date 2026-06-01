@@ -1610,12 +1610,12 @@ describe('Admin Handler', () => {
     // ========================================================================
 
     describe('servers.enabled', () => {
-        it('should return servers.enabled=false by default', async () => {
+        it('should return servers.enabled=true by default', async () => {
             const configPath = path.join(dataDir, 'config.yaml');
             const srv = await startServerWithConfig(configPath);
             const res = await request(`${srv.url}/api/admin/config`);
             const body = JSON.parse(res.body);
-            expect(body.resolved.servers.enabled).toBe(false);
+            expect(body.resolved.servers.enabled).toBe(true);
             expect(body.sources['servers.enabled']).toBe('default');
         });
 

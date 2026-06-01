@@ -29,6 +29,7 @@ import { RepoDetail } from '../../../src/server/spa/client/react/features/repo-d
 
 const repositoryServiceMocks = vi.hoisted(() => ({
     browseWorkspaceFolders: vi.fn(),
+    cloneRepository: vi.fn(),
     getGlobalPreferences: vi.fn(),
     getRepositoryApiErrorMessage: vi.fn((error: unknown, fallback: string, networkFallback?: string) => {
         if (error instanceof Error && error.message) return error.message;
@@ -110,6 +111,7 @@ beforeEach(() => {
     repositoryServiceMocks.registerWorkspace.mockResolvedValue({});
     repositoryServiceMocks.updateWorkspace.mockResolvedValue({ workspace: {} });
     repositoryServiceMocks.browseWorkspaceFolders.mockResolvedValue({ path: '', parent: null, entries: [] });
+    repositoryServiceMocks.cloneRepository.mockResolvedValue({ clonedPath: '/repo' });
     repositoryServiceMocks.getRepositoryApiErrorMessage.mockImplementation((error: unknown, fallback: string, networkFallback?: string) => {
         if (error instanceof Error && error.message) return error.message;
         return networkFallback ?? fallback;
@@ -449,6 +451,13 @@ describe('ReposGrid', () => {
     it('renders add button', () => {
         render(<Wrap><ReposGrid repos={[]} onRefresh={() => {}} /></Wrap>);
         expect(screen.getByTestId('add-repo-btn')).toBeDefined();
+    });
+
+    it('opens clone dialog from the repositories add menu', async () => {
+        render(<Wrap><ReposGrid repos={[]} onRefresh={() => {}} /></Wrap>);
+        fireEvent.click(screen.getByTestId('add-repo-btn'));
+        fireEvent.click(screen.getByTestId('clone-repository-item'));
+        expect(await screen.findByText('Clone Repository')).toBeDefined();
     });
 
     it('renders repo cards', () => {

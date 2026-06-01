@@ -241,12 +241,12 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
         {
             name: 'pullRequests',
             sourceDescriptors: [source('pullRequests.', ['pullRequests'], PULL_REQUESTS_SOURCE_KEYS)],
-            merge: (base, override) => ({ pullRequests: { enabled: override?.pullRequests?.enabled ?? base.pullRequests?.enabled ?? false, suggestions: override?.pullRequests?.suggestions ?? base.pullRequests?.suggestions ?? false } }),
+            merge: (base, override) => ({ pullRequests: { enabled: override?.pullRequests?.enabled ?? base.pullRequests?.enabled ?? true, suggestions: override?.pullRequests?.suggestions ?? base.pullRequests?.suggestions ?? false } }),
         },
         {
             name: 'servers',
             sourceDescriptors: [source('servers.', ['servers'], SERVERS_SOURCE_KEYS)],
-            merge: (base, override) => ({ servers: { enabled: override?.servers?.enabled ?? base.servers?.enabled ?? false } }),
+            merge: (base, override) => ({ servers: { enabled: override?.servers?.enabled ?? base.servers?.enabled ?? true } }),
         },
         {
             name: 'ralph',

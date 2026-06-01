@@ -492,7 +492,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
             count: 3,
         },
         askUser: {
-            enabled: false,
+            enabled: true,
         },
     },
     serve: {
@@ -521,11 +521,11 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
     },
     pullRequests: {
-        enabled: false,
+        enabled: true,
         suggestions: false,
     },
     servers: {
-        enabled: false,
+        enabled: true,
     },
     ralph: {
         enabled: false,

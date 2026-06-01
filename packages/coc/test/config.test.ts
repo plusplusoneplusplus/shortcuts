@@ -56,7 +56,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.timeout).toBeUndefined();
             expect(DEFAULT_CONFIG.chat).toEqual({
                 followUpSuggestions: { enabled: true, count: 3 },
-                askUser: { enabled: false },
+                askUser: { enabled: true },
             });
             expect(DEFAULT_CONFIG.terminal).toEqual({ enabled: true });
             expect(DEFAULT_CONFIG.scratchpad).toEqual({ enabled: true, layout: 'vertical' });
@@ -480,7 +480,7 @@ timeout: 300
 
         it('should preserve servers.enabled default when not overridden', () => {
             const result = mergeConfig(DEFAULT_CONFIG, { model: 'x' });
-            expect(result.servers.enabled).toBe(false);
+            expect(result.servers.enabled).toBe(true);
         });
 
         it('should override servers.enabled from file', () => {
@@ -733,7 +733,7 @@ timeout: 300
             const configPath = path.join(tmpDir, 'no-servers.yaml');
             fs.writeFileSync(configPath, 'model: gpt-4\n');
             const result = getResolvedConfigWithSource(configPath);
-            expect(result.resolved.servers.enabled).toBe(false);
+            expect(result.resolved.servers.enabled).toBe(true);
             expect(result.sources['servers.enabled']).toBe('default');
         });
 

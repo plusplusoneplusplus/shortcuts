@@ -26,7 +26,7 @@ spa/client/react/
 │   └── terminal/       # Terminal UI: TerminalView, pin/unpin
 ├── processes/          # Process detail, DAG visualization
 ├── queue/              # Queue management (EnqueueDialog, QueueView)
-├── repos/              # Repository views, file explorer, Monaco editor
+├── repos/              # Repository views, clone/add dialogs, file explorer, Monaco editor
 ├── shared/             # Feature-level shared (MarkdownView, RichTextInput, SourceEditor)
 ├── tasks/              # Task/plan management, inline comments
 ├── ui/                 # UI primitives (Button, Card, Dialog, Spinner, Badge, Toast)
@@ -194,4 +194,4 @@ Local React hooks (`fetchApi`, `useWebSocket`, `seenStateApi`) wrap the client f
 
 ## Pull Request Suggestions
 
-The Pull Requests tab exposes PR review suggestions behind the `pullRequests.suggestions` config flag. The `For You` filter includes a `Generate suggestions`/`Refresh` action that first refreshes review history, then asks the server to rank open PRs. The UI shows inline progress, empty-state guidance, and recovery messages for missing review history or provider errors.
+The Pull Requests tab is enabled by default through `pullRequests.enabled`; PR review suggestions remain behind the separate `pullRequests.suggestions` config flag. The `For You` filter includes a `Generate suggestions`/`Refresh` action that first refreshes review history, then asks the server to rank open PRs. The UI shows inline progress, empty-state guidance, and recovery messages for missing review history or provider errors.
