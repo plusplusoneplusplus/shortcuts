@@ -13,8 +13,10 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId, isQueueProcessId, toTaskId, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import { getRalphContext } from '../tasks/task-types';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
-import { buildRalphIterationPrompt } from '../ralph/iteration-prompt';
+import { buildRalphIterationTask } from '../ralph/enqueue-iteration';
 import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
+import { VALID_CHAT_PROVIDERS, VALID_REASONING_EFFORTS } from '../tasks/task-types';
+import type { ChatProvider, ReasoningEffort } from '../tasks/task-types';
 
 export interface QueueRalphRouteContext {
     bridge: MultiRepoQueueRouter;
@@ -55,6 +57,25 @@ export function registerRalphRoutes(routes: Route[], ctx: QueueRalphRouteContext
             const workspaceId = typeof body.workspaceId === 'string' && body.workspaceId
                 ? body.workspaceId
                 : undefined;
+            const provider = body.provider === undefined
+                ? undefined
+                : body.provider as ChatProvider;
+            if (provider !== undefined && !VALID_CHAT_PROVIDERS.has(provider)) {
+                return sendError(res, 400, `Invalid provider: '${String(body.provider)}'. Valid providers: ${[...VALID_CHAT_PROVIDERS].join(', ')}`);
+            }
+            const config = body.config && typeof body.config === 'object'
+                ? body.config as Record<string, unknown>
+                : {};
+            const model = typeof config.model === 'string' && config.model.trim()
+                ? config.model.trim()
+                : undefined;
+            const rawReasoningEffort = config.reasoningEffort ?? body.reasoningEffort;
+            const reasoningEffort = rawReasoningEffort === undefined
+                ? undefined
+                : rawReasoningEffort as ReasoningEffort;
+            if (reasoningEffort !== undefined && !VALID_REASONING_EFFORTS.has(reasoningEffort)) {
+                return sendError(res, 400, `Invalid reasoningEffort: '${String(rawReasoningEffort)}'. Valid reasoningEffort values: ${[...VALID_REASONING_EFFORTS].join(', ')}`);
+            }
 
             // Resolve process (handle queue_ prefix vs bare UUID)
             let proc = await store.getProcess(rawId, workspaceId);
@@ -75,6 +96,9 @@ export function registerRalphRoutes(routes: Route[], ctx: QueueRalphRouteContext
             const ralphCtx = getRalphContext(proc);
             if (!ralphCtx || ralphCtx.phase !== 'grilling') {
                 return sendError(res, 400, 'Process is not in grilling phase');
+            }
+            if (!ralphCtx.sessionId) {
+                return sendError(res, 400, 'Process is missing Ralph session ID');
             }
 
             const wsId: string | undefined = workspaceId
@@ -116,37 +140,19 @@ export function registerRalphRoutes(routes: Route[], ctx: QueueRalphRouteContext
             }
 
             // Enqueue the first Ralph execution task
-            const taskId = await bridge.enqueue({
-                type: 'chat',
-                priority: 'normal',
-                repoId: wsId,
+            const taskId = await bridge.enqueue(buildRalphIterationTask({
+                workspaceId: wsId,
+                workingDirectory,
                 folderPath,
-                payload: {
-                    kind: 'chat',
-                    mode: 'ralph',
-                    prompt: buildRalphIterationPrompt({
-                        originalGoal: goalSpec,
-                        progressPath: (dataDir && wsId && ralphCtx.sessionId)
-                            ? new RalphSessionStore({ dataDir }).getProgressPath(wsId, ralphCtx.sessionId)
-                            : undefined,
-                        currentIteration: 1,
-                        maxIterations,
-                    }),
-                    workspaceId: wsId,
-                    workingDirectory,
-                    folderPath,
-                    context: {
-                        ralph: {
-                            phase: 'executing',
-                            sessionId: ralphCtx.sessionId,
-                            originalGoal: goalSpec,
-                            currentIteration: 1,
-                            maxIterations,
-                        },
-                    },
-                },
-                config: {},
-            });
+                sessionId: ralphCtx.sessionId,
+                originalGoal: goalSpec,
+                iteration: 1,
+                maxIterations,
+                dataDir,
+                provider,
+                model,
+                reasoningEffort,
+            }));
 
             sendJSON(res, 200, { processId: toQueueProcessId(taskId) });
         },

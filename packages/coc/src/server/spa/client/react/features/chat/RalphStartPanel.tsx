@@ -21,6 +21,7 @@ import { useState, useEffect } from 'react';
 import { getApiBase } from '../../utils/config';
 import { cn } from '../../ui/cn';
 import type { ClientConversationTurn } from '../../types/dashboard';
+import { ModalJobAiControls, useModalJobAiSelection } from '../../shared/ModalJobAiControls';
 
 export interface RalphStartPanelProps {
     processId: string;
@@ -52,6 +53,7 @@ function extractGoalSpec(turns: ClientConversationTurn[]): string {
 }
 
 export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goalFilePath, useLaunchEndpoint }: RalphStartPanelProps) {
+    const aiSelection = useModalJobAiSelection({ workspaceId, mode: 'ralph' });
     const [open, setOpen] = useState(false);
     const [goalSpec, setGoalSpec] = useState('');
     const [starting, setStarting] = useState(false);
@@ -96,7 +98,12 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
             const url = useLaunchEndpoint
                 ? `${getApiBase()}/ralph-launch`
                 : `${getApiBase()}/processes/${encodeURIComponent(processId)}/ralph-start`;
-            const body = { goalSpec: trimmed, workspaceId };
+            const resolvedAi = aiSelection.resolved;
+            const config: Record<string, unknown> = {};
+            if (resolvedAi.model) config.model = resolvedAi.model;
+            if (resolvedAi.reasoningEffort) config.reasoningEffort = resolvedAi.reasoningEffort;
+            const body: Record<string, unknown> = { goalSpec: trimmed, workspaceId, provider: resolvedAi.provider };
+            if (Object.keys(config).length > 0) body.config = config;
             const resp = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -163,6 +170,16 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
             <p className="text-xs text-[#848484]">
                 Edit the goal spec below, then click <strong>Confirm &amp; Start</strong> to begin the Ralph execution loop.
             </p>
+            <div>
+                <div className="block text-xs text-[#848484] mb-1">
+                    Agent:
+                </div>
+                <ModalJobAiControls
+                    selection={aiSelection}
+                    disabled={starting || loadingFile}
+                    testIdPrefix="ralph-start"
+                />
+            </div>
             <textarea
                 data-testid="ralph-goal-spec-input"
                 value={goalSpec}

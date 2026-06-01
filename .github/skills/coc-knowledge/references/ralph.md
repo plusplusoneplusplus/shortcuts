@@ -97,6 +97,14 @@ effort-tier resolution, and legacy model/reasoning-effort controls. The route
 validates optional `provider` and `reasoningEffort` inputs and carries them,
 alongside optional `config.model`, onto the first queued Ralph execution task.
 
+`POST /api/processes/:id/ralph-start`
+(`packages/coc/src/server/routes/queue-ralph-routes.ts`) starts execution from
+a completed grilling-phase session. The SPA `features/chat/RalphStartPanel.tsx`
+uses the same `ModalJobAiControls` as direct launch and sends the resolved
+provider plus optional `config.model`/`config.reasoningEffort`; the route
+validates those overrides and applies them only to the first queued execution
+task.
+
 ## Promote Ask-Mode Chat to Ralph
 
 A completed ask-mode chat can be promoted to a Ralph session in place via

@@ -115,15 +115,11 @@ export function registerRalphLaunchRoutes(routes: Route[], ctx: RalphLaunchRoute
                 maxIterations,
                 dataDir,
                 provider,
+                model,
+                reasoningEffort,
             });
 
-            const taskId = await bridge.enqueue({
-                ...task,
-                config: {
-                    ...(model ? { model } : {}),
-                    ...(reasoningEffort ? { reasoningEffort } : {}),
-                },
-            });
+            const taskId = await bridge.enqueue(task);
 
             sendJSON(res, 200, { processId: toQueueProcessId(taskId), sessionId });
         },
