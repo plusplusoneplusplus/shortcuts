@@ -781,14 +781,25 @@ describe('ClaudeSDKService.sendMessage', () => {
         expect(queryFn.mock.calls[0][0].options.allowDangerouslySkipPermissions).toBeUndefined();
     });
 
-    it('does not set Claude permission mode for interactive mode', async () => {
+    it('uses acceptEdits permission mode for interactive mode', async () => {
         queryFn.mockReturnValueOnce(makeMessages([
             { type: 'result', subtype: 'success' },
         ]));
 
         await svc.sendMessage({ prompt: 'answer this', mode: 'interactive' });
 
-        expect(queryFn.mock.calls[0][0].options.permissionMode).toBeUndefined();
+        expect(queryFn.mock.calls[0][0].options.permissionMode).toBe('acceptEdits');
+        expect(queryFn.mock.calls[0][0].options.allowDangerouslySkipPermissions).toBeUndefined();
+    });
+
+    it('uses acceptEdits permission mode when mode is undefined', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        await svc.sendMessage({ prompt: 'answer this' });
+
+        expect(queryFn.mock.calls[0][0].options.permissionMode).toBe('acceptEdits');
         expect(queryFn.mock.calls[0][0].options.allowDangerouslySkipPermissions).toBeUndefined();
     });
 
