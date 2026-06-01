@@ -1003,6 +1003,10 @@ describe('RepoGitTab', () => {
             expect(source).toContain('const handleConfirmSkillRun = useCallback(async');
         });
 
+        it('handleConfirmSkillRun accepts resolved AI selection from SkillContextDialog', () => {
+            expect(source).toContain('aiSelection: ResolvedModalJobAiSelection');
+        });
+
         it('handleConfirmSkillRun uses commit hash tag for single commit', () => {
             expect(source).toContain('<commit>${pendingSkillRun.commit.hash}</commit>');
         });
@@ -1016,6 +1020,15 @@ describe('RepoGitTab', () => {
             expect(source).toContain("priority: 'normal'");
             expect(source).toContain('skills');
             expect(source).toContain('promptContent');
+        });
+
+        it('handleConfirmSkillRun passes provider, model, and reasoning effort to queued skill task', () => {
+            const block = source.match(/const handleConfirmSkillRun = useCallback[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('provider: aiSelection.provider');
+            expect(block![0]).toContain('aiSelection.model');
+            expect(block![0]).toContain('aiSelection.reasoningEffort');
+            expect(block![0]).toContain('config');
         });
 
         it('handleConfirmSkillRun enqueues through typed queue client', () => {
@@ -1043,6 +1056,7 @@ describe('RepoGitTab', () => {
 
         it('renders SkillContextDialog component', () => {
             expect(source).toContain('<SkillContextDialog');
+            expect(source).toContain('workspaceId={workspaceId}');
             expect(source).toContain('onConfirm={handleConfirmSkillRun}');
         });
 

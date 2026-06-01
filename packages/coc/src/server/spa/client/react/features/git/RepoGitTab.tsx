@@ -45,6 +45,7 @@ import type { BranchRangeInfo } from './branches/BranchChanges';
 import { buildFixupGroups } from './fixup-utils';
 import { rankSkillsByRecency, MRU_SKILL_LIMIT } from './skill-menu-ranking';
 import { isGitCommitLookupEnabled } from '../../utils/config';
+import type { ResolvedModalJobAiSelection } from '../../shared/ModalJobAiControls';
 import { useCommitClassificationStatus } from './hooks/useCommitClassificationStatus';
 
 /**
@@ -1035,7 +1036,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         return `Branch range: ${branchName || 'current branch'}`;
     }, [pendingSkillRun, branchName]);
 
-    const handleConfirmSkillRun = useCallback(async (userContext: string) => {
+    const handleConfirmSkillRun = useCallback(async (userContext: string, aiSelection: ResolvedModalJobAiSelection) => {
         if (!pendingSkillRun) return;
 
         let promptContent: string;
@@ -1052,6 +1053,10 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         }
 
         const ws = state.workspaces.find((w: any) => w.id === workspaceId);
+        const config = {
+            ...(aiSelection.model ? { model: aiSelection.model } : {}),
+            ...(aiSelection.reasoningEffort ? { reasoningEffort: aiSelection.reasoningEffort } : {}),
+        };
         const shortId =
             pendingSkillRun.type === 'commit' && pendingSkillRun.commit
                 ? pendingSkillRun.commit.shortHash
@@ -1069,10 +1074,12 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                 prompt: promptContent,
                 workingDirectory: ws?.rootPath || '',
                 workspaceId,
+                provider: aiSelection.provider,
                 context: {
                     skills: [pendingSkillRun.skillName],
                 },
             },
+            ...(Object.keys(config).length > 0 ? { config } : {}),
         });
 
         setPendingSkillRun(null);
@@ -1953,6 +1960,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
         )}
         <SkillContextDialog
             open={!!pendingSkillRun}
+            workspaceId={workspaceId}
             skillName={pendingSkillRun?.skillName ?? ''}
             targetSummary={pendingSkillTargetSummary}
             onClose={() => setPendingSkillRun(null)}

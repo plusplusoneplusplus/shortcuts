@@ -1,19 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Dialog } from '../../ui/Dialog';
 import { Button } from '../../ui';
+import { ModalJobAiControls, type ResolvedModalJobAiSelection, useModalJobAiSelection } from '../../shared/ModalJobAiControls';
 
 export interface SkillContextDialogProps {
     open: boolean;
+    workspaceId?: string;
     skillName: string;
     targetSummary: string;
     onClose: () => void;
-    onConfirm: (userContext: string) => Promise<void>;
+    onConfirm: (userContext: string, aiSelection: ResolvedModalJobAiSelection) => Promise<void>;
 }
 
-export function SkillContextDialog({ open, skillName, targetSummary, onClose, onConfirm }: SkillContextDialogProps) {
+export function SkillContextDialog({ open, workspaceId, skillName, targetSummary, onClose, onConfirm }: SkillContextDialogProps) {
     const [userContext, setUserContext] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const aiSelection = useModalJobAiSelection({ workspaceId, mode: 'autopilot' });
 
     useEffect(() => {
         if (open) {
@@ -27,13 +30,13 @@ export function SkillContextDialog({ open, skillName, targetSummary, onClose, on
         setLoading(true);
         setError(null);
         try {
-            await onConfirm(userContext.trim());
+            await onConfirm(userContext.trim(), aiSelection.resolved);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to enqueue skill');
         } finally {
             setLoading(false);
         }
-    }, [onConfirm, userContext]);
+    }, [aiSelection.resolved, onConfirm, userContext]);
 
     return (
         <Dialog
@@ -66,6 +69,13 @@ export function SkillContextDialog({ open, skillName, targetSummary, onClose, on
                     }
                 }}
             />
+            <div className="mt-2">
+                <ModalJobAiControls
+                    selection={aiSelection}
+                    disabled={loading}
+                    testIdPrefix="skill-context"
+                />
+            </div>
             {error && (
                 <p className="text-xs text-red-600 dark:text-red-400 mt-1">{error}</p>
             )}
