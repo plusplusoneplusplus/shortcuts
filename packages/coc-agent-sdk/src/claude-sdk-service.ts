@@ -33,12 +33,14 @@ import type { ToolEvent } from './types';
 import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult } from './sdk-service-interface';
 import type { IAccountQuotaResult, IAccountQuotaSnapshot } from './copilot-sdk-service';
 import type { ToolCall } from './tool-call';
+import type { ClaudeImageSource } from './image-converter';
 import { sdkServiceRegistry, CLAUDE_PROVIDER } from './sdk-service-registry';
 import { dynamicImportModule } from './sdk-esm-loader';
 import { getSDKLogger } from './logger';
 import { CocToolRuntime } from './llm-tools/coc-tool-runtime';
 import { cocToolBridgeServer } from './llm-tools/bridge-server';
 import { buildCocLlmToolsMcpConfig, COC_LLM_TOOLS_MCP_SERVER_NAME } from './llm-tools/mcp-config';
+import { tryReadImageAsBase64 } from './image-converter';
 import { spawn } from 'child_process';
 import { createRequire } from 'module';
 import * as crypto from 'crypto';
@@ -56,6 +58,15 @@ import * as readline from 'readline';
 interface ClaudeTextBlock {
     type: 'text';
     text: string;
+}
+
+interface ClaudeImageBlock {
+    type: 'image';
+    source: {
+        type: 'base64';
+        media_type: ClaudeImageSource['media_type'];
+        data: string;
+    };
 }
 
 interface ClaudeToolUseBlock {
@@ -116,6 +127,16 @@ interface ClaudeUserMessage {
     session_id?: string;
 }
 
+interface ClaudeStreamingUserMessage {
+    type: 'user';
+    message: {
+        role: 'user';
+        content: Array<ClaudeTextBlock | ClaudeImageBlock>;
+    };
+    parent_tool_use_id: null;
+    session_id?: string;
+}
+
 export interface ClaudeRateLimitInfo {
     status: 'allowed' | 'allowed_warning' | 'rejected';
     resetsAt?: number;
@@ -148,7 +169,7 @@ type ClaudeMcpServerConfig =
     | { type: 'sse'; url: string; headers?: Record<string, string> };
 
 interface ClaudeQueryOptions {
-    prompt: string;
+    prompt: string | AsyncIterable<ClaudeStreamingUserMessage>;
     abortController?: AbortController;
     options?: {
         cwd?: string;
@@ -542,7 +563,7 @@ export class ClaudeSDKService implements ISDKService {
             const { servers: mcpServers, allowedTools, cleanup } = await this.buildClaudeMcpServers(options);
             mcpCleanup = cleanup;
             const queryOptions: ClaudeQueryOptions = {
-                prompt: options.prompt ?? '',
+                prompt: this.buildClaudePrompt(options),
                 abortController,
                 options: {
                     ...(options.workingDirectory ? { cwd: options.workingDirectory } : {}),
@@ -618,6 +639,37 @@ export class ClaudeSDKService implements ISDKService {
             this.sessions.delete(currentSessionId);
             if (currentSessionId !== sessionId) this.sessions.delete(sessionId);
         }
+    }
+
+    private buildClaudePrompt(options: SendMessageOptions): string | AsyncIterable<ClaudeStreamingUserMessage> {
+        const text = options.prompt ?? '';
+        const images = (options.attachments ?? [])
+            .filter(attachment => attachment.type === 'file')
+            .map(attachment => tryReadImageAsBase64(attachment.path))
+            .filter((image): image is ClaudeImageSource => image !== null);
+
+        if (images.length === 0) return text;
+
+        const content: Array<ClaudeTextBlock | ClaudeImageBlock> = [
+            ...(text ? [{ type: 'text' as const, text }] : []),
+            ...images.map(image => ({
+                type: 'image' as const,
+                source: {
+                    type: 'base64' as const,
+                    media_type: image.media_type,
+                    data: image.data,
+                },
+            })),
+        ];
+        const message: ClaudeStreamingUserMessage = {
+            type: 'user',
+            message: { role: 'user', content },
+            parent_tool_use_id: null,
+        };
+
+        return (async function* () {
+            yield message;
+        })();
     }
 
     /**

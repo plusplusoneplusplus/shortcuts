@@ -57,7 +57,7 @@ export {
     denyAllPermissions,
 } from './types';
 
-export { tryConvertImageFileToDataUrl } from './image-converter';
+export { tryConvertImageFileToDataUrl, tryReadImageAsBase64 } from './image-converter';
 
 export interface IAccountQuotaSnapshot {
     isUnlimitedEntitlement: boolean;

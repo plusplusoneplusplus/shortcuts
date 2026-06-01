@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, afterEach, vi, beforeAll, afterAll } 
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { tryConvertImageFileToDataUrl } from '../../src/copilot-sdk-service';
+import { tryConvertImageFileToDataUrl, tryReadImageAsBase64 } from '../../src/copilot-sdk-service';
 import { CopilotSDKService, resetCopilotSDKService } from '../../src/copilot-sdk-service';
 import { createStreamingMockSDKModule } from '../helpers/mock-sdk';
 
@@ -103,6 +103,57 @@ describe('tryConvertImageFileToDataUrl', () => {
         const filePath = writeTmpFile('PHOTO.PNG', Buffer.from([0x89, 0x50, 0x4e, 0x47]));
         const result = tryConvertImageFileToDataUrl(filePath);
         expect(result).toMatch(/^data:image\/png;base64,/);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// tryReadImageAsBase64 — unit tests
+// ---------------------------------------------------------------------------
+
+describe('tryReadImageAsBase64', () => {
+    let tmpDir: string;
+
+    beforeAll(() => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-img-test-'));
+    });
+
+    afterAll(() => {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    function writeTmpFile(name: string, content: Buffer | string): string {
+        const p = path.join(tmpDir, name);
+        fs.writeFileSync(p, content);
+        return p;
+    }
+
+    it.each([
+        ['test.png', 'image/png'],
+        ['photo.jpg', 'image/jpeg'],
+        ['photo.jpeg', 'image/jpeg'],
+        ['anim.gif', 'image/gif'],
+        ['image.webp', 'image/webp'],
+    ] as const)('returns a Claude image source for %s', (name, mediaType) => {
+        const data = Buffer.from(`data:${name}`);
+        const result = tryReadImageAsBase64(writeTmpFile(name, data));
+        expect(result).toEqual({
+            media_type: mediaType,
+            data: data.toString('base64'),
+        });
+    });
+
+    it('returns null for SVG because Claude base64 image blocks do not support it', () => {
+        expect(tryReadImageAsBase64(writeTmpFile('icon.svg', '<svg></svg>'))).toBeNull();
+    });
+
+    it('returns null for unknown extensions and missing files', () => {
+        expect(tryReadImageAsBase64(writeTmpFile('readme.txt', 'hello'))).toBeNull();
+        expect(tryReadImageAsBase64(path.join(tmpDir, 'missing.png'))).toBeNull();
+    });
+
+    it('returns null for images larger than the conversion limit', () => {
+        const filePath = writeTmpFile('large.png', Buffer.alloc((10 * 1024 * 1024) + 1));
+        expect(tryReadImageAsBase64(filePath)).toBeNull();
     });
 });
 

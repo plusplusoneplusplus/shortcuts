@@ -71,6 +71,7 @@ export {
     CopilotSDKService,
     resetCopilotSDKService,
     tryConvertImageFileToDataUrl,
+    tryReadImageAsBase64,
 } from './copilot-sdk-service';
 
 export type { BackgroundTasksInfo, IAccountQuotaSnapshot, IAccountQuotaResult } from './copilot-sdk-service';
