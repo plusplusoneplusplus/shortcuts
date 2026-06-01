@@ -1059,6 +1059,74 @@ describe('EnqueueDialog', () => {
         expect(postBodies.map(body => body.payload.context.files)).toEqual([['/tasks/a.plan.md'], ['/tasks/b.plan.md']]);
     });
 
+    it('floating-chat slash-skill submissions include selected provider and reasoning effort', async () => {
+        let postBody: any = null;
+        fetchSpy.mockImplementation((url: string, opts?: any) => {
+            if (typeof url === 'string' && url.includes('/queue') && opts?.method === 'POST') {
+                postBody = JSON.parse(opts?.body || '{}');
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ task: { id: 'task-floating-1' } }) });
+            }
+            if (typeof url === 'string' && url.endsWith('/agent-providers')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ providers: [
+                    { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+                    { id: 'codex', label: 'Codex', enabled: true, available: true },
+                ] }) });
+            }
+            if (typeof url === 'string' && url.includes('/agent-providers/codex') && url.includes('/reasoning-efforts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ reasoningEfforts: { 'codex-default': 'high' } }) });
+            }
+            if (typeof url === 'string' && url.includes('/agent-providers/codex/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'codex', models: [{
+                    id: 'codex-default',
+                    name: 'Codex Default',
+                    enabled: true,
+                    capabilities: { supports: { vision: false, reasoningEffort: true }, limits: { max_context_window_tokens: 128000 } },
+                    supportedReasoningEfforts: ['low', 'medium', 'high'],
+                }] }) });
+            }
+            if (typeof url === 'string' && url.includes('/agent-providers/codex/effort-tiers')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'codex', effortTiers: {}, defaults: {} }) });
+            }
+            if (typeof url === 'string' && url.includes('/preferences') && (!opts || opts.method !== 'PATCH')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({
+                    lastChatProvider: 'codex',
+                    defaultModelsByProvider: { codex: { task: 'codex-default' } },
+                }) });
+            }
+            if (typeof url === 'string' && url.includes('/skills')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ skills: [{ name: 'impl', description: 'Implementation' }] }) });
+            }
+            if (typeof url === 'string' && url.includes('/summary')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ workflows: [], tasks: { name: 'tasks', relativePath: '', children: [] } }) });
+            }
+            if (typeof url === 'string' && url.includes('/models')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ provider: 'copilot', models: [] }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        });
+
+        render(
+            <Wrap workspaces={[{ id: 'ws1', name: 'Test WS', rootPath: '/project' }]}>
+                <DialogOpener workspaceId="ws1" launchMode="floating-chat" />
+                <EnqueueDialog />
+            </Wrap>
+        );
+        await waitFor(() => expect(screen.getByText('Enqueue AI Task')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Codex'));
+        await waitFor(() => expect(screen.getByTestId('effort-pill-selector').getAttribute('data-effort-value')).toBe('high'));
+
+        const textarea = screen.getByTestId('prompt-input');
+        textarea.innerText = '/impl implement the selected task';
+        fireEvent.input(textarea);
+        fireEvent.click(screen.getByText('Enqueue'));
+
+        await waitFor(() => expect(postBody).toBeTruthy());
+        expect(postBody.payload.provider).toBe('codex');
+        expect(postBody.payload.mode).toBe('autopilot');
+        expect(postBody.payload.context.skills).toEqual(['impl']);
+        expect(postBody.config).toEqual({ reasoningEffort: 'high' });
+    });
+
     it('freeform submit uses workspace rootPath as workingDirectory', async () => {
         let postBody: any = null;
         fetchSpy.mockImplementation((url: string, opts?: any) => {
