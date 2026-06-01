@@ -43,7 +43,6 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             detectCommitRange: mockDetectCommitRange,
             getRangeDiff: mockGetRangeDiff,
             getFileDiff: mockGetFileDiff,
-            getCurrentBranch: vi.fn().mockReturnValue('main'),
             getCurrentBranch: vi.fn().mockResolvedValue('main'),
         }); }),
     };
@@ -163,7 +162,7 @@ describe('Git Branch Range Edge Cases', () => {
             );
 
             expect(res.status).toBe(200);
-            expect(res.json()).toEqual({ onDefaultBranch: true });
+            expect(res.json()).toEqual({ onDefaultBranch: true, branchName: 'main' });
         });
 
         it('returns onDefaultBranch when base ref does not exist', async () => {
@@ -178,7 +177,7 @@ describe('Git Branch Range Edge Cases', () => {
 
             // API returns onDefaultBranch on any git error (documented behavior)
             expect(res.status).toBe(200);
-            expect(res.json()).toEqual({ onDefaultBranch: true });
+            expect(res.json()).toEqual({ onDefaultBranch: true, branchName: 'main' });
         });
     });
 

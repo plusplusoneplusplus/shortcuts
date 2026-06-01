@@ -276,12 +276,13 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     setOnDefaultBranch(true);
                     setBranchRangeData(null);
                     setBranchRangeFiles([]);
-                    setBranchName(data.branchName || data.defaultBranch || 'main');
+                    const resolvedBranchName = data.branchName || data.defaultBranch || '';
+                    setBranchName(resolvedBranchName);
                     setAhead(0);
                     setBehind(0);
                     setBranchRangeCache(workspaceId, {
                         data: null, files: [], ahead: 0, behind: 0,
-                        branchName: data.branchName || data.defaultBranch || 'main',
+                        branchName: resolvedBranchName,
                         onDefaultBranch: true,
                     });
                     return null as BranchRangeInfo | null;
@@ -520,11 +521,16 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                     gitChangedDebounceRef.current = null;
                     // Snapshot current commits before the refresh overwrites them
                     prevCommitsRef.current = commits;
-                    // Re-fetch commits and working tree but NOT branch range (cached)
-                    fetchCommits(true, 0, searchQuery).then((newCommits: GitCommitItem[]) => {
+                    // Clear stale branch range cache so the next fetch returns current branch
+                    clearBranchRangeCache(workspaceId);
+                    // Re-fetch commits, working tree, and branch range
+                    Promise.all([
+                        fetchCommits(true, 0, searchQuery),
+                        fetchBranchRange(false),
+                    ]).then(([newCommits]) => {
                         setLastRefreshedAt(Date.now());
                         // Heuristic rebind: match old→new commits by identity
-                        const pairs = matchCommitsByIdentity(prevCommitsRef.current, newCommits);
+                        const pairs = matchCommitsByIdentity(prevCommitsRef.current, newCommits as GitCommitItem[]);
                         for (const { oldHash, newHash } of pairs) {
                             rebindCommitChat(workspaceId, oldHash, newHash);
                         }
@@ -546,7 +552,7 @@ export function RepoGitTab({ workspaceId }: RepoGitTabProps) {
                         .catch(() => {});
                 }
             }
-        }, [workspaceId, commits, fetchCommits, searchQuery]),
+        }, [workspaceId, commits, fetchCommits, fetchBranchRange, searchQuery]),
     });
 
     // Pull job polling helpers
