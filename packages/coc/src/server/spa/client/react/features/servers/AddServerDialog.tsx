@@ -25,7 +25,7 @@ function stripTrailingSlash(url: string): string {
     return url.replace(/\/+$/, '');
 }
 
-function buildInput(kind: ConnectionKind, label: string, url: string, tunnelId: string): RemoteServerInput | undefined {
+function buildInput(kind: ConnectionKind, label: string, url: string, tunnelId: string, sshHost: string, sshPort: string): RemoteServerInput | undefined {
     if (kind === 'url') {
         const cleanedUrl = stripTrailingSlash(url.trim());
         if (!cleanedUrl) {
@@ -33,20 +33,36 @@ function buildInput(kind: ConnectionKind, label: string, url: string, tunnelId: 
         }
         return { kind, label: label.trim() || cleanedUrl, url: cleanedUrl };
     }
-    const cleanedTunnelId = tunnelId.trim();
-    if (!cleanedTunnelId) {
+    if (kind === 'devtunnel') {
+        const cleanedTunnelId = tunnelId.trim();
+        if (!cleanedTunnelId) {
+            return undefined;
+        }
+        return { kind, label: label.trim() || cleanedTunnelId, tunnelId: cleanedTunnelId };
+    }
+    // ssh
+    const cleanedHost = sshHost.trim();
+    if (!cleanedHost) {
         return undefined;
     }
-    return { kind, label: label.trim() || cleanedTunnelId, tunnelId: cleanedTunnelId };
+    const port = parseInt(sshPort.trim(), 10);
+    if (!sshPort.trim() || isNaN(port) || port < 1 || port > 65535) {
+        return undefined;
+    }
+    return { kind, label: label.trim() || cleanedHost, host: cleanedHost, localPort: port };
 }
 
 function inputFromServer(server?: RemoteServer): RemoteServerInput | undefined {
     if (!server) {
         return undefined;
     }
-    return server.kind === 'url'
-        ? { kind: 'url', label: server.label, url: server.url }
-        : { kind: 'devtunnel', label: server.label, tunnelId: server.tunnelId };
+    if (server.kind === 'url') {
+        return { kind: 'url', label: server.label, url: server.url };
+    }
+    if (server.kind === 'devtunnel') {
+        return { kind: 'devtunnel', label: server.label, tunnelId: server.tunnelId };
+    }
+    return { kind: 'ssh', label: server.label, host: server.host, localPort: server.localPort };
 }
 
 interface ServerFormDialogProps {
@@ -62,10 +78,14 @@ function ServerFormDialog({ open, mode, initialInput, onClose, onSubmit }: Serve
     const initialLabel = initialInput?.label ?? '';
     const initialUrl = initialInput?.kind === 'url' ? initialInput.url : '';
     const initialTunnelId = initialInput?.kind === 'devtunnel' ? initialInput.tunnelId : '';
+    const initialSshHost = initialInput?.kind === 'ssh' ? initialInput.host : '';
+    const initialSshPort = initialInput?.kind === 'ssh' ? String(initialInput.localPort) : '';
     const [kind, setKind] = useState<ConnectionKind>(initialKind);
     const [label, setLabel] = useState(initialLabel);
     const [url, setUrl] = useState(initialUrl);
     const [tunnelId, setTunnelId] = useState(initialTunnelId);
+    const [sshHost, setSshHost] = useState(initialSshHost);
+    const [sshPort, setSshPort] = useState(initialSshPort);
     const [testState, setTestState] = useState<TestState>('idle');
     const [testLabel, setTestLabel] = useState('');
     const [submitting, setSubmitting] = useState(false);
@@ -86,11 +106,13 @@ function ServerFormDialog({ open, mode, initialInput, onClose, onSubmit }: Serve
         setLabel(open ? initialLabel : '');
         setUrl(open ? initialUrl : '');
         setTunnelId(open ? initialTunnelId : '');
+        setSshHost(open ? initialSshHost : '');
+        setSshPort(open ? initialSshPort : '');
         setTestState('idle');
         setTestLabel('');
         setSubmitting(false);
         setSubmitError('');
-    }, [open, initialKind, initialLabel, initialUrl, initialTunnelId]);
+    }, [open, initialKind, initialLabel, initialUrl, initialTunnelId, initialSshHost, initialSshPort]);
 
     useEffect(() => {
         if (!open) {
@@ -102,7 +124,7 @@ function ServerFormDialog({ open, mode, initialInput, onClose, onSubmit }: Serve
             debounceRef.current = null;
         }
 
-        const input = buildInput(kind, label, url, tunnelId);
+        const input = buildInput(kind, label, url, tunnelId, sshHost, sshPort);
         if (!input) {
             setTestState('idle');
             setTestLabel('');
@@ -123,7 +145,7 @@ function ServerFormDialog({ open, mode, initialInput, onClose, onSubmit }: Serve
                 const desc = [
                     health.serverName ? `CoC @ ${health.serverName}` : null,
                     typeof health.version === 'string' && health.version ? `v${health.version}` : null,
-                    input.kind === 'devtunnel' && health.localPort ? `localhost:${health.localPort}` : null,
+                    (input.kind === 'devtunnel' || input.kind === 'ssh') && health.localPort ? `localhost:${health.localPort}` : null,
                 ].filter(Boolean).join(' · ');
 
                 setTestState('ok');
@@ -140,9 +162,9 @@ function ServerFormDialog({ open, mode, initialInput, onClose, onSubmit }: Serve
                 debounceRef.current = null;
             }
         };
-    }, [open, kind, label, url, tunnelId]);
+    }, [open, kind, label, url, tunnelId, sshHost, sshPort]);
 
-    const input = buildInput(kind, label, url, tunnelId);
+    const input = buildInput(kind, label, url, tunnelId, sshHost, sshPort);
     const submitDisabled = !input || submitting;
 
     const handleSubmit = async () => {
@@ -220,6 +242,17 @@ function ServerFormDialog({ open, mode, initialInput, onClose, onSubmit }: Serve
                             />
                             DevTunnel ID
                         </label>
+                        <label className="inline-flex items-center gap-1.5">
+                            <input
+                                type="radio"
+                                name={`${testIdPrefix}-server-kind`}
+                                value="ssh"
+                                checked={kind === 'ssh'}
+                                onChange={() => setKind('ssh')}
+                                data-testid={`${testIdPrefix}-server-kind-ssh`}
+                            />
+                            SSH Tunnel
+                        </label>
                     </div>
                 </fieldset>
 
@@ -238,7 +271,7 @@ function ServerFormDialog({ open, mode, initialInput, onClose, onSubmit }: Serve
                             autoFocus
                         />
                     </div>
-                ) : (
+                ) : kind === 'devtunnel' ? (
                     <div className="flex flex-col gap-1">
                         <label className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">
                             Tunnel ID <span className="text-[#f14c4c]">*</span>
@@ -253,12 +286,47 @@ function ServerFormDialog({ open, mode, initialInput, onClose, onSubmit }: Serve
                             autoFocus
                         />
                     </div>
+                ) : (
+                    <>
+                        <div className="flex flex-col gap-1">
+                            <label className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">
+                                Host alias <span className="text-[#f14c4c]">*</span>
+                            </label>
+                            <input
+                                type="text"
+                                data-testid={`${testIdPrefix}-server-ssh-host-input`}
+                                value={sshHost}
+                                onChange={e => setSshHost(e.target.value)}
+                                placeholder="ubuntu-arm"
+                                className="px-3 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-1 focus:ring-[#0078d4] placeholder:text-[#848484] dark:placeholder:text-[#666]"
+                                autoFocus
+                            />
+                            <p className="text-xs text-[#848484] dark:text-[#999]">
+                                Alias defined in <code>~/.ssh/config</code> with a <code>LocalForward</code> entry.
+                            </p>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <label className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">
+                                Local port <span className="text-[#f14c4c]">*</span>
+                            </label>
+                            <input
+                                type="number"
+                                data-testid={`${testIdPrefix}-server-ssh-port-input`}
+                                value={sshPort}
+                                onChange={e => setSshPort(e.target.value)}
+                                placeholder="4000"
+                                min={1}
+                                max={65535}
+                                className="px-3 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-1 focus:ring-[#0078d4] placeholder:text-[#848484] dark:placeholder:text-[#666]"
+                            />
+                        </div>
+                    </>
                 )}
 
                 {input && (
                     <div className="text-xs" data-testid={`${testIdPrefix}-server-test-indicator`}>
                         {testState === 'testing' && (
-                            <span className="text-[#848484] dark:text-[#999]">○ {kind === 'devtunnel' ? 'Connecting tunnel...' : 'Testing...'}</span>
+                            <span className="text-[#848484] dark:text-[#999]">○ {kind === 'devtunnel' ? 'Connecting tunnel...' : kind === 'ssh' ? 'Connecting SSH...' : 'Testing...'}</span>
                         )}
                         {testState === 'ok' && (
                             <span className="text-[#16c060]">🟢 {testLabel}</span>
