@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 18;
+export const SCHEMA_VERSION = 19;
 
 /**
  * Read the current schema version from the database.
@@ -56,6 +56,9 @@ export function initializeDatabase(db: Database.Database): void {
                 last_message_preview  TEXT,
                 token_limit           INTEGER,
                 current_tokens        INTEGER,
+                system_tokens         INTEGER,
+                tool_definitions_tokens INTEGER,
+                conversation_tokens   INTEGER,
                 cumulative_token_usage TEXT,
                 stale                 INTEGER DEFAULT 0,
                 data_file_path        TEXT,
@@ -386,6 +389,9 @@ export function initializeDatabase(db: Database.Database): void {
         if (versionBefore < 18) {
             migrateV17toV18(db);
         }
+        if (versionBefore < 19) {
+            migrateV18toV19(db);
+        }
 
         // Stamp the schema version
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -628,6 +634,15 @@ function migrateV17toV18(db: Database.Database): void {
         CREATE INDEX IF NOT EXISTS idx_processes_ws_status_activity
             ON processes(workspace_id, status, last_event_at DESC)
     `);
+}
+
+/**
+ * V18 -> V19: add persisted context-window breakdown columns to `processes`.
+ */
+function migrateV18toV19(db: Database.Database): void {
+    ensureColumn(db, 'processes', 'system_tokens', 'INTEGER');
+    ensureColumn(db, 'processes', 'tool_definitions_tokens', 'INTEGER');
+    ensureColumn(db, 'processes', 'conversation_tokens', 'INTEGER');
 }
 
 /**

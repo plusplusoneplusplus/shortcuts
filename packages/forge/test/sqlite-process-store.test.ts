@@ -85,6 +85,9 @@ describe('SqliteProcessStore — Process CRUD', () => {
             title: 'My Review',
             tokenLimit: 8000,
             currentTokens: 3500,
+            systemTokens: 1200,
+            toolDefinitionsTokens: 1800,
+            conversationTokens: 500,
             cumulativeTokenUsage: {
                 inputTokens: 100, outputTokens: 50,
                 cacheReadTokens: 10, cacheWriteTokens: 5,
@@ -116,6 +119,9 @@ describe('SqliteProcessStore — Process CRUD', () => {
         expect(result!.title).toBe('My Review');
         expect(result!.tokenLimit).toBe(8000);
         expect(result!.currentTokens).toBe(3500);
+        expect(result!.systemTokens).toBe(1200);
+        expect(result!.toolDefinitionsTokens).toBe(1800);
+        expect(result!.conversationTokens).toBe(500);
         expect(result!.cumulativeTokenUsage?.inputTokens).toBe(100);
         expect(result!.cumulativeTokenUsage?.outputTokens).toBe(50);
         expect(result!.stale).toBe(true);
@@ -151,6 +157,9 @@ describe('SqliteProcessStore — Process CRUD', () => {
             status: 'completed',
             title: 'Updated Title',
             result: 'done',
+            systemTokens: 200,
+            toolDefinitionsTokens: 300,
+            conversationTokens: 400,
             metadata: { type: 'ai', workspaceId: 'ws-test', custom: 'value' } as AIProcess['metadata'],
         });
 
@@ -158,7 +167,31 @@ describe('SqliteProcessStore — Process CRUD', () => {
         expect(result!.status).toBe('completed');
         expect(result!.title).toBe('Updated Title');
         expect(result!.result).toBe('done');
+        expect(result!.systemTokens).toBe(200);
+        expect(result!.toolDefinitionsTokens).toBe(300);
+        expect(result!.conversationTokens).toBe(400);
         expect((result!.metadata as Record<string, unknown>)?.custom).toBe('value');
+    });
+
+    it('appendConversationTurn additionalUpdates persists context breakdown fields', async () => {
+        await store.addProcess(makeProcess('p-breakdown-upd'));
+
+        await store.appendConversationTurn(
+            'p-breakdown-upd',
+            (idx) => makeTurn(idx, { role: 'assistant', content: 'done' }),
+            {
+                additionalUpdates: {
+                    systemTokens: 111,
+                    toolDefinitionsTokens: 222,
+                    conversationTokens: 333,
+                },
+            },
+        );
+
+        const result = await store.getProcess('p-breakdown-upd');
+        expect(result!.systemTokens).toBe(111);
+        expect(result!.toolDefinitionsTokens).toBe(222);
+        expect(result!.conversationTokens).toBe(333);
     });
 
     it('updateProcess rejects conversationTurns in update payload', async () => {

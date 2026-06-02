@@ -231,6 +231,84 @@ describe('FollowUpExecutor', () => {
         expect(lastAssistant.content).toBe('Assistant reply');
     });
 
+    it('persists token context breakdown from successful follow-up tokenUsage', async () => {
+        const tokenUsage = {
+            inputTokens: 100,
+            outputTokens: 50,
+            cacheReadTokens: 10,
+            cacheWriteTokens: 5,
+            totalTokens: 165,
+            turnCount: 1,
+            tokenLimit: 200_000,
+            currentTokens: 50_000,
+            systemTokens: 12_000,
+            toolDefinitionsTokens: 24_000,
+            conversationTokens: 14_000,
+        };
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'Assistant reply',
+            sessionId: 'sess-token',
+            tokenUsage,
+        });
+        const proc = makeProcess({ id: 'proc-token-breakdown' });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-token-breakdown', 'next question');
+
+        const updated = store.processes.get('proc-token-breakdown');
+        expect(updated?.tokenLimit).toBe(200_000);
+        expect(updated?.currentTokens).toBe(50_000);
+        expect(updated?.systemTokens).toBe(12_000);
+        expect(updated?.toolDefinitionsTokens).toBe(24_000);
+        expect(updated?.conversationTokens).toBe(14_000);
+        expect(store.emitProcessEvent).toHaveBeenCalledWith(
+            'proc-token-breakdown',
+            expect.objectContaining({
+                type: 'token-usage',
+                sessionSystemTokens: 12_000,
+                sessionToolTokens: 24_000,
+                sessionConversationTokens: 14_000,
+            }),
+        );
+    });
+
+    it('preserves existing token context breakdown when follow-up tokenUsage omits it', async () => {
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'Assistant reply',
+            sessionId: 'sess-token-legacy',
+            tokenUsage: {
+                inputTokens: 100,
+                outputTokens: 50,
+                cacheReadTokens: 0,
+                cacheWriteTokens: 0,
+                totalTokens: 150,
+                turnCount: 1,
+                tokenLimit: 200_000,
+                currentTokens: 60_000,
+            },
+        });
+        const proc = makeProcess({
+            id: 'proc-token-preserve',
+            systemTokens: 11_000,
+            toolDefinitionsTokens: 22_000,
+            conversationTokens: 33_000,
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-token-preserve', 'next question');
+
+        const updated = store.processes.get('proc-token-preserve');
+        expect(updated?.tokenLimit).toBe(200_000);
+        expect(updated?.currentTokens).toBe(60_000);
+        expect(updated?.systemTokens).toBe(11_000);
+        expect(updated?.toolDefinitionsTokens).toBe(22_000);
+        expect(updated?.conversationTokens).toBe(33_000);
+    });
+
     it('emits process-complete event on success', async () => {
         const proc = makeProcess();
         await store.addProcess(proc);

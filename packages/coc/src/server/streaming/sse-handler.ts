@@ -88,7 +88,7 @@ export function emitPendingMessageAdded(store: ProcessStore, processId: string, 
  * Handle SSE streaming for a single process.
  *
  * Protocol:
- *   event: conversation-snapshot → { turns: ConversationTurn[] }
+ *   event: conversation-snapshot → { turns: ConversationTurn[], sessionTokenLimit?, sessionCurrentTokens?, sessionSystemTokens?, sessionToolTokens?, sessionConversationTokens? }
  *   event: chunk              → { content: string }
  *   event: tool-start         → { turnIndex, toolCallId, parentToolCallId?, toolName, parameters }
  *   event: tool-complete      → { turnIndex, toolCallId, parentToolCallId?, toolName?, parameters?, result }
@@ -309,5 +309,8 @@ function replayConversationTurns(res: ServerResponse, process: AIProcess): void 
         turns,
         sessionTokenLimit: process.tokenLimit,
         sessionCurrentTokens: process.currentTokens,
+        ...(process.systemTokens != null ? { sessionSystemTokens: process.systemTokens } : {}),
+        ...(process.toolDefinitionsTokens != null ? { sessionToolTokens: process.toolDefinitionsTokens } : {}),
+        ...(process.conversationTokens != null ? { sessionConversationTokens: process.conversationTokens } : {}),
     });
 }

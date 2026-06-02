@@ -1364,6 +1364,9 @@ describe('ProcessLifecycleRunner — token usage persistence', () => {
         turnCount: 1,
         tokenLimit: 8192,
         currentTokens: 165,
+        systemTokens: 1000,
+        toolDefinitionsTokens: 2000,
+        conversationTokens: 3000,
         cost: 0.002,
         duration: 1200,
     };
@@ -1526,6 +1529,9 @@ describe('ProcessLifecycleRunner — token usage persistence', () => {
                 tokenUsage: sampleTokenUsage,
                 sessionTokenLimit: sampleTokenUsage.tokenLimit,
                 sessionCurrentTokens: sampleTokenUsage.currentTokens,
+                sessionSystemTokens: sampleTokenUsage.systemTokens,
+                sessionToolTokens: sampleTokenUsage.toolDefinitionsTokens,
+                sessionConversationTokens: sampleTokenUsage.conversationTokens,
             }),
         );
     });
@@ -1544,7 +1550,7 @@ describe('ProcessLifecycleRunner — token usage persistence', () => {
         );
     });
 
-    it('persists tokenLimit and currentTokens on the process', async () => {
+    it('persists context window totals and breakdown on the process', async () => {
         const task = makeTask();
         const opts = makeOpts({
             executeByTypeFn: vi.fn().mockResolvedValue({
@@ -1558,5 +1564,8 @@ describe('ProcessLifecycleRunner — token usage persistence', () => {
         const proc = await store.getProcess(`queue_${task.id}`);
         expect(proc?.tokenLimit).toBe(sampleTokenUsage.tokenLimit);
         expect(proc?.currentTokens).toBe(sampleTokenUsage.currentTokens);
+        expect(proc?.systemTokens).toBe(sampleTokenUsage.systemTokens);
+        expect(proc?.toolDefinitionsTokens).toBe(sampleTokenUsage.toolDefinitionsTokens);
+        expect(proc?.conversationTokens).toBe(sampleTokenUsage.conversationTokens);
     });
 });

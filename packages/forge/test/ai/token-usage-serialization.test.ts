@@ -31,6 +31,9 @@ const sampleTokenUsage: TokenUsage = {
     turnCount: 1,
     tokenLimit: 200_000,
     currentTokens: 42_000,
+    systemTokens: 10_000,
+    toolDefinitionsTokens: 20_000,
+    conversationTokens: 12_000,
 };
 
 describe('ConversationTurn.tokenUsage serialization', () => {
@@ -55,6 +58,9 @@ describe('ConversationTurn.tokenUsage serialization', () => {
             turnCount: 1,
             tokenLimit: 200_000,
             currentTokens: 42_000,
+            systemTokens: 10_000,
+            toolDefinitionsTokens: 20_000,
+            conversationTokens: 12_000,
         });
 
         const deserialized = deserializeProcess(serialized);
@@ -65,6 +71,9 @@ describe('ConversationTurn.tokenUsage serialization', () => {
         expect(dTurn.tokenUsage!.totalTokens).toBe(6912);
         expect(dTurn.tokenUsage!.tokenLimit).toBe(200_000);
         expect(dTurn.tokenUsage!.currentTokens).toBe(42_000);
+        expect(dTurn.tokenUsage!.systemTokens).toBe(10_000);
+        expect(dTurn.tokenUsage!.toolDefinitionsTokens).toBe(20_000);
+        expect(dTurn.tokenUsage!.conversationTokens).toBe(12_000);
     });
 
     it('tokenUsage is undefined when not set (backward compat)', () => {
@@ -109,19 +118,28 @@ describe('ConversationTurn.tokenUsage serialization', () => {
 });
 
 describe('AIProcess context window tracking fields serialization', () => {
-    it('round-trips tokenLimit and currentTokens', () => {
+    it('round-trips tokenLimit, currentTokens, and context breakdown fields', () => {
         const process = makeProcess({
             tokenLimit: 200_000,
             currentTokens: 50_000,
+            systemTokens: 12_000,
+            toolDefinitionsTokens: 24_000,
+            conversationTokens: 14_000,
         });
 
         const serialized = serializeProcess(process);
         expect(serialized.tokenLimit).toBe(200_000);
         expect(serialized.currentTokens).toBe(50_000);
+        expect(serialized.systemTokens).toBe(12_000);
+        expect(serialized.toolDefinitionsTokens).toBe(24_000);
+        expect(serialized.conversationTokens).toBe(14_000);
 
         const deserialized = deserializeProcess(serialized);
         expect(deserialized.tokenLimit).toBe(200_000);
         expect(deserialized.currentTokens).toBe(50_000);
+        expect(deserialized.systemTokens).toBe(12_000);
+        expect(deserialized.toolDefinitionsTokens).toBe(24_000);
+        expect(deserialized.conversationTokens).toBe(14_000);
     });
 
     it('round-trips cumulativeTokenUsage', () => {
@@ -148,11 +166,14 @@ describe('AIProcess context window tracking fields serialization', () => {
         expect(deserialized.cumulativeTokenUsage!.turnCount).toBe(3);
     });
 
-    it('tokenLimit/currentTokens/cumulativeTokenUsage are undefined when not set (backward compat)', () => {
+    it('tokenLimit/currentTokens/breakdown/cumulativeTokenUsage are undefined when not set (backward compat)', () => {
         const process = makeProcess();
         const deserialized = deserializeProcess(serializeProcess(process));
         expect(deserialized.tokenLimit).toBeUndefined();
         expect(deserialized.currentTokens).toBeUndefined();
+        expect(deserialized.systemTokens).toBeUndefined();
+        expect(deserialized.toolDefinitionsTokens).toBeUndefined();
+        expect(deserialized.conversationTokens).toBeUndefined();
         expect(deserialized.cumulativeTokenUsage).toBeUndefined();
     });
 });

@@ -446,6 +446,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                             if (TERMINAL_STATUSES.has(current.status)) return {};
                             const tokenLimit = tokenUsage?.tokenLimit ?? current.tokenLimit;
                             const currentTokens = tokenUsage?.currentTokens ?? current.currentTokens;
+                            const systemTokens = tokenUsage?.systemTokens ?? current.systemTokens;
+                            const toolDefinitionsTokens = tokenUsage?.toolDefinitionsTokens ?? current.toolDefinitionsTokens;
+                            const conversationTokens = tokenUsage?.conversationTokens ?? current.conversationTokens;
                             const prevCumulative = current.cumulativeTokenUsage;
                             const cumulativeTokenUsage = tokenUsage ? {
                                 inputTokens: (prevCumulative?.inputTokens ?? 0) + tokenUsage.inputTokens,
@@ -470,6 +473,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                     ...(sessionId ? { sdkSessionId: sessionId } : {}),
                                     ...(tokenLimit !== undefined ? { tokenLimit } : {}),
                                     ...(currentTokens !== undefined ? { currentTokens } : {}),
+                                    ...(systemTokens !== undefined ? { systemTokens } : {}),
+                                    ...(toolDefinitionsTokens !== undefined ? { toolDefinitionsTokens } : {}),
+                                    ...(conversationTokens !== undefined ? { conversationTokens } : {}),
                                     ...(cumulativeTokenUsage ? { cumulativeTokenUsage } : {}),
                                 };
                             }
@@ -480,6 +486,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                 ...(sessionId ? { sdkSessionId: sessionId } : {}),
                                 ...(tokenLimit !== undefined ? { tokenLimit } : {}),
                                 ...(currentTokens !== undefined ? { currentTokens } : {}),
+                                ...(systemTokens !== undefined ? { systemTokens } : {}),
+                                ...(toolDefinitionsTokens !== undefined ? { toolDefinitionsTokens } : {}),
+                                ...(conversationTokens !== undefined ? { conversationTokens } : {}),
                                 ...(cumulativeTokenUsage ? { cumulativeTokenUsage } : {}),
                             };
                         },

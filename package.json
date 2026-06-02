@@ -3782,6 +3782,7 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
+    "build": "npm run compile",
     "compile": "npm run build:packages && webpack",
     "compile:extension": "webpack",
     "watch": "webpack --watch",

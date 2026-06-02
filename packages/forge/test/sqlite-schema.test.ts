@@ -97,7 +97,17 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(18);
+        expect(SCHEMA_VERSION).toBe(19);
+    });
+
+    it('creates context-window breakdown columns on processes', () => {
+        initializeDatabase(db);
+
+        const cols = db.prepare("PRAGMA table_info(processes)").all() as Array<{ name: string }>;
+        const colNames = cols.map(c => c.name);
+        expect(colNames).toContain('system_tokens');
+        expect(colNames).toContain('tool_definitions_tokens');
+        expect(colNames).toContain('conversation_tokens');
     });
 
     it('creates queue pause timer columns', () => {
@@ -723,6 +733,71 @@ describe('sqlite-schema', () => {
 
             const results = db.prepare("SELECT * FROM conversation_search WHERE conversation_search MATCH 'unique'").all();
             expect(results).toHaveLength(1);
+        });
+    });
+
+    describe('V18 → V19 migration (context-window breakdown columns)', () => {
+        it('adds breakdown columns to existing processes table and preserves rows', () => {
+            db.exec(`
+                CREATE TABLE processes (
+                    id                    TEXT PRIMARY KEY,
+                    workspace_id          TEXT NOT NULL,
+                    type                  TEXT,
+                    prompt_preview        TEXT,
+                    full_prompt           TEXT,
+                    status                TEXT NOT NULL,
+                    start_time            TEXT NOT NULL,
+                    end_time              TEXT,
+                    error                 TEXT,
+                    result                TEXT,
+                    result_file_path      TEXT,
+                    raw_stdout_file_path  TEXT,
+                    metadata              TEXT,
+                    group_metadata        TEXT,
+                    structured_result     TEXT,
+                    parent_process_id     TEXT,
+                    sdk_session_id        TEXT,
+                    backend               TEXT,
+                    working_directory     TEXT,
+                    title                 TEXT,
+                    custom_title          TEXT,
+                    last_message_preview  TEXT,
+                    token_limit           INTEGER,
+                    current_tokens        INTEGER,
+                    cumulative_token_usage TEXT,
+                    stale                 INTEGER DEFAULT 0,
+                    data_file_path        TEXT,
+                    archived              INTEGER DEFAULT 0,
+                    pinned_at             TEXT,
+                    seen_at               TEXT,
+                    last_event_at         TEXT
+                )
+            `);
+            db.prepare(`
+                INSERT INTO processes (id, workspace_id, status, start_time, token_limit, current_tokens)
+                VALUES ('p-v18', 'ws1', 'completed', '2026-01-01T00:00:00.000Z', 200000, 50000)
+            `).run();
+            db.pragma('user_version = 18');
+
+            initializeDatabase(db);
+
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+            const cols = db.prepare("PRAGMA table_info(processes)").all() as Array<{ name: string }>;
+            const colNames = cols.map(c => c.name);
+            expect(colNames).toContain('system_tokens');
+            expect(colNames).toContain('tool_definitions_tokens');
+            expect(colNames).toContain('conversation_tokens');
+
+            const row = db.prepare(`
+                SELECT id, token_limit, current_tokens, system_tokens, tool_definitions_tokens, conversation_tokens
+                FROM processes WHERE id = 'p-v18'
+            `).get() as any;
+            expect(row.id).toBe('p-v18');
+            expect(row.token_limit).toBe(200000);
+            expect(row.current_tokens).toBe(50000);
+            expect(row.system_tokens).toBeNull();
+            expect(row.tool_definitions_tokens).toBeNull();
+            expect(row.conversation_tokens).toBeNull();
         });
     });
 });

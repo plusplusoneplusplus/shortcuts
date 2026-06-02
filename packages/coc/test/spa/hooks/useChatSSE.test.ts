@@ -74,6 +74,9 @@ function makeOptions(overrides: Partial<Parameters<typeof useChatSSE>[0]> = {}):
         setSuggestions: vi.fn(),
         setSessionTokenLimit: vi.fn(),
         setSessionCurrentTokens: vi.fn(),
+        setSessionSystemTokens: vi.fn(),
+        setSessionToolTokens: vi.fn(),
+        setSessionConversationTokens: vi.fn(),
         setBackgroundTasks: vi.fn(),
         setTurnsAndRef: vi.fn(),
         refreshConversation: vi.fn().mockResolvedValue(undefined),
@@ -202,6 +205,28 @@ describe('useChatSSE', () => {
             MockEventSource.latest().emit('conversation-snapshot', { turns: [{ role: 'user', content: 'hi' }] });
         });
         expect(setTurnsAndRef).toHaveBeenCalledWith([{ role: 'user', content: 'hi' }]);
+    });
+
+    it('hydrates context breakdown fields from conversation-snapshot', () => {
+        const setSessionSystemTokens = vi.fn();
+        const setSessionToolTokens = vi.fn();
+        const setSessionConversationTokens = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({
+            setSessionSystemTokens,
+            setSessionToolTokens,
+            setSessionConversationTokens,
+        })));
+        act(() => {
+            MockEventSource.latest().emit('conversation-snapshot', {
+                turns: [{ role: 'user', content: 'hi' }],
+                sessionSystemTokens: 12_000,
+                sessionToolTokens: 24_000,
+                sessionConversationTokens: 14_000,
+            });
+        });
+        expect(setSessionSystemTokens).toHaveBeenCalledWith(12_000);
+        expect(setSessionToolTokens).toHaveBeenCalledWith(24_000);
+        expect(setSessionConversationTokens).toHaveBeenCalledWith(14_000);
     });
 
     it('rehydrates a pending ask-user batch from SSE replay', () => {

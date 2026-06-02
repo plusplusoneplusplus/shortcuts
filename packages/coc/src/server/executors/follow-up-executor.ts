@@ -401,6 +401,9 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     additionalUpdates: (current) => {
                         const tokenLimit = result.tokenUsage?.tokenLimit ?? current.tokenLimit;
                         const currentTokens = result.tokenUsage?.currentTokens ?? current.currentTokens;
+                        const systemTokens = result.tokenUsage?.systemTokens ?? current.systemTokens;
+                        const toolDefinitionsTokens = result.tokenUsage?.toolDefinitionsTokens ?? current.toolDefinitionsTokens;
+                        const conversationTokens = result.tokenUsage?.conversationTokens ?? current.conversationTokens;
                         const prevCumulative = current.cumulativeTokenUsage;
                         const cumulativeTokenUsage = result.tokenUsage ? {
                             inputTokens: (prevCumulative?.inputTokens ?? 0) + result.tokenUsage.inputTokens,
@@ -422,6 +425,9 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                             result: result.response || undefined,
                             ...(tokenLimit !== undefined ? { tokenLimit } : {}),
                             ...(currentTokens !== undefined ? { currentTokens } : {}),
+                            ...(systemTokens !== undefined ? { systemTokens } : {}),
+                            ...(toolDefinitionsTokens !== undefined ? { toolDefinitionsTokens } : {}),
+                            ...(conversationTokens !== undefined ? { conversationTokens } : {}),
                             ...(cumulativeTokenUsage ? { cumulativeTokenUsage } : {}),
                         };
                     },

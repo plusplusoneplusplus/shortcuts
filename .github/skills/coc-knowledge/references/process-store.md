@@ -6,13 +6,13 @@ Location: `packages/forge/src/` (`process-store.ts`, `sqlite-process-store.ts`, 
 
 ## SqliteProcessStore
 
-Default backend. Single `processes.db` file at `~/.coc/processes.db`. Schema version 8.
+Default backend. Single `processes.db` file at `~/.coc/processes.db`. Schema version 19.
 
 ### Tables
 
 | Table | Purpose |
 |-------|---------|
-| `processes` | Process metadata, config, status, pinned_at, archived, last_event_at, seen_at |
+| `processes` | Process metadata, config, status, context-window totals/breakdown, pinned_at, archived, last_event_at, seen_at |
 | `conversation_turns` | Per-turn content, role, tool calls, pinned_at, archived, deleted_at |
 | `conversation_search` | FTS5 index on `conversation_turns.content` with sync triggers |
 | `queue_tasks` | Queue task persistence |
@@ -26,6 +26,7 @@ Default backend. Single `processes.db` file at `~/.coc/processes.db`. Schema ver
 - **Pin/archive:** `pinned_at TEXT`, `archived INTEGER` on processes table
 - **Per-turn actions:** `deleted_at`, `pinned_at`, `archived` on conversation_turns
 - **Last event tracking:** `lastEventAt` set on `addProcess` (= startTime), updated on `appendConversationTurn`
+- **Context window tracking:** `tokenLimit`, `currentTokens`, and optional `systemTokens` / `toolDefinitionsTokens` / `conversationTokens` are persisted on the process record for snapshot replay.
 - **Seen state:** `seen_at TEXT` column for read/unread tracking
 - **Pending messages:** `pendingMessages` persisted in process metadata
 - **Prompt autocomplete:** `getBestPromptCompletion` and `getPromptAutocompleteContext` for ghost text

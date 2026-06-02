@@ -3,7 +3,7 @@
  *
  * Tests that the SSE handler:
  * - Forwards 'token-usage' events as named SSE events
- * - Includes sessionTokenLimit and sessionCurrentTokens in conversation-snapshot
+ * - Includes persisted context window totals and breakdown in conversation-snapshot
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -162,13 +162,16 @@ describe('SSE token-usage events', () => {
         expect(d.sessionCurrentTokens).toBeUndefined();
     });
 
-    it('includes sessionTokenLimit and sessionCurrentTokens in conversation-snapshot when available on process', async () => {
+    it('includes session context totals and breakdown in conversation-snapshot when available on process', async () => {
         const proc = createProcessFixture({
             id: 'p-snap-token',
             status: 'completed',
             conversationTurns: [makeTurn('user', 'Hello', 0)],
             tokenLimit: 200_000,
             currentTokens: 50_000,
+            systemTokens: 12_000,
+            toolDefinitionsTokens: 24_000,
+            conversationTokens: 14_000,
         } as any);
         store.processes.set(proc.id, proc);
 
@@ -183,6 +186,9 @@ describe('SSE token-usage events', () => {
         expect(d.turns).toHaveLength(1);
         expect(d.sessionTokenLimit).toBe(200_000);
         expect(d.sessionCurrentTokens).toBe(50_000);
+        expect(d.sessionSystemTokens).toBe(12_000);
+        expect(d.sessionToolTokens).toBe(24_000);
+        expect(d.sessionConversationTokens).toBe(14_000);
     });
 
     it('conversation-snapshot omits token fields when not set on process', async () => {
@@ -203,6 +209,9 @@ describe('SSE token-usage events', () => {
         const d = snapshots[0].data as any;
         expect(d.sessionTokenLimit).toBeUndefined();
         expect(d.sessionCurrentTokens).toBeUndefined();
+        expect(d.sessionSystemTokens).toBeUndefined();
+        expect(d.sessionToolTokens).toBeUndefined();
+        expect(d.sessionConversationTokens).toBeUndefined();
     });
 
     it('conversation-snapshot includes sessionTokenLimit on first connect (seeded value, before AI response)', async () => {
