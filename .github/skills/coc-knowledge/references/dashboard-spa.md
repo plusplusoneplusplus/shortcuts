@@ -180,7 +180,7 @@ Each tool's internal sub-tab/hash scheme (e.g. `#skills/installed`,
 - Search box
 - Selection persists in `localStorage['coc-activity-scope']`
 
-Ralph activity deep-links mount `RalphWorkflowPane`, which shows the iteration timeline alongside a read-only session file browser. The file browser lists the raw files returned by the Ralph session API, selects the first file by default, renders Markdown files through the shared markdown renderer, and formats JSON files as plain indented text. The pane accepts an optional selected filename from the router and reports file selections back to the host so URL hash wiring can deep-link individual session files.
+Ralph activity deep-links mount `RalphWorkflowPane`, which shows the iteration timeline alongside a read-only session file browser. The file browser lists the raw files returned by the Ralph session API, selects the first file by default, renders Markdown files through the shared markdown renderer, and formats JSON files as plain indented text. The pane accepts an optional selected filename from the router and reports file selections back to the host so URL hash wiring can deep-link individual session files with `#repos/{workspaceId}/activity/ralph/{sessionId}/{filename}`; bare and trailing-slash session hashes have no pre-selected file and fall back to the first file.
 
 ## Memory Route
 

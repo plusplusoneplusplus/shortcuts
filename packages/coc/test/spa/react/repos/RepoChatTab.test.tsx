@@ -89,12 +89,17 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/RalphWorkflowPane
         return React.createElement('div', {
             'data-testid': 'mock-ralph-pane',
             'data-session-id': props.sessionId,
+            'data-selected-file': props.selectedFileName ?? '',
         },
             `Ralph: ${props.sessionId}`,
             props.onClose && React.createElement('button', {
                 'data-testid': 'ralph-close-btn',
                 onClick: props.onClose,
             }, 'Close Ralph'),
+            props.onSelectFile && React.createElement('button', {
+                'data-testid': 'ralph-select-file-btn',
+                onClick: () => props.onSelectFile('progress.md'),
+            }, 'Select file'),
         );
     },
 }));
@@ -1672,6 +1677,60 @@ describe('RepoChatTab: Ralph session and new chat', () => {
         await waitFor(() => {
             expect(location.hash).not.toContain('/ralph/');
             expect(location.hash).toContain('#repos/ws-1/activity');
+        });
+    });
+
+    it('opens a Ralph file deep-link with the file pre-selected', async () => {
+        location.hash = '#repos/ws-1/activity/ralph/ralph-session-1/progress.md';
+        setupFetchMock();
+        await renderTab();
+
+        await waitFor(() => {
+            const pane = screen.getByTestId('mock-ralph-pane');
+            expect(pane.getAttribute('data-session-id')).toBe('ralph-session-1');
+            expect(pane.getAttribute('data-selected-file')).toBe('progress.md');
+        });
+    });
+
+    it('selecting a Ralph session file updates the URL hash', async () => {
+        setupFetchMock();
+        await renderTab();
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('select-ralph-btn'));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('mock-ralph-pane')).toBeTruthy();
+        });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('ralph-select-file-btn'));
+        });
+
+        await waitFor(() => {
+            expect(location.hash).toBe('#repos/ws-1/activity/ralph/ralph-session-1/progress.md');
+            expect(screen.getByTestId('mock-ralph-pane').getAttribute('data-selected-file')).toBe('progress.md');
+        });
+    });
+
+    it('hash navigation back to the bare Ralph session clears the selected file', async () => {
+        location.hash = '#repos/ws-1/activity/ralph/ralph-session-1/progress.md';
+        setupFetchMock();
+        await renderTab();
+
+        await waitFor(() => {
+            expect(screen.getByTestId('mock-ralph-pane').getAttribute('data-selected-file')).toBe('progress.md');
+        });
+
+        await act(async () => {
+            location.hash = '#repos/ws-1/activity/ralph/ralph-session-1';
+            window.dispatchEvent(new HashChangeEvent('hashchange'));
+        });
+
+        await waitFor(() => {
+            expect(location.hash).toBe('#repos/ws-1/activity/ralph/ralph-session-1');
+            expect(screen.getByTestId('mock-ralph-pane').getAttribute('data-selected-file')).toBe('');
         });
     });
 

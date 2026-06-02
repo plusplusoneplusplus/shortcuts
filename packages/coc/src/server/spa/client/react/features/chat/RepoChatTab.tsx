@@ -34,6 +34,22 @@ export interface RepoChatTabProps {
     mode?: 'chats' | 'tasks';
 }
 
+function getActivityTabSegment(mode: RepoChatTabProps['mode']): 'activity' | 'chats' | 'tasks' {
+    return mode === 'tasks' ? 'tasks' : mode === 'chats' ? 'chats' : 'activity';
+}
+
+function buildRalphSessionHash(
+    workspaceId: string,
+    mode: RepoChatTabProps['mode'],
+    sessionId: string,
+    fileName?: string,
+): string {
+    const base = '#repos/' + encodeURIComponent(workspaceId)
+        + '/' + getActivityTabSegment(mode)
+        + '/ralph/' + encodeURIComponent(sessionId);
+    return fileName ? base + '/' + encodeURIComponent(fileName) : base;
+}
+
 type QueuePauseOptions = { durationHours?: 1 | 2 | 3 | 4 | 8; until?: number | string };
 
 function isQueuePauseOptions(value: unknown): value is QueuePauseOptions {
@@ -515,12 +531,14 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     }, [isRefreshing, fetchQueue]);
 
     const [selectedRalphSessionId, setSelectedRalphSessionId] = useState<string | null>(null);
+    const [selectedRalphFileName, setSelectedRalphFileName] = useState<string | null>(null);
 
     // When a chat task is selected, drop any active Ralph session selection so
     // the right pane consistently reflects the user's most recent click.
     useEffect(() => {
         if (selectedTaskId && selectedRalphSessionId) {
             setSelectedRalphSessionId(null);
+            setSelectedRalphFileName(null);
         }
     }, [selectedTaskId, selectedRalphSessionId]);
 
@@ -532,13 +550,20 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             selectedTaskRef.current = null;
         }
         setSelectedRalphSessionId(sessionId);
+        setSelectedRalphFileName(null);
         // Write a refresh-survivable hash. `mode === 'tasks' ? 'tasks' : ...`
         // mirrors the convention in `selectTask` so layout mode round-trips.
-        const tabSegment = mode === 'tasks' ? 'tasks' : mode === 'chats' ? 'chats' : 'activity';
-        const next = '#repos/' + encodeURIComponent(workspaceId) + '/' + tabSegment + '/ralph/' + encodeURIComponent(sessionId);
+        const next = buildRalphSessionHash(workspaceId, mode, sessionId);
         if (location.hash !== next) location.hash = next;
         if (isMobile) setMobileShowDetail(true);
     }, [queueDispatch, workspaceId, selectedTaskId, isMobile, mode]);
+
+    const handleSelectRalphFile = useCallback((fileName: string) => {
+        if (!selectedRalphSessionId) return;
+        setSelectedRalphFileName(fileName);
+        const next = buildRalphSessionHash(workspaceId, mode, selectedRalphSessionId, fileName);
+        if (location.hash !== next) location.hash = next;
+    }, [workspaceId, mode, selectedRalphSessionId]);
 
     // Restore Ralph session selection from the URL hash on mount and on
     // hashchange (browser back / forward / refresh).
@@ -547,8 +572,13 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
             const parsed = parseRalphSessionDeepLink(location.hash);
             if (parsed && parsed.workspaceId === workspaceId) {
                 setSelectedRalphSessionId((prev) => (prev === parsed.sessionId ? prev : parsed.sessionId));
+                setSelectedRalphFileName((prev) => {
+                    const next = parsed.fileName ?? null;
+                    return prev === next ? prev : next;
+                });
             } else {
                 setSelectedRalphSessionId((prev) => (prev === null ? prev : null));
+                setSelectedRalphFileName((prev) => (prev === null ? prev : null));
             }
         };
         apply();
@@ -559,6 +589,7 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
     const handleSelectRalphIteration = useCallback((processId: string) => {
         // Switching to an iteration's chat detail clears the workflow pane.
         setSelectedRalphSessionId(null);
+        setSelectedRalphFileName(null);
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: workspaceId });
         if (isMobile) setMobileShowDetail(true);
     }, [queueDispatch, workspaceId, isMobile]);
@@ -635,7 +666,8 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                 setSelectedTask(null);
                 selectedTaskRef.current = null;
                 setSelectedRalphSessionId(null);
-                const tabSegment = mode === 'tasks' ? 'tasks' : mode === 'chats' ? 'chats' : 'activity';
+                setSelectedRalphFileName(null);
+                const tabSegment = getActivityTabSegment(mode);
                 location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/' + tabSegment;
                 if (isMobile) setMobileShowDetail(true);
             }}
@@ -667,9 +699,12 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                                     sessionId={selectedRalphSessionId}
                                     onClose={() => {
                                         setSelectedRalphSessionId(null);
+                                        setSelectedRalphFileName(null);
                                         setMobileShowDetail(false);
                                     }}
                                     onSelectIteration={handleSelectRalphIteration}
+                                    selectedFileName={selectedRalphFileName ?? undefined}
+                                    onSelectFile={handleSelectRalphFile}
                                 />
                             ) : (
                                 <ChatDetailPane
@@ -753,8 +788,13 @@ export function RepoChatTab({ workspaceId, mode }: RepoChatTabProps) {
                     <RalphWorkflowPaneContainer
                         workspaceId={workspaceId}
                         sessionId={selectedRalphSessionId}
-                        onClose={() => setSelectedRalphSessionId(null)}
+                        onClose={() => {
+                            setSelectedRalphSessionId(null);
+                            setSelectedRalphFileName(null);
+                        }}
                         onSelectIteration={handleSelectRalphIteration}
+                        selectedFileName={selectedRalphFileName ?? undefined}
+                        onSelectFile={handleSelectRalphFile}
                     />
                 ) : (
                     <ChatDetailPane
