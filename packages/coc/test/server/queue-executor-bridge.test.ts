@@ -7176,7 +7176,12 @@ describe('Ralph session queue continuity', () => {
             sessionId: 'sdk-check-1',
         });
 
-        executor.dispose();
+        // Drain all queued + running work (including the unrelated exclusive
+        // backlog and the final-check task) before disposing so every in-flight
+        // ralph-session write has settled before afterEach removes the data
+        // directory. Using dispose() alone races with those background writes and
+        // causes a flaky ENOTEMPTY on rmdir (mirrors the AC-01 hardening above).
+        await executor.drainAndDispose(5000);
     });
 });
 

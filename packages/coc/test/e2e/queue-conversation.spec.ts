@@ -973,8 +973,27 @@ test.describe('Queue Task Conversation – Streaming Intermediate State', () => 
                 payload: { workspaceId: wsId, prompt: 'Gate test' },
             });
 
-            // Detect when SSE stream connection is established (before navigation triggers it)
-            const sseConnected = page.waitForRequest(req => req.url().includes('/stream'), { timeout: 10_000 });
+            // Instrument EventSource so the test can deterministically wait until the
+            // server's output subscription is live. The SSE handler sends an immediate
+            // `heartbeat` frame right AFTER it registers the output subscriber
+            // (sse-handler.ts: subscribe then `sendEvent(res, 'heartbeat', {})`), so
+            // observing that frame guarantees released chunks won't fall into the
+            // pre-subscription window and get dropped. Must run before app scripts.
+            await page.addInitScript(() => {
+                const NativeES = window.EventSource;
+                (window as Window & { __sseHeartbeat?: boolean }).__sseHeartbeat = false;
+                class InstrumentedEventSource extends NativeES {
+                    constructor(url: string | URL, init?: EventSourceInit) {
+                        super(url, init);
+                        if (String(url).includes('/stream')) {
+                            this.addEventListener('heartbeat', () => {
+                                (window as Window & { __sseHeartbeat?: boolean }).__sseHeartbeat = true;
+                            });
+                        }
+                    }
+                }
+                window.EventSource = InstrumentedEventSource as unknown as typeof EventSource;
+            });
             await gotoQueueTask(page, serverUrl, wsId, task.id as string);
 
             const bubble = page.locator('.chat-message.assistant').last();
@@ -982,8 +1001,13 @@ test.describe('Queue Task Conversation – Streaming Intermediate State', () => 
 
             // Wait for executor to start — streaming placeholder proves SSE is connected
             await expect(page.locator('.streaming-indicator')).toBeVisible({ timeout: 8000 });
-            // Ensure SSE EventSource has connected so chunks reach the browser
-            await sseConnected;
+            // Ensure the server's output subscription is live (heartbeat received) so
+            // released chunks are delivered rather than dropped pre-subscription.
+            await page.waitForFunction(
+                () => (window as Window & { __sseHeartbeat?: boolean }).__sseHeartbeat === true,
+                undefined,
+                { timeout: 10_000 },
+            );
 
             // ── Chunk 1 ───────────────────────────────────────────────────────
             await gate.releaseNext();

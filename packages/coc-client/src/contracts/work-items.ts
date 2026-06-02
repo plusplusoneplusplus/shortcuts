@@ -1,4 +1,4 @@
-import type { JsonObject } from './common';
+import type { ChatProvider, JsonObject, ReasoningEffort } from './common';
 
 export type WorkItemStatus =
   | 'created'
@@ -169,6 +169,8 @@ export interface UpdateWorkItemRequest extends Partial<Pick<WorkItem, 'title' | 
 
 export interface ExecuteWorkItemRequest extends JsonObject {
   model?: string;
+  provider?: ChatProvider;
+  reasoningEffort?: ReasoningEffort;
   mode?: string;
   skillNames?: string[];
 }

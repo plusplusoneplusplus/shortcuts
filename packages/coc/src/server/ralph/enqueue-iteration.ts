@@ -9,7 +9,7 @@
 
 import { buildRalphIterationPrompt } from './iteration-prompt';
 import { RalphSessionStore } from './ralph-session-store';
-import type { ChatProvider } from '../tasks/task-types';
+import type { ChatProvider, ReasoningEffort } from '../tasks/task-types';
 
 export interface BuildRalphIterationTaskInput {
     workspaceId?: string;
@@ -31,6 +31,10 @@ export interface BuildRalphIterationTaskInput {
     priority?: 'normal' | 'low' | 'high';
     /** AI provider to use for this Ralph execution task. */
     provider?: ChatProvider;
+    /** Optional model override for this Ralph execution task. */
+    model?: string;
+    /** Optional reasoning-effort override for this Ralph execution task. */
+    reasoningEffort?: ReasoningEffort;
     /**
      * When set, the enqueued task is tagged as a continuation of this Ralph
      * session, allowing the queue manager to admit it ahead of unrelated
@@ -59,7 +63,10 @@ export function buildRalphIterationTask(input: BuildRalphIterationTaskInput) {
         folderPath: input.folderPath,
         continuationOfSessionId: input.continuationOfSessionId,
         displayName,
-        config: {},
+        config: {
+            ...(input.model ? { model: input.model } : {}),
+            ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
+        },
         payload: {
             kind: 'chat' as const,
             mode: 'ralph' as const,

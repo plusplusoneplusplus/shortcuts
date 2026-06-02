@@ -78,6 +78,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | GET | `/api/queue` | List queue tasks |
 | GET | `/api/queue/models` | List model IDs for the configured default provider |
 | POST | `/api/queue` | Enqueue a task |
+| POST | `/api/workspaces/:id/queue/generate` | Enqueue a Generate Plan chat task. Body accepts optional `provider`, `model`, and `reasoningEffort` overrides, which are validated through the shared chat queue validation path. |
 | DELETE | `/api/queue/:id` | Remove from queue |
 | POST | `/api/queue/:id/cancel` | Cancel queued task |
 | PATCH | `/api/queue/pause` | Pause/resume queue |
@@ -86,8 +87,8 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/processes/:id/ralph-start` | Start Ralph execution after grilling |
-| POST | `/api/ralph-launch` | Direct Ralph launch (skip grilling) |
+| POST | `/api/processes/:id/ralph-start` | Start Ralph execution after grilling. Body accepts optional `provider`, `config.model`, and `config.reasoningEffort` overrides for the first execution task. |
+| POST | `/api/ralph-launch` | Direct Ralph launch (skip grilling). Body accepts optional `provider`, `config.model`, and `config.reasoningEffort` overrides for the first execution task. |
 | GET | `/api/workspaces/:wsId/ralph-sessions/:sessionId` | Read session journal (record + progress sections) |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/continue` | Extend completed session (CAP_REACHED or NO_SIGNAL) by N iterations |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/new-loop` | New goal loop after RALPH_COMPLETE |
@@ -245,6 +246,7 @@ See [mcp-settings.md](mcp-settings.md).
 | GET | `/api/workspaces/:id/work-items/:itemId` | Read work item |
 | PATCH | `/api/workspaces/:id/work-items/:itemId` | Update work item |
 | DELETE | `/api/workspaces/:id/work-items/:itemId` | Delete work item |
+| POST | `/api/workspaces/:id/work-items/:itemId/execute` | Enqueue a work-item implementation run. Body accepts optional `skillNames`, `provider`, `model`, and `reasoningEffort` overrides. |
 
 ### AI Authoring (gated by `workItems.aiAuthoring` flag, default `false`)
 

@@ -2,13 +2,9 @@
  * RalphLaunchDialog — lightweight dialog for launching Ralph from a goal file.
  * Used by the notes editor when editing a goal.md / *.goal.md file.
  */
-import { useEffect, useState } from 'react';
-import { getApiBase, getDefaultProvider } from '../utils/config';
-import { useModels } from '../hooks/useModels';
-import { useAgentProviders } from '../hooks/useAgentProviders';
-import { getSpaCocClient } from '../api/cocClient';
-import { AgentSelectorChip } from '../features/chat/AgentSelectorChip';
-import type { ChatProvider } from '../features/chat/AgentSelectorChip';
+import { useState } from 'react';
+import { getApiBase } from '../utils/config';
+import { ModalJobAiControls, useModalJobAiSelection } from './ModalJobAiControls';
 
 export interface RalphLaunchDialogProps {
     open: boolean;
@@ -24,16 +20,6 @@ export interface RalphLaunchDialogProps {
     onLaunched: (processId: string) => void;
 }
 
-function isChatProvider(value: unknown): value is ChatProvider {
-    return value === 'copilot' || value === 'codex' || value === 'claude';
-}
-
-function isSelectableProvider(provider: ChatProvider, providers: Array<{ id: string; enabled: boolean; available: boolean }>): boolean {
-    if (provider === 'copilot') return true;
-    const status = providers.find(p => p.id === provider);
-    return status?.enabled === true && status?.available === true;
-}
-
 export function RalphLaunchDialog({
     open,
     workspaceId,
@@ -43,50 +29,9 @@ export function RalphLaunchDialog({
     onClose,
     onLaunched,
 }: RalphLaunchDialogProps) {
-    const { models } = useModels();
-    const { providers: agentProviders, loading: providersLoading } = useAgentProviders();
-    const enabledModels = models.filter(m => m.enabled);
-    const [selectedModel, setSelectedModel] = useState('');
-    const [selectedProvider, setSelectedProvider] = useState<ChatProvider>(() => getDefaultProvider());
+    const aiSelection = useModalJobAiSelection({ workspaceId, mode: 'ralph' });
     const [launching, setLaunching] = useState(false);
     const [error, setError] = useState<string | null>(null);
-
-    const getSelectableDefaultProvider = () => {
-        const configuredDefault = getDefaultProvider();
-        return isSelectableProvider(configuredDefault, agentProviders) ? configuredDefault : 'copilot';
-    };
-
-    useEffect(() => {
-        const fallbackProvider = getSelectableDefaultProvider();
-        let cancelled = false;
-        getSpaCocClient().preferences.getRepo(workspaceId)
-            .then((prefs: any) => {
-                if (cancelled) return;
-                const last = prefs?.lastChatProvider;
-                if (isChatProvider(last) && isSelectableProvider(last, agentProviders)) {
-                    setSelectedProvider(last);
-                    return;
-                }
-                setSelectedProvider(fallbackProvider);
-            })
-            .catch(() => {
-                if (!cancelled) setSelectedProvider(fallbackProvider);
-            });
-        return () => { cancelled = true; };
-    }, [workspaceId, agentProviders]);
-
-    useEffect(() => {
-        if (selectedProvider === 'copilot') return;
-        if (!isSelectableProvider(selectedProvider, agentProviders)) {
-            setSelectedProvider(getSelectableDefaultProvider());
-        }
-    }, [agentProviders, selectedProvider]);
-
-    function handleProviderChange(provider: ChatProvider) {
-        setSelectedProvider(provider);
-        getSpaCocClient().preferences.patchRepo(workspaceId, { lastChatProvider: provider })
-            .catch(() => { /* non-fatal */ });
-    }
 
     if (!open) return null;
 
@@ -99,9 +44,13 @@ export function RalphLaunchDialog({
         setLaunching(true);
         setError(null);
         try {
-            const body: Record<string, unknown> = { goalSpec: trimmed, workspaceId, provider: selectedProvider };
+            const resolvedAi = aiSelection.resolved;
+            const config: Record<string, unknown> = {};
+            if (resolvedAi.model) config.model = resolvedAi.model;
+            if (resolvedAi.reasoningEffort) config.reasoningEffort = resolvedAi.reasoningEffort;
+            const body: Record<string, unknown> = { goalSpec: trimmed, workspaceId, provider: resolvedAi.provider };
             if (folderPath) body.folderPath = folderPath;
-            if (selectedModel) body.config = { model: selectedModel };
+            if (Object.keys(config).length > 0) body.config = config;
             const resp = await fetch(`${getApiBase()}/ralph-launch`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -154,39 +103,16 @@ export function RalphLaunchDialog({
                         Goal source: <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc]">{sourceLabel}</span>
                     </div>
 
-                    {/* Provider selector */}
+                    {/* Provider/model/effort selector */}
                     <div>
                         <div className="block text-xs text-[#848484] mb-1">
                             Agent:
                         </div>
-                        <div className="flex items-center gap-2">
-                            <AgentSelectorChip
-                                providers={agentProviders}
-                                loading={providersLoading}
-                                selected={selectedProvider}
-                                onChange={handleProviderChange}
-                                disabled={launching}
-                            />
-                        </div>
-                    </div>
-
-                    {/* Model selector */}
-                    <div>
-                        <label htmlFor="ralph-model-select" className="block text-xs text-[#848484] mb-1">
-                            Model:
-                        </label>
-                        <select
-                            id="ralph-model-select"
-                            data-testid="ralph-model-select"
-                            value={selectedModel}
-                            onChange={(e) => setSelectedModel(e.target.value)}
-                            className="w-full rounded border border-[#d0d0d0] dark:border-[#4a4a4a] bg-white dark:bg-[#1e1e1e] text-sm text-[#1e1e1e] dark:text-[#cccccc] px-2 py-1"
-                        >
-                            <option value="">Default</option>
-                            {enabledModels.map(m => (
-                                <option key={m.id} value={m.id}>{m.name ?? m.id}</option>
-                            ))}
-                        </select>
+                        <ModalJobAiControls
+                            selection={aiSelection}
+                            disabled={launching}
+                            testIdPrefix="ralph-launch"
+                        />
                     </div>
 
                     {/* Goal preview */}

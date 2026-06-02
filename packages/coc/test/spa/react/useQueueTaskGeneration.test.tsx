@@ -141,6 +141,8 @@ describe('useQueueTaskGeneration', () => {
             targetFolder: 'features',
             name: 'my-task',
             model: 'gpt-4',
+            provider: 'codex',
+            reasoningEffort: 'high',
             mode: 'from-feature',
             depth: 'deep',
             priority: 'high',
@@ -157,6 +159,8 @@ describe('useQueueTaskGeneration', () => {
             targetFolder: 'features',
             name: 'my-task',
             model: 'gpt-4',
+            provider: 'codex',
+            reasoningEffort: 'high',
             mode: 'from-feature',
             depth: 'deep',
             priority: 'high',
@@ -183,6 +187,8 @@ describe('useQueueTaskGeneration', () => {
         expect(body).not.toHaveProperty('targetFolder');
         expect(body).not.toHaveProperty('name');
         expect(body).not.toHaveProperty('model');
+        expect(body).not.toHaveProperty('provider');
+        expect(body).not.toHaveProperty('reasoningEffort');
         expect(body).not.toHaveProperty('priority');
     });
 

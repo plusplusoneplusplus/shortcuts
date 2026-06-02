@@ -148,18 +148,42 @@ describe('POST /api/ralph-launch', () => {
         expect(enqueueArg.payload.folderPath).toBe('/repos/myrepo');
     });
 
-    it('passes provider and model to the enqueued task', async () => {
+    it('passes provider, model, and reasoning effort to the enqueued task', async () => {
         const res = await post(baseUrl, '/api/ralph-launch', {
             goalSpec: 'Build something',
             workspaceId: 'ws-1',
             provider: 'codex',
-            config: { model: 'gpt-5.3-codex' },
+            config: { model: 'gpt-5.3-codex', reasoningEffort: 'high' },
         });
 
         expect(res.status).toBe(200);
         const enqueueArg = mockEnqueue.mock.calls[0][0];
         expect(enqueueArg.payload.provider).toBe('codex');
-        expect(enqueueArg.config).toEqual({ model: 'gpt-5.3-codex' });
+        expect(enqueueArg.config).toEqual({ model: 'gpt-5.3-codex', reasoningEffort: 'high' });
+    });
+
+    it('accepts reasoning effort from the top-level body for compatibility', async () => {
+        const res = await post(baseUrl, '/api/ralph-launch', {
+            goalSpec: 'Build something',
+            workspaceId: 'ws-1',
+            reasoningEffort: 'medium',
+        });
+
+        expect(res.status).toBe(200);
+        const enqueueArg = mockEnqueue.mock.calls[0][0];
+        expect(enqueueArg.config).toEqual({ reasoningEffort: 'medium' });
+    });
+
+    it('omits provider, model, and reasoning effort config when no overrides are provided', async () => {
+        const res = await post(baseUrl, '/api/ralph-launch', {
+            goalSpec: 'Build something',
+            workspaceId: 'ws-1',
+        });
+
+        expect(res.status).toBe(200);
+        const enqueueArg = mockEnqueue.mock.calls[0][0];
+        expect(enqueueArg.payload.provider).toBeUndefined();
+        expect(enqueueArg.config).toEqual({});
     });
 
     it('initialises the per-session journal when workspaceId is provided', async () => {
@@ -231,6 +255,18 @@ describe('POST /api/ralph-launch', () => {
 
         expect(res.status).toBe(400);
         expect(res.json().error).toMatch(/Invalid provider/i);
+        expect(mockEnqueue).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 for invalid reasoning effort', async () => {
+        const res = await post(baseUrl, '/api/ralph-launch', {
+            goalSpec: 'Build something',
+            workspaceId: 'ws-1',
+            config: { reasoningEffort: 'maximum' },
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.json().error).toMatch(/Invalid reasoningEffort/i);
         expect(mockEnqueue).not.toHaveBeenCalled();
     });
 

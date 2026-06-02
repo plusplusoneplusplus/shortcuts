@@ -392,6 +392,75 @@ describe('POST /api/workspaces/:id/queue/generate', () => {
         expect(task.payload.context.taskGeneration.name).toBe('cache-feature');
     });
 
+    it('should pass provider, model, and reasoning effort through queued chat tasks', async () => {
+        const srv = await startServer();
+        const wsId = await registerWorkspace(srv, workspaceDir);
+
+        const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/queue/generate`, {
+            prompt: 'Create a caching layer',
+            provider: 'codex',
+            model: 'gpt-5.3-codex',
+            reasoningEffort: 'high',
+        });
+
+        expect(res.status).toBe(201);
+        const body = JSON.parse(res.body);
+
+        const queueRes = await request(`${srv.url}/api/queue?repoId=${wsId}`);
+        const queueBody = JSON.parse(queueRes.body);
+        const allTasks = [...(queueBody.queued || []), ...(queueBody.running || [])];
+        const task = allTasks.find((t: any) => t.id === body.taskId);
+        expect(task).toBeDefined();
+        expect(task.payload.provider).toBe('codex');
+
+        const detailRes = await request(`${srv.url}/api/queue/${body.taskId}`);
+        const detailBody = JSON.parse(detailRes.body);
+        expect(detailBody.task.payload.model).toBe('gpt-5.3-codex');
+        expect(detailBody.task.payload.reasoningEffort).toBe('high');
+        expect(detailBody.task.config.model).toBe('gpt-5.3-codex');
+        expect(detailBody.task.config.reasoningEffort).toBe('high');
+    });
+
+    it('should omit provider, model, and reasoning effort when no override is submitted', async () => {
+        const srv = await startServer();
+        const wsId = await registerWorkspace(srv, workspaceDir);
+
+        const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/queue/generate`, {
+            prompt: 'Create a caching layer',
+        });
+
+        expect(res.status).toBe(201);
+        const body = JSON.parse(res.body);
+
+        const queueRes = await request(`${srv.url}/api/queue?repoId=${wsId}`);
+        const queueBody = JSON.parse(queueRes.body);
+        const allTasks = [...(queueBody.queued || []), ...(queueBody.running || [])];
+        const task = allTasks.find((t: any) => t.id === body.taskId);
+        expect(task).toBeDefined();
+        expect(task.payload.provider).toBeUndefined();
+
+        const detailRes = await request(`${srv.url}/api/queue/${body.taskId}`);
+        const detailBody = JSON.parse(detailRes.body);
+        expect(detailBody.task.payload.model).toBeUndefined();
+        expect(detailBody.task.payload.reasoningEffort).toBeUndefined();
+        expect(detailBody.task.config.model).toBeUndefined();
+        expect(detailBody.task.config.reasoningEffort).toBeUndefined();
+    });
+
+    it('should reject invalid provider using queue validation', async () => {
+        const srv = await startServer();
+        const wsId = await registerWorkspace(srv, workspaceDir);
+
+        const res = await postJSON(`${srv.url}/api/workspaces/${wsId}/queue/generate`, {
+            prompt: 'Create a caching layer',
+            provider: 'not-a-provider',
+        });
+
+        expect(res.status).toBe(400);
+        const body = JSON.parse(res.body);
+        expect(body.error).toContain('Invalid provider');
+    });
+
     it('should return 400 for missing prompt', async () => {
         const srv = await startServer();
         const wsId = await registerWorkspace(srv, workspaceDir);

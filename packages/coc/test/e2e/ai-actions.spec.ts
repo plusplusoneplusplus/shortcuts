@@ -206,8 +206,9 @@ test.describe('AI Actions (007)', () => {
             // Should have instruction textarea
             await expect(page.locator('#update-doc-instruction')).toBeVisible();
 
-            // Should have model select
-            await expect(page.locator('#update-doc-model')).toBeVisible();
+            // Should have AI controls (provider + model picker chip)
+            await expect(page.locator('[data-testid="update-doc-ai-controls"]')).toBeVisible();
+            await expect(page.locator('[data-testid="update-doc-model-picker-chip"]')).toBeVisible();
 
             // Should have submit and cancel buttons
             await expect(page.locator('#update-doc-submit')).toBeVisible();

@@ -40,3 +40,10 @@ export type { RalphLaunchDialogProps } from './RalphLaunchDialog';
 export { isGoalFile } from './goal-file-utils';
 export { useUndoRedo } from './useUndoRedo';
 export type { HistorySnapshot } from './useUndoRedo';
+export { ModalJobAiControls, useModalJobAiSelection, isChatProvider, isSelectableProvider } from './ModalJobAiControls';
+export type {
+    ModalJobAiControlsProps,
+    ResolvedModalJobAiSelection,
+    UseModalJobAiSelectionOptions,
+    UseModalJobAiSelectionResult,
+} from './ModalJobAiControls';

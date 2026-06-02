@@ -122,6 +122,38 @@ describe('executeWorkItem', () => {
         expect(call.config.model).toBe('gpt-4');
     });
 
+    it('passes provider and reasoning effort overrides through the queued chat task', async () => {
+        const item = makeWorkItem({ id: 'wi-provider-effort', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-provider-effort');
+        await executeWorkItem('wi-provider-effort', store, enqueue, {
+            provider: 'codex',
+            reasoningEffort: 'high',
+        });
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.payload.provider).toBe('codex');
+        expect(call.payload.reasoningEffort).toBe('high');
+        expect(call.config.reasoningEffort).toBe('high');
+        expect(call.config.model).toBeUndefined();
+    });
+
+    it('omits provider/model/reasoning effort when no override is selected', async () => {
+        const item = makeWorkItem({ id: 'wi-default-ai', status: 'readyToExecute' });
+        await store.addWorkItem(item);
+
+        const enqueue = vi.fn().mockResolvedValue('task-default-ai');
+        await executeWorkItem('wi-default-ai', store, enqueue);
+
+        const call = enqueue.mock.calls[0][0];
+        expect(call.payload.provider).toBeUndefined();
+        expect(call.payload.model).toBeUndefined();
+        expect(call.payload.reasoningEffort).toBeUndefined();
+        expect(call.config.model).toBeUndefined();
+        expect(call.config.reasoningEffort).toBeUndefined();
+    });
+
     it('includes context.skills when skillNames provided', async () => {
         const item = makeWorkItem({ id: 'wi-skills', status: 'readyToExecute' });
         await store.addWorkItem(item);

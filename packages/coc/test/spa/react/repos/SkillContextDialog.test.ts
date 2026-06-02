@@ -33,6 +33,10 @@ describe('SkillContextDialog', () => {
             expect(source).toContain('open: boolean');
         });
 
+        it('has optional workspaceId prop for repo-scoped AI defaults', () => {
+            expect(source).toContain('workspaceId?: string');
+        });
+
         it('has skillName string prop', () => {
             expect(source).toContain('skillName: string');
         });
@@ -45,8 +49,8 @@ describe('SkillContextDialog', () => {
             expect(source).toContain('onClose: () => void');
         });
 
-        it('has onConfirm callback prop that takes userContext string', () => {
-            expect(source).toContain('onConfirm: (userContext: string) => Promise<void>');
+        it('has onConfirm callback prop that takes userContext and AI selection', () => {
+            expect(source).toContain('onConfirm: (userContext: string, aiSelection: ResolvedModalJobAiSelection) => Promise<void>');
         });
     });
 
@@ -83,6 +87,11 @@ describe('SkillContextDialog', () => {
         it('renders a textarea for user context', () => {
             expect(source).toContain('<textarea');
             expect(source).toContain('value={userContext}');
+        });
+
+        it('renders compact modal AI controls', () => {
+            expect(source).toContain('<ModalJobAiControls');
+            expect(source).toContain('testIdPrefix="skill-context"');
         });
 
         it('textarea has placeholder text', () => {
@@ -140,7 +149,7 @@ describe('SkillContextDialog', () => {
         });
 
         it('wraps onConfirm in try-catch', () => {
-            expect(source).toContain('await onConfirm(userContext.trim())');
+            expect(source).toContain('await onConfirm(userContext.trim(), aiSelection.resolved)');
         });
     });
 
@@ -151,6 +160,12 @@ describe('SkillContextDialog', () => {
 
         it('imports Button from ui', () => {
             expect(source).toContain("import { Button } from '../../ui'");
+        });
+
+        it('imports shared modal AI selector primitives', () => {
+            expect(source).toContain('ModalJobAiControls');
+            expect(source).toContain('useModalJobAiSelection');
+            expect(source).toContain('ResolvedModalJobAiSelection');
         });
 
         it('imports useState, useEffect, useCallback from react', () => {

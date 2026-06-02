@@ -16,6 +16,7 @@ import { useFileAttachments } from '../features/chat/hooks/useFileAttachments';
 import { AttachmentPreviews } from '../ui/AttachmentPreviews';
 import { useGlobalToast } from '../contexts/ToastContext';
 import { useMinimizedDialog } from '../contexts/MinimizedDialogsContext';
+import { ModalJobAiControls, useModalJobAiSelection } from '../shared/ModalJobAiControls';
 import { type TaskFolder, filterGitMetadataFolders } from './hooks/useTaskTree';
 import { getSpaCocClient } from '../api/cocClient';
 import { getActiveProvider } from '../utils/config';
@@ -124,6 +125,7 @@ export function GenerateTaskDialog({
     const [includeContext, setIncludeContext] = useState(false);
     const [configTab, setConfigTab] = useState<ConfigTab>('effort');
     const [effortLevel, setEffortLevel] = useState<EffortLevel>('medium');
+    const aiSelection = useModalJobAiSelection({ workspaceId: wsId, mode: 'plan' });
 
     useEffect(() => {
         if (savedModels.task && !model) setModel(savedModels.task);
@@ -221,13 +223,15 @@ export function GenerateTaskDialog({
             prompt: prompt.trim(),
             name: name.trim() || undefined,
             targetFolder: targetFolder || undefined,
-            model: finalModel || undefined,
+            model: aiSelection.resolved.model || finalModel || undefined,
+            provider: aiSelection.resolved.provider,
+            reasoningEffort: aiSelection.resolved.reasoningEffort,
             mode: includeContext ? 'from-feature' : undefined,
             depth: finalDepth,
             priority: finalPriority,
             images: images.length > 0 ? images : undefined,
         });
-    }, [prompt, name, targetFolder, model, includeContext, depth, priority, images, enqueue, configTab, effortLevel, models]);
+    }, [prompt, name, targetFolder, model, includeContext, depth, priority, images, enqueue, configTab, effortLevel, models, aiSelection.resolved]);
 
     const isSubmitting = status === 'submitting';
     const isQueued = status === 'queued';
@@ -406,6 +410,14 @@ export function GenerateTaskDialog({
 
                 {/* ── Configuration tabs ─────────────────────────────────── */}
                 <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] pt-3 mt-1">
+                    <div className="flex flex-col gap-1 mb-3">
+                        <label className="text-xs text-[#616161] dark:text-[#999]">AI</label>
+                        <ModalJobAiControls
+                            selection={aiSelection}
+                            disabled={isSubmitting || isQueued}
+                            testIdPrefix="gen-task"
+                        />
+                    </div>
                     <div className="flex gap-1 mb-3" role="tablist" data-testid="config-tabs">
                         <button
                             role="tab"

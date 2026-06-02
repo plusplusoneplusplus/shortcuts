@@ -1,5 +1,8 @@
 export type JsonObject = Record<string, unknown>;
 
+export type ChatProvider = 'copilot' | 'codex' | 'claude';
+export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
+
 export interface PaginatedResponse<T> {
   items: T[];
   total: number;

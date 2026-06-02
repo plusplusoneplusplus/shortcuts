@@ -5,12 +5,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { FloatingDialog, Button } from '../ui';
-import { usePreferences } from '../hooks/preferences/usePreferences';
 import { useApp } from '../contexts/AppContext';
 import { useGlobalToast } from '../contexts/ToastContext';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
-import { getActiveProvider } from '../utils/config';
+import type { EnqueueTaskRequest } from '@plusplusoneplusplus/coc-client';
+import { ModalJobAiControls, useModalJobAiSelection } from './ModalJobAiControls';
 
 export interface UpdateDocumentDialogProps {
     wsId: string;
@@ -32,25 +32,13 @@ async function getTasksFolderPath(wsId: string): Promise<string> {
 
 export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: UpdateDocumentDialogProps) {
     const { state } = useApp();
-    const { models: savedModels, setModel } = usePreferences(wsId);
-    const model = savedModels.task;
     const { addToast } = useGlobalToast();
 
-    const [models, setModels] = useState<string[]>([]);
     const [selectedWsId, setSelectedWsId] = useState(wsId);
     const [resolvedPath, setResolvedPath] = useState(taskPath);
     const [prompt, setPrompt] = useState(`Update the document at "${taskPath}" `);
     const [submitting, setSubmitting] = useState(false);
-
-    useEffect(() => {
-        let cancelled = false;
-        getSpaCocClient().agentProviders.listModels(getActiveProvider())
-            .then((data) => {
-                if (!cancelled) setModels((data.models ?? []).map((m: any) => m.id));
-            })
-            .catch(() => {});
-        return () => { cancelled = true; };
-    }, []);
+    const aiSelection = useModalJobAiSelection({ workspaceId: selectedWsId, mode: 'autopilot' });
 
     useEffect(() => {
         let cancelled = false;
@@ -102,12 +90,18 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
                     : taskPath;
             }
 
-            const body: any = {
+            const resolvedAi = aiSelection.resolved;
+            const config: EnqueueTaskRequest['config'] = {
+                ...(resolvedAi.model ? { model: resolvedAi.model } : {}),
+                ...(resolvedAi.reasoningEffort ? { reasoningEffort: resolvedAi.reasoningEffort } : {}),
+            };
+            const body: EnqueueTaskRequest = {
                 type: 'custom',
                 priority: 'normal',
                 displayName: `Update: ${taskName}`,
                 payload: {
                     workingDirectory,
+                    provider: resolvedAi.provider,
                     data: {
                         prompt,
                         workingDirectory,
@@ -115,7 +109,9 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
                     },
                 },
             };
-            if (model) body.config = { model };
+            if (Object.keys(config).length > 0) {
+                body.config = config;
+            }
 
             await getSpaCocClient().queue.enqueue(body);
             addToast('Queued successfully', 'success');
@@ -125,7 +121,7 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
         } finally {
             setSubmitting(false);
         }
-    }, [prompt, selectedWsId, taskPath, taskName, model, state.workspaces, addToast, onClose]);
+    }, [prompt, selectedWsId, taskPath, taskName, aiSelection.resolved, state.workspaces, addToast, onClose]);
 
     return (
         <>
@@ -166,20 +162,16 @@ export function UpdateDocumentDialog({ wsId, taskPath, taskName, onClose }: Upda
                         />
                     </div>
 
-                    {/* Model select */}
+                    {/* AI controls */}
                     <div className="flex flex-col gap-1">
                         <label className="text-xs text-[#616161] dark:text-[#999]">
-                            Model <span className="text-[#848484]">(optional)</span>
+                            AI
                         </label>
-                        <select
-                            id="update-doc-model"
-                            className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]"
-                            value={model}
-                            onChange={e => setModel('task', e.target.value)}
-                        >
-                            <option value="">Default</option>
-                            {models.map(m => <option key={m} value={m}>{m}</option>)}
-                        </select>
+                        <ModalJobAiControls
+                            selection={aiSelection}
+                            disabled={submitting}
+                            testIdPrefix="update-doc"
+                        />
                     </div>
 
                     {/* Workspace select */}

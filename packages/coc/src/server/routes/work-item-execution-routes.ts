@@ -25,6 +25,7 @@ import { TaskCommentsManager } from '../tasks/comments/task-comments-manager';
 import { DiffCommentsManager } from '../tasks/comments/diff-comments-manager';
 import { buildBatchResolvePrompt } from '../tasks/comments/task-comments-ai';
 import { buildMultiFileBatchResolvePrompt } from '../tasks/comments/diff-comments-ai';
+import { VALID_CHAT_PROVIDERS, VALID_REASONING_EFFORTS, type ChatProvider, type ReasoningEffort } from '../tasks/task-types';
 
 export interface WorkItemExecutionRouteContext {
     routes: Route[];
@@ -102,9 +103,27 @@ export function registerWorkItemExecutionRoutes(ctx: WorkItemExecutionRouteConte
                 const skillNames: string[] | undefined = Array.isArray(body.skillNames)
                     ? body.skillNames.filter((s: unknown): s is string => typeof s === 'string' && s.trim().length > 0)
                     : undefined;
+                const provider: ChatProvider | undefined = body.provider === undefined
+                    ? undefined
+                    : typeof body.provider === 'string' && VALID_CHAT_PROVIDERS.has(body.provider as ChatProvider)
+                        ? body.provider as ChatProvider
+                        : undefined;
+                if (body.provider !== undefined && !provider) {
+                    return handleAPIError(res, badRequest(`Invalid provider: '${body.provider}'`));
+                }
+                const reasoningEffort: ReasoningEffort | undefined = body.reasoningEffort === undefined
+                    ? undefined
+                    : typeof body.reasoningEffort === 'string' && VALID_REASONING_EFFORTS.has(body.reasoningEffort as ReasoningEffort)
+                        ? body.reasoningEffort as ReasoningEffort
+                        : undefined;
+                if (body.reasoningEffort !== undefined && !reasoningEffort) {
+                    return handleAPIError(res, badRequest(`Invalid reasoningEffort: '${body.reasoningEffort}'`));
+                }
 
                 const result = await executeWorkItem(workItemId, workItemStore, enqueue, {
                     model: body.model,
+                    provider,
+                    reasoningEffort,
                     mode: body.mode,
                     headBefore,
                     taskFilePath,

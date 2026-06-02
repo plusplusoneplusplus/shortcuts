@@ -66,6 +66,16 @@ describe('RunSkillPanel', () => {
         expect(onModelChange).toHaveBeenCalledWith('gpt-4');
     });
 
+    it('renders shared AI controls instead of the legacy model select when provided', () => {
+        render(<RunSkillPanel {...baseProps({
+            models: ['gpt-4'],
+            modelSelectId: 'test-model',
+            aiControls: <div data-testid="job-ai-controls">AI controls</div>,
+        })} />);
+        expect(screen.getByTestId('job-ai-controls')).toBeDefined();
+        expect(document.getElementById('test-model')).toBeNull();
+    });
+
     // ── Additional info ──
 
     it('renders additional info textarea', () => {

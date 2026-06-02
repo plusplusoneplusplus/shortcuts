@@ -261,6 +261,11 @@ export type ChatProvider = 'copilot' | 'codex' | 'claude';
 /** Supported ChatProvider values (for runtime validation). */
 export const VALID_CHAT_PROVIDERS: ReadonlySet<ChatProvider> = new Set(['copilot', 'codex', 'claude']);
 
+export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
+
+/** Supported reasoning-effort override values (for runtime validation). */
+export const VALID_REASONING_EFFORTS: ReadonlySet<ReasoningEffort> = new Set(['low', 'medium', 'high', 'xhigh']);
+
 export interface ChatPayload {
     readonly kind: 'chat';
     mode: ChatMode;
@@ -291,6 +296,8 @@ export interface ChatPayload {
      * Supported values: 'copilot' | 'codex' | 'claude'.
      */
     provider?: ChatProvider;
+    /** Per-turn reasoning-effort override, normalized to task config by queue validation. */
+    reasoningEffort?: ReasoningEffort;
 }
 
 export interface RunWorkflowPayload {

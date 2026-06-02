@@ -18,6 +18,17 @@ vi.mock('../../../src/server/spa/client/react/hooks/preferences/usePreferences',
     usePreferences: vi.fn(),
 }));
 
+const mockModalSelection = vi.fn(() => ({
+    resolved: { provider: 'copilot' },
+}));
+
+vi.mock('../../../src/server/spa/client/react/shared/ModalJobAiControls', () => ({
+    useModalJobAiSelection: () => mockModalSelection(),
+    ModalJobAiControls: ({ testIdPrefix = 'modal-job' }: { testIdPrefix?: string }) => (
+        <div data-testid={`${testIdPrefix}-ai-controls`} />
+    ),
+}));
+
 const mockClearAttachments = vi.fn();
 const mockAddFromPaste = vi.fn();
 const mockRemoveAttachment = vi.fn();
@@ -69,6 +80,8 @@ beforeEach(() => {
     mockPersistModel.mockReset();
     mockPersistDepth.mockReset();
     mockPersistEffort.mockReset();
+    mockModalSelection.mockReset();
+    mockModalSelection.mockReturnValue({ resolved: { provider: 'copilot' } });
     mockClearAttachments.mockReset();
     mockAddFromPaste.mockReset();
     mockRemoveAttachment.mockReset();
@@ -197,10 +210,43 @@ describe('GenerateTaskDialog', () => {
             name: undefined,
             targetFolder: '__auto__',
             model: undefined,
+            provider: 'copilot',
+            reasoningEffort: undefined,
             mode: undefined,
             depth: 'normal',
             priority: 'normal',
         });
+    });
+
+    it('renders shared AI controls and submits resolved provider/model/effort', async () => {
+        const enqueueSpy = vi.fn();
+        mockUseQueueTaskGeneration.mockReturnValue(makeHookReturn({ enqueue: enqueueSpy }));
+        mockModalSelection.mockReturnValue({
+            resolved: {
+                provider: 'codex',
+                model: 'gpt-5.3-codex',
+                reasoningEffort: 'high',
+            },
+        });
+
+        await act(async () => { renderDialog(); });
+
+        expect(screen.getByTestId('gen-task-ai-controls')).toBeDefined();
+        const textarea = document.getElementById('gen-task-prompt') as HTMLElement;
+        textarea.innerText = 'hello';
+        fireEvent.input(textarea);
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('Generate'));
+        });
+
+        expect(enqueueSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                provider: 'codex',
+                model: 'gpt-5.3-codex',
+                reasoningEffort: 'high',
+            }),
+        );
     });
 
     it('onSuccess callback fires with taskId on queued', async () => {

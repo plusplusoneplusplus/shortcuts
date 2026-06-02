@@ -155,6 +155,101 @@ describe('POST /api/processes/:id/ralph-start', () => {
         expect(enqueueArg.payload.prompt).not.toBe('Begin Ralph execution loop.');
         expect(Object.keys(enqueueArg.payload.context)).toEqual(['ralph']);
         expect(enqueueArg.payload.context).not.toHaveProperty('skills');
+        expect(enqueueArg.payload.provider).toBeUndefined();
+        expect(enqueueArg.config).toEqual({});
+    });
+
+    it('passes provider, model, and reasoning effort to the first Ralph execution task', async () => {
+        await store.addProcess({
+            id: 'queue_grilling-ai-selection',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'grill me prompt',
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'What do you want to build?',
+                workspaceId: 'ws-ai',
+                workingDirectory: '/repos/myrepo',
+                context: {
+                    ralph: {
+                        phase: 'grilling',
+                        sessionId: 'ralph-session-ai',
+                        maxIterations: 8,
+                    },
+                },
+            },
+        } as any);
+
+        const res = await post(baseUrl, '/api/processes/queue_grilling-ai-selection/ralph-start', {
+            goalSpec: '## Goal\nBuild with Codex',
+            workspaceId: 'ws-ai',
+            provider: 'codex',
+            config: {
+                model: 'gpt-5.3-codex',
+                reasoningEffort: 'high',
+            },
+        });
+
+        expect(res.status).toBe(200);
+        expect(mockEnqueue).toHaveBeenCalledOnce();
+        const enqueueArg = mockEnqueue.mock.calls[0][0];
+        expect(enqueueArg.payload.provider).toBe('codex');
+        expect(enqueueArg.config).toEqual({
+            model: 'gpt-5.3-codex',
+            reasoningEffort: 'high',
+        });
+    });
+
+    it('returns 400 for an invalid provider', async () => {
+        await store.addProcess({
+            id: 'queue_grilling-invalid-provider',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'prompt',
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'What?',
+                context: { ralph: { phase: 'grilling', sessionId: 's-invalid-provider' } },
+            },
+        } as any);
+
+        const res = await post(baseUrl, '/api/processes/queue_grilling-invalid-provider/ralph-start', {
+            goalSpec: '## Goal\nDo something',
+            provider: 'bogus',
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.json().error).toMatch(/Invalid provider/i);
+        expect(mockEnqueue).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 for an invalid reasoning effort', async () => {
+        await store.addProcess({
+            id: 'queue_grilling-invalid-effort',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'prompt',
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'What?',
+                context: { ralph: { phase: 'grilling', sessionId: 's-invalid-effort' } },
+            },
+        } as any);
+
+        const res = await post(baseUrl, '/api/processes/queue_grilling-invalid-effort/ralph-start', {
+            goalSpec: '## Goal\nDo something',
+            config: { reasoningEffort: 'turbo' },
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.json().error).toMatch(/Invalid reasoningEffort/i);
+        expect(mockEnqueue).not.toHaveBeenCalled();
     });
 
     it('initialises the per-session journal directory and session.json', async () => {

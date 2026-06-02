@@ -16,6 +16,17 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isRalphEnabled: () => true,
 }));
 
+const { mockModalSelection } = vi.hoisted(() => ({
+    mockModalSelection: vi.fn(() => ({ resolved: { provider: 'copilot' } })),
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/shared/ModalJobAiControls', () => ({
+    useModalJobAiSelection: () => mockModalSelection(),
+    ModalJobAiControls: ({ testIdPrefix = 'modal-job' }: { testIdPrefix?: string }) => (
+        <div data-testid={`${testIdPrefix}-ai-controls`} />
+    ),
+}));
+
 // ---------------------------------------------------------------------------
 // Component under test
 // ---------------------------------------------------------------------------
@@ -45,6 +56,8 @@ describe('RalphStartPanel', () => {
 
     beforeEach(() => {
         mockOnStarted.mockClear();
+        mockModalSelection.mockReset();
+        mockModalSelection.mockReturnValue({ resolved: { provider: 'copilot' } });
         vi.stubGlobal('fetch', vi.fn());
     });
 
@@ -59,6 +72,22 @@ describe('RalphStartPanel', () => {
         );
         expect(screen.getByTestId('ralph-start-btn')).toBeTruthy();
         expect(screen.queryByTestId('ralph-start-panel')).toBeNull();
+    });
+
+    it('renders shared AI controls when the panel is open', async () => {
+        render(
+            <RalphStartPanel
+                processId="queue_test-ai-controls"
+                workspaceId="ws-1"
+                turns={GRILLING_TURNS}
+                onStarted={mockOnStarted}
+            />,
+        );
+
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+        await waitFor(() => expect(screen.getByTestId('ralph-start-panel')).toBeTruthy());
+
+        expect(screen.getByTestId('ralph-start-ai-controls')).toBeTruthy();
     });
 
     it('opens the panel with extracted goal spec when Start Ralph is clicked', async () => {
@@ -133,6 +162,45 @@ describe('RalphStartPanel', () => {
         await waitFor(() => {
             expect(mockOnStarted).toHaveBeenCalledWith('queue_new-task');
         });
+
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body.provider).toBe('copilot');
+        expect(body.config).toBeUndefined();
+    });
+
+    it('includes resolved model and reasoning effort in the ralph-start request config', async () => {
+        const mockFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ processId: 'queue_ai-task' }),
+        });
+        vi.stubGlobal('fetch', mockFetch);
+        mockModalSelection.mockReturnValue({
+            resolved: { provider: 'codex', model: 'gpt-5.3-codex', reasoningEffort: 'high' },
+        });
+
+        render(
+            <RalphStartPanel
+                processId="queue_test-ai-selection"
+                workspaceId="ws-1"
+                turns={GRILLING_TURNS}
+                onStarted={mockOnStarted}
+            />,
+        );
+
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+        await waitFor(() => expect(screen.getByTestId('ralph-start-panel')).toBeTruthy());
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('ralph-confirm-start-btn'));
+        });
+
+        await waitFor(() => {
+            expect(mockOnStarted).toHaveBeenCalledWith('queue_ai-task');
+        });
+
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body.provider).toBe('codex');
+        expect(body.config).toEqual({ model: 'gpt-5.3-codex', reasoningEffort: 'high' });
     });
 
     it('shows error message when fetch fails', async () => {

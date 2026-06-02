@@ -9,7 +9,6 @@ import { useApp } from '../contexts/AppContext';
 import { Dialog, FloatingDialog, Button } from '../ui';
 import { fetchApi } from '../hooks/useApi';
 import { getSpaCocClient } from '../api/cocClient';
-import { useModels } from '../hooks/useModels';
 import { usePreferences } from '../hooks/preferences/usePreferences';
 import { useFileAttachments } from '../features/chat/hooks/useFileAttachments';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
@@ -29,6 +28,8 @@ import { useOnboardingPreferences } from '../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../hooks/usePromptAutocompleteEnabled';
 import { useChatPromptHistory } from '../hooks/useChatPromptHistory';
+import { ModalJobAiControls, useModalJobAiSelection } from '../shared/ModalJobAiControls';
+import type { EnqueueTaskRequest } from '@plusplusoneplusplus/coc-client';
 
 interface HookEntry {
     id: string;
@@ -70,13 +71,7 @@ export function EnqueueDialog() {
     const hasAutoSwitchedTab = useRef(false);
     const { models: savedModels, setModel: persistModel, skills: savedSkills, setSkill: persistSkill } = usePreferences(workspaceId);
     const { templates, saveTemplate, deleteTemplate, loaded: templatesLoaded } = useSkillTemplates(workspaceId || undefined);
-    const { models: modelInfos } = useModels();
-    const enabledModels = modelInfos.filter(m => m.enabled);
-    const models = [...new Set(
-        (enabledModels.length > 0 ? enabledModels : modelInfos)
-            .map(m => m.id)
-            .filter(Boolean)
-    )];
+    const aiSelection = useModalJobAiSelection({ workspaceId: workspaceId || undefined, mode: isAskMode ? 'ask' : 'autopilot' });
     const [folders, setFolders] = useState<FolderOption[]>([]);
     const [folderPath, setFolderPath] = useState<string>('');
     const [skills, setSkills] = useState<SkillOption[]>([]);
@@ -221,9 +216,10 @@ export function EnqueueDialog() {
 
     const handleModelChange = useCallback((value: string) => {
         setModel(value);
+        aiSelection.modelCommand.setModelOverride(value || null);
         setSelectedTemplateId(null);
         persistModel(isAskMode ? 'ask' : 'task', value);
-    }, [persistModel, isAskMode]);
+    }, [aiSelection.modelCommand, persistModel, isAskMode]);
 
     const handleSkillChange = useCallback((name: string) => {
         setSelectedSkills(prev =>
@@ -235,6 +231,7 @@ export function EnqueueDialog() {
     const handleSelectTemplate = useCallback((t: import('../hooks/useSkillTemplates').SkillTemplate) => {
         setSelectedSkills(t.skills);
         setModel(t.model);
+        aiSelection.modelCommand.setModelOverride(t.model || null);
         if (t.mode !== (isAskMode ? 'ask' : 'task')) {
             queueDispatch({ type: 'SET_DIALOG_MODE', mode: t.mode });
         }
@@ -252,7 +249,7 @@ export function EnqueueDialog() {
         } else {
             setHooks([]);
         }
-    }, [isAskMode, queueDispatch]);
+    }, [aiSelection.modelCommand, isAskMode, queueDispatch]);
 
     const handleSaveTemplate = useCallback(() => {
         const mode = isAskMode ? 'ask' : 'task';
@@ -262,8 +259,8 @@ export function EnqueueDialog() {
                 if (h.type === 'script') return { type: 'script' as const, script: h.script.trim() };
                 return { type: 'skill' as const, skillName: h.skillName, ...(h.prompt.trim() ? { prompt: h.prompt.trim() } : {}) };
             });
-        saveTemplate({ model: model || '', mode, skills: selectedSkills, postActions });
-    }, [isAskMode, model, selectedSkills, hooks, saveTemplate]);
+        saveTemplate({ model: aiSelection.validModelOverride || model || '', mode, skills: selectedSkills, postActions });
+    }, [isAskMode, model, aiSelection.validModelOverride, selectedSkills, hooks, saveTemplate]);
 
     const handleSubmit = useCallback(async () => {
         // Parse /skill tokens from prompt text (skills are extracted but prompt is kept intact)
@@ -276,7 +273,7 @@ export function EnqueueDialog() {
 
         // Resolve mode: delegate to the resolve callback instead of the queue API
         if (isResolveMode && queueState.dialogResolveContext) {
-            queueState.dialogResolveContext.onSubmit(effectivePrompt, effectiveSkills, model);
+            queueState.dialogResolveContext.onSubmit(effectivePrompt, effectiveSkills, aiSelection.resolved.model || model);
             setPrompt('');
             richTextRef.current?.setValue('');
             setSelectedSkills([]);
@@ -292,6 +289,15 @@ export function EnqueueDialog() {
             const ws = appState.workspaces.find((w: any) => w.id === workspaceId);
             const workingDirectory = ws?.rootPath || '';
             const contextTaskName = queueState.dialogContextTaskName;
+            const resolvedAi = aiSelection.resolved;
+            const selectedModel = resolvedAi.model || (selectedTemplateId ? model : undefined);
+            const buildConfig = (): EnqueueTaskRequest['config'] | undefined => {
+                const config: EnqueueTaskRequest['config'] = {
+                    ...(selectedModel ? { model: selectedModel } : {}),
+                    ...(resolvedAi.reasoningEffort ? { reasoningEffort: resolvedAi.reasoningEffort } : {}),
+                };
+                return Object.keys(config).length > 0 ? config : undefined;
+            };
 
             // Helper to build a single task body, optionally with context files
             const buildBody = (files?: string[], taskNameOverride?: string): any => {
@@ -307,6 +313,7 @@ export function EnqueueDialog() {
                             prompt: effectivePrompt || `Ask: ${skillLabel}`,
                             workspaceId: workspaceId || undefined,
                             workingDirectory: workingDirectory || undefined,
+                            provider: resolvedAi.provider,
                             ...(effectiveSkills.length > 0 || files ? { context: { ...(effectiveSkills.length > 0 ? { skills: effectiveSkills } : {}), ...(files ? { files } : {}) } } : {}),
                         },
                         images: images.length > 0 ? images : undefined,
@@ -328,6 +335,7 @@ export function EnqueueDialog() {
                             prompt: effectivePrompt || `Use the ${skillLabel} skill${effectiveSkills.length > 1 ? 's' : ''}.`,
                             workspaceId: workspaceId || undefined,
                             workingDirectory,
+                            provider: resolvedAi.provider,
                             context: {
                                 skills: effectiveSkills,
                                 ...(files ? { files } : {}),
@@ -345,12 +353,14 @@ export function EnqueueDialog() {
                             prompt: effectivePrompt,
                             workspaceId: workspaceId || undefined,
                             workingDirectory: workingDirectory || folderPath || undefined,
+                            provider: resolvedAi.provider,
                             ...(files ? { context: { files } } : {}),
                         },
                         images: images.length > 0 ? images : undefined,
                     };
                 }
-                if (model) body.config = { model };
+                const config = buildConfig();
+                if (config) body.config = config;
                 // Before-hooks: take the first script-type before hook (backward compat)
                 const beforeHook = hooks.find(h => h.timing === 'before' && h.type === 'script' && h.script.trim());
                 if (beforeHook) body.payload.beforeScript = beforeHook.script.trim();
@@ -428,7 +438,7 @@ export function EnqueueDialog() {
             queueDispatch({ type: 'CLOSE_DIALOG' });
         } catch { /* ignore */ }
         finally { setSubmitting(false); queueDispatch({ type: 'SET_TASK_SUBMITTING', value: false }); }
-    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, contextFiles, isBulkMode, appState.workspaces, appState.onboardingProgress, updateOnboarding, queueDispatch, clearAttachments, persistSkill, slashCommands, isAskMode, isResolveMode, floatChat, queueState.dialogLaunchMode, queueState.dialogContextTaskName, queueState.dialogResolveContext, hooks]);
+    }, [prompt, model, workspaceId, folderPath, selectedSkills, images, contextFiles, isBulkMode, appState.workspaces, appState.onboardingProgress, updateOnboarding, queueDispatch, clearAttachments, persistSkill, slashCommands, isAskMode, isResolveMode, floatChat, queueState.dialogLaunchMode, queueState.dialogContextTaskName, queueState.dialogResolveContext, hooks, aiSelection.resolved, selectedTemplateId]);
 
     const handleSlashSelect = useCallback((name: string) => {
         slashCommands.selectSkill(name, prompt, setPrompt, richTextRef);
@@ -794,20 +804,15 @@ export function EnqueueDialog() {
                     </button>
                 </div>
             </details>
+            <div className="flex flex-col gap-1">
+                <label className="block text-xs font-medium text-[#848484]">AI</label>
+                <ModalJobAiControls
+                    selection={aiSelection}
+                    disabled={submitting}
+                    testIdPrefix="enqueue"
+                />
+            </div>
             <div className="flex flex-row gap-2">
-                <div className="flex-1 min-w-0">
-                    <label className="block text-xs font-medium text-[#848484] mb-1">Model</label>
-                    <select
-                        value={model}
-                        onChange={e => handleModelChange(e.target.value)}
-                        className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
-                    >
-                        <option value="">Default</option>
-                        {models.map(m => (
-                            <option key={m} value={m}>{m}</option>
-                        ))}
-                    </select>
-                </div>
                 {appState.workspaces.length > 0 && (
                     <div className="flex-1 min-w-0">
                         <label className="block text-xs font-medium text-[#848484] mb-1">Workspace</label>
@@ -815,6 +820,7 @@ export function EnqueueDialog() {
                             value={workspaceId}
                             onChange={e => setWorkspaceId(e.target.value)}
                             className="w-full px-2 py-1.5 text-sm rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]"
+                            data-testid="workspace-select"
                         >
                             <option value="">None</option>
                             {appState.workspaces.map((ws: any, i: number) => (

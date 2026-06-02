@@ -201,6 +201,46 @@ describe('Work Item Execution Routes', () => {
             expect(call.config.model).toBe('gpt-4');
         });
 
+        it('forwards provider and reasoning effort to the queued execution task', async () => {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'With AI controls' });
+            const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
+            const id = list.body.items[0].id;
+            await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${id}`, { status: 'readyToExecute' });
+
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/execute`, {
+                provider: 'claude',
+                model: 'claude-sonnet-4.6',
+                reasoningEffort: 'medium',
+                skillNames: ['impl'],
+            });
+
+            expect(res.status).toBe(200);
+            const call = enqueueMock.mock.calls[0][0];
+            expect(call.payload.provider).toBe('claude');
+            expect(call.payload.reasoningEffort).toBe('medium');
+            expect(call.config.model).toBe('claude-sonnet-4.6');
+            expect(call.config.reasoningEffort).toBe('medium');
+        });
+
+        it('rejects invalid provider and reasoning effort values', async () => {
+            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Reject AI controls' });
+            const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
+            const id = list.body.items[0].id;
+            await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${id}`, { status: 'readyToExecute' });
+
+            const invalidProvider = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/execute`, {
+                provider: 'bogus',
+            });
+            expect(invalidProvider.status).toBe(400);
+            expect(invalidProvider.body.error).toContain('Invalid provider');
+
+            const invalidEffort = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${id}/execute`, {
+                reasoningEffort: 'extreme',
+            });
+            expect(invalidEffort.status).toBe(400);
+            expect(invalidEffort.body.error).toContain('Invalid reasoningEffort');
+        });
+
         it('filters out non-string and empty skillNames', async () => {
             await request('POST', `/api/workspaces/${REPO_ID}/work-items`, { title: 'Filter test' });
             const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
