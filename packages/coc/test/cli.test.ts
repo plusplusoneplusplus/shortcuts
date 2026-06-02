@@ -113,5 +113,31 @@ describe('CLI', () => {
             expect(optionNames).toContain('--dry-run');
             expect(optionNames).toContain('--data-dir');
         });
+
+        it('should have queue command with submit subcommand', () => {
+            const program = createProgram();
+            const queueCmd = program.commands.find(c => c.name() === 'queue');
+            expect(queueCmd).toBeDefined();
+
+            const submitCmd = queueCmd!.commands.find(c => c.name() === 'submit');
+            expect(submitCmd).toBeDefined();
+        });
+
+        it('queue submit command should have expected options', () => {
+            const program = createProgram();
+            const queueCmd = program.commands.find(c => c.name() === 'queue')!;
+            const submitCmd = queueCmd.commands.find(c => c.name() === 'submit')!;
+            const optionNames = submitCmd.options.map(o => o.long || o.short);
+            expect(optionNames).toContain('--mode');
+            expect(optionNames).toContain('--provider');
+            expect(optionNames).toContain('--effort-tier');
+            expect(optionNames).toContain('--model');
+            expect(optionNames).toContain('--reasoning-effort');
+            expect(optionNames).toContain('--workspace-id');
+            expect(optionNames).toContain('--priority');
+            expect(optionNames).toContain('--display-name');
+            expect(optionNames).toContain('--server-url');
+            expect(optionNames).toContain('--output');
+        });
     });
 });

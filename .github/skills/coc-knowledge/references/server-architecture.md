@@ -9,6 +9,7 @@ coc run <path>              # Execute a workflow
 coc validate <path>         # Validate YAML without executing
 coc list [dir]              # List workflow packages in a directory
 coc serve                   # Start AI Execution Dashboard web server
+coc queue submit [message]  # Submit a chat task to a running CoC server queue
 coc skills                  # Manage CoC skills (list, install-bundled, install, delete, check-updates)
 coc wipe-data               # Clear all stored data
 ```

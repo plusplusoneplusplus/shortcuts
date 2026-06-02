@@ -11,6 +11,7 @@ import { Command } from 'commander';
 import { executeRun } from './commands/run';
 import { executeValidate } from './commands/validate';
 import { executeList } from './commands/list';
+import { executeQueueSubmit } from './commands/queue';
 import { resolveRunOptions, resolveListOptions, resolveServeOptions, resolveWipeDataOptions } from './commands/options-resolver';
 import { resolveConfig } from './config';
 import { setColorEnabled } from './logger';
@@ -144,6 +145,34 @@ export function createProgram(): Command {
 
             const { executeServe } = await import('./commands/serve');
             const exitCode = await executeServe(options);
+            process.exit(exitCode);
+        });
+
+    // ========================================================================
+    // coc queue
+    // ========================================================================
+
+    const queue = program
+        .command('queue')
+        .description('Submit and manage CoC server queue tasks');
+
+    queue
+        .command('submit')
+        .description('Submit a chat task to the queue')
+        .argument('[message]', 'Prompt text (reads from stdin when omitted)')
+        .option('--mode <mode>', 'Chat mode: ask, autopilot', 'autopilot')
+        .option('--provider <provider>', 'Agent provider: copilot, codex, claude')
+        .option('--effort-tier <tier>', 'Effort tier: low, medium, high')
+        .option('--model <model>', 'Explicit model override')
+        .option('--reasoning-effort <effort>', 'Reasoning effort: low, medium, high, xhigh')
+        .option('--workspace-id <id>', 'Workspace ID (defaults to the registered workspace for cwd)')
+        .option('--priority <priority>', 'Queue priority: low, normal, high', 'normal')
+        .option('--display-name <name>', 'Human-readable label for the task')
+        .option('--server-url <url>', 'CoC server URL (default: COC_SERVER_URL or http://localhost:4000)')
+        .option('-o, --output <format>', 'Output format: text, json', 'text')
+        .action(async (message: string | undefined, opts: Record<string, unknown>) => {
+            applyGlobalOptions(opts);
+            const exitCode = await executeQueueSubmit(message, opts);
             process.exit(exitCode);
         });
 
