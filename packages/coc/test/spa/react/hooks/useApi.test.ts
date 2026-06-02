@@ -120,7 +120,9 @@ describe('useApi — fetchAgentApi', () => {
     const originalFetch = globalThis.fetch;
 
     beforeEach(() => {
-        globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse({ result: 'ok' })) as typeof fetch;
+        globalThis.fetch = vi.fn().mockImplementation(() =>
+            Promise.resolve(jsonResponse({ result: 'ok' })),
+        ) as typeof fetch;
     });
 
     afterEach(() => {
@@ -144,11 +146,18 @@ describe('useApi — fetchAgentApi', () => {
         // then fetchRepos calls fetchAgentApi('agent-1', '/git-info/batch').
         // Before the fix the URL was /api/agent/agent-1/agent/agent-1/git-info/batch.
         (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', containerMode: true };
+        globalThis.fetch = vi.fn().mockImplementation(() =>
+            Promise.resolve(jsonResponse({ result: 'ok' })),
+        ) as typeof fetch;
         setCurrentAgentId('agent-1');
+        // Wait for the config-reload fetch triggered by setCurrentAgentId
+        await new Promise(r => setTimeout(r, 10));
 
         await fetchAgentApi('agent-1', '/git-info/batch', { method: 'POST', body: '{}' });
 
-        const calledUrl = (vi.mocked(globalThis.fetch).mock.calls[0][0]) as string;
+        // First call is the runtime config reload; the fetchAgentApi call is the last
+        const calls = vi.mocked(globalThis.fetch).mock.calls;
+        const calledUrl = calls[calls.length - 1][0] as string;
         expect(calledUrl).toBe('/api/agent/agent-1/git-info/batch');
         expect(calledUrl).not.toContain('/agent/agent-1/agent/');
     });
