@@ -114,13 +114,15 @@ describe('CLI', () => {
             expect(optionNames).toContain('--data-dir');
         });
 
-        it('should have queue command with submit subcommand', () => {
+        it('should have queue command with submit and list subcommands', () => {
             const program = createProgram();
             const queueCmd = program.commands.find(c => c.name() === 'queue');
             expect(queueCmd).toBeDefined();
 
             const submitCmd = queueCmd!.commands.find(c => c.name() === 'submit');
             expect(submitCmd).toBeDefined();
+            const listCmd = queueCmd!.commands.find(c => c.name() === 'list');
+            expect(listCmd).toBeDefined();
         });
 
         it('queue submit command should have expected options', () => {
@@ -136,6 +138,19 @@ describe('CLI', () => {
             expect(optionNames).toContain('--workspace-id');
             expect(optionNames).toContain('--priority');
             expect(optionNames).toContain('--display-name');
+            expect(optionNames).toContain('--server-url');
+            expect(optionNames).toContain('--output');
+        });
+
+        it('queue list command should have expected options', () => {
+            const program = createProgram();
+            const queueCmd = program.commands.find(c => c.name() === 'queue')!;
+            const listCmd = queueCmd.commands.find(c => c.name() === 'list')!;
+            const optionNames = listCmd.options.map(o => o.long || o.short);
+            expect(optionNames).toContain('--workspace-id');
+            expect(optionNames).toContain('--repo-id');
+            expect(optionNames).toContain('--status');
+            expect(optionNames).toContain('--limit');
             expect(optionNames).toContain('--server-url');
             expect(optionNames).toContain('--output');
         });

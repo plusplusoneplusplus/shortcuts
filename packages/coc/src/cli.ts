@@ -11,7 +11,7 @@ import { Command } from 'commander';
 import { executeRun } from './commands/run';
 import { executeValidate } from './commands/validate';
 import { executeList } from './commands/list';
-import { executeQueueSubmit } from './commands/queue';
+import { executeQueueList, executeQueueSubmit } from './commands/queue';
 import { resolveRunOptions, resolveListOptions, resolveServeOptions, resolveWipeDataOptions } from './commands/options-resolver';
 import { resolveConfig } from './config';
 import { setColorEnabled } from './logger';
@@ -173,6 +173,21 @@ export function createProgram(): Command {
         .action(async (message: string | undefined, opts: Record<string, unknown>) => {
             applyGlobalOptions(opts);
             const exitCode = await executeQueueSubmit(message, opts);
+            process.exit(exitCode);
+        });
+
+    queue
+        .command('list')
+        .description('List queued and running queue tasks')
+        .option('--workspace-id <id>', 'Filter by workspace')
+        .option('--repo-id <id>', 'Filter by repo')
+        .option('--status <status>', 'Filter by status: queued, running, completed, failed, cancelled')
+        .option('--limit <n>', 'Max tasks to show', '20')
+        .option('--server-url <url>', 'CoC server URL (default: COC_SERVER_URL or http://localhost:4000)')
+        .option('-o, --output <format>', 'Output format: table, json', 'table')
+        .action(async (opts: Record<string, unknown>) => {
+            applyGlobalOptions(opts);
+            const exitCode = await executeQueueList(opts);
             process.exit(exitCode);
         });
 

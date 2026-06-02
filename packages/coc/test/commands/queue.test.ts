@@ -2,11 +2,21 @@ import { describe, expect, it, vi } from 'vitest';
 import { Readable, Writable } from 'stream';
 import {
     buildQueueSubmitRequest,
+    executeQueueList,
     executeQueueSubmit,
+    listQueueTasks,
+    type QueueListDependencies,
     resolveWorkspaceIdFromWorkspaces,
     type QueueSubmitDependencies,
 } from '../../src/commands/queue';
-import type { EnqueueTaskRequest, EnqueueTaskResponse, WorkspacesResponse } from '@plusplusoneplusplus/coc-client';
+import type {
+    EnqueueTaskRequest,
+    EnqueueTaskResponse,
+    QueueHistoryResponse,
+    QueueListResponse,
+    QueueTaskSummary,
+    WorkspacesResponse,
+} from '@plusplusoneplusplus/coc-client';
 
 function memoryWritable() {
     let output = '';
@@ -33,6 +43,47 @@ function makeClient(options: {
         queue: {
             enqueue: vi.fn(options.enqueue ?? (async () => ({ task: { id: 'queue-abc123', status: 'queued' } }))),
         },
+    };
+}
+
+function makeListClient(options: {
+    list?: () => Promise<QueueListResponse>;
+    history?: () => Promise<QueueHistoryResponse>;
+} = {}): QueueListDependencies['client'] {
+    return {
+        queue: {
+            list: vi.fn(options.list ?? (async () => queueListResponse())),
+            history: vi.fn(options.history ?? (async () => ({ history: [] }))),
+        },
+    };
+}
+
+function queueListResponse(response: Partial<QueueListResponse> = {}): QueueListResponse {
+    return {
+        queued: [],
+        running: [],
+        stats: {
+            queued: 0,
+            running: 0,
+            completed: 0,
+            failed: 0,
+            cancelled: 0,
+            total: 0,
+            isPaused: false,
+            isDraining: false,
+            isAutopilotPaused: false,
+        },
+        ...response,
+    };
+}
+
+function queueTask(task: Partial<QueueTaskSummary> & { id: string; status: string }): QueueTaskSummary {
+    return {
+        type: 'chat',
+        priority: 'normal',
+        createdAt: Date.UTC(2026, 5, 2, 5, 40, 0),
+        payload: {},
+        ...task,
     };
 }
 
@@ -108,6 +159,29 @@ describe('queue command helpers', () => {
                 mode: 'plan',
                 workspaceId: 'ws-main',
             }, makeClient()!, process.cwd())).rejects.toThrow("Invalid mode: 'plan'");
+        });
+    });
+
+    describe('listQueueTasks', () => {
+        it('uses queue history for terminal status filters', async () => {
+            const completed = queueTask({ id: 'queue-done', status: 'completed', displayName: 'Done task' });
+            const client = makeListClient({
+                history: async () => ({ history: [completed] }),
+            });
+
+            const tasks = await listQueueTasks({
+                repoId: 'repo-main',
+                status: 'completed',
+                limit: '5',
+            }, client!);
+
+            expect(tasks).toEqual([completed]);
+            expect(client!.queue.history).toHaveBeenCalledWith(expect.objectContaining({
+                repoId: 'repo-main',
+                status: 'completed',
+                limit: 5,
+            }));
+            expect(client!.queue.list).not.toHaveBeenCalled();
         });
     });
 });
@@ -197,5 +271,87 @@ describe('executeQueueSubmit', () => {
         expect(exitCode).toBe(1);
         expect(stdout.output()).toBe('');
         expect(stderr.output()).toBe('server rejected task\n');
+    });
+});
+
+describe('executeQueueList', () => {
+    it('prints active queue tasks as a table with workspace filtering and limit', async () => {
+        const stdout = memoryWritable();
+        const stderr = memoryWritable();
+        const queued = queueTask({ id: 'queue-one', status: 'queued', displayName: 'First' });
+        const running = queueTask({ id: 'queue-two', status: 'running', displayName: 'Second' });
+        const client = makeListClient({
+            list: async () => queueListResponse({
+                queued: [
+                    queued,
+                    { kind: 'pause-marker', id: 'pause-one', createdAt: Date.UTC(2026, 5, 2, 5, 41, 0) },
+                ],
+                running: [running],
+            }),
+        });
+
+        const exitCode = await executeQueueList({
+            workspaceId: 'ws-main',
+            limit: '2',
+        }, {
+            client,
+            stdout: stdout.stream,
+            stderr: stderr.stream,
+            env: {},
+        });
+
+        expect(exitCode).toBe(0);
+        expect(stderr.output()).toBe('');
+        expect(stdout.output()).toContain('ID');
+        expect(stdout.output()).toContain('Display Name');
+        expect(stdout.output()).toContain('Created At');
+        expect(stdout.output()).toContain('queue-one');
+        expect(stdout.output()).toContain('queue-two');
+        expect(stdout.output()).not.toContain('pause-one');
+        expect(client!.queue.list).toHaveBeenCalledWith(expect.objectContaining({
+            workspace: 'ws-main',
+        }));
+    });
+
+    it('prints a raw JSON task array when requested', async () => {
+        const stdout = memoryWritable();
+        const queued = queueTask({ id: 'queue-one', status: 'queued' });
+        const running = queueTask({ id: 'queue-two', status: 'running' });
+
+        const exitCode = await executeQueueList({
+            status: 'running',
+            output: 'json',
+        }, {
+            client: makeListClient({
+                list: async () => queueListResponse({
+                    queued: [queued],
+                    running: [running],
+                }),
+            }),
+            stdout: stdout.stream,
+            stderr: memoryWritable().stream,
+            env: {},
+        });
+
+        expect(exitCode).toBe(0);
+        expect(JSON.parse(stdout.output())).toEqual([running]);
+    });
+
+    it('prints a clear error and exits 1 for invalid filters', async () => {
+        const stdout = memoryWritable();
+        const stderr = memoryWritable();
+
+        const exitCode = await executeQueueList({
+            status: 'blocked',
+        }, {
+            client: makeListClient(),
+            stdout: stdout.stream,
+            stderr: stderr.stream,
+            env: {},
+        });
+
+        expect(exitCode).toBe(1);
+        expect(stdout.output()).toBe('');
+        expect(stderr.output()).toContain("Invalid status: 'blocked'");
     });
 });

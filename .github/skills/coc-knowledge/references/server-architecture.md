@@ -10,6 +10,7 @@ coc validate <path>         # Validate YAML without executing
 coc list [dir]              # List workflow packages in a directory
 coc serve                   # Start AI Execution Dashboard web server
 coc queue submit [message]  # Submit a chat task to a running CoC server queue
+coc queue list              # List active queued/running tasks, optionally filtered
 coc skills                  # Manage CoC skills (list, install-bundled, install, delete, check-updates)
 coc wipe-data               # Clear all stored data
 ```
@@ -52,6 +53,7 @@ src/
 │   ├── serve.ts          # Start server
 │   ├── wipe-data.ts      # Clear stored data
 │   ├── skills.ts         # Skills management
+│   ├── queue.ts          # Queue submit/list CLI commands
 │   └── options-resolver.ts  # Shared option resolution
 ├── server/               # HTTP/WebSocket server (see module layout below)
 ├── ai-invoker.ts         # AI invoker factory
