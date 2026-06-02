@@ -15,8 +15,8 @@ import * as http from 'http';
 import * as url from 'url';
 import type { Route } from '../types';
 import { sendJSON } from '../core/api-handler';
-import type { WorkItemStore, WorkItemIndexEntry, WorkItemStatus, WorkItemType } from '../work-items/types';
-import { WORK_ITEM_TYPES, WORK_ITEM_STATUSES } from '../work-items/types';
+import type { WorkItemStore, WorkItemIndexEntry, WorkItemStatus, WorkItemTrackerKind, WorkItemType } from '../work-items/types';
+import { WORK_ITEM_TYPES, WORK_ITEM_STATUSES, WORK_ITEM_TRACKER_KINDS, getOwnWorkItemTrackerKind } from '../work-items/types';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -147,6 +147,7 @@ function filterWithAncestors(
         q?: string;
         type?: string;
         status?: string;
+        tracker?: WorkItemTrackerKind;
         includeArchived: boolean;
         includeDone: boolean;
     },
@@ -159,6 +160,11 @@ function filterWithAncestors(
     // Step 1.5: apply done filter
     if (!opts.includeDone) {
         working = working.filter(e => e.status !== 'done');
+    }
+
+    if (opts.tracker) {
+        const entriesById = new Map(entries.map(entry => [entry.id, entry]));
+        working = working.filter(e => getInheritedTrackerKind(e, entriesById) === opts.tracker);
     }
 
     // Step 2: if no content filters, return as-is
@@ -199,6 +205,21 @@ function filterWithAncestors(
     return working.filter(e => toInclude.has(e.id));
 }
 
+function getInheritedTrackerKind(
+    entry: WorkItemIndexEntry,
+    entriesById: Map<string, WorkItemIndexEntry>,
+): WorkItemTrackerKind {
+    let current = entry;
+    const visited = new Set<string>();
+    while (current.parentId && !visited.has(current.id)) {
+        visited.add(current.id);
+        const parent = entriesById.get(current.parentId);
+        if (!parent) break;
+        current = parent;
+    }
+    return getOwnWorkItemTrackerKind(current);
+}
+
 // ── Route registration ─────────────────────────────────────────────────────────
 
 export function registerWorkItemHierarchyRoutes(ctx: WorkItemHierarchyRouteContext): void {
@@ -221,6 +242,9 @@ export function registerWorkItemHierarchyRoutes(ctx: WorkItemHierarchyRouteConte
             const q = typeof query.q === 'string' ? query.q.trim() || undefined : undefined;
             const typeFilter = typeof query.type === 'string' ? query.type : undefined;
             const statusFilter = typeof query.status === 'string' ? query.status : undefined;
+            const trackerFilter = typeof query.tracker === 'string' && WORK_ITEM_TRACKER_KINDS.includes(query.tracker as WorkItemTrackerKind)
+                ? query.tracker as WorkItemTrackerKind
+                : undefined;
             const includeArchived = query.includeArchived === 'true';
             const includeDone = query.includeDone === 'true';
 
@@ -233,6 +257,7 @@ export function registerWorkItemHierarchyRoutes(ctx: WorkItemHierarchyRouteConte
                 q,
                 type: typeFilter,
                 status: statusFilter,
+                tracker: trackerFilter,
                 includeArchived,
                 includeDone,
             });

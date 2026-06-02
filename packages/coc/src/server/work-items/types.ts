@@ -92,6 +92,40 @@ export const ALLOWED_CHILD_TYPES: Record<WorkItemType, readonly WorkItemType[]> 
 };
 
 // ============================================================================
+// Tracker Ownership
+// ============================================================================
+
+/** Top-level tracker partition for an Epic tree. */
+export type WorkItemTrackerKind = 'local-only' | 'github-backed';
+
+/** All valid tracker kinds (useful for validation). */
+export const WORK_ITEM_TRACKER_KINDS: readonly WorkItemTrackerKind[] = Object.freeze([
+    'local-only', 'github-backed',
+]);
+
+/** GitHub-backed Epic root metadata. Repository identity is workspace-scoped config, not per Epic. */
+export interface WorkItemGitHubTrackerMetadata {
+    /** Provider-native issue ID for the imported/pushed Epic root. */
+    issueId?: string;
+    /** Provider-native issue number for the imported/pushed Epic root. */
+    issueNumber?: number;
+    /** Browser URL for the imported/pushed Epic root issue. */
+    issueUrl?: string;
+    /** Last successful GitHub→local pull timestamp for this Epic tree. */
+    lastPulledAt?: string;
+}
+
+/**
+ * Tracker identity for a work-item tree.
+ *
+ * This is set on the Epic root. Descendants inherit the root identity instead of
+ * carrying per-item sync ownership.
+ */
+export type WorkItemTrackerMetadata =
+    | { kind: 'local-only' }
+    | { kind: 'github-backed'; provider: 'github'; github: WorkItemGitHubTrackerMetadata };
+
+// ============================================================================
 // External Sync Metadata
 // ============================================================================
 
@@ -285,6 +319,8 @@ export interface WorkItem {
     type?: WorkItemType;
     /** Parent work item ID (hierarchy). Only set when hierarchy is enabled. */
     parentId?: string;
+    /** Epic-rooted tracker identity. Set on Epic roots; descendants inherit it. */
+    tracker?: WorkItemTrackerMetadata;
     /** External provider sync metadata. Empty or absent means the item is unlinked. */
     syncLinks?: WorkItemSyncLink[];
     /** ISO timestamp when the work item was created. */
@@ -380,6 +416,8 @@ export interface WorkItemIndexEntry {
     type?: WorkItemType;
     /** Parent work item ID (hierarchy). Only set when hierarchy is enabled. */
     parentId?: string;
+    /** Epic-rooted tracker identity. Set on Epic roots; descendants inherit it. */
+    tracker?: WorkItemTrackerMetadata;
     /** External provider sync metadata. Empty or absent means the item is unlinked. */
     syncLinks?: WorkItemSyncLink[];
     source: WorkItemSource;
@@ -415,6 +453,8 @@ export interface WorkItemFilter {
     tags?: string[];
     /** Filter by type. */
     type?: WorkItemType;
+    /** Filter by inherited Epic-rooted tracker kind. */
+    tracker?: WorkItemTrackerKind;
     /** Full-text search query (case-insensitive substring match against title, description, tags). */
     search?: string;
     /** Pagination offset (0-based). */
@@ -512,6 +552,11 @@ export function getLastRunTime(executionHistory: WorkItemExecution[] | undefined
     return latest;
 }
 
+/** Return the item-local tracker kind, defaulting absent metadata to local-only. */
+export function getOwnWorkItemTrackerKind(item: { tracker?: WorkItemTrackerMetadata }): WorkItemTrackerKind {
+    return item.tracker?.kind ?? 'local-only';
+}
+
 /** Extract an index entry from a full work item. */
 export function toIndexEntry(item: WorkItem): WorkItemIndexEntry {
     return {
@@ -523,6 +568,7 @@ export function toIndexEntry(item: WorkItem): WorkItemIndexEntry {
         status: item.status,
         type: item.type,
         parentId: item.parentId,
+        tracker: item.tracker,
         syncLinks: item.syncLinks,
         source: item.source,
         priority: item.priority,

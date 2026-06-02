@@ -27,7 +27,7 @@ import type {
     WorkItemStore,
     WorkItemStatus,
 } from './types';
-import { toIndexEntry, WORK_ITEM_STATUSES } from './types';
+import { getOwnWorkItemTrackerKind, toIndexEntry, WORK_ITEM_STATUSES } from './types';
 
 // ============================================================================
 // Store Implementation
@@ -597,6 +597,9 @@ export class FileWorkItemStore implements WorkItemStore {
     private applyFilter(entries: WorkItemIndexEntry[], filter?: WorkItemFilter): WorkItemIndexEntry[] {
         if (!filter) return entries;
 
+        const entriesById = filter.tracker
+            ? new Map(entries.map(entry => [entry.id, entry]))
+            : undefined;
         return entries.filter(e => {
             if (filter.status) {
                 const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
@@ -605,11 +608,27 @@ export class FileWorkItemStore implements WorkItemStore {
             if (filter.source && e.source !== filter.source) return false;
             if (filter.priority && e.priority !== filter.priority) return false;
             if (filter.type && (e.type ?? 'work-item') !== filter.type) return false;
+            if (filter.tracker && entriesById && this.getInheritedTrackerKind(e, entriesById) !== filter.tracker) return false;
             if (filter.tags?.length) {
                 if (!e.tags?.some(t => filter.tags!.includes(t))) return false;
             }
             return true;
         });
+    }
+
+    private getInheritedTrackerKind(
+        entry: WorkItemIndexEntry,
+        entriesById: Map<string, WorkItemIndexEntry>,
+    ): ReturnType<typeof getOwnWorkItemTrackerKind> {
+        let current = entry;
+        const visited = new Set<string>();
+        while (current.parentId && !visited.has(current.id)) {
+            visited.add(current.id);
+            const parent = entriesById.get(current.parentId);
+            if (!parent) break;
+            current = parent;
+        }
+        return getOwnWorkItemTrackerKind(current);
     }
 
     private async findRepoForItem(id: string): Promise<string | undefined> {

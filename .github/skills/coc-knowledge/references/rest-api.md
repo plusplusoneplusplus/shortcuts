@@ -245,17 +245,18 @@ See [mcp-settings.md](mcp-settings.md).
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/workspaces/:id/work-items` | List work items |
-| POST | `/api/workspaces/:id/work-items` | Create work item |
+| GET | `/api/workspaces/:id/work-items` | List work items. Supports standard field filters plus `tracker=local-only\|github-backed`, which filters by inherited Epic-rooted tracker identity. |
+| POST | `/api/workspaces/:id/work-items` | Create work item. Root Epic payloads may include `tracker` metadata; absent tracker metadata is treated as `local-only`. |
 | GET | `/api/workspaces/:id/work-items/:itemId` | Read work item |
-| PATCH | `/api/workspaces/:id/work-items/:itemId` | Update work item |
+| PATCH | `/api/workspaces/:id/work-items/:itemId` | Update work item. `tracker` metadata is accepted only on root Epic items. |
 | DELETE | `/api/workspaces/:id/work-items/:itemId` | Delete work item |
 | POST | `/api/workspaces/:id/work-items/:itemId/execute` | Enqueue a work-item implementation run. Body accepts optional `skillNames`, `provider`, `model`, and `reasoningEffort` overrides. |
+| GET | `/api/workspaces/:id/work-items/tree` | Read the hierarchy tree. Supports `tracker=local-only\|github-backed`; descendants inherit the tracker identity of their root Epic. |
 | GET | `/api/workspaces/:id/work-items/sync/status` | Manual hierarchy sync status. Returns disabled reasons unless both `workItems.hierarchy.enabled` and `workItems.sync.enabled` are true; without a `provider` query it reports all supported providers. Provider credentials remain external. |
 | POST | `/api/workspaces/:id/work-items/sync/preview` | Compute a synchronous, non-mutating import/export/sync preview for the selected provider and operation. Local export/sync scopes and explicit issue filters are capped at 200 items. |
 | POST | `/api/workspaces/:id/work-items/sync/apply` | Apply a previously previewed manual sync operation with optional per-conflict resolutions. Runs are synchronous and capped at 200 items. |
 
-Work item create/update payloads may include `syncLinks`, an allow-listed array of external provider metadata for manual hierarchy sync. Each link stores provider identity (`github` now, `azure-boards` reserved), remote issue identity, revision/updated timestamps, last-sync fingerprint/timestamp, dirty/conflict indicators, and parent reference data. Token, credential, secret, and arbitrary runtime-state fields are rejected. GitHub issue mapping owns only `coc:` labels (`coc:type:*`, `coc:status:*`, `coc:priority:*`) and the hidden `<!-- coc-work-item-sync {json} -->` metadata block; non-`coc:` issue labels remain user labels/tags.
+Work items use Epic-rooted tracker identity. A root Epic may carry `tracker: { kind: 'local-only' }` or `tracker: { kind: 'github-backed', provider: 'github', github: { issueId?, issueNumber?, issueUrl?, lastPulledAt? } }`; descendants inherit the root identity for listing and tree filtering. Tracker metadata is not valid on non-root items. Work item create/update payloads may also include `syncLinks`, an allow-listed array of external provider metadata for manual hierarchy sync. Each link stores provider identity (`github` now, `azure-boards` reserved), remote issue identity, revision/updated timestamps, last-sync fingerprint/timestamp, dirty/conflict indicators, and parent reference data. Token, credential, secret, and arbitrary runtime-state fields are rejected. GitHub issue mapping owns only `coc:` labels (`coc:type:*`, `coc:status:*`, `coc:priority:*`) and the hidden `<!-- coc-work-item-sync {json} -->` metadata block; non-`coc:` issue labels remain user labels/tags.
 
 The sync route layer is provider-ready: status, preview, and apply dispatch through provider adapters. GitHub Issues is registered by default and uses external authentication through `gh`/environment-backed GitHub auth without persisting tokens; its adapter resolves workspace owner/repo, reports provider status, computes import/export/sync previews, applies explicit preview rows, prefers adapter-exposed native parent/sub-issue relationships over hidden metadata on import, writes parent metadata as fallback, omits invalid or cyclic local parent metadata with warnings, and skips unresolved conflicts instead of silently overwriting either side. Azure Boards is reserved, appears in provider status as planned/unavailable, and preview/apply requests for it fail with provider-unavailable until an adapter is added.
 

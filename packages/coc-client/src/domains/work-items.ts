@@ -176,6 +176,7 @@ export class WorkItemsClient {
     if (filter?.q) query.q = filter.q;
     if (filter?.type) query.type = filter.type;
     if (filter?.status) query.status = filter.status;
+    if (filter?.tracker) query.tracker = filter.tracker;
     if (filter?.includeArchived !== undefined) query.includeArchived = filter.includeArchived;
     if (filter?.includeDone !== undefined) query.includeDone = filter.includeDone;
     return this.transport.request<WorkItemTreeResponse>(path(workspaceId, '/tree'), { query });

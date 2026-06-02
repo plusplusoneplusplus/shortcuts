@@ -14,6 +14,18 @@ export type WorkItemStatus =
 export type WorkItemPriority = 'high' | 'normal' | 'low';
 export type WorkItemSource = 'manual' | 'chat' | 'schedule';
 export type WorkItemType = 'work-item' | 'bug' | 'goal' | 'epic' | 'feature' | 'pbi';
+export type WorkItemTrackerKind = 'local-only' | 'github-backed';
+
+export interface WorkItemGitHubTrackerMetadata {
+  issueId?: string;
+  issueNumber?: number;
+  issueUrl?: string;
+  lastPulledAt?: string;
+}
+
+export type WorkItemTrackerMetadata =
+  | { kind: 'local-only' }
+  | { kind: 'github-backed'; provider: 'github'; github: WorkItemGitHubTrackerMetadata };
 
 /**
  * Allowed parent types for each work item type.
@@ -271,6 +283,8 @@ export interface WorkItem {
   type?: WorkItemType;
   /** Parent work item ID (hierarchy). Only set when hierarchy is enabled. */
   parentId?: string;
+  /** Epic-rooted tracker identity. Set on Epic roots; descendants inherit it. */
+  tracker?: WorkItemTrackerMetadata;
   /** External provider sync metadata. Empty or absent means the item is unlinked. */
   syncLinks?: WorkItemSyncLink[];
   createdAt: string;
@@ -305,6 +319,7 @@ export interface WorkItemFilter {
   priority?: WorkItemPriority;
   tags?: string[];
   type?: WorkItemType;
+  tracker?: WorkItemTrackerKind;
   q?: string;
   offset?: number;
   limit?: number;
@@ -327,6 +342,8 @@ export interface CreateWorkItemRequest {
   type?: WorkItemType;
   /** Parent work item ID (hierarchy). Only accepted when hierarchy flag is enabled. */
   parentId?: string;
+  /** Epic-rooted tracker identity. Only accepted on root Epic items. */
+  tracker?: WorkItemTrackerMetadata;
   /** External provider sync metadata. Empty or absent means the item is unlinked. */
   syncLinks?: WorkItemSyncLink[];
   source?: WorkItemSource;
@@ -354,7 +371,7 @@ export interface CreateWorkItemFromChatRequest extends JsonObject {
   extractPlan?: boolean;
 }
 
-export interface UpdateWorkItemRequest extends Partial<Pick<WorkItem, 'title' | 'description' | 'status' | 'priority' | 'tags' | 'autoExecute' | 'syncLinks'>> {
+export interface UpdateWorkItemRequest extends Partial<Pick<WorkItem, 'title' | 'description' | 'status' | 'priority' | 'tags' | 'autoExecute' | 'syncLinks' | 'tracker'>> {
   completedAt?: string;
   reviewComments?: unknown[];
   /** Update success criteria for a `goal` item (markdown). */
@@ -486,6 +503,8 @@ export interface WorkItemTreeFilter {
   q?: string;
   type?: WorkItemType;
   status?: WorkItemStatus;
+  /** Filter by inherited Epic-rooted tracker kind. */
+  tracker?: WorkItemTrackerKind;
   includeArchived?: boolean;
   /** When true, items with status "done" are included. Defaults to false. */
   includeDone?: boolean;

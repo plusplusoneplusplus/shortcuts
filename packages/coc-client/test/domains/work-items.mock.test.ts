@@ -50,6 +50,7 @@ describe('WorkItemsClient mock coverage', () => {
       status: ['created', 'planning'],
       priority: 'high',
       tags: ['frontend', 'triage'],
+      tracker: 'github-backed',
       q: 'login bug',
       limit: 25,
       offset: 50,
@@ -59,8 +60,14 @@ describe('WorkItemsClient mock coverage', () => {
       priority: 'low',
       tags: ['backend', 'urgent'],
       type: 'bug',
+      tracker: 'local-only',
       q: 'crash',
       limit: 5,
+    });
+    await client.tree('repo/a', {
+      q: 'epic',
+      tracker: 'github-backed',
+      includeDone: true,
     });
 
     expect(adapter.calls[0]).toEqual({
@@ -70,6 +77,7 @@ describe('WorkItemsClient mock coverage', () => {
           status: 'created,planning',
           priority: 'high',
           tags: 'frontend,triage',
+          tracker: 'github-backed',
           q: 'login bug',
           limit: 25,
           offset: 50,
@@ -84,8 +92,19 @@ describe('WorkItemsClient mock coverage', () => {
           priority: 'low',
           tags: 'backend,urgent',
           type: 'bug',
+          tracker: 'local-only',
           q: 'crash',
           limit: 5,
+        },
+      },
+    });
+    expect(adapter.calls[2]).toEqual({
+      path: '/workspaces/repo%2Fa/work-items/tree',
+      options: {
+        query: {
+          q: 'epic',
+          tracker: 'github-backed',
+          includeDone: true,
         },
       },
     });
@@ -181,6 +200,40 @@ describe('WorkItemsClient mock coverage', () => {
         options: {
           method: 'PATCH',
           body: { syncLinks: [] },
+        },
+      },
+    ]);
+  });
+
+  it('passes epic-rooted tracker metadata through create and update requests', async () => {
+    const adapter = createMockAdapter(workItem);
+    const client = new WorkItemsClient(adapter);
+    const tracker: WorkItem['tracker'] = {
+      kind: 'github-backed',
+      provider: 'github',
+      github: {
+        issueNumber: 42,
+        issueUrl: 'https://github.com/org/repo/issues/42',
+        lastPulledAt: '2026-01-02T00:00:00.000Z',
+      },
+    };
+
+    await client.create('repo/a', { title: 'Epic', type: 'epic', tracker });
+    await client.update('repo/a', 'wi/1', { tracker: { kind: 'local-only' } });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/workspaces/repo%2Fa/work-items',
+        options: {
+          method: 'POST',
+          body: { title: 'Epic', type: 'epic', tracker },
+        },
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/wi%2F1',
+        options: {
+          method: 'PATCH',
+          body: { tracker: { kind: 'local-only' } },
         },
       },
     ]);

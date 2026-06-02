@@ -30,8 +30,10 @@ import type {
     WorkItemSyncLink,
     WorkItemSyncParentReference,
     WorkItemSyncRemoteIdentity,
+    WorkItemTrackerKind,
+    WorkItemTrackerMetadata,
 } from '../work-items/types';
-import { WORK_ITEM_STATUSES, WORK_ITEM_TYPES, isValidTransition, HIERARCHY_CONTAINER_TYPES, isValidParentChildTypes, getEffectiveType } from '../work-items/types';
+import { WORK_ITEM_STATUSES, WORK_ITEM_TYPES, WORK_ITEM_TRACKER_KINDS, isValidTransition, HIERARCHY_CONTAINER_TYPES, isValidParentChildTypes, getEffectiveType } from '../work-items/types';
 import { executeWorkItem, type EnqueueFunction } from '../work-items/work-item-executor';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 
@@ -40,6 +42,7 @@ const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);
 /** Types allowed when hierarchy is disabled (legacy behavior). */
 const LEAF_VALID_TYPES: Set<string> = new Set(['work-item', 'bug']);
 const VALID_SYNC_PROVIDERS: Set<string> = new Set(['github', 'azure-boards']);
+const VALID_TRACKER_KINDS: Set<string> = new Set(WORK_ITEM_TRACKER_KINDS);
 const SYNC_LINK_KEYS: ReadonlySet<string> = new Set([
     'provider',
     'remote',
@@ -69,6 +72,8 @@ const SYNC_PARENT_KEYS: ReadonlySet<string> = new Set([
     'owner',
     'repo',
 ]);
+const TRACKER_KEYS: ReadonlySet<string> = new Set(['kind', 'provider', 'github']);
+const GITHUB_TRACKER_KEYS: ReadonlySet<string> = new Set(['issueId', 'issueNumber', 'issueUrl', 'lastPulledAt']);
 const CREDENTIAL_KEY_PATTERN = /(token|secret|password|credential|authorization|auth)/i;
 
 export interface WorkItemRouteContext {
@@ -85,13 +90,18 @@ function isObject(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function assertAllowedKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>, path: string): void {
+function assertAllowedKeys(
+    value: Record<string, unknown>,
+    allowed: ReadonlySet<string>,
+    path: string,
+    metadataLabel = 'sync metadata',
+): void {
     for (const key of Object.keys(value)) {
         if (CREDENTIAL_KEY_PATTERN.test(key)) {
             throw new Error(`${path}.${key} must not contain credentials or secrets`);
         }
         if (!allowed.has(key)) {
-            throw new Error(`${path}.${key} is not a supported sync metadata field`);
+            throw new Error(`${path}.${key} is not a supported ${metadataLabel} field`);
         }
     }
 }
@@ -190,6 +200,63 @@ function parseSyncLinks(value: unknown): WorkItemSyncLink[] | undefined {
     });
 }
 
+function parseGitHubTrackerMetadata(value: unknown, path: string): WorkItemTrackerMetadata & { kind: 'github-backed' } {
+    if (value !== undefined && !isObject(value)) {
+        throw new Error(`${path}.github must be an object`);
+    }
+    const github = value === undefined ? {} : value;
+    assertAllowedKeys(github, GITHUB_TRACKER_KEYS, `${path}.github`, 'tracker metadata');
+    const issueNumber = optionalNumber(github.issueNumber, `${path}.github.issueNumber`);
+    if (issueNumber !== undefined && (!Number.isInteger(issueNumber) || issueNumber <= 0)) {
+        throw new Error(`${path}.github.issueNumber must be a positive integer`);
+    }
+    return {
+        kind: 'github-backed',
+        provider: 'github',
+        github: {
+            issueId: optionalString(github.issueId, `${path}.github.issueId`),
+            issueNumber,
+            issueUrl: optionalString(github.issueUrl, `${path}.github.issueUrl`),
+            lastPulledAt: optionalString(github.lastPulledAt, `${path}.github.lastPulledAt`),
+        },
+    };
+}
+
+function parseTracker(value: unknown): WorkItemTrackerMetadata | undefined {
+    if (value === undefined) return undefined;
+    if (!isObject(value)) {
+        throw new Error('tracker must be an object');
+    }
+    assertAllowedKeys(value, TRACKER_KEYS, 'tracker', 'tracker metadata');
+    const kind = optionalString(value.kind, 'tracker.kind');
+    if (!kind || !VALID_TRACKER_KINDS.has(kind)) {
+        throw new Error(`tracker.kind must be one of: ${WORK_ITEM_TRACKER_KINDS.join(', ')}`);
+    }
+    if (kind === 'local-only') {
+        if (value.provider !== undefined || value.github !== undefined) {
+            throw new Error('tracker.local-only must not include provider or github metadata');
+        }
+        return { kind: 'local-only' };
+    }
+    const provider = optionalString(value.provider, 'tracker.provider') ?? 'github';
+    if (provider !== 'github') {
+        throw new Error('tracker.provider must be github for github-backed trackers');
+    }
+    return parseGitHubTrackerMetadata(value.github, 'tracker');
+}
+
+function validateTrackerRootPlacement(
+    tracker: WorkItemTrackerMetadata | undefined,
+    type: WorkItemType,
+    parentId: string | undefined,
+): string | undefined {
+    if (!tracker) return undefined;
+    if (type !== 'epic' || parentId) {
+        return 'tracker metadata can only be set on root epic work items';
+    }
+    return undefined;
+}
+
 export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
     const { routes, workItemStore, processStore, enqueue, getWsServer } = ctx;
     const isHierarchyEnabled = () => ctx.getHierarchyEnabled?.() ?? false;
@@ -225,6 +292,9 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             }
             if (typeof query.type === 'string' && ALL_VALID_TYPES.has(query.type)) {
                 filter.type = query.type as WorkItemType;
+            }
+            if (typeof query.tracker === 'string' && VALID_TRACKER_KINDS.has(query.tracker)) {
+                filter.tracker = query.tracker as WorkItemTrackerKind;
             }
             if (typeof query.q === 'string' && query.q.trim()) {
                 filter.search = query.q.trim();
@@ -265,6 +335,9 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             }
             if (typeof query.type === 'string' && ALL_VALID_TYPES.has(query.type)) {
                 filter.type = query.type as WorkItemType;
+            }
+            if (typeof query.tracker === 'string' && VALID_TRACKER_KINDS.has(query.tracker)) {
+                filter.tracker = query.tracker as WorkItemTrackerKind;
             }
             if (typeof query.q === 'string' && query.q.trim()) {
                 filter.search = query.q.trim();
@@ -310,10 +383,12 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             const now = new Date().toISOString();
             const hierarchyEnabled = isHierarchyEnabled();
             let syncLinks: WorkItemSyncLink[] | undefined;
+            let tracker: WorkItemTrackerMetadata | undefined;
             try {
                 syncLinks = parseSyncLinks(body.syncLinks);
+                tracker = parseTracker(body.tracker);
             } catch (err) {
-                return handleAPIError(res, badRequest(err instanceof Error ? err.message : 'Invalid syncLinks'));
+                return handleAPIError(res, badRequest(err instanceof Error ? err.message : 'Invalid work item metadata'));
             }
 
             // Validate type: hierarchy-only types require the flag to be enabled
@@ -355,6 +430,15 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 }
             }
 
+            const trackerPlacementError = validateTrackerRootPlacement(
+                tracker,
+                resolvedType ?? 'work-item',
+                hierarchyEnabled && body.parentId ? String(body.parentId) : undefined,
+            );
+            if (trackerPlacementError) {
+                return handleAPIError(res, badRequest(trackerPlacementError));
+            }
+
             const item: WorkItem = {
                 id: body.id || crypto.randomUUID(),
                 repoId,
@@ -363,6 +447,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 status: 'created',
                 type: resolvedType,
                 parentId: hierarchyEnabled && body.parentId ? String(body.parentId) : undefined,
+                tracker,
                 syncLinks,
                 createdAt: now,
                 updatedAt: now,
@@ -462,6 +547,28 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                     updates.syncLinks = parseSyncLinks(body.syncLinks);
                 } catch (err) {
                     return handleAPIError(res, badRequest(err instanceof Error ? err.message : 'Invalid syncLinks'));
+                }
+            }
+            if (body.tracker !== undefined) {
+                try {
+                    updates.tracker = parseTracker(body.tracker);
+                } catch (err) {
+                    return handleAPIError(res, badRequest(err instanceof Error ? err.message : 'Invalid tracker metadata'));
+                }
+                const current = await workItemStore.getWorkItem(workItemId, repoId);
+                if (!current) {
+                    return handleAPIError(res, notFound('Work item'));
+                }
+                const resultingParentId = 'parentId' in body
+                    ? (body.parentId === null || body.parentId === '' ? undefined : String(body.parentId))
+                    : current.parentId;
+                const trackerPlacementError = validateTrackerRootPlacement(
+                    updates.tracker,
+                    getEffectiveType(current.type),
+                    resultingParentId,
+                );
+                if (trackerPlacementError) {
+                    return handleAPIError(res, badRequest(trackerPlacementError));
                 }
             }
 

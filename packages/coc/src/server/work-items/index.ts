@@ -3,6 +3,9 @@ export type {
     WorkItemSource,
     WorkItemPriority,
     WorkItemType,
+    WorkItemTrackerKind,
+    WorkItemGitHubTrackerMetadata,
+    WorkItemTrackerMetadata,
     WorkItemSyncProvider,
     WorkItemSyncRemoteIdentity,
     WorkItemSyncParentReference,
@@ -20,10 +23,12 @@ export type {
 export {
     WORK_ITEM_STATUSES,
     WORK_ITEM_TYPES,
+    WORK_ITEM_TRACKER_KINDS,
     TERMINAL_WORK_ITEM_STATUSES,
     VALID_TRANSITIONS,
     isTerminalStatus,
     isValidTransition,
+    getOwnWorkItemTrackerKind,
     toIndexEntry,
 } from './types';
 

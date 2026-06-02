@@ -289,6 +289,75 @@ describe('FileWorkItemStore', () => {
             expect(entry).toBeDefined();
             expect(entry!.type).toBe('bug');
         });
+
+        it('stores tracker metadata on index entries', async () => {
+            await store.addWorkItem(makeWorkItem({
+                id: 'epic-github',
+                type: 'epic',
+                tracker: {
+                    kind: 'github-backed',
+                    provider: 'github',
+                    github: {
+                        issueNumber: 42,
+                        issueUrl: 'https://github.com/org/repo/issues/42',
+                        lastPulledAt: '2026-01-02T00:00:00.000Z',
+                    },
+                },
+            }));
+
+            const entries = await store.listWorkItems({ repoId: 'test-repo' });
+            const entry = entries.items.find(e => e.id === 'epic-github');
+            expect(entry?.tracker).toEqual({
+                kind: 'github-backed',
+                provider: 'github',
+                github: {
+                    issueNumber: 42,
+                    issueUrl: 'https://github.com/org/repo/issues/42',
+                    lastPulledAt: '2026-01-02T00:00:00.000Z',
+                },
+            });
+        });
+
+        it('filters by inherited epic-rooted tracker kind', async () => {
+            await store.addWorkItem(makeWorkItem({
+                id: 'local-epic',
+                type: 'epic',
+                title: 'Local Epic',
+            }));
+            await store.addWorkItem(makeWorkItem({
+                id: 'local-feature',
+                type: 'feature',
+                parentId: 'local-epic',
+                title: 'Local Feature',
+            }));
+            await store.addWorkItem(makeWorkItem({
+                id: 'github-epic',
+                type: 'epic',
+                title: 'GitHub Epic',
+                tracker: {
+                    kind: 'github-backed',
+                    provider: 'github',
+                    github: { issueNumber: 101 },
+                },
+            }));
+            await store.addWorkItem(makeWorkItem({
+                id: 'github-feature',
+                type: 'feature',
+                parentId: 'github-epic',
+                title: 'GitHub Feature',
+            }));
+            await store.addWorkItem(makeWorkItem({
+                id: 'orphan-task',
+                type: 'work-item',
+                title: 'Local Orphan',
+            }));
+
+            const githubBacked = await store.listWorkItems({ repoId: 'test-repo', tracker: 'github-backed' });
+            expect(githubBacked.items.map(item => item.id).sort()).toEqual(['github-epic', 'github-feature']);
+
+            const localOnly = await store.listWorkItems({ repoId: 'test-repo', tracker: 'local-only' });
+            expect(localOnly.items.map(item => item.id).sort()).toEqual(['local-epic', 'local-feature', 'orphan-task']);
+        });
     });
 
     describe('plan versioning', () => {
