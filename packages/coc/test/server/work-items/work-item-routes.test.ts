@@ -7,11 +7,36 @@ import type { Route } from '../../../src/server/types';
 import { createRouter } from '../../../src/server/shared/router';
 import { registerWorkItemRoutes } from '../../../src/server/routes/work-item-routes';
 import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
+import type { WorkItemSyncLink } from '../../../src/server/work-items/types';
 
 let tmpDir: string;
 let store: FileWorkItemStore;
 let server: http.Server;
 let baseUrl: string;
+
+const SYNC_LINK: WorkItemSyncLink = {
+    provider: 'github',
+    remote: {
+        owner: 'plusplusoneplusplus',
+        repo: 'shortcuts',
+        issueId: 'I_kwDOExample',
+        issueNumber: 42,
+        issueUrl: 'https://github.com/plusplusoneplusplus/shortcuts/issues/42',
+    },
+    remoteRevision: 'etag-1',
+    remoteUpdatedAt: '2026-01-02T00:00:00.000Z',
+    lastSyncedAt: '2026-01-02T01:00:00.000Z',
+    lastSyncedFingerprint: 'fingerprint-1',
+    dirty: true,
+    conflict: false,
+    dirtyFields: ['title'],
+    conflictFields: [],
+    parent: {
+        workItemId: 'parent-1',
+        issueNumber: 7,
+        issueUrl: 'https://github.com/plusplusoneplusplus/shortcuts/issues/7',
+    },
+};
 
 function makeServer(): http.Server {
     const routes: Route[] = [];
@@ -166,6 +191,43 @@ describe('Work Item Routes', () => {
             expect(res.status).toBe(201);
             expect(res.body.type).toBe('goal');
             expect(res.body.successCriteria).toBe('New users complete setup in under 5 minutes');
+        });
+
+        it('creates a work item with external sync metadata', async () => {
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Synced task',
+                syncLinks: [SYNC_LINK],
+            });
+
+            expect(res.status).toBe(201);
+            expect(res.body.syncLinks).toEqual([SYNC_LINK]);
+
+            const detail = await request('GET', `/api/workspaces/${REPO_ID}/work-items/${res.body.id}`);
+            expect(detail.status).toBe(200);
+            expect(detail.body.syncLinks).toEqual([SYNC_LINK]);
+
+            const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
+            expect(list.status).toBe(200);
+            expect(list.body.items[0].syncLinks).toEqual([SYNC_LINK]);
+        });
+
+        it('rejects credential-shaped sync metadata fields on create', async () => {
+            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+                title: 'Unsafe sync metadata',
+                syncLinks: [{
+                    ...SYNC_LINK,
+                    remote: {
+                        ...SYNC_LINK.remote,
+                        accessToken: 'not-allowed',
+                    },
+                }],
+            });
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('credentials or secrets');
+
+            const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
+            expect(list.body.items).toEqual([]);
         });
 
         it('omits blank successCriteria on create', async () => {
@@ -553,6 +615,46 @@ describe('Work Item Routes', () => {
             expect(res.status).toBe(200);
             expect(res.body.successCriteria).toBe('Ship the feature behind a flag');
             expect(res.body.grillSessionId).toBe('queue_proc-abc');
+        });
+
+        it('updates external sync metadata and preserves it in list/detail responses', async () => {
+            const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${itemId}`, {
+                syncLinks: [{
+                    ...SYNC_LINK,
+                    dirty: false,
+                    conflict: true,
+                    conflictFields: ['description'],
+                }],
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body.syncLinks).toEqual([{
+                ...SYNC_LINK,
+                dirty: false,
+                conflict: true,
+                conflictFields: ['description'],
+            }]);
+
+            const detail = await request('GET', `/api/workspaces/${REPO_ID}/work-items/${itemId}`);
+            expect(detail.body.syncLinks).toEqual(res.body.syncLinks);
+
+            const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
+            expect(list.body.items[0].syncLinks).toEqual(res.body.syncLinks);
+        });
+
+        it('rejects unknown sync metadata fields on update without changing the item', async () => {
+            const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${itemId}`, {
+                syncLinks: [{
+                    ...SYNC_LINK,
+                    unexpectedRuntimeState: 'not-allowed',
+                }],
+            });
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('not a supported sync metadata field');
+
+            const detail = await request('GET', `/api/workspaces/${REPO_ID}/work-items/${itemId}`);
+            expect(detail.body.syncLinks).toBeUndefined();
         });
 
         it('allows the created → drafting transition (goal spec phase)', async () => {

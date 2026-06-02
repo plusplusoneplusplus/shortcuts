@@ -42,6 +42,40 @@ export const ALLOWED_CHILD_TYPES: Record<WorkItemType, readonly WorkItemType[]> 
   goal:        [],
 };
 
+export type WorkItemSyncProvider = 'github' | 'azure-boards';
+
+export interface WorkItemSyncRemoteIdentity {
+  owner?: string;
+  repo?: string;
+  projectId?: string;
+  issueId?: string;
+  issueNumber?: number;
+  issueUrl?: string;
+}
+
+export interface WorkItemSyncParentReference {
+  workItemId?: string;
+  issueId?: string;
+  issueNumber?: number;
+  issueUrl?: string;
+  owner?: string;
+  repo?: string;
+}
+
+export interface WorkItemSyncLink {
+  provider: WorkItemSyncProvider;
+  remote: WorkItemSyncRemoteIdentity;
+  remoteRevision?: string;
+  remoteUpdatedAt?: string;
+  lastSyncedAt?: string;
+  lastSyncedFingerprint?: string;
+  dirty?: boolean;
+  conflict?: boolean;
+  dirtyFields?: string[];
+  conflictFields?: string[];
+  parent?: WorkItemSyncParentReference;
+}
+
 export interface WorkItemPlan {
   version: number;
   content: string;
@@ -82,6 +116,8 @@ export interface WorkItem {
   type?: WorkItemType;
   /** Parent work item ID (hierarchy). Only set when hierarchy is enabled. */
   parentId?: string;
+  /** External provider sync metadata. Empty or absent means the item is unlinked. */
+  syncLinks?: WorkItemSyncLink[];
   createdAt: string;
   updatedAt: string;
   completedAt?: string;
@@ -136,6 +172,8 @@ export interface CreateWorkItemRequest {
   type?: WorkItemType;
   /** Parent work item ID (hierarchy). Only accepted when hierarchy flag is enabled. */
   parentId?: string;
+  /** External provider sync metadata. Empty or absent means the item is unlinked. */
+  syncLinks?: WorkItemSyncLink[];
   source?: WorkItemSource;
   sourceId?: string;
   priority?: WorkItemPriority;
@@ -156,7 +194,7 @@ export interface CreateWorkItemFromChatRequest extends JsonObject {
   extractPlan?: boolean;
 }
 
-export interface UpdateWorkItemRequest extends Partial<Pick<WorkItem, 'title' | 'description' | 'status' | 'priority' | 'tags' | 'autoExecute'>> {
+export interface UpdateWorkItemRequest extends Partial<Pick<WorkItem, 'title' | 'description' | 'status' | 'priority' | 'tags' | 'autoExecute' | 'syncLinks'>> {
   completedAt?: string;
   reviewComments?: unknown[];
   /** Update success criteria for a `goal` item (markdown). */

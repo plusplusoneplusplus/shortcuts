@@ -19,7 +19,18 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { execGit } from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody } from '../core/api-handler';
 import { handleAPIError, missingFields, notFound, badRequest, conflict } from '../errors';
-import type { WorkItemStore, WorkItemFilter, WorkItemStatus, WorkItemSource, WorkItemPriority, WorkItemType, WorkItem } from '../work-items/types';
+import type {
+    WorkItemStore,
+    WorkItemFilter,
+    WorkItemStatus,
+    WorkItemSource,
+    WorkItemPriority,
+    WorkItemType,
+    WorkItem,
+    WorkItemSyncLink,
+    WorkItemSyncParentReference,
+    WorkItemSyncRemoteIdentity,
+} from '../work-items/types';
 import { WORK_ITEM_STATUSES, WORK_ITEM_TYPES, isValidTransition, HIERARCHY_CONTAINER_TYPES, isValidParentChildTypes, getEffectiveType } from '../work-items/types';
 import { executeWorkItem, type EnqueueFunction } from '../work-items/work-item-executor';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
@@ -28,6 +39,37 @@ const VALID_SOURCES: Set<string> = new Set(['manual', 'chat', 'schedule']);
 const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);
 /** Types allowed when hierarchy is disabled (legacy behavior). */
 const LEAF_VALID_TYPES: Set<string> = new Set(['work-item', 'bug']);
+const VALID_SYNC_PROVIDERS: Set<string> = new Set(['github', 'azure-boards']);
+const SYNC_LINK_KEYS: ReadonlySet<string> = new Set([
+    'provider',
+    'remote',
+    'remoteRevision',
+    'remoteUpdatedAt',
+    'lastSyncedAt',
+    'lastSyncedFingerprint',
+    'dirty',
+    'conflict',
+    'dirtyFields',
+    'conflictFields',
+    'parent',
+]);
+const SYNC_REMOTE_KEYS: ReadonlySet<string> = new Set([
+    'owner',
+    'repo',
+    'projectId',
+    'issueId',
+    'issueNumber',
+    'issueUrl',
+]);
+const SYNC_PARENT_KEYS: ReadonlySet<string> = new Set([
+    'workItemId',
+    'issueId',
+    'issueNumber',
+    'issueUrl',
+    'owner',
+    'repo',
+]);
+const CREDENTIAL_KEY_PATTERN = /(token|secret|password|credential|authorization|auth)/i;
 
 export interface WorkItemRouteContext {
     routes: Route[];
@@ -37,6 +79,115 @@ export interface WorkItemRouteContext {
     getWsServer?: () => ProcessWebSocketServer;
     /** Returns true when the workItems.hierarchy feature flag is enabled. */
     getHierarchyEnabled?: () => boolean;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function assertAllowedKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>, path: string): void {
+    for (const key of Object.keys(value)) {
+        if (CREDENTIAL_KEY_PATTERN.test(key)) {
+            throw new Error(`${path}.${key} must not contain credentials or secrets`);
+        }
+        if (!allowed.has(key)) {
+            throw new Error(`${path}.${key} is not a supported sync metadata field`);
+        }
+    }
+}
+
+function optionalString(value: unknown, path: string): string | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== 'string') {
+        throw new Error(`${path} must be a string`);
+    }
+    return value;
+}
+
+function optionalNumber(value: unknown, path: string): number | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        throw new Error(`${path} must be a finite number`);
+    }
+    return value;
+}
+
+function optionalBoolean(value: unknown, path: string): boolean | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== 'boolean') {
+        throw new Error(`${path} must be a boolean`);
+    }
+    return value;
+}
+
+function optionalStringArray(value: unknown, path: string): string[] | undefined {
+    if (value === undefined) return undefined;
+    if (!Array.isArray(value) || value.some(entry => typeof entry !== 'string')) {
+        throw new Error(`${path} must be an array of strings`);
+    }
+    return value;
+}
+
+function parseSyncRemote(value: unknown, path: string): WorkItemSyncRemoteIdentity {
+    if (!isObject(value)) {
+        throw new Error(`${path} must be an object`);
+    }
+    assertAllowedKeys(value, SYNC_REMOTE_KEYS, path);
+    return {
+        owner: optionalString(value.owner, `${path}.owner`),
+        repo: optionalString(value.repo, `${path}.repo`),
+        projectId: optionalString(value.projectId, `${path}.projectId`),
+        issueId: optionalString(value.issueId, `${path}.issueId`),
+        issueNumber: optionalNumber(value.issueNumber, `${path}.issueNumber`),
+        issueUrl: optionalString(value.issueUrl, `${path}.issueUrl`),
+    };
+}
+
+function parseSyncParent(value: unknown, path: string): WorkItemSyncParentReference | undefined {
+    if (value === undefined) return undefined;
+    if (!isObject(value)) {
+        throw new Error(`${path} must be an object`);
+    }
+    assertAllowedKeys(value, SYNC_PARENT_KEYS, path);
+    return {
+        workItemId: optionalString(value.workItemId, `${path}.workItemId`),
+        issueId: optionalString(value.issueId, `${path}.issueId`),
+        issueNumber: optionalNumber(value.issueNumber, `${path}.issueNumber`),
+        issueUrl: optionalString(value.issueUrl, `${path}.issueUrl`),
+        owner: optionalString(value.owner, `${path}.owner`),
+        repo: optionalString(value.repo, `${path}.repo`),
+    };
+}
+
+function parseSyncLinks(value: unknown): WorkItemSyncLink[] | undefined {
+    if (value === undefined) return undefined;
+    if (!Array.isArray(value)) {
+        throw new Error('syncLinks must be an array');
+    }
+    return value.map((entry, index) => {
+        const path = `syncLinks[${index}]`;
+        if (!isObject(entry)) {
+            throw new Error(`${path} must be an object`);
+        }
+        assertAllowedKeys(entry, SYNC_LINK_KEYS, path);
+        const provider = optionalString(entry.provider, `${path}.provider`);
+        if (!provider || !VALID_SYNC_PROVIDERS.has(provider)) {
+            throw new Error(`${path}.provider must be one of: github, azure-boards`);
+        }
+        return {
+            provider: provider as WorkItemSyncLink['provider'],
+            remote: parseSyncRemote(entry.remote, `${path}.remote`),
+            remoteRevision: optionalString(entry.remoteRevision, `${path}.remoteRevision`),
+            remoteUpdatedAt: optionalString(entry.remoteUpdatedAt, `${path}.remoteUpdatedAt`),
+            lastSyncedAt: optionalString(entry.lastSyncedAt, `${path}.lastSyncedAt`),
+            lastSyncedFingerprint: optionalString(entry.lastSyncedFingerprint, `${path}.lastSyncedFingerprint`),
+            dirty: optionalBoolean(entry.dirty, `${path}.dirty`),
+            conflict: optionalBoolean(entry.conflict, `${path}.conflict`),
+            dirtyFields: optionalStringArray(entry.dirtyFields, `${path}.dirtyFields`),
+            conflictFields: optionalStringArray(entry.conflictFields, `${path}.conflictFields`),
+            parent: parseSyncParent(entry.parent, `${path}.parent`),
+        };
+    });
 }
 
 export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
@@ -158,6 +309,12 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
 
             const now = new Date().toISOString();
             const hierarchyEnabled = isHierarchyEnabled();
+            let syncLinks: WorkItemSyncLink[] | undefined;
+            try {
+                syncLinks = parseSyncLinks(body.syncLinks);
+            } catch (err) {
+                return handleAPIError(res, badRequest(err instanceof Error ? err.message : 'Invalid syncLinks'));
+            }
 
             // Validate type: hierarchy-only types require the flag to be enabled
             let resolvedType: WorkItemType | undefined;
@@ -206,6 +363,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 status: 'created',
                 type: resolvedType,
                 parentId: hierarchyEnabled && body.parentId ? String(body.parentId) : undefined,
+                syncLinks,
                 createdAt: now,
                 updatedAt: now,
                 source: VALID_SOURCES.has(body.source) ? body.source : 'manual',
@@ -299,6 +457,13 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             if (body.reviewComments !== undefined) updates.reviewComments = body.reviewComments;
             if (body.successCriteria !== undefined) updates.successCriteria = body.successCriteria;
             if (body.grillSessionId !== undefined) updates.grillSessionId = body.grillSessionId;
+            if (body.syncLinks !== undefined) {
+                try {
+                    updates.syncLinks = parseSyncLinks(body.syncLinks);
+                } catch (err) {
+                    return handleAPIError(res, badRequest(err instanceof Error ? err.message : 'Invalid syncLinks'));
+                }
+            }
 
             // Handle parentId reparenting when hierarchy is enabled
             if ('parentId' in body) {

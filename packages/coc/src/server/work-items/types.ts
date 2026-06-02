@@ -92,6 +92,69 @@ export const ALLOWED_CHILD_TYPES: Record<WorkItemType, readonly WorkItemType[]> 
 };
 
 // ============================================================================
+// External Sync Metadata
+// ============================================================================
+
+/** External work-item sync provider. Azure Boards is reserved for a future adapter. */
+export type WorkItemSyncProvider = 'github' | 'azure-boards';
+
+/** Remote issue identity stored with a work-item sync link. */
+export interface WorkItemSyncRemoteIdentity {
+    /** GitHub owner or future provider account/organization name. */
+    owner?: string;
+    /** GitHub repository name or future provider repository identity. */
+    repo?: string;
+    /** Optional provider project identity for providers that need one. */
+    projectId?: string;
+    /** Provider-native issue/work-item ID. */
+    issueId?: string;
+    /** Provider-native issue number when available. */
+    issueNumber?: number;
+    /** Browser URL for the remote issue/work item. */
+    issueUrl?: string;
+}
+
+/** Parent reference captured for hierarchy reconstruction during sync. */
+export interface WorkItemSyncParentReference {
+    /** CoC parent work item ID when known. */
+    workItemId?: string;
+    /** Remote parent issue/work-item ID when known. */
+    issueId?: string;
+    /** Remote parent issue number when available. */
+    issueNumber?: number;
+    /** Browser URL for the remote parent. */
+    issueUrl?: string;
+    /** Remote parent owner when it differs from the child remote. */
+    owner?: string;
+    /** Remote parent repo when it differs from the child remote. */
+    repo?: string;
+}
+
+/** Per-item external sync link. Credentials and tokens must never be stored here. */
+export interface WorkItemSyncLink {
+    provider: WorkItemSyncProvider;
+    remote: WorkItemSyncRemoteIdentity;
+    /** Provider revision, etag, node id, or equivalent opaque version. */
+    remoteRevision?: string;
+    /** Provider updated-at timestamp for conflict detection. */
+    remoteUpdatedAt?: string;
+    /** Last successful sync timestamp. */
+    lastSyncedAt?: string;
+    /** Last successful local/remote field fingerprint. */
+    lastSyncedFingerprint?: string;
+    /** True when local and/or remote fields changed since the last sync. */
+    dirty?: boolean;
+    /** True when sync preview detected incompatible local and remote changes. */
+    conflict?: boolean;
+    /** Field names known to have changed since the last sync. */
+    dirtyFields?: string[];
+    /** Field names currently requiring explicit conflict resolution. */
+    conflictFields?: string[];
+    /** Parent reference used when native provider hierarchy is unavailable. */
+    parent?: WorkItemSyncParentReference;
+}
+
+// ============================================================================
 // Plan Types
 // ============================================================================
 
@@ -222,6 +285,8 @@ export interface WorkItem {
     type?: WorkItemType;
     /** Parent work item ID (hierarchy). Only set when hierarchy is enabled. */
     parentId?: string;
+    /** External provider sync metadata. Empty or absent means the item is unlinked. */
+    syncLinks?: WorkItemSyncLink[];
     /** ISO timestamp when the work item was created. */
     createdAt: string;
     /** ISO timestamp of last modification. */
@@ -315,6 +380,8 @@ export interface WorkItemIndexEntry {
     type?: WorkItemType;
     /** Parent work item ID (hierarchy). Only set when hierarchy is enabled. */
     parentId?: string;
+    /** External provider sync metadata. Empty or absent means the item is unlinked. */
+    syncLinks?: WorkItemSyncLink[];
     source: WorkItemSource;
     priority?: WorkItemPriority;
     planVersion?: number;
@@ -456,6 +523,7 @@ export function toIndexEntry(item: WorkItem): WorkItemIndexEntry {
         status: item.status,
         type: item.type,
         parentId: item.parentId,
+        syncLinks: item.syncLinks,
         source: item.source,
         priority: item.priority,
         planVersion: item.plan?.version,

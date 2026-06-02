@@ -252,6 +252,8 @@ See [mcp-settings.md](mcp-settings.md).
 | DELETE | `/api/workspaces/:id/work-items/:itemId` | Delete work item |
 | POST | `/api/workspaces/:id/work-items/:itemId/execute` | Enqueue a work-item implementation run. Body accepts optional `skillNames`, `provider`, `model`, and `reasoningEffort` overrides. |
 
+Work item create/update payloads may include `syncLinks`, an allow-listed array of external provider metadata for manual hierarchy sync. Each link stores provider identity (`github` now, `azure-boards` reserved), remote issue identity, revision/updated timestamps, last-sync fingerprint/timestamp, dirty/conflict indicators, and parent reference data. Token, credential, secret, and arbitrary runtime-state fields are rejected.
+
 ### AI Authoring (gated by `workItems.aiAuthoring` flag, default `false`)
 
 Draft generation is ephemeral — no data is persisted until the caller explicitly applies it via the standard create/update/plan endpoints.
