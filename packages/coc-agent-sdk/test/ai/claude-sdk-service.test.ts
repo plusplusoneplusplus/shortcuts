@@ -283,6 +283,65 @@ describe('ClaudeSDKService.listModels', () => {
         expect(child.kill).toHaveBeenCalledWith('SIGTERM');
     });
 
+    it('maps initialize models when the CLI nests request_id inside response', async () => {
+        // Regression: the real Claude CLI returns the init reply with `request_id`
+        // and `subtype` nested inside `response`, not at the top level.
+        const child = mockClaudeCliSpawn();
+        const modelsPromise = svc.listModels();
+        await waitForClaudeCliSpawn(child);
+
+        child.writeStdoutLine(JSON.stringify({
+            type: 'control_response',
+            response: {
+                subtype: 'success',
+                request_id: 'init-1',
+                response: {
+                    models: [
+                        { value: 'default', displayName: 'Default (recommended)' },
+                        { value: 'opus', displayName: 'Opus' },
+                        { value: 'haiku', displayName: 'Haiku' },
+                    ],
+                },
+            },
+        }));
+
+        const models = await modelsPromise;
+
+        expect(models).toEqual([
+            { id: 'default', name: 'Default (recommended)' },
+            { id: 'opus', name: 'Opus' },
+            { id: 'haiku', name: 'Haiku' },
+        ]);
+        expect(models).not.toContainEqual({ id: 'claude-provider-default', name: 'Claude Provider Default' });
+        expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+    });
+
+    it('ignores control responses whose nested request_id does not match init-1', async () => {
+        const child = mockClaudeCliSpawn();
+        const modelsPromise = svc.listModels();
+        await waitForClaudeCliSpawn(child);
+
+        // Nested request_id for a different request must not be treated as init-1.
+        child.writeStdoutLine(JSON.stringify({
+            type: 'control_response',
+            response: {
+                request_id: 'other-request',
+                response: { models: [{ value: 'ignored', displayName: 'Ignored' }] },
+            },
+        }));
+        child.writeStdoutLine(JSON.stringify({
+            type: 'control_response',
+            response: {
+                request_id: 'init-1',
+                response: { models: [{ value: 'opus', displayName: 'Opus' }] },
+            },
+        }));
+
+        await expect(modelsPromise).resolves.toEqual([
+            { id: 'opus', name: 'Opus' },
+        ]);
+    });
+
     it('ignores malformed stdout until the matching initialize response arrives', async () => {
         const child = mockClaudeCliSpawn();
         const modelsPromise = svc.listModels();
@@ -861,6 +920,45 @@ describe('ClaudeSDKService.sendMessage', () => {
         expect(queryFn).toHaveBeenLastCalledWith(
             expect.objectContaining({ options: expect.objectContaining({ model: 'claude-opus-4-6' }) }),
         );
+    });
+
+    it('forwards each supported reasoning effort as the query effort option', async () => {
+        for (const effort of ['low', 'medium', 'high', 'xhigh'] as const) {
+            queryFn.mockReset();
+            queryFn.mockReturnValue(makeMessages([{ type: 'result', subtype: 'success' }]));
+            await svc.sendMessage({ prompt: 'test', reasoningEffort: effort });
+            expect(queryFn).toHaveBeenLastCalledWith(
+                expect.objectContaining({ options: expect.objectContaining({ effort }) }),
+            );
+        }
+    });
+
+    it('normalizes reasoning effort casing/whitespace before forwarding', async () => {
+        queryFn.mockReturnValue(makeMessages([{ type: 'result', subtype: 'success' }]));
+
+        await svc.sendMessage({ prompt: 'test', reasoningEffort: '  XHigh ' as never });
+        expect(queryFn).toHaveBeenLastCalledWith(
+            expect.objectContaining({ options: expect.objectContaining({ effort: 'xhigh' }) }),
+        );
+    });
+
+    it('omits the effort option when no reasoning effort is requested', async () => {
+        queryFn.mockReturnValue(makeMessages([{ type: 'result', subtype: 'success' }]));
+
+        await svc.sendMessage({ prompt: 'test' });
+        const callOptions = queryFn.mock.calls[0][0].options;
+        expect(callOptions.effort).toBeUndefined();
+        expect('effort' in callOptions).toBe(false);
+    });
+
+    it('drops unsupported reasoning efforts (including max) instead of forwarding them', async () => {
+        for (const effort of ['max', 'ultra', '']) {
+            queryFn.mockReset();
+            queryFn.mockReturnValue(makeMessages([{ type: 'result', subtype: 'success' }]));
+            await svc.sendMessage({ prompt: 'test', reasoningEffort: effort as never });
+            const callOptions = queryFn.mock.calls[0][0].options;
+            expect(callOptions.effort).toBeUndefined();
+        }
     });
 
     it('captures rate_limit_event messages for quota reporting', async () => {
