@@ -611,6 +611,7 @@ export class CodexSDKService implements ISDKService {
         try {
             // Resolve the client for this request. With CoC LLM tools present this
             // builds a fresh client carrying the bridge's mcp_servers config.
+            const effectiveModel = this.normalizeCodexModel(options.model);
             const { client: sdk, cleanup } = await this.resolveRequestClient(options);
             mcpCleanup = cleanup;
 
@@ -678,11 +679,12 @@ export class CodexSDKService implements ISDKService {
                 response: chunks.join(''),
                 sessionId: threadId,
                 ...(tokenUsage ? { tokenUsage } : {}),
+                effectiveModel,
                 ...(toolCalls.size > 0 ? { toolCalls: Array.from(toolCalls.values()) } : {}),
             } as IInvocationResult;
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            return { success: false, error: message, sessionId: options.sessionId ?? threadId };
+            return { success: false, error: message, sessionId: options.sessionId ?? threadId, effectiveModel: this.normalizeCodexModel(options.model) };
         } finally {
             signalCleanup?.();
             mcpCleanup();

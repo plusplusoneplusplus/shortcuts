@@ -94,6 +94,21 @@ describe('RequestRunner.send() — non-streaming path', () => {
         expect(result.response).toBe('hello');
     });
 
+    it('returns the requested model as the effective Copilot model', async () => {
+        const mockSession = createMockSession({ sendAndWaitResponse: { data: { content: 'hello' } } });
+        const mockClient = {
+            createSession: vi.fn().mockResolvedValue(mockSession),
+            resumeSession: vi.fn(),
+            stop: vi.fn().mockResolvedValue(undefined),
+        };
+        const { runner } = makeRunner({ createClient: vi.fn().mockResolvedValue(mockClient) });
+
+        const result = await runner.send({ prompt: 'hi', model: 'claude-sonnet-4.6', timeoutMs: 5000, loadDefaultMcpConfig: false });
+
+        expect(result.success).toBe(true);
+        expect(result.effectiveModel).toBe('claude-sonnet-4.6');
+    });
+
     it('invokes onSessionCreated with the session ID', async () => {
         const mockSession = createMockSession({ sessionId: 'my-session' });
         const mockClient = { createSession: vi.fn().mockResolvedValue(mockSession), stop: vi.fn().mockResolvedValue(undefined) };

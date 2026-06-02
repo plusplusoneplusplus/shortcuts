@@ -105,8 +105,11 @@ export {
     modelMetadataStore,
     resolveReasoningEffort,
     resolveReasoningSelection,
+    resolveModelForProvider,
     ResolvedReasoningSelection,
     ResolveReasoningEffortOptions,
+    ProviderModelResolution,
+    SupportedProvider,
     ModelInfo,
     // MCP Config Loader
     MCPConfigFile,

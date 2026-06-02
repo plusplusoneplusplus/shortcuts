@@ -741,6 +741,8 @@ export function isPermissionApproved(result: { kind: string }): boolean {
 export interface SDKInvocationResult extends AIInvocationResult {
     /** Session ID used for this request (if session was created) */
     sessionId?: string;
+    /** Model that the provider actually used. Omitted means provider default. */
+    effectiveModel?: string;
     /** Raw SDK response data */
     rawResponse?: unknown;
     /** Aggregated token usage data (undefined when no usage events were received) */

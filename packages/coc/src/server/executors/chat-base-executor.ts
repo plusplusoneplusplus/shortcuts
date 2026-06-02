@@ -37,6 +37,7 @@ import {
     LogCategory,
     mergeConsecutiveContentItems,
     modelMetadataStore,
+    resolveModelForProvider,
     resolveReasoningSelection,
     rewriteLargePrompt,
     toForwardSlashes,
@@ -159,6 +160,8 @@ export interface ChatModeExecutionResult {
     pendingSuggestions?: string[];
     /** Token consumption data returned by the SDK, if available. */
     tokenUsage?: TokenUsage;
+    /** Model that the provider actually used. Omitted means provider default. */
+    effectiveModel?: string;
 }
 
 /** Mode-specific AI call parameters supplied by each concrete executor. */
@@ -535,6 +538,13 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             // the server-level default provider when the task does not override it.
             const taskProvider: ChatProvider = payload.provider ?? this.provider;
             const effectiveAiService: ISDKService = this.getAiServiceForProvider(taskProvider);
+            const providerModel = resolveModelForProvider(taskProvider, task.config.model);
+            if (providerModel.coerced) {
+                getLogger().warn(
+                    LogCategory.AI,
+                    `[ChatModeExecutor] Dropping model '${providerModel.requestedModel}' for provider '${taskProvider}'; using provider default.`,
+                );
+            }
 
             const availability = await effectiveAiService.isAvailable();
             if (!availability.available) {
@@ -563,13 +573,21 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             assertNoAskUserConflict({ tools: sendTools });
 
             // Resolve per-repo default model when no explicit model is set on the task.
-            let effectiveModel = task.config.model;
+            let effectiveModel = providerModel.model;
             if (!effectiveModel && this.dataDir && payload.workspaceId) {
                 const chatMode = normalizeChatModeOrDefault(payload.mode);
                 const defaultModelMode = chatMode === 'autopilot' || chatMode === 'ralph'
                     ? 'task' as const
                     : 'ask' as const;
-                effectiveModel = resolveDefaultModel(this.dataDir, payload.workspaceId, defaultModelMode);
+                const defaultModel = resolveDefaultModel(this.dataDir, payload.workspaceId, defaultModelMode);
+                const resolvedDefaultModel = resolveModelForProvider(taskProvider, defaultModel);
+                if (resolvedDefaultModel.coerced) {
+                    getLogger().warn(
+                        LogCategory.AI,
+                        `[ChatModeExecutor] Dropping default model '${resolvedDefaultModel.requestedModel}' for provider '${taskProvider}'; using provider default.`,
+                    );
+                }
+                effectiveModel = resolvedDefaultModel.model;
             }
 
             // Resolve reasoning effort:
@@ -596,7 +614,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             const sendOptions = {
                 prompt: effectivePrompt,
                 mode: agentMode,
-                model: reasoningSelection.modelId,
+                ...(reasoningSelection.modelId ? { model: reasoningSelection.modelId } : {}),
                 ...(reasoningSelection.reasoningEffort ? { reasoningEffort: reasoningSelection.reasoningEffort } : {}),
                 infiniteSessions: { enabled: true } as const,
                 workingDirectory,
@@ -696,6 +714,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 timeline: finalTimeline,
                 pendingSuggestions,
                 tokenUsage: result.tokenUsage,
+                effectiveModel: result.effectiveModel ?? reasoningSelection.modelId,
             };
         } finally {
             if (imageTempDir) { cleanupTempDir(imageTempDir); }

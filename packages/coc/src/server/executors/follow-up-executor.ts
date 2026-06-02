@@ -30,6 +30,7 @@ import {
     getLogger,
     LogCategory,
     mergeConsecutiveContentItems,
+    resolveModelForProvider,
     resolveReasoningSelection,
 } from '@plusplusoneplusplus/forge';
 import {
@@ -155,13 +156,22 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             currentMode = 'ask';
         }
 
+        const processModel = typeof process.metadata?.model === 'string' ? process.metadata.model : undefined;
+        const providerModel = resolveModelForProvider(sessionProvider, model ?? processModel);
+        if (providerModel.coerced) {
+            logger.warn(
+                LogCategory.AI,
+                `[FollowUp] Dropping model '${providerModel.requestedModel}' for process ${processId} because provider '${sessionProvider}' does not support it; using provider default.`,
+            );
+        }
+
         const metadataUpdates: Record<string, unknown> = {};
         if (mode && mode !== previousMode) {
             metadataUpdates.previousMode = previousMode;
             metadataUpdates.mode = currentMode;
         }
-        if (model && model !== process.metadata?.model) {
-            metadataUpdates.model = model;
+        if ((model || processModel) && providerModel.model !== process.metadata?.model) {
+            metadataUpdates.model = providerModel.model;
         }
         if (Object.keys(metadataUpdates).length > 0) {
             await this.store.updateProcess(processId, {
@@ -292,12 +302,19 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 : systemMessage;
 
             const resolvedDeliveryMode = (deliveryMode === 'immediate' ? 'immediate' : 'enqueue') as DeliveryMode;
-            const processModel = typeof process.metadata?.model === 'string' ? process.metadata.model : undefined;
-            let reasoningModel = model ?? processModel;
+            let reasoningModel = providerModel.model;
             // Resolve per-repo default model when no explicit or process model is set.
             if (!reasoningModel && this.dataDir && wsId) {
                 const { resolveDefaultModel } = await import('../preferences-handler');
-                reasoningModel = resolveDefaultModel(this.dataDir, wsId, 'followUp');
+                const defaultModel = resolveDefaultModel(this.dataDir, wsId, 'followUp');
+                const resolvedDefaultModel = resolveModelForProvider(sessionProvider, defaultModel);
+                if (resolvedDefaultModel.coerced) {
+                    logger.warn(
+                        LogCategory.AI,
+                        `[FollowUp] Dropping default model '${resolvedDefaultModel.requestedModel}' for provider '${sessionProvider}'; using provider default.`,
+                    );
+                }
+                reasoningModel = resolvedDefaultModel.model;
             }
             // Resolve reasoning effort:
             //   per-turn override (from EffortPillSelector)
@@ -394,6 +411,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     timeline: followUpTimeline,
                     suggestions: pendingSuggestions,
                     tokenUsage: result.tokenUsage,
+                    ...(result.effectiveModel ? { model: result.effectiveModel } : {}),
                     ...(turnSource ? { turnSource } : {}),
                 }),
                 {
@@ -423,6 +441,11 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                             status: 'completed' as const,
                             endTime: new Date(),
                             result: result.response || undefined,
+                            metadata: {
+                                ...(current.metadata ?? {}),
+                                type: current.metadata?.type ?? 'chat',
+                                model: result.effectiveModel,
+                            },
                             ...(tokenLimit !== undefined ? { tokenLimit } : {}),
                             ...(currentTokens !== undefined ? { currentTokens } : {}),
                             ...(systemTokens !== undefined ? { systemTokens } : {}),

@@ -149,6 +149,22 @@ describe('ChatBaseExecutor provider routing', () => {
 
         expect(resolveAiServiceForProvider).toHaveBeenCalledWith('claude');
     });
+
+    it('drops cross-provider model before sending to Codex', async () => {
+        const resolveAiServiceForProvider = vi.fn().mockReturnValue(sdkMocks.service as any);
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            provider: 'copilot',
+            resolveAiServiceForProvider,
+        }));
+        const task = makeChatTask('ask', 'task-codex-model');
+        task.config = { model: 'claude-opus-4.8' } as any;
+        task.payload = { ...(task.payload as any), provider: 'codex', workspaceId: 'ws-abc' } as any;
+
+        await executor.execute(task, 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call).not.toHaveProperty('model');
+    });
 });
 
 // ============================================================================

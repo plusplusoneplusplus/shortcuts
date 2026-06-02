@@ -188,8 +188,11 @@ export {
     modelMetadataStore,
     resolveReasoningEffort,
     resolveReasoningSelection,
+    resolveModelForProvider,
     ResolvedReasoningSelection,
     ResolveReasoningEffortOptions,
+    ProviderModelResolution,
+    SupportedProvider,
     ModelInfo,
     // SDK types
     TokenUsage,

@@ -209,6 +209,25 @@ describe('ProcessLifecycleRunner — initial user turn mode/model stamping', () 
         expect(initialTurn).not.toHaveProperty('mode');
     });
 
+    it('does not stamp a cross-provider model onto a Codex initial user turn or metadata', async () => {
+        const task = makeTask({
+            config: { model: 'claude-opus-4.8' } as any,
+            payload: {
+                kind: 'chat',
+                prompt: 'Hello codex',
+                workspaceId: 'ws-abc',
+                provider: 'codex',
+            } as any,
+        });
+
+        await runner.run(task, makeOpts());
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        const initialTurn = proc?.conversationTurns?.[0];
+        expect(initialTurn).not.toHaveProperty('model');
+        expect(proc?.metadata?.model).toBeUndefined();
+    });
+
     it('leaves both mode and model absent when neither is provided', async () => {
         const task = makeTask();
 
@@ -1338,6 +1357,31 @@ describe('ProcessLifecycleRunner — provider attribution', () => {
 
         const proc = await store.getProcess(`queue_${task.id}`);
         expect(proc?.metadata?.provider).toBe('copilot');
+    });
+
+    it('records the SDK effective model on assistant turn and metadata', async () => {
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'codex');
+        const task = makeTask({
+            config: { model: 'gpt-5.5' } as any,
+            payload: {
+                kind: 'chat',
+                prompt: 'Use codex',
+                workspaceId: 'ws-abc',
+                provider: 'codex',
+            } as any,
+        });
+
+        await runner.run(task, makeOpts({
+            executeByTypeFn: vi.fn().mockResolvedValue({
+                response: 'done',
+                effectiveModel: 'gpt-5.4-mini',
+            }),
+        }));
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        const assistantTurn = proc?.conversationTurns?.find(turn => turn.role === 'assistant');
+        expect(assistantTurn?.model).toBe('gpt-5.4-mini');
+        expect(proc?.metadata?.model).toBe('gpt-5.4-mini');
     });
 });
 

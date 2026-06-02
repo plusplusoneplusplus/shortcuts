@@ -203,6 +203,26 @@ describe('validateAndParseTask – payload.model promotion to config.model', () 
         expect(result.valid).toBe(true);
         expect(result.input!.config.model).toBe('claude-sonnet-4.6');
     });
+
+    it('drops a Claude payload model for a Codex chat task', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello', provider: 'codex', model: 'claude-opus-4.8' },
+        });
+
+        expect(result.valid).toBe(true);
+        expect(result.input!.config.model).toBeUndefined();
+    });
+
+    it('keeps a GPT payload model for a Codex chat task', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello', provider: 'codex', model: 'gpt-5.5' },
+        });
+
+        expect(result.valid).toBe(true);
+        expect(result.input!.config.model).toBe('gpt-5.5');
+    });
 });
 
 // ============================================================================

@@ -16,6 +16,7 @@ import type {
     PauseMarker,
     StoredEffortTiersMap,
 } from '@plusplusoneplusplus/forge';
+import { getLogger, LogCategory, resolveModelForProvider } from '@plusplusoneplusplus/forge';
 import { truncateDisplayName } from '../shared/queue-utils';
 import { TaskDefs, VALID_ENQUEUE_TYPES, VISIBLE_TASK_TYPE_LABELS, VALID_CHAT_PROVIDERS, normalizeChatMode } from '../tasks/task-types';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
@@ -357,12 +358,24 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         };
     }
 
+    const taskProvider = taskSpec.type === 'chat' && typeof payload.provider === 'string' && VALID_CHAT_PROVIDERS.has(payload.provider)
+        ? payload.provider
+        : 'copilot';
+    const rawModel = taskSpec.config?.model ?? (typeof payload.model === 'string' ? payload.model : undefined);
+    const resolvedModel = resolveModelForProvider(taskProvider, rawModel);
+    if (resolvedModel.coerced) {
+        getLogger().warn(
+            LogCategory.AI,
+            `[Queue] Dropping model '${resolvedModel.requestedModel}' because provider '${taskProvider}' does not support it; using provider default.`,
+        );
+    }
+
     const input: CreateTaskInput = {
         type: taskSpec.type,
         priority,
         payload,
         config: {
-            model: taskSpec.config?.model ?? (typeof payload.model === 'string' ? payload.model : undefined),
+            model: resolvedModel.model,
             timeoutMs: taskSpec.config?.timeoutMs,
             retryOnFailure: taskSpec.config?.retryOnFailure ?? false,
             retryAttempts: taskSpec.config?.retryAttempts,

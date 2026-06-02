@@ -3,7 +3,7 @@ import { isChatPayload, TaskDefs, getTaskDef, normalizeChatMode } from '../tasks
 import { applyFollowUpToTask } from '../shared/queue-utils';
 import { processToQueuedTask } from '../shared/process-history-mapper';
 import type { Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
-import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, sdkServiceRegistry, SDK_PROVIDER_COPILOT, getLogger, LogCategory, normalizeExecutionPath, resolveWorkspaceExecutionContext, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
+import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, sdkServiceRegistry, SDK_PROVIDER_COPILOT, getLogger, LogCategory, normalizeExecutionPath, resolveModelForProvider, resolveWorkspaceExecutionContext, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import { BaseExecutor } from '../executors/base-executor';
 import { resolveSkillConfig } from '../executors/skill-config-resolver';
 import { TitleGenerationService } from '../executors/title-generator';
@@ -577,6 +577,16 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         if (!proc?.pendingMessages?.length) return;
         if (!this.queueManager) return;
         const [nextMsg, ...rest] = proc.pendingMessages;
+        const sessionProvider = proc.metadata?.provider === 'codex' || proc.metadata?.provider === 'claude' || proc.metadata?.provider === 'copilot'
+            ? proc.metadata.provider
+            : 'copilot';
+        const resolvedModel = resolveModelForProvider(sessionProvider, nextMsg.model);
+        if (resolvedModel.coerced) {
+            getLogger().warn(
+                LogCategory.AI,
+                `[QueueExecutor] Dropping buffered model '${resolvedModel.requestedModel}' for process ${processId} because provider '${sessionProvider}' does not support it; using provider default.`,
+            );
+        }
 
         // Append the deferred user turn at the correct position (after the
         // assistant response that just completed) before enqueuing the follow-up.
@@ -591,7 +601,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 timeline: [],
                 ...(nextMsg.images ? { images: nextMsg.images } : {}),
                 ...(nextMsg.pasteExternalized ? { pasteExternalized: true } : {}),
-                ...(nextMsg.model ? { model: nextMsg.model } : {}),
+                ...(resolvedModel.model ? { model: resolvedModel.model } : {}),
                 ...(normalizeChatMode(nextMsg.mode) ? { mode: normalizeChatMode(nextMsg.mode) } : {}),
             }),
         );
@@ -610,7 +620,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 processId,
                 prompt: nextMsg.content,
                 ...(normalizeChatMode(nextMsg.mode) ? { mode: normalizeChatMode(nextMsg.mode) } : {}),
-                ...(nextMsg.model ? { model: nextMsg.model } : {}),
+                ...(resolvedModel.model ? { model: resolvedModel.model } : {}),
                 ...(pendingEffort ? { reasoningEffort: pendingEffort } : {}),
                 ...(nextMsg.attachments ? { attachments: nextMsg.attachments } : {}),
                 ...(nextMsg.imageTempDir ? { imageTempDir: nextMsg.imageTempDir } : {}),

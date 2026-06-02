@@ -14,7 +14,7 @@ import type {
     ProcessStore, ProcessFilter, AIProcess, AIProcessStatus,
     CreateTaskInput, Attachment, QueuedTask, SearchFilter,
 } from '@plusplusoneplusplus/forge';
-import { deserializeProcess, PASTE_THRESHOLD, isQueueProcessId, toTaskId, toQueueProcessId } from '@plusplusoneplusplus/forge';
+import { deserializeProcess, getLogger, LogCategory, PASTE_THRESHOLD, isQueueProcessId, resolveModelForProvider, toTaskId, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import {
     sendJSON, parseBody, parseQueryParams, parseIncludeFields, stripExcludedFields,
@@ -28,6 +28,7 @@ import { parseBodyOrReject } from '../shared/handler-utils';
 import { truncateDisplayName } from '../shared/queue-utils';
 import { prependSelectedSkillsDirective } from '../executors/prompt-builder';
 import { normalizeChatMode } from '../tasks/task-types';
+import type { ChatProvider } from '../tasks/task-types';
 import type { ApiRouteContext } from './api-shared';
 import { createRoute, asString } from './route-utils';
 
@@ -593,8 +594,19 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             // Read optional client-provided optimistic ID for reconciliation
             const optimisticId: string | undefined = typeof body.optimisticId === 'string' ? body.optimisticId : undefined;
 
-            // Validate optional model override
-            const modelOverride: string | undefined = typeof body.model === 'string' && body.model.trim().length > 0 ? body.model.trim() : undefined;
+            // Validate optional model override against the conversation provider.
+            const rawModelOverride: string | undefined = typeof body.model === 'string' && body.model.trim().length > 0 ? body.model.trim() : undefined;
+            const sessionProvider: ChatProvider = proc.metadata?.provider === 'codex' || proc.metadata?.provider === 'claude' || proc.metadata?.provider === 'copilot'
+                ? proc.metadata.provider
+                : 'copilot';
+            const resolvedModelOverride = resolveModelForProvider(sessionProvider, rawModelOverride);
+            if (resolvedModelOverride.coerced) {
+                getLogger().warn(
+                    LogCategory.AI,
+                    `[Process] Dropping model '${resolvedModelOverride.requestedModel}' for process ${id} because provider '${sessionProvider}' does not support it; using provider default.`,
+                );
+            }
+            const modelOverride = resolvedModelOverride.model;
 
             // Validate optional per-turn reasoning-effort override. Accepted
             // values mirror the SDK contract: low | medium | high | xhigh.

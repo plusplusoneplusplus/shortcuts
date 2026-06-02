@@ -28,6 +28,7 @@ Location: `packages/coc-agent-sdk/src/`
 | `sdk-esm-loader.ts` | Dynamic ESM import helper (webpack-safe `new Function` indirection) |
 | `types.ts` | Shared types: `SendMessageOptions`, MCP configs, permissions, tools, token usage |
 | `model-registry.ts` | Single source of truth for supported AI models |
+| `provider-model-resolver.ts` | Provider-aware model override validation/coercion (`resolveModelForProvider`) |
 | `model-metadata-store.ts` | Runtime model metadata cache with SDK polling |
 | `model-reasoning.ts` | Metadata-aware model/reasoning resolver; variant IDs with `capabilities.family` sent as base model + reasoning effort |
 | `mcp-config-loader.ts` | Loads/merges MCP config from `~/.copilot/mcp-config.json`, workspace `.vscode/mcp.json`, and explicit request options |
@@ -133,6 +134,12 @@ If neither signal is available the result is `{ quotaSnapshots: {} }`.
 Claude session persistence uses the Claude Code SDK transcript session ID. New `sendMessage()` calls pass a generated UUID as `options.sessionId`, persist any `session_id` emitted by the SDK stream, and follow-up calls pass the stored ID as `options.resume` so Claude Code reloads the prior transcript. `forkSession()` delegates to the SDK's `forkSession` export and returns the forked session ID.
 
 Claude Code expects hyphenated model IDs for version aliases (for example, `claude-sonnet-4-6`). `ClaudeSDKService` normalizes CoC's shared dotted Claude registry IDs (`claude-sonnet-4.6`, `claude-haiku-4.5`, `claude-opus-4.6`) to that Claude Code form before passing `options.model` to the SDK. Non-Claude model IDs and `claude-provider-default` are omitted so Claude Code can use its configured default.
+
+## Provider-Aware Model Resolution
+
+`resolveModelForProvider(provider, requestedModel)` is the shared boundary helper for provider-bound chat flows. It keeps model overrides only when they are valid for the selected provider (`gpt-*` for Codex, Claude IDs/family aliases for Claude, Copilot-compatible IDs for Copilot). Provider-default aliases such as `provider-default`, `codex-default`, and `claude-provider-default` resolve to `undefined`, which means "let the provider choose its default". Invalid cross-provider overrides are coerced to `undefined` and the CoC server logs a warning before persisting turns or process metadata.
+
+All SDK `sendMessage()` implementations return `effectiveModel?: string` in `IInvocationResult` / `SDKInvocationResult`. CoC records that effective model on assistant turns and reconciles `metadata.model` to it; an omitted `effectiveModel` means the provider default was used. This prevents dashboard records from showing a stale selected model that the provider did not actually run.
 
 `ClaudeSDKService` forwards `SendMessageOptions.reasoningEffort` to the SDK query's `effort` option (`normalizeClaudeEffort`). CoC's `ReasoningEffort` (`low`/`medium`/`high`/`xhigh`) is a subset of the SDK's `EffortLevel`, so recognized values pass through case-insensitively; the SDK silently downgrades a level the selected model does not support. Unrecognized or absent values — including `max`, which CoC does not yet surface — omit `effort` so Claude's adaptive thinking decides.
 

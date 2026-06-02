@@ -177,6 +177,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const effortInitializedRef = useRef(false);
     /** Tracks first mount of the model-override effect so we don't re-derive on initial render. */
     const modelOverrideMountedRef = useRef(false);
+    const previousSessionProviderRef = useRef<string | null>(null);
 
     const { attachments, images, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, error: attachmentError, toPayload } = useFileAttachments();
     const textPaste = useTextPaste();
@@ -212,6 +213,17 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const modelCommand = useModelCommand(pickableModels);
     const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isLoopsEnabled())), [skills]);
     const slashCommands = useSlashCommands(augmentedSkills);
+
+    useEffect(() => {
+        if (previousSessionProviderRef.current === null) {
+            previousSessionProviderRef.current = sessionProvider;
+            return;
+        }
+        if (previousSessionProviderRef.current !== sessionProvider) {
+            previousSessionProviderRef.current = sessionProvider;
+            modelCommand.setModelOverride(null);
+        }
+    }, [sessionProvider, modelCommand.setModelOverride]);
 
     const loopsHook = useLoops(workspaceId, processId);
     const [loopPanelOpen, setLoopPanelOpen] = useState(false);

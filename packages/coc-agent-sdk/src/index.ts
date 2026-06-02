@@ -100,6 +100,15 @@ export {
 } from './sdk-service-registry';
 
 export {
+    resolveModelForProvider,
+} from './provider-model-resolver';
+
+export type {
+    ProviderModelResolution,
+    SupportedProvider,
+} from './provider-model-resolver';
+
+export {
     CodexSDKService,
     registerCodexSDKService,
     mapCodexRateLimitsToQuota,
