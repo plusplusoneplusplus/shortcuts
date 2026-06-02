@@ -71,6 +71,7 @@ export interface GitHubWorkItemIssueTransport {
     getIssue(repo: AvailableGitHubWorkItemSyncRepo, issueNumber: number): Promise<GitHubWorkItemIssue | undefined>;
     createIssue(repo: AvailableGitHubWorkItemSyncRepo, input: GitHubWorkItemIssueCreateInput): Promise<GitHubWorkItemIssue>;
     updateIssue(repo: AvailableGitHubWorkItemSyncRepo, issueNumber: number, input: GitHubWorkItemIssueUpdateInput): Promise<GitHubWorkItemIssue>;
+    setIssueParent?(repo: AvailableGitHubWorkItemSyncRepo, issueNumber: number, parent: WorkItemSyncParentReference): Promise<void>;
 }
 
 export interface CreateGitHubWorkItemSyncProviderOptions {
@@ -98,6 +99,16 @@ type ExecFileAsync = (
     args: string[],
     options: { encoding: 'utf8'; windowsHide: true; maxBuffer: number },
 ) => Promise<{ stdout: string; stderr: string }>;
+
+type RemoteParentSource = 'native' | 'metadata';
+
+interface RemoteParentResolution {
+    parent?: WorkItemSyncParentReference;
+    source?: RemoteParentSource;
+    parentItem?: WorkItem;
+    parentId?: string;
+    warnings: WorkItemSyncWarning[];
+}
 
 const execFileAsync = promisify(execFile) as ExecFileAsync;
 
@@ -403,7 +414,37 @@ function sameRemote(link: WorkItemSyncLink | undefined, repo: AvailableGitHubWor
     return false;
 }
 
-function fieldsForRemoteDraft(issue: GitHubWorkItemIssue, parsed: ParsedGitHubWorkItemIssue): WorkItemSyncFieldChanges {
+function remoteParentForIssue(issue: GitHubWorkItemIssue, parsed: ParsedGitHubWorkItemIssue): Pick<RemoteParentResolution, 'parent' | 'source'> {
+    if (issue.nativeParent) return { parent: issue.nativeParent, source: 'native' };
+    if (parsed.metadata?.parent) return { parent: parsed.metadata.parent, source: 'metadata' };
+    return {};
+}
+
+function parentReferenceComparable(parent: WorkItemSyncParentReference | undefined): Record<string, unknown> | undefined {
+    if (!parent) return undefined;
+    return {
+        workItemId: parent.workItemId,
+        issueId: parent.issueId,
+        issueNumber: parent.issueNumber,
+        issueUrl: parent.issueUrl,
+        owner: parent.owner,
+        repo: parent.repo,
+    };
+}
+
+function parentReferencesEqual(
+    left: WorkItemSyncParentReference | undefined,
+    right: WorkItemSyncParentReference | undefined,
+): boolean {
+    return JSON.stringify(parentReferenceComparable(left)) === JSON.stringify(parentReferenceComparable(right));
+}
+
+function fieldsForRemoteDraft(
+    issue: GitHubWorkItemIssue,
+    parsed: ParsedGitHubWorkItemIssue,
+    parent: WorkItemSyncParentReference | undefined,
+    parentId: string | undefined,
+): WorkItemSyncFieldChanges {
     return [
         { field: 'title', remoteValue: issue.title, proposedValue: issue.title },
         { field: 'description', remoteValue: parsed.bodyWithoutMetadata, proposedValue: parsed.bodyWithoutMetadata },
@@ -411,11 +452,17 @@ function fieldsForRemoteDraft(issue: GitHubWorkItemIssue, parsed: ParsedGitHubWo
         { field: 'status', remoteValue: parsed.status, proposedValue: parsed.status ?? (issue.state === 'closed' ? 'done' : 'created') },
         { field: 'priority', remoteValue: parsed.priority, proposedValue: parsed.priority ?? 'normal' },
         { field: 'tags', remoteValue: parsed.tags, proposedValue: parsed.tags },
-        { field: 'parentId', remoteValue: parsed.metadata?.parent, proposedValue: parsed.metadata?.parent?.workItemId },
+        { field: 'parentId', remoteValue: parent, proposedValue: parentId },
     ];
 }
 
-function changedLocalFields(item: WorkItem, issue: GitHubWorkItemIssue, parsed: ParsedGitHubWorkItemIssue): WorkItemSyncFieldChanges {
+function changedLocalFields(
+    item: WorkItem,
+    issue: GitHubWorkItemIssue,
+    parsed: ParsedGitHubWorkItemIssue,
+    parent: WorkItemSyncParentReference | undefined,
+    parentId: string | undefined,
+): WorkItemSyncFieldChanges {
     const fields: WorkItemSyncFieldChanges = [];
     const remoteType = parsed.type ?? 'work-item';
     const remoteStatus = parsed.status ?? (issue.state === 'closed' ? 'done' : 'created');
@@ -426,10 +473,16 @@ function changedLocalFields(item: WorkItem, issue: GitHubWorkItemIssue, parsed: 
     if (item.status !== remoteStatus) fields.push({ field: 'status', cocValue: item.status, remoteValue: remoteStatus, proposedValue: remoteStatus });
     if ((item.priority ?? 'normal') !== remotePriority) fields.push({ field: 'priority', cocValue: item.priority ?? 'normal', remoteValue: remotePriority, proposedValue: remotePriority });
     if (JSON.stringify(item.tags ?? []) !== JSON.stringify(parsed.tags)) fields.push({ field: 'tags', cocValue: item.tags ?? [], remoteValue: parsed.tags, proposedValue: parsed.tags });
+    if ((item.parentId ?? undefined) !== parentId) fields.push({ field: 'parentId', cocValue: item.parentId, remoteValue: parent, proposedValue: parentId });
     return fields;
 }
 
-function changedRemoteFields(item: WorkItem, issue: GitHubWorkItemIssue, parsed: ParsedGitHubWorkItemIssue): WorkItemSyncFieldChanges {
+function changedRemoteFields(
+    item: WorkItem,
+    issue: GitHubWorkItemIssue,
+    parsed: ParsedGitHubWorkItemIssue,
+    parent: WorkItemSyncParentReference | undefined,
+): WorkItemSyncFieldChanges {
     const fields: WorkItemSyncFieldChanges = [];
     const localType = getEffectiveType(item.type);
     if (issue.title !== item.title) fields.push({ field: 'title', cocValue: item.title, remoteValue: issue.title, proposedValue: item.title });
@@ -437,6 +490,7 @@ function changedRemoteFields(item: WorkItem, issue: GitHubWorkItemIssue, parsed:
     if (parsed.status !== item.status) fields.push({ field: 'status', cocValue: item.status, remoteValue: parsed.status, proposedValue: item.status });
     if ((parsed.priority ?? 'normal') !== (item.priority ?? 'normal')) fields.push({ field: 'priority', cocValue: item.priority ?? 'normal', remoteValue: parsed.priority ?? 'normal', proposedValue: item.priority ?? 'normal' });
     if (JSON.stringify(parsed.tags) !== JSON.stringify(item.tags ?? [])) fields.push({ field: 'tags', cocValue: item.tags ?? [], remoteValue: parsed.tags, proposedValue: item.tags ?? [] });
+    if (!parentReferencesEqual(parsed.metadata?.parent, parent)) fields.push({ field: 'parentId', cocValue: item.parentId, remoteValue: parsed.metadata?.parent, proposedValue: parent });
     return fields;
 }
 
@@ -445,8 +499,10 @@ function conflictForItem(
     issue: GitHubWorkItemIssue,
     parsed: ParsedGitHubWorkItemIssue,
     remote: WorkItemSyncRemoteIdentity,
+    parent: WorkItemSyncParentReference | undefined,
+    parentId: string | undefined,
 ): WorkItemSyncConflict | undefined {
-    const fields = changedLocalFields(item, issue, parsed);
+    const fields = changedLocalFields(item, issue, parsed, parent, parentId);
     if (fields.length === 0) return undefined;
     return {
         id: `conflict-${item.id}`,
@@ -554,29 +610,48 @@ function warningForUnknownLabels(issue: GitHubWorkItemIssue, parsed: ParsedGitHu
     }];
 }
 
-function parentImportWarnings(issue: GitHubWorkItemIssue, parsed: ParsedGitHubWorkItemIssue, parentItem: WorkItem | undefined, repo: AvailableGitHubWorkItemSyncRepo): WorkItemSyncWarning[] {
+function parentImportWarnings(
+    issue: GitHubWorkItemIssue,
+    parsed: ParsedGitHubWorkItemIssue,
+    parent: WorkItemSyncParentReference | undefined,
+    parentSource: RemoteParentSource | undefined,
+    parentItem: WorkItem | undefined,
+    repo: AvailableGitHubWorkItemSyncRepo,
+    wouldCycle: boolean,
+): WorkItemSyncWarning[] {
     const type = parsed.type ?? 'work-item';
     const warnings: WorkItemSyncWarning[] = [];
-    if (!parsed.metadata?.parent && ALLOWED_PARENT_TYPES[type].length > 0) {
+    if (!parent && ALLOWED_PARENT_TYPES[type].length > 0) {
         warnings.push({
             id: `missing-import-parent-${issue.number}`,
-            message: `GitHub issue #${issue.number} is a ${type} without parent metadata; it will preview as unparented.`,
+            message: `GitHub issue #${issue.number} is a ${type} without native parent or parent metadata; it will preview as unparented.`,
             remote: remoteIdentity(repo, issue),
             severity: 'warning',
         });
     }
-    if (parsed.metadata?.parent && !parentItem) {
+    if (parent && !parentItem) {
+        const sourceDescription = parentSource === 'native' ? 'native GitHub parent' : 'parent metadata';
         warnings.push({
             id: `unresolved-import-parent-${issue.number}`,
-            message: `GitHub issue #${issue.number} references a parent that is not linked locally; it will preview as unparented.`,
+            message: `GitHub issue #${issue.number} references ${sourceDescription} that is not linked locally; it will preview as unparented.`,
             remote: remoteIdentity(repo, issue),
             severity: 'warning',
         });
     }
     if (parentItem && !isValidParentChildTypes(type, getEffectiveType(parentItem.type))) {
+        const sourceDescription = parentSource === 'native' ? 'native GitHub parent' : 'parent metadata';
         warnings.push({
             id: `invalid-import-parent-${issue.number}`,
-            message: `GitHub issue #${issue.number} has parent metadata that would violate the CoC hierarchy type rules.`,
+            message: `GitHub issue #${issue.number} has ${sourceDescription} that would violate the CoC hierarchy type rules.`,
+            remote: remoteIdentity(repo, issue),
+            workItemId: parentItem.id,
+            severity: 'warning',
+        });
+    }
+    if (parentItem && wouldCycle) {
+        warnings.push({
+            id: `cycle-import-parent-${issue.number}`,
+            message: `GitHub issue #${issue.number} references a parent that would create a CoC hierarchy cycle; it will preview as unparented.`,
             remote: remoteIdentity(repo, issue),
             workItemId: parentItem.id,
             severity: 'warning',
@@ -585,7 +660,7 @@ function parentImportWarnings(issue: GitHubWorkItemIssue, parsed: ParsedGitHubWo
     return warnings;
 }
 
-async function resolveMetadataParent(
+async function resolveParentReference(
     context: WorkItemSyncProviderContext,
     repo: AvailableGitHubWorkItemSyncRepo,
     parent: WorkItemSyncParentReference | undefined,
@@ -606,6 +681,31 @@ async function resolveMetadataParent(
         if (link) return context.workItemStore.getWorkItem(entry.id, context.workspaceId);
     }
     return undefined;
+}
+
+async function resolveRemoteParent(
+    context: WorkItemSyncProviderContext,
+    repo: AvailableGitHubWorkItemSyncRepo,
+    issue: GitHubWorkItemIssue,
+    parsed: ParsedGitHubWorkItemIssue,
+    childType: WorkItem['type'],
+    itemId?: string,
+): Promise<RemoteParentResolution> {
+    const remoteParent = remoteParentForIssue(issue, parsed);
+    const parentItem = await resolveParentReference(context, repo, remoteParent.parent);
+    const wouldCycle = Boolean(parentItem && itemId && await wouldCreateParentCycle(context, itemId, parentItem.id));
+    const parentId = parentItem
+        && isValidParentChildTypes(getEffectiveType(childType), getEffectiveType(parentItem.type))
+        && !wouldCycle
+        ? parentItem.id
+        : undefined;
+    return {
+        parent: remoteParent.parent,
+        source: remoteParent.source,
+        parentItem,
+        parentId,
+        warnings: parentImportWarnings(issue, parsed, remoteParent.parent, remoteParent.source, parentItem, repo, wouldCycle),
+    };
 }
 
 async function loadImportIssues(
@@ -765,20 +865,6 @@ async function wouldCreateParentCycle(context: WorkItemSyncProviderContext, item
     return false;
 }
 
-async function validMetadataParentId(
-    context: WorkItemSyncProviderContext,
-    repo: AvailableGitHubWorkItemSyncRepo,
-    parsed: ParsedGitHubWorkItemIssue,
-    childType: WorkItem['type'],
-    itemId?: string,
-): Promise<string | undefined> {
-    const parentItem = await resolveMetadataParent(context, repo, parsed.metadata?.parent);
-    if (!parentItem) return undefined;
-    if (!isValidParentChildTypes(getEffectiveType(childType), getEffectiveType(parentItem.type))) return undefined;
-    if (itemId && await wouldCreateParentCycle(context, itemId, parentItem.id)) return undefined;
-    return parentItem.id;
-}
-
 async function applyCreateLocalIssue(
     context: WorkItemSyncProviderApplyContext,
     repo: AvailableGitHubWorkItemSyncRepo,
@@ -790,7 +876,7 @@ async function applyCreateLocalIssue(
     const existing = desiredId ? await context.workItemStore.getWorkItem(desiredId, context.workspaceId) : undefined;
     const id = existing ? crypto.randomUUID() : desiredId ?? crypto.randomUUID();
     const type = parsed.type ?? 'work-item';
-    const parentId = await validMetadataParentId(context, repo, parsed, type, id);
+    const parentResolution = await resolveRemoteParent(context, repo, issue, parsed, type, id);
     const item: WorkItem = {
         id,
         repoId: context.workspaceId,
@@ -798,7 +884,7 @@ async function applyCreateLocalIssue(
         description: parsed.bodyWithoutMetadata,
         status: remoteStatus(issue, parsed),
         type,
-        parentId,
+        parentId: parentResolution.parentId,
         createdAt: syncedAt,
         updatedAt: syncedAt,
         source: 'manual',
@@ -811,7 +897,7 @@ async function applyCreateLocalIssue(
         issue,
         syncedAt,
         syncFingerprintForWorkItem(item),
-        parsed.metadata?.parent,
+        parentResolution.parent,
     );
     await context.workItemStore.addWorkItem(item);
     return item;
@@ -826,9 +912,7 @@ async function applyLocalIssueUpdate(
 ): Promise<WorkItem | undefined> {
     const parsed = parseGitHubWorkItemIssue(issue);
     const type = parsed.type ?? 'work-item';
-    const parentId = parsed.metadata?.parent
-        ? await validMetadataParentId(context, repo, parsed, type, item.id)
-        : item.parentId;
+    const parentResolution = await resolveRemoteParent(context, repo, issue, parsed, type, item.id);
     const nextItem: WorkItem = {
         ...item,
         title: issue.title,
@@ -837,7 +921,7 @@ async function applyLocalIssueUpdate(
         status: remoteStatus(issue, parsed),
         priority: remotePriority(parsed),
         tags: parsed.tags,
-        parentId,
+        parentId: parentResolution.parentId,
     };
     const syncLinks = upsertGithubSyncLink(
         nextItem,
@@ -845,7 +929,7 @@ async function applyLocalIssueUpdate(
         issue,
         syncedAt,
         syncFingerprintForWorkItem(nextItem),
-        parsed.metadata?.parent,
+        parentResolution.parent,
     );
     return context.workItemStore.updateWorkItem(item.id, {
         title: nextItem.title,
@@ -867,13 +951,14 @@ async function applyGithubLinkOnly(
     syncedAt: string,
 ): Promise<WorkItem | undefined> {
     const parsed = parseGitHubWorkItemIssue(issue);
+    const parentResolution = await resolveRemoteParent(context, repo, issue, parsed, getEffectiveType(item.type), item.id);
     const syncLinks = upsertGithubSyncLink(
         item,
         repo,
         issue,
         syncedAt,
-        syncFingerprintForIssue(issue, parsed, item.parentId),
-        parsed.metadata?.parent,
+        syncFingerprintForIssue(issue, parsed, parentResolution.parentId),
+        parentResolution.parent,
     );
     return context.workItemStore.updateWorkItem(item.id, { syncLinks });
 }
@@ -895,6 +980,9 @@ async function applyRemoteIssueCreate(
     });
     const completeInput = rowRemoteOperationInput(item, repo, created, parent, syncedAt);
     const updated = await transport.updateIssue(repo, created.number, completeInput);
+    if (parent && transport.setIssueParent) {
+        await transport.setIssueParent(repo, updated.number, parent);
+    }
     const updatedItem = await context.workItemStore.updateWorkItem(item.id, {
         syncLinks: upsertGithubSyncLink(item, repo, updated, syncedAt, syncFingerprintForWorkItem(item), parent),
     });
@@ -914,6 +1002,9 @@ async function applyRemoteIssueUpdate(
     const parent = await parentReferenceForItem(context, repo, item, localItems);
     const input = rowRemoteOperationInput(item, repo, issue, parent, syncedAt);
     const updated = await transport.updateIssue(repo, issue.number, input);
+    if (parent && transport.setIssueParent) {
+        await transport.setIssueParent(repo, updated.number, parent);
+    }
     const updatedItem = await context.workItemStore.updateWorkItem(item.id, {
         syncLinks: upsertGithubSyncLink(item, repo, updated, syncedAt, syncFingerprintForWorkItem(item), parent),
     });
@@ -939,9 +1030,16 @@ export function createGitHubWorkItemSyncProviderAdapter(options: CreateGitHubWor
         for (const issue of issues) {
             const parsed = parseGitHubWorkItemIssue(issue);
             response.warnings.push(...warningForUnknownLabels(issue, parsed, repo));
-            const parentItem = await resolveMetadataParent(context, repo, parsed.metadata?.parent);
-            response.warnings.push(...parentImportWarnings(issue, parsed, parentItem, repo));
             const local = await findLocalForIssue(context, repo, issue, parsed);
+            const parentResolution = await resolveRemoteParent(
+                context,
+                repo,
+                issue,
+                parsed,
+                parsed.type ?? getEffectiveType(local?.type),
+                local?.id,
+            );
+            response.warnings.push(...parentResolution.warnings);
             const remote = remoteIdentity(repo, issue);
 
             if (!local) {
@@ -952,12 +1050,12 @@ export function createGitHubWorkItemSyncProviderAdapter(options: CreateGitHubWor
                     remote,
                     itemType: parsed.type ?? 'work-item',
                     status: parsed.status ?? (issue.state === 'closed' ? 'done' : 'created'),
-                    fields: fieldsForRemoteDraft(issue, parsed),
+                    fields: fieldsForRemoteDraft(issue, parsed, parentResolution.parent, parentResolution.parentId),
                 });
                 continue;
             }
 
-            const fields = changedLocalFields(local, issue, parsed);
+            const fields = changedLocalFields(local, issue, parsed, parentResolution.parent, parentResolution.parentId);
             if (fields.length > 0) {
                 response.updates.push({
                     id: `update-local-${local.id}`,
@@ -997,6 +1095,7 @@ export function createGitHubWorkItemSyncProviderAdapter(options: CreateGitHubWor
 
     async function previewExport(context: WorkItemSyncProviderPreviewContext, repo: AvailableGitHubWorkItemSyncRepo, response: WorkItemSyncPreviewResponse): Promise<WorkItemSyncPreviewResponse> {
         const items = orderParentFirst(context.items);
+        const localItems = new Map(items.map(item => [item.id, item]));
         response.itemCount = items.length;
         response.warnings.push(...parentWarnings(items));
 
@@ -1039,6 +1138,7 @@ export function createGitHubWorkItemSyncProviderAdapter(options: CreateGitHubWor
             }
 
             const parsed = parseGitHubWorkItemIssue(issue);
+            const parent = await parentReferenceForItem(context, repo, item, localItems);
             const update = buildGitHubWorkItemIssueUpdate({
                 workItem: item,
                 remote: {
@@ -1050,8 +1150,9 @@ export function createGitHubWorkItemSyncProviderAdapter(options: CreateGitHubWor
                 },
                 lastSyncedAt: now(),
                 existingIssue: issue,
+                parent,
             });
-            const fields = changedRemoteFields(item, issue, parsed);
+            const fields = changedRemoteFields(item, issue, parsed, parent);
             if (fields.length > 0 || !update.metadata.parent && item.parentId) {
                 response.updates.push({
                     id: `update-remote-${item.id}`,
@@ -1098,10 +1199,12 @@ export function createGitHubWorkItemSyncProviderAdapter(options: CreateGitHubWor
             }
 
             const parsed = parseGitHubWorkItemIssue(issue);
+            const parentResolution = await resolveRemoteParent(context, repo, issue, parsed, getEffectiveType(item.type), item.id);
             const remoteChanged = remoteChangedSinceLastSync(issue, link);
             const localChanged = localChangedSinceLastSync(item, link);
             if (remoteChanged && !localChanged) {
-                const fields = changedLocalFields(item, issue, parsed);
+                response.warnings.push(...parentResolution.warnings);
+                const fields = changedLocalFields(item, issue, parsed, parentResolution.parent, parentResolution.parentId);
                 if (fields.length > 0) {
                     response.updates.push({
                         id: `update-local-${item.id}`,
@@ -1125,7 +1228,9 @@ export function createGitHubWorkItemSyncProviderAdapter(options: CreateGitHubWor
                     });
                 }
             } else if (localChanged && !remoteChanged) {
-                const fields = changedRemoteFields(item, issue, parsed);
+                const localItems = new Map(context.items.map(candidate => [candidate.id, candidate]));
+                const parent = await parentReferenceForItem(context, repo, item, localItems);
+                const fields = changedRemoteFields(item, issue, parsed, parent);
                 if (fields.length > 0) {
                     response.updates.push({
                         id: `update-remote-${item.id}`,
@@ -1149,7 +1254,8 @@ export function createGitHubWorkItemSyncProviderAdapter(options: CreateGitHubWor
                     });
                 }
             } else if (remoteChanged && localChanged) {
-                const conflict = conflictForItem(item, issue, parsed, remote);
+                response.warnings.push(...parentResolution.warnings);
+                const conflict = conflictForItem(item, issue, parsed, remote, parentResolution.parent, parentResolution.parentId);
                 if (conflict) {
                     response.conflicts.push(conflict);
                 } else {

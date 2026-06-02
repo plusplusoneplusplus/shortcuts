@@ -11,7 +11,7 @@ import {
     type GitHubWorkItemIssueTransport,
     type GitHubWorkItemIssueUpdateInput,
 } from '../../../src/server/work-items/work-item-sync-github-provider';
-import type { WorkItem } from '../../../src/server/work-items/types';
+import type { WorkItem, WorkItemSyncParentReference } from '../../../src/server/work-items/types';
 
 const WORKSPACE_ID = 'github-sync-repo';
 const NOW = '2026-01-10T00:00:00.000Z';
@@ -29,6 +29,7 @@ class FakeGitHubTransport implements GitHubWorkItemIssueTransport {
     listedFilters: GitHubWorkItemIssueListFilters[] = [];
     createdInputs: GitHubWorkItemIssueCreateInput[] = [];
     updatedInputs: Array<{ issueNumber: number; input: GitHubWorkItemIssueUpdateInput }> = [];
+    parentUpdates: Array<{ issueNumber: number; parent: WorkItemSyncParentReference }> = [];
     issues = new Map<number, GitHubWorkItemIssue>();
     failRepository = false;
     private nextIssueNumber = 100;
@@ -78,6 +79,14 @@ class FakeGitHubTransport implements GitHubWorkItemIssueTransport {
         this.issues.set(issue.number, issue);
         return issue;
     }
+
+    async setIssueParent(_repo: typeof REPO, issueNumber: number, parent: WorkItemSyncParentReference): Promise<void> {
+        this.parentUpdates.push({ issueNumber, parent });
+        const issue = this.issues.get(issueNumber);
+        if (issue) {
+            this.issues.set(issueNumber, { ...issue, nativeParent: parent });
+        }
+    }
 }
 
 let tmpDir: string;
@@ -94,7 +103,31 @@ function makeIssue(input: Partial<GitHubWorkItemIssue> & { number: number; title
         labels: input.labels ?? [],
         body: input.body ?? '',
         updatedAt: input.updatedAt ?? NOW,
+        nativeParent: input.nativeParent,
     };
+}
+
+function metadataBlock(input: {
+    issueNumber: number;
+    workItemId?: string;
+    type: WorkItem['type'];
+    status: WorkItem['status'];
+    parent?: WorkItemSyncParentReference;
+}): string {
+    return `<!-- coc-work-item-sync ${JSON.stringify({
+        schemaVersion: 1,
+        provider: 'github',
+        remote: {
+            owner: 'octo-org',
+            repo: 'octo-repo',
+            issueNumber: input.issueNumber,
+        },
+        workItemId: input.workItemId,
+        parent: input.parent,
+        type: input.type,
+        status: input.status,
+        lastSyncedAt: '2026-01-09T00:00:00.000Z',
+    })} -->`;
 }
 
 async function addItem(input: Partial<WorkItem> & { id: string; title: string }): Promise<WorkItem> {
@@ -232,6 +265,73 @@ describe('GitHub work item sync provider', () => {
         });
         expect(preview.warnings.some(warning => warning.id === 'unknown-coc-labels-11')).toBe(true);
         expect((await store.listWorkItems({ repoId: WORKSPACE_ID })).total).toBe(0);
+    });
+
+    it('prefers native GitHub parent relationships over hidden metadata fallback on import', async () => {
+        const provider = makeProvider();
+        await addItem({
+            id: 'epic-1',
+            title: 'Epic',
+            type: 'epic',
+            syncLinks: [{
+                provider: 'github',
+                remote: { owner: 'octo-org', repo: 'octo-repo', issueNumber: 40 },
+            }],
+        });
+        await addItem({
+            id: 'feature-1',
+            title: 'Feature',
+            type: 'feature',
+            parentId: 'epic-1',
+            syncLinks: [{
+                provider: 'github',
+                remote: { owner: 'octo-org', repo: 'octo-repo', issueNumber: 41 },
+            }],
+        });
+        transport.issues.set(50, makeIssue({
+            number: 50,
+            title: 'Remote PBI',
+            labels: ['coc:type:pbi', 'coc:status:planning'],
+            body: `Remote PBI body.\n\n${metadataBlock({
+                issueNumber: 50,
+                workItemId: 'remote-pbi-1',
+                type: 'pbi',
+                status: 'planning',
+                parent: { workItemId: 'epic-1', issueNumber: 40 },
+            })}`,
+            nativeParent: { owner: 'octo-org', repo: 'octo-repo', issueNumber: 41 },
+        }));
+
+        const preview = await provider.preview({
+            ...makeContext(),
+            operation: 'import',
+            request: { operation: 'import', provider: 'github', filters: { issueNumbers: [50] } },
+            items: [],
+        });
+
+        expect(preview.creates).toHaveLength(1);
+        expect(preview.warnings.some(warning => warning.id === 'invalid-import-parent-50')).toBe(false);
+        expect(preview.creates[0].fields).toContainEqual({
+            field: 'parentId',
+            remoteValue: { owner: 'octo-org', repo: 'octo-repo', issueNumber: 41 },
+            proposedValue: 'feature-1',
+        });
+
+        const result = await provider.apply({
+            ...makeContext(),
+            operation: 'import',
+            request: { operation: 'import', provider: 'github', filters: { issueNumbers: [50] } },
+            items: [],
+        });
+
+        expect(result).toMatchObject({ applied: 1, failed: 0 });
+        const imported = await store.getWorkItem('remote-pbi-1', WORKSPACE_ID);
+        expect(imported).toMatchObject({
+            title: 'Remote PBI',
+            type: 'pbi',
+            parentId: 'feature-1',
+        });
+        expect(imported?.syncLinks?.[0].parent).toEqual({ owner: 'octo-org', repo: 'octo-repo', issueNumber: 41 });
     });
 
     it('previews selected subtree export parent-first with creates and updates', async () => {
@@ -399,6 +499,76 @@ describe('GitHub work item sync provider', () => {
         const linkedPbi = await store.getWorkItem('pbi-1', WORKSPACE_ID);
         expect(linkedFeature?.syncLinks?.[0].remote.issueNumber).toBe(100);
         expect(linkedPbi?.syncLinks?.[0].remote.issueNumber).toBe(101);
+        expect(transport.parentUpdates).toEqual([{
+            issueNumber: 101,
+            parent: {
+                workItemId: 'feature-1',
+                issueId: 'I_100',
+                issueNumber: 100,
+                issueUrl: 'https://github.com/octo-org/octo-repo/issues/100',
+                owner: 'octo-org',
+                repo: 'octo-repo',
+            },
+        }]);
+    });
+
+    it('applies clean sync-linked native parent changes to local hierarchy', async () => {
+        const provider = makeProvider();
+        await addItem({
+            id: 'feature-parent',
+            title: 'Feature parent',
+            type: 'feature',
+            syncLinks: [{
+                provider: 'github',
+                remote: { owner: 'octo-org', repo: 'octo-repo', issueNumber: 60 },
+            }],
+        });
+        const item = await addItem({
+            id: 'linked-pbi',
+            title: 'Local PBI',
+            type: 'pbi',
+            status: 'planning',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            syncLinks: [{
+                provider: 'github',
+                remote: { owner: 'octo-org', repo: 'octo-repo', issueNumber: 61 },
+                remoteUpdatedAt: '2026-01-02T00:00:00.000Z',
+                lastSyncedAt: '2026-01-02T00:00:00.000Z',
+            }],
+        });
+        transport.issues.set(61, makeIssue({
+            number: 61,
+            title: 'Remote PBI',
+            labels: ['coc:type:pbi', 'coc:status:planning'],
+            body: 'Remote PBI body.',
+            updatedAt: '2026-01-03T00:00:00.000Z',
+            nativeParent: { owner: 'octo-org', repo: 'octo-repo', issueNumber: 60 },
+        }));
+
+        const preview = await provider.preview({
+            ...makeContext(),
+            operation: 'sync-linked',
+            request: { operation: 'sync-linked', provider: 'github' },
+            items: [item],
+        });
+        expect(preview.updates[0].fields).toContainEqual({
+            field: 'parentId',
+            cocValue: undefined,
+            remoteValue: { owner: 'octo-org', repo: 'octo-repo', issueNumber: 60 },
+            proposedValue: 'feature-parent',
+        });
+
+        const result = await provider.apply({
+            ...makeContext(),
+            operation: 'sync-linked',
+            request: { operation: 'sync-linked', provider: 'github' },
+            items: [item],
+        });
+
+        expect(result).toMatchObject({ applied: 1, failed: 0 });
+        const updated = await store.getWorkItem('linked-pbi', WORKSPACE_ID);
+        expect(updated?.parentId).toBe('feature-parent');
+        expect(updated?.syncLinks?.[0].parent).toEqual({ owner: 'octo-org', repo: 'octo-repo', issueNumber: 60 });
     });
 
     it('applies clean sync-linked remote changes to local items and metadata', async () => {

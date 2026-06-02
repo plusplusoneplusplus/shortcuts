@@ -30,6 +30,7 @@ export interface GitHubWorkItemIssueSnapshot {
     labels?: GitHubIssueLabel[];
     body?: string | null;
     updatedAt?: string;
+    nativeParent?: WorkItemSyncParentReference;
 }
 
 export interface GitHubWorkItemSyncMetadata {
