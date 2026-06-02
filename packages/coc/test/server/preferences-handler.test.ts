@@ -514,6 +514,27 @@ describe('readPreferences / writePreferences', () => {
         expect(loaded.defaultModels).toEqual({ task: 'gpt-4', ask: 'claude-3', schedule: 'gpt-5-mini' });
     });
 
+    it('round-trips lastChatProvider through write and read', () => {
+        // Regression: the field is part of the coc-client contract and is
+        // persisted by NewChatArea + ModalJobAiControls. The schema uses
+        // .strip(), so a missing field definition silently dropped provider
+        // selections (server returned undefined), breaking provider persistence.
+        writeRepoPreferences(tmpDir, 'r', { lastChatProvider: 'codex' });
+        const loaded = readRepoPreferences(tmpDir, 'r');
+        expect(loaded.lastChatProvider).toBe('codex');
+    });
+
+    it('accepts each valid lastChatProvider value', () => {
+        for (const provider of ['copilot', 'codex', 'claude'] as const) {
+            expect(validatePerRepoPreferences({ lastChatProvider: provider }).lastChatProvider).toBe(provider);
+        }
+    });
+
+    it('strips invalid lastChatProvider values', () => {
+        const result = validatePerRepoPreferences({ lastChatProvider: 'gemini' });
+        expect(result.lastChatProvider).toBeUndefined();
+    });
+
     it('validates defaultModel max length', () => {
         const longModel = 'a'.repeat(101);
         const result = validatePerRepoPreferences({ defaultModel: longModel });

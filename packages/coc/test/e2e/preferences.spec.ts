@@ -89,143 +89,166 @@ async function openUpdateDocumentDialog(page: import('@playwright/test').Page): 
     await expect(page.locator('#update-doc-overlay')).toBeVisible({ timeout: 5000 });
 }
 
-/**
- * Get the model select locator within the EnqueueDialog floating panel.
- * The model select is the first <select> within the panel (Model comes before Workspace/Folder).
- */
-function getDialogModelSelect(page: import('@playwright/test').Page) {
-    return page.locator('[data-testid="floating-dialog-panel"] select').first();
+type DialogScope = ReturnType<import('@playwright/test').Page['locator']>;
+
+const MOCK_MODELS = [
+    { id: 'gpt-4', name: 'gpt-4', enabled: true, capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } },
+    { id: 'claude-3-5-sonnet', name: 'claude-3-5-sonnet', enabled: true, capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } },
+    { id: 'gemini-2.0', name: 'gemini-2.0', enabled: true, capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } },
+];
+
+/** Scope locator for the Run Skill (EnqueueDialog) floating panel. */
+function runSkillScope(page: import('@playwright/test').Page): DialogScope {
+    return page.locator('[data-testid="floating-dialog-panel"]');
 }
 
-/** Helper: get a valid non-default model value from the dialog model select (Run Skill dialog must be open). */
-async function getFirstModelValue(page: import('@playwright/test').Page): Promise<string> {
-    // Wait for model options to be populated (async fetch may still be in-flight)
-    await page.waitForFunction(() => {
-        const panel = document.querySelector('[data-testid="floating-dialog-panel"]');
-        if (!panel) return false;
-        const sel = panel.querySelectorAll('select')[0] as HTMLSelectElement | null;
-        return sel && Array.from(sel.options).some((o) => o.value !== '');
-    }, { timeout: 5000 });
-
-    return page.evaluate(() => {
-        const panel = document.querySelector('[data-testid="floating-dialog-panel"]');
-        if (!panel) return '';
-        const sel = panel.querySelectorAll('select')[0] as HTMLSelectElement | null;
-        if (!sel) return '';
-        for (const opt of Array.from(sel.options)) {
-            if (opt.value) return opt.value;
-        }
-        return '';
-    });
+/** Scope locator for the Update Document modal overlay. */
+function updateDocScope(page: import('@playwright/test').Page): DialogScope {
+    return page.locator('#update-doc-overlay');
 }
 
-/** Helper: get a second non-default model value from the dialog model select (Run Skill dialog must be open). */
-async function getSecondModelValue(page: import('@playwright/test').Page): Promise<string> {
-    return page.evaluate(() => {
-        const panel = document.querySelector('[data-testid="floating-dialog-panel"]');
-        if (!panel) return '';
-        const sel = panel.querySelectorAll('select')[0] as HTMLSelectElement | null;
-        if (!sel) return '';
-        let found = 0;
-        for (const opt of Array.from(sel.options)) {
-            if (opt.value) {
-                found++;
-                if (found === 2) return opt.value;
-            }
-        }
-        return '';
-    });
+/** The compact model-picker chip button within a dialog's AI controls. */
+function modelChip(scope: DialogScope, prefix: string): DialogScope {
+    return scope.locator(`[data-testid="${prefix}-model-picker-chip"]`);
+}
+
+/** The provider (agent) selector chip button within a dialog's AI controls. */
+function providerChip(scope: DialogScope): DialogScope {
+    return scope.locator('[data-testid="agent-selector-chip-btn"]');
+}
+
+/** Open the model command menu and pick a model by id. Override is in-memory. */
+async function pickModel(page: import('@playwright/test').Page, scope: DialogScope, prefix: string, modelId: string): Promise<void> {
+    await modelChip(scope, prefix).click();
+    const menu = page.locator('[data-testid="model-command-menu"]');
+    await expect(menu).toBeVisible({ timeout: 5000 });
+    await menu.getByText(modelId, { exact: true }).click();
+    await expect(menu).toBeHidden({ timeout: 3000 });
+}
+
+/** Open the provider menu and switch to a provider. Persists lastChatProvider. */
+async function switchProvider(scope: DialogScope, providerId: string): Promise<void> {
+    await providerChip(scope).click();
+    const menu = scope.locator('[data-testid="agent-selector-menu"]');
+    await expect(menu).toBeVisible({ timeout: 5000 });
+    await menu.locator(`[data-testid="agent-option-${providerId}"]`).click();
+    await expect(menu).toBeHidden({ timeout: 3000 });
 }
 
 test.describe('Preferences (007)', () => {
 
-    // Mock /api/models so Run Skill and Update Document dialogs have model options
+    // Mock the provider/model endpoints feeding the chip-based AI controls so the
+    // Run Skill and Update Document dialogs render a deterministic provider list
+    // and model menu (the legacy <select> + /api/models flow was replaced by the
+    // New-Chat-style ModalJobAiControls picker).
     test.beforeEach(async ({ page }) => {
+        await page.route('**/api/agent-providers', route =>
+            route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ providers: [
+                { id: 'copilot', label: 'Copilot', enabled: true, available: true },
+                { id: 'codex', label: 'Codex', enabled: true, available: true },
+            ] }) }),
+        );
+        await page.route('**/api/agent-providers/*/models', route =>
+            route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ provider: 'copilot', models: MOCK_MODELS }) }),
+        );
+        // Empty effort-tiers keeps the model-picker chip (not the tier selector) visible.
+        await page.route('**/api/agent-providers/*/effort-tiers', route =>
+            route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ provider: 'copilot', effortTiers: {}, defaults: {} }) }),
+        );
+        // Legacy endpoint retained for any code path still calling it.
         await page.route('**/api/models', route =>
-            route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ id: 'gpt-4', name: 'gpt-4', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'claude-3-5-sonnet', name: 'claude-3-5-sonnet', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }, { id: 'gemini-2.0', name: 'gemini-2.0', capabilities: { supports: { vision: false, reasoningEffort: false }, limits: { max_context_window_tokens: 128000 } } }]) }),
+            route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_MODELS) }),
         );
     });
 
-    test('7P.1 model preference defaults to empty (Default) on fresh server', async ({ page, serverUrl }) => {
+    test('7P.1 model picker shows no override and lists provider models by default', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
         try {
             await setupRepoForPrefs(page, serverUrl, tmpDir);
 
             await openFollowPromptDialog(page);
+            const scope = runSkillScope(page);
 
-            // Model select should have empty value (Default)
-            await expect(getDialogModelSelect(page)).toHaveValue('');
+            // The chip-based model picker is shown (legacy <select> removed).
+            await expect(modelChip(scope, 'enqueue')).toBeVisible({ timeout: 10000 });
+
+            // Opening the menu lists the provider's models and offers no "Use
+            // default" clear row, since no override has been picked yet.
+            await modelChip(scope, 'enqueue').click();
+            const menu = page.locator('[data-testid="model-command-menu"]');
+            await expect(menu).toBeVisible({ timeout: 5000 });
+            await expect(menu.getByText('gpt-4', { exact: true })).toBeVisible();
+            await expect(menu.getByText('claude-3-5-sonnet', { exact: true })).toBeVisible();
+            await expect(menu.getByText('gemini-2.0', { exact: true })).toBeVisible();
+            await expect(menu.locator('[data-testid="model-command-menu-clear"]')).toHaveCount(0);
         } finally {
             safeRmSync(tmpDir);
         }
     });
 
-    test('7P.2 selecting model in Run Skill persists to server', async ({ page, serverUrl }) => {
+    test('7P.2 selecting a model in Run Skill updates the model chip', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
         try {
             await setupRepoForPrefs(page, serverUrl, tmpDir);
             await openFollowPromptDialog(page);
+            const scope = runSkillScope(page);
 
-            const modelValue = await getFirstModelValue(page);
-            expect(modelValue).toBeTruthy();
+            await pickModel(page, scope, 'enqueue', 'gpt-4');
 
-            await openFollowPromptDialog(page);
-
-            // Change model
-            await getDialogModelSelect(page).selectOption(modelValue);
-
-            // Wait for the fire-and-forget PATCH to complete
-            await page.waitForTimeout(500);
-
-            // Verify preference was persisted (per-workspace endpoint)
-            const res = await page.request.get(`${serverUrl}/api/workspaces/ws-prefs/preferences`);
-            const prefs = await res.json();
-            expect(prefs.lastModels?.task).toBe(modelValue);
+            // The chip reflects the in-memory override.
+            await expect(modelChip(scope, 'enqueue')).toContainText('gpt-4');
         } finally {
             safeRmSync(tmpDir);
         }
     });
 
-    test('7P.3 selecting model in Update Document persists to server', async ({ page, serverUrl }) => {
+    test('7P.3 selecting a model in Update Document updates the model chip', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
         try {
             await setupRepoForPrefs(page, serverUrl, tmpDir);
-            await openFollowPromptDialog(page);
-
-            const modelValue = await getFirstModelValue(page);
-            expect(modelValue).toBeTruthy();
-
             await openUpdateDocumentDialog(page);
+            const scope = updateDocScope(page);
 
-            // Change model
-            await page.selectOption('#update-doc-model', modelValue);
+            await expect(modelChip(scope, 'update-doc')).toBeVisible({ timeout: 10000 });
+            await pickModel(page, scope, 'update-doc', 'claude-3-5-sonnet');
 
-            // Wait for persistence
-            await page.waitForTimeout(500);
-
-            const res = await page.request.get(`${serverUrl}/api/workspaces/ws-prefs/preferences`);
-            const prefs = await res.json();
-            expect(prefs.lastModels?.task).toBe(modelValue);
+            await expect(modelChip(scope, 'update-doc')).toContainText('claude-3-5-sonnet');
         } finally {
             safeRmSync(tmpDir);
         }
     });
 
-    test('7P.4 model preference applied to Run Skill dialog on open', async ({ page, serverUrl }) => {
+    test('7P.4 selecting a provider in Run Skill persists lastChatProvider to server', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
         try {
             await setupRepoForPrefs(page, serverUrl, tmpDir);
             await openFollowPromptDialog(page);
+            const scope = runSkillScope(page);
 
-            const modelValue = await getFirstModelValue(page);
-            expect(modelValue).toBeTruthy();
+            await switchProvider(scope, 'codex');
 
-            // Pre-set preference via per-workspace API
+            // Wait for the fire-and-forget PATCH to settle.
+            await page.waitForTimeout(500);
+
+            const res = await page.request.get(`${serverUrl}/api/workspaces/ws-prefs/preferences`);
+            const prefs = await res.json();
+            expect(prefs.lastChatProvider).toBe('codex');
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('7P.5 persisted provider preference is applied to Run Skill dialog on open', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
+        try {
+            await setupRepoForPrefs(page, serverUrl, tmpDir);
+
+            // Pre-set provider preference via per-workspace API.
             await page.request.patch(`${serverUrl}/api/workspaces/ws-prefs/preferences`, {
-                data: { lastModels: { task: modelValue } },
+                data: { lastChatProvider: 'codex' },
             });
 
-            // Reload to pick up preference
+            // Reload to pick up preference.
             await page.reload();
             await page.click('[data-tab="repos"]');
             await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
@@ -234,85 +257,47 @@ test.describe('Preferences (007)', () => {
             await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
 
             await openFollowPromptDialog(page);
+            const scope = runSkillScope(page);
 
-            // Model select should have the persisted value
-            await expect(getDialogModelSelect(page)).toHaveValue(modelValue);
+            await expect(providerChip(scope)).toContainText('Codex', { timeout: 10000 });
         } finally {
             safeRmSync(tmpDir);
         }
     });
 
-    test('7P.5 model preference applied to Update Document dialog on open', async ({ page, serverUrl }) => {
+    test('7P.6 provider preference syncs across dialogs within same page', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
         try {
             await setupRepoForPrefs(page, serverUrl, tmpDir);
+
+            // Switch provider in Run Skill (persists to server).
             await openFollowPromptDialog(page);
-
-            const modelValue = await getFirstModelValue(page);
-            expect(modelValue).toBeTruthy();
-
-            // Pre-set preference via per-workspace API
-            await page.request.patch(`${serverUrl}/api/workspaces/ws-prefs/preferences`, {
-                data: { lastModels: { task: modelValue } },
-            });
-
-            // Reload to pick up preference
-            await page.reload();
-            await page.click('[data-tab="repos"]');
-            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-            await page.locator('[data-testid="repo-tab"]').first().click();
-            await page.click('.repo-sub-tab[data-subtab="tasks"]');
-            await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
-
-            await openUpdateDocumentDialog(page);
-
-            await expect(page.locator('#update-doc-model')).toHaveValue(modelValue);
-        } finally {
-            safeRmSync(tmpDir);
-        }
-    });
-
-    test('7P.6 model change syncs across dialogs within same page', async ({ page, serverUrl }) => {
-        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
-        try {
-            await setupRepoForPrefs(page, serverUrl, tmpDir);
-            await openFollowPromptDialog(page);
-
-            const modelValue = await getFirstModelValue(page);
-            expect(modelValue).toBeTruthy();
-
-            // Open Run Skill and change model
-            await openFollowPromptDialog(page);
-            await getDialogModelSelect(page).selectOption(modelValue);
-            await page.waitForTimeout(300);
-            await page.locator('[data-testid="dialog-close-btn"]').first().click();
-            await page.locator('[data-testid="floating-dialog-panel"]').waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
-
-            // Open Update Document — should have the same model selected
-            await openUpdateDocumentDialog(page);
-            await expect(page.locator('#update-doc-model')).toHaveValue(modelValue);
-        } finally {
-            safeRmSync(tmpDir);
-        }
-    });
-
-    test('7P.7 model preference survives page reload', async ({ page, serverUrl }) => {
-        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
-        try {
-            await setupRepoForPrefs(page, serverUrl, tmpDir);
-            await openFollowPromptDialog(page);
-
-            const modelValue = await getFirstModelValue(page);
-            expect(modelValue).toBeTruthy();
-
-            // Set model via Run Skill dialog
-            await openFollowPromptDialog(page);
-            await getDialogModelSelect(page).selectOption(modelValue);
+            await switchProvider(runSkillScope(page), 'codex');
             await page.waitForTimeout(500);
             await page.locator('[data-testid="dialog-close-btn"]').first().click();
             await page.locator('[data-testid="floating-dialog-panel"]').waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
 
-            // Reload
+            // Open Update Document — should reflect the same persisted provider.
+            await openUpdateDocumentDialog(page);
+            await expect(providerChip(updateDocScope(page))).toContainText('Codex', { timeout: 10000 });
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('7P.7 provider preference survives page reload', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
+        try {
+            await setupRepoForPrefs(page, serverUrl, tmpDir);
+
+            // Set provider via Run Skill dialog.
+            await openFollowPromptDialog(page);
+            await switchProvider(runSkillScope(page), 'codex');
+            await page.waitForTimeout(500);
+            await page.locator('[data-testid="dialog-close-btn"]').first().click();
+            await page.locator('[data-testid="floating-dialog-panel"]').waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
+
+            // Reload.
             await page.reload();
             await page.click('[data-tab="repos"]');
             await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
@@ -320,41 +305,34 @@ test.describe('Preferences (007)', () => {
             await page.click('.repo-sub-tab[data-subtab="tasks"]');
             await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
 
-            // Open dialog again — model should be preserved
+            // Open dialog again — provider should be preserved.
             await openFollowPromptDialog(page);
-            await expect(getDialogModelSelect(page)).toHaveValue(modelValue);
+            await expect(providerChip(runSkillScope(page))).toContainText('Codex', { timeout: 10000 });
         } finally {
             safeRmSync(tmpDir);
         }
     });
 
-    test('7P.8 rapid model changes persist last value', async ({ page, serverUrl }) => {
+    test('7P.8 clearing a model override returns the chip to the default', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-prefs-'));
         try {
             await setupRepoForPrefs(page, serverUrl, tmpDir);
             await openFollowPromptDialog(page);
+            const scope = runSkillScope(page);
 
-            const model1 = await getFirstModelValue(page);
-            const model2 = await getSecondModelValue(page);
-            expect(model1).toBeTruthy();
-            expect(model2).toBeTruthy();
-            expect(model1).not.toBe(model2);
+            // Pick an override; the chip reflects it.
+            await pickModel(page, scope, 'enqueue', 'gpt-4');
+            await expect(modelChip(scope, 'enqueue')).toContainText('gpt-4');
 
-            await openFollowPromptDialog(page);
+            // Reopen the menu and use the "Use default" clear row.
+            await modelChip(scope, 'enqueue').click();
+            const menu = page.locator('[data-testid="model-command-menu"]');
+            await expect(menu).toBeVisible({ timeout: 5000 });
+            await menu.locator('[data-testid="model-command-menu-clear"]').click();
+            await expect(menu).toBeHidden({ timeout: 3000 });
 
-            // Rapidly change model multiple times
-            await getDialogModelSelect(page).selectOption(model1);
-            await getDialogModelSelect(page).selectOption(model2);
-            await getDialogModelSelect(page).selectOption('');   // Default
-            await getDialogModelSelect(page).selectOption(model1);
-
-            // Wait for all fire-and-forget PATCH requests to settle
-            await page.waitForTimeout(1000);
-
-            // Final value should be model1
-            const res = await page.request.get(`${serverUrl}/api/workspaces/ws-prefs/preferences`);
-            const prefs = await res.json();
-            expect(prefs.lastModels?.task).toBe(model1);
+            // The override is cleared.
+            await expect(modelChip(scope, 'enqueue')).not.toContainText('gpt-4');
         } finally {
             safeRmSync(tmpDir);
         }
@@ -430,8 +408,10 @@ test.describe('Preferences (007)', () => {
             await page.locator('[data-testid="skill-picker-trigger"]').click();
             await expect(page.locator('[data-testid="skill-picker-popover"]')).toBeHidden({ timeout: 3000 });
 
-            // Change workspace selector to second workspace (2nd select in dialog)
-            const wsSelect = page.locator('[data-testid="floating-dialog-panel"] select').nth(1);
+            // Change workspace selector to second workspace (now the dialog's
+            // only <select>, since the legacy model <select> was replaced by the
+            // chip-based AI controls).
+            const wsSelect = page.locator('[data-testid="workspace-select"]');
             await wsSelect.selectOption('ws-prefs-2');
 
             // Wait for skills to reload for new workspace
