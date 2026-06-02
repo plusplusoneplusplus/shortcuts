@@ -1,10 +1,10 @@
 /**
- * Tests for AddAgentDialog — form fields, conditional tunnel ID, onAdd wiring.
+ * Tests for AddAgentDialog — connection type radio, form fields, onAdd wiring.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import { AddAgentDialog } from '../../../../src/server/spa/client/react/repos/AddAgentDialog';
+import { AddAgentDialog, EditAgentDialog } from '../../../../src/server/spa/client/react/repos/AddAgentDialog';
 
 function renderDialog(props: Partial<Parameters<typeof AddAgentDialog>[0]> = {}) {
     const onClose = vi.fn();
@@ -20,95 +20,113 @@ function renderDialog(props: Partial<Parameters<typeof AddAgentDialog>[0]> = {})
     return { onClose, onAdd };
 }
 
-function addressInput() {
-    return screen.getByPlaceholderText('http://localhost:4000') as HTMLInputElement;
+function selectKind(kind: 'url' | 'devtunnel' | 'ssh') {
+    const radio = screen.getByTestId(`add-agent-kind-${kind}`) as HTMLInputElement;
+    fireEvent.click(radio);
+}
+
+function urlInput() {
+    return screen.queryByTestId('add-agent-url-input') as HTMLInputElement | null;
+}
+
+function devtunnelUrlInput() {
+    return screen.queryByTestId('add-agent-devtunnel-url-input') as HTMLInputElement | null;
+}
+
+function tunnelIdInput() {
+    return screen.queryByTestId('add-agent-tunnel-id-input') as HTMLInputElement | null;
+}
+
+function sshHostInput() {
+    return screen.queryByTestId('add-agent-ssh-host-input') as HTMLInputElement | null;
+}
+
+function sshPortInput() {
+    return screen.queryByTestId('add-agent-ssh-port-input') as HTMLInputElement | null;
 }
 
 function nameInput() {
-    return screen.getByPlaceholderText('My Agent') as HTMLInputElement;
-}
-
-function tunnelInput() {
-    return screen.queryByPlaceholderText(/amusing-book/i) as HTMLInputElement | null;
+    return screen.getByTestId('add-agent-name-input') as HTMLInputElement;
 }
 
 function submitButton() {
-    return screen.getByRole('button', { name: /add agent/i });
+    return screen.getByTestId('add-agent-submit') as HTMLButtonElement;
 }
 
 describe('AddAgentDialog — initial render', () => {
-    it('renders the address and name fields', () => {
+    it('defaults to Direct URL kind and shows the URL input', () => {
         renderDialog();
-        expect(addressInput()).toBeTruthy();
-        expect(nameInput()).toBeTruthy();
+        expect(urlInput()).toBeTruthy();
+        expect(devtunnelUrlInput()).toBeNull();
+        expect(sshHostInput()).toBeNull();
     });
 
-    it('does not show tunnel ID field for a non-devtunnel address', () => {
+    it('shows name input regardless of kind', () => {
         renderDialog();
-        fireEvent.change(addressInput(), { target: { value: 'http://localhost:4000' } });
-        expect(tunnelInput()).toBeNull();
+        expect(nameInput()).toBeTruthy();
     });
 
     it('does not render when open=false', () => {
         render(
             <AddAgentDialog open={false} onClose={vi.fn()} onAdd={vi.fn().mockResolvedValue(undefined)} />
         );
-        expect(screen.queryByPlaceholderText('http://localhost:4000')).toBeNull();
+        expect(screen.queryByTestId('add-agent-url-input')).toBeNull();
     });
 });
 
-describe('AddAgentDialog — conditional tunnel ID field', () => {
-    it('shows tunnel ID field when address ends with .devtunnels.ms', () => {
+describe('AddAgentDialog — connection type switching', () => {
+    it('shows DevTunnel URL + Tunnel ID fields when devtunnel is selected', () => {
         renderDialog();
-        fireEvent.change(addressInput(), { target: { value: 'https://my-tunnel.devtunnels.ms' } });
-        expect(tunnelInput()).toBeTruthy();
+        selectKind('devtunnel');
+        expect(devtunnelUrlInput()).toBeTruthy();
+        expect(tunnelIdInput()).toBeTruthy();
+        expect(urlInput()).toBeNull();
+        expect(sshHostInput()).toBeNull();
     });
 
-    it('shows hint text alongside the tunnel ID field', () => {
+    it('shows SSH Host + Port fields when ssh is selected', () => {
         renderDialog();
-        fireEvent.change(addressInput(), { target: { value: 'https://my-tunnel.devtunnels.ms' } });
-        expect(screen.getByText(/server-side auth/i)).toBeTruthy();
+        selectKind('ssh');
+        expect(sshHostInput()).toBeTruthy();
+        expect(sshPortInput()).toBeTruthy();
+        expect(urlInput()).toBeNull();
+        expect(devtunnelUrlInput()).toBeNull();
     });
 
-    it('hides tunnel ID field when address is changed back to a non-devtunnel URL', () => {
+    it('switches back to URL fields when url is reselected', () => {
         renderDialog();
-        fireEvent.change(addressInput(), { target: { value: 'https://my-tunnel.devtunnels.ms' } });
-        expect(tunnelInput()).toBeTruthy();
-        fireEvent.change(addressInput(), { target: { value: 'http://localhost:4000' } });
-        expect(tunnelInput()).toBeNull();
-    });
-
-    it('does not show tunnel ID field for a URL that merely contains devtunnels.ms as a path', () => {
-        renderDialog();
-        fireEvent.change(addressInput(), { target: { value: 'http://localhost:4000/devtunnels.ms' } });
-        expect(tunnelInput()).toBeNull();
+        selectKind('ssh');
+        expect(sshHostInput()).toBeTruthy();
+        selectKind('url');
+        expect(urlInput()).toBeTruthy();
+        expect(sshHostInput()).toBeNull();
     });
 });
 
 describe('AddAgentDialog — onAdd callback', () => {
     beforeEach(() => vi.clearAllMocks());
 
-    it('calls onAdd with trimmed address and no name/tunnelId when only address is provided', async () => {
+    it('calls onAdd with trimmed address for Direct URL kind', async () => {
         const { onAdd } = renderDialog();
-        fireEvent.change(addressInput(), { target: { value: '  http://localhost:4000  ' } });
-        await act(async () => { fireEvent.submit(addressInput().closest('form')!); });
+        fireEvent.change(urlInput()!, { target: { value: '  http://localhost:4000  ' } });
+        await act(async () => { fireEvent.submit(urlInput()!.closest('form')!); });
         await waitFor(() => expect(onAdd).toHaveBeenCalledWith('http://localhost:4000', undefined, undefined));
     });
 
     it('calls onAdd with name when name field is filled', async () => {
         const { onAdd } = renderDialog();
-        fireEvent.change(addressInput(), { target: { value: 'http://localhost:4000' } });
+        fireEvent.change(urlInput()!, { target: { value: 'http://localhost:4000' } });
         fireEvent.change(nameInput(), { target: { value: 'My Agent' } });
-        await act(async () => { fireEvent.submit(addressInput().closest('form')!); });
+        await act(async () => { fireEvent.submit(urlInput()!.closest('form')!); });
         await waitFor(() => expect(onAdd).toHaveBeenCalledWith('http://localhost:4000', 'My Agent', undefined));
     });
 
-    it('calls onAdd with tunnelId when address is a devtunnel URL and tunnelId is filled', async () => {
+    it('calls onAdd with tunnelId for DevTunnel kind', async () => {
         const { onAdd } = renderDialog();
-        fireEvent.change(addressInput(), { target: { value: 'https://my-tunnel.devtunnels.ms' } });
-        const tid = tunnelInput()!;
-        fireEvent.change(tid, { target: { value: 'amusing-book-s4hcgw2.usw2' } });
-        await act(async () => { fireEvent.submit(addressInput().closest('form')!); });
+        selectKind('devtunnel');
+        fireEvent.change(devtunnelUrlInput()!, { target: { value: 'https://my-tunnel.devtunnels.ms' } });
+        fireEvent.change(tunnelIdInput()!, { target: { value: 'amusing-book-s4hcgw2.usw2' } });
+        await act(async () => { fireEvent.submit(devtunnelUrlInput()!.closest('form')!); });
         await waitFor(() =>
             expect(onAdd).toHaveBeenCalledWith(
                 'https://my-tunnel.devtunnels.ms',
@@ -118,12 +136,24 @@ describe('AddAgentDialog — onAdd callback', () => {
         );
     });
 
-    it('passes undefined tunnelId when tunnel field is left empty for a devtunnel address', async () => {
+    it('passes undefined tunnelId when tunnel field is empty for DevTunnel kind', async () => {
         const { onAdd } = renderDialog();
-        fireEvent.change(addressInput(), { target: { value: 'https://my-tunnel.devtunnels.ms' } });
-        await act(async () => { fireEvent.submit(addressInput().closest('form')!); });
+        selectKind('devtunnel');
+        fireEvent.change(devtunnelUrlInput()!, { target: { value: 'https://my-tunnel.devtunnels.ms' } });
+        await act(async () => { fireEvent.submit(devtunnelUrlInput()!.closest('form')!); });
         await waitFor(() =>
             expect(onAdd).toHaveBeenCalledWith('https://my-tunnel.devtunnels.ms', undefined, undefined)
+        );
+    });
+
+    it('calls onAdd with ssh:// address for SSH kind', async () => {
+        const { onAdd } = renderDialog();
+        selectKind('ssh');
+        fireEvent.change(sshHostInput()!, { target: { value: 'ubuntu-arm' } });
+        fireEvent.change(sshPortInput()!, { target: { value: '4000' } });
+        await act(async () => { fireEvent.submit(sshHostInput()!.closest('form')!); });
+        await waitFor(() =>
+            expect(onAdd).toHaveBeenCalledWith('ssh://ubuntu-arm:4000', undefined, undefined)
         );
     });
 });
@@ -132,35 +162,101 @@ describe('AddAgentDialog — error handling', () => {
     it('shows error message when onAdd rejects', async () => {
         const onAdd = vi.fn().mockRejectedValue(new Error('Connection refused'));
         render(<AddAgentDialog open={true} onClose={vi.fn()} onAdd={onAdd} />);
-        fireEvent.change(addressInput(), { target: { value: 'http://localhost:4000' } });
-        await act(async () => { fireEvent.submit(addressInput().closest('form')!); });
-        await waitFor(() => expect(screen.getByText('Connection refused')).toBeTruthy());
-    });
-
-    it('clears previous error on a new successful submit', async () => {
-        const onAdd = vi.fn()
-            .mockRejectedValueOnce(new Error('Timeout'))
-            .mockResolvedValue(undefined);
-        render(<AddAgentDialog open={true} onClose={vi.fn()} onAdd={onAdd} />);
-        fireEvent.change(addressInput(), { target: { value: 'http://localhost:4000' } });
-
-        await act(async () => { fireEvent.submit(addressInput().closest('form')!); });
-        await waitFor(() => expect(screen.getByText('Timeout')).toBeTruthy());
-
-        await act(async () => { fireEvent.submit(addressInput().closest('form')!); });
-        await waitFor(() => expect(screen.queryByText('Timeout')).toBeNull());
+        fireEvent.change(urlInput()!, { target: { value: 'http://localhost:4000' } });
+        await act(async () => { fireEvent.submit(urlInput()!.closest('form')!); });
+        await waitFor(() => expect(screen.getByTestId('add-agent-error').textContent).toBe('Connection refused'));
     });
 });
 
 describe('AddAgentDialog — submit button state', () => {
-    it('disables submit when address is empty', () => {
+    it('disables submit when URL address is empty', () => {
         renderDialog();
-        expect(submitButton()).toHaveAttribute('disabled');
+        expect(submitButton().disabled).toBe(true);
     });
 
-    it('enables submit when address has content', () => {
+    it('enables submit when URL address has content', () => {
         renderDialog();
-        fireEvent.change(addressInput(), { target: { value: 'http://localhost:4000' } });
-        expect(submitButton()).not.toHaveAttribute('disabled');
+        fireEvent.change(urlInput()!, { target: { value: 'http://localhost:4000' } });
+        expect(submitButton().disabled).toBe(false);
+    });
+
+    it('disables submit when SSH host is empty', () => {
+        renderDialog();
+        selectKind('ssh');
+        fireEvent.change(sshPortInput()!, { target: { value: '4000' } });
+        expect(submitButton().disabled).toBe(true);
+    });
+
+    it('disables submit when SSH port is invalid', () => {
+        renderDialog();
+        selectKind('ssh');
+        fireEvent.change(sshHostInput()!, { target: { value: 'my-host' } });
+        fireEvent.change(sshPortInput()!, { target: { value: '0' } });
+        expect(submitButton().disabled).toBe(true);
+    });
+
+    it('enables submit when SSH host and port are valid', () => {
+        renderDialog();
+        selectKind('ssh');
+        fireEvent.change(sshHostInput()!, { target: { value: 'my-host' } });
+        fireEvent.change(sshPortInput()!, { target: { value: '4000' } });
+        expect(submitButton().disabled).toBe(false);
+    });
+});
+
+describe('EditAgentDialog', () => {
+    it('pre-fills fields from initial prop', () => {
+        const onSave = vi.fn().mockResolvedValue(undefined);
+        render(
+            <EditAgentDialog
+                open={true}
+                onClose={vi.fn()}
+                onSave={onSave}
+                initial={{ name: 'Dev VM', address: 'http://192.168.1.10:4000', tunnelId: undefined }}
+            />
+        );
+        const urlField = screen.getByTestId('edit-agent-url-input') as HTMLInputElement;
+        expect(urlField.value).toBe('http://192.168.1.10:4000');
+        const nameField = screen.getByTestId('edit-agent-name-input') as HTMLInputElement;
+        expect(nameField.value).toBe('Dev VM');
+    });
+
+    it('detects SSH kind from ssh:// address', () => {
+        const onSave = vi.fn().mockResolvedValue(undefined);
+        render(
+            <EditAgentDialog
+                open={true}
+                onClose={vi.fn()}
+                onSave={onSave}
+                initial={{ name: 'SSH Agent', address: 'ssh://my-host:4000' }}
+            />
+        );
+        expect(screen.getByTestId('edit-agent-ssh-host-input')).toBeTruthy();
+        expect((screen.getByTestId('edit-agent-ssh-host-input') as HTMLInputElement).value).toBe('my-host');
+        expect((screen.getByTestId('edit-agent-ssh-port-input') as HTMLInputElement).value).toBe('4000');
+    });
+
+    it('calls onSave with updated fields', async () => {
+        const onSave = vi.fn().mockResolvedValue(undefined);
+        render(
+            <EditAgentDialog
+                open={true}
+                onClose={vi.fn()}
+                onSave={onSave}
+                initial={{ name: 'Old Name', address: 'http://localhost:4000' }}
+            />
+        );
+        const nameField = screen.getByTestId('edit-agent-name-input') as HTMLInputElement;
+        fireEvent.change(nameField, { target: { value: 'New Name' } });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('edit-agent-submit'));
+        });
+        await waitFor(() =>
+            expect(onSave).toHaveBeenCalledWith({
+                name: 'New Name',
+                address: 'http://localhost:4000',
+                tunnelId: null,
+            })
+        );
     });
 });

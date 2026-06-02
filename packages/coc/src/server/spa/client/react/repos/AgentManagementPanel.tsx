@@ -1,57 +1,40 @@
 /**
  * AgentManagementPanel — full agent management page for container mode.
  * Add, edit (name/address/tunnelId), remove agents. Shows status, address, tunnel info, repo count.
+ * Supports Direct URL, DevTunnel, and SSH connection types.
  */
 
 import { useState, useCallback } from 'react';
 import { useContainerAgents, type ContainerAgent } from '../contexts/ContainerAgentContext';
 import { useRepos } from '../contexts/ReposContext';
 import { Button, Card, Spinner } from '../ui';
-import { AddAgentDialog } from './AddAgentDialog';
+import { AddAgentDialog, EditAgentDialog } from './AddAgentDialog';
 
-function isDevTunnelAddress(address: string): boolean {
-    try {
-        return new URL(address).hostname.endsWith('.devtunnels.ms');
-    } catch {
-        return false;
+function getConnectionKindLabel(address: string, tunnelId?: string): { label: string; cls: string } {
+    if (address.startsWith('inbound://')) {
+        return { label: 'Call-home', cls: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' };
     }
+    if (address.startsWith('ssh://')) {
+        return { label: 'SSH', cls: 'bg-[#16a3b8]/10 text-[#0e7c8c] dark:text-[#3bc9db]' };
+    }
+    try {
+        if (new URL(address).hostname.endsWith('.devtunnels.ms')) {
+            return { label: 'DevTunnel', cls: 'bg-[#c586c0]/10 text-[#9a4e9a] dark:text-[#c586c0]' };
+        }
+    } catch { /* not a URL */ }
+    return { label: 'URL', cls: 'bg-[#16c060]/10 text-[#16a060] dark:text-[#16c060]' };
 }
 
 export function AgentManagementPanel() {
     const { agents, loading, refresh, addAgent, removeAgent, updateAgent } = useContainerAgents();
     const { repos } = useRepos();
     const [addOpen, setAddOpen] = useState(false);
-    const [editingId, setEditingId] = useState<string | null>(null);
-    const [editFields, setEditFields] = useState<{ name: string; address: string; tunnelId: string }>({ name: '', address: '', tunnelId: '' });
-    const [editError, setEditError] = useState<string | null>(null);
-    const [editSaving, setEditSaving] = useState(false);
+    const [editAgent, setEditAgent] = useState<ContainerAgent | null>(null);
     const [removing, setRemoving] = useState<string | null>(null);
 
     const repoCountByAgent = useCallback((agentId: string) => {
         return repos.filter(r => r.workspace.agentId === agentId).length;
     }, [repos]);
-
-    const startEdit = (agent: ContainerAgent) => {
-        setEditingId(agent.id);
-        setEditFields({ name: agent.name, address: agent.address, tunnelId: agent.tunnelId || '' });
-        setEditError(null);
-    };
-
-    const handleSaveEdit = async (id: string) => {
-        setEditSaving(true);
-        setEditError(null);
-        try {
-            await updateAgent(id, {
-                name: editFields.name.trim() || undefined,
-                address: editFields.address.trim() || undefined,
-                tunnelId: editFields.tunnelId.trim() || null,
-            });
-            setEditingId(null);
-        } catch (e: any) {
-            setEditError(e.message || 'Failed to save');
-        }
-        setEditSaving(false);
-    };
 
     const handleRemove = async (agent: ContainerAgent) => {
         const count = repoCountByAgent(agent.id);
@@ -97,146 +80,111 @@ export function AgentManagementPanel() {
             <div className="flex items-center justify-between mb-6">
                 <div>
                     <h1 className="text-xl font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Agent Management</h1>
-                    <p className="text-sm text-[#848484] mt-1">Manage connected CoC agents</p>
+                    <p className="text-sm text-[#848484] mt-1">Manage connected CoC agents via Direct URL, DevTunnel, or SSH</p>
                 </div>
                 <div className="flex gap-2">
                     <Button variant="ghost" size="sm" onClick={() => refresh()}>↻ Refresh</Button>
-                    <Button variant="primary" size="sm" onClick={() => setAddOpen(true)}>+ Add Agent</Button>
+                    <Button variant="primary" size="sm" onClick={() => setAddOpen(true)} data-testid="agent-add-btn">+ Add Agent</Button>
                 </div>
             </div>
 
             {agents.length === 0 ? (
                 <Card className="p-8 text-center">
-                    <div className="text-4xl mb-3">🔗</div>
-                    <p className="text-sm text-[#848484] mb-4">No agents connected yet. Add a CoC agent to get started.</p>
+                    <p className="text-sm text-[#848484] mb-2">No agents connected yet.</p>
+                    <p className="text-xs text-[#999] mb-4">
+                        Add a CoC agent via Direct URL, DevTunnel, or SSH tunnel.
+                        Agents running <code className="font-mono">coc serve</code> can also call home via WebSocket.
+                    </p>
                     <Button variant="primary" size="sm" onClick={() => setAddOpen(true)}>+ Add Agent</Button>
                 </Card>
             ) : (
                 <div className="flex flex-col gap-3">
                     {agents.map(agent => {
                         const count = repoCountByAgent(agent.id);
-                        const isEditing = editingId === agent.id;
                         const isRemoving = removing === agent.id;
-                        const showTunnelHint = isDevTunnelAddress(agent.address);
+                        const kindInfo = getConnectionKindLabel(agent.address, agent.tunnelId);
+                        const isInbound = agent.address.startsWith('inbound://');
                         return (
-                            <Card key={agent.id} className="p-4">
+                            <Card key={agent.id} className="p-4" data-testid="agent-card">
                                 <div className="flex items-start gap-4">
-                                    {/* Status dot */}
                                     <div className="pt-1">
                                         <span
                                             className={`inline-block w-3 h-3 rounded-full ${statusColor(agent.status)}`}
                                             title={statusLabel(agent.status)}
+                                            data-testid="agent-status-dot"
                                         />
                                     </div>
 
-                                    {/* Agent info */}
                                     <div className="flex-1 min-w-0">
-                                        {isEditing ? (
-                                            <div className="flex flex-col gap-2">
-                                                <label className="text-xs text-[#848484]">
-                                                    Name
-                                                    <input
-                                                        type="text"
-                                                        value={editFields.name}
-                                                        onChange={e => setEditFields(f => ({ ...f, name: e.target.value }))}
-                                                        className="mt-0.5 w-full px-2 py-1 text-xs rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]"
-                                                        autoFocus
-                                                    />
-                                                </label>
-                                                <label className="text-xs text-[#848484]">
-                                                    Address
-                                                    <input
-                                                        type="text"
-                                                        value={editFields.address}
-                                                        onChange={e => setEditFields(f => ({ ...f, address: e.target.value }))}
-                                                        className="mt-0.5 w-full px-2 py-1 text-xs rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4] font-mono"
-                                                    />
-                                                </label>
-                                                {isDevTunnelAddress(editFields.address) && (
-                                                    <label className="text-xs text-[#848484]">
-                                                        Tunnel ID
-                                                        <input
-                                                            type="text"
-                                                            value={editFields.tunnelId}
-                                                            onChange={e => setEditFields(f => ({ ...f, tunnelId: e.target.value }))}
-                                                            placeholder="e.g. amusing-book-s4hcgw2.usw2"
-                                                            className="mt-0.5 w-full px-2 py-1 text-xs rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4] font-mono"
-                                                        />
-                                                        <span className="text-[10px] text-[#6e6e6e] dark:text-[#888888] block mt-0.5">
-                                                            For server-side auth (no browser popup). Run <code>devtunnel list</code> to find it.
-                                                        </span>
-                                                    </label>
-                                                )}
-                                                {editError && (
-                                                    <div className="text-xs text-[#f14c4c] bg-[#f14c4c]/10 rounded px-2 py-1">{editError}</div>
-                                                )}
-                                                <div className="flex gap-2">
-                                                    <Button variant="primary" size="sm" onClick={() => handleSaveEdit(agent.id)} disabled={editSaving}>
-                                                        {editSaving ? 'Saving…' : 'Save'}
-                                                    </Button>
-                                                    <Button variant="ghost" size="sm" onClick={() => setEditingId(null)}>Cancel</Button>
-                                                </div>
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">{agent.name}</span>
+                                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase tracking-wide ${kindInfo.cls}`}>
+                                                {kindInfo.label}
+                                            </span>
+                                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                                agent.status === 'online'
+                                                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                                                    : agent.status === 'offline'
+                                                        ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                                                        : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
+                                            }`}>{statusLabel(agent.status)}</span>
+                                        </div>
+                                        <div className="text-xs text-[#848484] space-y-0.5">
+                                            <div>
+                                                {isInbound ? 'Connection: ' : 'Address: '}
+                                                <span className="font-mono text-[#1e1e1e] dark:text-[#cccccc]">
+                                                    {isInbound ? 'Call-home (WebSocket)' : agent.address}
+                                                </span>
                                             </div>
-                                        ) : (
-                                            <>
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <span className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc]">{agent.name}</span>
-                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                                                        agent.status === 'online'
-                                                            ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                                                            : agent.status === 'offline'
-                                                                ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
-                                                                : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
-                                                    }`}>{statusLabel(agent.status)}</span>
+                                            {agent.tunnelId && (
+                                                <div>
+                                                    Tunnel: <span className="font-mono text-[#1e1e1e] dark:text-[#cccccc]">{agent.tunnelId}</span>
+                                                    <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
+                                                        local bridge
+                                                    </span>
                                                 </div>
-                                                <div className="text-xs text-[#848484] space-y-0.5">
-                                                    <div>Address: <span className="font-mono text-[#1e1e1e] dark:text-[#cccccc]">{agent.address}</span></div>
-                                                    {agent.tunnelId && (
-                                                        <div>
-                                                            Tunnel: <span className="font-mono text-[#1e1e1e] dark:text-[#cccccc]">{agent.tunnelId}</span>
-                                                            <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
-                                                                local bridge
-                                                            </span>
-                                                        </div>
-                                                    )}
-                                                    {agent.bridgeUrl && (
-                                                        <div>
-                                                            Bridge: <span className="font-mono text-[#1e1e1e] dark:text-[#cccccc]">{agent.bridgeUrl}</span>
-                                                        </div>
-                                                    )}
-                                                    {showTunnelHint && !agent.tunnelId && (
-                                                        <div className="text-[#e5a100] dark:text-[#f5c842]">
-                                                            ⚠ No tunnel ID — browser popup auth required
-                                                        </div>
-                                                    )}
-                                                    <div>Repos: <span className="font-medium">{count}</span></div>
+                                            )}
+                                            {agent.bridgeUrl && (
+                                                <div>
+                                                    Bridge: <span className="font-mono text-[#1e1e1e] dark:text-[#cccccc]">{agent.bridgeUrl}</span>
                                                 </div>
-                                            </>
-                                        )}
+                                            )}
+                                            {agent.workspaces && agent.workspaces.length > 0 && (
+                                                <div className="flex flex-wrap gap-1 mt-1">
+                                                    {agent.workspaces.map(ws => (
+                                                        <span key={ws.id} className="text-[10px] px-1.5 py-0.5 rounded bg-[#f0f0f0] dark:bg-[#2d2d30] border border-[#e0e0e0] dark:border-[#3c3c3c]">
+                                                            {ws.name}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            <div>Repos: <span className="font-medium">{count}</span></div>
+                                        </div>
                                     </div>
 
-                                    {/* Actions */}
-                                    {!isEditing && (
-                                        <div className="flex items-center gap-1 flex-shrink-0">
+                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                        {!isInbound && (
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
-                                                onClick={() => startEdit(agent)}
+                                                onClick={() => setEditAgent(agent)}
                                                 title="Edit agent"
+                                                data-testid="agent-edit-btn"
                                             >
-                                                ✏️
+                                                Edit
                                             </Button>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => handleRemove(agent)}
-                                                disabled={isRemoving}
-                                                title="Remove agent"
-                                            >
-                                                {isRemoving ? <Spinner size="sm" /> : '🗑️'}
-                                            </Button>
-                                        </div>
-                                    )}
+                                        )}
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => handleRemove(agent)}
+                                            disabled={isRemoving}
+                                            title="Remove agent"
+                                            data-testid="agent-remove-btn"
+                                        >
+                                            {isRemoving ? <Spinner size="sm" /> : 'Remove'}
+                                        </Button>
+                                    </div>
                                 </div>
                             </Card>
                         );
@@ -249,7 +197,15 @@ export function AgentManagementPanel() {
                 onClose={() => setAddOpen(false)}
                 onAdd={async (address, name, tunnelId) => {
                     await addAgent(address, name, tunnelId);
-                    setAddOpen(false);
+                }}
+            />
+            <EditAgentDialog
+                open={!!editAgent}
+                onClose={() => setEditAgent(null)}
+                initial={editAgent ? { name: editAgent.name, address: editAgent.address, tunnelId: editAgent.tunnelId } : undefined}
+                onSave={async (fields) => {
+                    if (!editAgent) return;
+                    await updateAgent(editAgent.id, fields);
                 }}
             />
         </div>
