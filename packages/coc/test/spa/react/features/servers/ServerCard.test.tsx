@@ -62,6 +62,21 @@ const DEVTUNNEL_WITH_PUBLIC_URL: ServerCardHealth = {
     publicUrl: 'https://my-remote-coc-4000.usw2.devtunnels.ms',
 };
 
+const SSH_BASE: ServerCardHealth = {
+    server: {
+        id: 's1',
+        kind: 'ssh',
+        label: 'ubuntu-arm',
+        host: 'ubuntu-arm',
+        localPort: 4000,
+        addedAt: 1,
+        updatedAt: 1,
+    },
+    status: 'online',
+    effectiveUrl: 'http://127.0.0.1:4000',
+    localPort: 4000,
+};
+
 afterEach(() => {
     cleanup();
 });
@@ -241,8 +256,38 @@ describe('ServerCard — menu actions', () => {
         }
     });
 
-    it('closes menu on outside mousedown', () => {
-        render(
+    it('shows Reconnect menu item for SSH servers and calls onReconnect', () => {
+        const onReconnect = vi.fn();
+        render(<ServerCard health={SSH_BASE} isLocal={false} onReconnect={onReconnect} />);
+        fireEvent.click(screen.getByTestId('server-card-menu-btn'));
+        fireEvent.click(screen.getByTestId('server-card-menu-reconnect'));
+        expect(onReconnect).toHaveBeenCalledWith('s1');
+        expect(screen.queryByTestId('server-card-menu')).toBeNull();
+    });
+
+    it('shows Reconnect menu item for DevTunnel servers', () => {
+        const onReconnect = vi.fn();
+        render(<ServerCard health={DEVTUNNEL_BASE} isLocal={false} onReconnect={onReconnect} />);
+        fireEvent.click(screen.getByTestId('server-card-menu-btn'));
+        expect(screen.getByTestId('server-card-menu-reconnect')).toBeTruthy();
+    });
+
+    it('does not show Reconnect menu item for URL servers', () => {
+        const onReconnect = vi.fn();
+        render(<ServerCard health={REMOTE_BASE} isLocal={false} onReconnect={onReconnect} />);
+        fireEvent.click(screen.getByTestId('server-card-menu-btn'));
+        expect(screen.queryByTestId('server-card-menu-reconnect')).toBeNull();
+    });
+
+    it('disables the SSH Reconnect menu item while reconnecting', () => {
+        render(<ServerCard health={SSH_BASE} isLocal={false} onReconnect={vi.fn()} reconnecting />);
+        fireEvent.click(screen.getByTestId('server-card-menu-btn'));
+        const btn = screen.getByTestId('server-card-menu-reconnect') as HTMLButtonElement;
+        expect(btn.disabled).toBe(true);
+        expect(btn.textContent).toContain('Reconnecting');
+    });
+
+    it('closes menu on outside mousedown', () => {        render(
             <div>
                 <button data-testid="outside">outside</button>
                 <ServerCard health={REMOTE_BASE} isLocal={false} />

@@ -10,6 +10,7 @@ const registryMocks = vi.hoisted(() => ({
     updateRemoteServer: vi.fn(),
     removeRemoteServer: vi.fn(),
     testRemoteServer: vi.fn(),
+    reconnectServer: vi.fn(),
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/utils/serverRegistry', async (importOriginal) => {
@@ -21,6 +22,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/serverRegistry', async
         updateRemoteServer: registryMocks.updateRemoteServer,
         removeRemoteServer: registryMocks.removeRemoteServer,
         testRemoteServer: registryMocks.testRemoteServer,
+        reconnectServer: registryMocks.reconnectServer,
     };
 });
 
@@ -75,12 +77,23 @@ const TUNNEL_REMOTE: RemoteServer = {
     updatedAt: 2,
 };
 
+const SSH_REMOTE: RemoteServer = {
+    id: 'c',
+    kind: 'ssh',
+    label: 'ubuntu-arm',
+    host: 'ubuntu-arm',
+    localPort: 4000,
+    addedAt: 3,
+    updatedAt: 3,
+};
+
 beforeEach(() => {
     registryMocks.listRemoteServers.mockResolvedValue([]);
     registryMocks.addRemoteServer.mockResolvedValue(URL_REMOTE);
     registryMocks.updateRemoteServer.mockResolvedValue(URL_REMOTE);
     registryMocks.removeRemoteServer.mockResolvedValue(undefined);
     registryMocks.testRemoteServer.mockResolvedValue({ serverId: 'test', kind: 'url', status: 'online', lastChecked: 1 });
+    registryMocks.reconnectServer.mockResolvedValue({ serverId: 'c', kind: 'ssh', status: 'online' });
     const fetchMock = vi.fn().mockImplementation((url: string) => {
         if (url.endsWith('/health') || url.endsWith('/api/health')) {
             return Promise.resolve(jsonResponse({ uptime: 100, processCount: 2 }));
@@ -184,6 +197,21 @@ describe('ServersView', () => {
 
         expect(registryMocks.removeRemoteServer).toHaveBeenCalledWith('a');
         await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(1));
+    });
+
+    it('clicking Reconnect on an SSH server calls backend reconnect and refreshes', async () => {
+        registryMocks.listRemoteServers.mockResolvedValue([SSH_REMOTE]);
+
+        render(<ServersView />);
+        await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(2));
+
+        fireEvent.click(screen.getByTestId('server-card-menu-btn'));
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('server-card-menu-reconnect'));
+        });
+
+        expect(registryMocks.reconnectServer).toHaveBeenCalledWith('c');
+        await waitFor(() => expect(registryMocks.listRemoteServers).toHaveBeenCalledTimes(2));
     });
 
     it('clicking Edit server opens a prefilled edit dialog for a Direct URL server', async () => {
