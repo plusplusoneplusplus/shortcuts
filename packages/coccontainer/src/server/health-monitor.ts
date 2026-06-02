@@ -8,6 +8,7 @@
 
 import type { AgentStore } from '../store';
 import type { TunnelBridge } from '../proxy/tunnel-bridge';
+import type { SshBridge } from '../proxy/ssh-bridge';
 import type { AgentManager } from '../inbound/agent-manager';
 import { checkAgentHealth } from '../proxy/health';
 
@@ -18,7 +19,8 @@ export class AgentHealthMonitor {
         private store: AgentStore,
         private intervalMs: number = 30_000,
         private tunnelBridge?: TunnelBridge,
-        private agentManager?: AgentManager
+        private agentManager?: AgentManager,
+        private sshBridge?: SshBridge
     ) {}
 
     start(): void {
@@ -41,6 +43,13 @@ export class AgentHealthMonitor {
                 const agentId = agent.address.replace('inbound://', '');
                 const connected = this.agentManager?.hasAgent(agentId) ?? false;
                 this.store.updateStatus(agent.id, connected ? 'online' : 'offline');
+                continue;
+            }
+
+            // SSH agents: use SshConnector's state (it has its own health polling)
+            const sshState = this.sshBridge?.getState(agent.id);
+            if (sshState) {
+                this.store.updateStatus(agent.id, sshState.status === 'online' ? 'online' : 'offline');
                 continue;
             }
 

@@ -117,4 +117,38 @@ describe('AgentHealthMonitor', () => {
 
         expect(store.updateStatus).toHaveBeenCalledWith('agent-1', 'offline');
     });
+
+    it('uses SshBridge state for SSH agents when bridge reports online', async () => {
+        const agent = fakeAgent({ id: 'agent-1', address: 'ssh://my-host:4000' });
+        const store = fakeStore([agent]);
+        const mgr = fakeAgentManager();
+        const sshBridge = {
+            getState: vi.fn(() => ({ serverId: 'agent-1', host: 'my-host', localPort: 4000, status: 'online' as const })),
+        } as any;
+        const monitor = new AgentHealthMonitor(store, 60_000, undefined, mgr, sshBridge);
+
+        monitor.start();
+        await vi.waitFor(() => expect(store.updateStatus).toHaveBeenCalled());
+        monitor.stop();
+
+        expect(sshBridge.getState).toHaveBeenCalledWith('agent-1');
+        expect(store.updateStatus).toHaveBeenCalledWith('agent-1', 'online');
+        expect(mockCheckHealth).not.toHaveBeenCalled();
+    });
+
+    it('uses SshBridge state for SSH agents when bridge reports failed', async () => {
+        const agent = fakeAgent({ id: 'agent-1', address: 'ssh://my-host:4000' });
+        const store = fakeStore([agent]);
+        const mgr = fakeAgentManager();
+        const sshBridge = {
+            getState: vi.fn(() => ({ serverId: 'agent-1', host: 'my-host', localPort: 4000, status: 'failed' as const })),
+        } as any;
+        const monitor = new AgentHealthMonitor(store, 60_000, undefined, mgr, sshBridge);
+
+        monitor.start();
+        await vi.waitFor(() => expect(store.updateStatus).toHaveBeenCalled());
+        monitor.stop();
+
+        expect(store.updateStatus).toHaveBeenCalledWith('agent-1', 'offline');
+    });
 });

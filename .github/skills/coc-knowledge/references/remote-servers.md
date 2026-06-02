@@ -143,15 +143,21 @@ Use reconnect when the managed CLI/`ssh` process is stale, the local listener st
 
 ## Implementation map
 
+The core connector classes and types live in `@plusplusoneplusplus/forge/connectors`, shared by both `coc` and `coccontainer`. The coc server files re-export from forge for backward compatibility.
+
 Key files:
 
 - `scripts\config-devtunnel.ps1` configures the stable tunnel and HTTP port binding.
 - `scripts\coc-serve-loop.ps1` hosts the tunnel and runs `coc serve`.
 - `scripts\Manage-CoCService.ps1` installs and manages the scheduled-task wrapper.
+- `packages\forge\src\connectors\types.ts` shared types: `RemoteServer`, `SshRemoteServer`, connection states.
+- `packages\forge\src\connectors\health.ts` shared `waitForHealth`, `startProcess`, `defaultHealthChecker`.
+- `packages\forge\src\connectors\ssh-connector.ts` manages `ssh -N` child processes with auto-reconnect.
+- `packages\forge\src\connectors\devtunnel-connector.ts` manages `devtunnel connect` child processes and readiness polling.
+- `packages\forge\src\connectors\devtunnel-port-parser.ts` parses `devtunnel port list` output.
 - `packages\coc\src\server\servers\remote-server-store.ts` validates and persists remote server entries.
-- `packages\coc\src\server\servers\devtunnel-port-parser.ts` parses `devtunnel port list` output.
-- `packages\coc\src\server\servers\devtunnel-connector.ts` owns `devtunnel connect` child processes and readiness polling.
 - `packages\coc\src\server\servers\remote-server-health.ts` probes remote CoC health and metadata.
 - `packages\coc\src\server\servers\remote-server-routes.ts` exposes the REST API.
 - `packages\coc-client\src\domains\servers.ts` exposes the typed client methods.
 - `packages\coc\src\server\spa\client\react\features\servers\` contains the dashboard UI.
+- `packages\coccontainer\src\proxy\ssh-bridge.ts` container-specific SSH bridge wrapper using `SshConnector` from forge.
