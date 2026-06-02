@@ -12,6 +12,7 @@ import type {
   WorkItemSyncApplyResponse,
   WorkItemSyncPreviewRequest,
   WorkItemSyncPreviewResponse,
+  WorkItemSyncProvider,
   WorkItemSyncStatusResponse,
   UpdateWorkItemRequest,
   WorkItem,
@@ -135,7 +136,7 @@ export class WorkItemsClient {
     });
   }
 
-  syncStatus(workspaceId: string, provider?: string): Promise<WorkItemSyncStatusResponse> {
+  syncStatus(workspaceId: string, provider?: WorkItemSyncProvider): Promise<WorkItemSyncStatusResponse> {
     return this.transport.request<WorkItemSyncStatusResponse>(path(workspaceId, '/sync/status'), {
       query: provider ? { provider } : undefined,
     });

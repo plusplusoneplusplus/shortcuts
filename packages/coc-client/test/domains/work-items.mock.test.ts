@@ -416,7 +416,7 @@ describe('WorkItemsClient mock coverage', () => {
     const adapter = createMockAdapter({ provider: 'github' });
     const client = new WorkItemsClient(adapter);
 
-    await client.syncStatus('repo/a', 'github');
+    await client.syncStatus('repo/a', 'azure-boards');
     await client.syncPreview('repo/a', {
       provider: 'github',
       operation: 'export-selected',
@@ -434,7 +434,7 @@ describe('WorkItemsClient mock coverage', () => {
     expect(adapter.calls).toEqual([
       {
         path: '/workspaces/repo%2Fa/work-items/sync/status',
-        options: { query: { provider: 'github' } },
+        options: { query: { provider: 'azure-boards' } },
       },
       {
         path: '/workspaces/repo%2Fa/work-items/sync/preview',

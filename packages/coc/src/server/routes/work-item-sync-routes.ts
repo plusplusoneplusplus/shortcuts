@@ -268,7 +268,7 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
 
                 const parsed = url.parse(req.url ?? '/', true);
                 const queryProvider = typeof parsed.query.provider === 'string' ? parsed.query.provider : undefined;
-                const providerNames = queryProvider ? [parseProvider(queryProvider)] : [DEFAULT_WORK_ITEM_SYNC_PROVIDER];
+                const providerNames = queryProvider ? [parseProvider(queryProvider)] : SUPPORTED_WORK_ITEM_SYNC_PROVIDERS;
                 const providerContext = await buildProviderContext(workspaceId);
                 const providers = await Promise.all(providerNames.map(provider => getProviderStatus(provider, providerContext)));
                 const response: WorkItemSyncStatusResponse = {

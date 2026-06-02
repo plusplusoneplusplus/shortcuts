@@ -258,7 +258,42 @@ describe('Work Item Sync Routes', () => {
             },
             auth: { mode: 'external', authenticated: true },
         });
+        expect(status.body.providers).toEqual([
+            expect.objectContaining({ provider: 'github', available: true }),
+            expect.objectContaining({
+                provider: 'azure-boards',
+                available: false,
+                reason: 'provider-unavailable',
+                message: expect.stringContaining('planned but unavailable'),
+            }),
+        ]);
         expect(JSON.stringify(status.body)).not.toMatch(/token|secret|password|credential/i);
+    });
+
+    it('reports Azure Boards as planned but unavailable without registering an Azure adapter', async () => {
+        await startServer([makeFakeProvider()]);
+
+        const status = await request('GET', `/api/workspaces/${REPO_ID}/work-items/sync/status?provider=azure-boards`);
+        expect(status.status).toBe(200);
+        expect(status.body.provider).toMatchObject({
+            provider: 'azure-boards',
+            available: false,
+            reason: 'provider-unavailable',
+            message: expect.stringContaining('planned but unavailable'),
+        });
+
+        const preview = await request('POST', `/api/workspaces/${REPO_ID}/work-items/sync/preview`, {
+            provider: 'azure-boards',
+            operation: 'import',
+        });
+        expect(preview.status).toBe(409);
+        expect(preview.body.code).toBe('WORK_ITEM_SYNC_PROVIDER_UNAVAILABLE');
+        expect(preview.body.details.provider).toMatchObject({
+            provider: 'azure-boards',
+            available: false,
+            reason: 'provider-unavailable',
+            message: expect.stringContaining('planned but unavailable'),
+        });
     });
 
     it('returns a clear provider-unavailable error when no adapter is registered', async () => {

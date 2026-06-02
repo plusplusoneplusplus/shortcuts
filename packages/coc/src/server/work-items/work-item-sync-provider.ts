@@ -53,11 +53,14 @@ export function isSupportedWorkItemSyncProvider(value: string): value is WorkIte
 }
 
 export function unavailableWorkItemSyncProviderStatus(provider: WorkItemSyncProviderName): WorkItemSyncProviderStatus {
+    const message = provider === 'azure-boards'
+        ? 'Azure Boards work item sync is planned but unavailable in this version.'
+        : `Work item sync provider '${provider}' is not registered.`;
     return {
         provider,
         available: false,
         reason: 'provider-unavailable',
-        message: `Work item sync provider '${provider}' is not registered.`,
+        message,
     };
 }
 
