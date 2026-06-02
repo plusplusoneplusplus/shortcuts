@@ -11,7 +11,7 @@ import { Command } from 'commander';
 import { executeRun } from './commands/run';
 import { executeValidate } from './commands/validate';
 import { executeList } from './commands/list';
-import { executeQueueList, executeQueueSubmit } from './commands/queue';
+import { executeQueueCancel, executeQueueList, executeQueueSubmit } from './commands/queue';
 import { resolveRunOptions, resolveListOptions, resolveServeOptions, resolveWipeDataOptions } from './commands/options-resolver';
 import { resolveConfig } from './config';
 import { setColorEnabled } from './logger';
@@ -188,6 +188,18 @@ export function createProgram(): Command {
         .action(async (opts: Record<string, unknown>) => {
             applyGlobalOptions(opts);
             const exitCode = await executeQueueList(opts);
+            process.exit(exitCode);
+        });
+
+    queue
+        .command('cancel')
+        .description('Cancel a queued or running queue task')
+        .argument('<taskId>', 'Queue task ID to cancel')
+        .option('--reason <reason>', 'Optional cancellation reason')
+        .option('--server-url <url>', 'CoC server URL (default: COC_SERVER_URL or http://localhost:4000)')
+        .action(async (taskId: string, opts: Record<string, unknown>) => {
+            applyGlobalOptions(opts);
+            const exitCode = await executeQueueCancel(taskId, opts);
             process.exit(exitCode);
         });
 

@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { Readable, Writable } from 'stream';
 import {
     buildQueueSubmitRequest,
+    executeQueueCancel,
     executeQueueList,
     executeQueueSubmit,
     listQueueTasks,
+    type QueueCancelDependencies,
     type QueueListDependencies,
     resolveWorkspaceIdFromWorkspaces,
     type QueueSubmitDependencies,
@@ -54,6 +56,16 @@ function makeListClient(options: {
         queue: {
             list: vi.fn(options.list ?? (async () => queueListResponse())),
             history: vi.fn(options.history ?? (async () => ({ history: [] }))),
+        },
+    };
+}
+
+function makeCancelClient(options: {
+    cancel?: (taskId: string, options?: { reason?: string }) => Promise<unknown>;
+} = {}): QueueCancelDependencies['client'] {
+    return {
+        queue: {
+            cancel: vi.fn(options.cancel ?? (async () => ({ cancelled: true }))),
         },
     };
 }
@@ -353,5 +365,63 @@ describe('executeQueueList', () => {
         expect(exitCode).toBe(1);
         expect(stdout.output()).toBe('');
         expect(stderr.output()).toContain("Invalid status: 'blocked'");
+    });
+});
+
+describe('executeQueueCancel', () => {
+    it('cancels the requested task and prints the task ID', async () => {
+        const stdout = memoryWritable();
+        const stderr = memoryWritable();
+        const client = makeCancelClient();
+
+        const exitCode = await executeQueueCancel('queue-abc123', {
+            reason: 'no longer needed',
+        }, {
+            client,
+            stdout: stdout.stream,
+            stderr: stderr.stream,
+            env: {},
+        });
+
+        expect(exitCode).toBe(0);
+        expect(stdout.output()).toBe('Cancelled: queue-abc123\n');
+        expect(stderr.output()).toBe('');
+        expect(client!.queue.cancel).toHaveBeenCalledWith('queue-abc123', { reason: 'no longer needed' });
+    });
+
+    it('omits the cancellation reason when it is blank', async () => {
+        const client = makeCancelClient();
+
+        const exitCode = await executeQueueCancel('queue-abc123', {
+            reason: '   ',
+        }, {
+            client,
+            stdout: memoryWritable().stream,
+            stderr: memoryWritable().stream,
+            env: {},
+        });
+
+        expect(exitCode).toBe(0);
+        expect(client!.queue.cancel).toHaveBeenCalledWith('queue-abc123', undefined);
+    });
+
+    it('prints a clear error and exits 1 when the task cannot be cancelled', async () => {
+        const stdout = memoryWritable();
+        const stderr = memoryWritable();
+
+        const exitCode = await executeQueueCancel('queue-missing', {}, {
+            client: makeCancelClient({
+                cancel: async () => {
+                    throw new Error('Task not found or not cancellable');
+                },
+            }),
+            stdout: stdout.stream,
+            stderr: stderr.stream,
+            env: {},
+        });
+
+        expect(exitCode).toBe(1);
+        expect(stdout.output()).toBe('');
+        expect(stderr.output()).toBe('Task not found or not cancellable\n');
     });
 });

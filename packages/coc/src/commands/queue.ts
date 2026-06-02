@@ -101,6 +101,24 @@ export interface QueueListDependencies {
     env?: NodeJS.ProcessEnv;
 }
 
+interface QueueCancelApiClient {
+    queue: {
+        cancel(taskId: string, options?: { reason?: string }): Promise<unknown>;
+    };
+}
+
+export interface QueueCancelOptions {
+    reason?: string;
+    serverUrl?: string;
+}
+
+export interface QueueCancelDependencies {
+    client?: QueueCancelApiClient;
+    stdout?: OutputStream;
+    stderr?: OutputStream;
+    env?: NodeJS.ProcessEnv;
+}
+
 export async function executeQueueSubmit(
     message: string | undefined,
     opts: QueueSubmitOptions,
@@ -147,6 +165,33 @@ export async function executeQueueList(
         } else {
             writeLine(stdout, formatQueueTasksTable(tasks));
         }
+        return 0;
+    } catch (error) {
+        writeLine(stderr, formatQueueCliError(error));
+        return 1;
+    }
+}
+
+export async function executeQueueCancel(
+    taskId: string,
+    opts: QueueCancelOptions,
+    deps: QueueCancelDependencies = {},
+): Promise<number> {
+    const stdout = deps.stdout ?? process.stdout;
+    const stderr = deps.stderr ?? process.stderr;
+
+    try {
+        const id = trimOptional(taskId);
+        if (!id) {
+            throw new Error('Task ID is required.');
+        }
+
+        const serverUrl = resolveServerUrl(opts, deps.env ?? process.env);
+        const client = deps.client ?? new CocClient({ baseUrl: serverUrl });
+        const reason = trimOptional(opts.reason);
+        await client.queue.cancel(id, reason === undefined ? undefined : { reason });
+
+        writeLine(stdout, `Cancelled: ${id}`);
         return 0;
     } catch (error) {
         writeLine(stderr, formatQueueCliError(error));
@@ -242,7 +287,7 @@ export function resolveWorkspaceIdFromWorkspaces(cwd: string, workspaces: Worksp
     return candidates.find(candidate => isSameOrChildPath(normalizedCwd, candidate.rootPath))?.id;
 }
 
-function resolveServerUrl(opts: Pick<QueueSubmitOptions | QueueListOptions, 'serverUrl'>, env: NodeJS.ProcessEnv): string {
+function resolveServerUrl(opts: { serverUrl?: string }, env: NodeJS.ProcessEnv): string {
     return trimOptional(opts.serverUrl) ?? trimOptional(env.COC_SERVER_URL) ?? DEFAULT_SERVER_URL;
 }
 
