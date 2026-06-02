@@ -190,6 +190,10 @@ The top-level `#memory` route is embedded in the Admin shell's Knowledge group a
 
 `featureFlags.ts` defines compile-time flags (e.g., `SHOW_WELCOME_TUTORIAL`). Runtime feature flags are exposed through `GET /api/config/runtime` and SPA helpers in `utils/config.ts`; `workItems.sync.enabled` only reports usable sync UI when both it and `workItems.hierarchy.enabled` are true. Features gated by flags are disabled by default.
 
+## Work Items
+
+When hierarchy mode and manual sync are both enabled, `WorkItemHierarchyTree` shows a compact GitHub sync toolbar above the hierarchy filters. It loads provider status through the typed `workItems.syncStatus()` client, then requires a `workItems.syncPreview()` response before `workItems.syncApply()` can run for Import, Export selected, or Sync linked. The preview dialog groups creates, updates, links, conflicts, warnings, and no-ops; conflict rows require an explicit Use CoC / Use GitHub / Skip choice before apply. Linked hierarchy rows and the detail pane use `WorkItemSyncBadge` to show GitHub issue links and dirty/conflict state.
+
 ## coc-client Integration
 
 The SPA consumes `@plusplusoneplusplus/coc-client` for typed REST transport. Domain clients: admin, processes, queue, schedules, tasks, notes, workflows, wiki, memory, memoryV2, skills, preferences, seen-state, work-items, agentProviders, git.

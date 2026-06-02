@@ -7,6 +7,7 @@ import { type ReactNode } from 'react';
 import { cn } from '../../ui';
 import type { WorkItemTreeNode } from '@plusplusoneplusplus/coc-client';
 import { formatRelativeTime } from '../../utils/format';
+import { WorkItemSyncBadge } from './WorkItemSyncBadge';
 
 // ── Type display config ──────────────────────────────────────────────────────
 
@@ -120,7 +121,7 @@ export function WorkItemHierarchyNode({
                 )}
                 style={{
                     paddingLeft: `${depthPadding}px`,
-                    gridTemplateColumns: 'auto auto minmax(0, 1fr) auto',
+                    gridTemplateColumns: 'auto auto minmax(0, 1fr) auto auto',
                 }}
                 onClick={() => onSelect(item.id)}
                 onContextMenu={e => { e.preventDefault(); onContextMenu(e, node); }}
@@ -178,6 +179,12 @@ export function WorkItemHierarchyNode({
                         {' ago'}
                     </span>
                 </span>
+
+                <WorkItemSyncBadge
+                    links={item.syncLinks}
+                    compact
+                    data-testid={`hierarchy-node-sync-badge-${item.id}`}
+                />
 
                 {/* Rollup summary for containers */}
                 {isContainer && rollup.descendantCount > 0 && (
