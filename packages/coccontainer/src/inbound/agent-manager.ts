@@ -320,6 +320,12 @@ export class AgentManager extends EventEmitter {
         });
     }
 
+    /** Check if an outbound WebSocket connection is open. */
+    hasOutboundConnection(agentId: string): boolean {
+        const ws = this.outboundConnections.get(agentId);
+        return ws !== undefined && ws.readyState === WebSocket.OPEN;
+    }
+
     /** Send a raw WS message to an outbound-connected agent. */
     sendOutbound(agentId: string, data: string): boolean {
         const ws = this.outboundConnections.get(agentId);
