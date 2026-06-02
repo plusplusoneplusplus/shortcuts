@@ -109,7 +109,7 @@ export function ModelCommandMenu({
         <div
             ref={menuRef}
             className={cn(
-                'absolute z-50 py-0.5 rounded-md shadow-lg overflow-y-auto',
+                'absolute z-[10000] py-0.5 rounded-md shadow-lg overflow-y-auto',
                 'bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]',
                 'max-h-48',
             )}
