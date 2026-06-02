@@ -24,11 +24,10 @@ import { useGitReviewPopOut, gitReviewPopOutKey } from '../../../contexts/GitRev
 import { buildGitReviewPopOutUrl } from '../../../layout/Router';
 import { getSpaCocClient } from '../../../api/cocClient';
 import { useClassification } from '../diff/useClassification';
-import type { ChatProvider } from '../diff/useClassification';
+import { useModalJobAiSelection } from '../../../shared/ModalJobAiControls';
+import { ClassifyDiffAiControls } from '../diff/ClassifyDiffAiControls';
 import { usePrReviewProgress } from '../diff/usePrReviewProgress';
 import { pickPriorityFile } from '../diff/prPopoutPriority';
-import { useAgentProviders } from '../../../hooks/useAgentProviders';
-import { useModels } from '../../../hooks/useModels';
 import type { ClassificationKey } from '../diff/diffSource';
 import type { HunkCategory } from '../../pull-requests/classification-types';
 import { HUNK_CATEGORIES, CATEGORY_LABELS } from '../../pull-requests/classification-types';
@@ -92,7 +91,8 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
         () => ({ type: 'commit', repoId: workspaceId, identifier: hash ?? '' }),
         [workspaceId, hash],
     );
-    const classification = useClassification(classificationKey, { workspaceId });
+    const aiSelection = useModalJobAiSelection({ workspaceId, mode: 'ask' });
+    const classification = useClassification(classificationKey, aiSelection.resolved, { workspaceId });
 
     // Notify parent when a classification result becomes available.
     const onClassifiedRef = useRef(onClassified);
@@ -105,12 +105,6 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
 
     // Review progress — session-local only (no server persistence)
     const reviewProgress = usePrReviewProgress(hash ?? '');
-
-    // Provider/model selectors for classification
-    const { providers: agentProviders } = useAgentProviders();
-    const { models: agentModels } = useModels(classification.provider);
-    const selectableProviders = agentProviders.filter(p => p.enabled && p.available);
-    const enabledModels = agentModels.filter(m => m.enabled);
 
     // Priority navigation (next/prev unreviewed or high-priority file)
     const classifyStatusForNav = classification.state.status;
@@ -346,41 +340,11 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
             )}
             {/* Classification toolbar — mirrors commit popout layout */}
             <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#2a2a2a]" data-testid="commit-classify-bar">
-                {selectableProviders.length > 1 && (
-                    <select
-                        value={classification.provider}
-                        onChange={e => classification.setProvider(e.target.value as ChatProvider)}
-                        disabled={classification.state.status === 'loading'}
-                        className={
-                            classification.state.status === 'loading'
-                                ? 'h-6 rounded border border-gray-200 bg-gray-50 px-1.5 text-[11px] text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500 cursor-not-allowed'
-                                : 'h-6 rounded border border-gray-300 bg-white px-1.5 text-[11px] text-gray-700 hover:border-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200'
-                        }
-                        aria-label="AI provider"
-                        data-testid="commit-classify-provider"
-                    >
-                        {selectableProviders.map(p => (
-                            <option key={p.id} value={p.id}>{p.label}</option>
-                        ))}
-                    </select>
-                )}
-                <select
-                    value={classification.model ?? ''}
-                    onChange={e => classification.setModel(e.target.value || undefined)}
+                <ClassifyDiffAiControls
+                    selection={aiSelection}
                     disabled={classification.state.status === 'loading'}
-                    className={
-                        classification.state.status === 'loading'
-                            ? 'h-6 rounded border border-gray-200 bg-gray-50 px-1.5 text-[11px] text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500 cursor-not-allowed'
-                            : 'h-6 rounded border border-gray-300 bg-white px-1.5 text-[11px] text-gray-700 hover:border-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200'
-                    }
-                    aria-label="AI model"
-                    data-testid="commit-classify-model"
-                >
-                    <option value="">Default</option>
-                    {enabledModels.map(m => (
-                        <option key={m.id} value={m.id}>{m.name ?? m.id}</option>
-                    ))}
-                </select>
+                    testIdPrefix="commit-classify"
+                />
                 <button
                     type="button"
                     onClick={classification.classify}

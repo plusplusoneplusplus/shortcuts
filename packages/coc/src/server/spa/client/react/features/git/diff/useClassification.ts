@@ -190,13 +190,13 @@ export function useClassification(
                 pollRef.current = null;
             }
         };
-    }, [keyStr]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [keyStr]);
 
     const buildUrl = useCallback((suffix: string) => {
         if (!classificationKey) return '';
         const base = `/repos/${encodeURIComponent(classificationKey.repoId)}/classify-diff`;
         return `${base}${suffix}`;
-    }, [keyStr]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [keyStr]);
 
     const startPolling = useCallback(() => {
         if (!classificationKey) return;
@@ -236,7 +236,7 @@ export function useClassification(
                 // Transient error — keep polling
             }
         }, POLL_INTERVAL);
-    }, [keyStr, buildUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [keyStr, buildUrl]);
 
     const classify = useCallback(() => {
         if (!classificationKey) return;
@@ -279,7 +279,7 @@ export function useClassification(
                     error: err instanceof Error ? err.message : 'Classification failed',
                 }));
             });
-    }, [keyStr, buildUrl, startPolling]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [keyStr, buildUrl, startPolling]);
 
     // On mount / key change, check for cached result
     useEffect(() => {
@@ -304,7 +304,7 @@ export function useClassification(
                 }
             })
             .catch(() => { /* no cache — ok */ });
-    }, [keyStr, buildUrl, startPolling]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [keyStr, buildUrl, startPolling]);
 
     const toggleFilter = useCallback((cat: HunkCategory) => {
         setState(prev => {

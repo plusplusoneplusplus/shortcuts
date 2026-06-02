@@ -160,9 +160,9 @@ describe('CommitDetail — classification toolbar (AC-05)', () => {
         expect(btn.disabled).toBe(true);
     });
 
-    it('model selector is rendered', async () => {
+    it('model picker is rendered', async () => {
         await renderDetail();
-        expect(screen.getByTestId('commit-classify-model')).toBeTruthy();
+        expect(screen.getByTestId('commit-classify-model-picker-chip')).toBeTruthy();
     });
 });
 
