@@ -33,12 +33,15 @@ import {
 } from '../work-items/work-item-sync-provider';
 import {
     GhCliGitHubWorkItemIssueTransport,
+    convertLocalEpicTreeToGitHubBacked,
     deleteGitHubEpicMirrorTree,
+    detachGitHubEpicTreeToLocalOnly,
     importGitHubEpicTreeAsWorkItems,
     type AvailableGitHubWorkItemSyncRepo,
     type GitHubWorkItemIssueTransport,
 } from '../work-items/work-item-sync-github-provider';
 import { parseGitHubWorkItemIssue } from '../work-items/work-item-sync-github-issue';
+import type { WorkItem } from '../work-items/types';
 
 export interface WorkItemSyncRouteContext {
     routes: Route[];
@@ -262,6 +265,17 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
             const message = error instanceof Error ? error.message : String(error);
             process.stderr.write(`[work-items/github-poll] Failed to reconfigure workspace '${workspaceId}': ${message}\n`);
         });
+    }
+
+    async function loadRootEpic(workspaceId: string, workItemId: string, action: string): Promise<WorkItem> {
+        const root = await ctx.workItemStore.getWorkItem(workItemId, workspaceId);
+        if (!root) {
+            throw notFound(`Work item '${workItemId}'`);
+        }
+        if (root.type !== 'epic' || root.parentId) {
+            throw badRequest(`${action} must be run from a root Epic work item.`);
+        }
+        return root;
     }
 
     async function resolveAvailableGitHubRepo(workspaceId: string): Promise<{
@@ -491,6 +505,60 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
         },
     });
 
+    // POST /api/workspaces/:id/work-items/:workItemId/convert-to-github
+    ctx.routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/convert-to-github$/,
+        handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
+            try {
+                const workspaceId = decodeURIComponent(match![1]);
+                const workItemId = decodeURIComponent(match![2]);
+                const root = await loadRootEpic(workspaceId, workItemId, 'Local-to-GitHub conversion');
+                if (root.tracker?.kind === 'github-backed') {
+                    throw badRequest('Work item is already a GitHub-backed Epic root.');
+                }
+
+                const { repo } = await resolveAvailableGitHubRepo(workspaceId);
+                const transport = ctx.githubTransport ?? new GhCliGitHubWorkItemIssueTransport();
+                const result = await convertLocalEpicTreeToGitHubBacked(
+                    { workspaceId, workItemStore: ctx.workItemStore },
+                    repo,
+                    transport,
+                    root.id,
+                );
+                notifyGitHubBackedEpicTreeChanged(workspaceId);
+                return sendJSON(res, 200, result);
+            } catch (error) {
+                return handleAPIError(res, error);
+            }
+        },
+    });
+
+    // POST /api/workspaces/:id/work-items/:workItemId/convert-to-local
+    ctx.routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/convert-to-local$/,
+        handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
+            try {
+                const workspaceId = decodeURIComponent(match![1]);
+                const workItemId = decodeURIComponent(match![2]);
+                const root = await loadRootEpic(workspaceId, workItemId, 'GitHub-to-local conversion');
+                if (root.tracker?.kind !== 'github-backed' || root.tracker.provider !== 'github') {
+                    throw badRequest('Work item is not a GitHub-backed Epic root.');
+                }
+
+                const result = await detachGitHubEpicTreeToLocalOnly(
+                    { workspaceId, workItemStore: ctx.workItemStore },
+                    root.id,
+                );
+                notifyGitHubBackedEpicTreeChanged(workspaceId);
+                return sendJSON(res, 200, result);
+            } catch (error) {
+                return handleAPIError(res, error);
+            }
+        },
+    });
+
     // POST /api/workspaces/:id/work-items/:workItemId/sync-from-github
     ctx.routes.push({
         method: 'POST',
@@ -499,13 +567,7 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
             try {
                 const workspaceId = decodeURIComponent(match![1]);
                 const workItemId = decodeURIComponent(match![2]);
-                const root = await ctx.workItemStore.getWorkItem(workItemId, workspaceId);
-                if (!root) {
-                    throw notFound(`Work item '${workItemId}'`);
-                }
-                if (root.type !== 'epic' || root.parentId) {
-                    throw badRequest('GitHub-backed tree sync must be run from a root Epic work item.');
-                }
+                const root = await loadRootEpic(workspaceId, workItemId, 'GitHub-backed tree sync');
                 if (root.tracker?.kind !== 'github-backed' || root.tracker.provider !== 'github') {
                     throw badRequest('Work item is not a GitHub-backed Epic root.');
                 }

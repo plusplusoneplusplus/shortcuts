@@ -66,12 +66,17 @@ export {
 } from './work-item-sync-github-issue';
 export {
     GhCliGitHubWorkItemIssueTransport,
+    convertLocalEpicTreeToGitHubBacked,
     createGitHubWorkItemSyncProviderAdapter,
     createGitHubIssueForLocalChild,
+    createGitHubIssueForLocalEpicRoot,
     deleteGitHubEpicMirrorTree,
+    detachGitHubEpicTreeToLocalOnly,
     importGitHubEpicTreeAsWorkItems,
+    type ConvertGitHubEpicTreeTrackerResult,
     type CreateGitHubIssueForLocalChildOptions,
     type CreateGitHubIssueForLocalChildResult,
+    type CreateGitHubIssueForLocalEpicRootOptions,
     type CreateGitHubWorkItemSyncProviderOptions,
     type GitHubWorkItemIssue,
     type GitHubWorkItemIssueListFilters,

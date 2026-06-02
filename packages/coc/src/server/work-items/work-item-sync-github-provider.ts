@@ -141,6 +141,20 @@ export interface CreateGitHubIssueForLocalChildResult {
     githubMirror: NonNullable<WorkItem['githubMirror']>;
 }
 
+export interface CreateGitHubIssueForLocalEpicRootOptions {
+    repo: AvailableGitHubWorkItemSyncRepo;
+    transport: GitHubWorkItemIssueTransport;
+    item: WorkItem;
+    now?: () => string;
+}
+
+export interface ConvertGitHubEpicTreeTrackerResult {
+    root: WorkItem;
+    items: WorkItem[];
+    remoteCreated: number;
+    localUpdated: number;
+}
+
 const execFileAsync = promisify(execFile) as ExecFileAsync;
 
 function repoApiPath(repo: AvailableGitHubWorkItemSyncRepo, suffix = ''): string {
@@ -492,7 +506,7 @@ function parentReferenceForGitHubMirrorChild(
 function bodyForNewGitHubMirrorIssue(
     item: WorkItem,
     repo: AvailableGitHubWorkItemSyncRepo,
-    parent: WorkItemSyncParentReference,
+    parent: WorkItemSyncParentReference | null | undefined,
     syncedAt: string,
     issue?: GitHubWorkItemIssue,
 ): string {
@@ -531,6 +545,28 @@ export async function createGitHubIssueForLocalChild(
     const updated = await options.transport.updateIssue(options.repo, created.number, {
         title: options.item.title,
         body: bodyForNewGitHubMirrorIssue(options.item, options.repo, parent, syncedAt, created),
+        labels,
+        state: 'open',
+    });
+    return {
+        issue: updated,
+        githubMirror: githubMirrorForIssue(updated, syncedAt),
+    };
+}
+
+export async function createGitHubIssueForLocalEpicRoot(
+    options: CreateGitHubIssueForLocalEpicRootOptions,
+): Promise<CreateGitHubIssueForLocalChildResult> {
+    const syncedAt = (options.now ?? (() => new Date().toISOString()))();
+    const labels = labelsForNewGitHubMirrorIssue(options.item);
+    const created = await options.transport.createIssue(options.repo, {
+        title: options.item.title,
+        body: bodyForNewGitHubMirrorIssue(options.item, options.repo, null, syncedAt),
+        labels,
+    });
+    const updated = await options.transport.updateIssue(options.repo, created.number, {
+        title: options.item.title,
+        body: bodyForNewGitHubMirrorIssue(options.item, options.repo, null, syncedAt, created),
         labels,
         state: 'open',
     });
@@ -827,6 +863,143 @@ export async function deleteGitHubEpicMirrorTree(
     }
 
     return { deleted: deletedItemIds.length, deletedItemIds };
+}
+
+export async function convertLocalEpicTreeToGitHubBacked(
+    context: { workspaceId: string; workItemStore: WorkItemStore },
+    repo: AvailableGitHubWorkItemSyncRepo,
+    transport: GitHubWorkItemIssueTransport,
+    rootId: string,
+    now?: () => string,
+): Promise<ConvertGitHubEpicTreeTrackerResult> {
+    const convertedAt = (now ?? (() => new Date().toISOString()))();
+    const entries = (await context.workItemStore.listWorkItems({ repoId: context.workspaceId })).items;
+    const rootEntry = entries.find(entry => entry.id === rootId);
+    if (!rootEntry) {
+        throw new Error(`Work item not found: ${rootId}`);
+    }
+    const tree = [
+        { entry: rootEntry, depth: 0 },
+        ...collectLocalTreeEntries(entries, rootId),
+    ].sort((a, b) => a.depth - b.depth || a.entry.createdAt.localeCompare(b.entry.createdAt));
+
+    const convertedById = new Map<string, WorkItem>();
+    const items: WorkItem[] = [];
+    let remoteCreated = 0;
+    let localUpdated = 0;
+
+    for (const { entry, depth } of tree) {
+        const item = await context.workItemStore.getWorkItem(entry.id, context.workspaceId);
+        if (!item) {
+            throw new Error(`Work item indexed but missing: ${entry.id}`);
+        }
+
+        if (depth === 0) {
+            const result = await createGitHubIssueForLocalEpicRoot({
+                repo,
+                transport,
+                item,
+                now: () => convertedAt,
+            });
+            remoteCreated++;
+            const updated = await context.workItemStore.updateWorkItem(item.id, {
+                tracker: githubBackedTrackerForRoot(result.issue, convertedAt),
+                githubMirror: result.githubMirror,
+                syncLinks: undefined,
+            });
+            if (!updated) {
+                throw new Error(`Work item disappeared during GitHub conversion: ${item.id}`);
+            }
+            localUpdated++;
+            convertedById.set(updated.id, updated);
+            items.push(updated);
+            continue;
+        }
+
+        if (!item.parentId) {
+            throw new Error(`Work item '${item.id}' is in the Epic tree but has no parent.`);
+        }
+        const parent = convertedById.get(item.parentId);
+        if (!parent) {
+            throw new Error(`Parent work item '${item.parentId}' was not converted before child '${item.id}'.`);
+        }
+
+        const result = await createGitHubIssueForLocalChild({
+            repo,
+            transport,
+            item,
+            parent,
+            now: () => convertedAt,
+        });
+        remoteCreated++;
+        const updated = await context.workItemStore.updateWorkItem(item.id, {
+            tracker: undefined,
+            githubMirror: result.githubMirror,
+            syncLinks: undefined,
+        });
+        if (!updated) {
+            throw new Error(`Work item disappeared during GitHub conversion: ${item.id}`);
+        }
+        localUpdated++;
+        convertedById.set(updated.id, updated);
+        items.push(updated);
+    }
+
+    const root = convertedById.get(rootId);
+    if (!root) {
+        throw new Error(`Root work item '${rootId}' was not converted.`);
+    }
+
+    return {
+        root,
+        items,
+        remoteCreated,
+        localUpdated,
+    };
+}
+
+export async function detachGitHubEpicTreeToLocalOnly(
+    context: { workspaceId: string; workItemStore: WorkItemStore },
+    rootId: string,
+): Promise<ConvertGitHubEpicTreeTrackerResult> {
+    const entries = (await context.workItemStore.listWorkItems({ repoId: context.workspaceId })).items;
+    const rootEntry = entries.find(entry => entry.id === rootId);
+    if (!rootEntry) {
+        throw new Error(`Work item not found: ${rootId}`);
+    }
+    const tree = [
+        { entry: rootEntry, depth: 0 },
+        ...collectLocalTreeEntries(entries, rootId),
+    ].sort((a, b) => a.depth - b.depth || a.entry.createdAt.localeCompare(b.entry.createdAt));
+
+    const items: WorkItem[] = [];
+    let localUpdated = 0;
+
+    for (const { entry, depth } of tree) {
+        const updates: Partial<Omit<WorkItem, 'id' | 'repoId' | 'createdAt'>> = {
+            tracker: depth === 0 ? { kind: 'local-only' } : undefined,
+            githubMirror: undefined,
+            syncLinks: undefined,
+        };
+        const updated = await context.workItemStore.updateWorkItem(entry.id, updates);
+        if (!updated) {
+            throw new Error(`Work item disappeared during GitHub detach: ${entry.id}`);
+        }
+        localUpdated++;
+        items.push(updated);
+    }
+
+    const root = items.find(item => item.id === rootId);
+    if (!root) {
+        throw new Error(`Root work item '${rootId}' was not detached.`);
+    }
+
+    return {
+        root,
+        items,
+        remoteCreated: 0,
+        localUpdated,
+    };
 }
 
 function parentReferenceComparable(parent: WorkItemSyncParentReference | undefined): Record<string, unknown> | undefined {

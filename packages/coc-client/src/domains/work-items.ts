@@ -1,6 +1,7 @@
 import type {
   CreateWorkItemFromChatRequest,
   CreateWorkItemRequest,
+  ConvertWorkItemTrackerResponse,
   ExecuteWorkItemRequest,
   ExecuteWorkItemResponse,
   ImportFromGitHubRequest,
@@ -167,6 +168,18 @@ export class WorkItemsClient {
 
   syncGitHubEpic(workspaceId: string, workItemId: string): Promise<SyncGitHubEpicResponse> {
     return this.transport.request<SyncGitHubEpicResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/sync-from-github`), {
+      method: 'POST',
+    });
+  }
+
+  convertLocalEpicToGitHub(workspaceId: string, workItemId: string): Promise<ConvertWorkItemTrackerResponse> {
+    return this.transport.request<ConvertWorkItemTrackerResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/convert-to-github`), {
+      method: 'POST',
+    });
+  }
+
+  convertGitHubEpicToLocal(workspaceId: string, workItemId: string): Promise<ConvertWorkItemTrackerResponse> {
+    return this.transport.request<ConvertWorkItemTrackerResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/convert-to-local`), {
       method: 'POST',
     });
   }

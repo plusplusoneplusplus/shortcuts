@@ -381,6 +381,13 @@ export interface SyncGitHubEpicResponse extends JsonObject {
   deletedItemIds: string[];
 }
 
+export interface ConvertWorkItemTrackerResponse extends JsonObject {
+  root: WorkItem;
+  items: WorkItem[];
+  remoteCreated: number;
+  localUpdated: number;
+}
+
 export interface CreateWorkItemFromChatRequest extends JsonObject {
   processId: string;
   id?: string;

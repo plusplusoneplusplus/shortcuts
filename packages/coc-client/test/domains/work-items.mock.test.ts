@@ -484,6 +484,8 @@ describe('WorkItemsClient mock coverage', () => {
       conflictResolutions: [{ conflictId: 'conflict-1', resolution: 'use-coc' }],
     });
     await client.syncGitHubEpic('repo/a', 'epic/1');
+    await client.convertLocalEpicToGitHub('repo/a', 'epic/1');
+    await client.convertGitHubEpicToLocal('repo/a', 'epic/1');
 
     expect(adapter.calls).toEqual([
       {
@@ -517,6 +519,14 @@ describe('WorkItemsClient mock coverage', () => {
       },
       {
         path: '/workspaces/repo%2Fa/work-items/epic%2F1/sync-from-github',
+        options: { method: 'POST' },
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/epic%2F1/convert-to-github',
+        options: { method: 'POST' },
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/epic%2F1/convert-to-local',
         options: { method: 'POST' },
       },
     ]);
