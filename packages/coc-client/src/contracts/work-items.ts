@@ -339,6 +339,11 @@ export interface CreateWorkItemRequest {
   plan?: { content: string; resolvedBy?: string };
 }
 
+export interface ImportFromGitHubRequest extends JsonObject {
+  /** Full GitHub issue URL, e.g. https://github.com/<owner>/<repo>/issues/<number> */
+  issueUrl: string;
+}
+
 export interface CreateWorkItemFromChatRequest extends JsonObject {
   processId: string;
   id?: string;

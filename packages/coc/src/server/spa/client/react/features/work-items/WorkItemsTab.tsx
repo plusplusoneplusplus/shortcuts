@@ -16,6 +16,7 @@ import { CommitDetail } from '../git/commits/CommitDetail';
 import { FileDiffPanel } from '../git/diff/FileDiffPanel';
 import { createCommitDiffSource } from '../git/diff/diffSource';
 import { CreateWorkItemDialog } from './CreateWorkItemDialog';
+import { ImportFromGitHubDialog } from './ImportFromGitHubDialog';
 import { useWorkItems } from '../../contexts/WorkItemContext';
 import { useApp } from '../../contexts/AppContext';
 import { fetchApi } from '../../hooks/useApi';
@@ -222,6 +223,20 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
 
     const [showAiComposer, setShowAiComposer] = useState(false);
     const aiAuthoringEnabled = isWorkItemsAiAuthoringEnabled();
+    const [showImportDialog, setShowImportDialog] = useState(false);
+    const [highlightedWorkItemId, setHighlightedWorkItemId] = useState<string | null>(null);
+
+    const handleImported = useCallback((item: any) => {
+        dispatch({ type: 'WORK_ITEM_ADDED', repoId: workspaceId, item });
+        setSelectedWorkItemId(item.id);
+        setSelectedSessionTaskId(null);
+        setSelectedCommitHash(null);
+        setSelectedCommitFile(null);
+        setHighlightedWorkItemId(item.id);
+        if (isMobile) setMobileShowDetail(true);
+        location.hash = buildWorkItemHash(workspaceId, item.id);
+        setTimeout(() => setHighlightedWorkItemId(null), 2000);
+    }, [dispatch, workspaceId, isMobile]);
 
     const listPane = hierarchyEnabled ? (
         <WorkItemHierarchyTree
@@ -249,12 +264,16 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                             ✨ AI
                         </Button>
                     )}
+                    <Button variant="ghost" size="sm" onClick={() => setShowImportDialog(true)} data-testid="import-from-github-btn">
+                        ↓ GitHub
+                    </Button>
                 </div>
             </div>
             <WorkItemSection
                 workspaceId={workspaceId}
                 onSelectWorkItem={handleSelectWorkItem}
                 selectedWorkItemId={selectedWorkItemId}
+                highlightedWorkItemId={highlightedWorkItemId}
             />
         </div>
     );
@@ -399,6 +418,12 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                     mode="create"
                     onCreated={handleCreated}
                 />
+                <ImportFromGitHubDialog
+                    open={showImportDialog}
+                    onClose={() => setShowImportDialog(false)}
+                    workspaceId={workspaceId}
+                    onImported={handleImported}
+                />
             </>
         );
     }
@@ -437,6 +462,12 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                 workspaceId={workspaceId}
                 mode="create"
                 onCreated={handleCreated}
+            />
+            <ImportFromGitHubDialog
+                open={showImportDialog}
+                onClose={() => setShowImportDialog(false)}
+                workspaceId={workspaceId}
+                onImported={handleImported}
             />
         </>
     );

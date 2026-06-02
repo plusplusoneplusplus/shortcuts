@@ -18,7 +18,7 @@ import {
 } from '@plusplusoneplusplus/coc-client';
 import type { Route } from '../types';
 import { sendJSON, parseBody } from '../core/api-handler';
-import { APIError, badRequest, forbidden, handleAPIError } from '../errors';
+import { APIError, badRequest, forbidden, handleAPIError, notFound } from '../errors';
 import { readRepoPreferences } from '../preferences-handler';
 import type { WorkItemStore } from '../work-items/types';
 import {
@@ -31,6 +31,12 @@ import {
     type WorkItemSyncProviderAdapter,
     type WorkItemSyncProviderContext,
 } from '../work-items/work-item-sync-provider';
+import {
+    GhCliGitHubWorkItemIssueTransport,
+    importGitHubIssueAsWorkItem,
+    type AvailableGitHubWorkItemSyncRepo,
+    type GitHubWorkItemIssueTransport,
+} from '../work-items/work-item-sync-github-provider';
 
 export interface WorkItemSyncRouteContext {
     routes: Route[];
@@ -40,6 +46,8 @@ export interface WorkItemSyncRouteContext {
     getHierarchyEnabled: () => boolean;
     getSyncEnabled: () => boolean;
     providers?: WorkItemSyncProviderAdapter[];
+    /** Override GitHub transport for testing. Defaults to GhCliGitHubWorkItemIssueTransport. */
+    githubTransport?: GitHubWorkItemIssueTransport;
 }
 
 const VALID_OPERATIONS: readonly WorkItemSyncOperation[] = ['import', 'export-selected', 'sync-linked'];
@@ -346,6 +354,100 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                 });
                 const warnings: WorkItemSyncWarning[] = [...scope.warnings, ...result.warnings];
                 return sendJSON(res, 200, { ...result, warnings });
+            } catch (error) {
+                return handleAPIError(res, error);
+            }
+        },
+    });
+
+    // POST /api/workspaces/:id/work-items/import-from-github
+    ctx.routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/import-from-github$/,
+        handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
+            try {
+                const workspaceId = decodeURIComponent(match![1]);
+                const body = await parseJsonObjectBody(req);
+
+                const issueUrl = optionalString(body.issueUrl, 'issueUrl');
+                if (!issueUrl) {
+                    throw badRequest('issueUrl is required');
+                }
+
+                const urlMatch = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/issues\/(\d+)\/?$/i.exec(issueUrl);
+                if (!urlMatch) {
+                    throw badRequest(
+                        'issueUrl must be a valid GitHub issue URL: https://github.com/<owner>/<repo>/issues/<number>',
+                    );
+                }
+                const [, urlOwner, urlRepo, issueNumberStr] = urlMatch;
+                const issueNumber = parseInt(issueNumberStr, 10);
+
+                const providerContext = await buildProviderContext(workspaceId);
+                const adapter = adapters.get('github');
+                const status = adapter
+                    ? await adapter.getStatus(providerContext)
+                    : unavailableWorkItemSyncProviderStatus('github');
+
+                if (!status.available) {
+                    throw providerUnavailableError(status);
+                }
+
+                const configuredOwner = status.repository?.owner;
+                const configuredRepo = status.repository?.repo;
+                if (!configuredOwner || !configuredRepo) {
+                    throw providerUnavailableError(status);
+                }
+
+                if (
+                    urlOwner.toLowerCase() !== configuredOwner.toLowerCase() ||
+                    urlRepo.toLowerCase() !== configuredRepo.toLowerCase()
+                ) {
+                    throw badRequest(
+                        `Issue URL repo (${urlOwner}/${urlRepo}) does not match the workspace-configured GitHub repo (${configuredOwner}/${configuredRepo})`,
+                    );
+                }
+
+                const allItems = await ctx.workItemStore.listWorkItems({ repoId: workspaceId });
+                const duplicate = allItems.items.find(item =>
+                    item.syncLinks?.some(
+                        link =>
+                            link.provider === 'github' &&
+                            link.remote.issueNumber === issueNumber &&
+                            (!link.remote.owner || link.remote.owner.toLowerCase() === configuredOwner.toLowerCase()) &&
+                            (!link.remote.repo || link.remote.repo.toLowerCase() === configuredRepo.toLowerCase()),
+                    ),
+                );
+                if (duplicate) {
+                    throw new APIError(
+                        409,
+                        `GitHub issue #${issueNumber} is already imported as work item '${duplicate.id}'`,
+                        'DUPLICATE_IMPORT',
+                        { existingWorkItemId: duplicate.id },
+                    );
+                }
+
+                const repo: AvailableGitHubWorkItemSyncRepo = {
+                    available: true,
+                    provider: 'github',
+                    owner: configuredOwner,
+                    repo: configuredRepo,
+                    url: status.repository?.url ?? `https://github.com/${configuredOwner}/${configuredRepo}`,
+                    source: (status.repository?.source as 'preference' | 'workspaceRemote' | 'origin') ?? 'origin',
+                };
+                const transport = ctx.githubTransport ?? new GhCliGitHubWorkItemIssueTransport();
+                const issue = await transport.getIssue(repo, issueNumber);
+                if (!issue) {
+                    throw notFound(`GitHub issue #${issueNumber}`);
+                }
+
+                const workItem = await importGitHubIssueAsWorkItem(
+                    { workspaceId, workItemStore: ctx.workItemStore },
+                    repo,
+                    issue,
+                );
+
+                return sendJSON(res, 201, workItem);
             } catch (error) {
                 return handleAPIError(res, error);
             }

@@ -86,9 +86,10 @@ interface WorkItemSectionProps {
     workspaceId: string;
     onSelectWorkItem: (id: string) => void;
     selectedWorkItemId?: string | null;
+    highlightedWorkItemId?: string | null;
 }
 
-export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkItemId }: WorkItemSectionProps) {
+export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkItemId, highlightedWorkItemId }: WorkItemSectionProps) {
     const { state, dispatch } = useWorkItems();
     const items = state.workItemsByRepo[workspaceId] || [];
     const pagination = state.paginationByRepo[workspaceId];
@@ -371,6 +372,7 @@ export function WorkItemSection({ workspaceId, onSelectWorkItem, selectedWorkIte
                                                 'p-2 cursor-pointer',
                                                 selectedWorkItemId === item.id && 'ring-2 ring-[#0078d4]',
                                                 item.archivedAt && 'opacity-50',
+                                                highlightedWorkItemId === item.id && 'animate-pulse ring-2 ring-[#0078d4]/50',
                                             )}
                                             onClick={() => onSelectWorkItem(item.id)}
                                             onContextMenu={(e) => handleContextMenu(e, item)}

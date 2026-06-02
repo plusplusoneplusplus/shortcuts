@@ -3,6 +3,7 @@ import type {
   CreateWorkItemRequest,
   ExecuteWorkItemRequest,
   ExecuteWorkItemResponse,
+  ImportFromGitHubRequest,
   ImproveWorkItemAiDraftRequest,
   NewWorkItemAiDraftRequest,
   RequestWorkItemChangesRequest,
@@ -151,6 +152,13 @@ export class WorkItemsClient {
 
   syncApply(workspaceId: string, request: WorkItemSyncApplyRequest): Promise<WorkItemSyncApplyResponse> {
     return this.transport.request<WorkItemSyncApplyResponse>(path(workspaceId, '/sync/apply'), {
+      method: 'POST',
+      body: { ...request },
+    });
+  }
+
+  importFromGitHub(workspaceId: string, request: ImportFromGitHubRequest): Promise<WorkItem> {
+    return this.transport.request<WorkItem>(path(workspaceId, '/import-from-github'), {
       method: 'POST',
       body: { ...request },
     });

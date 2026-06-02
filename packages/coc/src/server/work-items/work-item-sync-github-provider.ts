@@ -26,6 +26,7 @@ import {
 import type {
     WorkItem,
     WorkItemIndexEntry,
+    WorkItemStore,
     WorkItemSyncLink,
     WorkItemSyncParentReference,
 } from './types';
@@ -42,7 +43,7 @@ import {
     type WorkItemSyncProviderPreviewContext,
 } from './work-item-sync-provider';
 
-type AvailableGitHubWorkItemSyncRepo = Extract<GitHubWorkItemSyncRepo, { available: true }>;
+export type AvailableGitHubWorkItemSyncRepo = Extract<GitHubWorkItemSyncRepo, { available: true }>;
 type UnavailableGitHubWorkItemSyncRepo = Exclude<GitHubWorkItemSyncRepo, AvailableGitHubWorkItemSyncRepo>;
 type WorkItemSyncFieldChanges = NonNullable<WorkItemSyncPreviewOperation['fields']>;
 
@@ -1579,4 +1580,43 @@ export function createGitHubWorkItemSyncProviderAdapter(options: CreateGitHubWor
             return applyGitHubSync(context);
         },
     };
+}
+
+/**
+ * Standalone import: fetches nothing — takes a pre-fetched issue and creates a work item
+ * with a GitHub syncLink. Used by the import-from-github endpoint.
+ */
+export async function importGitHubIssueAsWorkItem(
+    context: { workspaceId: string; workItemStore: WorkItemStore },
+    repo: AvailableGitHubWorkItemSyncRepo,
+    issue: GitHubWorkItemIssue,
+    now?: () => string,
+): Promise<WorkItem> {
+    const parsed = parseGitHubWorkItemIssue(issue);
+    const syncedAt = (now ?? (() => new Date().toISOString()))();
+    const id = crypto.randomUUID();
+    const type = parsed.type ?? 'work-item';
+    const item: WorkItem = {
+        id,
+        repoId: context.workspaceId,
+        title: issue.title,
+        description: parsed.bodyWithoutMetadata,
+        status: remoteStatus(issue, parsed),
+        type,
+        createdAt: syncedAt,
+        updatedAt: syncedAt,
+        source: 'manual',
+        priority: remotePriority(parsed),
+        tags: parsed.tags.length > 0 ? parsed.tags : undefined,
+    };
+    item.syncLinks = upsertGithubSyncLink(
+        item,
+        repo,
+        issue,
+        syncedAt,
+        syncFingerprintForWorkItem(item),
+        undefined,
+    );
+    await context.workItemStore.addWorkItem(item);
+    return item;
 }
