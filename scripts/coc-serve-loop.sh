@@ -192,8 +192,8 @@ resolve_configured_devtunnel_port() {
 start_devtunnel_host() {
     local id="$1" port="$2" cmd
     if ! cmd="$(resolve_devtunnel_cmd)"; then
-        echo -e "\033[33mdevtunnel CLI not found. Run ./scripts/config-devtunnel.sh before starting the loop with --tunnel-id.\033[0m"
-        return 0
+        echo -e "\033[33mdevtunnel CLI not found. Run ./scripts/config-devtunnel.sh before starting the loop with --tunnel-id.\033[0m" >&2
+        return 1
     fi
 
     DEVTUNNEL_HOST_OUT="$(mktemp "${TMPDIR:-/tmp}/coc-devtunnel-XXXXXX")"
@@ -201,6 +201,7 @@ start_devtunnel_host() {
     DEVTUNNEL_HOST_PID=$!
 
     local timeout="${COC_DEVTUNNEL_URL_TIMEOUT:-30}"
+    [[ "$timeout" =~ ^[1-9][0-9]*$ ]] || timeout=30
     local deadline url=""
     deadline=$(( $(date +%s) + timeout ))
     while (( $(date +%s) < deadline )); do
@@ -212,11 +213,9 @@ start_devtunnel_host() {
 
     if [[ -n "$url" ]]; then
         echo -e "\033[32mDev tunnel URL: $url\033[0m"
-    elif kill -0 "$DEVTUNNEL_HOST_PID" 2>/dev/null; then
-        echo -e "\033[33mDev tunnel started but no public URL was detected within ${timeout}s. Continuing with local serving.\033[0m"
-    else
-        echo -e "\033[33mDev tunnel host exited before a public URL was detected. Continuing with local serving.\033[0m"
+        return 0
     fi
+    return 1
 }
 
 # Recursively terminates a process and its descendants (portable; no pkill).
@@ -238,10 +237,13 @@ kill_process_tree() {
 }
 
 stop_devtunnel_host() {
-    if [[ -n "$DEVTUNNEL_HOST_PID" ]] && kill -0 "$DEVTUNNEL_HOST_PID" 2>/dev/null; then
-        echo -e "\033[33mStopping dev tunnel process $DEVTUNNEL_HOST_PID...\033[0m"
-        kill_process_tree "$DEVTUNNEL_HOST_PID"
-        # Reap the direct background child so it does not linger as a zombie.
+    if [[ -n "$DEVTUNNEL_HOST_PID" ]]; then
+        if kill -0 "$DEVTUNNEL_HOST_PID" 2>/dev/null; then
+            echo -e "\033[33mStopping dev tunnel process $DEVTUNNEL_HOST_PID...\033[0m"
+            kill_process_tree "$DEVTUNNEL_HOST_PID"
+        fi
+        # Reap the direct background child even if it already exited so it does
+        # not linger as a zombie.
         wait "$DEVTUNNEL_HOST_PID" 2>/dev/null || true
     fi
     [[ -n "$DEVTUNNEL_HOST_OUT" ]] && rm -f "$DEVTUNNEL_HOST_OUT" 2>/dev/null || true
@@ -285,14 +287,23 @@ while true; do
     fi
     first=false
 
+    if $tunnel_enabled; then
+        if ! start_devtunnel_host "$TUNNEL_ID" "$PORT"; then
+            echo -e "\033[31mFailed to host dev tunnel '$TUNNEL_ID'. Aborting startup instead of serving locally without a working tunnel.\033[0m" >&2
+            if [[ -n "$DEVTUNNEL_HOST_OUT" && -s "$DEVTUNNEL_HOST_OUT" ]]; then
+                echo -e "\033[31mdevtunnel host output:\033[0m" >&2
+                cat "$DEVTUNNEL_HOST_OUT" >&2
+            fi
+            echo -e "\033[33mVerify you are logged in as the tunnel owner ('devtunnel user login') and that 'devtunnel host $TUNNEL_ID' works, then retry. Set COC_DEVTUNNEL_URL_TIMEOUT to wait longer.\033[0m" >&2
+            stop_devtunnel_host
+            exit 1
+        fi
+    fi
+
     echo ""
     echo -e "\033[36m=== Starting coc serve (host $HOST, port $PORT) ===\033[0m"
     echo -e "\033[90mPOST /api/admin/restart to rebuild & restart.\033[0m"
     echo ""
-
-    if $tunnel_enabled; then
-        start_devtunnel_host "$TUNNEL_ID" "$PORT"
-    fi
 
     set +e
     coc serve --no-open --port "$PORT" --host "$HOST"

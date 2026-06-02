@@ -51,6 +51,13 @@ param(
 $RESTART_EXIT_CODE = 75
 $LOG_MAX_BYTES     = 10MB
 
+# Seconds to wait for `devtunnel host` to publish a public URL before treating the
+# tunnel as failed. Override with COC_DEVTUNNEL_URL_TIMEOUT (positive integer).
+$DEVTUNNEL_URL_TIMEOUT = 30
+if ($env:COC_DEVTUNNEL_URL_TIMEOUT -match '^[1-9][0-9]*$') {
+    $DEVTUNNEL_URL_TIMEOUT = [int]$env:COC_DEVTUNNEL_URL_TIMEOUT
+}
+
 . (Join-Path $PSScriptRoot 'devtunnel-utils.ps1')
 
 $portWasProvided = $PSBoundParameters.ContainsKey('Port')
@@ -156,24 +163,49 @@ function Start-DevTunnel {
         return $null
     }
 
-    $stdoutPath = Join-Path ([IO.Path]::GetTempPath()) "coc-devtunnel-$TunnelId.out.log"
-    $stderrPath = Join-Path ([IO.Path]::GetTempPath()) "coc-devtunnel-$TunnelId.err.log"
+    $safeId = ($TunnelId -replace '[^A-Za-z0-9_.-]', '_')
+    $stdoutPath = Join-Path ([IO.Path]::GetTempPath()) "coc-devtunnel-$safeId.out.log"
+    $stderrPath = Join-Path ([IO.Path]::GetTempPath()) "coc-devtunnel-$safeId.err.log"
     Remove-Item $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
 
-    $proc = Start-Process $devTunnelCommand -ArgumentList @('host', $TunnelId) -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+    $startArgs = @{
+        FilePath               = $devTunnelCommand
+        ArgumentList           = @('host', $TunnelId)
+        PassThru               = $true
+        RedirectStandardOutput = $stdoutPath
+        RedirectStandardError  = $stderrPath
+        ErrorAction            = 'Stop'
+    }
+    # -WindowStyle is only supported by Start-Process on Windows editions of
+    # PowerShell; on PowerShell 7 for Linux/macOS it throws and would leave the
+    # process handle null. Apply it only when hosting on Windows.
+    $isWindowsHost = ($null -eq $IsWindows) -or $IsWindows
+    if ($isWindowsHost) { $startArgs['WindowStyle'] = 'Hidden' }
+
+    $proc = $null
+    $startError = $null
+    try {
+        $proc = Start-Process @startArgs
+    } catch {
+        $startError = $_.Exception.Message
+    }
+
     $url = $null
-    $deadline = (Get-Date).AddSeconds(30)
-    while ((Get-Date) -lt $deadline -and -not $proc.HasExited) {
-        $text = ''
-        if (Test-Path $stdoutPath) { $text += (Get-Content $stdoutPath -Raw -ErrorAction SilentlyContinue) }
-        if (Test-Path $stderrPath) { $text += "`n" + (Get-Content $stderrPath -Raw -ErrorAction SilentlyContinue) }
-        $matchedUrl = Select-DevTunnelUrl -Text $text -Port $Port
-        if ($matchedUrl) {
-            $url = $matchedUrl
-            break
+    if ($proc) {
+        $deadline = (Get-Date).AddSeconds($DEVTUNNEL_URL_TIMEOUT)
+        while ((Get-Date) -lt $deadline) {
+            if ($proc.HasExited) { break }
+            $text = ''
+            if (Test-Path $stdoutPath) { $text += (Get-Content $stdoutPath -Raw -ErrorAction SilentlyContinue) }
+            if (Test-Path $stderrPath) { $text += "`n" + (Get-Content $stderrPath -Raw -ErrorAction SilentlyContinue) }
+            $matchedUrl = Select-DevTunnelUrl -Text $text -Port $Port
+            if ($matchedUrl) {
+                $url = $matchedUrl
+                break
+            }
+            Start-Sleep -Milliseconds 500
+            $proc.Refresh()
         }
-        Start-Sleep -Milliseconds 500
-        $proc.Refresh()
     }
 
     [pscustomobject]@{
@@ -181,6 +213,7 @@ function Start-DevTunnel {
         Url        = $url
         StdoutPath = $stdoutPath
         StderrPath = $stderrPath
+        StartError = $startError
     }
 }
 
@@ -301,18 +334,37 @@ while ($true) {
     $first = $false
 
     # Serve step
-    Write-Log "=== Starting coc serve (host $BindAddress, port $Port) ===" -Color Cyan
-    Write-Log 'POST /api/admin/restart to rebuild and restart.'
-
     $tunnelSession = $null
     if ($tunnelEnabled) {
         $tunnelSession = Start-DevTunnel -TunnelId $TunnelId -Port $Port
-        if ($tunnelSession -and $tunnelSession.Url) {
-            Write-Log "Dev tunnel URL: $($tunnelSession.Url)" -Color Green
-        } elseif ($tunnelSession) {
-            Write-Log 'Dev tunnel started but no public URL was detected within 30 seconds. Continuing with local serving.' -Color Yellow
+        if (-not $tunnelSession -or -not $tunnelSession.Url) {
+            Write-Log "Failed to host dev tunnel '$TunnelId' within $DEVTUNNEL_URL_TIMEOUT seconds. Aborting startup instead of serving locally without a working tunnel." -Color Red
+            if (-not $tunnelSession) {
+                Write-Log 'devtunnel CLI not found. Run .\scripts\config-devtunnel.ps1 before starting the loop with -TunnelId.' -Color Red
+            } else {
+                if ($tunnelSession.StartError) {
+                    Write-Log "Could not start 'devtunnel host $TunnelId': $($tunnelSession.StartError)" -Color Red
+                }
+                $diag = ''
+                foreach ($logPath in @($tunnelSession.StdoutPath, $tunnelSession.StderrPath)) {
+                    if ($logPath -and (Test-Path $logPath)) {
+                        $content = Get-Content $logPath -Raw -ErrorAction SilentlyContinue
+                        if (-not [string]::IsNullOrWhiteSpace($content)) { $diag += $content }
+                    }
+                }
+                if (-not [string]::IsNullOrWhiteSpace($diag)) {
+                    Write-Log "devtunnel host output:`n$($diag.Trim())" -Color Red
+                }
+            }
+            Write-Log "Verify you are logged in as the tunnel owner ('devtunnel user login') and that 'devtunnel host $TunnelId' works, then retry. Set COC_DEVTUNNEL_URL_TIMEOUT to wait longer." -Color Yellow
+            Stop-DevTunnel -TunnelSession $tunnelSession
+            exit 1
         }
+        Write-Log "Dev tunnel URL: $($tunnelSession.Url)" -Color Green
     }
+
+    Write-Log "=== Starting coc serve (host $BindAddress, port $Port) ===" -Color Cyan
+    Write-Log 'POST /api/admin/restart to rebuild and restart.'
 
     try {
         if ($Script:LogFile) {

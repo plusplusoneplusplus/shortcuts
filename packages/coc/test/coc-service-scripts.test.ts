@@ -57,7 +57,9 @@ const runPowerShellFile = (scriptName: string, args: string[], env: NodeJS.Proce
   );
 };
 
-const createFakeDevTunnel = (mode: 'none' | 'one' | 'multi' | 'host-wrong-first' | 'not-owned' | 'create-not-owned') => {
+const createFakeDevTunnel = (
+  mode: 'none' | 'one' | 'multi' | 'host-wrong-first' | 'not-owned' | 'create-not-owned' | 'host-fails' | 'host-hangs'
+) => {
   const dir = mkdtempSync(join(tmpdir(), 'coc-devtunnel-test-'));
   const logPath = join(dir, 'devtunnel.log');
   const cocLogPath = join(dir, 'coc.log');
@@ -82,7 +84,7 @@ if (args[0] === 'create') {
   process.exit(0);
 }
 if (args[0] === 'port' && args[1] === 'list') {
-  if (mode === 'one') {
+  if (mode === 'one' || mode === 'host-fails' || mode === 'host-hangs') {
     console.log('Port Number  Protocol');
     console.log('51234        http');
   } else if (mode === 'host-wrong-first') {
@@ -104,7 +106,12 @@ if (args[0] === 'port' && args[1] === 'create') {
   process.exit(0);
 }
 if (args[0] === 'host') {
-  if (mode === 'host-wrong-first') {
+  if (mode === 'host-fails') {
+    console.error('Tunnel host failed: unauthorized tunnel access');
+    process.exit(1);
+  } else if (mode === 'host-hangs') {
+    console.log('Hosting tunnel (no public URL emitted)');
+  } else if (mode === 'host-wrong-first') {
     console.log('Connect via https://fake.devtunnels.ms:4000');
     console.log('Connect via https://fake.devtunnels.ms:53910');
   } else {
@@ -258,10 +265,28 @@ describe('CoC service PowerShell scripts', () => {
       expect(serveLoop).toContain('function Start-DevTunnel');
       expect(serveLoop).toContain('function Select-DevTunnelUrl');
       expect(serveLoop).toContain('function Test-DevTunnelUrlMatchesPort');
-      expect(serveLoop).toContain("Start-Process $devTunnelCommand -ArgumentList @('host', $TunnelId)");
+      expect(serveLoop).toContain("ArgumentList           = @('host', $TunnelId)");
+      expect(serveLoop).toContain('$proc = Start-Process @startArgs');
       expect(serveLoop).toContain('Start-DevTunnel -TunnelId $TunnelId -Port $Port');
       expect(serveLoop).toContain("https://[^\\s,]+devtunnels\\.ms[^\\s,]*");
       expect(serveLoop).toContain('Dev tunnel URL:');
+    });
+
+    it('only requests a hidden window on Windows so Linux/macOS hosting works', () => {
+      expect(serveLoop).toContain('$isWindowsHost = ($null -eq $IsWindows) -or $IsWindows');
+      expect(serveLoop).toContain("if ($isWindowsHost) { $startArgs['WindowStyle'] = 'Hidden' }");
+      expect(serveLoop).not.toContain('-WindowStyle Hidden');
+    });
+
+    it('aborts startup instead of serving locally when the tunnel host fails', () => {
+      expect(serveLoop).toContain('Aborting startup instead of serving locally without a working tunnel.');
+      expect(serveLoop).toContain('devtunnel host output:');
+      expect(serveLoop).not.toContain('Continuing with local serving');
+      expect(serveLoop.indexOf('Stop-DevTunnel -TunnelSession $tunnelSession')).toBeGreaterThan(0);
+      // The tunnel must be hosted before announcing the serve step.
+      expect(serveLoop.indexOf('Start-DevTunnel -TunnelId $TunnelId -Port $Port')).toBeLessThan(
+        serveLoop.indexOf('=== Starting coc serve')
+      );
     });
 
     it('can launch a devtunnel CLI installed by the config script fallback', () => {
@@ -513,6 +538,40 @@ if ($errors.Count -gt 0) {
       fake.cleanup();
     }
   });
+
+  it('aborts tunnel mode without serving when the dev tunnel host fails', () => {
+    const fake = createFakeDevTunnel('host-fails');
+    try {
+      const result = runPowerShellFile('coc-serve-loop.ps1', ['-TunnelId', 'existing-coc', '-SkipInitialBuild'], fake.env);
+      const output = `${result.stdout}\n${result.stderr}`;
+      expect(result.status, output).toBe(1);
+      expect(output).toContain("Failed to host dev tunnel 'existing-coc'");
+      expect(output).toContain('Aborting startup instead of serving locally without a working tunnel.');
+      expect(output).toContain('Tunnel host failed: unauthorized tunnel access');
+      expect(output).not.toContain('=== Starting coc serve');
+      expect(readLogLines(fake.cocLogPath)).toEqual([]);
+    } finally {
+      fake.cleanup();
+    }
+  });
+
+  it('aborts tunnel mode when the host never publishes a public URL', () => {
+    const fake = createFakeDevTunnel('host-hangs');
+    try {
+      const result = runPowerShellFile(
+        'coc-serve-loop.ps1',
+        ['-TunnelId', 'existing-coc', '-SkipInitialBuild'],
+        { ...fake.env, COC_DEVTUNNEL_URL_TIMEOUT: '1' }
+      );
+      const output = `${result.stdout}\n${result.stderr}`;
+      expect(result.status, output).toBe(1);
+      expect(output).toContain("Failed to host dev tunnel 'existing-coc' within 1 seconds.");
+      expect(output).not.toContain('=== Starting coc serve');
+      expect(readLogLines(fake.cocLogPath)).toEqual([]);
+    } finally {
+      fake.cleanup();
+    }
+  });
 });
 
 describe('CoC service bash scripts', () => {
@@ -561,6 +620,17 @@ describe('CoC service bash scripts', () => {
     expect(serveLoopSh).toContain('port list "$id"');
     expect(serveLoopSh.indexOf('stop_devtunnel_host')).toBeGreaterThan(serveLoopSh.indexOf('coc serve --no-open'));
     expect(serveLoopSh).not.toContain('port create');
+  });
+
+  it('coc-serve-loop.sh aborts startup instead of serving locally when the tunnel host fails', () => {
+    expect(serveLoopSh).toContain('if ! start_devtunnel_host "$TUNNEL_ID" "$PORT"; then');
+    expect(serveLoopSh).toContain('Aborting startup instead of serving locally without a working tunnel.');
+    expect(serveLoopSh).toContain('devtunnel host output:');
+    expect(serveLoopSh).not.toContain('Continuing with local serving');
+    // The tunnel must be hosted before announcing the serve step.
+    expect(serveLoopSh.indexOf('start_devtunnel_host "$TUNNEL_ID" "$PORT"')).toBeLessThan(
+      serveLoopSh.indexOf('=== Starting coc serve')
+    );
   });
 });
 
@@ -660,6 +730,40 @@ describeBash('CoC service bash script behavior', () => {
       expect(output).not.toContain('Dev tunnel URL: https://fake.devtunnels.ms:4000');
       expect(readLogLines(fake.cocLogPath)).toContain('serve\t--no-open\t--port\t53910\t--host\t127.0.0.1');
       expect(readDevTunnelLog(fake.logPath)).toEqual(['port\tlist\texisting-coc', 'host\texisting-coc']);
+    } finally {
+      fake.cleanup();
+    }
+  });
+
+  it('aborts tunnel mode without serving when the dev tunnel host fails', () => {
+    const fake = createFakeDevTunnel('host-fails');
+    try {
+      const result = runBashFile('coc-serve-loop.sh', ['--tunnel-id', 'existing-coc', '--skip-initial-build'], fake.env);
+      const output = `${result.stdout}\n${result.stderr}`;
+      expect(result.status, output).toBe(1);
+      expect(output).toContain("Failed to host dev tunnel 'existing-coc'.");
+      expect(output).toContain('Aborting startup instead of serving locally without a working tunnel.');
+      expect(output).toContain('Tunnel host failed: unauthorized tunnel access');
+      expect(output).not.toContain('=== Starting coc serve');
+      expect(readLogLines(fake.cocLogPath)).toEqual([]);
+    } finally {
+      fake.cleanup();
+    }
+  });
+
+  it('aborts tunnel mode when the host never publishes a public URL', () => {
+    const fake = createFakeDevTunnel('host-hangs');
+    try {
+      const result = runBashFile(
+        'coc-serve-loop.sh',
+        ['--tunnel-id', 'existing-coc', '--skip-initial-build'],
+        { ...fake.env, COC_DEVTUNNEL_URL_TIMEOUT: '1' }
+      );
+      const output = `${result.stdout}\n${result.stderr}`;
+      expect(result.status, output).toBe(1);
+      expect(output).toContain("Failed to host dev tunnel 'existing-coc'.");
+      expect(output).not.toContain('=== Starting coc serve');
+      expect(readLogLines(fake.cocLogPath)).toEqual([]);
     } finally {
       fake.cleanup();
     }

@@ -42,6 +42,8 @@ For a persistent Windows service, use:
 - Starts `coc serve --no-open --port <configured-port>`.
 - Stops the hosted tunnel process when the serve loop exits.
 
+In tunnel mode the loop hosts the tunnel **before** announcing the serve step. If `devtunnel host` fails to start or does not publish a public URL within `COC_DEVTUNNEL_URL_TIMEOUT` seconds (default 30), the loop prints the captured `devtunnel host` output, skips `coc serve`, and exits non-zero (`1`) rather than silently serving on localhost with no working tunnel. (On PowerShell 7 for Linux/macOS the host process is launched without the Windows-only `-WindowStyle Hidden`, which otherwise throws and prevents hosting.)
+
 `Manage-CoCService.ps1 install -TunnelId <id>` wraps the same serve loop in a scheduled task. Do not pass `-Port` with `-TunnelId`; the port belongs to the DevTunnel binding and must be configured with `config-devtunnel.ps1`.
 
 ### Linux/WSL equivalents
