@@ -23,7 +23,7 @@ describe('getDefaultEffortTiers', () => {
     it('returns the codex defaults', () => {
         const defaults = getDefaultEffortTiers('codex');
         expect(defaults).toEqual({
-            low:    { model: 'gpt-5.3-codex', reasoningEffort: 'xhigh' },
+            low:    { model: 'gpt-5.4-mini',  reasoningEffort: 'xhigh' },
             medium: { model: 'gpt-5.5',       reasoningEffort: 'high'  },
             high:   { model: 'gpt-5.5',       reasoningEffort: 'xhigh' },
         });
@@ -63,7 +63,7 @@ describe('mergeEffortTiersWithDefaults', () => {
 
     it('returns all three tiers as defaults when stored config is null/undefined', () => {
         expect(mergeEffortTiersWithDefaults('codex', undefined)).toEqual({
-            low:    { model: 'gpt-5.3-codex', reasoningEffort: 'xhigh', source: 'default' },
+            low:    { model: 'gpt-5.4-mini',  reasoningEffort: 'xhigh', source: 'default' },
             medium: { model: 'gpt-5.5',       reasoningEffort: 'high',  source: 'default' },
             high:   { model: 'gpt-5.5',       reasoningEffort: 'xhigh', source: 'default' },
         });

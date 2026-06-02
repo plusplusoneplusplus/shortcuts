@@ -33,7 +33,7 @@ const COPILOT_DEFAULTS: EffortTierDefaultsMap = {
 };
 
 const CODEX_DEFAULTS: EffortTierDefaultsMap = {
-    low:    { model: 'gpt-5.3-codex', reasoningEffort: 'xhigh' },
+    low:    { model: 'gpt-5.4-mini',  reasoningEffort: 'xhigh' },
     medium: { model: 'gpt-5.5',       reasoningEffort: 'high'  },
     high:   { model: 'gpt-5.5',       reasoningEffort: 'xhigh' },
 };

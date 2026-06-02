@@ -186,6 +186,32 @@ describe('GET /api/agent-providers/:provider/effort-tiers', () => {
         });
     });
 
+    it('returns hardcoded codex defaults for fresh provider', async () => {
+        const cfgFns = makeConfigFunctions({});
+        const ctx = makeCtx({ ...cfgFns });
+        server = makeServer(ctx);
+        await startServer();
+
+        const { status, body } = await apiGet('/api/agent-providers/codex/effort-tiers');
+        expect(status).toBe(200);
+        const data = body as {
+            provider: string;
+            effortTiers: Record<string, { model: string; reasoningEffort: string | null; source: string }>;
+            defaults: Record<string, { model: string; reasoningEffort: string | null }>;
+        };
+        expect(data.provider).toBe('codex');
+        expect(data.effortTiers).toEqual({
+            low:    { model: 'gpt-5.4-mini', reasoningEffort: 'xhigh', source: 'default' },
+            medium: { model: 'gpt-5.5',      reasoningEffort: 'high',  source: 'default' },
+            high:   { model: 'gpt-5.5',      reasoningEffort: 'xhigh', source: 'default' },
+        });
+        expect(data.defaults).toEqual({
+            low:    { model: 'gpt-5.4-mini', reasoningEffort: 'xhigh' },
+            medium: { model: 'gpt-5.5',      reasoningEffort: 'high'  },
+            high:   { model: 'gpt-5.5',      reasoningEffort: 'xhigh' },
+        });
+    });
+
     it('returns configured effortTiers for copilot with source: config', async () => {
         const cfgFns = makeConfigFunctions({
             models: {
