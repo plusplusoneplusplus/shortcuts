@@ -249,7 +249,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
             // Aggregated workspaces from all agents
             if (url.pathname === '/api/workspaces' && req.method === 'GET') {
                 const allAgents = agentStore.list();
-                const workspaces = await aggregateWorkspaces(allAgents, tunnelBridge, agentManager);
+                const workspaces = await aggregateWorkspaces(allAgents, tunnelBridge, agentManager, sshBridge);
                 return sendJson(res, { workspaces });
             }
 
@@ -259,7 +259,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 const results = await Promise.all(
                     allAgents.map(async (agent) => {
                         try {
-                            const resp = await proxyToAgent(agent, agentManager, tunnelBridge, 'GET', `/api/processes/summaries${url.search}`);
+                            const resp = await proxyToAgent(agent, agentManager, tunnelBridge, 'GET', `/api/processes/summaries${url.search}`, sshBridge);
                             if (resp.status !== 200) return [];
                             const data = JSON.parse(resp.body);
                             const summaries = data?.summaries || data?.processes || (Array.isArray(data) ? data : []);
@@ -766,14 +766,14 @@ async function proxyToAgent(
     bridge: TunnelBridge,
     method: string,
     apiPath: string,
+    ssh?: SshBridge,
 ): Promise<{ status: number; body: string; headers: Record<string, string> }> {
     // For inbound agents, use the WebSocket channel
     const inboundId = agent.address.startsWith('inbound://') ? agent.address.replace('inbound://', '') : undefined;
     if (inboundId && inboundMgr.hasAgent(inboundId)) {
         return inboundMgr.proxyRequest(inboundId, method, apiPath);
     }
-    // Legacy: direct HTTP fetch
-    const effectiveAddr = bridge.getLocalUrl(agent.id) || agent.address;
+    const effectiveAddr = ssh?.getLocalUrl(agent.id) || bridge.getLocalUrl(agent.id) || agent.address;
     const resp = await fetch(`${effectiveAddr}${apiPath}`);
     const body = await resp.text();
     const headers: Record<string, string> = {};
@@ -781,7 +781,7 @@ async function proxyToAgent(
     return { status: resp.status, body, headers };
 }
 
-async function aggregateWorkspaces(agents: Agent[], bridge: TunnelBridge, inboundMgr: AgentManager): Promise<RemoteWorkspace[]> {
+async function aggregateWorkspaces(agents: Agent[], bridge: TunnelBridge, inboundMgr: AgentManager, ssh?: SshBridge): Promise<RemoteWorkspace[]> {
     const results = await Promise.all(
         agents
             .map(async (agent) => {
@@ -812,7 +812,7 @@ async function aggregateWorkspaces(agents: Agent[], bridge: TunnelBridge, inboun
                     return [];
                 }
                 try {
-                    const resp = await proxyToAgent(agent, inboundMgr, bridge, 'GET', '/api/workspaces');
+                    const resp = await proxyToAgent(agent, inboundMgr, bridge, 'GET', '/api/workspaces', ssh);
                     if (resp.status !== 200) return workspaceCache.get(agent.address) || [];
                     const result = JSON.parse(resp.body);
                     let workspaces: RemoteWorkspace[] = [];

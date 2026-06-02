@@ -787,6 +787,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                     const isOpen = openAgentDropdown === agentId;
                     const isActiveAgent = appState.currentAgentId === agentId;
                     const selectedInGroup = isActiveAgent && group.repos.find(r => r.workspace.id === selectedRepoId);
+                    const isEmptyActiveAgent = isActiveAgent && group.repos.length === 0;
                     const totalUnseen = group.repos.reduce((sum, r) => sum + (unseenCounts[r.workspace.id] ?? 0), 0);
                     return (
                         <div
@@ -800,13 +801,14 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                 data-testid="agent-pill"
                                 className={
                                     'flex items-center gap-1 px-2.5 h-7 rounded text-xs whitespace-nowrap transition-colors cursor-pointer ' +
-                                    (selectedInGroup
+                                    (selectedInGroup || isEmptyActiveAgent
                                         ? 'bg-[#0078d4] text-white'
                                         : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
                                 }
                                 onClick={() => {
-                                    // If only one repo, select it directly
-                                    if (group.repos.length === 1) {
+                                    if (group.repos.length === 0) {
+                                        dispatch({ type: 'SET_CURRENT_AGENT', agentId });
+                                    } else if (group.repos.length === 1) {
                                         const switchingAgent = appState.currentAgentId !== agentId;
                                         dispatch({ type: 'SET_CURRENT_AGENT', agentId });
                                         onSelect(group.repos[0].workspace.id);
