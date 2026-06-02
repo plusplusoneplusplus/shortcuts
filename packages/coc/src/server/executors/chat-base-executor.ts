@@ -192,6 +192,13 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly provider: 'copilot' | 'codex' | 'claude';
     /** Resolves per-task SDK service by provider, checking enablement. Optional — falls back to sdkServiceRegistry. */
     protected readonly resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
+    /**
+     * Per-provider model-metadata cache for reasoning-effort resolution. The
+     * shared `modelMetadataStore` is warmed from the default provider only, so
+     * non-default providers (Codex/Claude) resolve from their own `listModels()`
+     * result, cached here to avoid re-spawning a CLI on every turn.
+     */
+    private readonly providerReasoningModelCache = new Map<ChatProvider, Map<string, ModelInfo>>();
 
     constructor(store: ProcessStore, options: ChatModeExecutorOptions, dataDir?: string) {
         super(store, dataDir);
@@ -255,7 +262,11 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         };
     }
 
-    protected async getModelMetadataForReasoning(modelId: string | undefined): Promise<ModelInfo | undefined> {
+    protected async getModelMetadataForReasoning(
+        modelId: string | undefined,
+        provider?: ChatProvider,
+        service?: ISDKService,
+    ): Promise<ModelInfo | undefined> {
         if (!modelId) {
             return undefined;
         }
@@ -265,7 +276,40 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             await modelMetadataStore.initialize(this.aiService as unknown as { listModels(): Promise<ModelInfo[]> });
             model = modelMetadataStore.getModel(modelId);
         }
-        return model;
+        if (model) {
+            return model;
+        }
+
+        // The shared store only holds the default provider's catalog (typically
+        // Copilot). For other providers, resolve from that provider's own model
+        // list so reasoning-effort validation sees the model's supported efforts
+        // instead of failing with "Supported efforts: unknown".
+        if (provider && provider !== 'copilot' && service) {
+            return this.getProviderReasoningModel(provider, service, modelId);
+        }
+        return undefined;
+    }
+
+    private async getProviderReasoningModel(
+        provider: ChatProvider,
+        service: ISDKService,
+        modelId: string,
+    ): Promise<ModelInfo | undefined> {
+        let byId = this.providerReasoningModelCache.get(provider);
+        if (!byId) {
+            if (typeof service.listModels !== 'function') {
+                return undefined;
+            }
+            try {
+                const models = await service.listModels() as unknown as ModelInfo[];
+                byId = new Map(models.map(m => [m.id, m] as const));
+                this.providerReasoningModelCache.set(provider, byId);
+            } catch {
+                // Leave the cache unset so a later turn can retry discovery.
+                return undefined;
+            }
+        }
+        return byId.get(modelId);
     }
 
     // ========================================================================
@@ -546,7 +590,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             const reasoningSelection = resolveReasoningSelection({
                 modelId: effectiveModel,
                 requestedEffort,
-                model: await this.getModelMetadataForReasoning(effectiveModel),
+                model: await this.getModelMetadataForReasoning(effectiveModel, taskProvider, effectiveAiService),
             });
 
             const sendOptions = {

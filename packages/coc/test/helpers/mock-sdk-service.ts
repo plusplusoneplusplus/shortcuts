@@ -23,6 +23,7 @@ export interface MockCopilotSDKService {
     transform: ReturnType<typeof vi.fn>;
     abortSession: ReturnType<typeof vi.fn>;
     steerSession: ReturnType<typeof vi.fn>;
+    listModels: ReturnType<typeof vi.fn>;
 }
 
 /** Configuration for SDK service mock behavior */
@@ -48,6 +49,7 @@ export interface MockSDKServiceResult {
     mockTransform: ReturnType<typeof vi.fn>;
     mockAbortSession: ReturnType<typeof vi.fn>;
     mockSteerSession: ReturnType<typeof vi.fn>;
+    mockListModels: ReturnType<typeof vi.fn>;
     /** Reset all mocks to their initial configured state */
     resetAll: () => void;
 }
@@ -87,6 +89,7 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
     const mockTransform = vi.fn().mockResolvedValue('Generated Title');
     const mockAbortSession = vi.fn().mockResolvedValue(true);
     const mockSteerSession = vi.fn().mockResolvedValue(true);
+    const mockListModels = vi.fn().mockResolvedValue([]);
 
     const service: MockCopilotSDKService = {
         sendMessage: sendMessageRouter,
@@ -95,6 +98,7 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
         transform: mockTransform,
         abortSession: mockAbortSession,
         steerSession: mockSteerSession,
+        listModels: mockListModels,
     };
 
     const resetAll = () => {
@@ -111,6 +115,7 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
         mockTransform.mockReset().mockResolvedValue('Generated Title');
         mockAbortSession.mockReset().mockResolvedValue(true);
         mockSteerSession.mockReset().mockResolvedValue(true);
+        mockListModels.mockReset().mockResolvedValue([]);
     };
 
     return {
@@ -122,6 +127,7 @@ export function createMockSDKService(options?: MockSDKServiceOptions): MockSDKSe
         mockTransform,
         mockAbortSession,
         mockSteerSession,
+        mockListModels,
         resetAll,
     };
 }
