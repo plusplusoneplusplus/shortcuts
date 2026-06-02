@@ -1,6 +1,10 @@
 import { execFile } from 'child_process';
+import * as crypto from 'crypto';
 import { promisify } from 'util';
 import type {
+    WorkItemSyncApplyResponse,
+    WorkItemSyncConflict,
+    WorkItemSyncConflictResolution,
     WorkItemSyncPreviewOperation,
     WorkItemSyncPreviewResponse,
     WorkItemSyncProviderStatus,
@@ -33,14 +37,24 @@ import {
 import {
     WORK_ITEM_SYNC_MAX_ITEMS,
     type WorkItemSyncProviderAdapter,
+    type WorkItemSyncProviderApplyContext,
     type WorkItemSyncProviderContext,
     type WorkItemSyncProviderPreviewContext,
 } from './work-item-sync-provider';
-import { APIError } from '../errors';
 
 type AvailableGitHubWorkItemSyncRepo = Extract<GitHubWorkItemSyncRepo, { available: true }>;
 type UnavailableGitHubWorkItemSyncRepo = Exclude<GitHubWorkItemSyncRepo, AvailableGitHubWorkItemSyncRepo>;
 type WorkItemSyncFieldChanges = NonNullable<WorkItemSyncPreviewOperation['fields']>;
+
+export interface GitHubWorkItemIssueCreateInput {
+    title: string;
+    body: string;
+    labels: string[];
+}
+
+export interface GitHubWorkItemIssueUpdateInput extends GitHubWorkItemIssueCreateInput {
+    state: 'open' | 'closed';
+}
 
 export interface GitHubWorkItemIssue extends GitHubWorkItemIssueSnapshot {
     number: number;
@@ -55,6 +69,8 @@ export interface GitHubWorkItemIssueTransport {
     getRepository(repo: AvailableGitHubWorkItemSyncRepo): Promise<void>;
     listIssues(repo: AvailableGitHubWorkItemSyncRepo, filters?: GitHubWorkItemIssueListFilters): Promise<GitHubWorkItemIssue[]>;
     getIssue(repo: AvailableGitHubWorkItemSyncRepo, issueNumber: number): Promise<GitHubWorkItemIssue | undefined>;
+    createIssue(repo: AvailableGitHubWorkItemSyncRepo, input: GitHubWorkItemIssueCreateInput): Promise<GitHubWorkItemIssue>;
+    updateIssue(repo: AvailableGitHubWorkItemSyncRepo, issueNumber: number, input: GitHubWorkItemIssueUpdateInput): Promise<GitHubWorkItemIssue>;
 }
 
 export interface CreateGitHubWorkItemSyncProviderOptions {
@@ -172,6 +188,27 @@ export class GhCliGitHubWorkItemIssueTransport implements GitHubWorkItemIssueTra
         }
     }
 
+    async createIssue(repo: AvailableGitHubWorkItemSyncRepo, input: GitHubWorkItemIssueCreateInput): Promise<GitHubWorkItemIssue> {
+        const issue = normalizeRestIssue(await this.ghJson<GitHubRestIssue>(repo, [
+            repoApiPath(repo, '/issues'),
+            '--method', 'POST',
+            ...this.issueFields(input),
+        ]));
+        if (!issue) throw new Error(`GitHub API for ${repo.owner}/${repo.repo} did not return a created issue.`);
+        return issue;
+    }
+
+    async updateIssue(repo: AvailableGitHubWorkItemSyncRepo, issueNumber: number, input: GitHubWorkItemIssueUpdateInput): Promise<GitHubWorkItemIssue> {
+        const issue = normalizeRestIssue(await this.ghJson<GitHubRestIssue>(repo, [
+            repoApiPath(repo, `/issues/${issueNumber}`),
+            '--method', 'PATCH',
+            ...this.issueFields(input),
+            '-f', `state=${input.state}`,
+        ]));
+        if (!issue) throw new Error(`GitHub API for ${repo.owner}/${repo.repo} did not return an updated issue.`);
+        return issue;
+    }
+
     private async ghJson<T>(repo: AvailableGitHubWorkItemSyncRepo, args: string[]): Promise<T> {
         const { stdout } = await this.run('gh', ['api', ...args], {
             encoding: 'utf8',
@@ -183,6 +220,17 @@ export class GhCliGitHubWorkItemIssueTransport implements GitHubWorkItemIssueTra
         } catch {
             throw new Error(`GitHub API for ${repo.owner}/${repo.repo} returned invalid JSON.`);
         }
+    }
+
+    private issueFields(input: GitHubWorkItemIssueCreateInput): string[] {
+        const args = [
+            '-f', `title=${input.title}`,
+            '-f', `body=${input.body}`,
+        ];
+        for (const label of input.labels) {
+            args.push('-f', `labels[]=${label}`);
+        }
+        return args;
     }
 }
 
@@ -257,6 +305,81 @@ function getGithubSyncLink(item: WorkItem): WorkItemSyncLink | undefined {
     return item.syncLinks?.find(link => link.provider === 'github');
 }
 
+function normalizeTags(tags: readonly string[] | undefined): string[] {
+    return [...(tags ?? [])].map(tag => tag.trim()).filter(Boolean).sort((a, b) => a.localeCompare(b));
+}
+
+function remoteStatus(issue: GitHubWorkItemIssue, parsed: ParsedGitHubWorkItemIssue): WorkItem['status'] {
+    return parsed.status ?? (issue.state === 'closed' ? 'done' : 'created');
+}
+
+function remotePriority(parsed: ParsedGitHubWorkItemIssue): WorkItem['priority'] {
+    return parsed.priority ?? 'normal';
+}
+
+function syncFingerprintForFields(fields: {
+    title: string;
+    description: string;
+    type: WorkItem['type'];
+    status: WorkItem['status'];
+    priority?: WorkItem['priority'];
+    tags?: readonly string[];
+    parentId?: string;
+}): string {
+    return crypto
+        .createHash('sha256')
+        .update(JSON.stringify({
+            title: fields.title,
+            description: fields.description ?? '',
+            type: getEffectiveType(fields.type),
+            status: fields.status,
+            priority: fields.priority ?? 'normal',
+            tags: normalizeTags(fields.tags),
+            parentId: fields.parentId ?? null,
+        }))
+        .digest('hex');
+}
+
+function syncFingerprintForWorkItem(item: WorkItem): string {
+    return syncFingerprintForFields({
+        title: item.title,
+        description: item.description ?? '',
+        type: item.type,
+        status: item.status,
+        priority: item.priority,
+        tags: item.tags,
+        parentId: item.parentId,
+    });
+}
+
+function syncFingerprintForIssue(issue: GitHubWorkItemIssue, parsed: ParsedGitHubWorkItemIssue, parentId?: string): string {
+    return syncFingerprintForFields({
+        title: issue.title,
+        description: parsed.bodyWithoutMetadata,
+        type: parsed.type ?? 'work-item',
+        status: remoteStatus(issue, parsed),
+        priority: remotePriority(parsed),
+        tags: parsed.tags,
+        parentId,
+    });
+}
+
+function localChangedSinceLastSync(item: WorkItem, link: WorkItemSyncLink): boolean {
+    if (link.lastSyncedFingerprint) {
+        return syncFingerprintForWorkItem(item) !== link.lastSyncedFingerprint;
+    }
+    const lastSyncedAt = link.lastSyncedAt ?? link.remoteUpdatedAt;
+    return Boolean(lastSyncedAt && item.updatedAt > lastSyncedAt);
+}
+
+function remoteChangedSinceLastSync(issue: GitHubWorkItemIssue, link: WorkItemSyncLink): boolean {
+    return Boolean(link.remoteUpdatedAt && issue.updatedAt && issue.updatedAt > link.remoteUpdatedAt);
+}
+
+function githubIssueStateForWorkItem(item: WorkItem): 'open' | 'closed' {
+    return item.status === 'done' ? 'closed' : 'open';
+}
+
 function remoteIdentity(repo: AvailableGitHubWorkItemSyncRepo, issue?: GitHubWorkItemIssue, link?: WorkItemSyncLink): WorkItemSyncRemoteIdentity {
     const remote: WorkItemSyncRemoteIdentity = {
         owner: repo.owner,
@@ -315,6 +438,24 @@ function changedRemoteFields(item: WorkItem, issue: GitHubWorkItemIssue, parsed:
     if ((parsed.priority ?? 'normal') !== (item.priority ?? 'normal')) fields.push({ field: 'priority', cocValue: item.priority ?? 'normal', remoteValue: parsed.priority ?? 'normal', proposedValue: item.priority ?? 'normal' });
     if (JSON.stringify(parsed.tags) !== JSON.stringify(item.tags ?? [])) fields.push({ field: 'tags', cocValue: item.tags ?? [], remoteValue: parsed.tags, proposedValue: item.tags ?? [] });
     return fields;
+}
+
+function conflictForItem(
+    item: WorkItem,
+    issue: GitHubWorkItemIssue,
+    parsed: ParsedGitHubWorkItemIssue,
+    remote: WorkItemSyncRemoteIdentity,
+): WorkItemSyncConflict | undefined {
+    const fields = changedLocalFields(item, issue, parsed);
+    if (fields.length === 0) return undefined;
+    return {
+        id: `conflict-${item.id}`,
+        message: `Work item '${item.title}' and GitHub issue #${issue.number} both changed since the last sync.`,
+        workItemId: item.id,
+        remote,
+        fields,
+        allowedResolutions: ['use-coc', 'use-provider', 'skip'],
+    };
 }
 
 function orderParentFirst(items: readonly WorkItem[]): WorkItem[] {
@@ -501,6 +642,10 @@ async function loadImportIssues(
     };
 }
 
+function conflictResolutionMap(context: WorkItemSyncProviderApplyContext): Map<string, WorkItemSyncConflictResolution> {
+    return new Map((context.request.conflictResolutions ?? []).map(entry => [entry.conflictId, entry.resolution]));
+}
+
 function makePreviewBase(context: WorkItemSyncProviderPreviewContext, providerNow: string, previewId: string): WorkItemSyncPreviewResponse {
     return {
         provider: 'github',
@@ -516,6 +661,264 @@ function makePreviewBase(context: WorkItemSyncProviderPreviewContext, providerNo
         warnings: [],
         conflicts: [],
     };
+}
+
+function makeApplyBase(context: WorkItemSyncProviderApplyContext): WorkItemSyncApplyResponse {
+    return {
+        provider: 'github',
+        operation: context.operation,
+        applied: 0,
+        skipped: 0,
+        failed: 0,
+        rows: [],
+        warnings: [],
+        conflicts: [],
+    };
+}
+
+function rowRemoteOperationInput(
+    item: WorkItem,
+    repo: AvailableGitHubWorkItemSyncRepo,
+    issue: GitHubWorkItemIssue | undefined,
+    parent: WorkItemSyncParentReference | undefined,
+    syncedAt: string,
+): GitHubWorkItemIssueUpdateInput {
+    const update = buildGitHubWorkItemIssueUpdate({
+        workItem: item,
+        remote: {
+            owner: repo.owner,
+            repo: repo.repo,
+            issueId: issue?.id !== undefined ? String(issue.id) : undefined,
+            issueNumber: issue?.number,
+            issueUrl: issue?.htmlUrl ?? issue?.url,
+        },
+        lastSyncedAt: syncedAt,
+        parent,
+        existingIssue: issue,
+    });
+    return {
+        title: item.title,
+        body: update.body,
+        labels: update.labels,
+        state: githubIssueStateForWorkItem(item),
+    };
+}
+
+function rowFailureMessage(error: unknown): string {
+    return error instanceof Error ? error.message : 'Unknown sync apply failure';
+}
+
+function upsertGithubSyncLink(
+    item: WorkItem,
+    repo: AvailableGitHubWorkItemSyncRepo,
+    issue: GitHubWorkItemIssue,
+    syncedAt: string,
+    fingerprint: string,
+    parent: WorkItemSyncParentReference | undefined,
+): WorkItemSyncLink[] {
+    const nextLink: WorkItemSyncLink = {
+        provider: 'github',
+        remote: remoteIdentity(repo, issue),
+        remoteRevision: issue.id !== undefined ? String(issue.id) : undefined,
+        remoteUpdatedAt: issue.updatedAt,
+        lastSyncedAt: syncedAt,
+        lastSyncedFingerprint: fingerprint,
+        dirty: false,
+        conflict: false,
+        parent,
+    };
+    return [
+        ...(item.syncLinks ?? []).filter(link => link.provider !== 'github'),
+        nextLink,
+    ];
+}
+
+async function parentReferenceForItem(
+    context: WorkItemSyncProviderContext,
+    repo: AvailableGitHubWorkItemSyncRepo,
+    item: WorkItem,
+    localItems: Map<string, WorkItem>,
+): Promise<WorkItemSyncParentReference | undefined> {
+    if (!item.parentId) return undefined;
+    const parent = localItems.get(item.parentId)
+        ?? await context.workItemStore.getWorkItem(item.parentId, context.workspaceId);
+    const parentLink = parent ? getGithubSyncLink(parent) : undefined;
+    const reference: WorkItemSyncParentReference = { workItemId: item.parentId };
+    if (parentLink?.remote.issueId) reference.issueId = parentLink.remote.issueId;
+    if (parentLink?.remote.issueNumber !== undefined) reference.issueNumber = parentLink.remote.issueNumber;
+    if (parentLink?.remote.issueUrl) reference.issueUrl = parentLink.remote.issueUrl;
+    reference.owner = parentLink?.remote.owner ?? repo.owner;
+    reference.repo = parentLink?.remote.repo ?? repo.repo;
+    return reference;
+}
+
+async function wouldCreateParentCycle(context: WorkItemSyncProviderContext, itemId: string, parentId: string): Promise<boolean> {
+    const seen = new Set<string>();
+    let cursor: string | undefined = parentId;
+    while (cursor) {
+        if (cursor === itemId) return true;
+        if (seen.has(cursor)) return true;
+        seen.add(cursor);
+        const parent = await context.workItemStore.getWorkItem(cursor, context.workspaceId);
+        cursor = parent?.parentId;
+    }
+    return false;
+}
+
+async function validMetadataParentId(
+    context: WorkItemSyncProviderContext,
+    repo: AvailableGitHubWorkItemSyncRepo,
+    parsed: ParsedGitHubWorkItemIssue,
+    childType: WorkItem['type'],
+    itemId?: string,
+): Promise<string | undefined> {
+    const parentItem = await resolveMetadataParent(context, repo, parsed.metadata?.parent);
+    if (!parentItem) return undefined;
+    if (!isValidParentChildTypes(getEffectiveType(childType), getEffectiveType(parentItem.type))) return undefined;
+    if (itemId && await wouldCreateParentCycle(context, itemId, parentItem.id)) return undefined;
+    return parentItem.id;
+}
+
+async function applyCreateLocalIssue(
+    context: WorkItemSyncProviderApplyContext,
+    repo: AvailableGitHubWorkItemSyncRepo,
+    issue: GitHubWorkItemIssue,
+    syncedAt: string,
+): Promise<WorkItem> {
+    const parsed = parseGitHubWorkItemIssue(issue);
+    const desiredId = parsed.metadata?.workItemId;
+    const existing = desiredId ? await context.workItemStore.getWorkItem(desiredId, context.workspaceId) : undefined;
+    const id = existing ? crypto.randomUUID() : desiredId ?? crypto.randomUUID();
+    const type = parsed.type ?? 'work-item';
+    const parentId = await validMetadataParentId(context, repo, parsed, type, id);
+    const item: WorkItem = {
+        id,
+        repoId: context.workspaceId,
+        title: issue.title,
+        description: parsed.bodyWithoutMetadata,
+        status: remoteStatus(issue, parsed),
+        type,
+        parentId,
+        createdAt: syncedAt,
+        updatedAt: syncedAt,
+        source: 'manual',
+        priority: remotePriority(parsed),
+        tags: parsed.tags,
+    };
+    item.syncLinks = upsertGithubSyncLink(
+        item,
+        repo,
+        issue,
+        syncedAt,
+        syncFingerprintForWorkItem(item),
+        parsed.metadata?.parent,
+    );
+    await context.workItemStore.addWorkItem(item);
+    return item;
+}
+
+async function applyLocalIssueUpdate(
+    context: WorkItemSyncProviderApplyContext,
+    repo: AvailableGitHubWorkItemSyncRepo,
+    item: WorkItem,
+    issue: GitHubWorkItemIssue,
+    syncedAt: string,
+): Promise<WorkItem | undefined> {
+    const parsed = parseGitHubWorkItemIssue(issue);
+    const type = parsed.type ?? 'work-item';
+    const parentId = parsed.metadata?.parent
+        ? await validMetadataParentId(context, repo, parsed, type, item.id)
+        : item.parentId;
+    const nextItem: WorkItem = {
+        ...item,
+        title: issue.title,
+        description: parsed.bodyWithoutMetadata,
+        type,
+        status: remoteStatus(issue, parsed),
+        priority: remotePriority(parsed),
+        tags: parsed.tags,
+        parentId,
+    };
+    const syncLinks = upsertGithubSyncLink(
+        nextItem,
+        repo,
+        issue,
+        syncedAt,
+        syncFingerprintForWorkItem(nextItem),
+        parsed.metadata?.parent,
+    );
+    return context.workItemStore.updateWorkItem(item.id, {
+        title: nextItem.title,
+        description: nextItem.description,
+        type: nextItem.type,
+        status: nextItem.status,
+        priority: nextItem.priority,
+        tags: nextItem.tags,
+        parentId: nextItem.parentId,
+        syncLinks,
+    });
+}
+
+async function applyGithubLinkOnly(
+    context: WorkItemSyncProviderApplyContext,
+    repo: AvailableGitHubWorkItemSyncRepo,
+    item: WorkItem,
+    issue: GitHubWorkItemIssue,
+    syncedAt: string,
+): Promise<WorkItem | undefined> {
+    const parsed = parseGitHubWorkItemIssue(issue);
+    const syncLinks = upsertGithubSyncLink(
+        item,
+        repo,
+        issue,
+        syncedAt,
+        syncFingerprintForIssue(issue, parsed, item.parentId),
+        parsed.metadata?.parent,
+    );
+    return context.workItemStore.updateWorkItem(item.id, { syncLinks });
+}
+
+async function applyRemoteIssueCreate(
+    context: WorkItemSyncProviderApplyContext,
+    repo: AvailableGitHubWorkItemSyncRepo,
+    transport: GitHubWorkItemIssueTransport,
+    item: WorkItem,
+    localItems: Map<string, WorkItem>,
+    syncedAt: string,
+): Promise<GitHubWorkItemIssue> {
+    const parent = await parentReferenceForItem(context, repo, item, localItems);
+    const initialInput = rowRemoteOperationInput(item, repo, undefined, parent, syncedAt);
+    const created = await transport.createIssue(repo, {
+        title: initialInput.title,
+        body: initialInput.body,
+        labels: initialInput.labels,
+    });
+    const completeInput = rowRemoteOperationInput(item, repo, created, parent, syncedAt);
+    const updated = await transport.updateIssue(repo, created.number, completeInput);
+    const updatedItem = await context.workItemStore.updateWorkItem(item.id, {
+        syncLinks: upsertGithubSyncLink(item, repo, updated, syncedAt, syncFingerprintForWorkItem(item), parent),
+    });
+    if (updatedItem) localItems.set(updatedItem.id, updatedItem);
+    return updated;
+}
+
+async function applyRemoteIssueUpdate(
+    context: WorkItemSyncProviderApplyContext,
+    repo: AvailableGitHubWorkItemSyncRepo,
+    transport: GitHubWorkItemIssueTransport,
+    item: WorkItem,
+    issue: GitHubWorkItemIssue,
+    localItems: Map<string, WorkItem>,
+    syncedAt: string,
+): Promise<GitHubWorkItemIssue> {
+    const parent = await parentReferenceForItem(context, repo, item, localItems);
+    const input = rowRemoteOperationInput(item, repo, issue, parent, syncedAt);
+    const updated = await transport.updateIssue(repo, issue.number, input);
+    const updatedItem = await context.workItemStore.updateWorkItem(item.id, {
+        syncLinks: upsertGithubSyncLink(item, repo, updated, syncedAt, syncFingerprintForWorkItem(item), parent),
+    });
+    if (updatedItem) localItems.set(updatedItem.id, updatedItem);
+    return updated;
 }
 
 export function createGitHubWorkItemSyncProviderAdapter(options: CreateGitHubWorkItemSyncProviderOptions = {}): WorkItemSyncProviderAdapter {
@@ -695,31 +1098,71 @@ export function createGitHubWorkItemSyncProviderAdapter(options: CreateGitHubWor
             }
 
             const parsed = parseGitHubWorkItemIssue(issue);
-            const lastSyncedAt = link.lastSyncedAt ?? link.remoteUpdatedAt;
-            const remoteChanged = Boolean(link.remoteUpdatedAt && issue.updatedAt && issue.updatedAt > link.remoteUpdatedAt);
-            const localChanged = Boolean(lastSyncedAt && item.updatedAt > lastSyncedAt);
+            const remoteChanged = remoteChangedSinceLastSync(issue, link);
+            const localChanged = localChangedSinceLastSync(item, link);
             if (remoteChanged && !localChanged) {
-                response.updates.push({
-                    id: `update-local-${item.id}`,
-                    kind: 'update-local',
-                    title: issue.title,
-                    workItemId: item.id,
-                    remote,
-                    itemType: parsed.type ?? getEffectiveType(item.type),
-                    status: parsed.status ?? item.status,
-                    fields: changedLocalFields(item, issue, parsed),
-                });
+                const fields = changedLocalFields(item, issue, parsed);
+                if (fields.length > 0) {
+                    response.updates.push({
+                        id: `update-local-${item.id}`,
+                        kind: 'update-local',
+                        title: issue.title,
+                        workItemId: item.id,
+                        remote,
+                        itemType: parsed.type ?? getEffectiveType(item.type),
+                        status: parsed.status ?? item.status,
+                        fields,
+                    });
+                } else {
+                    response.noOps.push({
+                        id: `noop-${item.id}`,
+                        kind: 'noop',
+                        title: item.title,
+                        workItemId: item.id,
+                        remote,
+                        itemType: getEffectiveType(item.type),
+                        status: item.status,
+                    });
+                }
             } else if (localChanged && !remoteChanged) {
-                response.updates.push({
-                    id: `update-remote-${item.id}`,
-                    kind: 'update-remote',
-                    title: item.title,
-                    workItemId: item.id,
-                    remote,
-                    itemType: getEffectiveType(item.type),
-                    status: item.status,
-                    fields: changedRemoteFields(item, issue, parsed),
-                });
+                const fields = changedRemoteFields(item, issue, parsed);
+                if (fields.length > 0) {
+                    response.updates.push({
+                        id: `update-remote-${item.id}`,
+                        kind: 'update-remote',
+                        title: item.title,
+                        workItemId: item.id,
+                        remote,
+                        itemType: getEffectiveType(item.type),
+                        status: item.status,
+                        fields,
+                    });
+                } else {
+                    response.noOps.push({
+                        id: `noop-${item.id}`,
+                        kind: 'noop',
+                        title: item.title,
+                        workItemId: item.id,
+                        remote,
+                        itemType: getEffectiveType(item.type),
+                        status: item.status,
+                    });
+                }
+            } else if (remoteChanged && localChanged) {
+                const conflict = conflictForItem(item, issue, parsed, remote);
+                if (conflict) {
+                    response.conflicts.push(conflict);
+                } else {
+                    response.noOps.push({
+                        id: `noop-${item.id}`,
+                        kind: 'noop',
+                        title: item.title,
+                        workItemId: item.id,
+                        remote,
+                        itemType: getEffectiveType(item.type),
+                        status: item.status,
+                    });
+                }
             } else {
                 response.noOps.push({
                     id: `noop-${item.id}`,
@@ -733,6 +1176,226 @@ export function createGitHubWorkItemSyncProviderAdapter(options: CreateGitHubWor
             }
         }
         return response;
+    }
+
+    async function previewForApply(context: WorkItemSyncProviderApplyContext, repo: AvailableGitHubWorkItemSyncRepo, syncedAt: string): Promise<WorkItemSyncPreviewResponse> {
+        const previewContext: WorkItemSyncProviderPreviewContext = {
+            ...context,
+            request: context.request,
+        };
+        const response = makePreviewBase(
+            previewContext,
+            syncedAt,
+            context.request.previewId ?? createPreviewId(context.operation),
+        );
+        if (context.operation === 'import') return previewImport(previewContext, repo, response);
+        if (context.operation === 'export-selected') return previewExport(previewContext, repo, response);
+        return previewSyncLinked(previewContext, repo, response);
+    }
+
+    async function requireLocalItem(context: WorkItemSyncProviderApplyContext, operation: WorkItemSyncPreviewOperation): Promise<WorkItem> {
+        const workItemId = operation.workItemId;
+        if (!workItemId) throw new Error(`Sync operation '${operation.id}' is missing a work item id.`);
+        const item = context.items.find(candidate => candidate.id === workItemId)
+            ?? await context.workItemStore.getWorkItem(workItemId, context.workspaceId);
+        if (!item) throw new Error(`Work item '${workItemId}' was not found.`);
+        return item;
+    }
+
+    async function requireRemoteIssue(repo: AvailableGitHubWorkItemSyncRepo, operation: Pick<WorkItemSyncPreviewOperation | WorkItemSyncConflict, 'id' | 'remote'>): Promise<GitHubWorkItemIssue> {
+        const issueNumber = operation.remote?.issueNumber;
+        if (issueNumber === undefined) throw new Error(`Sync operation '${operation.id}' is missing a GitHub issue number.`);
+        const issue = await transport.getIssue(repo, issueNumber);
+        if (!issue) throw new Error(`GitHub issue #${issueNumber} was not found or is inaccessible.`);
+        return issue;
+    }
+
+    async function applyPreviewOperation(
+        context: WorkItemSyncProviderApplyContext,
+        repo: AvailableGitHubWorkItemSyncRepo,
+        result: WorkItemSyncApplyResponse,
+        operation: WorkItemSyncPreviewOperation,
+        localItems: Map<string, WorkItem>,
+        syncedAt: string,
+    ): Promise<void> {
+        try {
+            if (operation.kind === 'create-local') {
+                const issue = await requireRemoteIssue(repo, operation);
+                const item = await applyCreateLocalIssue(context, repo, issue, syncedAt);
+                localItems.set(item.id, item);
+                result.rows.push({
+                    id: `applied-${operation.id}`,
+                    status: 'applied',
+                    operationId: operation.id,
+                    workItemId: item.id,
+                    remote: operation.remote,
+                });
+                return;
+            }
+
+            if (operation.kind === 'update-local') {
+                const item = await requireLocalItem(context, operation);
+                const issue = await requireRemoteIssue(repo, operation);
+                const updated = await applyLocalIssueUpdate(context, repo, item, issue, syncedAt);
+                if (updated) localItems.set(updated.id, updated);
+                result.rows.push({
+                    id: `applied-${operation.id}`,
+                    status: 'applied',
+                    operationId: operation.id,
+                    workItemId: item.id,
+                    remote: operation.remote,
+                });
+                return;
+            }
+
+            if (operation.kind === 'link') {
+                const item = await requireLocalItem(context, operation);
+                const issue = await requireRemoteIssue(repo, operation);
+                const updated = await applyGithubLinkOnly(context, repo, item, issue, syncedAt);
+                if (updated) localItems.set(updated.id, updated);
+                result.rows.push({
+                    id: `applied-${operation.id}`,
+                    status: 'applied',
+                    operationId: operation.id,
+                    workItemId: item.id,
+                    remote: operation.remote,
+                });
+                return;
+            }
+
+            if (operation.kind === 'create-remote') {
+                const item = await requireLocalItem(context, operation);
+                const issue = await applyRemoteIssueCreate(context, repo, transport, item, localItems, syncedAt);
+                result.rows.push({
+                    id: `applied-${operation.id}`,
+                    status: 'applied',
+                    operationId: operation.id,
+                    workItemId: item.id,
+                    remote: remoteIdentity(repo, issue),
+                });
+                return;
+            }
+
+            if (operation.kind === 'update-remote') {
+                const item = await requireLocalItem(context, operation);
+                const issue = await requireRemoteIssue(repo, operation);
+                const updated = await applyRemoteIssueUpdate(context, repo, transport, item, issue, localItems, syncedAt);
+                result.rows.push({
+                    id: `applied-${operation.id}`,
+                    status: 'applied',
+                    operationId: operation.id,
+                    workItemId: item.id,
+                    remote: remoteIdentity(repo, updated),
+                });
+                return;
+            }
+
+            result.rows.push({
+                id: `skipped-${operation.id}`,
+                status: 'skipped',
+                operationId: operation.id,
+                workItemId: operation.workItemId,
+                remote: operation.remote,
+                message: 'No changes to apply.',
+            });
+        } catch (error) {
+            result.rows.push({
+                id: `failed-${operation.id}`,
+                status: 'failed',
+                operationId: operation.id,
+                workItemId: operation.workItemId,
+                remote: operation.remote,
+                message: rowFailureMessage(error),
+            });
+        }
+    }
+
+    async function applyConflict(
+        context: WorkItemSyncProviderApplyContext,
+        repo: AvailableGitHubWorkItemSyncRepo,
+        result: WorkItemSyncApplyResponse,
+        conflict: WorkItemSyncConflict,
+        resolution: WorkItemSyncConflictResolution | undefined,
+        localItems: Map<string, WorkItem>,
+        syncedAt: string,
+    ): Promise<void> {
+        if (!resolution) {
+            result.conflicts.push(conflict);
+            result.rows.push({
+                id: `skipped-${conflict.id}`,
+                status: 'skipped',
+                operationId: conflict.id,
+                workItemId: conflict.workItemId,
+                remote: conflict.remote,
+                message: 'Conflict was not resolved.',
+            });
+            return;
+        }
+        if (resolution === 'skip') {
+            result.rows.push({
+                id: `skipped-${conflict.id}`,
+                status: 'skipped',
+                operationId: conflict.id,
+                workItemId: conflict.workItemId,
+                remote: conflict.remote,
+                message: 'Conflict skipped by user.',
+            });
+            return;
+        }
+
+        try {
+            const operation: WorkItemSyncPreviewOperation = {
+                id: conflict.id,
+                kind: resolution === 'use-coc' ? 'update-remote' : 'update-local',
+                title: conflict.message,
+                workItemId: conflict.workItemId,
+                remote: conflict.remote,
+                fields: conflict.fields,
+            };
+            await applyPreviewOperation(context, repo, result, operation, localItems, syncedAt);
+        } catch (error) {
+            result.rows.push({
+                id: `failed-${conflict.id}`,
+                status: 'failed',
+                operationId: conflict.id,
+                workItemId: conflict.workItemId,
+                remote: conflict.remote,
+                message: rowFailureMessage(error),
+            });
+        }
+    }
+
+    async function applyGitHubSync(context: WorkItemSyncProviderApplyContext): Promise<WorkItemSyncApplyResponse> {
+        const result = makeApplyBase(context);
+        const repo = await getAvailableRepo(context);
+        if (!repo) {
+            result.rows.push({
+                id: 'failed-github-repo-unavailable',
+                status: 'failed',
+                message: 'GitHub repository is unavailable; check workspace origin or owner/repo preferences.',
+            });
+            result.failed = 1;
+            return result;
+        }
+
+        const syncedAt = now();
+        const preview = await previewForApply(context, repo, syncedAt);
+        result.warnings.push(...preview.warnings);
+        const localItems = new Map(context.items.map(item => [item.id, item]));
+
+        for (const operation of [...preview.creates, ...preview.updates, ...preview.links, ...preview.noOps]) {
+            await applyPreviewOperation(context, repo, result, operation, localItems, syncedAt);
+        }
+
+        const resolutions = conflictResolutionMap(context);
+        for (const conflict of preview.conflicts) {
+            await applyConflict(context, repo, result, conflict, resolutions.get(conflict.id), localItems, syncedAt);
+        }
+
+        result.applied = result.rows.filter(row => row.status === 'applied').length;
+        result.skipped = result.rows.filter(row => row.status === 'skipped').length;
+        result.failed = result.rows.filter(row => row.status === 'failed').length;
+        return result;
     }
 
     return {
@@ -765,12 +1428,8 @@ export function createGitHubWorkItemSyncProviderAdapter(options: CreateGitHubWor
             if (context.operation === 'export-selected') return previewExport(context, repo, response);
             return previewSyncLinked(context, repo, response);
         },
-        async apply() {
-            throw new APIError(
-                501,
-                'GitHub sync apply is not implemented yet; run preview to inspect pending changes.',
-                'WORK_ITEM_SYNC_APPLY_NOT_IMPLEMENTED',
-            );
+        async apply(context) {
+            return applyGitHubSync(context);
         },
     };
 }
