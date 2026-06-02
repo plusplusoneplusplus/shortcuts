@@ -3,6 +3,14 @@ function Test-DevTunnelAuthError {
     return $Output -match '(?i)(not logged in|not authenticated|login required|log in|401|unauthorized)'
 }
 
+function Test-DevTunnelNotOwnedError {
+    param([string]$Output)
+    # Surfaces when listing/inspecting a tunnel the current account does not own
+    # (owned by a different identity or in use elsewhere). These signals never
+    # appear for a tunnel the current account owns, so they indicate ownership.
+    return $Output -match '(?i)(tunnel not found|request not permitted|unauthorized tunnel access)'
+}
+
 function Invoke-DevTunnelCli {
     param(
         [Parameter(Mandatory)][string[]]$Arguments,

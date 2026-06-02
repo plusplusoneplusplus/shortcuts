@@ -207,6 +207,11 @@ describe('CoC service PowerShell scripts', () => {
       expect(configDevTunnel).not.toContain("@('host', $TunnelId)");
       expect(configDevTunnel).not.toContain('Start-Process devtunnel');
     });
+
+    it('detects when the tunnel id is owned by a different account', () => {
+      expect(configDevTunnel).toContain('Test-DevTunnelNotOwnedError');
+      expect(configDevTunnel).toContain('owned by a different account or in use elsewhere');
+    });
   });
 
   describe('devtunnel-utils.ps1', () => {
@@ -385,6 +390,21 @@ if ($errors.Count -gt 0) {
       expect(result.status, output).toBe(2);
       expect(output).toContain("Dev tunnel 'ambiguous-coc' has multiple HTTP ports (4000, 51234).");
       expect(readDevTunnelLog(fake.logPath).some((line) => line.startsWith('port\tcreate\tambiguous-coc'))).toBe(false);
+    } finally {
+      fake.cleanup();
+    }
+  });
+
+  it('reports a clear hint when the tunnel id is owned by another account', () => {
+    const fake = createFakeDevTunnel('not-owned');
+    try {
+      const result = runPowerShellFile('config-devtunnel.ps1', ['-TunnelId', 'foreign-coc'], fake.env);
+      const output = `${result.stdout}\n${result.stderr}`;
+      expect(result.status, output).toBe(2);
+      expect(output).toContain("Dev tunnel 'foreign-coc' is not accessible to the current account");
+      expect(output).toContain('owned by a different account or in use elsewhere');
+      expect(output).toContain('rerun with a different -TunnelId');
+      expect(readDevTunnelLog(fake.logPath).some((line) => line.startsWith('port\tcreate\tforeign-coc'))).toBe(false);
     } finally {
       fake.cleanup();
     }
