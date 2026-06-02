@@ -50,7 +50,8 @@ import { ScratchpadDivider } from './scratchpad/ScratchpadDivider';
 import { ScratchpadPanel } from './scratchpad/ScratchpadPanel';
 import { MobileScratchpadTabBar } from './scratchpad/MobileScratchpadTabBar';
 import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
-import { isChatMode, resolveLoadedTaskMode } from './chatMode';
+import { resolveLoadedTaskMode } from './chatMode';
+import { normalizeChatMode } from '../../repos/modeConfig';
 import { isRalphEnabled, isLoopsEnabled, getDefaultProvider, isEffortLevelsEnabled } from '../../utils/config';
 import type { ChatMode } from '../../repos/modeConfig';
 import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
@@ -85,7 +86,7 @@ export interface ChatDetailProps {
     standalone?: boolean;
     /** Override the "Chat" title in ChatHeader */
     title?: string;
-    /** Hide the ask/plan/autopilot mode selector */
+    /** Hide the ask/autopilot mode selector */
     hideModeSelector?: boolean;
     /** When set, restricts mode selector to only these modes */
     allowedModes?: ChatMode[];
@@ -256,7 +257,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     // Compute the follow-up mode pill set, optionally appending Ralph when
     // the chat is eligible for in-place promotion. Eligibility:
     //   - completed (no in-flight turn or queued follow-ups)
-    //   - payload mode === 'ask' (plan/autopilot/ralph already-Ralph excluded)
+    //   - payload mode === 'ask' (autopilot/ralph already-Ralph excluded)
     //   - no existing Ralph context (already-Ralph chats hide the pill)
     //   - not read-only
     // The Ralph pill is also omitted when the consumer pinned `allowedModes`.
@@ -272,17 +273,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             && effectiveStatus === 'completed'
             && noPending;
         if (!ralphEligible) return undefined;
-        return ['ask', 'plan', 'autopilot', 'ralph'];
+        return ['ask', 'autopilot', 'ralph'];
     }, [allowedModes, task, effectiveStatus, readOnly, pendingQueue]);
 
-    // Coerce a stored draft mode of 'ralph' back to 'ask' when the Ralph pill
-    // is no longer in the allowed set (already-promoted, running, etc.). Without
-    // this the pill row would render with no element matching `selectedMode`,
-    // leaving the UI in a "selected pill that no longer exists" state.
+    // Coerce stored modes back to an option that is currently rendered.
     useEffect(() => {
-        if (selectedMode !== 'ralph') return;
-        const allowed = effectiveAllowedModes;
-        if (!allowed || !allowed.includes('ralph')) {
+        const allowed = effectiveAllowedModes ?? ['ask', 'autopilot'];
+        if (!allowed.includes(selectedMode)) {
             setSelectedMode('ask');
         }
     }, [selectedMode, effectiveAllowedModes]);
@@ -811,8 +808,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         const draft = getDraft(currentTaskId);
         if (draft) {
             setFollowUpInput(draft.text);
-            if (isChatMode(draft.mode)) {
-                setSelectedMode(draft.mode);
+            const draftMode = normalizeChatMode(draft.mode);
+            if (draftMode) {
+                setSelectedMode(draftMode);
             }
         } else {
             setFollowUpInput('');
@@ -1001,7 +999,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             return;
         }
         const draft = getDraft(taskId);
-        if (isChatMode(draft?.mode)) {
+        if (normalizeChatMode(draft?.mode)) {
             return;
         }
         const taskMode = resolveLoadedTaskMode(task);
@@ -1254,6 +1252,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const isVerticalScratchpad = scratchpadEnabled && scratchpad.isOpen && scratchpadLayout === 'vertical';
     /** On mobile, when the scratchpad is open, switch to full-screen tab mode. */
     const isMobileScratchpad = isMobile && scratchpadEnabled && scratchpad.isOpen;
+    const scratchpadSelectedMode = selectedMode === 'autopilot' ? 'autopilot' : 'ask';
     const scratchpadCandidates = useMemo(() => buildScratchpadCandidates({
         linkedNotePath: scratchpad.linkedNotePath,
         knownFiles: scratchpad.knownFiles,
@@ -1451,8 +1450,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         }
                         return null;
                     })()}
-                    {/* Plan-mode complete — offer one-click handoff to autopilot */}
-                    {isTerminal && !planChatBusy && resolveLoadedTaskMode(task) === 'plan' && effectivePlanPath && (
+                    {/* Plan file complete — offer one-click handoff to autopilot */}
+                    {isTerminal && !planChatBusy && resolveLoadedTaskMode(task) === 'ask' && effectivePlanPath && (
                         <ImplementPlanCard
                             planFilePath={effectivePlanPath}
                             workspaceId={workspaceId}
@@ -1575,7 +1574,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             onNotFound={handleScratchpadNotFound}
                             height="auto"
                             parentProcessId={processId ?? undefined}
-                            selectedMode={selectedMode}
+                            selectedMode={scratchpadSelectedMode}
                             headerBar={isVerticalScratchpad ? {
                                 expandMode: scratchpad.expandMode,
                                 isDragging: scratchpad.isDragging,

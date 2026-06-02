@@ -91,7 +91,7 @@ export interface FollowUpInputAreaProps {
     };
     /** Current session model ID (for showing checkmark in model picker) */
     sessionModel?: string;
-    /** When true, the ask/plan/autopilot mode selector is hidden */
+    /** When true, the ask/autopilot mode selector is hidden */
     hideModeSelector?: boolean;
     /** When set, restricts mode selector to only these modes */
     allowedModes?: ChatMode[];

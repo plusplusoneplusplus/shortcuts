@@ -13,7 +13,7 @@ export interface UseCommentsOptions {
     /** When set, resolve-with-AI sends a follow-up to this chat instead of a new task. */
     parentProcessId?: string;
     /** Mode to use when sending a follow-up via resolve-with-AI (defaults to the process's stored mode). */
-    selectedMode?: 'ask' | 'plan' | 'autopilot';
+    selectedMode?: 'ask' | 'autopilot';
     onThreadSelect?: (threadId: string | null) => void;
 }
 

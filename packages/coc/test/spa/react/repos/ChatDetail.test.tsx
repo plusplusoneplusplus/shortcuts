@@ -670,10 +670,11 @@ describe('ChatDetail', () => {
             setupStandardFetch();
             render(<Wrap><ChatDetail taskId="task-1" hideModeSelector={false} /></Wrap>);
             await waitFor(() => {
-                expect(screen.getByTestId('mode-pill-plan')).toBeTruthy();
+                expect(screen.getByTestId('mode-pill-ask')).toBeTruthy();
             });
-            fireEvent.click(screen.getByTestId('mode-pill-plan'));
-            expect(screen.getByTestId('mode-pill-plan').getAttribute('aria-checked')).toBe('true');
+            expect(screen.queryByTestId('mode-pill-plan')).toBeNull();
+            fireEvent.click(screen.getByTestId('mode-pill-ask'));
+            expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
             expect(screen.getByTestId('mode-pill-autopilot').getAttribute('aria-checked')).toBe('false');
         });
     });

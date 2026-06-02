@@ -5,8 +5,8 @@
  * `.row.has-children` style: status dot + mode pill + title (with rotating
  * chevron) + relative time, in the same `[10px_36px_minmax(0,1fr)_auto]`
  * grid as `renderChatListRow`. The mode pill collapses children's modes:
- * if every child shares the same mode the parent shows that mode (PLAN/AUTO/
- * ASK/SCRP); when they differ a neutral "MIX" pill is shown with the
+ * if every child shares the same mode the parent shows that mode
+ * (ASK/AUTO/SCRP); when they differ a neutral "MIX" pill is shown with the
  * per-mode breakdown surfaced as a tooltip.
  */
 
@@ -14,9 +14,10 @@ import { cn } from '../../../ui';
 import { formatRelativeTime } from '../../../utils/format';
 import type { HistoryGroup } from '../history-grouping';
 import type { ProcessHistoryItem } from '../../../types/dashboard';
+import { normalizeChatMode } from '../../../repos/modeConfig';
 
 /** Group-level mode pill key. `'mixed'` is used when children disagree. */
-export type GroupAggregateMode = 'ask' | 'plan' | 'auto' | 'script' | 'mixed';
+export type GroupAggregateMode = 'ask' | 'auto' | 'script' | 'mixed';
 
 interface HistoryGroupHeaderProps {
     group: HistoryGroup;
@@ -35,11 +36,10 @@ interface HistoryGroupHeaderProps {
 /** Map a child item's `mode` / `payload.mode` / `type` to the same 4 keys
  *  used elsewhere in the activity list. Mirrors `getTaskModeKey` in
  *  `ChatListPane.tsx` but takes a `ProcessHistoryItem`. */
-function childModeKey(item: ProcessHistoryItem): 'ask' | 'plan' | 'auto' | 'script' {
+function childModeKey(item: ProcessHistoryItem): 'ask' | 'auto' | 'script' {
     if (item.type === 'run-script') return 'script';
     if (item.type === 'chat') {
-        if (item.mode === 'ask') return 'ask';
-        if (item.mode === 'plan') return 'plan';
+        if (normalizeChatMode(item.mode) === 'ask') return 'ask';
         return 'auto';
     }
     return 'auto';
@@ -57,7 +57,6 @@ export function computeAggregateMode(children: ProcessHistoryItem[]): GroupAggre
 
 const MODE_LABEL: Record<GroupAggregateMode, string> = {
     ask: 'ASK',
-    plan: 'PLAN',
     auto: 'AUTO',
     script: 'SCRP',
     mixed: 'MIX',
@@ -74,7 +73,6 @@ function buildModeTooltip(aggregateMode: GroupAggregateMode, children: ProcessHi
     if (aggregateMode !== 'mixed') {
         const labels: Record<Exclude<GroupAggregateMode, 'mixed'>, string> = {
             ask: 'Ask · read-only Q&A',
-            plan: 'Plan · proposes changes',
             auto: 'Autopilot · executes edits',
             script: 'Script · scheduled automation',
         };
@@ -114,7 +112,6 @@ export function HistoryGroupHeader({
         'inline-flex items-center justify-center rounded-[3px] border font-mono font-bold uppercase select-none',
         'text-[9.5px] leading-none tracking-[0.06em] py-[4px] w-full',
         aggregateMode === 'ask' && 'text-amber-600 dark:text-amber-400 border-amber-400/70 dark:border-amber-500/60 bg-amber-50/60 dark:bg-amber-500/10',
-        aggregateMode === 'plan' && 'text-[#0078d4] dark:text-[#3794ff] border-[#0078d4]/55 dark:border-[#3794ff]/55 bg-[#0078d4]/[0.06] dark:bg-[#3794ff]/10',
         aggregateMode === 'auto' && 'text-emerald-600 dark:text-emerald-400 border-emerald-500/70 dark:border-emerald-500/60 bg-emerald-50/60 dark:bg-emerald-500/10',
         aggregateMode === 'script' && 'text-[#1e1e1e] dark:text-[#dcdcdc] border-[#3c3c3c]/55 dark:border-[#9d9d9d]/45 bg-[#1e1e1e]/[0.06] dark:bg-[#dcdcdc]/[0.06]',
         aggregateMode === 'mixed' && 'text-[#848484] dark:text-[#a0a0a0] border-[#9d9d9d]/55 dark:border-[#7d7d7d]/55 bg-[#9d9d9d]/[0.07] dark:bg-[#7d7d7d]/10',

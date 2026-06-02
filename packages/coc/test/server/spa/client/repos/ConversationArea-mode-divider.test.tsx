@@ -2,7 +2,7 @@
  * ConversationArea mode-change divider tests.
  *
  * Verifies that a visual divider appears between turns when the chat mode
- * (ask | plan | autopilot) changes. Mirrors the model-change-divider tests.
+ * (ask | autopilot) changes. Legacy plan turn metadata is displayed as Ask.
  *
  * @vitest-environment jsdom
  */
@@ -118,7 +118,7 @@ describe('ConversationArea mode-change divider', () => {
         expect(screen.queryByTestId('mode-change-divider')).toBeNull();
     });
 
-    it('renders divider when switching from default (no mode) to explicit mode', () => {
+    it('renders legacy plan metadata as Ask when switching from default mode', () => {
         const turns = [
             makeTurn({ turnIndex: 0, role: 'user' }),
             makeTurn({ turnIndex: 1, role: 'assistant' }),
@@ -128,8 +128,8 @@ describe('ConversationArea mode-change divider', () => {
         render(<ConversationArea {...baseProps} turns={turns} />);
         const divider = screen.getByTestId('mode-change-divider');
         expect(divider).toBeTruthy();
-        expect(divider.textContent).toContain('plan');
-        expect(divider.textContent).toContain('📋');
+        expect(divider.textContent).toContain('ask');
+        expect(divider.textContent).toContain('💡');
     });
 
     it('renders multiple dividers for multiple mode changes', () => {

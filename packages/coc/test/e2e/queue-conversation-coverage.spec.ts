@@ -26,7 +26,7 @@
  *   - Context window indicator shows token usage
  *   - Loading spinner shown during initial conversation fetch
  *   - Empty conversation fallback renders 'No conversation data available'
- *   - Shift+Tab cycles through Ask/Plan/Autopilot modes
+ *   - Shift+Tab cycles through Ask/Autopilot modes
  */
 
 import * as fs from 'fs';
@@ -1245,7 +1245,7 @@ test.describe('Empty Conversation Fallback', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Shift+Tab Mode Cycling', () => {
-    test('Shift+Tab cycles between autopilot, ask, and plan modes', async ({ page, serverUrl, mockAI }) => {
+    test('Shift+Tab cycles between autopilot and ask modes', async ({ page, serverUrl, mockAI }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'shifttab-1');
         try {
             const task = await seedAndWaitForTask(serverUrl, wsId, {
@@ -1260,18 +1260,16 @@ test.describe('Shift+Tab Mode Cycling', () => {
             const autopilotPill = page.locator('[data-testid="mode-pill-autopilot"]');
             const textarea = page.locator('[data-testid="activity-chat-input"]');
 
-            // Default mode is 'autopilot'.  Cycle order: ask → plan → autopilot.
+            // Default mode is 'autopilot'.  Cycle order: ask → autopilot.
             // Pressing Shift+Tab from `autopilot` therefore lands on `ask`,
-            // then `plan`, then back to `autopilot`. The active pill is
-            // identified by aria-checked="true".
+            // then back to `autopilot`. The active pill is identified by
+            // aria-checked="true".
             await expect(autopilotPill).toHaveAttribute('aria-checked', 'true');
+            await expect(planPill).toHaveCount(0);
 
             await textarea.click();
             await textarea.press('Shift+Tab');
             await expect(askPill).toHaveAttribute('aria-checked', 'true', { timeout: 1_000 });
-
-            await textarea.press('Shift+Tab');
-            await expect(planPill).toHaveAttribute('aria-checked', 'true', { timeout: 1_000 });
 
             await textarea.press('Shift+Tab');
             await expect(autopilotPill).toHaveAttribute('aria-checked', 'true', { timeout: 1_000 });

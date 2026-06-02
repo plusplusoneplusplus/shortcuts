@@ -7,7 +7,7 @@
  * for 60 s per workspaceId), then walks backward (Up) through recent
  * prompts and forward (Down) toward the original draft.
  *
- * Behavior matrix (matches PLAN-chat-prompt-history.md):
+ * Behavior matrix:
  *   - Empty input + history available + Up → draft = '', show items[0]
  *   - At step N + Up → step N+1 (clamped to items.length - 1)
  *   - At step N + Down → step N-1 (or restore draft when stepping past 0)

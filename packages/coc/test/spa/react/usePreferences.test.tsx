@@ -24,7 +24,7 @@ describe('usePreferences', () => {
                 expect(result.current.loaded).toBe(true);
                 expect(result.current.models.task).toBe('gpt-4');
                 expect(result.current.models.ask).toBe('claude-3');
-                expect(result.current.models.plan).toBe('');
+                expect(result.current.models).not.toHaveProperty('plan');
                 // backward compat: model returns task model
                 expect(result.current.model).toBe('gpt-4');
             });
@@ -44,7 +44,7 @@ describe('usePreferences', () => {
                 expect(result.current.loaded).toBe(true);
                 expect(result.current.models.task).toBe('gpt-4');
                 expect(result.current.models.ask).toBe('gpt-4');
-                expect(result.current.models.plan).toBe('gpt-4');
+                expect(result.current.models).not.toHaveProperty('plan');
             });
         });
 
@@ -196,7 +196,7 @@ describe('usePreferences', () => {
                 expect(result.current.loaded).toBe(true);
                 expect(result.current.skills.task).toEqual(['impl']);
                 expect(result.current.skills.ask).toEqual(['go-deep']);
-                expect(result.current.skills.plan).toEqual([]);
+                expect(result.current.skills).not.toHaveProperty('plan');
             });
         });
 
@@ -222,7 +222,7 @@ describe('usePreferences', () => {
 
             await waitFor(() => {
                 expect(result.current.loaded).toBe(true);
-                expect(result.current.skills).toEqual({ task: [], ask: [], plan: [] });
+                expect(result.current.skills).toEqual({ task: [], ask: [] });
             });
         });
 
@@ -315,10 +315,10 @@ describe('usePreferences', () => {
             });
 
             expect(result.current.model).toBe('');
-            expect(result.current.models).toEqual({ task: '', ask: '', plan: '', note: '' });
+            expect(result.current.models).toEqual({ task: '', ask: '', note: '' });
             expect(result.current.depth).toBe('');
             expect(result.current.effort).toBe('');
-            expect(result.current.skills).toEqual({ task: [], ask: [], plan: [] });
+            expect(result.current.skills).toEqual({ task: [], ask: [] });
         });
 
         it('setModel updates local state but does not persist', async () => {

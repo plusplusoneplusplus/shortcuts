@@ -44,7 +44,7 @@ describe('usePreferences', () => {
         });
     });
 
-    it('loads lastModels from server response', async () => {
+    it('loads active lastModels from server response and ignores legacy plan', async () => {
         mockFetch.mockResolvedValueOnce({
             ok: true,
             json: () => Promise.resolve({ lastModels: { task: 'gpt-4', ask: 'claude-3', plan: 'gemini' } }),
@@ -53,7 +53,7 @@ describe('usePreferences', () => {
         await waitFor(() => expect(result.current.loaded).toBe(true));
         expect(result.current.models.task).toBe('gpt-4');
         expect(result.current.models.ask).toBe('claude-3');
-        expect(result.current.models.plan).toBe('gemini');
+        expect(result.current.models).not.toHaveProperty('plan');
     });
 
     it('backward-compat: uses lastModel for all modes when lastModels is absent', async () => {

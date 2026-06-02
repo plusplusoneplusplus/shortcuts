@@ -49,7 +49,7 @@ export const WELCOME_TOUR_STEPS: WelcomeTourStep[] = [
         headlineBottom: 'runs your queue while you sleep.',
         lede: 'CoC is your team of background agents. You hand off work — across modes, repos, and machines — and it keeps making progress without holding the keyboard.',
         bullets: [
-            checkBullet('Three modes', 'Ask, Plan, Autopilot'),
+            checkBullet('Three modes', 'Ask, Autopilot, Ralph'),
             checkBullet('A live queue', 'tasks run sequentially, in parallel, or fanned out'),
             checkBullet('Many repositories at once', 'switch context without losing it'),
             checkBullet('Run anywhere', 'attach to a remote dev machine via secure tunnel'),
@@ -69,7 +69,7 @@ export const WELCOME_TOUR_STEPS: WelcomeTourStep[] = [
                     Background agents · ready
                 </div>
                 <div className="welcome-tour__hero-meta">
-                    <span><b>3</b>modes</span>
+                <span><b>3</b>modes</span>
                     <span><b>∞</b>repos</span>
                     <span><b>1</b>queue</span>
                 </div>
@@ -92,17 +92,17 @@ export const WELCOME_TOUR_STEPS: WelcomeTourStep[] = [
                 </div>
             </>,
             <>
-                <span className="welcome-tour__bullet-icon welcome-tour__bullet-icon--warn">P</span>
-                <div>
-                    <b>Plan</b>
-                    <span className="welcome-tour__dim"> — drafts a written plan in Markdown. No code touched.</span>
-                </div>
-            </>,
-            <>
                 <span className="welcome-tour__bullet-icon welcome-tour__bullet-icon--accent">⇡</span>
                 <div>
                     <b>Autopilot</b>
                     <span className="welcome-tour__dim"> — writes files, runs tests, commits. Runs one at a time per repo.</span>
+                </div>
+            </>,
+            <>
+                <span className="welcome-tour__bullet-icon welcome-tour__bullet-icon--warn">R</span>
+                <div>
+                    <b>Ralph</b>
+                    <span className="welcome-tour__dim"> — iterates from a goal spec with checkpoints, commits, and final validation.</span>
                 </div>
             </>,
         ],
@@ -127,18 +127,18 @@ export const WELCOME_TOUR_STEPS: WelcomeTourStep[] = [
                 <div className="welcome-tour__mode-card">
                     <span className="welcome-tour__mode-dot welcome-tour__mode-dot--warn" aria-hidden="true" />
                     <div className="welcome-tour__mode-name">
-                        Plan <span className="welcome-tour__mode-sub">drafts spec</span>
-                    </div>
-                    <span className="welcome-tour__mode-tag welcome-tour__mode-tag--warn">parallel</span>
-                    <div className="welcome-tour__mode-body">&ldquo;Plan the migration to OAuth2 client credentials.&rdquo;</div>
+                    Autopilot <span className="welcome-tour__mode-sub">read-write</span>
+                </div>
+                    <span className="welcome-tour__mode-tag welcome-tour__mode-tag--warn">sequential</span>
+                    <div className="welcome-tour__mode-body">&ldquo;Migrate auth middleware. Land tests, open PR.&rdquo;</div>
                 </div>
                 <div className="welcome-tour__mode-card welcome-tour__mode-card--featured">
                     <span className="welcome-tour__mode-dot welcome-tour__mode-dot--accent" aria-hidden="true" />
                     <div className="welcome-tour__mode-name">
-                        Autopilot <span className="welcome-tour__mode-sub">read-write</span>
+                        Ralph <span className="welcome-tour__mode-sub">iterative</span>
                     </div>
-                    <span className="welcome-tour__mode-tag welcome-tour__mode-tag--accent">sequential</span>
-                    <div className="welcome-tour__mode-body">&ldquo;Migrate auth middleware. Land tests, open PR.&rdquo;</div>
+                    <span className="welcome-tour__mode-tag welcome-tour__mode-tag--accent">goal loop</span>
+                    <div className="welcome-tour__mode-body">&ldquo;Turn this goal into commits and run final checks.&rdquo;</div>
                 </div>
             </div>
         ),
@@ -182,8 +182,8 @@ export const WELCOME_TOUR_STEPS: WelcomeTourStep[] = [
                 </div>
                 <div className="welcome-tour__queue-pending">
                     <span className="welcome-tour__queue-num">3</span>
-                    <span className="welcome-tour__queue-name">Plan: cache layer for /api/v2</span>
-                    <span className="welcome-tour__queue-meta">plan</span>
+                    <span className="welcome-tour__queue-name">Sketch cache layer for /api/v2</span>
+                    <span className="welcome-tour__queue-meta">ask</span>
                 </div>
                 <div className="welcome-tour__queue-pending">
                     <span className="welcome-tour__queue-num">4</span>

@@ -1,5 +1,5 @@
 /**
- * Tests for CustomInstructionsPanel — 4-mode tabs, 50 KB limit, save/delete per mode.
+ * Tests for CustomInstructionsPanel — active instruction tabs, 50 KB limit, save/delete per mode.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -13,8 +13,8 @@ import {
 } from '../../../../src/server/spa/client/react/features/skills/CustomInstructionsPanel';
 import type { InstructionMode } from '../../../../src/server/spa/client/react/features/skills/CustomInstructionsPanel';
 
-const emptyDraft: Record<InstructionMode, string> = { base: '', ask: '', plan: '', autopilot: '' };
-const emptyContents: Record<InstructionMode, string | null> = { base: null, ask: null, plan: null, autopilot: null };
+const emptyDraft: Record<InstructionMode, string> = { base: '', ask: '', autopilot: '' };
+const emptyContents: Record<InstructionMode, string | null> = { base: null, ask: null, autopilot: null };
 
 function renderPanel(overrides: Partial<Parameters<typeof CustomInstructionsPanel>[0]> = {}) {
     const onDraftChange = vi.fn();
@@ -36,11 +36,12 @@ function renderPanel(overrides: Partial<Parameters<typeof CustomInstructionsPane
 }
 
 describe('CustomInstructionsPanel — tabs', () => {
-    it('renders all 4 mode tabs', () => {
+    it('renders active instruction tabs without Plan', () => {
         renderPanel();
         for (const mode of INSTRUCTION_MODES) {
             expect(screen.getByTestId(`instr-tab-${mode}`)).toBeTruthy();
         }
+        expect(screen.queryByTestId('instr-tab-plan')).toBeNull();
     });
 
     it('shows correct label for each tab', () => {
@@ -69,9 +70,9 @@ describe('CustomInstructionsPanel — save / delete', () => {
     it('calls onSave with selected mode after switching tabs', async () => {
         const user = userEvent.setup();
         const { onSave } = renderPanel();
-        await user.click(screen.getByTestId('instr-tab-plan'));
-        await user.click(screen.getByTestId('instr-save-plan'));
-        expect(onSave).toHaveBeenCalledWith('plan');
+        await user.click(screen.getByTestId('instr-tab-autopilot'));
+        await user.click(screen.getByTestId('instr-save-autopilot'));
+        expect(onSave).toHaveBeenCalledWith('autopilot');
     });
 
     it('shows delete button when mode has existing content', () => {

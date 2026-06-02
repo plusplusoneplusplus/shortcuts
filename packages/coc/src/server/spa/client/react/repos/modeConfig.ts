@@ -1,4 +1,12 @@
-export type ChatMode = 'ask' | 'plan' | 'autopilot' | 'ralph';
+export type ChatMode = 'ask' | 'autopilot' | 'ralph';
+
+export const DEFAULT_CHAT_MODES: readonly ChatMode[] = ['ask', 'autopilot'];
+
+export function normalizeChatMode(mode: unknown): ChatMode | undefined {
+    if (mode === 'plan') return 'ask';
+    if (mode === 'ask' || mode === 'autopilot' || mode === 'ralph') return mode;
+    return undefined;
+}
 
 /**
  * Per-mode visual identity tokens for chat-input cards.
@@ -15,13 +23,11 @@ export type ChatMode = 'ask' | 'plan' | 'autopilot' | 'ralph';
 export const MODE_BORDER_COLORS: Record<ChatMode, { border: string; ring: string }> = {
     autopilot: { border: 'border-green-500 dark:border-green-400', ring: 'focus-within:ring-green-500/30' },
     ask: { border: 'border-yellow-500 dark:border-yellow-400', ring: 'focus-within:ring-yellow-500/30' },
-    plan: { border: 'border-blue-500 dark:border-blue-400', ring: 'focus-within:ring-blue-500/30' },
     ralph: { border: 'border-purple-500 dark:border-purple-400', ring: 'focus-within:ring-purple-500/30' },
 };
 
 export const MODE_ICONS: Record<ChatMode, string> = {
     ask: '💡',
-    plan: '📋',
     autopilot: '🤖',
     ralph: '🔄',
 };
@@ -33,28 +39,26 @@ export const MODE_ICONS: Record<ChatMode, string> = {
 export const MODE_TEXT_COLORS: Record<ChatMode, string> = {
     autopilot: 'text-green-600 dark:text-green-400',
     ask: 'text-yellow-600 dark:text-yellow-400',
-    plan: 'text-blue-600 dark:text-blue-400',
     ralph: 'text-purple-600 dark:text-purple-400',
 };
 
 export const MODE_LABELS: Record<ChatMode, string> = {
     ask: '💡 Ask',
-    plan: '📋 Plan',
     autopilot: '🤖 Autopilot',
     ralph: '🔄 Ralph',
 };
 
 export const MODE_TOOLTIPS: Record<ChatMode, string> = {
     ask: 'Ask — get answers without making changes',
-    plan: 'Plan — create a step-by-step plan',
     autopilot: 'Autopilot — execute changes automatically',
     ralph: 'Ralph — iterative AI coding loop with guided goal setting',
 };
 
-const MODE_ORDER: ChatMode[] = ['ask', 'plan', 'autopilot'];
+const MODE_ORDER: readonly ChatMode[] = DEFAULT_CHAT_MODES;
 
-export function cycleMode(current: ChatMode, allowedModes?: ChatMode[]): ChatMode {
-    const modes = allowedModes ?? MODE_ORDER;
+export function cycleMode(current: ChatMode, allowedModes?: readonly ChatMode[]): ChatMode {
+    const modes = allowedModes && allowedModes.length > 0 ? allowedModes : MODE_ORDER;
     const idx = modes.indexOf(current);
+    if (idx === -1) return modes[0];
     return modes[(idx + 1) % modes.length];
 }

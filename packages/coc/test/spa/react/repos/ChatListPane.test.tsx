@@ -1596,7 +1596,7 @@ describe('ChatListPane', () => {
 
     // ── Mode pills ─────────────────────────────────────────────────────
     // The redesigned compact list surfaces task category via a MODE pill in the
-    // 36px column instead of inline emoji icons. Pills are ASK / PLAN / AUTO / SCRP.
+    // 36px column instead of inline emoji icons. Pills are ASK / AUTO / SCRP.
     describe('Mode pills', () => {
         it('chat ask renders ASK pill', () => {
             const { container } = renderPane({
@@ -1605,11 +1605,12 @@ describe('ChatListPane', () => {
             expect(container.textContent).toContain('ASK');
         });
 
-        it('chat plan renders PLAN pill', () => {
+        it('legacy chat plan renders ASK pill', () => {
             const { container } = renderPane({
                 running: [makeRunningTask({ type: 'chat', payload: { mode: 'plan' } })],
             });
-            expect(container.textContent).toContain('PLAN');
+            expect(container.textContent).toContain('ASK');
+            expect(container.textContent).not.toContain('PLAN');
         });
 
         it('chat default renders AUTO pill', () => {
@@ -2141,8 +2142,8 @@ describe('taskMatchesFilter: exclusion logic', () => {
         expect(taskMatchesFilter({ type: 'chat', payload: { mode: 'ask' } }, new Set(['ask']))).toBe(false);
     });
 
-    it('does not exclude chat with different mode', () => {
-        expect(taskMatchesFilter({ type: 'chat', payload: { mode: 'plan' } }, new Set(['ask']))).toBe(true);
+    it('excludes legacy plan chat when ask is excluded', () => {
+        expect(taskMatchesFilter({ type: 'chat', payload: { mode: 'plan' } }, new Set(['ask']))).toBe(false);
     });
 
     it('does not exclude chat without mode when only mode is excluded', () => {
@@ -2179,8 +2180,8 @@ describe('taskMatchesFilter: exclusion logic', () => {
         expect(taskMatchesFilter({ type: 'chat', mode: 'ask' }, new Set(['ask']))).toBe(false);
     });
 
-    it('includes by flat mode field when not excluded', () => {
-        expect(taskMatchesFilter({ type: 'chat', mode: 'ask' }, new Set(['plan']))).toBe(true);
+    it('includes by flat mode field when another mode is excluded', () => {
+        expect(taskMatchesFilter({ type: 'chat', mode: 'ask' }, new Set(['autopilot']))).toBe(true);
     });
 
     it('prefers payload.mode over flat mode', () => {
@@ -2223,8 +2224,8 @@ describe('getTaskTypeIcon: flat mode and scheduleId', () => {
         expect(getTaskTypeIcon({ type: 'chat', mode: 'ask' })).toBe('💡');
     });
 
-    it('returns 📋 for chat with flat mode=plan', () => {
-        expect(getTaskTypeIcon({ type: 'chat', mode: 'plan' })).toBe('📋');
+    it('returns 💡 for chat with legacy flat mode=plan', () => {
+        expect(getTaskTypeIcon({ type: 'chat', mode: 'plan' })).toBe('💡');
     });
 
     it('returns 🤖 for chat with no mode', () => {
@@ -2240,7 +2241,7 @@ describe('getTaskTypeIcon: flat mode and scheduleId', () => {
     });
 
     it('prefers payload.mode over flat mode', () => {
-        expect(getTaskTypeIcon({ type: 'chat', mode: 'ask', payload: { mode: 'plan' } })).toBe('📋');
+        expect(getTaskTypeIcon({ type: 'chat', mode: 'autopilot', payload: { mode: 'plan' } })).toBe('💡');
     });
 
     it('returns ▶️ for run-workflow', () => {

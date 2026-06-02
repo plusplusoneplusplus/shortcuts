@@ -7,19 +7,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getSpaCocClient } from '../../api/cocClient';
 
-export type SkillMode = 'task' | 'ask' | 'plan';
+export type SkillMode = 'task' | 'ask';
 export type ModelMode = SkillMode | 'note';
 
 export interface LastSkillsByMode {
     task: string[];
     ask: string[];
-    plan: string[];
 }
 
 export interface LastModelsByMode {
     task: string;
     ask: string;
-    plan: string;
     note: string;
 }
 
@@ -41,8 +39,8 @@ export interface UsePreferencesResult {
     loaded: boolean;
 }
 
-const EMPTY_SKILLS: LastSkillsByMode = { task: [], ask: [], plan: [] };
-const EMPTY_MODELS: LastModelsByMode = { task: '', ask: '', plan: '', note: '' };
+const EMPTY_SKILLS: LastSkillsByMode = { task: [], ask: [] };
+const EMPTY_MODELS: LastModelsByMode = { task: '', ask: '', note: '' };
 
 export function usePreferences(repoId?: string): UsePreferencesResult {
     const [models, setModelsState] = useState<LastModelsByMode>({ ...EMPTY_MODELS });
@@ -73,7 +71,6 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
                         setModelsState({
                             task: typeof prefs.lastModels.task === 'string' ? prefs.lastModels.task : '',
                             ask: typeof prefs.lastModels.ask === 'string' ? prefs.lastModels.ask : '',
-                            plan: typeof prefs.lastModels.plan === 'string' ? prefs.lastModels.plan : '',
                             note: typeof prefs.lastModels.note === 'string' ? prefs.lastModels.note : '',
                         });
                     } else if (typeof prefs.lastModel === 'string') {
@@ -81,7 +78,6 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
                         setModelsState({
                             task: prefs.lastModel,
                             ask: prefs.lastModel,
-                            plan: prefs.lastModel,
                             note: '',
                         });
                     }
@@ -100,7 +96,6 @@ export function usePreferences(repoId?: string): UsePreferencesResult {
                         setSkillsState({
                             task: normalizeArr(prefs.lastSkills.task),
                             ask: normalizeArr(prefs.lastSkills.ask),
-                            plan: normalizeArr(prefs.lastSkills.plan),
                         });
                     }
                     if (typeof prefs.maxRalphIterations === 'number'

@@ -230,6 +230,17 @@ describe('CreateScheduleForm — payload compatibility', () => {
         });
     });
 
+    it('does not expose Plan as a prompt schedule mode', async () => {
+        const user = userEvent.setup();
+        await renderForm();
+
+        await user.click(screen.getByTestId('advanced-options-toggle'));
+
+        expect(screen.getByTestId('chat-mode-ask')).toBeTruthy();
+        expect(screen.getByTestId('chat-mode-autopilot')).toBeTruthy();
+        expect(screen.queryByTestId('chat-mode-plan')).toBeNull();
+    });
+
     it('submits a script schedule with working directory params', async () => {
         const user = userEvent.setup();
         await renderForm();
@@ -271,7 +282,7 @@ describe('CreateScheduleForm — advanced and edit mode', () => {
                 outputFolder: '~/custom',
                 model: 'gpt-test',
                 chatMode: 'plan',
-            },
+            } as any,
         });
 
         expect(screen.getByText('Edit Schedule')).toBeTruthy();
@@ -279,5 +290,7 @@ describe('CreateScheduleForm — advanced and edit mode', () => {
         expect((screen.getByPlaceholderText('Name (e.g., Daily Report)') as HTMLInputElement).value).toBe('Existing Schedule');
         expect((screen.getByTestId('advanced-cron-input') as HTMLInputElement).value).toBe('13 7 * * 2');
         expect((screen.getByTestId('param-custom') as HTMLInputElement).value).toBe('value');
+        expect(screen.getByTestId('chat-mode-ask').className).toContain('bg-[#0078d4]');
+        expect(screen.queryByTestId('chat-mode-plan')).toBeNull();
     });
 });

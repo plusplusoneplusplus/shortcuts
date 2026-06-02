@@ -10,11 +10,12 @@ import { ScheduleTriggerPanel } from './ScheduleTriggerPanel';
 import { TaskDefs } from '../../../../../tasks/task-types';
 import type { WorkflowDefinition } from '@plusplusoneplusplus/coc-client';
 import { useWorkflowsEnabled } from '../../hooks/feature-flags/useWorkflowsEnabled';
+import { normalizePromptScheduleMode } from './scheduleTypes';
+import type { PromptScheduleMode } from './scheduleTypes';
 
 type ActionKind = 'workflow' | 'prompt' | 'script' | 'notes-auto-commit';
 type SchedulePreset = 'every-30-minutes' | 'hourly' | 'daily-9' | 'weekdays-9' | 'custom-interval' | 'custom-cron';
 type TargetType = 'prompt' | 'script';
-type ChatMode = 'ask' | 'plan' | 'autopilot';
 type TimingMode = 'interval' | 'cron';
 
 interface ScheduleFormInitialValues {
@@ -26,7 +27,7 @@ interface ScheduleFormInitialValues {
     onFailure?: string;
     outputFolder?: string;
     model?: string;
-    chatMode?: ChatMode;
+    chatMode?: PromptScheduleMode;
 }
 
 const DEFAULT_CRON = '0 * * * *';
@@ -119,7 +120,7 @@ function hasAdvancedValues(initialValues: ScheduleFormInitialValues | undefined,
     const params = initialValues.params ?? {};
     return Boolean(
         initialValues.model
-        || (initialValues.chatMode && initialValues.chatMode !== 'autopilot')
+        || (initialValues.chatMode && normalizePromptScheduleMode(initialValues.chatMode) !== 'autopilot')
         || (initialValues.outputFolder && initialValues.outputFolder !== defaultOutputFolder(workspaceId))
         || (initialValues.onFailure && initialValues.onFailure !== 'notify')
         || Object.keys(params).some(key => key !== 'pipeline' && key !== 'workingDirectory')
@@ -158,7 +159,7 @@ function buildScheduleSummary(
     intervalValue: string,
     intervalUnit: string,
     targetType: TargetType,
-    chatMode: ChatMode,
+    chatMode: PromptScheduleMode,
     outputFolder: string,
     onFailure: string,
     workingDirectory: string | undefined,
@@ -169,7 +170,7 @@ function buildScheduleSummary(
     ];
     if (targetType === 'prompt') {
         lines.push(`Output: ${outputFolder.trim() || 'default tasks folder'}.`);
-        lines.push(`Mode: ${chatMode}.`);
+        lines.push(`Mode: ${chatMode === 'ask' ? 'Ask' : 'Autopilot'}.`);
     } else {
         if (workingDirectory) {
             lines.push(`Working directory: ${workingDirectory}.`);
@@ -221,7 +222,7 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
     const [onFailure, setOnFailure] = useState(initialValues?.onFailure ?? 'notify');
     const [outputFolder, setOutputFolder] = useState(initialValues?.outputFolder ?? defaultOutputFolder(workspaceId));
     const [model, setModel] = useState(initialValues?.model ?? '');
-    const [chatMode, setChatMode] = useState<ChatMode>(initialValues?.chatMode ?? 'autopilot');
+    const [chatMode, setChatMode] = useState<PromptScheduleMode>(normalizePromptScheduleMode(initialValues?.chatMode, 'autopilot'));
     const [models, setModels] = useState<string[]>([]);
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
@@ -626,7 +627,6 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
                                     label="Execution mode"
                                     options={[
                                         { value: 'ask' as const, label: 'Ask', testId: 'chat-mode-ask' },
-                                        { value: 'plan' as const, label: 'Plan', testId: 'chat-mode-plan' },
                                         { value: 'autopilot' as const, label: 'Autopilot', testId: 'chat-mode-autopilot' },
                                     ]}
                                     value={chatMode}

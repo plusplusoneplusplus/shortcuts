@@ -20,15 +20,15 @@ import {
     describePromptSchedule,
 } from './schedulePresets';
 import type { PromptSchedulePreset } from './schedulePresets';
-
-type ChatMode = 'ask' | 'plan' | 'autopilot';
+import { normalizePromptScheduleMode } from './scheduleTypes';
+import type { PromptScheduleMode } from './scheduleTypes';
 
 export interface PromptScheduleFormValues {
     name?: string;
     target?: string;
     cron?: string;
     model?: string;
-    chatMode?: ChatMode;
+    chatMode?: PromptScheduleMode;
     outputFolder?: string;
     onFailure?: string;
 }
@@ -62,7 +62,7 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
 
     const [name, setName] = useState(initialValues?.name ?? '');
     const [instructions, setInstructions] = useState(initialValues?.target ?? '');
-    const [chatMode, setChatMode] = useState<ChatMode>(initialValues?.chatMode ?? 'ask');
+    const [chatMode, setChatMode] = useState<PromptScheduleMode>(normalizePromptScheduleMode(initialValues?.chatMode, 'ask'));
     const [model, setModel] = useState(initialValues?.model ?? '');
     const [outputFolder, setOutputFolder] = useState(initialValues?.outputFolder ?? defaultOutputFolder(workspaceId));
     const [onFailure, setOnFailure] = useState(initialValues?.onFailure ?? 'notify');
@@ -99,7 +99,7 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
         ? 'Custom schedule.'
         : describePromptSchedule(preset, hour, minute, dayOfWeek);
 
-    const modeSummary = `Mode: ${chatMode === 'ask' ? 'Ask' : chatMode === 'plan' ? 'Plan' : 'Autopilot'}.`;
+    const modeSummary = `Mode: ${chatMode === 'ask' ? 'Ask' : 'Autopilot'}.`;
 
     const validate = (): string | null => {
         if (!name.trim()) return 'Give your routine a name.';
@@ -223,7 +223,6 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
                         label="Mode"
                         options={[
                             { value: 'ask' as const, label: 'Ask', testId: 'prompt-mode-ask' },
-                            { value: 'plan' as const, label: 'Plan', testId: 'prompt-mode-plan' },
                             { value: 'autopilot' as const, label: 'Autopilot', testId: 'prompt-mode-autopilot' },
                         ]}
                         value={chatMode}

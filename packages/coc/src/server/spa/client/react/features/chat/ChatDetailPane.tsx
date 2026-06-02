@@ -25,7 +25,7 @@ export interface ChatDetailPaneProps {
     workspaceId?: string;
     /** When true, hides the follow-up input area (read-only view). */
     readOnly?: boolean;
-    /** When true, hides the ask/plan/autopilot mode selector in the follow-up input. */
+    /** When true, hides the ask/autopilot mode selector in the follow-up input. */
     hideModeSelector?: boolean;
 }
 

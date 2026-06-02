@@ -1063,7 +1063,7 @@ describe('taskMatchesFilter: exclusion logic', () => {
     it('excludes chat tasks by mode key', () => {
         const excluded = new Set(['ask']);
         expect(taskMatchesFilter(chatAsk, excluded)).toBe(false);
-        expect(taskMatchesFilter(chatPlan, excluded)).toBe(true);
+        expect(taskMatchesFilter(chatPlan, excluded)).toBe(false);
     });
 
     it('excludes multiple types simultaneously', () => {
@@ -1073,8 +1073,8 @@ describe('taskMatchesFilter: exclusion logic', () => {
         expect(taskMatchesFilter(chatAsk, excluded)).toBe(true);
     });
 
-    it('excludes multiple chat modes simultaneously', () => {
-        const excluded = new Set(['ask', 'plan']);
+    it('excludes legacy plan chats through the ask mode key', () => {
+        const excluded = new Set(['ask']);
         expect(taskMatchesFilter(chatAsk, excluded)).toBe(false);
         expect(taskMatchesFilter(chatPlan, excluded)).toBe(false);
         expect(taskMatchesFilter(chatAutopilot, excluded)).toBe(true);

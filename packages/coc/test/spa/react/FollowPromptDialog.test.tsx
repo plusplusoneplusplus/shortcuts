@@ -727,7 +727,7 @@ describe('FollowPromptDialog', () => {
         });
 
         await waitFor(() => {
-            // Should PATCH preferences with the plan skill array (from setSkill)
+            // Should PATCH preferences with the task skill array (from setSkill)
             const allPatchCalls = mockFetch.mock.calls.filter(
                 ([url, opts]: [string, any]) =>
                     opts?.method === 'PATCH' && url.includes('/workspaces/') && url.includes('/preferences') && !url.includes('/skill-usage')
@@ -737,16 +737,16 @@ describe('FollowPromptDialog', () => {
             });
             expect(skillPatchCall).toBeDefined();
             const body = JSON.parse(skillPatchCall![1].body);
-            expect(body.lastSkills.plan).toEqual(['impl', 'code-review']);
+            expect(body.lastSkills.task).toEqual(['impl', 'code-review']);
         });
     });
 
-    it('pre-selects saved plan skills when dialog opens', async () => {
+    it('pre-selects saved task skills when dialog opens', async () => {
         mockFetch.mockImplementation((url: string) => {
             if (url.includes('/preferences')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ lastSkills: { plan: ['impl', 'code-review'] } }),
+                    json: () => Promise.resolve({ lastSkills: { task: ['impl', 'code-review'] } }),
                 });
             }
             if (url.includes('/skills')) {

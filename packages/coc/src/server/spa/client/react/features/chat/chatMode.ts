@@ -1,7 +1,8 @@
+import { normalizeChatMode } from '../../repos/modeConfig';
 import type { ChatMode } from '../../repos/modeConfig';
 
 export function isChatMode(mode: unknown): mode is ChatMode {
-    return mode === 'ask' || mode === 'plan' || mode === 'autopilot' || mode === 'ralph';
+    return normalizeChatMode(mode) === mode;
 }
 
 export function resolveLoadedTaskMode(task: unknown): ChatMode | undefined {
@@ -11,13 +12,15 @@ export function resolveLoadedTaskMode(task: unknown): ChatMode | undefined {
     } | null | undefined;
 
     const payloadMode = loadedTask?.payload?.mode;
-    if (isChatMode(payloadMode)) {
-        return payloadMode;
+    const normalizedPayloadMode = normalizeChatMode(payloadMode);
+    if (normalizedPayloadMode) {
+        return normalizedPayloadMode;
     }
 
     const metadataMode = loadedTask?.metadata?.mode;
-    if (isChatMode(metadataMode)) {
-        return metadataMode;
+    const normalizedMetadataMode = normalizeChatMode(metadataMode);
+    if (normalizedMetadataMode) {
+        return normalizedMetadataMode;
     }
 
     return undefined;

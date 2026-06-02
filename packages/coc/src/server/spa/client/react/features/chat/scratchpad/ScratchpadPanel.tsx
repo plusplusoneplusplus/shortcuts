@@ -33,7 +33,7 @@ export interface ScratchpadPanelProps {
     /** processId of the parent chat — when set, resolve-with-AI sends a follow-up instead of a new task. */
     parentProcessId?: string;
     /** Current chat mode — passed through to resolve-with-AI follow-ups so they run in the user's selected mode. */
-    selectedMode?: 'ask' | 'plan' | 'autopilot';
+    selectedMode?: 'ask' | 'autopilot';
     /**
      * When provided, renders a horizontal header bar at the top of the panel containing
      * file tabs and control icons. Used in vertical (side-by-side) layout where the divider

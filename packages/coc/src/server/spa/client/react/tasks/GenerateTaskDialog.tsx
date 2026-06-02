@@ -125,7 +125,7 @@ export function GenerateTaskDialog({
     const [includeContext, setIncludeContext] = useState(false);
     const [configTab, setConfigTab] = useState<ConfigTab>('effort');
     const [effortLevel, setEffortLevel] = useState<EffortLevel>('medium');
-    const aiSelection = useModalJobAiSelection({ workspaceId: wsId, mode: 'plan' });
+    const aiSelection = useModalJobAiSelection({ workspaceId: wsId, mode: 'ask' });
 
     useEffect(() => {
         if (savedModels.task && !model) setModel(savedModels.task);

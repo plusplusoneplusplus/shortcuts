@@ -14,6 +14,7 @@ import { ScheduleListPanel } from './ScheduleListPanel';
 import { ScheduleDetail } from './ScheduleDetail';
 import { CreateScheduleForm } from './CreateScheduleForm';
 import { PromptScheduleForm } from './PromptScheduleForm';
+import { normalizePromptScheduleMode } from './scheduleTypes';
 import type { Schedule, RunRecord } from './scheduleTypes';
 
 // Re-export cron utilities that external code may reference
@@ -194,7 +195,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
                             target: duplicateValues.target,
                             cron: duplicateValues.cron,
                             model: duplicateValues.model,
-                            chatMode: duplicateValues.mode ?? 'ask',
+                            chatMode: normalizePromptScheduleMode(duplicateValues.mode, 'ask'),
                             outputFolder: duplicateValues.outputFolder,
                             onFailure: duplicateValues.onFailure,
                         } : undefined}
@@ -215,7 +216,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
                             onFailure: duplicateValues.onFailure,
                             outputFolder: duplicateValues.outputFolder,
                             model: duplicateValues.model,
-                            chatMode: duplicateValues.mode ?? 'autopilot',
+                            chatMode: normalizePromptScheduleMode(duplicateValues.mode, 'autopilot'),
                         } : undefined}
                     />
                 </div>

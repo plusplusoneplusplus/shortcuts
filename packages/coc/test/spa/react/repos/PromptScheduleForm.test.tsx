@@ -84,6 +84,7 @@ describe('PromptScheduleForm — default rendering', () => {
         await renderPromptForm();
 
         expect(screen.getByTestId('prompt-mode-ask').className).toContain('bg-[#0078d4]');
+        expect(screen.queryByTestId('prompt-mode-plan')).toBeNull();
     });
 
     it('shows the "Other automation" link', async () => {
@@ -269,18 +270,18 @@ describe('PromptScheduleForm — payload generation', () => {
         expect(mockSchedulesClient.disable).toHaveBeenCalledWith('ws-test', 'new-sched-1');
     });
 
-    it('submits with Plan mode when selected', async () => {
+    it('submits with Autopilot mode when selected', async () => {
         const user = userEvent.setup();
         const { onCreated } = await renderPromptForm();
 
-        await user.type(screen.getByTestId('prompt-name-input'), 'Plan Mode Task');
-        await user.type(screen.getByTestId('prompt-instructions-input'), 'Plan the work');
-        await user.click(screen.getByTestId('prompt-mode-plan'));
+        await user.type(screen.getByTestId('prompt-name-input'), 'Autopilot Routine');
+        await user.type(screen.getByTestId('prompt-instructions-input'), 'Run the work');
+        await user.click(screen.getByTestId('prompt-mode-autopilot'));
         await user.click(screen.getByRole('button', { name: /create/i }));
 
         await waitFor(() => expect(onCreated).toHaveBeenCalled());
         const [, body] = mockSchedulesClient.create.mock.calls[0];
-        expect(body.mode).toBe('plan');
+        expect(body.mode).toBe('autopilot');
     });
 });
 
@@ -294,12 +295,14 @@ describe('PromptScheduleForm — edit mode', () => {
                 target: 'Check for stale PRs',
                 cron: '0 9 * * 1-5',
                 chatMode: 'plan',
-            },
+            } as any,
         });
 
         expect((screen.getByTestId('prompt-name-input') as HTMLInputElement).value).toBe('Existing Routine');
         expect((screen.getByTestId('prompt-instructions-input') as HTMLTextAreaElement).value).toBe('Check for stale PRs');
         expect(screen.getByTestId('prompt-preset-weekdays').className).toContain('border-[#0078d4]');
+        expect(screen.getByTestId('prompt-mode-ask').className).toContain('bg-[#0078d4]');
+        expect(screen.queryByTestId('prompt-mode-plan')).toBeNull();
         expect(screen.getByText('Edit Prompt Routine')).toBeTruthy();
     });
 

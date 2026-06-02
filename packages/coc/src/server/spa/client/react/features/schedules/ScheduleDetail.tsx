@@ -3,6 +3,7 @@ import { formatRelativeTime } from '../../utils/format';
 import { StatusBadge, failureLabel } from './ScheduleStatusBadge';
 import { RunHistoryList } from '../chat/RunHistoryList';
 import type { Schedule, RunRecord } from './scheduleTypes';
+import { normalizePromptScheduleMode } from './scheduleTypes';
 import { CreateScheduleForm } from './CreateScheduleForm';
 import { PromptScheduleForm } from './PromptScheduleForm';
 import { useState, useCallback, useMemo } from 'react';
@@ -137,6 +138,7 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
     const successRate = useMemo(() => computeSuccessRate(history), [history]);
     const crumbParent = schedule.source === 'repo' ? 'Repo schedules' : 'My schedules';
     const tLabel = typeLabel(schedule);
+    const promptMode = normalizePromptScheduleMode(schedule.mode, 'autopilot');
 
     return (
         <div className="flex flex-col gap-0" data-testid="schedule-detail">
@@ -151,7 +153,7 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                             target: schedule.target,
                             cron: schedule.cron,
                             model: schedule.model,
-                            chatMode: schedule.mode ?? 'ask',
+                            chatMode: normalizePromptScheduleMode(schedule.mode, 'ask'),
                             outputFolder: schedule.outputFolder,
                             onFailure: schedule.onFailure,
                         }}
@@ -172,7 +174,7 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                             onFailure: schedule.onFailure,
                             outputFolder: schedule.outputFolder,
                             model: schedule.model,
-                            chatMode: schedule.mode ?? 'autopilot',
+                            chatMode: promptMode,
                         }}
                         onCreated={handleSaved}
                         onCancel={onCancelEdit}
@@ -208,12 +210,12 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                             >
                                 {tLabel.text}
                             </span>
-                            {(!schedule.targetType || schedule.targetType === 'prompt') && schedule.mode && schedule.mode !== 'autopilot' && (
+                            {(!schedule.targetType || schedule.targetType === 'prompt') && schedule.mode && promptMode !== 'autopilot' && (
                                 <span
                                     className="text-[11px] px-2 py-0.5 rounded-full bg-[#fbf0ff] dark:bg-purple-900/40 text-[#8250df] dark:text-purple-300 border border-[#e5cffd] dark:border-purple-700/60 font-medium leading-4 capitalize"
                                     data-testid="mode-badge"
                                 >
-                                    {schedule.mode}
+                                    {promptMode}
                                 </span>
                             )}
                             {schedule.source === 'repo' && (

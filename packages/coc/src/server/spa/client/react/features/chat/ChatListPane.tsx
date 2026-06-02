@@ -35,6 +35,7 @@ import { useAllLoops, type ProcessLoopState } from './hooks/useAllLoops';
 import { LoopIcon } from './icons/LoopIcon';
 import { isRalphTask } from '../../../../../tasks/task-types';
 import { getProviderDotClasses, getTaskChatProvider } from './ProviderBadge';
+import { normalizeChatMode } from '../../repos/modeConfig';
 
 /** Primary task types surfaced as individual filter options. */
 export const TASK_TYPE_LABELS: Record<string, string> = {
@@ -46,7 +47,6 @@ export const TASK_TYPE_LABELS: Record<string, string> = {
 /** Mode-based labels for chat tasks. */
 const CHAT_MODE_LABELS: Record<string, string> = {
     'ask': 'Ask',
-    'plan': 'Plan',
     'autopilot': 'Autopilot',
     'ralph': 'Ralph',
 };
@@ -104,7 +104,7 @@ export function taskMatchesFilter(task: any, excludedTypes: Set<string>): boolea
     // Parent 'chat' exclusion hides all chat tasks (including those with modes)
     if (task.type === 'chat') {
         if (excludedTypes.has('chat')) return false;
-        const mode = (task.payload?.mode ?? task.mode) as string | undefined;
+        const mode = normalizeChatMode(task.payload?.mode ?? task.mode);
         if (mode) return !excludedTypes.has(mode);
         return true;
     }
@@ -128,9 +128,9 @@ export function getTaskTypeIcon(task: any): string {
     if (payload.scheduleId || task.scheduleId) return '📅';
     if (type === 'chat') {
         if (isRalphTask(task)) return '🔄';
-        if (mode === 'ask') return '💡';
-        if (mode === 'plan') return '📋';
-        if (mode === 'ralph') return '🔄';
+        const normalizedMode = normalizeChatMode(mode);
+        if (normalizedMode === 'ask') return '💡';
+        if (normalizedMode === 'ralph') return '🔄';
         return '🤖';
     }
     if (type === 'run-workflow') return payload.workItemId ? '📦' : '▶️';
@@ -140,31 +140,30 @@ export function getTaskTypeIcon(task: any): string {
 
 /**
  * Resolve the AI execution mode pill label for any task.
- * Mirrors the activity-compact reference: ASK / PLAN / AUTO / SCRP.
+ * Mirrors the activity-compact reference: ASK / AUTO / SCRP.
  *
  * Chat tasks expose the mode via `payload.mode` (or `task.mode`).
  * Non-chat tasks fall back to category-based labels:
  *   - run-script → SCRP (scheduled / one-shot script)
  *   - run-workflow / replicate-template / memory-promote / generate / default → AUTO
  */
-export function getTaskModeKey(task: any): 'ask' | 'plan' | 'auto' | 'script' | 'ralph' {
+export function getTaskModeKey(task: any): 'ask' | 'auto' | 'script' | 'ralph' {
     const type = task.type as string;
     if (type === 'run-script') return 'script';
     if (type === 'chat') {
         if (isRalphTask(task)) return 'ralph';
         const mode = (task.payload?.mode ?? task.mode) as string | undefined;
-        if (mode === 'ralph') return 'ralph';
-        if (mode === 'ask') return 'ask';
-        if (mode === 'plan') return 'plan';
+        const normalizedMode = normalizeChatMode(mode);
+        if (normalizedMode === 'ralph') return 'ralph';
+        if (normalizedMode === 'ask') return 'ask';
         return 'auto';
     }
     return 'auto';
 }
 
-export function getTaskModeLabel(task: any): 'ASK' | 'PLAN' | 'AUTO' | 'SCRP' | 'RLPH' {
+export function getTaskModeLabel(task: any): 'ASK' | 'AUTO' | 'SCRP' | 'RLPH' {
     const key = getTaskModeKey(task);
     if (key === 'ask') return 'ASK';
-    if (key === 'plan') return 'PLAN';
     if (key === 'script') return 'SCRP';
     if (key === 'ralph') return 'RLPH';
     return 'AUTO';
@@ -1186,7 +1185,7 @@ export function ChatListPane({
      * across both the chats and activity branches.
      *
      * Layout (CSS grid): [status-dot 10px] [MODE pill 36px] [title 1fr] [right auto]
-     * - Mode pill: ASK / PLAN / AUTO (chat) or AUTO / SCRP (non-chat).
+     * - Mode pill: ASK / AUTO (chat) or AUTO / SCRP (non-chat).
      * - Status dot encodes runtime state independently of the mode pill.
      * - On hover the timestamp swaps to inline pin/archive/more buttons.
      * - Queue states (held / scheduled / frozen) are surfaced via inline indicator badges.
@@ -1225,10 +1224,13 @@ export function ChatListPane({
 
         const modeKey = getTaskModeKey(task);
         const modeLabel = getTaskModeLabel(task);
+        const taskModeLabel = task.type === 'chat'
+            ? CHAT_MODE_LABELS[normalizeChatMode(task.payload?.mode ?? task.mode) ?? 'autopilot']
+            : undefined;
         const modeTitle = task.type === 'chat'
             ? (isRalphTask(task)
                 ? 'Ralph'
-                : (CHAT_MODE_LABELS[task.payload?.mode ?? task.mode ?? 'autopilot'] || 'Autopilot'))
+                : (taskModeLabel || 'Autopilot'))
             : task.type === 'run-script' ? 'Script' : 'Workflow';
 
         // Display title for the sidebar row.
@@ -1260,12 +1262,10 @@ export function ChatListPane({
             'inline-flex items-center justify-center rounded-[3px] border font-mono font-bold uppercase select-none',
             'text-[9.5px] leading-none tracking-[0.06em] py-[4px] w-full',
             !isGroupChild && modeKey === 'ask' && 'text-amber-600 dark:text-amber-400 border-amber-400/70 dark:border-amber-500/60 bg-amber-50/60 dark:bg-amber-500/10',
-            !isGroupChild && modeKey === 'plan' && 'text-[#0078d4] dark:text-[#3794ff] border-[#0078d4]/55 dark:border-[#3794ff]/55 bg-[#0078d4]/[0.06] dark:bg-[#3794ff]/10',
             !isGroupChild && modeKey === 'auto' && 'text-emerald-600 dark:text-emerald-400 border-emerald-500/70 dark:border-emerald-500/60 bg-emerald-50/60 dark:bg-emerald-500/10',
             !isGroupChild && modeKey === 'script' && 'text-[#1e1e1e] dark:text-[#dcdcdc] border-[#3c3c3c]/55 dark:border-[#9d9d9d]/45 bg-[#1e1e1e]/[0.06] dark:bg-[#dcdcdc]/[0.06]',
             !isGroupChild && modeKey === 'ralph' && 'text-purple-600 dark:text-purple-400 border-purple-500/70 dark:border-purple-500/60 bg-purple-50/60 dark:bg-purple-500/10',
             isGroupChild && modeKey === 'ask' && 'text-amber-600 dark:text-amber-400 border-amber-400/30 dark:border-amber-500/25 bg-transparent',
-            isGroupChild && modeKey === 'plan' && 'text-[#0078d4] dark:text-[#3794ff] border-[#0078d4]/25 dark:border-[#3794ff]/25 bg-transparent',
             isGroupChild && modeKey === 'auto' && 'text-emerald-600 dark:text-emerald-400 border-emerald-500/30 dark:border-emerald-500/25 bg-transparent',
             isGroupChild && modeKey === 'script' && 'text-[#1e1e1e] dark:text-[#dcdcdc] border-[#3c3c3c]/25 dark:border-[#9d9d9d]/20 bg-transparent',
             isGroupChild && modeKey === 'ralph' && 'text-purple-600 dark:text-purple-400 border-purple-500/30 dark:border-purple-500/25 bg-transparent',
