@@ -156,6 +156,7 @@ Use reconnect when the managed CLI/`ssh` process is stale, the local listener st
 | Health is offline with no effective endpoint | The connector failed before local URL resolution | The offline error now surfaces the underlying connector error (auth, CLI missing, readiness timeout); check it and verify `devtunnel port list <id>` works |
 | Health is offline with an HTTP or fetch error | The tunnel connected, but CoC is not reachable through the resolved port | Verify the host is running `coc serve` on the configured tunnel port |
 | Manual `devtunnel connect <id>` works (forwards to `127.0.0.1:<local>`) but CoC still reports offline | The connector health-checks the wrong local port | Resolved: CoC now parses the forwarded local port from `devtunnel connect` output instead of assuming local port equals the configured HTTP port |
+| Same-machine WSL tunnel connects but a remote-node tunnel reports offline | Health requests over a WAN DevTunnel relay exceed the per-attempt timeout | Resolved: each health attempt now has its own budget (`healthRequestTimeoutMs`, default 5s) within a longer readiness window (default 20s) instead of being clamped to the poll interval |
 
 ## Implementation map
 

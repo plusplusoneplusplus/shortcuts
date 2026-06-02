@@ -258,6 +258,50 @@ describe('DevTunnelConnector', () => {
         expect(state.effectiveUrl).toBe('http://127.0.0.1:4000');
     });
 
+    it('tolerates slow remote health responses that exceed the poll interval', async () => {
+        // Regression: per-attempt health timeout was clamped to pollMs (~500ms), which aborted every
+        // request on high-latency (remote-node) tunnels. Each attempt must get its own generous budget.
+        const child = new FakeChild();
+        const connector = new DevTunnelConnector({
+            commandRunner: async () => ({ stdout: '4000 http coc', stderr: '' }),
+            processStarter: () => child,
+            healthChecker: (_url, signal) => new Promise((resolve, reject) => {
+                const timer = setTimeout(() => resolve(true), 40);
+                signal?.addEventListener('abort', () => {
+                    clearTimeout(timer);
+                    reject(new Error('aborted'));
+                });
+            }),
+            readinessPollMs: 1,
+            healthRequestTimeoutMs: 1_000,
+        });
+
+        const state = await connector.connect('t1');
+        expect(state.status).toBe('online');
+        expect(state.effectiveUrl).toBe('http://127.0.0.1:4000');
+    });
+
+    it('still times out when health never succeeds within the readiness window', async () => {
+        const child = new FakeChild();
+        const connector = new DevTunnelConnector({
+            commandRunner: async () => ({ stdout: '4000 http coc', stderr: '' }),
+            processStarter: () => child,
+            healthChecker: (_url, signal) => new Promise((_resolve, reject) => {
+                const timer = setTimeout(() => reject(new Error('boom')), 200);
+                signal?.addEventListener('abort', () => {
+                    clearTimeout(timer);
+                    reject(new Error('aborted'));
+                });
+            }),
+            readinessTimeoutMs: 30,
+            readinessPollMs: 1,
+            healthRequestTimeoutMs: 5,
+        });
+
+        await expect(connector.connect('t1')).rejects.toThrow(/health/i);
+        expect(connector.getState('t1').status).toBe('failed');
+    });
+
     it('parses the forwarded port from stderr output', async () => {
         const child = new FakeChild();
         child.stderr = new EventEmitter();
@@ -276,5 +320,20 @@ describe('DevTunnelConnector', () => {
         const state = await connectPromise;
         expect(state.effectiveUrl).toBe('http://127.0.0.1:52000');
         expect(state.port).toBe(52000);
+    });
+
+    it('stops child processes on dispose', async () => {
+        const child = new FakeChild();
+        const connector = new DevTunnelConnector({
+            commandRunner: async () => ({ stdout: '4000 http coc', stderr: '' }),
+            processStarter: () => child,
+            healthChecker: async () => true,
+            readinessPollMs: 1,
+        });
+
+        await connector.connect('my-tunnel');
+        connector.dispose();
+        expect(child.killed).toBe(true);
+        expect(connector.getStates()).toEqual([]);
     });
 });
