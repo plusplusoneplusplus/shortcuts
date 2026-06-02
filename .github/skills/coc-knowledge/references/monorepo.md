@@ -13,7 +13,8 @@ The published Node packages plus a frozen VS Code extension live in one npm work
 
 | Shared Package | Location | Description |
 |----------------|----------|-------------|
-| **forge** | `packages/forge/` | Core AI/pipeline engine: imports AI SDK from `coc-agent-sdk`, DAG workflow engine (`executeWorkflow`, `compileToWorkflow`), task queue, runtime policies, process store, git CLI, remote server connectors (`connectors` sub-path: SSH, DevTunnel), utilities |
+| **coc-workflow** | `packages/coc-workflow/` | Pure DAG workflow compiler/executor, workflow types, validation, scheduling, node executors, result adapter, and legacy pipeline YAML compatibility types |
+| **forge** | `packages/forge/` | Core AI utilities and compatibility surface: imports AI SDK from `coc-agent-sdk`, task queue, runtime policies, process store, git CLI, remote server connectors (`connectors` sub-path: SSH, DevTunnel), utilities, and workflow compatibility exports |
 | **coc-agent-sdk** | `packages/coc-agent-sdk/` | Provider-agnostic AI agent SDK: `CopilotSDKService`, `CodexSDKService`, `SDKServiceRegistry`, session lifecycle, streaming state machine, MCP config, model registry |
 | **coc-memory** | `packages/coc-memory/` | Memory V2 core package: SQLite-backed fact/episode stores, hybrid search, embedding provider abstraction, capture service, safety scanning |
 | **whatsapp-bot** | `packages/whatsapp-bot/` | Standalone WhatsApp bot via Baileys — no CoC/forge deps. Used by `coccontainer` when `messaging.whatsapp.enabled` is true |
@@ -22,11 +23,11 @@ The published Node packages plus a frozen VS Code extension live in one npm work
 
 ## Package Management & Publishing
 
-Published workspaces (`coc`, `forge`, `coc-agent-sdk`, `coc-memory`, `coc-client`, `deep-wiki`, `coccontainer`, `whatsapp-bot`, `teams-bot`) are published to npm under the `@plusplusoneplusplus` scope with public access. Versioning and publishing are coordinated via **`@changesets/cli`** with an independent versioning strategy.
+Published workspaces (`coc`, `coc-workflow`, `forge`, `coc-agent-sdk`, `coc-memory`, `coc-client`, `deep-wiki`, `coccontainer`, `whatsapp-bot`, `teams-bot`) are published to npm under the `@plusplusoneplusplus` scope with public access. Versioning and publishing are coordinated via **`@changesets/cli`** with an independent versioning strategy.
 
 **How workspace packages are consumed:** `coc` and `deep-wiki` depend on published workspace packages via caret ranges. During local development, npm workspaces symlink them automatically. There is no bundling or copying into consumer packages — packages are resolved from `node_modules` at runtime.
 
-**CoC build order:** `packages/coc` depends on `packages/coc-memory` because `@plusplusoneplusplus/coc-memory` exports its compiled `dist/index.js`. The root `build:packages` script builds `coc-memory` before `coc`, and direct `packages/coc` builds run `scripts/prebuild.mjs` to build `coc-memory` before `tsc`.
+**CoC build order:** `packages/coc-workflow` builds before `forge` and `coc`, and `packages/coc` depends on `packages/coc-memory` because `@plusplusoneplusplus/coc-memory` exports its compiled `dist/index.js`. The root `build:packages` script builds `coc-workflow`, `forge`, and `coc-memory` before `coc`, and direct `packages/coc` builds run `scripts/prebuild.mjs` to build `coc-memory` before `tsc`.
 
 **Versioning workflow:**
 1. Add a changeset: `npm run changeset` (interactive prompt for affected packages and semver bump)

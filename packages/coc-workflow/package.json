@@ -1,0 +1,55 @@
+{
+  "name": "@plusplusoneplusplus/coc-workflow",
+  "version": "0.1.0",
+  "description": "Pure DAG workflow compiler and executor for CoC YAML workflows",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "workflow": [
+        "dist/workflow/index.d.ts"
+      ],
+      "logger": [
+        "dist/logger.d.ts"
+      ],
+      "errors": [
+        "dist/errors/index.d.ts"
+      ]
+    }
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./workflow": "./dist/workflow/index.js",
+    "./logger": "./dist/logger.js",
+    "./errors": "./dist/errors/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "coverage": "vitest run --coverage",
+    "coverage:diff": "bash ../../scripts/coverage-diff.sh",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "@plusplusoneplusplus/coc-agent-sdk": "*",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.0",
+    "@types/node": "^20.0.0",
+    "@vitest/coverage-v8": "^1.6.1",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

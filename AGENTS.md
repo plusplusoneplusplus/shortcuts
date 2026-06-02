@@ -11,7 +11,7 @@ Guidance for AI agents working in this repository. NEVER create document files u
 
 ## Repo Layout (one-liner)
 
-npm workspaces monorepo with one frozen VS Code extension and five published Node packages (`forge`, `coc`, `coc-client`, `coc-agent-sdk`, `deep-wiki`). `packages/vscode-extension/` is **FROZEN — do not read, edit, or reason about its code.**
+npm workspaces monorepo with one frozen VS Code extension and published Node packages including `coc-workflow`, `forge`, `coc`, `coc-client`, `coc-agent-sdk`, and `deep-wiki`. `packages/vscode-extension/` is **FROZEN — do not read, edit, or reason about its code.**
 
 ## Load the CoC Knowledge Skill
 
