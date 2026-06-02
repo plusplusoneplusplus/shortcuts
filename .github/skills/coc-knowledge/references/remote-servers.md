@@ -44,6 +44,17 @@ For a persistent Windows service, use:
 
 `Manage-CoCService.ps1 install -TunnelId <id>` wraps the same serve loop in a scheduled task. Do not pass `-Port` with `-TunnelId`; the port belongs to the DevTunnel binding and must be configured with `config-devtunnel.ps1`.
 
+### Linux/WSL equivalents
+
+The bash ports mirror the PowerShell scripts one-to-one and share `scripts/devtunnel-utils.sh`:
+
+```bash
+./scripts/config-devtunnel.sh --tunnel-id my-remote-coc
+./scripts/coc-serve-loop.sh --tunnel-id my-remote-coc
+```
+
+`--tunnel-id`/`-t` maps to `-TunnelId` and `--port`/`-p` maps to `-Port`; the default tunnel ID is `<hostname-lowercased>-coc`. `config-devtunnel.sh` installs the Linux or macOS `devtunnel` build when missing. If the tunnel ID is owned by a different account (devtunnel reports `Tunnel not found` / `request not permitted` / `unauthorized tunnel access`), both scripts print "owned by a different account or in use elsewhere" and exit `2` instead of a confusing not-found message — log in as the tunnel's owner or pick a different `--tunnel-id`.
+
 ## Dashboard-side registration
 
 In the CoC dashboard, the Servers view is enabled by default through `servers.enabled` and supports two remote server kinds:
@@ -138,7 +149,8 @@ Use reconnect when the managed CLI/`ssh` process is stale, the local listener st
 | `devtunnel CLI is not authenticated` | The CLI cannot access the tunnel | Run `devtunnel user login` |
 | `No HTTP ports are configured for this DevTunnel` | The tunnel exists but has no HTTP binding | Run `.\scripts\config-devtunnel.ps1 -TunnelId <id>` on the host side |
 | `Multiple HTTP ports are configured for this DevTunnel` | CoC cannot choose a single local endpoint | Remove extra HTTP ports or recreate the tunnel |
-| Health is offline with no effective endpoint | The connector failed before local URL resolution | Check the connector error and verify `devtunnel port list <id>` works |
+| `... is not accessible to the current account` / `owned by a different account` | The tunnel ID is owned by a different identity (the host and dashboard logged in with different accounts) | Log in as the tunnel's owner with `devtunnel user login`, or use a different tunnel ID |
+| Health is offline with no effective endpoint | The connector failed before local URL resolution | The offline error now surfaces the underlying connector error (auth, CLI missing, readiness timeout); check it and verify `devtunnel port list <id>` works |
 | Health is offline with an HTTP or fetch error | The tunnel connected, but CoC is not reachable through the resolved port | Verify the host is running `coc serve` on the configured tunnel port |
 
 ## Implementation map
@@ -155,6 +167,7 @@ Key files:
 - `packages\forge\src\connectors\ssh-connector.ts` manages `ssh -N` child processes with auto-reconnect.
 - `packages\forge\src\connectors\devtunnel-connector.ts` manages `devtunnel connect` child processes and readiness polling.
 - `packages\forge\src\connectors\devtunnel-port-parser.ts` parses `devtunnel port list` output.
+- `scripts/config-devtunnel.sh`, `scripts/coc-serve-loop.sh`, `scripts/devtunnel-utils.sh` are the Linux/WSL equivalents of the host-side PowerShell scripts.
 - `packages\coc\src\server\servers\remote-server-store.ts` validates and persists remote server entries.
 - `packages\coc\src\server\servers\remote-server-health.ts` probes remote CoC health and metadata.
 - `packages\coc\src\server\servers\remote-server-routes.ts` exposes the REST API.
