@@ -156,17 +156,17 @@ describe('AC-01: workItems.hierarchy.enabled live enablement end-to-end', () => 
             const configPath = path.join(tmpDir, 'config.yaml');
             const svc = new RuntimeConfigService({ configPath });
 
-            // Initial state: hierarchy disabled by default
+            // Initial state: hierarchy enabled by default
             const before = buildRuntimeDashboardConfig(svc, 'test-host', '127.0.0.1');
-            expect(before.features.workItemsHierarchyEnabled).toBe(false);
+            expect(before.features.workItemsHierarchyEnabled).toBe(true);
 
-            // Admin update enables hierarchy
-            const updateResult = await svc.updateConfig({ 'workItems.hierarchy.enabled': true });
-            expect(updateResult.config.workItems.hierarchy.enabled).toBe(true);
+            // Admin update disables hierarchy
+            const updateResult = await svc.updateConfig({ 'workItems.hierarchy.enabled': false });
+            expect(updateResult.config.workItems.hierarchy.enabled).toBe(false);
 
-            // Runtime dashboard config now reflects hierarchy enabled
+            // Runtime dashboard config now reflects hierarchy disabled
             const after = buildRuntimeDashboardConfig(svc, 'test-host', '127.0.0.1');
-            expect(after.features.workItemsHierarchyEnabled).toBe(true);
+            expect(after.features.workItemsHierarchyEnabled).toBe(false);
 
             // Verify the effect classifies the field as live
             const effect = updateResult.effects.find((e: { field: string }) => e.field === 'workItems.hierarchy.enabled');

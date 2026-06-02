@@ -1711,7 +1711,7 @@ export function AdminPanel() {
                                     </AdminRow>
                                     <AdminRow
                                         name="Work Items Hierarchy Board"
-                                        hint="Extends the Work Items tab into an Epic → Feature → PBI → Work Item / Bug hierarchy board. Disabled by default."
+                                        hint="Extends the Work Items tab into an Epic → Feature → PBI → Work Item / Bug hierarchy board. Enabled by default."
                                     >
                                         <SourceBadge source={sources['workItems.hierarchy.enabled']} />
                                         <AdminToggle checked={workItemsHierarchyEnabled} onChange={setWorkItemsHierarchyEnabled} data-testid="toggle-work-items-hierarchy-enabled" />

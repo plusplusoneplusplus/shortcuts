@@ -212,7 +212,7 @@ export interface CLIConfig {
     };
     /** Work Items configuration */
     workItems?: {
-        /** Work item hierarchy board feature (Azure DevOps-like Epic/Feature/PBI hierarchy). Disabled by default. */
+        /** Work item hierarchy board feature (Azure DevOps-like Epic/Feature/PBI hierarchy). Enabled by default. */
         hierarchy?: {
             enabled?: boolean;
         };
@@ -595,7 +595,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     workItems: {
         hierarchy: {
-            enabled: false,
+            enabled: true,
         },
         sync: {
             enabled: false,

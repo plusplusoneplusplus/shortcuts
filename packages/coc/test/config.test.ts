@@ -1113,7 +1113,7 @@ timeout: 300
                       "enabled": false,
                     },
                     "hierarchy": {
-                      "enabled": false,
+                      "enabled": true,
                     },
                     "sync": {
                       "enabled": false,
