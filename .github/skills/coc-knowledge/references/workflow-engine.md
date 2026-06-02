@@ -6,7 +6,7 @@ DAG-based workflow execution engine in `packages/coc-workflow/src/workflow/`.
 
 Converts YAML pipeline/workflow definitions into executable DAGs and runs them with concurrency control, cancellation support, and structured progress events.
 
-The published package is `@plusplusoneplusplus/coc-workflow`. It contains the pure workflow compiler/executor surface without taking a runtime dependency on Forge; AI execution is injected through `WorkflowExecutionOptions.aiInvoker`.
+The published package is `@plusplusoneplusplus/coc-workflow`. It contains the pure workflow compiler/executor surface without taking a runtime dependency on Forge; AI execution is injected through `WorkflowExecutionOptions.aiInvoker`. Forge depends on `@plusplusoneplusplus/coc-workflow` and keeps backward-compatible workflow exports from both `@plusplusoneplusplus/forge` and `@plusplusoneplusplus/forge/workflow`.
 
 ## Key Exports
 
@@ -15,6 +15,7 @@ The published package is `@plusplusoneplusplus/coc-workflow`. It contains the pu
 | `compileToWorkflow(yamlContent)` | Converts legacy pipeline YAML or native workflow YAML to `WorkflowConfig` |
 | `executeWorkflow(config, options)` | Runs the DAG with full lifecycle management |
 | `flattenWorkflowResult(result)` | Flattens workflow result for flat display output |
+| `isCSVSource(value)`, `isGenerateConfig(value)` | Runtime guards for legacy pipeline YAML compatibility inputs |
 
 ## Architecture
 
@@ -84,6 +85,8 @@ Legacy pipeline YAML compatibility types live with the workflow compiler. Forge'
 ## Pipeline Compatibility
 
 `workflow/pipeline-compat.ts` contains legacy pipeline YAML config types used by the compiler. The old `pipeline/` directory has been deleted — all execution goes through the workflow engine.
+
+Forge's workflow compatibility barrels are thin re-exports over `@plusplusoneplusplus/coc-workflow/workflow`; do not add new workflow implementation code under `packages/forge/src/workflow/`. New workflow consumers should import from `@plusplusoneplusplus/coc-workflow` directly where practical.
 
 ## Template Engine
 

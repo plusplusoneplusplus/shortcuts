@@ -7,7 +7,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import type { GenerateInputConfig } from '../workflow/pipeline-compat';
+import type { GenerateInputConfig } from '@plusplusoneplusplus/coc-workflow/workflow';
 import type { PromptItem, AIInvoker } from '../ai/types';
 import { extractJSON } from '../utils/ai-response-parser';
 import { PipelineCoreError, ErrorCode } from '../errors';

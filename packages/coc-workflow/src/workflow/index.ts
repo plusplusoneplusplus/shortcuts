@@ -71,6 +71,28 @@ export {
     isNodeConfig,
 } from './types';
 
+// Legacy pipeline YAML compatibility types used by the compiler.
+export type {
+    PipelineConfig,
+    InputConfig,
+    MapConfig,
+    ReduceConfig,
+    FilterConfig,
+    CSVSource,
+    CSVParseOptions,
+    CSVParseResult,
+    PipelineParameter,
+    GenerateInputConfig,
+    FilterOperator,
+    FilterRule,
+    RuleFilterConfig,
+    AIFilterConfig,
+    FilterStats,
+    FilterResult,
+    JobConfig,
+} from './pipeline-compat';
+export { isCSVSource, isGenerateConfig } from './pipeline-compat';
+
 // Graph utilities
 export { buildGraph, detectCycle } from './graph';
 

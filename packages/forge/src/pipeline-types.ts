@@ -3,7 +3,7 @@
  * Used by process-store and server-side event streaming.
  */
 
-import type { FilterStats } from './workflow/pipeline-compat';
+import type { FilterStats } from '@plusplusoneplusplus/coc-workflow/workflow';
 
 /** Pipeline execution phase. Mirrors the inline union in PipelineExecutionError.phase. */
 export type PipelinePhase = 'input' | 'filter' | 'map' | 'reduce' | 'job';

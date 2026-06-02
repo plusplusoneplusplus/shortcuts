@@ -1,3 +1,5 @@
+import { resetLogger as resetWorkflowLogger, setLogger as setWorkflowLogger } from '@plusplusoneplusplus/coc-workflow';
+
 /**
  * Logger abstraction for pipeline-core package.
  * 
@@ -122,6 +124,7 @@ let globalLogger: Logger = consoleLogger;
  */
 export function setLogger(logger: Logger): void {
     globalLogger = logger;
+    setWorkflowLogger(logger);
 }
 
 /**
@@ -139,4 +142,5 @@ export function getLogger(): Logger {
  */
 export function resetLogger(): void {
     globalLogger = consoleLogger;
+    resetWorkflowLogger();
 }

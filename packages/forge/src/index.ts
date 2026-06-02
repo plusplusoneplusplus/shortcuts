@@ -442,8 +442,8 @@ export type {
     FilterStats,
     FilterResult,
     JobConfig,
-} from './workflow/pipeline-compat';
-export { isCSVSource, isGenerateConfig } from './workflow/pipeline-compat';
+} from '@plusplusoneplusplus/coc-workflow/workflow';
+export { isCSVSource, isGenerateConfig } from '@plusplusoneplusplus/coc-workflow/workflow';
 
 // ============================================================================
 // Pipeline Phase/Event Types (from pipeline-types)
@@ -883,7 +883,7 @@ export {
     type ExecutionStats as WorkflowExecutionStats,
     type ItemResult as WorkflowItemResult,
     type FlatWorkflowResult,
-} from './workflow';
+} from '@plusplusoneplusplus/coc-workflow/workflow';
 
 // ============================================================================
 // Provider Abstractions (pull requests + work items)
