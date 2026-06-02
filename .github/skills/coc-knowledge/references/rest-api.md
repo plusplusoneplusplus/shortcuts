@@ -79,7 +79,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 |--------|------|-------------|
 | GET | `/api/queue` | List queue tasks |
 | GET | `/api/queue/models` | List model IDs for the configured default provider |
-| POST | `/api/queue` | Enqueue a task. Chat payloads use `mode='ask'`, `mode='autopilot'`, or internal Ralph routing; legacy `mode='plan'` is accepted and normalized to Ask. |
+| POST | `/api/queue` | Enqueue a task. Chat payloads use `mode='ask'`, `mode='autopilot'`, or internal Ralph routing; legacy `mode='plan'` is accepted and normalized to Ask. Body `config.effortTier` accepts `low`, `medium`, or `high`; the server resolves it to `config.model` and `config.reasoningEffort` from the active provider's stored/default tier map, while explicit `config.model` and `config.reasoningEffort` take precedence and `effortTier` is not stored. |
 | POST | `/api/workspaces/:id/queue/generate` | Enqueue a Generate Plan chat task using Ask semantics. Body accepts optional `provider`, `model`, and `reasoningEffort` overrides, which are validated through the shared chat queue validation path. |
 | DELETE | `/api/queue/:id` | Remove from queue |
 | POST | `/api/queue/:id/cancel` | Cancel queued task |

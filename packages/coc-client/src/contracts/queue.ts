@@ -1,7 +1,8 @@
-import type { JsonObject } from './common';
+import type { JsonObject, ReasoningEffort } from './common';
 
 export type TaskPriority = 'low' | 'normal' | 'high' | string;
 export type QueueStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | string;
+export type EffortTierKey = 'low' | 'medium' | 'high';
 
 export interface QueueStats {
   queued: number;
@@ -91,7 +92,11 @@ export interface EnqueueTaskRequest {
   repoId?: string;
   folderPath?: string;
   payload: JsonObject;
-  config?: JsonObject;
+  config?: JsonObject & {
+    effortTier?: EffortTierKey;
+    model?: string;
+    reasoningEffort?: ReasoningEffort;
+  };
   displayName?: string;
   [key: string]: unknown;
 }

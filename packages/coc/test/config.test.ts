@@ -473,6 +473,33 @@ timeout: 300
             expect(result.workflows.enabled).toBe(false);
         });
 
+        it('should preserve provider-scoped model settings', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, {
+                models: {
+                    enabled: ['legacy-model'],
+                    reasoningEfforts: { 'legacy-model': 'high' },
+                    providers: {
+                        copilot: {
+                            enabled: ['copilot-model'],
+                            reasoningEfforts: { 'copilot-model': 'low' },
+                            effortTiers: {
+                                high: { model: 'configured-high-model', reasoningEffort: 'xhigh' },
+                            },
+                        },
+                    },
+                },
+            });
+
+            expect(result.models?.enabled).toEqual(['legacy-model']);
+            expect(result.models?.reasoningEfforts).toEqual({ 'legacy-model': 'high' });
+            expect(result.models?.providers?.copilot?.enabled).toEqual(['copilot-model']);
+            expect(result.models?.providers?.copilot?.reasoningEfforts).toEqual({ 'copilot-model': 'low' });
+            expect(result.models?.providers?.copilot?.effortTiers?.high).toEqual({
+                model: 'configured-high-model',
+                reasoningEffort: 'xhigh',
+            });
+        });
+
         it('should override workflows.enabled from file', () => {
             const result = mergeConfig(DEFAULT_CONFIG, { workflows: { enabled: true } });
             expect(result.workflows.enabled).toBe(true);

@@ -192,11 +192,18 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
         {
             name: 'models',
             sourceDescriptors: [],
-            merge: (base, override) => ({
-                models: (override?.models || base.models) ? {
-                    enabled: override?.models?.enabled ?? base.models?.enabled,
-                } : undefined,
-            }),
+            merge: (base, override) => {
+                const enabled = override?.models?.enabled ?? base.models?.enabled;
+                const reasoningEfforts = override?.models?.reasoningEfforts ?? base.models?.reasoningEfforts;
+                const providers = override?.models?.providers ?? base.models?.providers;
+                return {
+                    models: (override?.models || base.models) ? {
+                        ...(enabled !== undefined ? { enabled } : {}),
+                        ...(reasoningEfforts !== undefined ? { reasoningEfforts } : {}),
+                        ...(providers !== undefined ? { providers } : {}),
+                    } : undefined,
+                };
+            },
         },
         {
             name: 'logging',

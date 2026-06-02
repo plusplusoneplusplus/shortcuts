@@ -219,6 +219,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             if (defaultProvider === 'claude') return 'claude';
             return 'copilot';
         },
+        getEffortTiersForProvider: (provider) => (
+            loadConfigFile(opts.runtimeConfigService?.configPath ?? opts.configPath)?.models?.providers?.[provider]?.effortTiers
+            ?? opts.runtimeConfigService?.config.models?.providers?.[provider]?.effortTiers
+            ?? opts.resolvedConfig?.models?.providers?.[provider]?.effortTiers
+        ),
     });
     registerTaskRoutes(routes, store, dataDir, (workspaceId) => {
         getWsServer().broadcastProcessEvent({

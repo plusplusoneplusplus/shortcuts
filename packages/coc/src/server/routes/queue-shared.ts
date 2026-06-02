@@ -14,6 +14,7 @@ import type {
     ProcessStore,
     ConversationTurn,
     PauseMarker,
+    StoredEffortTiersMap,
 } from '@plusplusoneplusplus/forge';
 import { truncateDisplayName } from '../shared/queue-utils';
 import { TaskDefs, VALID_ENQUEUE_TYPES, VISIBLE_TASK_TYPE_LABELS, VALID_CHAT_PROVIDERS, normalizeChatMode } from '../tasks/task-types';
@@ -77,6 +78,7 @@ export interface QueueRouteContext {
     globalWorkspaceRootPath: string | undefined;
     state: QueueGlobalState;
     getDefaultProvider?: () => 'copilot' | 'codex' | 'claude';
+    getEffortTiersForProvider?: (provider: 'copilot' | 'codex' | 'claude') => StoredEffortTiersMap | undefined;
 }
 
 export function getRepoIdentifierFromQuery(query: ParsedUrlQuery): string | undefined {
@@ -339,6 +341,7 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
     // Follow-up executions also read it from `task.config.reasoningEffort`
     // (see follow-up-executor.ts).
     const VALID_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
+    const VALID_EFFORT_TIERS = new Set(['low', 'medium', 'high']);
     const payloadEffort = typeof payload.reasoningEffort === 'string' && VALID_EFFORTS.has(payload.reasoningEffort)
         ? (payload.reasoningEffort as 'low' | 'medium' | 'high' | 'xhigh')
         : undefined;
@@ -346,6 +349,13 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         ? (taskSpec.config.reasoningEffort as 'low' | 'medium' | 'high' | 'xhigh')
         : undefined;
     const resolvedEffort = configEffort ?? payloadEffort;
+    const effortTier = taskSpec.config?.effortTier;
+    if (effortTier !== undefined && (typeof effortTier !== 'string' || !VALID_EFFORT_TIERS.has(effortTier))) {
+        return {
+            valid: false,
+            error: `Invalid effortTier: '${effortTier}'. Valid tiers: low, medium, high`,
+        };
+    }
 
     const input: CreateTaskInput = {
         type: taskSpec.type,
@@ -358,6 +368,7 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
             retryAttempts: taskSpec.config?.retryAttempts,
             retryDelayMs: taskSpec.config?.retryDelayMs,
             ...(resolvedEffort ? { reasoningEffort: resolvedEffort } : {}),
+            ...(effortTier ? { effortTier } : {}),
         },
         displayName,
     };

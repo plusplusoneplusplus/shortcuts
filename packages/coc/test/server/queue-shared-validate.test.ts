@@ -274,6 +274,45 @@ describe('validateAndParseTask – payload.reasoningEffort mapping', () => {
 });
 
 // ============================================================================
+// config.effortTier validation
+// ============================================================================
+
+describe('validateAndParseTask – config.effortTier validation', () => {
+    it('preserves a valid effortTier for enqueue-time resolution', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'Hello', mode: 'ask' },
+            config: { effortTier: 'high' },
+        });
+
+        expect(result.valid).toBe(true);
+        expect((result.input!.config as Record<string, unknown>).effortTier).toBe('high');
+    });
+
+    it('rejects unknown effortTier values', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'Hello', mode: 'ask' },
+            config: { effortTier: 'ultra' },
+        });
+
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('Invalid effortTier');
+    });
+
+    it('rejects non-string effortTier values', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'Hello', mode: 'ask' },
+            config: { effortTier: 1 },
+        });
+
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('Invalid effortTier');
+    });
+});
+
+// ============================================================================
 // Dispatch correctness end-to-end guard check
 // ============================================================================
 

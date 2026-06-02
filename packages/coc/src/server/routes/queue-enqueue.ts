@@ -10,7 +10,8 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { getActiveModels, modelMetadataStore, ensureQueueProcessId, SqliteProcessStore, sdkServiceRegistry } from '@plusplusoneplusplus/forge';
+import { getActiveModels, modelMetadataStore, ensureQueueProcessId, SqliteProcessStore, sdkServiceRegistry, mergeEffortTiersWithDefaults } from '@plusplusoneplusplus/forge';
+import type { CreateTaskInput } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
 import {
     isWireAttachmentArray,
@@ -28,6 +29,9 @@ import {
 } from './queue-shared';
 import { NoteChatBindingStore } from '../notes/note-chat-binding-store';
 import { normalizeRelativeNotePath } from '../notes/note-chat-bindings-handler';
+import type { ChatProvider } from '../tasks/task-types';
+
+const EFFORT_TIER_KEYS = new Set(['low', 'medium', 'high']);
 
 export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteContext): void {
     const { bridge, store, globalWorkspaceRootPath, state } = ctx;
@@ -115,6 +119,12 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
         if (!validation.valid) {
             return sendError(res, 400, validation.error!);
         }
+        try {
+            resolveEffortTierConfig(validation.input!, ctx);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Failed to resolve effort tier';
+            return sendError(res, 500, message);
+        }
 
         // For brand-new chat tasks, the SPA sends raw data-URL attachments on
         // payload.attachments. Decode them to temp files now so the executor
@@ -201,6 +211,7 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
                 const taskSpec = body.tasks[i];
 
                 try {
+                    resolveEffortTierConfig(validation.input!, ctx);
                     const taskId = await enqueueViaBridge(validation.input!, bridge, state, globalWorkspaceRootPath, store);
                     const task = bridge.findManagerForTask(taskId)?.getTask(taskId);
 
@@ -328,6 +339,41 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * @internal exported for tests
+ */
+export function resolveEffortTierConfig(input: CreateTaskInput, ctx: Pick<QueueRouteContext, 'getDefaultProvider' | 'getEffortTiersForProvider'>): void {
+    const config = input.config as Record<string, unknown>;
+    const rawTier = config.effortTier;
+    if (rawTier === undefined) return;
+    delete config.effortTier;
+
+    if (typeof rawTier !== 'string' || !EFFORT_TIER_KEYS.has(rawTier)) return;
+
+    const payload = input.payload as { provider?: unknown } | undefined;
+    const provider = isChatProvider(payload?.provider)
+        ? payload.provider
+        : (ctx.getDefaultProvider?.() ?? 'copilot');
+    const tiers = mergeEffortTiersWithDefaults(provider, ctx.getEffortTiersForProvider?.(provider));
+    const tier = tiers[rawTier as 'low' | 'medium' | 'high'];
+    if (!tier) return;
+
+    if (typeof config.model !== 'string' || config.model.length === 0) {
+        config.model = tier.model;
+    }
+    if (typeof config.reasoningEffort !== 'string' || config.reasoningEffort.length === 0) {
+        if (tier.reasoningEffort !== null) {
+            config.reasoningEffort = tier.reasoningEffort;
+        } else {
+            delete config.reasoningEffort;
+        }
+    }
+}
+
+function isChatProvider(value: unknown): value is ChatProvider {
+    return value === 'copilot' || value === 'codex' || value === 'claude';
+}
 
 /**
  * If `payload.attachments` is the wire AttachmentPayload[] format produced by
