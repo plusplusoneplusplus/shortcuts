@@ -13,6 +13,51 @@ import { parseDiffFileList } from '../../../../../src/server/spa/client/react/fe
 import type { UseClassificationReturn } from '../../../../../src/server/spa/client/react/features/git/diff/useClassification';
 import type { HunkCategory, DiffClassificationResult } from '../../../../../src/server/spa/client/react/features/pull-requests/classification-types';
 
+let currentClassification: UseClassificationReturn;
+
+vi.mock('../../../../../src/server/spa/client/react/features/git/diff/useClassification', () => ({
+    useClassification: () => currentClassification,
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/shared/ModalJobAiControls', () => ({
+    useModalJobAiSelection: () => ({
+        provider: 'copilot',
+        setProvider: vi.fn(),
+        agentProviders: [{ id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true }],
+        providersLoading: false,
+        useEffortTierMode: false,
+        effortTierMap: {},
+        selectedEffortTier: 'medium',
+        setEffortTier: vi.fn(),
+        modelCommand: {
+            modelMenuVisible: false,
+            modelFilter: '',
+            filteredModels: [],
+            modelHighlightIndex: 0,
+            modelOverride: null,
+            setModelOverride: vi.fn(),
+            handleModelSelect: vi.fn(),
+            showModelMenu: vi.fn(),
+            dismissModelMenu: vi.fn(),
+            handleModelKeyDown: vi.fn(),
+            setModelFilter: vi.fn(),
+        },
+        defaultModelId: undefined,
+        defaultModelLabel: undefined,
+        validModelOverride: null,
+        effortOverride: null,
+        setEffortOverride: vi.fn(),
+        effortOptions: [],
+        effortPickerDisabled: false,
+        resolved: { provider: 'copilot' },
+    }),
+    isChatProvider: (value: unknown) => value === 'copilot' || value === 'codex' || value === 'claude',
+    isSelectableProvider: (provider: string, providers: Array<{ id: string; enabled: boolean; available: boolean }>) => {
+        if (provider === 'copilot') return true;
+        return providers.some(p => p.id === provider && p.enabled && p.available);
+    },
+}));
+
 // ── Fixtures ──────────────────────────────────────────────────────────
 
 const diffText = [
@@ -90,12 +135,23 @@ function createMockClassification(overrides: Partial<UseClassificationReturn> = 
     };
 }
 
+function renderWithClassification(classification: UseClassificationReturn) {
+    currentClassification = classification;
+    render(
+        <PrFilesPanel
+            files={parsedFiles}
+            workspaceId="ws-1"
+            classificationKey={{ type: 'pr', repoId: 'repo-1', identifier: '123:abc' }}
+        />,
+    );
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────
 
 describe('ClassificationFilterBar', () => {
-    it('renders classify button when classification prop is provided', () => {
+    it('renders classify button when classification is enabled', () => {
         const mock = createMockClassification();
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        renderWithClassification(mock);
         expect(screen.getByTestId('classify-button')).toBeInTheDocument();
         expect(screen.getByTestId('classify-button')).toHaveTextContent('Classify');
     });
@@ -107,7 +163,7 @@ describe('ClassificationFilterBar', () => {
 
     it('shows spinner when status is loading', () => {
         const mock = createMockClassification({ state: { status: 'loading', activeFilters: new Set(['logic']) } });
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        renderWithClassification(mock);
         expect(screen.getByTestId('classify-button')).toHaveTextContent('Classifying…');
         expect(screen.getByTestId('classify-button')).toBeDisabled();
     });
@@ -116,7 +172,7 @@ describe('ClassificationFilterBar', () => {
         const mock = createMockClassification({
             state: { status: 'ready', activeFilters: new Set(['logic']), result: mockResult },
         });
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        renderWithClassification(mock);
         expect(screen.getByTestId('classify-button')).toHaveTextContent('Re-classify');
     });
 
@@ -124,7 +180,7 @@ describe('ClassificationFilterBar', () => {
         const mock = createMockClassification({
             state: { status: 'ready', activeFilters: new Set(['logic']), result: mockResult },
         });
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        renderWithClassification(mock);
         expect(screen.getByTestId('classification-filter-logic')).toBeInTheDocument();
         expect(screen.getByTestId('classification-filter-mechanical')).toBeInTheDocument();
         expect(screen.getByTestId('classification-filter-test')).toBeInTheDocument();
@@ -137,7 +193,7 @@ describe('ClassificationFilterBar', () => {
             state: { status: 'ready', activeFilters: new Set(['logic']), result: mockResult },
             toggleFilter,
         });
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        renderWithClassification(mock);
         fireEvent.click(screen.getByTestId('classification-filter-mechanical'));
         expect(toggleFilter).toHaveBeenCalledWith('mechanical');
     });
@@ -145,7 +201,7 @@ describe('ClassificationFilterBar', () => {
     it('calls classify when button is clicked', () => {
         const classify = vi.fn();
         const mock = createMockClassification({ classify });
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        renderWithClassification(mock);
         fireEvent.click(screen.getByTestId('classify-button'));
         expect(classify).toHaveBeenCalled();
     });
@@ -154,7 +210,7 @@ describe('ClassificationFilterBar', () => {
         const mock = createMockClassification({
             state: { status: 'error', activeFilters: new Set(['logic']), error: 'Something went wrong' },
         });
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        renderWithClassification(mock);
         expect(screen.getByTestId('classify-error')).toHaveTextContent('Something went wrong');
     });
 
@@ -164,7 +220,7 @@ describe('ClassificationFilterBar', () => {
             state: { status: 'ready', activeFilters: new Set(['logic']), result: mockResult },
             setFilters,
         });
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        renderWithClassification(mock);
         fireEvent.click(screen.getByTestId('classification-filter-all'));
         expect(setFilters).toHaveBeenCalled();
     });
@@ -173,7 +229,7 @@ describe('ClassificationFilterBar', () => {
         const mock = createMockClassification({
             state: { status: 'ready', activeFilters: new Set(['logic', 'mechanical', 'test', 'generated']), result: mockResult },
         });
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        renderWithClassification(mock);
 
         const logicLabel = screen.getByTestId('classification-filter-label-logic');
         const mechLabel = screen.getByTestId('classification-filter-label-mechanical');
@@ -189,13 +245,13 @@ describe('ClassificationFilterBar', () => {
 
     it('renders info icon button', () => {
         const mock = createMockClassification();
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        renderWithClassification(mock);
         expect(screen.getByTestId('classification-info-button')).toBeInTheDocument();
     });
 
     it('opens info popover on info button click', () => {
         const mock = createMockClassification();
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        renderWithClassification(mock);
         expect(screen.queryByTestId('classification-info-popover')).not.toBeInTheDocument();
         fireEvent.click(screen.getByTestId('classification-info-button'));
         expect(screen.getByTestId('classification-info-popover')).toBeInTheDocument();
@@ -204,7 +260,7 @@ describe('ClassificationFilterBar', () => {
 
     it('closes info popover on close button click', () => {
         const mock = createMockClassification();
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        renderWithClassification(mock);
         fireEvent.click(screen.getByTestId('classification-info-button'));
         expect(screen.getByTestId('classification-info-popover')).toBeInTheDocument();
         fireEvent.click(screen.getByTestId('classification-info-close'));
@@ -213,7 +269,7 @@ describe('ClassificationFilterBar', () => {
 
     it('closes info popover on backdrop click', () => {
         const mock = createMockClassification();
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        renderWithClassification(mock);
         fireEvent.click(screen.getByTestId('classification-info-button'));
         expect(screen.getByTestId('classification-info-popover')).toBeInTheDocument();
         fireEvent.click(screen.getByTestId('classification-info-backdrop'));
@@ -222,7 +278,7 @@ describe('ClassificationFilterBar', () => {
 
     it('closes info popover on Escape key', () => {
         const mock = createMockClassification();
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        renderWithClassification(mock);
         fireEvent.click(screen.getByTestId('classification-info-button'));
         expect(screen.getByTestId('classification-info-popover')).toBeInTheDocument();
         fireEvent.keyDown(document, { key: 'Escape' });
@@ -231,7 +287,7 @@ describe('ClassificationFilterBar', () => {
 
     it('popover has correct accessibility attributes', () => {
         const mock = createMockClassification();
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        renderWithClassification(mock);
         fireEvent.click(screen.getByTestId('classification-info-button'));
         const popover = screen.getByTestId('classification-info-popover');
         expect(popover).toHaveAttribute('role', 'dialog');
@@ -240,7 +296,7 @@ describe('ClassificationFilterBar', () => {
 
     it('popover shows all category descriptions', () => {
         const mock = createMockClassification();
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        renderWithClassification(mock);
         fireEvent.click(screen.getByTestId('classification-info-button'));
         expect(screen.getByText(/Behavior changes/)).toBeInTheDocument();
         expect(screen.getByText(/Refactors, renames/)).toBeInTheDocument();
@@ -254,7 +310,7 @@ describe('ClassificationBadge (file tree badges)', () => {
         const mock = createMockClassification({
             state: { status: 'ready', activeFilters: new Set(['logic']), result: mockResult },
         });
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        renderWithClassification(mock);
         const badges = screen.getAllByTestId('classification-badge');
         // At least one badge should appear (for the active file in view)
         expect(badges.length).toBeGreaterThan(0);
@@ -262,7 +318,7 @@ describe('ClassificationBadge (file tree badges)', () => {
 
     it('does not render badges when classification has no results', () => {
         const mock = createMockClassification();
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        renderWithClassification(mock);
         expect(screen.queryByTestId('classification-badge')).not.toBeInTheDocument();
     });
 });
@@ -273,7 +329,7 @@ describe('File dimming', () => {
         const mock = createMockClassification({
             state: { status: 'ready', activeFilters: new Set<HunkCategory>(['logic']), result: mockResult },
         });
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        renderWithClassification(mock);
         const rows = screen.getAllByTestId('pr-file-row');
         const testFileRow = rows.find(r => r.getAttribute('data-file-path') === 'test/main.test.ts');
         expect(testFileRow).toBeDefined();
@@ -286,7 +342,7 @@ describe('File dimming', () => {
         const mock = createMockClassification({
             state: { status: 'ready', activeFilters: new Set<HunkCategory>(['logic']), result: mockResult },
         });
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        renderWithClassification(mock);
         const rows = screen.getAllByTestId('pr-file-row');
         const mainFileRow = rows.find(r => r.getAttribute('data-file-path') === 'src/main.ts');
         expect(mainFileRow).toBeDefined();
@@ -301,7 +357,7 @@ describe('File dimming', () => {
                 result: mockResult,
             },
         });
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        renderWithClassification(mock);
         const rows = screen.getAllByTestId('pr-file-row');
         for (const row of rows) {
             expect(row.getAttribute('data-file-dimmed')).toBeNull();
@@ -312,7 +368,7 @@ describe('File dimming', () => {
         const mock = createMockClassification({
             state: { status: 'idle', activeFilters: new Set<HunkCategory>(['logic']) },
         });
-        render(<PrFilesPanel files={parsedFiles} classification={mock} />);
+        renderWithClassification(mock);
         const rows = screen.getAllByTestId('pr-file-row');
         for (const row of rows) {
             expect(row.getAttribute('data-file-dimmed')).toBeNull();

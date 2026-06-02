@@ -29,7 +29,8 @@ import { HUNK_CATEGORIES, CATEGORY_LABELS } from './classification-types';
 import type { UseClassificationReturn } from '../git/diff/useClassification';
 import { useClassification } from '../git/diff/useClassification';
 import type { ClassificationKey } from '../git/diff/diffSource';
-import { useModalJobAiSelection, ModalJobAiControls } from '../../shared/ModalJobAiControls';
+import { useModalJobAiSelection } from '../../shared/ModalJobAiControls';
+import { ClassifyDiffAiControls } from '../git/diff/ClassifyDiffAiControls';
 
 export interface PrFilesPanelProps {
     files: FileChange[];
@@ -180,7 +181,7 @@ function ClassificationFilterBar({ classification, aiSelection }: Classification
             data-testid="classification-filter-bar"
         >
             {/* AI provider / effort-tier / model controls */}
-            <ModalJobAiControls
+            <ClassifyDiffAiControls
                 selection={aiSelection}
                 disabled={isLoading}
                 testIdPrefix="classify"

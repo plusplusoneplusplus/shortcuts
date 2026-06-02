@@ -37,7 +37,8 @@ import {
 import { getHostname } from '../utils/config';
 import { extractFileStatsFromDiff } from '../features/git/diff/diffSource';
 import { useClassification } from '../features/git/diff/useClassification';
-import { useModalJobAiSelection, ModalJobAiControls } from '../shared/ModalJobAiControls';
+import { useModalJobAiSelection } from '../shared/ModalJobAiControls';
+import { ClassifyDiffAiControls } from '../features/git/diff/ClassifyDiffAiControls';
 import { usePrReviewProgress } from '../features/git/diff/usePrReviewProgress';
 import { pickPriorityFile } from '../features/git/diff/prPopoutPriority';
 import type { ClassificationKey } from '../features/git/diff/diffSource';
@@ -245,7 +246,7 @@ function CommitReviewContent({ workspaceId, commitHash }: { workspaceId: string;
         <div className="flex flex-col flex-1 min-h-0">
             {/* Classification toolbar — mirrors PR layout */}
             <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#2a2a2a]" data-testid="commit-popout-classify-bar">
-                <ModalJobAiControls
+                <ClassifyDiffAiControls
                     selection={aiSelection}
                     disabled={classifyStatus === 'loading'}
                     testIdPrefix="commit-popout-classify"
@@ -660,7 +661,7 @@ function PrReviewContent({ workspaceId, repoId, prId, onTitleLoaded }: { workspa
         <div className="flex flex-col flex-1 min-h-0">
             {/* Classification toolbar */}
             <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#2a2a2a]" data-testid="pr-popout-classify-bar">
-                <ModalJobAiControls
+                <ClassifyDiffAiControls
                     selection={aiSelection}
                     disabled={classifyStatus === 'loading'}
                     testIdPrefix="pr-popout-classify"
