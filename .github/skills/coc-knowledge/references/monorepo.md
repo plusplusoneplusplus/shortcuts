@@ -51,6 +51,7 @@ Published workspaces (`coc`, `forge`, `coc-agent-sdk`, `coc-memory`, `coc-client
 - **Publish:** `npm run vsce:publish`
 - **Debug CoC:** `cd packages/coc && npm run build && npm link && cd ../..` then `coc run <path>` or `coc serve --no-open`
 - **Debug Deep Wiki:** `cd packages/deep-wiki && npm run build && npm link && cd ../..` then `deep-wiki generate <repo>`
+- **Run CoCContainer with rebuild loop:** `./scripts/coccontainer-serve-loop.sh --port 8080` installs dependencies, builds and links the package chain, verifies native dependencies such as `better-sqlite3`, then starts `coccontainer serve --no-open`
 - **Run CoC as a service:** see [coc-service.md](coc-service.md)
 
 ## Cross-Package Conventions
