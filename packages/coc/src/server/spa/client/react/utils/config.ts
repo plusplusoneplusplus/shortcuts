@@ -36,6 +36,8 @@ interface DashboardConfig {
     defaultProvider?: 'copilot' | 'codex' | 'claude';
     /** Whether the Work Items hierarchy board is enabled (feature flag). */
     workItemsHierarchyEnabled?: boolean;
+    /** Whether manual Work Items external sync is enabled (requires hierarchy). */
+    workItemsSyncEnabled?: boolean;
     /** Whether the AI-assisted work item authoring composer is enabled (feature flag). */
     workItemsAiAuthoringEnabled?: boolean;
     /** Whether direct commit SHA lookup in the Git tab is enabled (feature flag). */
@@ -111,6 +113,7 @@ async function _fetchAndApplyRuntimeConfig(apiBase: string): Promise<void> {
             codexEnabled: data.features.codexEnabled,
             defaultProvider: data.features.defaultProvider,
             workItemsHierarchyEnabled: data.features.workItemsHierarchyEnabled,
+            workItemsSyncEnabled: data.features.workItemsSyncEnabled,
             workItemsAiAuthoringEnabled: data.features.workItemsAiAuthoringEnabled,
             gitCommitLookupEnabled: data.features.gitCommitLookupEnabled,
             effortLevelsEnabled: data.features.effortLevelsEnabled,
@@ -257,6 +260,12 @@ export function isCodexEnabled(): boolean {
 /** Returns true when the Work Items hierarchy board feature flag is enabled. */
 export function isWorkItemsHierarchyEnabled(): boolean {
     return getConfig().workItemsHierarchyEnabled === true;
+}
+
+/** Returns true when manual Work Items external sync is enabled and hierarchy mode is enabled. */
+export function isWorkItemsSyncEnabled(): boolean {
+    const config = getConfig();
+    return config.workItemsHierarchyEnabled === true && config.workItemsSyncEnabled === true;
 }
 
 /** Returns true when the AI-assisted work item authoring composer feature flag is enabled. */

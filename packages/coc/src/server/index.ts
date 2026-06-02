@@ -599,6 +599,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 excalidrawEnabled: liveConfig.excalidraw?.enabled ?? false,
                 mcpOauthEnabled: liveConfig.mcpOauth?.enabled ?? false,
                 focusedDiffEnabled: liveConfig.features?.focusedDiff ?? false,
+                workItemsHierarchyEnabled: liveConfig.workItems?.hierarchy?.enabled ?? false,
+                workItemsSyncEnabled: liveConfig.workItems?.sync?.enabled ?? false,
+                workItemsAiAuthoringEnabled: liveConfig.workItems?.aiAuthoring?.enabled ?? false,
                 bindAddress: host,
             });
         },

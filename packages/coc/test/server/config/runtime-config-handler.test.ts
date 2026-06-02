@@ -77,6 +77,7 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.focusedDiffEnabled).toBe(false);
         expect(result.features.codexEnabled).toBe(false);
         expect(result.features.defaultProvider).toBe('copilot');
+        expect(result.features.workItemsSyncEnabled).toBe(false);
     });
 
     it('reflects ralph.enabled = true from config', () => {
@@ -95,6 +96,18 @@ describe('buildRuntimeDashboardConfig', () => {
         const svc = createMockRuntimeConfigService({ workItems: { hierarchy: { enabled: true } } } as any);
         const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
         expect(result.features.workItemsHierarchyEnabled).toBe(true);
+    });
+
+    it('defaults workItemsSyncEnabled to false', () => {
+        const svc = createMockRuntimeConfigService();
+        const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
+        expect(result.features.workItemsSyncEnabled).toBe(false);
+    });
+
+    it('reflects workItems.sync.enabled = true from config', () => {
+        const svc = createMockRuntimeConfigService({ workItems: { sync: { enabled: true } } } as any);
+        const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
+        expect(result.features.workItemsSyncEnabled).toBe(true);
     });
 
     it('defaults effortLevelsEnabled to false', () => {
@@ -157,6 +170,34 @@ describe('AC-01: workItems.hierarchy.enabled live enablement end-to-end', () => 
 
             // Verify the effect classifies the field as live
             const effect = updateResult.effects.find((e: { field: string }) => e.field === 'workItems.hierarchy.enabled');
+            expect(effect).toBeDefined();
+            expect(effect!.runtime).toBe('live');
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+
+    it('workItems.sync.enabled update through service is reflected in runtime dashboard config', async () => {
+        const fs = await import('fs');
+        const path = await import('path');
+        const os = await import('os');
+        const { RuntimeConfigService } = await import('../../../src/config/runtime-config-service');
+
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-ac01-sync-'));
+        try {
+            const configPath = path.join(tmpDir, 'config.yaml');
+            const svc = new RuntimeConfigService({ configPath });
+
+            const before = buildRuntimeDashboardConfig(svc, 'test-host', '127.0.0.1');
+            expect(before.features.workItemsSyncEnabled).toBe(false);
+
+            const updateResult = await svc.updateConfig({ 'workItems.sync.enabled': true });
+            expect(updateResult.config.workItems.sync.enabled).toBe(true);
+
+            const after = buildRuntimeDashboardConfig(svc, 'test-host', '127.0.0.1');
+            expect(after.features.workItemsSyncEnabled).toBe(true);
+
+            const effect = updateResult.effects.find((e: { field: string }) => e.field === 'workItems.sync.enabled');
             expect(effect).toBeDefined();
             expect(effect!.runtime).toBe('live');
         } finally {

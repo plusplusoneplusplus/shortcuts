@@ -331,6 +331,7 @@ export function AdminPanel() {
     const [mcpOauthEnabled, setMcpOauthEnabled] = useState(false);
     const [focusedDiffEnabled, setFocusedDiffEnabled] = useState(false);
     const [workItemsHierarchyEnabled, setWorkItemsHierarchyEnabled] = useState(false);
+    const [workItemsSyncEnabled, setWorkItemsSyncEnabled] = useState(false);
     const [workItemsAiAuthoringEnabled, setWorkItemsAiAuthoringEnabled] = useState(false);
     const [effortLevelsEnabled, setEffortLevelsEnabled] = useState(false);
     const [codexEnabled, setCodexEnabled] = useState(false);
@@ -378,7 +379,7 @@ export function AdminPanel() {
         taskCardDensity: 'compact' as 'compact' | 'dense',
         historyGrouping: true,
     });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false, workItemsHierarchy: false, workItemsAiAuthoring: false, effortLevels: false });
+    const [featuresSnapshot, setFeaturesSnapshot] = useState({ terminal: true, notes: true, myWork: false, myLife: false, scratchpad: false, scratchpadLayout: 'horizontal' as 'horizontal' | 'vertical', workflows: false, pullRequests: false, pullRequestsSuggestions: false, servers: false, ralph: false, vimNavigation: false, loops: false, excalidraw: false, mcpOauth: false, focusedDiff: false, workItemsHierarchy: false, workItemsSync: false, workItemsAiAuthoring: false, effortLevels: false });
 
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
@@ -491,6 +492,8 @@ export function AdminPanel() {
             setFocusedDiffEnabled(fde);
             const wihe = resolved.workItems?.hierarchy?.enabled ?? false;
             setWorkItemsHierarchyEnabled(wihe);
+            const wise = resolved.workItems?.sync?.enabled ?? false;
+            setWorkItemsSyncEnabled(wise);
             const waae = resolved.workItems?.aiAuthoring?.enabled ?? false;
             setWorkItemsAiAuthoringEnabled(waae);
             const ele = resolved.effortLevels?.enabled ?? false;
@@ -501,7 +504,7 @@ export function AdminPanel() {
             setClaudeEnabled(cle);
             const dp = (resolved.defaultProvider === 'codex' ? 'codex' : resolved.defaultProvider === 'claude' ? 'claude' : 'copilot') as 'copilot' | 'codex' | 'claude';
             setDefaultProvider(dp);
-            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde, workItemsHierarchy: wihe, workItemsAiAuthoring: waae, effortLevels: ele });
+            setFeaturesSnapshot({ terminal: te, notes: ne, myWork: mwe, myLife: mle, scratchpad: se, scratchpadLayout: sl, workflows: we, pullRequests: pre, pullRequestsSuggestions: prse, servers: svre, ralph: re, vimNavigation: vne, loops: loe, excalidraw: exe, mcpOauth: moae, focusedDiff: fde, workItemsHierarchy: wihe, workItemsSync: wise, workItemsAiAuthoring: waae, effortLevels: ele });
             setAiExecSnapshot({ model: form.model, parallel: form.parallel, timeout: form.timeout, output: form.output });
             setDefaultProviderSnapshot({ provider: dp, codexEnabled: cxe, claudeEnabled: cle });
             const sgr = resolved.sync?.gitRemote ?? '';
@@ -614,6 +617,7 @@ export function AdminPanel() {
         mcpOauthEnabled !== featuresSnapshot.mcpOauth ||
         focusedDiffEnabled !== featuresSnapshot.focusedDiff ||
         workItemsHierarchyEnabled !== featuresSnapshot.workItemsHierarchy ||
+        workItemsSyncEnabled !== featuresSnapshot.workItemsSync ||
         workItemsAiAuthoringEnabled !== featuresSnapshot.workItemsAiAuthoring ||
         effortLevelsEnabled !== featuresSnapshot.effortLevels;
 
@@ -840,18 +844,19 @@ export function AdminPanel() {
                 'mcpOauth.enabled': mcpOauthEnabled,
                 'features.focusedDiff': focusedDiffEnabled,
                 'workItems.hierarchy.enabled': workItemsHierarchyEnabled,
+                'workItems.sync.enabled': workItemsSyncEnabled,
                 'workItems.aiAuthoring.enabled': workItemsAiAuthoringEnabled,
                 'effortLevels.enabled': effortLevelsEnabled,
             });
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled, workItemsHierarchy: workItemsHierarchyEnabled, workItemsAiAuthoring: workItemsAiAuthoringEnabled, effortLevels: effortLevelsEnabled });
+            setFeaturesSnapshot({ terminal: terminalEnabled, notes: notesEnabled, myWork: myWorkEnabled, myLife: myLifeEnabled, scratchpad: scratchpadEnabled, scratchpadLayout: scratchpadLayout, workflows: workflowsEnabled, pullRequests: pullRequestsEnabled, pullRequestsSuggestions: pullRequestsSuggestionsEnabled, servers: serversEnabled, ralph: ralphEnabled, vimNavigation: vimNavigationEnabled, loops: loopsEnabled, excalidraw: excalidrawEnabled, mcpOauth: mcpOauthEnabled, focusedDiff: focusedDiffEnabled, workItemsHierarchy: workItemsHierarchyEnabled, workItemsSync: workItemsSyncEnabled, workItemsAiAuthoring: workItemsAiAuthoringEnabled, effortLevels: effortLevelsEnabled });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, workItemsHierarchyEnabled, workItemsAiAuthoringEnabled, effortLevelsEnabled, addToast]);
+    }, [terminalEnabled, notesEnabled, myWorkEnabled, myLifeEnabled, scratchpadEnabled, scratchpadLayout, workflowsEnabled, pullRequestsEnabled, pullRequestsSuggestionsEnabled, serversEnabled, ralphEnabled, vimNavigationEnabled, loopsEnabled, excalidrawEnabled, mcpOauthEnabled, focusedDiffEnabled, workItemsHierarchyEnabled, workItemsSyncEnabled, workItemsAiAuthoringEnabled, effortLevelsEnabled, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setTerminalEnabled(featuresSnapshot.terminal);
@@ -871,6 +876,7 @@ export function AdminPanel() {
         setMcpOauthEnabled(featuresSnapshot.mcpOauth);
         setFocusedDiffEnabled(featuresSnapshot.focusedDiff);
         setWorkItemsHierarchyEnabled(featuresSnapshot.workItemsHierarchy);
+        setWorkItemsSyncEnabled(featuresSnapshot.workItemsSync);
         setWorkItemsAiAuthoringEnabled(featuresSnapshot.workItemsAiAuthoring);
         setEffortLevelsEnabled(featuresSnapshot.effortLevels);
     }, [featuresSnapshot]);
@@ -1709,6 +1715,13 @@ export function AdminPanel() {
                                     >
                                         <SourceBadge source={sources['workItems.hierarchy.enabled']} />
                                         <AdminToggle checked={workItemsHierarchyEnabled} onChange={setWorkItemsHierarchyEnabled} data-testid="toggle-work-items-hierarchy-enabled" />
+                                    </AdminRow>
+                                    <AdminRow
+                                        name={<>Work Items GitHub Sync <span className="ar-badge ar-badge-accent">Preview</span></>}
+                                        hint="Manual GitHub Issues import/export/sync controls for hierarchy mode. Requires the hierarchy board and never stores provider tokens."
+                                    >
+                                        <SourceBadge source={sources['workItems.sync.enabled']} />
+                                        <AdminToggle checked={workItemsSyncEnabled} onChange={setWorkItemsSyncEnabled} data-testid="toggle-work-items-sync-enabled" />
                                     </AdminRow>
                                     <AdminRow
                                         name={<>Work Items AI Authoring <span className="ar-badge ar-badge-accent">Experimental</span></>}

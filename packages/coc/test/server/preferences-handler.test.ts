@@ -351,6 +351,45 @@ describe('readPreferences / writePreferences', () => {
         expect(loaded.lastDepth).toBe('deep');
     });
 
+    it('round-trips non-secret work item GitHub sync repo override', () => {
+        writeRepoPreferences(tmpDir, 'r', {
+            workItems: {
+                sync: {
+                    github: {
+                        owner: 'octo-org',
+                        repo: 'octo-repo',
+                    },
+                },
+            },
+        } as any);
+        const loaded = readRepoPreferences(tmpDir, 'r');
+        expect(loaded.workItems?.sync?.github).toEqual({ owner: 'octo-org', repo: 'octo-repo' });
+    });
+
+    it('strips unknown and secret-shaped work item GitHub sync preference fields', () => {
+        const repoPrefsPath = path.join(tmpDir, 'repos', 'r', 'preferences.json');
+        fs.mkdirSync(path.dirname(repoPrefsPath), { recursive: true });
+        fs.writeFileSync(
+            repoPrefsPath,
+            JSON.stringify({
+                workItems: {
+                    sync: {
+                        github: {
+                            owner: 'octo-org',
+                            repo: 'octo-repo',
+                            token: 'secret',
+                        },
+                    },
+                },
+            }),
+            'utf-8'
+        );
+        const loaded = readRepoPreferences(tmpDir, 'r');
+        expect(loaded.workItems?.sync?.github).toEqual({ owner: 'octo-org', repo: 'octo-repo' });
+        expect(JSON.stringify(loaded)).not.toContain('secret');
+        expect(JSON.stringify(loaded)).not.toContain('token');
+    });
+
     it('round-trips lastDepth normal through write and read', () => {
         writeRepoPreferences(tmpDir, 'r', { lastModel: 'gpt-5.4', lastDepth: 'normal' });
         const loaded = readRepoPreferences(tmpDir, 'r');

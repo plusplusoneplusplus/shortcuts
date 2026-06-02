@@ -216,6 +216,10 @@ export interface CLIConfig {
         hierarchy?: {
             enabled?: boolean;
         };
+        /** Manual external work-item sync. Requires hierarchy mode. Disabled by default. */
+        sync?: {
+            enabled?: boolean;
+        };
         /** AI-assisted work item authoring — Create/Improve with AI composer. Disabled by default. */
         aiAuthoring?: {
             enabled?: boolean;
@@ -437,6 +441,10 @@ export interface ResolvedCLIConfig {
         hierarchy: {
             enabled: boolean;
         };
+        /** Manual external work-item sync feature. Requires hierarchy mode. */
+        sync: {
+            enabled: boolean;
+        };
         /** AI-assisted work item authoring feature. */
         aiAuthoring: {
             enabled: boolean;
@@ -587,6 +595,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     workItems: {
         hierarchy: {
+            enabled: false,
+        },
+        sync: {
             enabled: false,
         },
         aiAuthoring: {

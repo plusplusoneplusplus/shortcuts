@@ -41,6 +41,12 @@ export interface DashboardOptions {
     excalidrawEnabled?: boolean;
     /** Whether the focused-diff classification feature is enabled. */
     focusedDiffEnabled?: boolean;
+    /** Whether the Work Items hierarchy board is enabled in server config. */
+    workItemsHierarchyEnabled?: boolean;
+    /** Whether manual Work Items external sync is enabled in server config. */
+    workItemsSyncEnabled?: boolean;
+    /** Whether AI-assisted Work Items authoring is enabled in server config. */
+    workItemsAiAuthoringEnabled?: boolean;
     /** Whether the MCP OAuth auto-detection subsystem is enabled in server config. */
     mcpOauthEnabled?: boolean;
     /** When set, injects __REVIEW_CONFIG__ for the review editor page. */
@@ -56,4 +62,3 @@ export interface DashboardOptions {
      */
     bindAddress?: string;
 }
-

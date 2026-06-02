@@ -70,7 +70,7 @@ export interface AdminResolvedConfig {
   claude?: { enabled?: boolean };
   defaultProvider?: 'copilot' | 'codex' | 'claude';
   mcpOauth?: { enabled?: boolean };
-  workItems?: { hierarchy?: { enabled?: boolean } };
+  workItems?: { hierarchy?: { enabled?: boolean }; sync?: { enabled?: boolean }; aiAuthoring?: { enabled?: boolean } };
   effortLevels?: { enabled?: boolean };
   [key: string]: unknown;
 }
@@ -127,6 +127,8 @@ export interface AdminConfigUpdate {
   'claude.enabled'?: boolean;
   defaultProvider?: 'copilot' | 'codex' | 'claude';
   'workItems.hierarchy.enabled'?: boolean;
+  'workItems.sync.enabled'?: boolean;
+  'workItems.aiAuthoring.enabled'?: boolean;
   'effortLevels.enabled'?: boolean;
   [key: string]: unknown;
 }
@@ -160,6 +162,7 @@ export interface RuntimeDashboardConfig {
     claudeEnabled: boolean;
     defaultProvider: 'copilot' | 'codex' | 'claude';
     workItemsHierarchyEnabled: boolean;
+    workItemsSyncEnabled: boolean;
     workItemsAiAuthoringEnabled: boolean;
     gitCommitLookupEnabled: boolean;
     effortLevelsEnabled: boolean;

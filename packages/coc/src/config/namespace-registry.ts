@@ -82,6 +82,7 @@ const CODEX_SOURCE_KEYS = ['codex.enabled'] as const;
 const CLAUDE_SOURCE_KEYS = ['claude.enabled'] as const;
 const FEATURES_SOURCE_KEYS = ['features.autoMemoryPromotion', 'features.focusedDiff'] as const;
 const WORK_ITEMS_HIERARCHY_SOURCE_KEYS = ['workItems.hierarchy.enabled'] as const;
+const WORK_ITEMS_SYNC_SOURCE_KEYS = ['workItems.sync.enabled'] as const;
 const WORK_ITEMS_AI_AUTHORING_SOURCE_KEYS = ['workItems.aiAuthoring.enabled'] as const;
 const EFFORT_LEVELS_SOURCE_KEYS = ['effortLevels.enabled'] as const;
 
@@ -122,6 +123,7 @@ export const CONFIG_NAMESPACE_SOURCE_KEYS = [
     ...MEMORY_PROMOTION_SOURCE_KEYS,
     ...MEMORY_PROMOTION_AI_NORMALIZATION_SOURCE_KEYS,
     ...WORK_ITEMS_HIERARCHY_SOURCE_KEYS,
+    ...WORK_ITEMS_SYNC_SOURCE_KEYS,
     ...WORK_ITEMS_AI_AUTHORING_SOURCE_KEYS,
     ...EFFORT_LEVELS_SOURCE_KEYS,
 ] as const;
@@ -381,12 +383,16 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
             name: 'workItems',
             sourceDescriptors: [
                 source('workItems.hierarchy.', ['workItems', 'hierarchy'], WORK_ITEMS_HIERARCHY_SOURCE_KEYS),
+                source('workItems.sync.', ['workItems', 'sync'], WORK_ITEMS_SYNC_SOURCE_KEYS),
                 source('workItems.aiAuthoring.', ['workItems', 'aiAuthoring'], WORK_ITEMS_AI_AUTHORING_SOURCE_KEYS),
             ],
             merge: (base, override) => ({
                 workItems: {
                     hierarchy: {
                         enabled: override?.workItems?.hierarchy?.enabled ?? base.workItems?.hierarchy?.enabled ?? false,
+                    },
+                    sync: {
+                        enabled: override?.workItems?.sync?.enabled ?? base.workItems?.sync?.enabled ?? false,
                     },
                     aiAuthoring: {
                         enabled: override?.workItems?.aiAuthoring?.enabled ?? base.workItems?.aiAuthoring?.enabled ?? false,

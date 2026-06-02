@@ -188,7 +188,7 @@ The top-level `#memory` route is embedded in the Admin shell's Knowledge group a
 
 ## Feature Flags
 
-`featureFlags.ts` defines compile-time flags (e.g., `SHOW_WELCOME_TUTORIAL`). Features gated by flags are disabled by default.
+`featureFlags.ts` defines compile-time flags (e.g., `SHOW_WELCOME_TUTORIAL`). Runtime feature flags are exposed through `GET /api/config/runtime` and SPA helpers in `utils/config.ts`; `workItems.sync.enabled` only reports usable sync UI when both it and `workItems.hierarchy.enabled` are true. Features gated by flags are disabled by default.
 
 ## coc-client Integration
 

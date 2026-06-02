@@ -184,6 +184,19 @@ const ActivityFiltersSchema = z.object({
     typeFilter: z.string().optional().catch(undefined),
 }).strip().transform(dropIfEmpty);
 
+const WorkItemsSyncGithubSchema = z.object({
+    owner: z.string().trim().min(1).max(100).optional().catch(undefined),
+    repo: z.string().trim().min(1).max(100).optional().catch(undefined),
+}).strip().transform(dropIfEmpty);
+
+const WorkItemsSyncSchema = z.object({
+    github: WorkItemsSyncGithubSchema.optional().catch(undefined),
+}).strip().transform(dropIfEmpty);
+
+const WorkItemsPreferencesSchema = z.object({
+    sync: WorkItemsSyncSchema.optional().catch(undefined),
+}).strip().transform(dropIfEmpty);
+
 const SyncSchema = z.object({
     gitRemote: z.string().optional().catch(undefined),
     intervalMinutes: z.number().int().min(1).optional().catch(undefined),
@@ -269,6 +282,7 @@ export const PerRepoPreferencesSchema = z.object({
         })
         .optional(),
     sync: SyncSchema.optional(),
+    workItems: WorkItemsPreferencesSchema.optional(),
     enabledMcpTools: EnabledMcpToolsSchema.optional(),
 }).strip();
 

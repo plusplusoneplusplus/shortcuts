@@ -61,6 +61,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.terminal).toEqual({ enabled: true });
             expect(DEFAULT_CONFIG.scratchpad).toEqual({ enabled: true, layout: 'vertical' });
             expect(DEFAULT_CONFIG.workflows).toEqual({ enabled: false });
+            expect(DEFAULT_CONFIG.workItems.sync.enabled).toBe(false);
         });
 
         it('should default terminal feature to enabled', () => {
@@ -859,6 +860,8 @@ timeout: 300
                 '    enabled: true',
                 '  hierarchy:',
                 '    enabled: true',
+                '  sync:',
+                '    enabled: true',
                 'effortLevels:',
                 '  enabled: true',
             ].join('\n'));
@@ -1112,6 +1115,9 @@ timeout: 300
                     "hierarchy": {
                       "enabled": false,
                     },
+                    "sync": {
+                      "enabled": false,
+                    },
                   },
                   "workflows": {
                     "enabled": true,
@@ -1167,6 +1173,7 @@ timeout: 300
                   "vimNavigation.enabled": "file",
                   "workItems.aiAuthoring.enabled": "default",
                   "workItems.hierarchy.enabled": "default",
+                  "workItems.sync.enabled": "default",
                   "workflows.enabled": "file",
                 },
               }
