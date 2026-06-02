@@ -4,11 +4,11 @@
 #
 # Linux/WSL counterpart of config-devtunnel.ps1. Ensures the devtunnel CLI is
 # available, creates or reuses the stable CoC tunnel ID, and owns the persistent
-# TunnelId -> HTTP port binding. It does NOT host the tunnel; once configured,
-# host it and start the server with:
+# TunnelId -> HTTP port binding. It does NOT host the tunnel; use
+# coc-serve-loop.sh --tunnel-id <id> to read the configured binding and start
+# devtunnel host together with the server:
 #
-#   devtunnel host <tunnel-id> &
-#   ./scripts/coc-serve-loop.sh --port <port>
+#   ./scripts/coc-serve-loop.sh --tunnel-id <tunnel-id>
 #
 # Usage:
 #   ./scripts/config-devtunnel.sh
