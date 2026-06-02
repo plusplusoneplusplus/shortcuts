@@ -37,7 +37,7 @@ import {
 import { getHostname } from '../utils/config';
 import { extractFileStatsFromDiff } from '../features/git/diff/diffSource';
 import { useClassification } from '../features/git/diff/useClassification';
-import type { ChatProvider } from '../features/git/diff/useClassification';
+import { useModalJobAiSelection, ModalJobAiControls } from '../shared/ModalJobAiControls';
 import { usePrReviewProgress } from '../features/git/diff/usePrReviewProgress';
 import { pickPriorityFile } from '../features/git/diff/prPopoutPriority';
 import type { ClassificationKey } from '../features/git/diff/diffSource';
@@ -49,8 +49,6 @@ import type { BranchRangeInfo } from '../features/git/branches/BranchChanges';
 import type { BranchRangeFile } from '../features/git/branches/BranchAllFilesDiff';
 import type { FileChange } from '../features/git/diff/FileTree';
 import type { GitBranchRangeResponse } from '@plusplusoneplusplus/coc-client';
-import { useAgentProviders } from '../hooks/useAgentProviders';
-import { useModels } from '../hooks/useModels';
 
 // ── URL parsing ────────────────────────────────────────────────────────────────
 
@@ -108,16 +106,11 @@ function CommitReviewContent({ workspaceId, commitHash }: { workspaceId: string;
         () => ({ type: 'commit', repoId: workspaceId, identifier: commitHash }),
         [workspaceId, commitHash],
     );
-    const classification = useClassification(classificationKey, { workspaceId });
+    const aiSelection = useModalJobAiSelection({ workspaceId, mode: 'ask' });
+    const classification = useClassification(classificationKey, aiSelection.resolved, { workspaceId });
 
     // Review progress — session-local only (no server persistence for commits)
     const reviewProgress = usePrReviewProgress(commitHash);
-
-    // Provider/model selectors for classification
-    const { providers: agentProviders } = useAgentProviders();
-    const { models: agentModels } = useModels(classification.provider);
-    const selectableProviders = agentProviders.filter(p => p.enabled && p.available);
-    const enabledModels = agentModels.filter(m => m.enabled);
 
     const handleFileSelect = useCallback((filePath: string) => {
         setHunkTarget(undefined);
@@ -247,41 +240,16 @@ function CommitReviewContent({ workspaceId, commitHash }: { workspaceId: string;
     }
 
     const classifyStatus = classification.state.status;
-    const classifySelectClass = classifyStatus === 'loading'
-        ? 'h-6 rounded border border-gray-200 bg-gray-50 px-1.5 text-[11px] text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500 cursor-not-allowed'
-        : 'h-6 rounded border border-gray-300 bg-white px-1.5 text-[11px] text-gray-700 hover:border-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200';
 
     return (
         <div className="flex flex-col flex-1 min-h-0">
             {/* Classification toolbar — mirrors PR layout */}
             <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#2a2a2a]" data-testid="commit-popout-classify-bar">
-                {selectableProviders.length > 1 && (
-                    <select
-                        value={classification.provider}
-                        onChange={e => classification.setProvider(e.target.value as ChatProvider)}
-                        disabled={classifyStatus === 'loading'}
-                        className={classifySelectClass}
-                        aria-label="AI provider"
-                        data-testid="commit-popout-classify-provider"
-                    >
-                        {selectableProviders.map(p => (
-                            <option key={p.id} value={p.id}>{p.label}</option>
-                        ))}
-                    </select>
-                )}
-                <select
-                    value={classification.model ?? ''}
-                    onChange={e => classification.setModel(e.target.value || undefined)}
+                <ModalJobAiControls
+                    selection={aiSelection}
                     disabled={classifyStatus === 'loading'}
-                    className={classifySelectClass}
-                    aria-label="AI model"
-                    data-testid="commit-popout-classify-model"
-                >
-                    <option value="">Default</option>
-                    {enabledModels.map(m => (
-                        <option key={m.id} value={m.id}>{m.name ?? m.id}</option>
-                    ))}
-                </select>
+                    testIdPrefix="commit-popout-classify"
+                />
                 <button
                     type="button"
                     onClick={classification.classify}
@@ -562,16 +530,11 @@ function PrReviewContent({ workspaceId, repoId, prId, onTitleLoaded }: { workspa
     // Classification hook for PR diff
     const classificationKey: ClassificationKey | undefined =
         headSha ? { type: 'pr', repoId, identifier: `${prId}:${headSha}` } : undefined;
-    const classification = useClassification(classificationKey, { workspaceId });
+    const aiSelection = useModalJobAiSelection({ workspaceId, mode: 'ask' });
+    const classification = useClassification(classificationKey, aiSelection.resolved, { workspaceId });
     const reviewProgress = usePrReviewProgress(headSha, {
         persistence: { workspaceId, repoId, prId },
     });
-
-    // Provider/model selectors for classification
-    const { providers: agentProviders } = useAgentProviders();
-    const { models: agentModels } = useModels(classification.provider);
-    const selectableProviders = agentProviders.filter(p => p.enabled && p.available);
-    const enabledModels = agentModels.filter(m => m.enabled);
 
     const handleFileSelect = useCallback((filePath: string) => {
         setHunkTarget(undefined);
@@ -692,43 +655,16 @@ function PrReviewContent({ workspaceId, repoId, prId, onTitleLoaded }: { workspa
     }
 
     const classifyStatus = classification.state.status;
-    const classifySelectClass = classifyStatus === 'loading'
-        ? 'h-6 rounded border border-gray-200 bg-gray-50 px-1.5 text-[11px] text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500 cursor-not-allowed'
-        : 'h-6 rounded border border-gray-300 bg-white px-1.5 text-[11px] text-gray-700 hover:border-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200';
 
     return (
         <div className="flex flex-col flex-1 min-h-0">
             {/* Classification toolbar */}
             <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#2a2a2a]" data-testid="pr-popout-classify-bar">
-                {/* Provider selector — only show when multiple providers are available */}
-                {selectableProviders.length > 1 && (
-                    <select
-                        value={classification.provider}
-                        onChange={e => classification.setProvider(e.target.value as ChatProvider)}
-                        disabled={classifyStatus === 'loading'}
-                        className={classifySelectClass}
-                        aria-label="AI provider"
-                        data-testid="pr-popout-classify-provider"
-                    >
-                        {selectableProviders.map(p => (
-                            <option key={p.id} value={p.id}>{p.label}</option>
-                        ))}
-                    </select>
-                )}
-                {/* Model selector */}
-                <select
-                    value={classification.model ?? ''}
-                    onChange={e => classification.setModel(e.target.value || undefined)}
+                <ModalJobAiControls
+                    selection={aiSelection}
                     disabled={classifyStatus === 'loading'}
-                    className={classifySelectClass}
-                    aria-label="AI model"
-                    data-testid="pr-popout-classify-model"
-                >
-                    <option value="">Default</option>
-                    {enabledModels.map(m => (
-                        <option key={m.id} value={m.id}>{m.name ?? m.id}</option>
-                    ))}
-                </select>
+                    testIdPrefix="pr-popout-classify"
+                />
                 <button
                     type="button"
                     onClick={classification.classify}

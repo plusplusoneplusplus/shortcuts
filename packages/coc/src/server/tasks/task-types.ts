@@ -329,6 +329,8 @@ export interface PrClassificationPayload {
     skills?: string[];
     /** AI provider to use (optional; falls back to server default). */
     provider?: ChatProvider;
+    /** Reasoning effort override for models that support it. */
+    reasoningEffort?: ReasoningEffort;
 }
 
 // ============================================================================
