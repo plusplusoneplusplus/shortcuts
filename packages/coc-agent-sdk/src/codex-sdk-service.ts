@@ -17,7 +17,7 @@
  * The module is loaded lazily with a try/catch so forge works fine without it.
  */
 
-import type { SendMessageOptions } from './types';
+import type { SendMessageOptions, TokenUsage } from './types';
 import type { ToolEvent } from './types';
 import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult } from './sdk-service-interface';
 import type { IAccountQuotaResult, IAccountQuotaSnapshot } from './copilot-sdk-service';
@@ -118,6 +118,18 @@ interface CodexTurnFailedEvent {
     error?: { message?: string };
 }
 
+interface CodexUsage {
+    input_tokens?: number;
+    cached_input_tokens?: number;
+    output_tokens?: number;
+    reasoning_output_tokens?: number;
+}
+
+interface CodexTurnCompletedEvent {
+    type: 'turn.completed';
+    usage?: CodexUsage;
+}
+
 interface CodexErrorEvent {
     type: 'error';
     message?: string;
@@ -143,7 +155,7 @@ interface CodexItemEvent {
     };
 }
 
-type CodexThreadEvent = CodexThreadStartedEvent | CodexTurnFailedEvent | CodexErrorEvent | CodexItemEvent;
+type CodexThreadEvent = CodexThreadStartedEvent | CodexTurnCompletedEvent | CodexTurnFailedEvent | CodexErrorEvent | CodexItemEvent;
 
 interface CodexClient {
     startThread(options?: CodexStartThreadOptions): CodexThread;
@@ -613,11 +625,16 @@ export class CodexSDKService implements ISDKService {
             if (thread.id) notifySessionCreated(thread.id);
 
             const chunks: string[] = [];
+            let tokenUsage: TokenUsage | undefined;
             const streamed = await thread.runStreamed(this.buildCodexInput(options), { signal: abortController.signal });
 
             for await (const event of streamed.events) {
                 if (event.type === 'thread.started') {
                     notifySessionCreated(event.thread_id);
+                    continue;
+                }
+                if (event.type === 'turn.completed') {
+                    tokenUsage = addCodexUsage(tokenUsage, event.usage);
                     continue;
                 }
                 if (event.type === 'turn.failed') {
@@ -650,6 +667,7 @@ export class CodexSDKService implements ISDKService {
                 success: true,
                 response: chunks.join(''),
                 sessionId: threadId,
+                ...(tokenUsage ? { tokenUsage } : {}),
                 ...(toolCalls.size > 0 ? { toolCalls: Array.from(toolCalls.values()) } : {}),
             } as IInvocationResult;
         } catch (err) {
@@ -973,8 +991,35 @@ export class CodexSDKService implements ISDKService {
 }
 
 // ============================================================================
-// Exported mapping helper (testable without spawning a process)
+// Mapping helpers (testable without spawning a process)
 // ============================================================================
+
+function emptyCodexTokenUsage(): TokenUsage {
+    return {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        totalTokens: 0,
+        turnCount: 0,
+    };
+}
+
+function codexUsageNumber(value: number | undefined): number {
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function addCodexUsage(current: TokenUsage | undefined, usage: CodexUsage | undefined): TokenUsage | undefined {
+    if (!usage) return current;
+
+    const result = current ? { ...current } : emptyCodexTokenUsage();
+    result.inputTokens += codexUsageNumber(usage.input_tokens);
+    result.outputTokens += codexUsageNumber(usage.output_tokens);
+    result.cacheReadTokens += codexUsageNumber(usage.cached_input_tokens);
+    result.totalTokens = result.inputTokens + result.outputTokens;
+    result.turnCount += 1;
+    return result;
+}
 
 /** Map a Codex rate limits RPC response to the IAccountQuotaResult format. */
 export function mapCodexRateLimitsToQuota(result: CodexRateLimitsResult): IAccountQuotaResult {

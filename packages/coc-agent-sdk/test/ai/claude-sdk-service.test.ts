@@ -61,13 +61,23 @@ function makeQueryHandle(
     messages: object[],
     accountInfoFn?: () => Promise<object>,
     supportedModelsFn?: () => Promise<object[]>,
+    contextUsageFn?: () => Promise<object>,
 ) {
     const handle = {
         [Symbol.asyncIterator]() { return makeMessages(messages)[Symbol.asyncIterator](); },
         accountInfo: accountInfoFn ?? vi.fn<[], Promise<object>>().mockResolvedValue({}),
         supportedModels: supportedModelsFn ?? vi.fn<[], Promise<object[]>>().mockResolvedValue([]),
         return: vi.fn(async (value?: unknown) => ({ done: true as const, value })),
+    } as {
+        [Symbol.asyncIterator](): AsyncIterator<object>;
+        accountInfo: () => Promise<object>;
+        supportedModels: () => Promise<object[]>;
+        getContextUsage?: () => Promise<object>;
+        return: (value?: unknown) => Promise<{ done: true; value: unknown }>;
     };
+    if (contextUsageFn) {
+        handle.getContextUsage = contextUsageFn;
+    }
     return handle;
 }
 
@@ -490,6 +500,154 @@ describe('ClaudeSDKService.sendMessage', () => {
         expect(result.success).toBe(true);
         expect(chunks).toEqual(['Hello', ' world']);
         expect(result.response).toBe('Hello world');
+    });
+
+    it('maps Claude result usage into the shared TokenUsage shape', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'assistant',
+                message: { content: [{ type: 'text', text: 'Hello' }] },
+            },
+            {
+                type: 'result',
+                subtype: 'success',
+                result: 'Hello',
+                total_cost_usd: 0.0123,
+                duration_ms: 1400,
+                num_turns: 2,
+                usage: {
+                    input_tokens: 100,
+                    output_tokens: 35,
+                    cache_creation_input_tokens: 12,
+                    cache_read_input_tokens: 50,
+                },
+            },
+        ]));
+
+        const result = await svc.sendMessage({ prompt: 'say hello' });
+
+        expect(result.success).toBe(true);
+        expect(result.tokenUsage).toEqual({
+            inputTokens: 100,
+            outputTokens: 35,
+            cacheReadTokens: 50,
+            cacheWriteTokens: 12,
+            totalTokens: 135,
+            cost: 0.0123,
+            duration: 1400,
+            turnCount: 2,
+        });
+    });
+
+    it('enriches Claude token usage with context window breakdown when available', async () => {
+        queryFn.mockReturnValueOnce(makeQueryHandle([
+            {
+                type: 'result',
+                subtype: 'success',
+                result: 'done',
+                usage: {
+                    input_tokens: 10,
+                    output_tokens: 5,
+                    cache_creation_input_tokens: 2,
+                    cache_read_input_tokens: 3,
+                },
+            },
+        ], undefined, undefined, async () => ({
+            totalTokens: 2400,
+            maxTokens: 200000,
+            systemPromptSections: [
+                { name: 'core', tokens: 100 },
+                { name: 'policy', tokens: 25 },
+            ],
+            systemTools: [{ name: 'Read', tokens: 40 }],
+            mcpTools: [{ name: 'ask_user', tokens: 30 }],
+            deferredBuiltinTools: [{ name: 'Bash', tokens: 5 }],
+            messageBreakdown: {
+                toolCallTokens: 11,
+                toolResultTokens: 12,
+                attachmentTokens: 13,
+                assistantMessageTokens: 14,
+                userMessageTokens: 15,
+                redirectedContextTokens: 16,
+                unattributedTokens: 17,
+            },
+        })));
+
+        const result = await svc.sendMessage({ prompt: 'test' });
+
+        expect(result.success).toBe(true);
+        expect(result.tokenUsage).toEqual({
+            inputTokens: 10,
+            outputTokens: 5,
+            cacheReadTokens: 3,
+            cacheWriteTokens: 2,
+            totalTokens: 15,
+            turnCount: 1,
+            tokenLimit: 200000,
+            currentTokens: 2400,
+            systemTokens: 125,
+            toolDefinitionsTokens: 75,
+            conversationTokens: 98,
+        });
+    });
+
+    it('uses Claude context apiUsage when the result event omits usage totals', async () => {
+        queryFn.mockReturnValueOnce(makeQueryHandle([
+            { type: 'result', subtype: 'success', result: 'done' },
+        ], undefined, undefined, async () => ({
+            totalTokens: 300,
+            maxTokens: 1000,
+            apiUsage: {
+                input_tokens: 20,
+                output_tokens: 10,
+                cache_creation_input_tokens: 4,
+                cache_read_input_tokens: 6,
+            },
+        })));
+
+        const result = await svc.sendMessage({ prompt: 'test' });
+
+        expect(result.success).toBe(true);
+        expect(result.tokenUsage).toEqual({
+            inputTokens: 20,
+            outputTokens: 10,
+            cacheReadTokens: 6,
+            cacheWriteTokens: 4,
+            totalTokens: 30,
+            turnCount: 1,
+            tokenLimit: 1000,
+            currentTokens: 300,
+        });
+    });
+
+    it('keeps Claude result usage when context usage lookup fails', async () => {
+        queryFn.mockReturnValueOnce(makeQueryHandle([
+            {
+                type: 'result',
+                subtype: 'success',
+                result: 'done',
+                usage: {
+                    input_tokens: 5,
+                    output_tokens: 7,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 0,
+                },
+            },
+        ], undefined, undefined, async () => {
+            throw new Error('context unavailable');
+        }));
+
+        const result = await svc.sendMessage({ prompt: 'test' });
+
+        expect(result.success).toBe(true);
+        expect(result.tokenUsage).toEqual({
+            inputTokens: 5,
+            outputTokens: 7,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            totalTokens: 12,
+            turnCount: 1,
+        });
     });
 
     it('emits tool-start for tool_use blocks without fabricating argument JSON as the result', async () => {
