@@ -111,9 +111,9 @@ The dashboard and client package use these server routes:
 | `PATCH /api/servers/:id` | Edit a remote server; old unused tunnel connections are disconnected |
 | `DELETE /api/servers/:id` | Remove a remote server; unused tunnel connections are disconnected |
 | `POST /api/servers/test` | Test a direct URL or DevTunnel input before saving |
-| `POST /api/servers/:id/connect` | Connect a DevTunnel server |
-| `POST /api/servers/:id/disconnect` | Disconnect a DevTunnel server |
-| `POST /api/servers/:id/reconnect` | Kill and recreate the managed `devtunnel connect` process |
+| `POST /api/servers/:id/connect` | Connect a DevTunnel or SSH server |
+| `POST /api/servers/:id/disconnect` | Disconnect a DevTunnel or SSH server |
+| `POST /api/servers/:id/reconnect` | Kill and recreate the managed `devtunnel connect` or `ssh -N` process |
 | `GET /api/servers/:id/health` | Connect if needed, then probe health |
 | `GET /api/servers/:id/connection` | Return current runtime connection state |
 
@@ -121,14 +121,14 @@ Direct URL servers do not support connect, disconnect, or reconnect because they
 
 ## Reconnect behavior
 
-Reconnect is available from the Servers UI for DevTunnel entries. It:
+Reconnect is available from the Servers UI for DevTunnel and SSH entries. It:
 
 1. Marks the existing managed child process as intentionally stopped.
-2. Kills the old `devtunnel connect` process if one exists.
+2. Kills the old `devtunnel connect` / `ssh -N` process if one exists.
 3. Clears any in-flight connection attempt.
-4. Re-runs the full connection flow: port list, process start, and health polling.
+4. Re-runs the full connection flow: process start and health polling (plus port list for DevTunnel).
 
-Use reconnect when the DevTunnel CLI process is stale, the local listener stopped responding, or the public tunnel endpoint changed.
+Use reconnect when the managed CLI/`ssh` process is stale, the local listener stopped responding, or the public tunnel endpoint changed. SSH connections also auto-reconnect with exponential backoff when the `ssh` process exits unexpectedly.
 
 ## Common failure modes
 

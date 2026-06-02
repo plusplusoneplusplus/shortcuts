@@ -10,6 +10,7 @@ const registryMocks = vi.hoisted(() => ({
     updateRemoteServer: vi.fn(),
     removeRemoteServer: vi.fn(),
     testRemoteServer: vi.fn(),
+    reconnectServer: vi.fn(),
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/utils/serverRegistry', async (importOriginal) => {
@@ -21,6 +22,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/serverRegistry', async
         updateRemoteServer: registryMocks.updateRemoteServer,
         removeRemoteServer: registryMocks.removeRemoteServer,
         testRemoteServer: registryMocks.testRemoteServer,
+        reconnectServer: registryMocks.reconnectServer,
     };
 });
 
@@ -75,12 +77,23 @@ const TUNNEL_REMOTE: RemoteServer = {
     updatedAt: 2,
 };
 
+const SSH_REMOTE: RemoteServer = {
+    id: 'c',
+    kind: 'ssh',
+    label: 'ubuntu-arm',
+    host: 'ubuntu-arm',
+    localPort: 4000,
+    addedAt: 3,
+    updatedAt: 3,
+};
+
 beforeEach(() => {
     registryMocks.listRemoteServers.mockResolvedValue([]);
     registryMocks.addRemoteServer.mockResolvedValue(URL_REMOTE);
     registryMocks.updateRemoteServer.mockResolvedValue(URL_REMOTE);
     registryMocks.removeRemoteServer.mockResolvedValue(undefined);
     registryMocks.testRemoteServer.mockResolvedValue({ serverId: 'test', kind: 'url', status: 'online', lastChecked: 1 });
+    registryMocks.reconnectServer.mockResolvedValue({ serverId: 'c', kind: 'ssh', status: 'online' });
     const fetchMock = vi.fn().mockImplementation((url: string) => {
         if (url.endsWith('/health') || url.endsWith('/api/health')) {
             return Promise.resolve(jsonResponse({ uptime: 100, processCount: 2 }));
@@ -116,9 +129,19 @@ afterEach(() => {
     vi.mocked(useRemoteServerHealth).mockReset().mockImplementation(defaultHealthImpl);
 });
 
+function switchToGrid() {
+    fireEvent.click(screen.getByTitle('grid'));
+}
+
 describe('ServersView', () => {
+    it('defaults to split view', () => {
+        render(<ServersView />);
+        expect(screen.getByRole('heading', { name: 'This Server' })).toBeTruthy();
+    });
+
     it('always renders the local "This Server" card first', async () => {
         render(<ServersView />);
+        switchToGrid();
         const cards = screen.getAllByTestId('server-card');
         expect(cards[0].textContent).toContain('This Server');
         await waitFor(() => expect(registryMocks.listRemoteServers).toHaveBeenCalled());
@@ -128,6 +151,7 @@ describe('ServersView', () => {
         registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE, TUNNEL_REMOTE]);
 
         render(<ServersView />);
+        switchToGrid();
         await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(3));
         const cards = screen.getAllByTestId('server-card');
         expect(cards[0].textContent).toContain('This Server');
@@ -138,6 +162,7 @@ describe('ServersView', () => {
 
     it('clicking "+ Add Server" opens the AddServerDialog', () => {
         render(<ServersView />);
+        switchToGrid();
         expect(screen.queryByTestId('add-server-url-input')).toBeNull();
         fireEvent.click(screen.getByTestId('servers-view-add-btn'));
         expect(screen.getByTestId('add-server-url-input')).toBeTruthy();
@@ -149,6 +174,7 @@ describe('ServersView', () => {
             .mockResolvedValueOnce([{ ...URL_REMOTE, id: 'new', label: 'New Box', url: 'https://new.example.com' }]);
 
         render(<ServersView />);
+        switchToGrid();
         fireEvent.click(screen.getByTestId('servers-view-add-btn'));
         fireEvent.change(screen.getByTestId('add-server-url-input'), {
             target: { value: 'https://new.example.com' },
@@ -175,6 +201,7 @@ describe('ServersView', () => {
             .mockResolvedValueOnce([]);
 
         render(<ServersView />);
+        switchToGrid();
         await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(2));
 
         fireEvent.click(screen.getByTestId('server-card-menu-btn'));
@@ -186,10 +213,27 @@ describe('ServersView', () => {
         await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(1));
     });
 
+    it('clicking Reconnect on an SSH server calls backend reconnect and refreshes', async () => {
+        registryMocks.listRemoteServers.mockResolvedValue([SSH_REMOTE]);
+
+        render(<ServersView />);
+        switchToGrid();
+        await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(2));
+
+        fireEvent.click(screen.getByTestId('server-card-menu-btn'));
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('server-card-menu-reconnect'));
+        });
+
+        expect(registryMocks.reconnectServer).toHaveBeenCalledWith('c');
+        await waitFor(() => expect(registryMocks.listRemoteServers).toHaveBeenCalledTimes(2));
+    });
+
     it('clicking Edit server opens a prefilled edit dialog for a Direct URL server', async () => {
         registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE]);
 
         render(<ServersView />);
+        switchToGrid();
         await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(2));
 
         fireEvent.click(screen.getByTestId('server-card-menu-btn'));
@@ -208,6 +252,7 @@ describe('ServersView', () => {
             .mockResolvedValueOnce([{ ...URL_REMOTE, label: 'Box A Edited', url: 'https://edited.example.com' }]);
 
         render(<ServersView />);
+        switchToGrid();
         await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(2));
 
         fireEvent.click(screen.getByTestId('server-card-menu-btn'));
@@ -238,6 +283,7 @@ describe('ServersView', () => {
             .mockResolvedValueOnce([{ ...TUNNEL_REMOTE, label: 'Box C', tunnelId: 'box-c' }]);
 
         render(<ServersView />);
+        switchToGrid();
         await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(2));
 
         fireEvent.click(screen.getByTestId('server-card-menu-btn'));
@@ -268,6 +314,7 @@ describe('ServersView', () => {
 
     it('local card displays "Current — You\'re here" and no menu button', () => {
         render(<ServersView />);
+        switchToGrid();
         const cards = screen.getAllByTestId('server-card');
         expect(cards[0].textContent).toContain('Current');
         expect(cards[0].querySelector('[data-testid="server-card-menu-btn"]')).toBeNull();
@@ -275,6 +322,7 @@ describe('ServersView', () => {
 
     it('local card transitions to online after polling', async () => {
         render(<ServersView />);
+        switchToGrid();
         const localCard = screen.getAllByTestId('server-card')[0];
         await waitFor(() => {
             const dot = localCard.querySelector('[data-testid="server-status-dot"]');
@@ -286,6 +334,7 @@ describe('ServersView', () => {
         vi.unstubAllGlobals();
         vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('boom')));
         render(<ServersView />);
+        switchToGrid();
         const localCard = screen.getAllByTestId('server-card')[0];
         await waitFor(() => {
             const dot = localCard.querySelector('[data-testid="server-status-dot"]');
@@ -296,6 +345,7 @@ describe('ServersView', () => {
     it('clears the local poll interval on unmount', async () => {
         const clearSpy = vi.spyOn(global, 'clearInterval');
         const { unmount } = render(<ServersView />);
+        switchToGrid();
         await waitFor(() => {
             const localCard = screen.getAllByTestId('server-card')[0];
             const dot = localCard.querySelector('[data-testid="server-status-dot"]');
@@ -320,6 +370,7 @@ describe('ServersView', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const { unmount } = render(<ServersView />);
+        switchToGrid();
         try {
             await act(async () => { await vi.advanceTimersByTimeAsync(0); });
             const callsAfterFirstPoll = fetchMock.mock.calls.length;
@@ -332,18 +383,20 @@ describe('ServersView', () => {
 
     // ── New UI features ──
 
-    it('summary strip renders the four KPI labels', () => {
+    it('summary strip renders the five KPI labels', () => {
         render(<ServersView />);
         const strip = screen.getByTestId('summary-strip');
         expect(strip.textContent).toContain('Online');
         expect(strip.textContent).toContain('Offline');
         expect(strip.textContent).toContain('Active tasks');
         expect(strip.textContent).toContain('DevTunnels');
+        expect(strip.textContent).toContain('SSH tunnels');
     });
 
     it('filter "URL" shows only URL-kind servers', async () => {
         registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE, TUNNEL_REMOTE]);
         render(<ServersView />);
+        switchToGrid();
         await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(3));
 
         fireEvent.click(screen.getByRole('button', { name: 'URL' }));
@@ -354,6 +407,7 @@ describe('ServersView', () => {
     it('filter "Tunnel" shows only DevTunnel servers', async () => {
         registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE, TUNNEL_REMOTE]);
         render(<ServersView />);
+        switchToGrid();
         await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(3));
 
         fireEvent.click(screen.getByRole('button', { name: 'Tunnel' }));
@@ -364,6 +418,7 @@ describe('ServersView', () => {
     it('filter "Local" shows only the local server', async () => {
         registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE, TUNNEL_REMOTE]);
         render(<ServersView />);
+        switchToGrid();
         await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(3));
 
         fireEvent.click(screen.getByRole('button', { name: 'Local' }));
@@ -374,6 +429,7 @@ describe('ServersView', () => {
     it('filter "All" restores the full list after narrowing', async () => {
         registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE, TUNNEL_REMOTE]);
         render(<ServersView />);
+        switchToGrid();
         await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(3));
 
         fireEvent.click(screen.getByRole('button', { name: 'URL' }));
@@ -398,12 +454,10 @@ describe('ServersView', () => {
         );
         registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE]);
         render(<ServersView />);
-        // Wait for remote to appear (local is separate and stays 'checking' until poll resolves)
+        switchToGrid();
         await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(2));
 
-        // Click "Offline" — accessible name includes count badge, so use regex
         fireEvent.click(screen.getByRole('button', { name: /^Offline/ }));
-        // URL_REMOTE is 'offline'; local is 'checking' (its own health poll, not yet online)
         expect(screen.getAllByTestId('server-card')).toHaveLength(1);
         expect(screen.getAllByTestId('server-card')[0].textContent).toContain('Box A');
     });
@@ -411,6 +465,7 @@ describe('ServersView', () => {
     it('search by label narrows the displayed server cards', async () => {
         registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE, TUNNEL_REMOTE]);
         render(<ServersView />);
+        switchToGrid();
         await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(3));
 
         fireEvent.change(screen.getByPlaceholderText('Search…'), { target: { value: 'Box A' } });
@@ -421,6 +476,7 @@ describe('ServersView', () => {
     it('clearing search text restores the full server list', async () => {
         registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE, TUNNEL_REMOTE]);
         render(<ServersView />);
+        switchToGrid();
         await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(3));
 
         const input = screen.getByPlaceholderText('Search…');
@@ -434,6 +490,7 @@ describe('ServersView', () => {
     it('switching to list view renders server labels without server-card wrappers', async () => {
         registryMocks.listRemoteServers.mockResolvedValue([URL_REMOTE]);
         render(<ServersView />);
+        switchToGrid();
         await waitFor(() => expect(screen.getAllByTestId('server-card')).toHaveLength(2));
 
         fireEvent.click(screen.getByTitle('list'));
@@ -442,11 +499,19 @@ describe('ServersView', () => {
         expect(screen.getByText('Box A')).toBeTruthy();
     });
 
-    it('switching to split view shows a detail panel heading for the auto-selected server', () => {
+    it('switching to grid from default split shows server cards', () => {
         render(<ServersView />);
-        fireEvent.click(screen.getByTitle('split'));
-        // Local server is auto-selected; DetailPanel renders its label as an <h2>
         expect(screen.getByRole('heading', { name: 'This Server' })).toBeTruthy();
+        switchToGrid();
+        expect(screen.queryAllByTestId('server-card').length).toBeGreaterThan(0);
+    });
+
+    it('summary strip shows SSH tunnel count when SSH servers are registered', async () => {
+        registryMocks.listRemoteServers.mockResolvedValue([SSH_REMOTE]);
+        render(<ServersView />);
+        await waitFor(() => expect(registryMocks.listRemoteServers).toHaveBeenCalled());
+        const strip = screen.getByTestId('summary-strip');
+        expect(strip.textContent).toContain('SSH tunnels');
     });
 
     it('shows a load-error banner when listRemoteServers rejects', async () => {

@@ -19,7 +19,7 @@ import { AddServerDialog, EditServerDialog } from './AddServerDialog';
 
 type ViewMode = 'grid' | 'split' | 'list';
 type FilterMode = 'all' | 'online' | 'offline' | 'local' | 'url' | 'devtunnel';
-type ServerKind = 'local' | 'url' | 'devtunnel';
+type ServerKind = 'local' | 'url' | 'devtunnel' | 'ssh';
 
 interface UnifiedHealth extends ServerCardHealth {
     isLocal: boolean;
@@ -35,6 +35,10 @@ function inputToPatch(input: RemoteServerInput): RemoteServerPatch {
     return input.kind === 'url'
         ? { kind: 'url', label: input.label, url: input.url }
         : { kind: 'devtunnel', label: input.label, tunnelId: input.tunnelId };
+}
+
+function supportsReconnect(kind: ServerKind): boolean {
+    return kind === 'devtunnel' || kind === 'ssh';
 }
 
 function getEndpoint(h: UnifiedHealth): string | undefined {
@@ -89,6 +93,7 @@ function KindBadge({ kind }: { kind: ServerKind }) {
         local:     { label: 'Local',  cls: 'bg-[#0078d4]/10 text-[#0078d4] dark:bg-[#3794ff]/10 dark:text-[#3794ff]' },
         url:       { label: 'URL',    cls: 'bg-[#16c060]/10 text-[#16a060] dark:text-[#16c060]' },
         devtunnel: { label: 'Tunnel', cls: 'bg-[#c586c0]/10 text-[#9a4e9a] dark:text-[#c586c0]' },
+        ssh:       { label: 'SSH',    cls: 'bg-[#16a3b8]/10 text-[#0e7c8c] dark:text-[#3bc9db]' },
     };
     const { label, cls } = cfg[kind];
     return (
@@ -237,16 +242,17 @@ function HeaderBar({
 
 // ─── Summary Strip ────────────────────────────────────────────────────────────
 
-function SummaryStrip({ online, offline, total, procs, tunnels }: {
-    online: number; offline: number; total: number; procs: number; tunnels: number;
+function SummaryStrip({ online, offline, total, procs, tunnels, sshTunnels }: {
+    online: number; offline: number; total: number; procs: number; tunnels: number; sshTunnels: number;
 }) {
     return (
-        <div data-testid="summary-strip" className="grid grid-cols-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex-shrink-0 gap-px bg-[#e0e0e0] dark:bg-[#3c3c3c]">
+        <div data-testid="summary-strip" className="grid grid-cols-5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex-shrink-0 gap-px bg-[#e0e0e0] dark:bg-[#3c3c3c]">
             {[
-                { label: 'Online',       value: online,  sub: `/${total}`, color: '#16c060' },
-                { label: 'Offline',      value: offline, sub: `/${total}`, color: offline > 0 ? '#f14c4c' : undefined },
-                { label: 'Active tasks', value: procs,   sub: null,        color: undefined },
-                { label: 'DevTunnels',   value: tunnels, sub: `/${total}`, color: '#c586c0' },
+                { label: 'Online',       value: online,     sub: `/${total}`, color: '#16c060' },
+                { label: 'Offline',      value: offline,    sub: `/${total}`, color: offline > 0 ? '#f14c4c' : undefined },
+                { label: 'Active tasks', value: procs,      sub: null,        color: undefined },
+                { label: 'DevTunnels',   value: tunnels,    sub: `/${total}`, color: '#c586c0' },
+                { label: 'SSH tunnels',  value: sshTunnels, sub: `/${total}`, color: '#16a3b8' },
             ].map(t => (
                 <div key={t.label} className="bg-white dark:bg-[#1e1e1e] px-4 py-3">
                     <div className="text-[10px] font-semibold uppercase tracking-widest text-[#999] dark:text-[#6e6e6e] mb-1.5">
@@ -366,9 +372,9 @@ function ServerRow({
                 <QuickAction title="Open dashboard" onClick={e => { e.stopPropagation(); onOpen(); }}>
                     <Svg d={ICON.external} size={13} />
                 </QuickAction>
-                {kind === 'devtunnel' && onReconnect && (
+                {supportsReconnect(kind) && onReconnect && (
                     <QuickAction
-                        title={reconnecting ? 'Reconnecting…' : 'Reconnect tunnel'}
+                        title={reconnecting ? 'Reconnecting…' : 'Reconnect'}
                         onClick={e => { e.stopPropagation(); onReconnect(); }}
                     >
                         <Svg d={ICON.reconnect} size={13} />
@@ -418,8 +424,13 @@ function ConnectionRows({ health }: { health: UnifiedHealth }) {
         const url = 'url' in server ? (server as { url: string }).url : effectiveUrl ?? '—';
         rows.push(['URL', url]);
         rows.push(['Hostname', serverName ?? '—']);
+    } else if (kind === 'ssh') {
+        const host = 'host' in server ? (server as { host?: string }).host ?? '—' : '—';
+        rows.push(['SSH host', host]);
+        const port = localPort ?? ('localPort' in server ? (server as { localPort?: number }).localPort : undefined);
+        rows.push(['Local port', port ? `localhost:${port}` : '—']);
+        if (effectiveUrl) { rows.push(['Endpoint', effectiveUrl]); }
     } else {
-        rows.push(['Tunnel ID', tunnelId ?? '—']);
         if (publicUrl) { rows.push(['Public URL', publicUrl]); }
         rows.push(['Local port', localPort ? `localhost:${localPort}` : '—']);
         if (effectiveUrl) { rows.push(['Endpoint', effectiveUrl]); }
@@ -502,7 +513,7 @@ function DetailPanel({
                                 Open dashboard
                             </a>
                         )}
-                        {kind === 'devtunnel' && onReconnect && (
+                        {supportsReconnect(kind) && onReconnect && (
                             <ActionBtn onClick={onReconnect} disabled={reconnecting}>
                                 <Svg d={ICON.reconnect} size={12} />
                                 {reconnecting ? 'Reconnecting…' : 'Reconnect'}
@@ -603,7 +614,7 @@ export function ServersView() {
     const [editServerId, setEditServerId] = useState<string | undefined>();
     const [reconnectingId, setReconnectingId] = useState<string | undefined>();
     const [loadError, setLoadError] = useState<string | undefined>();
-    const [view, setView] = useState<ViewMode>('grid');
+    const [view, setView] = useState<ViewMode>('split');
     const [filter, setFilter] = useState<FilterMode>('all');
     const [search, setSearch] = useState('');
     const [selectedId, setSelectedId] = useState<string>('local');
@@ -673,18 +684,19 @@ export function ServersView() {
         remoteHealthStates.map(h => ({
             ...h,
             isLocal: false,
-            kind: h.server.kind as 'url' | 'devtunnel',
+            kind: h.server.kind,
         })),
     [remoteHealthStates]);
 
     const allHealthStates = useMemo(() => [localUnified, ...remoteUnified], [localUnified, remoteUnified]);
 
     const counts = useMemo(() => ({
-        total:   allHealthStates.length,
-        online:  allHealthStates.filter(h => h.status === 'online').length,
-        offline: allHealthStates.filter(h => h.status === 'offline').length,
-        procs:   allHealthStates.reduce((a, h) => a + (h.processCount ?? 0), 0),
-        tunnels: allHealthStates.filter(h => h.kind === 'devtunnel').length,
+        total:      allHealthStates.length,
+        online:     allHealthStates.filter(h => h.status === 'online').length,
+        offline:    allHealthStates.filter(h => h.status === 'offline').length,
+        procs:      allHealthStates.reduce((a, h) => a + (h.processCount ?? 0), 0),
+        tunnels:    allHealthStates.filter(h => h.kind === 'devtunnel').length,
+        sshTunnels: allHealthStates.filter(h => h.kind === 'ssh').length,
     }), [allHealthStates]);
 
     const filtered = useMemo(() => allHealthStates.filter(h => {
@@ -698,7 +710,8 @@ export function ServersView() {
             const srv = h.server;
             const url = ('url' in srv ? (srv as { url: string }).url : '') ?? '';
             const tunnelId = ('tunnelId' in srv ? (srv as { tunnelId: string }).tunnelId : '') ?? '';
-            return [srv.label, h.serverName ?? '', url, tunnelId, h.effectiveUrl ?? '']
+            const host = ('host' in srv ? (srv as { host: string }).host : '') ?? '';
+            return [srv.label, h.serverName ?? '', url, tunnelId, host, h.effectiveUrl ?? '']
                 .some(v => v.toLowerCase().includes(q));
         }
         return true;
@@ -747,7 +760,7 @@ export function ServersView() {
         selected: selectedHealth?.server.id === h.server.id,
         onClick: () => setSelectedId(h.server.id),
         onOpen: () => handleOpen(h),
-        onReconnect: (!h.isLocal && h.kind === 'devtunnel')
+        onReconnect: (!h.isLocal && supportsReconnect(h.kind))
             ? () => { void handleReconnect(h.server.id); }
             : undefined,
         onCopy: () => handleCopy(h),
@@ -777,6 +790,7 @@ export function ServersView() {
                 total={counts.total}
                 procs={counts.procs}
                 tunnels={counts.tunnels}
+                sshTunnels={counts.sshTunnels}
             />
 
             {loadError && (
@@ -825,7 +839,7 @@ export function ServersView() {
                                 <DetailPanel
                                     health={selectedHealth}
                                     onOpen={() => handleOpen(selectedHealth)}
-                                    onReconnect={!selectedHealth.isLocal && selectedHealth.kind === 'devtunnel'
+                                    onReconnect={!selectedHealth.isLocal && supportsReconnect(selectedHealth.kind)
                                         ? () => { void handleReconnect(selectedHealth.server.id); }
                                         : undefined}
                                     onCopy={() => handleCopy(selectedHealth)}

@@ -156,7 +156,7 @@ export function ServerCard({ health, isLocal, onRemove, onEdit, onReconnect, rec
                                         Copy public URL
                                     </button>
                                 )}
-                                {isRemoteServer(health.server) && health.server.kind === 'devtunnel' && onReconnect && (
+                                {isRemoteServer(health.server) && (health.server.kind === 'devtunnel' || health.server.kind === 'ssh') && onReconnect && (
                                     <button
                                         type="button"
                                         data-testid="server-card-menu-reconnect"
