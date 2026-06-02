@@ -10,7 +10,6 @@ export type {
     WorkItemSyncProvider,
     WorkItemSyncRemoteIdentity,
     WorkItemSyncParentReference,
-    WorkItemSyncLink,
     WorkItemPlan,
     WorkItemPlanVersion,
     WorkItemExecution,

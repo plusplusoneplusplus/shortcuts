@@ -25,10 +25,12 @@ import type {
     WorkItemPlanVersion,
     WorkItemExecution,
     WorkItemChange,
-    WorkItemSyncLink,
     WorkItemStore,
     WorkItemStatus,
     WorkItemTrackerMetadata,
+    WorkItemSyncParentReference,
+    WorkItemSyncProvider,
+    WorkItemSyncRemoteIdentity,
 } from './types';
 import { getOwnWorkItemTrackerKind, toIndexEntry, WORK_ITEM_STATUSES } from './types';
 
@@ -41,18 +43,31 @@ export interface FileWorkItemStoreOptions {
     dataDir: string;
 }
 
-function getLegacyGitHubSyncLink(item: Pick<WorkItem, 'syncLinks'>): WorkItemSyncLink | undefined {
+interface LegacyWorkItemSyncLink {
+    provider: WorkItemSyncProvider;
+    remote: WorkItemSyncRemoteIdentity;
+    remoteRevision?: string;
+    remoteUpdatedAt?: string;
+    lastSyncedAt?: string;
+    lastSyncedFingerprint?: string;
+    parent?: WorkItemSyncParentReference;
+}
+
+type LegacyStoredWorkItem = WorkItem & { syncLinks?: LegacyWorkItemSyncLink[] };
+type LegacyWorkItemIndexEntry = WorkItemIndexEntry & { syncLinks?: LegacyWorkItemSyncLink[] };
+
+function getLegacyGitHubSyncLink(item: Pick<LegacyStoredWorkItem, 'syncLinks'>): LegacyWorkItemSyncLink | undefined {
     return item.syncLinks?.find(link => link.provider === 'github');
 }
 
-function positiveIssueNumber(link: WorkItemSyncLink): number | undefined {
+function positiveIssueNumber(link: LegacyWorkItemSyncLink): number | undefined {
     const issueNumber = link.remote.issueNumber;
     return typeof issueNumber === 'number' && Number.isInteger(issueNumber) && issueNumber > 0
         ? issueNumber
         : undefined;
 }
 
-function githubTrackerFromLegacySyncLink(link: WorkItemSyncLink): (WorkItemTrackerMetadata & { kind: 'github-backed' }) | undefined {
+function githubTrackerFromLegacySyncLink(link: LegacyWorkItemSyncLink): (WorkItemTrackerMetadata & { kind: 'github-backed' }) | undefined {
     const issueNumber = positiveIssueNumber(link);
     if (issueNumber === undefined) return undefined;
     return {
@@ -67,7 +82,7 @@ function githubTrackerFromLegacySyncLink(link: WorkItemSyncLink): (WorkItemTrack
     };
 }
 
-function githubMirrorFromLegacySyncLink(link: WorkItemSyncLink): WorkItemGitHubMirrorMetadata | undefined {
+function githubMirrorFromLegacySyncLink(link: LegacyWorkItemSyncLink): WorkItemGitHubMirrorMetadata | undefined {
     const issueNumber = positiveIssueNumber(link);
     if (issueNumber === undefined) return undefined;
     return {
@@ -145,13 +160,13 @@ export class FileWorkItemStore implements WorkItemStore {
     }
 
     private async readIndex(repoId: string): Promise<WorkItemIndexEntry[]> {
-        const raw = await this.readJSON(this.indexPath(repoId), []);
+        const raw = await this.readJSON<unknown>(this.indexPath(repoId), []);
         // Handle corrupted index: single object instead of array
-        let entries: WorkItemIndexEntry[];
+        let entries: LegacyWorkItemIndexEntry[];
         if (raw && !Array.isArray(raw)) {
-            entries = [raw as unknown as WorkItemIndexEntry];
+            entries = [raw as unknown as LegacyWorkItemIndexEntry];
         } else {
-            entries = raw as WorkItemIndexEntry[];
+            entries = raw as LegacyWorkItemIndexEntry[];
         }
 
         // Repair once per repo per process lifetime: scan for orphaned .json item files
@@ -199,13 +214,14 @@ export class FileWorkItemStore implements WorkItemStore {
         await this.atomicWrite(this.indexPath(repoId), JSON.stringify(entries, null, 2));
     }
 
-    private async readItem(repoId: string, id: string): Promise<WorkItem | undefined> {
-        const result = await this.readJSON<WorkItem | null>(this.itemPath(repoId, id), null);
+    private async readItem(repoId: string, id: string): Promise<LegacyStoredWorkItem | undefined> {
+        const result = await this.readJSON<LegacyStoredWorkItem | null>(this.itemPath(repoId, id), null);
         return result ?? undefined;
     }
 
     private async writeItem(repoId: string, item: WorkItem): Promise<void> {
-        await this.atomicWrite(this.itemPath(repoId, item.id), JSON.stringify(item, null, 2));
+        const { syncLinks: _legacySyncLinks, ...cleanItem } = item as LegacyStoredWorkItem;
+        await this.atomicWrite(this.itemPath(repoId, item.id), JSON.stringify(cleanItem, null, 2));
     }
 
     private async readCounter(repoId: string): Promise<number> {
@@ -689,11 +705,11 @@ export class FileWorkItemStore implements WorkItemStore {
         return (current.type ?? 'work-item') === 'epic' && !current.parentId ? current : undefined;
     }
 
-    private async migrateLegacySyncLinks(repoId: string, entries: WorkItemIndexEntry[]): Promise<WorkItemIndexEntry[]> {
+    private async migrateLegacySyncLinks(repoId: string, entries: LegacyWorkItemIndexEntry[]): Promise<WorkItemIndexEntry[]> {
         if (!entries.some(entry => entry.syncLinks?.length)) return entries;
 
         const entriesById = new Map(entries.map(entry => [entry.id, entry]));
-        const itemsById = new Map<string, WorkItem>();
+        const itemsById = new Map<string, LegacyStoredWorkItem>();
         for (const entry of entries) {
             const item = await this.readItem(repoId, entry.id);
             if (item) itemsById.set(entry.id, item);
@@ -735,7 +751,7 @@ export class FileWorkItemStore implements WorkItemStore {
                 continue;
             }
 
-            const updated: WorkItem = { ...item };
+            const updated: LegacyStoredWorkItem = { ...item };
             const rootEntry = this.findRootEpicEntry(entry, entriesById);
             const rootTracker = rootEntry ? githubRootTrackers.get(rootEntry.id) : undefined;
             const legacyLink = getLegacyGitHubSyncLink(item);

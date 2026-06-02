@@ -23,6 +23,29 @@ const OWNER = 'plusplusoneplusplus';
 const REPO = 'shortcuts';
 const NOW = '2026-01-01T00:00:00.000Z';
 
+interface LegacyWorkItemSyncLink {
+    provider: 'github' | 'azure-boards';
+    remote: {
+        owner?: string;
+        repo?: string;
+        projectId?: string;
+        issueId?: string;
+        issueNumber?: number;
+        issueUrl?: string;
+    };
+    remoteRevision?: string;
+    remoteUpdatedAt?: string;
+    lastSyncedAt?: string;
+    lastSyncedFingerprint?: string;
+}
+
+type WorkItemOverrides = Partial<WorkItem> & { syncLinks?: LegacyWorkItemSyncLink[] };
+type MaybeLegacySyncLinks = { syncLinks?: LegacyWorkItemSyncLink[] };
+
+function legacySyncLinksOf(item: WorkItem | undefined): LegacyWorkItemSyncLink[] | undefined {
+    return (item as (MaybeLegacySyncLinks | undefined))?.syncLinks;
+}
+
 interface MockTransport {
     transport: GitHubWorkItemIssueTransport;
     issues: Map<number, GitHubWorkItemIssue>;
@@ -114,8 +137,9 @@ function makeMockTransport(): MockTransport {
     };
 }
 
-function makeWorkItem(overrides: Partial<WorkItem>): WorkItem {
-    return {
+function makeWorkItem(overrides: WorkItemOverrides): WorkItem {
+    const { syncLinks, ...fields } = overrides;
+    const item: WorkItem = {
         id: overrides.id ?? 'item-1',
         repoId: overrides.repoId ?? REPO_ID,
         title: overrides.title ?? 'Item',
@@ -125,7 +149,6 @@ function makeWorkItem(overrides: Partial<WorkItem>): WorkItem {
         parentId: overrides.parentId,
         tracker: overrides.tracker,
         githubMirror: overrides.githubMirror,
-        syncLinks: overrides.syncLinks,
         createdAt: overrides.createdAt ?? NOW,
         updatedAt: overrides.updatedAt ?? NOW,
         source: overrides.source ?? 'manual',
@@ -133,7 +156,12 @@ function makeWorkItem(overrides: Partial<WorkItem>): WorkItem {
         tags: overrides.tags,
         plan: overrides.plan,
         executionHistory: overrides.executionHistory,
+        ...fields,
     };
+    if (syncLinks) {
+        (item as WorkItem & MaybeLegacySyncLinks).syncLinks = syncLinks;
+    }
+    return item;
 }
 
 let tmpDir: string;
@@ -293,10 +321,10 @@ describe('GitHub-backed Epic tracker conversion routes', () => {
             tracker: { kind: 'github-backed', github: { issueNumber: 100 } },
             githubMirror: { issueNumber: 100 },
         });
-        expect(root?.syncLinks).toBeUndefined();
+        expect(legacySyncLinksOf(root)).toBeUndefined();
         expect(feature).toMatchObject({ parentId: 'epic-1', githubMirror: { issueNumber: 101 } });
         expect(feature?.tracker).toBeUndefined();
-        expect(feature?.syncLinks).toBeUndefined();
+        expect(legacySyncLinksOf(feature)).toBeUndefined();
         expect(pbi).toMatchObject({ parentId: 'feature-1', githubMirror: { issueNumber: 102 } });
 
         const remoteRoot = parseGitHubWorkItemIssue(mock.issues.get(100)!);
@@ -407,11 +435,11 @@ describe('GitHub-backed Epic tracker conversion routes', () => {
             executionHistory: [{ taskId: 'task-1' }],
         });
         expect(root?.githubMirror).toBeUndefined();
-        expect(root?.syncLinks).toBeUndefined();
+        expect(legacySyncLinksOf(root)).toBeUndefined();
         expect(feature).toMatchObject({ parentId: 'epic-1' });
         expect(feature?.tracker).toBeUndefined();
         expect(feature?.githubMirror).toBeUndefined();
-        expect(feature?.syncLinks).toBeUndefined();
+        expect(legacySyncLinksOf(feature)).toBeUndefined();
     });
 
     it('rejects conversion requests that do not match the current tracker kind', async () => {

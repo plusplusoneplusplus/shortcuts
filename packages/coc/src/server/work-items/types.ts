@@ -142,13 +142,13 @@ export type WorkItemTrackerMetadata =
     | { kind: 'github-backed'; provider: 'github'; github: WorkItemGitHubTrackerMetadata };
 
 // ============================================================================
-// External Sync Metadata
+// External Provider Metadata
 // ============================================================================
 
 /** External work-item sync provider. Azure Boards is reserved for a future adapter. */
 export type WorkItemSyncProvider = 'github' | 'azure-boards';
 
-/** Remote issue identity stored with a work-item sync link. */
+/** Remote issue identity encoded in provider-owned metadata such as GitHub issue bodies. */
 export interface WorkItemSyncRemoteIdentity {
     /** GitHub owner or future provider account/organization name. */
     owner?: string;
@@ -164,7 +164,7 @@ export interface WorkItemSyncRemoteIdentity {
     issueUrl?: string;
 }
 
-/** Parent reference captured for hierarchy reconstruction during sync. */
+/** Parent reference captured in provider-owned metadata for hierarchy reconstruction. */
 export interface WorkItemSyncParentReference {
     /** CoC parent work item ID when known. */
     workItemId?: string;
@@ -178,22 +178,6 @@ export interface WorkItemSyncParentReference {
     owner?: string;
     /** Remote parent repo when it differs from the child remote. */
     repo?: string;
-}
-
-/** Per-item external sync link. Credentials and tokens must never be stored here. */
-export interface WorkItemSyncLink {
-    provider: WorkItemSyncProvider;
-    remote: WorkItemSyncRemoteIdentity;
-    /** Provider revision, etag, node id, or equivalent opaque version. */
-    remoteRevision?: string;
-    /** Provider updated-at timestamp for conflict detection. */
-    remoteUpdatedAt?: string;
-    /** Last successful sync timestamp. */
-    lastSyncedAt?: string;
-    /** Last successful local/remote field fingerprint. */
-    lastSyncedFingerprint?: string;
-    /** Parent reference used when native provider hierarchy is unavailable. */
-    parent?: WorkItemSyncParentReference;
 }
 
 // ============================================================================
@@ -331,8 +315,6 @@ export interface WorkItem {
     tracker?: WorkItemTrackerMetadata;
     /** GitHub read-mirror identity for items inside a GitHub-backed Epic tree. */
     githubMirror?: WorkItemGitHubMirrorMetadata;
-    /** External provider sync metadata. Empty or absent means the item is unlinked. */
-    syncLinks?: WorkItemSyncLink[];
     /** ISO timestamp when the work item was created. */
     createdAt: string;
     /** ISO timestamp of last modification. */
@@ -430,8 +412,6 @@ export interface WorkItemIndexEntry {
     tracker?: WorkItemTrackerMetadata;
     /** GitHub read-mirror identity for items inside a GitHub-backed Epic tree. */
     githubMirror?: WorkItemGitHubMirrorMetadata;
-    /** External provider sync metadata. Empty or absent means the item is unlinked. */
-    syncLinks?: WorkItemSyncLink[];
     source: WorkItemSource;
     priority?: WorkItemPriority;
     planVersion?: number;
@@ -582,7 +562,6 @@ export function toIndexEntry(item: WorkItem): WorkItemIndexEntry {
         parentId: item.parentId,
         tracker: item.tracker,
         githubMirror: item.githubMirror,
-        syncLinks: item.syncLinks,
         source: item.source,
         priority: item.priority,
         planVersion: item.plan?.version,

@@ -65,34 +65,6 @@ export const ALLOWED_CHILD_TYPES: Record<WorkItemType, readonly WorkItemType[]> 
 
 export type WorkItemSyncProvider = 'github' | 'azure-boards';
 
-export interface WorkItemSyncRemoteIdentity {
-  owner?: string;
-  repo?: string;
-  projectId?: string;
-  issueId?: string;
-  issueNumber?: number;
-  issueUrl?: string;
-}
-
-export interface WorkItemSyncParentReference {
-  workItemId?: string;
-  issueId?: string;
-  issueNumber?: number;
-  issueUrl?: string;
-  owner?: string;
-  repo?: string;
-}
-
-export interface WorkItemSyncLink {
-  provider: WorkItemSyncProvider;
-  remote: WorkItemSyncRemoteIdentity;
-  remoteRevision?: string;
-  remoteUpdatedAt?: string;
-  lastSyncedAt?: string;
-  lastSyncedFingerprint?: string;
-  parent?: WorkItemSyncParentReference;
-}
-
 export const WORK_ITEM_SYNC_ITEM_LIMIT = 200;
 export type WorkItemSyncDisabledReason = 'hierarchy-disabled' | 'sync-disabled';
 
@@ -179,8 +151,6 @@ export interface WorkItem {
   tracker?: WorkItemTrackerMetadata;
   /** GitHub read-mirror identity for items inside a GitHub-backed Epic tree. */
   githubMirror?: WorkItemGitHubMirrorMetadata;
-  /** External provider sync metadata. Empty or absent means the item is unlinked. */
-  syncLinks?: WorkItemSyncLink[];
   createdAt: string;
   updatedAt: string;
   completedAt?: string;

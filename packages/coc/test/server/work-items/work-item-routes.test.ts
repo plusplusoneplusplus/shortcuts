@@ -7,14 +7,13 @@ import type { Route } from '../../../src/server/types';
 import { createRouter } from '../../../src/server/shared/router';
 import { registerWorkItemRoutes } from '../../../src/server/routes/work-item-routes';
 import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
-import type { WorkItemSyncLink } from '../../../src/server/work-items/types';
 
 let tmpDir: string;
 let store: FileWorkItemStore;
 let server: http.Server;
 let baseUrl: string;
 
-const SYNC_LINK: WorkItemSyncLink = {
+const SYNC_LINK = {
     provider: 'github',
     remote: {
         owner: 'plusplusoneplusplus',

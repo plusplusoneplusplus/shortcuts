@@ -253,13 +253,6 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                     (
                         item.tracker?.kind === 'github-backed' &&
                         item.tracker.github.issueNumber === issueNumber
-                    ) ||
-                    item.syncLinks?.some(
-                        link =>
-                            link.provider === 'github' &&
-                            link.remote.issueNumber === issueNumber &&
-                            (!link.remote.owner || link.remote.owner.toLowerCase() === configuredOwner.toLowerCase()) &&
-                            (!link.remote.repo || link.remote.repo.toLowerCase() === configuredRepo.toLowerCase()),
                     ),
                 );
                 if (duplicate) {

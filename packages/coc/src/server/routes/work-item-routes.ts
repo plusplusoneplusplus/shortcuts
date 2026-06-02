@@ -249,7 +249,6 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
         return {
             ...item,
             githubMirror: result.githubMirror,
-            syncLinks: undefined,
         };
     }
 

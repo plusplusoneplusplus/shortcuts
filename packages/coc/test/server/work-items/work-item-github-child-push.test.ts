@@ -269,7 +269,7 @@ describe('GitHub-backed work item child creation', () => {
 
         const stored = await store.getWorkItem(res.body.id, REPO_ID);
         expect(stored?.githubMirror).toMatchObject({ issueNumber: 100 });
-        expect(stored?.syncLinks).toBeUndefined();
+        expect((stored as { syncLinks?: unknown } | undefined)?.syncLinks).toBeUndefined();
     });
 
     it('does not call GitHub for a child under a local-only Epic', async () => {

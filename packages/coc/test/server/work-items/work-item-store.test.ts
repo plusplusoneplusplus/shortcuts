@@ -2,14 +2,47 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
+import { getRepoDataPath } from '@plusplusoneplusplus/forge';
 import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
-import type { WorkItem, WorkItemPlanVersion, WorkItemExecution } from '../../../src/server/work-items/types';
+import type { WorkItem, WorkItemIndexEntry, WorkItemPlanVersion, WorkItemExecution } from '../../../src/server/work-items/types';
 
 let tmpDir: string;
 let store: FileWorkItemStore;
 
-function makeWorkItem(overrides: Partial<WorkItem> = {}): WorkItem {
-    return {
+interface LegacyWorkItemSyncLink {
+    provider: 'github' | 'azure-boards';
+    remote: {
+        owner?: string;
+        repo?: string;
+        projectId?: string;
+        issueId?: string;
+        issueNumber?: number;
+        issueUrl?: string;
+    };
+    remoteRevision?: string;
+    remoteUpdatedAt?: string;
+    lastSyncedAt?: string;
+    lastSyncedFingerprint?: string;
+    parent?: {
+        workItemId?: string;
+        issueId?: string;
+        issueNumber?: number;
+        issueUrl?: string;
+        owner?: string;
+        repo?: string;
+    };
+}
+
+type WorkItemOverrides = Partial<WorkItem> & { syncLinks?: LegacyWorkItemSyncLink[] };
+type MaybeLegacySyncLinks = { syncLinks?: LegacyWorkItemSyncLink[] };
+
+function legacySyncLinksOf(item: WorkItem | WorkItemIndexEntry | undefined): LegacyWorkItemSyncLink[] | undefined {
+    return (item as (MaybeLegacySyncLinks | undefined))?.syncLinks;
+}
+
+function makeWorkItem(overrides: WorkItemOverrides = {}): WorkItem {
+    const { syncLinks, ...fields } = overrides;
+    const item: WorkItem = {
         id: `wi-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         repoId: 'test-repo',
         title: 'Test work item',
@@ -18,8 +51,55 @@ function makeWorkItem(overrides: Partial<WorkItem> = {}): WorkItem {
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z',
         source: 'manual',
-        ...overrides,
+        ...fields,
     };
+    if (syncLinks) {
+        (item as WorkItem & MaybeLegacySyncLinks).syncLinks = syncLinks;
+    }
+    return item;
+}
+
+function legacyIndexEntry(item: WorkItem & MaybeLegacySyncLinks): WorkItemIndexEntry & MaybeLegacySyncLinks {
+    return {
+        id: item.id,
+        workItemNumber: item.workItemNumber,
+        repoId: item.repoId,
+        title: item.title,
+        description: item.description || undefined,
+        status: item.status,
+        type: item.type,
+        parentId: item.parentId,
+        tracker: item.tracker,
+        githubMirror: item.githubMirror,
+        syncLinks: item.syncLinks,
+        source: item.source,
+        priority: item.priority,
+        planVersion: item.plan?.version,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+        completedAt: item.completedAt,
+        pinnedAt: item.pinnedAt,
+        archivedAt: item.archivedAt,
+        tags: item.tags,
+    };
+}
+
+async function writeLegacyWorkItem(item: WorkItem & MaybeLegacySyncLinks): Promise<void> {
+    const dir = getRepoDataPath(tmpDir, item.repoId, 'work-items');
+    await fs.mkdir(dir, { recursive: true });
+    const indexPath = path.join(dir, 'index.json');
+    let index: Array<WorkItemIndexEntry & MaybeLegacySyncLinks> = [];
+    try {
+        index = JSON.parse(await fs.readFile(indexPath, 'utf-8')) as Array<WorkItemIndexEntry & MaybeLegacySyncLinks>;
+    } catch {
+        index = [];
+    }
+    const nextIndex = [
+        ...index.filter(entry => entry.id !== item.id),
+        legacyIndexEntry(item),
+    ];
+    await fs.writeFile(path.join(dir, `${item.id}.json`), JSON.stringify(item, null, 2), 'utf-8');
+    await fs.writeFile(indexPath, JSON.stringify(nextIndex, null, 2), 'utf-8');
 }
 
 beforeEach(async () => {
@@ -410,12 +490,12 @@ describe('FileWorkItemStore', () => {
                 remoteUpdatedAt: '2026-01-03T00:00:00.000Z',
                 lastSyncedAt: '2026-01-03T01:00:00.000Z',
             };
-            await store.addWorkItem(makeWorkItem({
+            await writeLegacyWorkItem(makeWorkItem({
                 id: 'legacy-epic',
                 type: 'epic',
                 syncLinks: [rootSyncLink],
             }));
-            await store.addWorkItem(makeWorkItem({
+            await writeLegacyWorkItem(makeWorkItem({
                 id: 'legacy-feature',
                 type: 'feature',
                 parentId: 'legacy-epic',
@@ -423,7 +503,7 @@ describe('FileWorkItemStore', () => {
             }));
 
             const feature = await store.getWorkItem('legacy-feature', 'test-repo');
-            expect(feature?.syncLinks).toBeUndefined();
+            expect(legacySyncLinksOf(feature)).toBeUndefined();
             expect(feature?.githubMirror).toEqual({
                 issueId: 'I_child',
                 issueNumber: 101,
@@ -433,7 +513,7 @@ describe('FileWorkItemStore', () => {
             });
 
             const epic = await store.getWorkItem('legacy-epic', 'test-repo');
-            expect(epic?.syncLinks).toBeUndefined();
+            expect(legacySyncLinksOf(epic)).toBeUndefined();
             expect(epic?.tracker).toEqual({
                 kind: 'github-backed',
                 provider: 'github',
@@ -454,11 +534,11 @@ describe('FileWorkItemStore', () => {
 
             const githubBacked = await store.listWorkItems({ repoId: 'test-repo', tracker: 'github-backed' });
             expect(githubBacked.items.map(item => item.id).sort()).toEqual(['legacy-epic', 'legacy-feature']);
-            expect(githubBacked.items.every(item => item.syncLinks === undefined)).toBe(true);
+            expect(githubBacked.items.every(item => legacySyncLinksOf(item) === undefined)).toBe(true);
         });
 
         it('drops legacy syncLinks that cannot be rooted at a GitHub-backed Epic', async () => {
-            await store.addWorkItem(makeWorkItem({
+            await writeLegacyWorkItem(makeWorkItem({
                 id: 'legacy-orphan',
                 type: 'work-item',
                 syncLinks: [{
@@ -474,12 +554,12 @@ describe('FileWorkItemStore', () => {
             }));
 
             const item = await store.getWorkItem('legacy-orphan', 'test-repo');
-            expect(item?.syncLinks).toBeUndefined();
+            expect(legacySyncLinksOf(item)).toBeUndefined();
             expect(item?.githubMirror).toBeUndefined();
             expect(item?.tracker).toBeUndefined();
 
             const list = await store.listWorkItems({ repoId: 'test-repo' });
-            expect(list.items.find(entry => entry.id === 'legacy-orphan')?.syncLinks).toBeUndefined();
+            expect(legacySyncLinksOf(list.items.find(entry => entry.id === 'legacy-orphan'))).toBeUndefined();
         });
     });
 

@@ -1,10 +1,7 @@
 import { execFile } from 'child_process';
 import * as crypto from 'crypto';
 import { promisify } from 'util';
-import type {
-    WorkItemSyncProviderStatus,
-    WorkItemSyncRemoteIdentity,
-} from '@plusplusoneplusplus/coc-client';
+import type { WorkItemSyncProviderStatus } from '@plusplusoneplusplus/coc-client';
 import {
     buildGitHubWorkItemLabels,
     buildGitHubWorkItemSyncMetadata,
@@ -22,8 +19,8 @@ import type {
     WorkItem,
     WorkItemIndexEntry,
     WorkItemStore,
-    WorkItemSyncLink,
     WorkItemSyncParentReference,
+    WorkItemSyncRemoteIdentity,
     WorkItemType,
 } from './types';
 import {
@@ -335,27 +332,18 @@ function resolveRepo(context: Pick<WorkItemSyncProviderContext, 'workspace' | 'p
     });
 }
 
-function remoteIdentity(repo: AvailableGitHubWorkItemSyncRepo, issue?: GitHubWorkItemIssue, link?: WorkItemSyncLink): WorkItemSyncRemoteIdentity {
+function remoteIdentity(repo: AvailableGitHubWorkItemSyncRepo, issue?: GitHubWorkItemIssue): WorkItemSyncRemoteIdentity {
     const remote: WorkItemSyncRemoteIdentity = {
         owner: repo.owner,
         repo: repo.repo,
     };
-    const issueId = issue?.id ?? link?.remote.issueId;
+    const issueId = issue?.id;
     if (issueId !== undefined) remote.issueId = String(issueId);
-    const issueNumber = issue?.number ?? link?.remote.issueNumber;
+    const issueNumber = issue?.number;
     if (issueNumber !== undefined) remote.issueNumber = issueNumber;
-    const issueUrl = issue?.htmlUrl ?? issue?.url ?? link?.remote.issueUrl;
+    const issueUrl = issue?.htmlUrl ?? issue?.url;
     if (issueUrl) remote.issueUrl = issueUrl;
     return remote;
-}
-
-function sameRemote(link: WorkItemSyncLink | undefined, repo: AvailableGitHubWorkItemSyncRepo, issue: GitHubWorkItemIssue): boolean {
-    if (!link || link.provider !== 'github') return false;
-    if (link.remote.owner && link.remote.owner !== repo.owner) return false;
-    if (link.remote.repo && link.remote.repo !== repo.repo) return false;
-    if (link.remote.issueNumber !== undefined && link.remote.issueNumber === issue.number) return true;
-    if (link.remote.issueId !== undefined && issue.id !== undefined && link.remote.issueId === String(issue.id)) return true;
-    return false;
 }
 
 function sameGithubMirror(
@@ -627,10 +615,7 @@ async function findLocalMirrorForIssue(
         const item = await context.workItemStore.getWorkItem(parsed.metadata.workItemId, context.workspaceId);
         if (item) return item;
     }
-    const entry = entries.find(candidate =>
-        sameGithubMirror(candidate.githubMirror, issue)
-        || (candidate.syncLinks?.some(link => sameRemote(link, repo, issue)) ?? false),
-    );
+    const entry = entries.find(candidate => sameGithubMirror(candidate.githubMirror, issue));
     return entry ? context.workItemStore.getWorkItem(entry.id, context.workspaceId) : undefined;
 }
 
@@ -798,7 +783,6 @@ export async function convertLocalEpicTreeToGitHubBacked(
             const updated = await context.workItemStore.updateWorkItem(item.id, {
                 tracker: githubBackedTrackerForRoot(result.issue, convertedAt),
                 githubMirror: result.githubMirror,
-                syncLinks: undefined,
             });
             if (!updated) {
                 throw new Error(`Work item disappeared during GitHub conversion: ${item.id}`);
@@ -828,7 +812,6 @@ export async function convertLocalEpicTreeToGitHubBacked(
         const updated = await context.workItemStore.updateWorkItem(item.id, {
             tracker: undefined,
             githubMirror: result.githubMirror,
-            syncLinks: undefined,
         });
         if (!updated) {
             throw new Error(`Work item disappeared during GitHub conversion: ${item.id}`);
@@ -872,7 +855,6 @@ export async function detachGitHubEpicTreeToLocalOnly(
         const updates: Partial<Omit<WorkItem, 'id' | 'repoId' | 'createdAt'>> = {
             tracker: depth === 0 ? { kind: 'local-only' } : undefined,
             githubMirror: undefined,
-            syncLinks: undefined,
         };
         const updated = await context.workItemStore.updateWorkItem(entry.id, updates);
         if (!updated) {
@@ -959,7 +941,6 @@ export async function importGitHubEpicTreeAsWorkItems(
             tracker: isRoot ? githubBackedTrackerForRoot(issue, pulledAt) : undefined,
             githubMirror: githubMirrorForIssue(issue, pulledAt),
             tags: tagsForMirror(parsed),
-            syncLinks: undefined,
         };
 
         let item: WorkItem;
