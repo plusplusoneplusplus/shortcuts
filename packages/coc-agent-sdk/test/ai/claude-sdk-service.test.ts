@@ -342,6 +342,40 @@ describe('ClaudeSDKService.listModels', () => {
         ]);
     });
 
+    it('maps supportedEffortLevels into supportedReasoningEfforts (dropping max/unknown)', async () => {
+        const child = mockClaudeCliSpawn();
+        const modelsPromise = svc.listModels();
+        await waitForClaudeCliSpawn(child);
+
+        child.writeStdoutLine(JSON.stringify({
+            type: 'control_response',
+            request_id: 'init-1',
+            response: {
+                response: {
+                    models: [
+                        // Opus advertises xhigh + max; max is dropped, order canonicalized.
+                        { value: 'opus', displayName: 'Opus', supportedEffortLevels: ['max', 'high', 'low', 'medium', 'xhigh'] },
+                        // Sonnet/default advertises max but not xhigh.
+                        { value: 'default', displayName: 'Default (recommended)', supportedEffortLevels: ['low', 'medium', 'high', 'max'] },
+                        // Haiku advertises none → field omitted.
+                        { value: 'haiku', displayName: 'Haiku' },
+                        // Unknown levels are filtered out entirely → field omitted.
+                        { value: 'weird', displayName: 'Weird', supportedEffortLevels: ['turbo', 'max'] },
+                    ],
+                },
+            },
+        }));
+
+        const models = await modelsPromise;
+
+        expect(models).toEqual([
+            { id: 'opus', name: 'Opus', supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh'] },
+            { id: 'default', name: 'Default (recommended)', supportedReasoningEfforts: ['low', 'medium', 'high'] },
+            { id: 'haiku', name: 'Haiku' },
+            { id: 'weird', name: 'Weird' },
+        ]);
+    });
+
     it('ignores malformed stdout until the matching initialize response arrives', async () => {
         const child = mockClaudeCliSpawn();
         const modelsPromise = svc.listModels();

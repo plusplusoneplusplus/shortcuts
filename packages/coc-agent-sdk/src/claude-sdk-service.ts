@@ -502,10 +502,25 @@ export class ClaudeSDKService implements ISDKService {
                 const value = typeof record.value === 'string' ? record.value.trim() : '';
                 const displayName = typeof record.displayName === 'string' ? record.displayName.trim() : '';
                 if (!value || !displayName) return null;
-                return { id: value, name: displayName } as IModelInfo;
+                const info: IModelInfo = { id: value, name: displayName };
+                const efforts = this.mapClaudeCliEffortLevels(record.supportedEffortLevels);
+                if (efforts.length > 0) info.supportedReasoningEfforts = efforts;
+                return info;
             })
             .filter((model): model is IModelInfo => model !== null);
         return mapped.length > 0 ? mapped : null;
+    }
+
+    /**
+     * Map a Claude CLI model's `supportedEffortLevels` to the reasoning-effort
+     * levels CoC surfaces. The CLI advertises `low`/`medium`/`high`/`xhigh`/`max`;
+     * we keep only the levels in {@link CLAUDE_EFFORT_LEVELS} (CoC does not yet
+     * surface `max`) and return them in canonical order. A missing/empty list
+     * (e.g. Haiku) yields `[]` so no effort levels are advertised.
+     */
+    private mapClaudeCliEffortLevels(value: unknown): ReasoningEffort[] {
+        if (!Array.isArray(value)) return [];
+        return CLAUDE_EFFORT_LEVELS.filter(level => value.includes(level));
     }
 
     // ── Account quota from Claude rate-limit events ───────────────────────────
