@@ -107,7 +107,6 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
             workspaceId,
             workspace: workspaces.find(workspace => workspace.id === workspaceId),
             preferences: readRepoPreferences(ctx.dataDir, workspaceId),
-            workItemStore: ctx.workItemStore,
         };
     }
 

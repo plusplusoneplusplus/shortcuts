@@ -27,10 +27,6 @@ const SYNC_LINK: WorkItemSyncLink = {
     remoteUpdatedAt: '2026-01-02T00:00:00.000Z',
     lastSyncedAt: '2026-01-02T01:00:00.000Z',
     lastSyncedFingerprint: 'fingerprint-1',
-    dirty: true,
-    conflict: false,
-    dirtyFields: ['title'],
-    conflictFields: [],
     parent: {
         workItemId: 'parent-1',
         issueNumber: 7,
@@ -596,12 +592,7 @@ describe('Work Item Routes', () => {
 
         it('rejects legacy syncLinks metadata on update without changing the item', async () => {
             const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${itemId}`, {
-                syncLinks: [{
-                    ...SYNC_LINK,
-                    dirty: false,
-                    conflict: true,
-                    conflictFields: ['description'],
-                }],
+                syncLinks: [SYNC_LINK],
             });
 
             expect(res.status).toBe(400);

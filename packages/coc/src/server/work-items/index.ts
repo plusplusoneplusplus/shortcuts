@@ -38,14 +38,10 @@ export {
     DEFAULT_WORK_ITEM_SYNC_PROVIDER,
     SUPPORTED_WORK_ITEM_SYNC_PROVIDERS,
     WORK_ITEM_SYNC_MAX_ITEMS,
-    collectWorkItemSyncScope,
     isSupportedWorkItemSyncProvider,
     unavailableWorkItemSyncProviderStatus,
     type WorkItemSyncProviderAdapter,
-    type WorkItemSyncProviderApplyContext,
     type WorkItemSyncProviderContext,
-    type WorkItemSyncProviderPreviewContext,
-    type WorkItemSyncScope,
 } from './work-item-sync-provider';
 export {
     buildGitHubWorkItemIssueUpdate,

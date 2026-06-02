@@ -10,8 +10,6 @@ import { FileWorkItemStore } from '../../../src/server/work-items/work-item-stor
 import type {
     WorkItem,
     WorkItemSyncProviderAdapter,
-    WorkItemSyncProviderApplyContext,
-    WorkItemSyncProviderPreviewContext,
 } from '../../../src/server/work-items';
 import type {
     AvailableGitHubWorkItemSyncRepo,
@@ -45,34 +43,6 @@ function makeFakeProvider(): WorkItemSyncProviderAdapter {
                     authenticated: true,
                     message: 'Uses external GitHub authentication.',
                 },
-            };
-        },
-        async preview(_context: WorkItemSyncProviderPreviewContext) {
-            return {
-                provider: 'github',
-                operation: _context.operation,
-                previewId: 'preview-1',
-                generatedAt: NOW,
-                itemCount: 0,
-                maxItems: 200,
-                creates: [],
-                updates: [],
-                links: [],
-                noOps: [],
-                warnings: [],
-                conflicts: [],
-            };
-        },
-        async apply(_context: WorkItemSyncProviderApplyContext) {
-            return {
-                provider: 'github',
-                operation: _context.operation,
-                applied: 0,
-                skipped: 0,
-                failed: 0,
-                rows: [],
-                warnings: [],
-                conflicts: [],
             };
         },
     };

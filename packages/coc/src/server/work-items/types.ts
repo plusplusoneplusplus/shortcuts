@@ -192,14 +192,6 @@ export interface WorkItemSyncLink {
     lastSyncedAt?: string;
     /** Last successful local/remote field fingerprint. */
     lastSyncedFingerprint?: string;
-    /** True when local and/or remote fields changed since the last sync. */
-    dirty?: boolean;
-    /** True when sync preview detected incompatible local and remote changes. */
-    conflict?: boolean;
-    /** Field names known to have changed since the last sync. */
-    dirtyFields?: string[];
-    /** Field names currently requiring explicit conflict resolution. */
-    conflictFields?: string[];
     /** Parent reference used when native provider hierarchy is unavailable. */
     parent?: WorkItemSyncParentReference;
 }

@@ -11,8 +11,6 @@ import {
     parseGitHubWorkItemIssue,
     type WorkItem,
     type WorkItemSyncProviderAdapter,
-    type WorkItemSyncProviderApplyContext,
-    type WorkItemSyncProviderPreviewContext,
 } from '../../../src/server/work-items';
 import type {
     AvailableGitHubWorkItemSyncRepo,
@@ -54,34 +52,6 @@ function makeProvider(): WorkItemSyncProviderAdapter {
                     authenticated: true,
                     message: 'Uses external GitHub authentication.',
                 },
-            };
-        },
-        async preview(context: WorkItemSyncProviderPreviewContext) {
-            return {
-                provider: 'github',
-                operation: context.operation,
-                previewId: 'preview-1',
-                generatedAt: NOW,
-                itemCount: 0,
-                maxItems: 200,
-                creates: [],
-                updates: [],
-                links: [],
-                noOps: [],
-                warnings: [],
-                conflicts: [],
-            };
-        },
-        async apply(context: WorkItemSyncProviderApplyContext) {
-            return {
-                provider: 'github',
-                operation: context.operation,
-                applied: 0,
-                skipped: 0,
-                failed: 0,
-                rows: [],
-                warnings: [],
-                conflicts: [],
             };
         },
     };

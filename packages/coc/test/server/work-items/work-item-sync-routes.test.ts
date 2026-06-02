@@ -39,34 +39,6 @@ function makeFakeProvider(): WorkItemSyncProviderAdapter {
                 },
             };
         },
-        async preview(context) {
-            return {
-                provider: 'github',
-                operation: context.operation,
-                previewId: 'legacy-preview',
-                generatedAt: '2026-01-01T00:00:00.000Z',
-                itemCount: 0,
-                maxItems: 200,
-                creates: [],
-                updates: [],
-                links: [],
-                noOps: [],
-                warnings: [],
-                conflicts: [],
-            };
-        },
-        async apply(context) {
-            return {
-                provider: 'github',
-                operation: context.operation,
-                applied: 0,
-                skipped: 0,
-                failed: 0,
-                rows: [],
-                warnings: [],
-                conflicts: [],
-            };
-        },
     };
 }
 
