@@ -4,6 +4,8 @@ import { DevTunnelConnector, type DevTunnelChildProcess } from '../../src/server
 
 class FakeChild extends EventEmitter implements DevTunnelChildProcess {
     killed = false;
+    stdout?: EventEmitter;
+    stderr?: EventEmitter;
     kill(): boolean {
         this.killed = true;
         return true;
@@ -217,18 +219,62 @@ describe('DevTunnelConnector', () => {
         expect(second.publicUrl).toBe('https://new-url.devtunnels.ms');
     });
 
-    it('stops child processes on dispose', async () => {
+    it('health-checks the forwarded local port parsed from devtunnel connect output', async () => {
         const child = new FakeChild();
+        child.stdout = new EventEmitter();
+        const connector = new DevTunnelConnector({
+            commandRunner: async () => ({ stdout: '46279 http coc', stderr: '' }),
+            processStarter: () => child,
+            healthChecker: async url => url === 'http://127.0.0.1:63770',
+            readinessPollMs: 1,
+            forwardReadyTimeoutMs: 1_000,
+        });
+
+        const connectPromise = connector.connect('db-west3-wsl');
+        // Allow connectInternal to spawn the child and attach the stdout listener.
+        await new Promise(resolve => setTimeout(resolve, 0));
+        child.stdout.emit('data', 'SSH: Forwarding from 127.0.0.1:63770 to host port 46279.\n');
+
+        const state = await connectPromise;
+        expect(state.status).toBe('online');
+        expect(state.port).toBe(63770);
+        expect(state.effectiveUrl).toBe('http://127.0.0.1:63770');
+    });
+
+    it('falls back to the configured port when no forwarding line is emitted', async () => {
+        const child = new FakeChild();
+        child.stdout = new EventEmitter();
         const connector = new DevTunnelConnector({
             commandRunner: async () => ({ stdout: '4000 http coc', stderr: '' }),
             processStarter: () => child,
-            healthChecker: async () => true,
+            healthChecker: async url => url === 'http://127.0.0.1:4000',
             readinessPollMs: 1,
+            forwardReadyTimeoutMs: 5,
         });
 
-        await connector.connect('my-tunnel');
-        connector.dispose();
-        expect(child.killed).toBe(true);
-        expect(connector.getStates()).toEqual([]);
+        const state = await connector.connect('t1');
+        expect(state.status).toBe('online');
+        expect(state.port).toBe(4000);
+        expect(state.effectiveUrl).toBe('http://127.0.0.1:4000');
+    });
+
+    it('parses the forwarded port from stderr output', async () => {
+        const child = new FakeChild();
+        child.stderr = new EventEmitter();
+        const connector = new DevTunnelConnector({
+            commandRunner: async () => ({ stdout: '8080 http coc', stderr: '' }),
+            processStarter: () => child,
+            healthChecker: async url => url === 'http://127.0.0.1:52000',
+            readinessPollMs: 1,
+            forwardReadyTimeoutMs: 1_000,
+        });
+
+        const connectPromise = connector.connect('t1');
+        await new Promise(resolve => setTimeout(resolve, 0));
+        child.stderr.emit('data', 'Forwarding port 8080 to local port 52000.\n');
+
+        const state = await connectPromise;
+        expect(state.effectiveUrl).toBe('http://127.0.0.1:52000');
+        expect(state.port).toBe(52000);
     });
 });

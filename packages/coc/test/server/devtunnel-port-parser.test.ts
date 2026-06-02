@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DevTunnelPortParseError, parseDevTunnelHttpPort, parseDevTunnelHttpPortInfo } from '../../src/server/servers/devtunnel-port-parser';
+import { DevTunnelPortParseError, parseDevTunnelForwardedPort, parseDevTunnelHttpPort, parseDevTunnelHttpPortInfo } from '../../src/server/servers/devtunnel-port-parser';
 
 describe('parseDevTunnelHttpPort', () => {
     it('returns the single HTTP port from table output', () => {
@@ -121,5 +121,59 @@ describe('parseDevTunnelHttpPortInfo', () => {
 
     it('throws on multiple HTTP ports', () => {
         expect(() => parseDevTunnelHttpPortInfo('4000 http coc\n5000 http other')).toThrow(DevTunnelPortParseError);
+    });
+});
+
+describe('parseDevTunnelForwardedPort', () => {
+    it('parses the local port from a "Forwarding from <addr>:<local> to host port <host>" line', () => {
+        const output = 'SSH: Forwarding from 127.0.0.1:63770 to host port 46279.';
+        expect(parseDevTunnelForwardedPort(output, 46279)).toBe(63770);
+    });
+
+    it('parses the local port from an IPv6 forwarding line', () => {
+        const output = 'SSH: Forwarding from [::1]:63770 to host port 46279.';
+        expect(parseDevTunnelForwardedPort(output, 46279)).toBe(63770);
+    });
+
+    it('parses the local port from a "Forwarding port <host> to local port <local>" line', () => {
+        const output = 'Forwarding port 46279 to local port 50001.';
+        expect(parseDevTunnelForwardedPort(output, 46279)).toBe(50001);
+    });
+
+    it('handles same-port forwarding (local === host)', () => {
+        const output = 'Forwarding from 127.0.0.1:46279 to host port 46279.';
+        expect(parseDevTunnelForwardedPort(output, 46279)).toBe(46279);
+    });
+
+    it('picks the line matching the requested host port among several', () => {
+        const output = [
+            'Forwarding from 127.0.0.1:11111 to host port 22.',
+            'Forwarding from 127.0.0.1:63770 to host port 46279.',
+        ].join('\n');
+        expect(parseDevTunnelForwardedPort(output, 46279)).toBe(63770);
+    });
+
+    it('parses real multi-line devtunnel connect output', () => {
+        const output = [
+            'Connected to tunnel: db-west3-wsl',
+            'SSH: Forwarding from 127.0.0.1:63770 to host port 46279.',
+            'SSH: Forwarding from [::1]:63770 to host port 46279.',
+            'SSH: PortForwardingService listening on 127.0.0.1:63770.',
+        ].join('\n');
+        expect(parseDevTunnelForwardedPort(output, 46279)).toBe(63770);
+    });
+
+    it('returns undefined when no forwarding line matches the host port', () => {
+        const output = 'Forwarding from 127.0.0.1:63770 to host port 22.';
+        expect(parseDevTunnelForwardedPort(output, 46279)).toBeUndefined();
+    });
+
+    it('returns undefined for empty output', () => {
+        expect(parseDevTunnelForwardedPort('', 46279)).toBeUndefined();
+    });
+
+    it('rejects out-of-range local ports', () => {
+        const output = 'Forwarding from 127.0.0.1:99999 to host port 46279.';
+        expect(parseDevTunnelForwardedPort(output, 46279)).toBeUndefined();
     });
 });

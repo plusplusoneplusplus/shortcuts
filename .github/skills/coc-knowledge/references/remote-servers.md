@@ -84,11 +84,12 @@ The registry file is `~/.coc/remote-servers.json`.
 When a DevTunnel remote server is created, tested, health-checked, or explicitly connected, CoC runs this sequence:
 
 1. Runs `devtunnel port list <tunnelId>`.
-2. Parses the output and requires exactly one HTTP port.
+2. Parses the output and requires exactly one HTTP port (the remote/host port).
 3. Starts `devtunnel connect <tunnelId>` if CoC is not already managing a child process for that tunnel.
-4. Builds the effective local URL as `http://127.0.0.1:<http-port>`.
-5. Polls `GET /api/health` on that local URL until it is ready or the readiness timeout expires.
-6. Marks the runtime state as `online` and records the local port, effective URL, and public URL if the CLI output includes one.
+4. Reads the **forwarded local port** from the `devtunnel connect` stdout/stderr (it parses lines such as `Forwarding from 127.0.0.1:<local> to host port <host>`), because `devtunnel connect` forwards the remote HTTP port to a possibly-different, often random, local port. If no forwarding line appears within `forwardReadyTimeoutMs` (default 10s), it falls back to the configured HTTP port.
+5. Builds the effective local URL as `http://127.0.0.1:<forwarded-local-port>`.
+6. Polls `GET /api/health` on that local URL until it is ready or the readiness timeout expires.
+7. Marks the runtime state as `online` and records the local port, effective URL, and public URL if the CLI output includes one.
 
 Multiple registered remote servers can point at the same tunnel ID. CoC deduplicates the managed tunnel connection by tunnel ID.
 
@@ -100,7 +101,7 @@ The persisted server entry contains durable configuration only. Runtime fields a
 | --- | --- |
 | `status` | `idle`, `connecting`, `online`, `offline`, or `failed` |
 | `effectiveUrl` | Local URL used by the current dashboard server, for example `http://127.0.0.1:51234` |
-| `localPort` | HTTP port resolved from `devtunnel port list` |
+| `localPort` | Forwarded local port from `devtunnel connect` (falls back to the `devtunnel port list` HTTP port) |
 | `publicUrl` | Public DevTunnel URL when available from CLI output |
 | `lastChecked` | Last runtime state or health check timestamp |
 | `lastError` | Last connector error, if any |
@@ -154,6 +155,7 @@ Use reconnect when the managed CLI/`ssh` process is stale, the local listener st
 | `... is not accessible to the current account` / `owned by a different account` | The tunnel ID is owned by a different identity (the host and dashboard logged in with different accounts) | Log in as the tunnel's owner with `devtunnel user login`, or use a different tunnel ID |
 | Health is offline with no effective endpoint | The connector failed before local URL resolution | The offline error now surfaces the underlying connector error (auth, CLI missing, readiness timeout); check it and verify `devtunnel port list <id>` works |
 | Health is offline with an HTTP or fetch error | The tunnel connected, but CoC is not reachable through the resolved port | Verify the host is running `coc serve` on the configured tunnel port |
+| Manual `devtunnel connect <id>` works (forwards to `127.0.0.1:<local>`) but CoC still reports offline | The connector health-checks the wrong local port | Resolved: CoC now parses the forwarded local port from `devtunnel connect` output instead of assuming local port equals the configured HTTP port |
 
 ## Implementation map
 
