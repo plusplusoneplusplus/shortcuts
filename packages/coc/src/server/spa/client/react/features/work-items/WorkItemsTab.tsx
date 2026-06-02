@@ -27,6 +27,8 @@ import { buildWorkItemHash, buildWorkItemSessionHash, buildWorkItemCommitHash } 
 import { isWorkItemsHierarchyEnabled, isWorkItemsAiAuthoringEnabled } from '../../utils/config';
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
 import { WorkItemAiComposer } from './WorkItemAiComposer';
+import type { WorkItemTrackerKind } from '@plusplusoneplusplus/coc-client';
+import { WORK_ITEM_TRACKER_TABS } from './workItemTrackerViews';
 
 export interface WorkItemsTabProps {
     workspaceId: string;
@@ -45,6 +47,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
     const [showCreateDialog, setShowCreateDialog] = useState(false);
     const [createDialogType, setCreateDialogType] = useState<WorkItemTypeLabel>('work-item');
     const [createDialogParentId, setCreateDialogParentId] = useState<string | undefined>(undefined);
+    const [activeTracker, setActiveTracker] = useState<WorkItemTrackerKind>('local-only');
     const [mobileShowDetail, setMobileShowDetail] = useState(false);
     const { isMobile, isTablet } = useBreakpoint();
     const { dispatch } = useWorkItems();
@@ -227,6 +230,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
     const [highlightedWorkItemId, setHighlightedWorkItemId] = useState<string | null>(null);
 
     const handleImported = useCallback((item: any) => {
+        setActiveTracker('github-backed');
         dispatch({ type: 'WORK_ITEM_ADDED', repoId: workspaceId, item });
         setSelectedWorkItemId(item.id);
         setSelectedSessionTaskId(null);
@@ -239,17 +243,59 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
     }, [dispatch, workspaceId, isMobile]);
 
     const listPane = hierarchyEnabled ? (
-        <WorkItemHierarchyTree
-            workspaceId={workspaceId}
-            selectedWorkItemId={selectedWorkItemId}
-            onSelectWorkItem={handleSelectWorkItem}
-            onCreated={handleCreated}
-            onCreateItem={openCreateDialog}
-            onCreateWithAi={aiAuthoringEnabled ? () => setShowAiComposer(true) : undefined}
-            onImportFromGitHub={() => setShowImportDialog(true)}
-            highlightedWorkItemId={highlightedWorkItemId}
-            isMobile={isMobile}
-        />
+        <div className="flex flex-col h-full" data-testid="work-item-tracker-tabs-panel">
+            <div
+                className="border-b border-[#d0d7de] dark:border-[#474749] bg-white dark:bg-[#1e1e1e] px-3 py-2 shrink-0"
+                role="tablist"
+                aria-label="Work item tracker"
+            >
+                <div className="grid grid-cols-2 gap-1 rounded-lg border border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] p-1">
+                    {WORK_ITEM_TRACKER_TABS.map(tab => {
+                        const active = activeTracker === tab.kind;
+                        return (
+                            <button
+                                key={tab.kind}
+                                type="button"
+                                role="tab"
+                                aria-selected={active}
+                                className={cn(
+                                    'rounded-md px-2.5 py-1.5 text-left transition-colors',
+                                    active
+                                        ? 'bg-white text-[#1f2328] shadow-sm dark:bg-[#333] dark:text-[#f0f0f0]'
+                                        : 'text-[#656d76] hover:text-[#1f2328] dark:text-[#999] dark:hover:text-[#f0f0f0]',
+                                )}
+                                onClick={() => {
+                                    setActiveTracker(tab.kind);
+                                    setSelectedWorkItemId(null);
+                                    setSelectedSessionTaskId(null);
+                                    setSelectedCommitHash(null);
+                                    setSelectedCommitFile(null);
+                                    if (isMobile) setMobileShowDetail(false);
+                                    location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/work-items';
+                                }}
+                                data-testid={`work-item-tracker-tab-${tab.kind}`}
+                            >
+                                <span className="block text-[12px] font-semibold leading-[1.25]">{tab.label}</span>
+                                <span className="block text-[10px] leading-[1.25] opacity-75">{tab.description}</span>
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+            <WorkItemHierarchyTree
+                key={activeTracker}
+                workspaceId={workspaceId}
+                trackerKind={activeTracker}
+                selectedWorkItemId={selectedWorkItemId}
+                onSelectWorkItem={handleSelectWorkItem}
+                onCreated={handleCreated}
+                onCreateItem={openCreateDialog}
+                onCreateWithAi={activeTracker === 'local-only' && aiAuthoringEnabled ? () => setShowAiComposer(true) : undefined}
+                onImportFromGitHub={activeTracker === 'github-backed' ? () => setShowImportDialog(true) : undefined}
+                highlightedWorkItemId={highlightedWorkItemId}
+                isMobile={isMobile}
+            />
+        </div>
     ) : (
         <div className="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
             <div className="flex items-center justify-between">

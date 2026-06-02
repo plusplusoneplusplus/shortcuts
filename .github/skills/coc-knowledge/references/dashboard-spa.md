@@ -194,9 +194,9 @@ The top-level `#memory` route is embedded in the Admin shell's Knowledge group a
 
 ## Work Items
 
-`WorkItemsTab` exposes an `Import from GitHub` toolbar action in both hierarchy and classic list modes. The standalone import dialog imports an existing GitHub Epic issue from the workspace-configured repository; the server pulls descendants discovered through hidden parent metadata into a GitHub-backed local mirror, then the SPA selects and highlights the root Epic row/card.
+`WorkItemsTab` presents hierarchy mode as two top-level tracker tabs: **Local** and **GitHub**. The Local tab passes `tracker=local-only` to the tree endpoint and shows local creation actions for local-only Epic trees. The GitHub tab passes `tracker=github-backed`, shows only GitHub-backed mirrored Epic trees, and exposes `Import from GitHub` as the way to seed a GitHub-backed Epic from the workspace-configured repository. The standalone import dialog imports an existing GitHub Epic issue, the server pulls descendants discovered through hidden parent metadata into a GitHub-backed local mirror, then the SPA switches to the GitHub tab and selects/highlights the root Epic row/card.
 
-When hierarchy mode and manual sync are both enabled, `WorkItemHierarchyTree` shows a compact GitHub sync toolbar above the hierarchy filters. It loads provider status through the typed `workItems.syncStatus()` client, then requires a `workItems.syncPreview()` response before `workItems.syncApply()` can run for Import, Export selected, or Sync linked. The preview dialog groups creates, updates, links, conflicts, warnings, and no-ops; conflict rows require an explicit Use CoC / Use GitHub / Skip choice before apply. Linked hierarchy rows and the detail pane use `WorkItemSyncBadge` to show GitHub issue links and dirty/conflict state.
+The split Local/GitHub tracker views do not show the legacy per-item preview/import/export/sync toolbar. GitHub-backed Epic roots expose a `Sync from GitHub` context-menu action that calls the per-Epic pull endpoint; adding children under GitHub-backed roots still uses the normal create flow, which pushes the new child to GitHub before storing its mirror metadata.
 
 ## coc-client Integration
 

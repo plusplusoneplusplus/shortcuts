@@ -18,6 +18,7 @@ import {
     type WorkItemSyncOperation,
     type WorkItemSyncProviderStatus,
     type WorkItemSyncStatusResponse,
+    type WorkItemTrackerKind,
     type WorkItemTreeNode,
     type WorkItemTreeResponse,
 } from '@plusplusoneplusplus/coc-client';
@@ -28,6 +29,13 @@ import {
     WorkItemSyncPreviewDialog,
     type WorkItemSyncPreviewDialogState,
 } from './WorkItemSyncPreviewDialog';
+import {
+    buildWorkItemTreeFilter,
+    getWorkItemTrackerViewCopy,
+    isGitHubTrackerView as isGitHubTrackerKind,
+    shouldShowLegacyWorkItemSyncToolbar,
+    shouldShowLocalRootCreationActions,
+} from './workItemTrackerViews';
 
 const TYPE_CHILD_LABELS: Record<WorkItemTypeLabel, string> = {
     epic:        'Feature',
@@ -72,6 +80,8 @@ function isSyncProviderAvailable(status: WorkItemSyncStatusResponse | null, prov
 
 export interface WorkItemHierarchyTreeProps {
     workspaceId: string;
+    /** Filters the tree to one Epic-rooted tracker partition. */
+    trackerKind?: WorkItemTrackerKind;
     selectedWorkItemId: string | null;
     onSelectWorkItem: (id: string) => void;
     /** Called when a new work item is created from within the tree. */
@@ -90,6 +100,7 @@ export interface WorkItemHierarchyTreeProps {
 
 export function WorkItemHierarchyTree({
     workspaceId,
+    trackerKind,
     selectedWorkItemId,
     onSelectWorkItem,
     onCreated,
@@ -108,6 +119,10 @@ export function WorkItemHierarchyTree({
     const [showArchived, setShowArchived] = useState(false);
     const [showDone, setShowDone] = useState(false);
     const syncEnabled = isWorkItemsSyncEnabled();
+    const trackerCopy = getWorkItemTrackerViewCopy(trackerKind);
+    const showLegacySyncToolbar = shouldShowLegacyWorkItemSyncToolbar(syncEnabled, trackerKind);
+    const showLocalRootCreationActions = shouldShowLocalRootCreationActions(trackerKind);
+    const isGitHubTrackerView = isGitHubTrackerKind(trackerKind);
     const [syncStatus, setSyncStatus] = useState<WorkItemSyncStatusResponse | null>(null);
     const [syncStatusLoading, setSyncStatusLoading] = useState(false);
     const [syncStatusError, setSyncStatusError] = useState<string | null>(null);
@@ -141,7 +156,7 @@ export function WorkItemHierarchyTree({
     const lastFetchedAt = useRef<string>('');
 
     const fetchSyncStatus = useCallback(async () => {
-        if (!syncEnabled) {
+        if (!showLegacySyncToolbar) {
             setSyncStatus(null);
             setSyncStatusError(null);
             return;
@@ -156,16 +171,14 @@ export function WorkItemHierarchyTree({
         } finally {
             setSyncStatusLoading(false);
         }
-    }, [workspaceId, syncEnabled]);
+    }, [workspaceId, showLegacySyncToolbar]);
 
     const fetchTree = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
             const resp: WorkItemTreeResponse = await getSpaCocClient().workItems.tree(workspaceId, {
-                q: searchQuery || undefined,
-                includeArchived: showArchived,
-                includeDone: showDone,
+                ...buildWorkItemTreeFilter({ searchQuery, trackerKind, showArchived, showDone }),
             });
             if (resp.disabled) {
                 setError('Hierarchy feature is disabled.');
@@ -179,7 +192,7 @@ export function WorkItemHierarchyTree({
         } finally {
             setLoading(false);
         }
-    }, [workspaceId, searchQuery, showArchived, showDone]);
+    }, [workspaceId, trackerKind, searchQuery, showArchived, showDone]);
 
     // Initial load
     useEffect(() => { fetchTree(); }, [fetchTree]);
@@ -363,6 +376,22 @@ export function WorkItemHierarchyTree({
         }
 
         // Pin/archive/delete
+        if (node.item.tracker?.kind === 'github-backed') {
+            items.push({
+                label: 'Sync from GitHub',
+                icon: '↻',
+                separator: childTypes.length > 0 || effectiveType !== 'epic',
+                onClick: async () => {
+                    try {
+                        await getSpaCocClient().workItems.syncGitHubEpic(workspaceId, node.item.id);
+                        fetchTree();
+                    } catch (err: any) {
+                        alert(err.message ?? 'Failed to sync from GitHub');
+                    }
+                },
+            });
+        }
+
         items.push({
             label: node.item.pinnedAt ? 'Unpin' : 'Pin',
             icon: '📌',
@@ -434,38 +463,42 @@ export function WorkItemHierarchyTree({
             {/* ── Pane header ── */}
             <div className="border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] px-3 py-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 shrink-0">
                 <div className="min-w-[140px] flex-1">
-                    <h1 className="text-[16px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc] truncate">Work breakdown</h1>
-                    <p className="text-[12px] leading-[1.4] text-[#656d76] dark:text-[#999] truncate">Select an item to inspect its children.</p>
+                    <h1 className="text-[16px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc] truncate">{trackerCopy.title}</h1>
+                    <p className="text-[12px] leading-[1.4] text-[#656d76] dark:text-[#999] truncate">{trackerCopy.subtitle}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-1 shrink-0">
-                    <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => onCreateItem('epic')}
-                        data-testid="create-epic-btn"
-                        title="Create top-level Epic"
-                    >
-                        + Epic
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onCreateItem('work-item')}
-                        data-testid="create-wi-btn"
-                        title="Create unparented Work Item"
-                    >
-                        + WI
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onCreateItem('bug')}
-                        data-testid="create-bug-btn"
-                        title="Create unparented Bug"
-                        aria-label="Create unparented Bug"
-                    >
-                        🐛
-                    </Button>
+                    {showLocalRootCreationActions && (
+                        <>
+                            <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() => onCreateItem('epic')}
+                                data-testid="create-epic-btn"
+                                title="Create top-level Epic"
+                            >
+                                + Epic
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => onCreateItem('work-item')}
+                                data-testid="create-wi-btn"
+                                title="Create unparented Work Item"
+                            >
+                                + WI
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => onCreateItem('bug')}
+                                data-testid="create-bug-btn"
+                                title="Create unparented Bug"
+                                aria-label="Create unparented Bug"
+                            >
+                                🐛
+                            </Button>
+                        </>
+                    )}
                     {onCreateWithAi && (
                         <Button
                             variant="ghost"
@@ -493,7 +526,7 @@ export function WorkItemHierarchyTree({
                 </div>
             </div>
 
-            {syncEnabled && (
+            {showLegacySyncToolbar && (
                 <div className="px-3 py-2 shrink-0 grid gap-2 border-b border-[#eaeef2] dark:border-[#3c3c3c]" data-testid="hierarchy-sync-toolbar">
                     <div className="flex items-center justify-between gap-2">
                         <button
@@ -631,9 +664,9 @@ export function WorkItemHierarchyTree({
                     <div className="flex flex-col items-center justify-center h-24 gap-3 px-4 text-center" data-testid="hierarchy-empty">
                         <div className="text-3xl">🗂️</div>
                         <p className="text-xs text-[#848484]">
-                            {searchQuery ? 'No results found.' : 'No work items yet. Create an Epic to start, or add an unparented Work Item.'}
+                            {searchQuery ? 'No results found.' : trackerCopy.empty}
                         </p>
-                        {!searchQuery && (
+                        {!searchQuery && showLocalRootCreationActions && (
                             <div className="flex gap-2">
                                 <Button variant="primary" size="sm" onClick={() => onCreateItem('epic')} data-testid="empty-create-epic-btn">
                                     + Create Epic
@@ -647,6 +680,11 @@ export function WorkItemHierarchyTree({
                                     </Button>
                                 )}
                             </div>
+                        )}
+                        {!searchQuery && isGitHubTrackerView && onImportFromGitHub && (
+                            <Button variant="primary" size="sm" onClick={onImportFromGitHub} data-testid="empty-import-from-github-btn">
+                                Import from GitHub
+                            </Button>
                         )}
                     </div>
                 ) : (
