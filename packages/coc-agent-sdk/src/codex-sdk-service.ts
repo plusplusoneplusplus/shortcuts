@@ -17,7 +17,7 @@
  * The module is loaded lazily with a try/catch so forge works fine without it.
  */
 
-import type { SendMessageOptions, TokenUsage } from './types';
+import type { SendMessageOptions, SystemMessageConfig, TokenUsage } from './types';
 import type { ToolEvent } from './types';
 import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult } from './sdk-service-interface';
 import type { IAccountQuotaResult, IAccountQuotaSnapshot } from './copilot-sdk-service';
@@ -536,7 +536,7 @@ export class CodexSDKService implements ISDKService {
     }
 
     private buildCodexInput(options: SendMessageOptions): CodexInput {
-        const text = options.prompt ?? '';
+        const text = this.applyCodexSystemMessage(options.prompt ?? '', options.systemMessage);
         const imagePaths = (options.attachments ?? [])
             .filter(attachment => attachment.type === 'file' && isSupportedCodexImagePath(attachment.path))
             .map(attachment => attachment.path);
@@ -547,6 +547,16 @@ export class CodexSDKService implements ISDKService {
             ...(text ? [{ type: 'text' as const, text }] : []),
             ...imagePaths.map(imagePath => ({ type: 'local_image' as const, path: imagePath })),
         ];
+    }
+
+    /**
+     * Codex's `ThreadOptions` has no native system-prompt field, so honour
+     * `SendMessageOptions.systemMessage` by prepending the content to the user
+     * prompt. Both `append` and `replace` modes use the same prepend format.
+     */
+    private applyCodexSystemMessage(prompt: string, systemMessage?: SystemMessageConfig): string {
+        if (!systemMessage?.content) return prompt;
+        return `[System instructions]:\n${systemMessage.content}\n\n${prompt}`;
     }
 
     // ── Message dispatch ──────────────────────────────────────────────────────
