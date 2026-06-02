@@ -432,12 +432,12 @@ export function WorkItemHierarchyTree({
     return (
         <div className="flex flex-col h-full" data-testid="work-item-hierarchy-tree">
             {/* ── Pane header ── */}
-            <div className="min-h-[54px] border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] px-3 py-2.5 flex items-center justify-between gap-2 shrink-0">
-                <div className="min-w-0">
-                    <h1 className="text-[16px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc]">Work breakdown</h1>
-                    <p className="text-[12px] leading-[1.4] text-[#656d76] dark:text-[#999]">Select an item to inspect its children.</p>
+            <div className="border-b border-[#d0d7de] dark:border-[#474749] bg-[#f6f8fa] dark:bg-[#252526] px-3 py-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 shrink-0">
+                <div className="min-w-[140px] flex-1">
+                    <h1 className="text-[16px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc] truncate">Work breakdown</h1>
+                    <p className="text-[12px] leading-[1.4] text-[#656d76] dark:text-[#999] truncate">Select an item to inspect its children.</p>
                 </div>
-                <div className="flex gap-1 shrink-0">
+                <div className="flex flex-wrap items-center gap-1 shrink-0">
                     <Button
                         variant="primary"
                         size="sm"
@@ -462,6 +462,7 @@ export function WorkItemHierarchyTree({
                         onClick={() => onCreateItem('bug')}
                         data-testid="create-bug-btn"
                         title="Create unparented Bug"
+                        aria-label="Create unparented Bug"
                     >
                         🐛
                     </Button>
@@ -472,6 +473,7 @@ export function WorkItemHierarchyTree({
                             onClick={onCreateWithAi}
                             data-testid="hierarchy-create-with-ai-btn"
                             title="Create with AI"
+                            aria-label="Create with AI"
                         >
                             ✨
                         </Button>
@@ -483,6 +485,7 @@ export function WorkItemHierarchyTree({
                             onClick={onImportFromGitHub}
                             data-testid="import-from-github-btn"
                             title="Import a GitHub issue as a work item"
+                            className="whitespace-nowrap"
                         >
                             Import from GitHub
                         </Button>
