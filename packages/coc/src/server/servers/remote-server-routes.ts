@@ -113,6 +113,7 @@ async function healthForServer(server: RemoteServer, connector: DevTunnelConnect
         tunnelId: server.kind === 'devtunnel' ? server.tunnelId : undefined,
         localPort: runtime.localPort,
         publicUrl: runtime.publicUrl,
+        lastError: runtime.lastError,
     });
 }
 

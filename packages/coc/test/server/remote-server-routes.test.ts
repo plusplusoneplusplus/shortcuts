@@ -188,6 +188,29 @@ describe('remote server routes', () => {
         });
     });
 
+    it('surfaces the underlying connector error when the tunnel cannot resolve an endpoint', async () => {
+        const connector = new DevTunnelConnector({
+            commandRunner: async () => {
+                throw Object.assign(new Error('devtunnel not found'), { code: 'ENOENT' });
+            },
+            processStarter: () => new FakeChild(),
+            healthChecker: async () => true,
+            readinessPollMs: 1,
+        });
+        const baseUrl = await startApi(connector);
+
+        const created = await request(baseUrl, 'POST', '/api/servers', { kind: 'devtunnel', label: 'VM', tunnelId: 'my-remote-coc' });
+        const health = await request(baseUrl, 'GET', `/api/servers/${created.body.id}/health`);
+
+        expect(health.status).toBe(200);
+        expect(health.body).toMatchObject({
+            kind: 'devtunnel',
+            status: 'offline',
+            error: 'devtunnel CLI is not installed or not on PATH',
+        });
+        expect(health.body.error).not.toBe('No effective endpoint is available');
+    });
+
     it('rejects manual connect and disconnect for direct URL entries', async () => {
         const baseUrl = await startApi(new DevTunnelConnector());
         const created = await request(baseUrl, 'POST', '/api/servers', { kind: 'url', label: 'Lab', url: 'http://lab.example.com' });
