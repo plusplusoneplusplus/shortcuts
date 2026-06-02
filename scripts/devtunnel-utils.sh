@@ -9,6 +9,14 @@ is_devtunnel_auth_error() {
     grep -qiE 'not logged in|not authenticated|login required|log in|\b401\b|unauthorized' <<<"${1:-}"
 }
 
+# Returns 0 when the devtunnel CLI output indicates the tunnel ID exists but is
+# not accessible to the current account: owned by a different identity or in use
+# elsewhere. These signals surface when listing/inspecting the tunnel, never for
+# a tunnel the current account owns, so they unambiguously indicate ownership.
+is_devtunnel_not_owned_error() {
+    grep -qiE 'tunnel not found|request not permitted|unauthorized tunnel access' <<<"${1:-}"
+}
+
 # Parses HTTP port numbers from `devtunnel port list` output. Handles JSON,
 # table, and key-value styles (mirrors Get-HttpDevTunnelPorts). Prints one
 # unique port per line.

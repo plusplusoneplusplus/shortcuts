@@ -57,7 +57,7 @@ const runPowerShellFile = (scriptName: string, args: string[], env: NodeJS.Proce
   );
 };
 
-const createFakeDevTunnel = (mode: 'none' | 'one' | 'multi' | 'host-wrong-first') => {
+const createFakeDevTunnel = (mode: 'none' | 'one' | 'multi' | 'host-wrong-first' | 'not-owned') => {
   const dir = mkdtempSync(join(tmpdir(), 'coc-devtunnel-test-'));
   const logPath = join(dir, 'devtunnel.log');
   const cocLogPath = join(dir, 'coc.log');
@@ -88,6 +88,9 @@ if (args[0] === 'port' && args[1] === 'list') {
     console.log('Port Number  Protocol');
     console.log('4000         http');
     console.log('51234        http');
+  } else if (mode === 'not-owned') {
+    console.error('Tunnel not found: ' + (args[2] || ''));
+    process.exit(11);
   } else {
     console.log('No ports found');
   }
@@ -496,6 +499,11 @@ describe('CoC service bash scripts', () => {
     expect(configDevTunnelSh).not.toContain('host "$TUNNEL_ID"');
   });
 
+  it('config-devtunnel.sh detects when the tunnel id is owned by a different account', () => {
+    expect(configDevTunnelSh).toContain('is_devtunnel_not_owned_error');
+    expect(configDevTunnelSh).toContain('owned by a different account or in use elsewhere');
+  });
+
   it('coc-serve-loop.sh uses --tunnel-id as the only tunnel selector and rejects --port with it', () => {
     expect(serveLoopSh).toContain('-t|--tunnel-id)');
     expect(serveLoopSh).toContain(
@@ -657,6 +665,21 @@ describeBash('CoC service bash script behavior', () => {
       expect(result.status, output).toBe(2);
       expect(output).toContain("Dev tunnel 'ambiguous-coc' has multiple HTTP ports (4000 51234).");
       expect(readDevTunnelLog(fake.logPath).some((line) => line.startsWith('port\tcreate\tambiguous-coc'))).toBe(false);
+    } finally {
+      fake.cleanup();
+    }
+  });
+
+  it('config-devtunnel.sh reports a clear hint when the tunnel id is owned by another account', () => {
+    const fake = createFakeDevTunnel('not-owned');
+    try {
+      const result = runBashFile('config-devtunnel.sh', ['--tunnel-id', 'foreign-coc'], fake.env);
+      const output = `${result.stdout}\n${result.stderr}`;
+      expect(result.status, output).toBe(2);
+      expect(output).toContain("Dev tunnel 'foreign-coc' is not accessible to the current account");
+      expect(output).toContain('owned by a different account or in use elsewhere');
+      expect(output).toContain('rerun with a different --tunnel-id');
+      expect(readDevTunnelLog(fake.logPath).some((line) => line.startsWith('port\tcreate\tforeign-coc'))).toBe(false);
     } finally {
       fake.cleanup();
     }
