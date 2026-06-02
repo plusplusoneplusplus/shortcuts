@@ -168,6 +168,10 @@ resolve_configured_devtunnel_port() {
         echo -e "\033[31mdevtunnel is not authenticated. Run '$cmd user login', then rerun this script.\033[0m" >&2
         return 1
     fi
+    if is_devtunnel_not_owned_error "$out"; then
+        echo -e "\033[31mDev tunnel '$id' is not accessible to the current account; the tunnel ID is owned by a different account or in use elsewhere. Log in as the owner with '$cmd user login', or pick a new tunnel ID.\033[0m" >&2
+        return 1
+    fi
     if (( rc != 0 )); then
         echo -e "\033[31mFailed to list dev tunnel ports for '$id': $out\033[0m" >&2
         return 1

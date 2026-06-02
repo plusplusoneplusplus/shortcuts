@@ -261,6 +261,15 @@ describe('CoC service PowerShell scripts', () => {
       expect(serveLoop).not.toContain("'port', 'create', $TunnelId");
     });
 
+    it('surfaces a not-owned tunnel at serve time', () => {
+      expect(serveLoop).toContain('Test-DevTunnelNotOwnedError');
+      expect(serveLoop).toContain('is not accessible to the current account');
+      // The ownership check must run before the generic exit-code failure path.
+      expect(serveLoop.indexOf('Test-DevTunnelNotOwnedError $portList.Output')).toBeLessThan(
+        serveLoop.indexOf('Failed to list dev tunnel ports')
+      );
+    });
+
     it('hosts devtunnel as a subprocess and parses the public URL from output', () => {
       expect(serveLoop).toContain('function Start-DevTunnel');
       expect(serveLoop).toContain('function Select-DevTunnelUrl');
@@ -297,6 +306,8 @@ describe('CoC service PowerShell scripts', () => {
     it('stops the devtunnel process tree after every serve iteration', () => {
       expect(serveLoop).toContain('function Stop-ProcessTree');
       expect(serveLoop).toContain('Where-Object { $_.ParentProcessId -eq $ProcessId }');
+      // On pwsh-for-Linux, Win32_Process is unavailable, so the tree is killed via .NET Kill($true).
+      expect(serveLoop).toContain('(Get-Process -Id $ProcessId -ErrorAction Stop).Kill($true)');
       expect(serveLoop).toContain('Stop-DevTunnel -TunnelSession $tunnelSession');
       expect(serveLoop).toContain('} finally {');
       expect(serveLoop.indexOf('Stop-DevTunnel -TunnelSession $tunnelSession')).toBeLessThan(
@@ -620,6 +631,15 @@ describe('CoC service bash scripts', () => {
     expect(serveLoopSh).toContain('port list "$id"');
     expect(serveLoopSh.indexOf('stop_devtunnel_host')).toBeGreaterThan(serveLoopSh.indexOf('coc serve --no-open'));
     expect(serveLoopSh).not.toContain('port create');
+  });
+
+  it('coc-serve-loop.sh surfaces a not-owned tunnel at serve time', () => {
+    expect(serveLoopSh).toContain('is_devtunnel_not_owned_error');
+    expect(serveLoopSh).toContain('is not accessible to the current account');
+    // The ownership check must run before the generic "Failed to list" fallback.
+    expect(serveLoopSh.indexOf('is_devtunnel_not_owned_error')).toBeLessThan(
+      serveLoopSh.indexOf('Failed to list dev tunnel ports')
+    );
   });
 
   it('coc-serve-loop.sh aborts startup instead of serving locally when the tunnel host fails', () => {

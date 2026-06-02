@@ -231,6 +231,10 @@ function Resolve-ConfiguredDevTunnelPort {
         Write-Log "devtunnel is not authenticated. Run 'devtunnel user login', then rerun this script." -Color Red
         return $null
     }
+    if (Test-DevTunnelNotOwnedError $portList.Output) {
+        Write-Log "Dev tunnel '$TunnelId' is not accessible to the current account; the tunnel ID is owned by a different account or in use elsewhere. Log in as the owner with 'devtunnel user login', or pick a new tunnel ID." -Color Red
+        return $null
+    }
     if ($portList.ExitCode -ne 0) {
         Write-Log "Failed to list dev tunnel ports for '$TunnelId': $($portList.Output.Trim())" -Color Red
         return $null
@@ -251,6 +255,20 @@ function Resolve-ConfiguredDevTunnelPort {
 
 function Stop-ProcessTree {
     param([Parameter(Mandatory)][int]$ProcessId)
+
+    # Win32_Process (CIM/WMI) is Windows-only, so on PowerShell 7 for Linux/macOS it
+    # enumerates nothing and child `devtunnel` processes would leak. There, use .NET's
+    # Process.Kill($true) (available on .NET 5+, which pwsh 7 runs on) to kill the whole
+    # tree. On Windows (incl. Windows PowerShell 5.1) keep the portable CIM walk.
+    $isWindowsHost = ($null -eq $IsWindows) -or $IsWindows
+    if (-not $isWindowsHost) {
+        try {
+            (Get-Process -Id $ProcessId -ErrorAction Stop).Kill($true)
+        } catch {
+            # Process already exited or cannot be killed — best effort.
+        }
+        return
+    }
 
     Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
         Where-Object { $_.ParentProcessId -eq $ProcessId } |
