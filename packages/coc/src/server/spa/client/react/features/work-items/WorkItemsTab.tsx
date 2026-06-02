@@ -246,6 +246,8 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
             onCreated={handleCreated}
             onCreateItem={openCreateDialog}
             onCreateWithAi={aiAuthoringEnabled ? () => setShowAiComposer(true) : undefined}
+            onImportFromGitHub={() => setShowImportDialog(true)}
+            highlightedWorkItemId={highlightedWorkItemId}
             isMobile={isMobile}
         />
     ) : (
@@ -265,7 +267,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                         </Button>
                     )}
                     <Button variant="ghost" size="sm" onClick={() => setShowImportDialog(true)} data-testid="import-from-github-btn">
-                        ↓ GitHub
+                        Import from GitHub
                     </Button>
                 </div>
             </div>

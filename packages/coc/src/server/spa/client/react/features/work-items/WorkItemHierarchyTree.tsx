@@ -80,6 +80,10 @@ export interface WorkItemHierarchyTreeProps {
     onCreateItem: (type: WorkItemTypeLabel, parentId?: string) => void;
     /** When provided, renders the "✨ Create with AI" entry point in the tree header and empty state. */
     onCreateWithAi?: () => void;
+    /** When provided, renders the standalone GitHub issue import entry point in the tree header. */
+    onImportFromGitHub?: () => void;
+    /** Newly imported item id to scroll to and highlight once the tree renders it. */
+    highlightedWorkItemId?: string | null;
     /** When true, renders the always-visible mobile add-child buttons. */
     isMobile?: boolean;
 }
@@ -91,6 +95,8 @@ export function WorkItemHierarchyTree({
     onCreated,
     onCreateItem,
     onCreateWithAi,
+    onImportFromGitHub,
+    highlightedWorkItemId,
     isMobile = false,
 }: WorkItemHierarchyTreeProps) {
     const [treeData, setTreeData] = useState<WorkItemTreeNode[]>([]);
@@ -194,6 +200,13 @@ export function WorkItemHierarchyTree({
     useEffect(() => {
         saveCollapsed(workspaceId, collapsedIds);
     }, [workspaceId, collapsedIds]);
+
+    useEffect(() => {
+        if (!highlightedWorkItemId) return;
+        const element = Array.from(document.querySelectorAll<HTMLElement>('[data-work-item-id]'))
+            .find(candidate => candidate.dataset.workItemId === highlightedWorkItemId);
+        element?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, [highlightedWorkItemId, treeData]);
 
     const handleToggleCollapse = useCallback((id: string) => {
         setCollapsedIds(prev => {
@@ -403,6 +416,7 @@ export function WorkItemHierarchyTree({
                 onContextMenu={handleContextMenu}
                 isMobile={isMobile}
                 onAddChild={handleAddChild}
+                highlighted={highlightedWorkItemId === id}
             >
                 {!collapsed && node.children.map(child => renderNode(child, depth + 1))}
             </WorkItemHierarchyNode>
@@ -460,6 +474,17 @@ export function WorkItemHierarchyTree({
                             title="Create with AI"
                         >
                             ✨
+                        </Button>
+                    )}
+                    {onImportFromGitHub && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={onImportFromGitHub}
+                            data-testid="import-from-github-btn"
+                            title="Import a GitHub issue as a work item"
+                        >
+                            Import from GitHub
                         </Button>
                     )}
                 </div>

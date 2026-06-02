@@ -77,7 +77,12 @@ function makeFakeProvider(): WorkItemSyncProviderAdapter {
     };
 }
 
-function makeMockIssue(issueNumber: number, title = 'Test Issue', state: 'open' | 'closed' = 'open'): GitHubWorkItemIssue {
+function makeMockIssue(
+    issueNumber: number,
+    title = 'Test Issue',
+    state: 'open' | 'closed' = 'open',
+    overrides: Partial<GitHubWorkItemIssue> = {},
+): GitHubWorkItemIssue {
     return {
         id: `I_kw${issueNumber}`,
         number: issueNumber,
@@ -88,6 +93,7 @@ function makeMockIssue(issueNumber: number, title = 'Test Issue', state: 'open' 
         labels: [],
         body: 'Issue body text',
         updatedAt: NOW,
+        ...overrides,
     };
 }
 
@@ -325,9 +331,24 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
         expect(res.body.error).toMatch(/No GitHub repository configured/i);
     });
 
-    it('closed issue is imported with status done', async () => {
+    it('imports standalone GitHub issues with created status while preserving type and priority labels', async () => {
         const issueNumber = 77;
-        const issues = new Map([[issueNumber, makeMockIssue(issueNumber, 'Closed issue', 'closed')]]);
+        const issues = new Map([[issueNumber, makeMockIssue(issueNumber, 'Closed issue', 'closed', {
+            body: [
+                'Issue body',
+                '',
+                '<!-- coc-sync -->',
+                'coc:type:bug',
+                'coc:status:done',
+                'coc:priority:high',
+                '<!-- /coc-sync -->',
+            ].join('\n'),
+            labels: [
+                { name: 'coc:type:bug' },
+                { name: 'coc:status:planning' },
+                { name: 'coc:priority:high' },
+            ],
+        })]]);
         await startServer(issues);
 
         const res = await post(importUrl(), {
@@ -335,6 +356,9 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
         });
 
         expect(res.status).toBe(201);
-        expect(res.body.status).toBe('done');
+        expect(res.body.status).toBe('created');
+        expect(res.body.type).toBe('bug');
+        expect(res.body.priority).toBe('high');
+        expect(res.body.syncLinks).toHaveLength(1);
     });
 });

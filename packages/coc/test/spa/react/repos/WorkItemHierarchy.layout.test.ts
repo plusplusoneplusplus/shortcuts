@@ -435,6 +435,50 @@ describe('WorkItemsTab — hierarchy flag conditional', () => {
         expect(src).toContain('createDialogParentId');
         expect(src).toContain('setCreateDialogParentId');
     });
+
+    it('passes import and highlight props to WorkItemHierarchyTree', () => {
+        const treeIdx = src.indexOf('<WorkItemHierarchyTree');
+        expect(treeIdx).toBeGreaterThan(-1);
+        const treeBlock = src.slice(treeIdx, src.indexOf('/>', treeIdx) + 2);
+        expect(treeBlock).toContain('onImportFromGitHub');
+        expect(treeBlock).toContain('highlightedWorkItemId={highlightedWorkItemId}');
+    });
+});
+
+describe('WorkItemsTab — Import from GitHub entry point', () => {
+    let src: string;
+
+    beforeAll(() => {
+        src = fs.readFileSync(TAB_SRC_PATH, 'utf-8');
+    });
+
+    it('uses the exact visible label in the non-hierarchy toolbar', () => {
+        const btnIdx = src.indexOf('data-testid="import-from-github-btn"');
+        expect(btnIdx).toBeGreaterThan(-1);
+        const block = src.slice(btnIdx, btnIdx + 300);
+        expect(block).toContain('Import from GitHub');
+        expect(block).not.toContain('↓ GitHub');
+    });
+});
+
+describe('WorkItemHierarchyTree — Import from GitHub entry point', () => {
+    let src: string;
+
+    beforeAll(() => {
+        src = fs.readFileSync(TREE_SRC_PATH, 'utf-8');
+    });
+
+    it('accepts and renders the standalone import action in the hierarchy toolbar', () => {
+        expect(src).toContain('onImportFromGitHub');
+        expect(src).toContain('data-testid="import-from-github-btn"');
+        expect(src).toContain('Import from GitHub');
+    });
+
+    it('scrolls highlighted imported hierarchy rows into view', () => {
+        expect(src).toContain('highlightedWorkItemId');
+        expect(src).toContain('scrollIntoView({ block: \'center\', behavior: \'smooth\' })');
+        expect(src).toContain('highlighted={highlightedWorkItemId === id}');
+    });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

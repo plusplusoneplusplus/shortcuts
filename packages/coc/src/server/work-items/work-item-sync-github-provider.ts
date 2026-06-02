@@ -1601,7 +1601,7 @@ export async function importGitHubIssueAsWorkItem(
         repoId: context.workspaceId,
         title: issue.title,
         description: parsed.bodyWithoutMetadata,
-        status: remoteStatus(issue, parsed),
+        status: 'created',
         type,
         createdAt: syncedAt,
         updatedAt: syncedAt,
