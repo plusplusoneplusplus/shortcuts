@@ -76,6 +76,161 @@ export interface WorkItemSyncLink {
   parent?: WorkItemSyncParentReference;
 }
 
+export const WORK_ITEM_SYNC_ITEM_LIMIT = 200;
+
+export type WorkItemSyncOperation = 'import' | 'export-selected' | 'sync-linked';
+export type WorkItemSyncDisabledReason = 'hierarchy-disabled' | 'sync-disabled';
+export type WorkItemSyncConflictResolution = 'use-coc' | 'use-provider' | 'skip';
+
+export interface WorkItemSyncRepository {
+  provider: WorkItemSyncProvider;
+  owner?: string;
+  repo?: string;
+  projectId?: string;
+  url?: string;
+  source?: 'preference' | 'workspaceRemote' | 'origin';
+}
+
+export interface WorkItemSyncProviderStatus {
+  provider: WorkItemSyncProvider;
+  available: boolean;
+  reason?:
+    | 'provider-unavailable'
+    | 'provider-disabled'
+    | 'incomplete-preference'
+    | 'missing-workspace'
+    | 'missing-origin'
+    | 'non-github-origin'
+    | 'auth-unavailable'
+    | 'unknown';
+  message?: string;
+  repository?: WorkItemSyncRepository;
+  auth?: {
+    mode: 'external';
+    authenticated?: boolean;
+    message?: string;
+  };
+}
+
+export interface WorkItemSyncStatusResponse {
+  enabled: boolean;
+  disabled?: boolean;
+  disabledReason?: WorkItemSyncDisabledReason;
+  maxItems: number;
+  provider?: WorkItemSyncProviderStatus;
+  providers: WorkItemSyncProviderStatus[];
+}
+
+export interface WorkItemSyncRemoteFilter extends JsonObject {
+  owner?: string;
+  repo?: string;
+  issueNumbers?: number[];
+  labels?: string[];
+  q?: string;
+}
+
+export interface WorkItemSyncPreviewRequest extends JsonObject {
+  provider?: WorkItemSyncProvider;
+  operation: WorkItemSyncOperation;
+  selectedWorkItemId?: string;
+  includeArchived?: boolean;
+  filters?: WorkItemSyncRemoteFilter;
+}
+
+export interface WorkItemSyncFieldChange {
+  field: string;
+  cocValue?: unknown;
+  remoteValue?: unknown;
+  proposedValue?: unknown;
+}
+
+export type WorkItemSyncPreviewOperationKind =
+  | 'create-local'
+  | 'create-remote'
+  | 'update-local'
+  | 'update-remote'
+  | 'link'
+  | 'noop';
+
+export interface WorkItemSyncPreviewOperation {
+  id: string;
+  kind: WorkItemSyncPreviewOperationKind;
+  title: string;
+  workItemId?: string;
+  remote?: WorkItemSyncRemoteIdentity;
+  itemType?: WorkItemType;
+  status?: WorkItemStatus;
+  fields?: WorkItemSyncFieldChange[];
+}
+
+export interface WorkItemSyncWarning {
+  id: string;
+  message: string;
+  workItemId?: string;
+  remote?: WorkItemSyncRemoteIdentity;
+  severity?: 'info' | 'warning' | 'error';
+}
+
+export interface WorkItemSyncConflict {
+  id: string;
+  message: string;
+  workItemId?: string;
+  remote?: WorkItemSyncRemoteIdentity;
+  fields: WorkItemSyncFieldChange[];
+  allowedResolutions: WorkItemSyncConflictResolution[];
+}
+
+export interface WorkItemSyncPreviewResponse {
+  provider: WorkItemSyncProvider;
+  operation: WorkItemSyncOperation;
+  previewId: string;
+  generatedAt: string;
+  itemCount: number;
+  maxItems: number;
+  creates: WorkItemSyncPreviewOperation[];
+  updates: WorkItemSyncPreviewOperation[];
+  links: WorkItemSyncPreviewOperation[];
+  noOps: WorkItemSyncPreviewOperation[];
+  warnings: WorkItemSyncWarning[];
+  conflicts: WorkItemSyncConflict[];
+}
+
+export interface WorkItemSyncApplyConflictResolution {
+  conflictId: string;
+  resolution: WorkItemSyncConflictResolution;
+}
+
+export interface WorkItemSyncApplyRequest extends JsonObject {
+  provider?: WorkItemSyncProvider;
+  operation: WorkItemSyncOperation;
+  selectedWorkItemId?: string;
+  includeArchived?: boolean;
+  filters?: WorkItemSyncRemoteFilter;
+  previewId?: string;
+  conflictResolutions?: WorkItemSyncApplyConflictResolution[];
+}
+
+export interface WorkItemSyncApplyResultRow {
+  id: string;
+  status: 'applied' | 'skipped' | 'failed';
+  operationId?: string;
+  workItemId?: string;
+  remote?: WorkItemSyncRemoteIdentity;
+  message?: string;
+}
+
+export interface WorkItemSyncApplyResponse {
+  provider: WorkItemSyncProvider;
+  operation: WorkItemSyncOperation;
+  applied: number;
+  skipped: number;
+  failed: number;
+  rows: WorkItemSyncApplyResultRow[];
+  warnings: WorkItemSyncWarning[];
+  conflicts: WorkItemSyncConflict[];
+  refreshedPreview?: WorkItemSyncPreviewResponse;
+}
+
 export interface WorkItemPlan {
   version: number;
   content: string;

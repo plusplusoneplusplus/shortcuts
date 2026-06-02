@@ -8,6 +8,11 @@ import type {
   RequestWorkItemChangesRequest,
   RequestWorkItemChangesResponse,
   ResolveWorkItemCommentsRequest,
+  WorkItemSyncApplyRequest,
+  WorkItemSyncApplyResponse,
+  WorkItemSyncPreviewRequest,
+  WorkItemSyncPreviewResponse,
+  WorkItemSyncStatusResponse,
   UpdateWorkItemRequest,
   WorkItem,
   WorkItemAiGenerationResponse,
@@ -125,6 +130,26 @@ export class WorkItemsClient {
 
   execute(workspaceId: string, workItemId: string, request: ExecuteWorkItemRequest = {}): Promise<ExecuteWorkItemResponse> {
     return this.transport.request(path(workspaceId, `/${encodePathSegment(workItemId)}/execute`), {
+      method: 'POST',
+      body: { ...request },
+    });
+  }
+
+  syncStatus(workspaceId: string, provider?: string): Promise<WorkItemSyncStatusResponse> {
+    return this.transport.request<WorkItemSyncStatusResponse>(path(workspaceId, '/sync/status'), {
+      query: provider ? { provider } : undefined,
+    });
+  }
+
+  syncPreview(workspaceId: string, request: WorkItemSyncPreviewRequest): Promise<WorkItemSyncPreviewResponse> {
+    return this.transport.request<WorkItemSyncPreviewResponse>(path(workspaceId, '/sync/preview'), {
+      method: 'POST',
+      body: { ...request },
+    });
+  }
+
+  syncApply(workspaceId: string, request: WorkItemSyncApplyRequest): Promise<WorkItemSyncApplyResponse> {
+    return this.transport.request<WorkItemSyncApplyResponse>(path(workspaceId, '/sync/apply'), {
       method: 'POST',
       body: { ...request },
     });

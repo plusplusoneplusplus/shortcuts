@@ -251,8 +251,13 @@ See [mcp-settings.md](mcp-settings.md).
 | PATCH | `/api/workspaces/:id/work-items/:itemId` | Update work item |
 | DELETE | `/api/workspaces/:id/work-items/:itemId` | Delete work item |
 | POST | `/api/workspaces/:id/work-items/:itemId/execute` | Enqueue a work-item implementation run. Body accepts optional `skillNames`, `provider`, `model`, and `reasoningEffort` overrides. |
+| GET | `/api/workspaces/:id/work-items/sync/status` | Manual hierarchy sync status. Returns disabled reasons unless both `workItems.hierarchy.enabled` and `workItems.sync.enabled` are true; provider credentials remain external. |
+| POST | `/api/workspaces/:id/work-items/sync/preview` | Compute a synchronous, non-mutating import/export/sync preview for the selected provider and operation. Local export/sync scopes and explicit issue filters are capped at 200 items. |
+| POST | `/api/workspaces/:id/work-items/sync/apply` | Apply a previously previewed manual sync operation with optional per-conflict resolutions. Runs are synchronous and capped at 200 items. |
 
 Work item create/update payloads may include `syncLinks`, an allow-listed array of external provider metadata for manual hierarchy sync. Each link stores provider identity (`github` now, `azure-boards` reserved), remote issue identity, revision/updated timestamps, last-sync fingerprint/timestamp, dirty/conflict indicators, and parent reference data. Token, credential, secret, and arbitrary runtime-state fields are rejected. GitHub issue mapping owns only `coc:` labels (`coc:type:*`, `coc:status:*`, `coc:priority:*`) and the hidden `<!-- coc-work-item-sync {json} -->` metadata block; non-`coc:` issue labels remain user labels/tags.
+
+The sync route layer is provider-ready: status, preview, and apply dispatch through provider adapters. GitHub Issues is the intended first provider, while Azure Boards is reserved and must report unavailable until an adapter is added.
 
 ### AI Authoring (gated by `workItems.aiAuthoring` flag, default `false`)
 

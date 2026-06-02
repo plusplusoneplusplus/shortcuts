@@ -60,6 +60,7 @@ import { registerMyWorkRoutes } from '../workspaces/my-work-handler';
 import { registerMyLifeRoutes } from '../workspaces/my-life-handler';
 import { registerWorkItemRoutes } from './work-item-routes';
 import { registerWorkItemHierarchyRoutes } from './work-item-hierarchy-routes';
+import { registerWorkItemSyncRoutes } from './work-item-sync-routes';
 import { registerWorkItemPlanRoutes } from './work-item-plan-routes';
 import { registerWorkItemExecutionRoutes } from './work-item-execution-routes';
 import { registerWorkItemChangesRoutes } from './work-item-changes-routes';
@@ -445,6 +446,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const getWorkItemsHierarchyEnabled = opts.runtimeConfigService
         ? () => opts.runtimeConfigService!.config.workItems?.hierarchy?.enabled ?? false
         : () => opts.resolvedConfig?.workItems?.hierarchy?.enabled ?? false;
+    const getWorkItemsSyncEnabled = opts.runtimeConfigService
+        ? () => opts.runtimeConfigService!.config.workItems?.sync?.enabled ?? false
+        : () => opts.resolvedConfig?.workItems?.sync?.enabled ?? false;
     const getWorkItemsAiAuthoringEnabled = opts.runtimeConfigService
         ? () => opts.runtimeConfigService!.config.workItems?.aiAuthoring?.enabled ?? false
         : () => opts.resolvedConfig?.workItems?.aiAuthoring?.enabled ?? false;
@@ -460,6 +464,14 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     // Hierarchy tree route must be registered before generic /:workItemId to win the match
     registerWorkItemHierarchyRoutes({ routes, workItemStore, getHierarchyEnabled: getWorkItemsHierarchyEnabled });
+    registerWorkItemSyncRoutes({
+        routes,
+        workItemStore,
+        processStore: store,
+        dataDir,
+        getHierarchyEnabled: getWorkItemsHierarchyEnabled,
+        getSyncEnabled: getWorkItemsSyncEnabled,
+    });
     registerWorkItemRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer, getHierarchyEnabled: getWorkItemsHierarchyEnabled });
     registerWorkItemPlanRoutes({ routes, workItemStore, getWsServer });
     registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer, dataDir });

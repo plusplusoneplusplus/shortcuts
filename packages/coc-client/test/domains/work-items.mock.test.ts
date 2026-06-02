@@ -411,4 +411,56 @@ describe('WorkItemsClient mock coverage', () => {
       },
     });
   });
+
+  it('sends sync status, preview, and apply requests to workspace-scoped endpoints', async () => {
+    const adapter = createMockAdapter({ provider: 'github' });
+    const client = new WorkItemsClient(adapter);
+
+    await client.syncStatus('repo/a', 'github');
+    await client.syncPreview('repo/a', {
+      provider: 'github',
+      operation: 'export-selected',
+      selectedWorkItemId: 'wi/1',
+      includeArchived: true,
+      filters: { labels: ['coc:type:bug'], issueNumbers: [1, 2] },
+    });
+    await client.syncApply('repo/a', {
+      provider: 'github',
+      operation: 'sync-linked',
+      previewId: 'preview-1',
+      conflictResolutions: [{ conflictId: 'conflict-1', resolution: 'use-coc' }],
+    });
+
+    expect(adapter.calls).toEqual([
+      {
+        path: '/workspaces/repo%2Fa/work-items/sync/status',
+        options: { query: { provider: 'github' } },
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/sync/preview',
+        options: {
+          method: 'POST',
+          body: {
+            provider: 'github',
+            operation: 'export-selected',
+            selectedWorkItemId: 'wi/1',
+            includeArchived: true,
+            filters: { labels: ['coc:type:bug'], issueNumbers: [1, 2] },
+          },
+        },
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/sync/apply',
+        options: {
+          method: 'POST',
+          body: {
+            provider: 'github',
+            operation: 'sync-linked',
+            previewId: 'preview-1',
+            conflictResolutions: [{ conflictId: 'conflict-1', resolution: 'use-coc' }],
+          },
+        },
+      },
+    ]);
+  });
 });

@@ -71,6 +71,18 @@ describe('work items contract', () => {
       .resolves.toMatchObject({ id: created.id, syncLinks: [] });
   });
 
+  it('reads disabled work item sync status through the typed client', async () => {
+    harness = await startContractHarness();
+
+    await expect(harness.client.workItems.syncStatus('repo-a')).resolves.toMatchObject({
+      enabled: false,
+      disabled: true,
+      disabledReason: 'hierarchy-disabled',
+      maxItems: 200,
+      providers: [],
+    });
+  });
+
   it('handles plan versions, pin/archive, and review-change flow', async () => {
     harness = await startContractHarness();
     const workspaceId = 'repo-a';
