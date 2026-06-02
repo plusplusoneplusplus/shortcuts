@@ -67,14 +67,14 @@ export interface BuildGitHubWorkItemSyncMetadataOptions {
     workItem: Pick<WorkItem, 'id' | 'type' | 'status' | 'parentId'>;
     remote: WorkItemSyncRemoteIdentity & { owner: string; repo: string };
     lastSyncedAt: string;
-    parent?: WorkItemSyncParentReference;
+    parent?: WorkItemSyncParentReference | null;
 }
 
 export interface BuildGitHubWorkItemIssueUpdateOptions {
     workItem: Pick<WorkItem, 'id' | 'type' | 'status' | 'priority' | 'tags' | 'description' | 'parentId'>;
     remote: WorkItemSyncRemoteIdentity & { owner: string; repo: string };
     lastSyncedAt: string;
-    parent?: WorkItemSyncParentReference;
+    parent?: WorkItemSyncParentReference | null;
     existingIssue?: GitHubWorkItemIssueSnapshot;
 }
 
@@ -376,7 +376,9 @@ export function buildGitHubWorkItemSyncMetadata(options: BuildGitHubWorkItemSync
         status: options.workItem.status,
         lastSyncedAt: options.lastSyncedAt,
     };
-    const parent = options.parent ?? (options.workItem.parentId ? { workItemId: options.workItem.parentId } : undefined);
+    const parent = options.parent === null
+        ? undefined
+        : options.parent ?? (options.workItem.parentId ? { workItemId: options.workItem.parentId } : undefined);
     if (parent) metadata.parent = parent;
     return metadata;
 }

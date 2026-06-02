@@ -102,6 +102,17 @@ describe('work item GitHub issue mapping', () => {
             .toBe('2026-01-03T00:00:00.000Z');
     });
 
+    it('omits parent metadata when the provider explicitly exports an item as unparented', () => {
+        const update = buildGitHubWorkItemIssueUpdate({
+            workItem: BASE_WORK_ITEM,
+            remote: REMOTE,
+            lastSyncedAt: '2026-01-02T00:00:00.000Z',
+            parent: null,
+        });
+
+        expect(parseGitHubWorkItemSyncMetadataBlocks(update.body).metadata?.parent).toBeUndefined();
+    });
+
     it('parses labels and hidden metadata while preserving user labels as tags', () => {
         const update = buildGitHubWorkItemIssueUpdate({
             workItem: {

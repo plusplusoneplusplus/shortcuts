@@ -535,32 +535,15 @@ function orderParentFirst(items: readonly WorkItem[]): WorkItem[] {
     return ordered;
 }
 
-function parentWarnings(items: readonly WorkItem[]): WorkItemSyncWarning[] {
-    const byId = new Map(items.map(item => [item.id, item]));
+async function parentWarnings(
+    context: WorkItemSyncProviderContext,
+    repo: AvailableGitHubWorkItemSyncRepo,
+    items: readonly WorkItem[],
+    localItems: Map<string, WorkItem>,
+): Promise<WorkItemSyncWarning[]> {
     const warnings: WorkItemSyncWarning[] = [];
     for (const item of items) {
-        const type = getEffectiveType(item.type);
-        if (!item.parentId && ALLOWED_PARENT_TYPES[type].length > 0) {
-            warnings.push({
-                id: `missing-parent-${item.id}`,
-                message: `${type} item '${item.title}' has no parent; export will preserve it as unparented metadata until a parent is linked.`,
-                workItemId: item.id,
-                severity: 'warning',
-            });
-            continue;
-        }
-        if (!item.parentId) continue;
-        const parent = byId.get(item.parentId);
-        if (!parent) continue;
-        const parentType = getEffectiveType(parent.type);
-        if (!isValidParentChildTypes(type, parentType)) {
-            warnings.push({
-                id: `invalid-parent-${item.id}`,
-                message: `${type} item '${item.title}' cannot be parented by ${parentType} item '${parent.title}'.`,
-                workItemId: item.id,
-                severity: 'warning',
-            });
-        }
+        warnings.push(...(await resolveLocalParentReference(context, repo, item, localItems)).warnings);
     }
     return warnings;
 }
@@ -793,7 +776,7 @@ function rowRemoteOperationInput(
             issueUrl: issue?.htmlUrl ?? issue?.url,
         },
         lastSyncedAt: syncedAt,
-        parent,
+        parent: parent ?? (item.parentId ? null : undefined),
         existingIssue: issue,
     });
     return {
@@ -839,17 +822,73 @@ async function parentReferenceForItem(
     item: WorkItem,
     localItems: Map<string, WorkItem>,
 ): Promise<WorkItemSyncParentReference | undefined> {
-    if (!item.parentId) return undefined;
+    return (await resolveLocalParentReference(context, repo, item, localItems)).parent;
+}
+
+async function resolveLocalParentReference(
+    context: WorkItemSyncProviderContext,
+    repo: AvailableGitHubWorkItemSyncRepo,
+    item: WorkItem,
+    localItems: Map<string, WorkItem>,
+): Promise<{ parent?: WorkItemSyncParentReference; warnings: WorkItemSyncWarning[] }> {
+    const type = getEffectiveType(item.type);
+    const warnings: WorkItemSyncWarning[] = [];
+
+    if (!item.parentId) {
+        if (ALLOWED_PARENT_TYPES[type].length > 0) {
+            warnings.push({
+                id: `missing-parent-${item.id}`,
+                message: `${type} item '${item.title}' has no parent; export will preserve it as unparented metadata until a parent is linked.`,
+                workItemId: item.id,
+                severity: 'warning',
+            });
+        }
+        return { warnings };
+    }
+
     const parent = localItems.get(item.parentId)
         ?? await context.workItemStore.getWorkItem(item.parentId, context.workspaceId);
-    const parentLink = parent ? getGithubSyncLink(parent) : undefined;
-    const reference: WorkItemSyncParentReference = { workItemId: item.parentId };
+    if (!parent) {
+        warnings.push({
+            id: `unresolved-parent-${item.id}`,
+            message: `${type} item '${item.title}' references missing parent '${item.parentId}'; export will preview it as unparented.`,
+            workItemId: item.id,
+            severity: 'warning',
+        });
+        return { warnings };
+    }
+
+    const parentType = getEffectiveType(parent.type);
+    const validParentType = isValidParentChildTypes(type, parentType);
+    const wouldCycle = await wouldCreateParentCycle(context, item.id, parent.id);
+    if (!validParentType) {
+        warnings.push({
+            id: `invalid-parent-${item.id}`,
+            message: `${type} item '${item.title}' cannot be parented by ${parentType} item '${parent.title}'; export will preview it as unparented.`,
+            workItemId: item.id,
+            severity: 'warning',
+        });
+    }
+    if (wouldCycle) {
+        warnings.push({
+            id: `cycle-parent-${item.id}`,
+            message: `${type} item '${item.title}' references a parent that creates a CoC hierarchy cycle; export will preview it as unparented.`,
+            workItemId: item.id,
+            severity: 'warning',
+        });
+    }
+    if (!validParentType || wouldCycle) {
+        return { warnings };
+    }
+
+    const parentLink = getGithubSyncLink(parent);
+    const reference: WorkItemSyncParentReference = { workItemId: parent.id };
     if (parentLink?.remote.issueId) reference.issueId = parentLink.remote.issueId;
     if (parentLink?.remote.issueNumber !== undefined) reference.issueNumber = parentLink.remote.issueNumber;
     if (parentLink?.remote.issueUrl) reference.issueUrl = parentLink.remote.issueUrl;
     reference.owner = parentLink?.remote.owner ?? repo.owner;
     reference.repo = parentLink?.remote.repo ?? repo.repo;
-    return reference;
+    return { parent: reference, warnings };
 }
 
 async function wouldCreateParentCycle(context: WorkItemSyncProviderContext, itemId: string, parentId: string): Promise<boolean> {
@@ -1097,7 +1136,7 @@ export function createGitHubWorkItemSyncProviderAdapter(options: CreateGitHubWor
         const items = orderParentFirst(context.items);
         const localItems = new Map(items.map(item => [item.id, item]));
         response.itemCount = items.length;
-        response.warnings.push(...parentWarnings(items));
+        response.warnings.push(...await parentWarnings(context, repo, items, localItems));
 
         for (const item of items) {
             const link = getGithubSyncLink(item);
@@ -1105,6 +1144,7 @@ export function createGitHubWorkItemSyncProviderAdapter(options: CreateGitHubWor
                 ? await transport.getIssue(repo, link.remote.issueNumber)
                 : undefined;
             const remote = remoteIdentity(repo, issue, link);
+            const parent = await parentReferenceForItem(context, repo, item, localItems);
 
             if (!link) {
                 response.creates.push({
@@ -1120,7 +1160,7 @@ export function createGitHubWorkItemSyncProviderAdapter(options: CreateGitHubWor
                         { field: 'type', cocValue: getEffectiveType(item.type), proposedValue: getEffectiveType(item.type) },
                         { field: 'status', cocValue: item.status, proposedValue: item.status },
                         { field: 'priority', cocValue: item.priority ?? 'normal', proposedValue: item.priority ?? 'normal' },
-                        { field: 'parentId', cocValue: item.parentId, proposedValue: item.parentId },
+                        { field: 'parentId', cocValue: item.parentId, proposedValue: parent },
                     ],
                 });
                 continue;
@@ -1138,7 +1178,6 @@ export function createGitHubWorkItemSyncProviderAdapter(options: CreateGitHubWor
             }
 
             const parsed = parseGitHubWorkItemIssue(issue);
-            const parent = await parentReferenceForItem(context, repo, item, localItems);
             const update = buildGitHubWorkItemIssueUpdate({
                 workItem: item,
                 remote: {
@@ -1229,7 +1268,9 @@ export function createGitHubWorkItemSyncProviderAdapter(options: CreateGitHubWor
                 }
             } else if (localChanged && !remoteChanged) {
                 const localItems = new Map(context.items.map(candidate => [candidate.id, candidate]));
-                const parent = await parentReferenceForItem(context, repo, item, localItems);
+                const parentResolution = await resolveLocalParentReference(context, repo, item, localItems);
+                response.warnings.push(...parentResolution.warnings);
+                const parent = parentResolution.parent;
                 const fields = changedRemoteFields(item, issue, parsed, parent);
                 if (fields.length > 0) {
                     response.updates.push({

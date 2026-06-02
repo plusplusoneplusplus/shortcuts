@@ -334,6 +334,61 @@ describe('GitHub work item sync provider', () => {
         expect(imported?.syncLinks?.[0].parent).toEqual({ owner: 'octo-org', repo: 'octo-repo', issueNumber: 41 });
     });
 
+    it('reconstructs import hierarchy from hidden metadata when native parents are unavailable', async () => {
+        const provider = makeProvider();
+        await addItem({
+            id: 'feature-1',
+            title: 'Feature',
+            type: 'feature',
+            syncLinks: [{
+                provider: 'github',
+                remote: { owner: 'octo-org', repo: 'octo-repo', issueNumber: 41 },
+            }],
+        });
+        transport.issues.set(52, makeIssue({
+            number: 52,
+            title: 'Metadata PBI',
+            labels: ['coc:type:pbi', 'coc:status:planning'],
+            body: `Metadata PBI body.\n\n${metadataBlock({
+                issueNumber: 52,
+                workItemId: 'metadata-pbi-1',
+                type: 'pbi',
+                status: 'planning',
+                parent: { owner: 'octo-org', repo: 'octo-repo', issueNumber: 41 },
+            })}`,
+        }));
+
+        const preview = await provider.preview({
+            ...makeContext(),
+            operation: 'import',
+            request: { operation: 'import', provider: 'github', filters: { issueNumbers: [52] } },
+            items: [],
+        });
+
+        expect(preview.creates).toHaveLength(1);
+        expect(preview.creates[0].fields).toContainEqual({
+            field: 'parentId',
+            remoteValue: { owner: 'octo-org', repo: 'octo-repo', issueNumber: 41 },
+            proposedValue: 'feature-1',
+        });
+
+        const result = await provider.apply({
+            ...makeContext(),
+            operation: 'import',
+            request: { operation: 'import', provider: 'github', filters: { issueNumbers: [52] } },
+            items: [],
+        });
+
+        expect(result).toMatchObject({ applied: 1, failed: 0 });
+        const imported = await store.getWorkItem('metadata-pbi-1', WORKSPACE_ID);
+        expect(imported).toMatchObject({
+            title: 'Metadata PBI',
+            type: 'pbi',
+            parentId: 'feature-1',
+        });
+        expect(imported?.syncLinks?.[0].parent).toEqual({ owner: 'octo-org', repo: 'octo-repo', issueNumber: 41 });
+    });
+
     it('previews selected subtree export parent-first with creates and updates', async () => {
         const provider = makeProvider();
         await addItem({ id: 'leaf-1', title: 'Leaf', type: 'work-item', parentId: 'pbi-1' });
@@ -470,46 +525,119 @@ describe('GitHub work item sync provider', () => {
         expect(item?.syncLinks?.[0].lastSyncedFingerprint).toBeTruthy();
     });
 
-    it('applies export-selected creates parent-first and writes child parent metadata', async () => {
+    it('applies full hierarchy export parent-first and writes child parent metadata', async () => {
         const provider = makeProvider();
-        const feature = await addItem({ id: 'feature-1', title: 'Feature', type: 'feature', description: 'Feature body.' });
-        await addItem({ id: 'pbi-1', title: 'PBI', type: 'pbi', parentId: feature.id, description: 'PBI body.' });
+        const epic = await addItem({ id: 'epic-1', title: 'Epic', type: 'epic', description: 'Epic body.' });
+        const feature = await addItem({ id: 'feature-1', title: 'Feature', type: 'feature', parentId: epic.id, description: 'Feature body.' });
+        const pbi = await addItem({ id: 'pbi-1', title: 'PBI', type: 'pbi', parentId: feature.id, description: 'PBI body.' });
+        await addItem({ id: 'leaf-1', title: 'Leaf', type: 'work-item', parentId: pbi.id, description: 'Leaf body.' });
 
         const result = await provider.apply({
             ...makeContext(),
             operation: 'export-selected',
-            request: { operation: 'export-selected', provider: 'github', selectedWorkItemId: feature.id },
+            request: { operation: 'export-selected', provider: 'github', selectedWorkItemId: epic.id },
             items: (await Promise.all([
+                store.getWorkItem('leaf-1', WORKSPACE_ID),
                 store.getWorkItem('pbi-1', WORKSPACE_ID),
                 store.getWorkItem('feature-1', WORKSPACE_ID),
+                store.getWorkItem('epic-1', WORKSPACE_ID),
             ])).filter((item): item is WorkItem => item !== undefined),
         });
 
-        expect(result).toMatchObject({ applied: 2, failed: 0 });
-        expect(transport.createdInputs.map(input => input.title)).toEqual(['Feature', 'PBI']);
-        expect(transport.updatedInputs.map(entry => entry.issueNumber)).toEqual([100, 101]);
-        const childMetadata = JSON.parse(
+        expect(result).toMatchObject({ applied: 4, failed: 0 });
+        expect(transport.createdInputs.map(input => input.title)).toEqual(['Epic', 'Feature', 'PBI', 'Leaf']);
+        expect(transport.updatedInputs.map(entry => entry.issueNumber)).toEqual([100, 101, 102, 103]);
+        const featureMetadata = JSON.parse(
             transport.updatedInputs[1].input.body.match(/<!-- coc-work-item-sync ([\s\S]*?) -->/)![1],
         );
-        expect(childMetadata).toMatchObject({
-            workItemId: 'pbi-1',
-            parent: { workItemId: 'feature-1', issueNumber: 100 },
+        const childMetadata = JSON.parse(
+            transport.updatedInputs[3].input.body.match(/<!-- coc-work-item-sync ([\s\S]*?) -->/)![1],
+        );
+        expect(featureMetadata).toMatchObject({
+            workItemId: 'feature-1',
+            parent: { workItemId: 'epic-1', issueNumber: 100 },
         });
+        expect(childMetadata).toMatchObject({
+            workItemId: 'leaf-1',
+            parent: { workItemId: 'pbi-1', issueNumber: 102 },
+        });
+        const linkedEpic = await store.getWorkItem('epic-1', WORKSPACE_ID);
         const linkedFeature = await store.getWorkItem('feature-1', WORKSPACE_ID);
         const linkedPbi = await store.getWorkItem('pbi-1', WORKSPACE_ID);
-        expect(linkedFeature?.syncLinks?.[0].remote.issueNumber).toBe(100);
-        expect(linkedPbi?.syncLinks?.[0].remote.issueNumber).toBe(101);
+        const linkedLeaf = await store.getWorkItem('leaf-1', WORKSPACE_ID);
+        expect(linkedEpic?.syncLinks?.[0].remote.issueNumber).toBe(100);
+        expect(linkedFeature?.syncLinks?.[0].remote.issueNumber).toBe(101);
+        expect(linkedPbi?.syncLinks?.[0].remote.issueNumber).toBe(102);
+        expect(linkedLeaf?.syncLinks?.[0].remote.issueNumber).toBe(103);
         expect(transport.parentUpdates).toEqual([{
             issueNumber: 101,
             parent: {
-                workItemId: 'feature-1',
+                workItemId: 'epic-1',
                 issueId: 'I_100',
                 issueNumber: 100,
                 issueUrl: 'https://github.com/octo-org/octo-repo/issues/100',
                 owner: 'octo-org',
                 repo: 'octo-repo',
             },
+        }, {
+            issueNumber: 102,
+            parent: {
+                workItemId: 'feature-1',
+                issueId: 'I_101',
+                issueNumber: 101,
+                issueUrl: 'https://github.com/octo-org/octo-repo/issues/101',
+                owner: 'octo-org',
+                repo: 'octo-repo',
+            },
+        }, {
+            issueNumber: 103,
+            parent: {
+                workItemId: 'pbi-1',
+                issueId: 'I_102',
+                issueNumber: 102,
+                issueUrl: 'https://github.com/octo-org/octo-repo/issues/102',
+                owner: 'octo-org',
+                repo: 'octo-repo',
+            },
         }]);
+    });
+
+    it('warns and exports invalid or cyclic local parent links as unparented', async () => {
+        const provider = makeProvider();
+        const feature = await addItem({ id: 'feature-cycle', title: 'Feature cycle', type: 'feature', parentId: 'pbi-cycle' });
+        const pbi = await addItem({ id: 'pbi-cycle', title: 'PBI cycle', type: 'pbi', parentId: feature.id });
+
+        const preview = await provider.preview({
+            ...makeContext(),
+            operation: 'export-selected',
+            request: { operation: 'export-selected', provider: 'github', selectedWorkItemId: feature.id },
+            items: [pbi, feature],
+        });
+
+        expect(preview.warnings.map(warning => warning.id)).toEqual(expect.arrayContaining([
+            'invalid-parent-feature-cycle',
+            'cycle-parent-feature-cycle',
+            'cycle-parent-pbi-cycle',
+        ]));
+        expect(preview.creates.find(operation => operation.workItemId === 'pbi-cycle')?.fields).toContainEqual({
+            field: 'parentId',
+            cocValue: 'feature-cycle',
+            proposedValue: undefined,
+        });
+
+        const result = await provider.apply({
+            ...makeContext(),
+            operation: 'export-selected',
+            request: { operation: 'export-selected', provider: 'github', selectedWorkItemId: feature.id },
+            items: [pbi, feature],
+        });
+
+        expect(result).toMatchObject({ applied: 2, failed: 0 });
+        const metadata = transport.updatedInputs.map(entry => JSON.parse(
+            entry.input.body.match(/<!-- coc-work-item-sync ([\s\S]*?) -->/)![1],
+        ));
+        expect(metadata.every(entry => entry.parent === undefined)).toBe(true);
+        expect(transport.parentUpdates).toEqual([]);
     });
 
     it('applies clean sync-linked native parent changes to local hierarchy', async () => {
