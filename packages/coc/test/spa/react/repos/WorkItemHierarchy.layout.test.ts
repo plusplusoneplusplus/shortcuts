@@ -18,8 +18,7 @@ const WORK_ITEMS_DIR = path.join(REACT_SRC, 'features', 'work-items');
 
 const NODE_SRC_PATH = path.join(WORK_ITEMS_DIR, 'WorkItemHierarchyNode.tsx');
 const TREE_SRC_PATH = path.join(WORK_ITEMS_DIR, 'WorkItemHierarchyTree.tsx');
-const SYNC_BADGE_SRC_PATH = path.join(WORK_ITEMS_DIR, 'WorkItemSyncBadge.tsx');
-const SYNC_DIALOG_SRC_PATH = path.join(WORK_ITEMS_DIR, 'WorkItemSyncPreviewDialog.tsx');
+const GITHUB_MIRROR_BADGE_SRC_PATH = path.join(WORK_ITEMS_DIR, 'WorkItemGitHubMirrorBadge.tsx');
 const PICKER_SRC_PATH = path.join(WORK_ITEMS_DIR, 'WorkItemParentPicker.tsx');
 const DETAIL_SRC_PATH = path.join(WORK_ITEMS_DIR, 'WorkItemDetail.tsx');
 const TAB_SRC_PATH = path.join(WORK_ITEMS_DIR, 'WorkItemsTab.tsx');
@@ -77,10 +76,10 @@ describe('WorkItemHierarchyNode — type system', () => {
         expect(src).toContain('descendantCount');
     });
 
-    it('renders a compact external sync badge for linked rows', () => {
-        expect(src).toContain('WorkItemSyncBadge');
-        expect(src).toContain('hierarchy-node-sync-badge-');
-        expect(src).toContain('links={item.syncLinks}');
+    it('renders a compact GitHub mirror badge for mirrored rows', () => {
+        expect(src).toContain('WorkItemGitHubMirrorBadge');
+        expect(src).toContain('hierarchy-node-github-mirror-badge-');
+        expect(src).toContain('mirror={item.githubMirror}');
     });
 });
 
@@ -145,146 +144,50 @@ describe('WorkItemHierarchyTree — structure', () => {
     });
 });
 
-describe('WorkItemHierarchyTree — GitHub sync toolbar workflow', () => {
+describe('WorkItemHierarchyTree — GitHub tracker workflow', () => {
     let src: string;
 
     beforeAll(() => {
         src = fs.readFileSync(TREE_SRC_PATH, 'utf-8');
     });
 
-    it('gates the toolbar on isWorkItemsSyncEnabled()', () => {
-        expect(src).toContain('isWorkItemsSyncEnabled');
-        expect(src).toContain('syncEnabled &&');
-        expect(src).toContain('hierarchy-sync-toolbar');
+    it('does not expose the removed per-item preview/apply toolbar', () => {
+        expect(src).not.toContain('hierarchy-sync-toolbar');
+        expect(src).not.toContain('workItems.syncPreview');
+        expect(src).not.toContain('workItems.syncApply');
+        expect(src).not.toContain('conflictResolutions');
     });
 
-    it('loads provider status through the typed coc-client contract', () => {
-        expect(src).toContain('workItems.syncStatus');
-        expect(src).toContain('hierarchy-sync-status-chip');
-        expect(src).toContain('hierarchy-sync-provider-message');
+    it('uses import as the GitHub tracker seeding action', () => {
+        expect(src).toContain('onImportFromGitHub');
+        expect(src).toContain('import-from-github-btn');
+        expect(src).toContain('empty-import-from-github-btn');
     });
 
-    it('renders provider-unavailable status messaging and disables sync actions', () => {
-        expect(src).toContain('isSyncProviderAvailable');
-        expect(src).toContain('!provider.available');
-        expect(src).toContain('provider.message');
-        expect(src).toContain('!syncProviderAvailable &&');
-        expect(src).toContain('hierarchy-sync-provider-message');
-        expect(src).toContain('disabled={!syncProviderAvailable || syncBusy}');
-        expect(src).toContain('disabled={!syncProviderAvailable || syncBusy || !selectedWorkItemId}');
-    });
-
-    it('exposes Import, Export selected, and Sync linked actions', () => {
-        expect(src).toContain('hierarchy-sync-import-btn');
-        expect(src).toContain('hierarchy-sync-export-selected-btn');
-        expect(src).toContain('hierarchy-sync-linked-btn');
-    });
-
-    it('disables selected-subtree export until a node is selected', () => {
-        const exportIdx = src.indexOf('hierarchy-sync-export-selected-btn');
-        expect(exportIdx).toBeGreaterThan(-1);
-        const block = src.slice(Math.max(0, exportIdx - 600), exportIdx + 300);
-        expect(block).toContain('!selectedWorkItemId');
-        expect(block).toContain('Export selected');
-    });
-
-    it('requests preview before apply and never writes during preview', () => {
-        expect(src).toContain('workItems.syncPreview');
-        expect(src).toContain('phase: \'previewing\'');
-        const previewIdx = src.indexOf('workItems.syncPreview');
-        const applyIdx = src.indexOf('workItems.syncApply');
-        expect(previewIdx).toBeGreaterThan(-1);
-        expect(applyIdx).toBeGreaterThan(previewIdx);
-    });
-
-    it('surfaces preview failures such as over-limit responses in the dialog error state', () => {
-        expect(src).toContain('getSpaCocClientErrorMessage(err, \'Failed to load sync preview\')');
-        expect(src).toContain('phase: \'error\'');
-        expect(src).toContain('error: getSpaCocClientErrorMessage');
-        expect(src).toContain('setSyncDialog({');
-    });
-
-    it('applies with preview id and explicit conflict resolutions', () => {
-        expect(src).toContain('workItems.syncApply');
-        expect(src).toContain('previewId: preview.previewId');
-        expect(src).toContain('conflictResolutions: Object.entries(conflictResolutions)');
-    });
-
-    it('refreshes the tree and provider status after successful apply', () => {
-        expect(src).toContain('phase: \'success\'');
-        expect(src).toContain('applyResult: result');
-        expect(src).toContain('await fetchTree()');
-        expect(src).toContain('await fetchSyncStatus()');
+    it('keeps manual GitHub pulls as a per-Epic context action', () => {
+        expect(src).toContain('Sync from GitHub');
+        expect(src).toContain('workItems.syncGitHubEpic');
+        expect(src).toContain("node.item.tracker?.kind === 'github-backed'");
     });
 });
 
-describe('WorkItemSyncPreviewDialog — preview/apply states', () => {
+describe('WorkItemGitHubMirrorBadge — mirrored provider badge', () => {
     let src: string;
 
     beforeAll(() => {
-        src = fs.readFileSync(SYNC_DIALOG_SRC_PATH, 'utf-8');
+        src = fs.readFileSync(GITHUB_MIRROR_BADGE_SRC_PATH, 'utf-8');
     });
 
-    it('renders a preview dialog with loading, error, and summary states', () => {
-        expect(src).toContain('hierarchy-sync-preview-dialog');
-        expect(src).toContain('hierarchy-sync-preview-loading');
-        expect(src).toContain('hierarchy-sync-preview-error');
-        expect(src).toContain('hierarchy-sync-preview-summary');
-    });
-
-    it('groups creates, updates, links, conflicts, warnings, and no-ops', () => {
-        expect(src).toContain('hierarchy-sync-preview-creates');
-        expect(src).toContain('hierarchy-sync-preview-updates');
-        expect(src).toContain('hierarchy-sync-preview-links');
-        expect(src).toContain('hierarchy-sync-preview-conflicts');
-        expect(src).toContain('hierarchy-sync-preview-warnings');
-        expect(src).toContain('hierarchy-sync-preview-noops');
-    });
-
-    it('requires per-conflict resolutions before apply can run', () => {
-        expect(src).toContain('hierarchy-sync-conflict-resolution-');
-        expect(src).toContain('Use CoC');
-        expect(src).toContain('Use GitHub');
-        expect(src).toContain('Skip');
-        expect(src).toContain('unresolvedConflicts === 0');
-    });
-
-    it('renders apply result and row-level partial failure output', () => {
-        expect(src).toContain('hierarchy-sync-apply-result');
-        expect(src).toContain('hierarchy-sync-apply-row');
-        expect(src).toContain('Applied {result.applied}, skipped {result.skipped}, failed {result.failed}');
-        expect(src).toContain('result.failed');
-    });
-
-    it('shows over-limit context through preview item count and max item summary', () => {
-        expect(src).toContain('preview.itemCount');
-        expect(src).toContain('preview.maxItems');
-        expect(src).toContain('Limit {preview.maxItems}');
-    });
-
-    it('shows success state with apply rows and a Done close action', () => {
-        expect(src).toContain("state.phase === 'success'");
-        expect(src).toContain("'Done'");
-        expect(src).toContain('state.applyResult && <ApplyResult result={state.applyResult} />');
-    });
-});
-
-describe('WorkItemSyncBadge — linked provider badge', () => {
-    let src: string;
-
-    beforeAll(() => {
-        src = fs.readFileSync(SYNC_BADGE_SRC_PATH, 'utf-8');
-    });
-
-    it('prefers GitHub links and renders them as external anchors when requested', () => {
-        expect(src).toContain("provider === 'github'");
-        expect(src).toContain('href={link.remote.issueUrl}');
+    it('renders GitHub mirror metadata as external anchors when requested', () => {
+        expect(src).toContain('WorkItemGitHubMirrorMetadata');
+        expect(src).toContain('href={mirror.issueUrl}');
         expect(src).toContain('rel="noreferrer"');
     });
 
-    it('surfaces dirty and conflict states without exposing credentials', () => {
-        expect(src).toContain('link.conflict');
-        expect(src).toContain('link.dirty');
+    it('surfaces open/closed mirror state without conflict-resolution UI', () => {
+        expect(src).toContain("state === 'closed'");
+        expect(src).not.toContain('conflict');
+        expect(src).not.toContain('dirty');
         expect(src).not.toMatch(/token|secret|password|credential/i);
     });
 });
@@ -379,10 +282,11 @@ describe('WorkItemDetail — container vs leaf', () => {
         expect(src).toContain('Parent');
     });
 
-    it('shows linked provider badges and links in the detail panel', () => {
-        expect(src).toContain('WorkItemSyncBadge');
-        expect(src).toContain('work-item-sync-link-badge');
-        expect(src).toContain('work-item-sync-links');
+    it('shows GitHub mirror badges and links in the detail panel', () => {
+        expect(src).toContain('WorkItemGitHubMirrorBadge');
+        expect(src).toContain('work-item-github-mirror-badge');
+        expect(src).toContain('work-item-github-mirror');
+        expect(src).not.toContain('work-item-sync-links');
     });
 
     it('does not auto-execute containers (autoExecute hidden)', () => {

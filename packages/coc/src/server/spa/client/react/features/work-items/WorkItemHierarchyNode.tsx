@@ -7,7 +7,7 @@ import { type ReactNode } from 'react';
 import { cn } from '../../ui';
 import type { WorkItemTreeNode } from '@plusplusoneplusplus/coc-client';
 import { formatRelativeTime } from '../../utils/format';
-import { WorkItemSyncBadge } from './WorkItemSyncBadge';
+import { WorkItemGitHubMirrorBadge } from './WorkItemGitHubMirrorBadge';
 
 // ── Type display config ──────────────────────────────────────────────────────
 
@@ -184,10 +184,10 @@ export function WorkItemHierarchyNode({
                     </span>
                 </span>
 
-                <WorkItemSyncBadge
-                    links={item.syncLinks}
+                <WorkItemGitHubMirrorBadge
+                    mirror={item.githubMirror}
                     compact
-                    data-testid={`hierarchy-node-sync-badge-${item.id}`}
+                    data-testid={`hierarchy-node-github-mirror-badge-${item.id}`}
                 />
 
                 {/* Rollup summary for containers */}

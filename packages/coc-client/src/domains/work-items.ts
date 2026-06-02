@@ -11,10 +11,6 @@ import type {
   RequestWorkItemChangesResponse,
   ResolveWorkItemCommentsRequest,
   SyncGitHubEpicResponse,
-  WorkItemSyncApplyRequest,
-  WorkItemSyncApplyResponse,
-  WorkItemSyncPreviewRequest,
-  WorkItemSyncPreviewResponse,
   WorkItemSyncProvider,
   WorkItemSyncStatusResponse,
   UpdateWorkItemRequest,
@@ -142,20 +138,6 @@ export class WorkItemsClient {
   syncStatus(workspaceId: string, provider?: WorkItemSyncProvider): Promise<WorkItemSyncStatusResponse> {
     return this.transport.request<WorkItemSyncStatusResponse>(path(workspaceId, '/sync/status'), {
       query: provider ? { provider } : undefined,
-    });
-  }
-
-  syncPreview(workspaceId: string, request: WorkItemSyncPreviewRequest): Promise<WorkItemSyncPreviewResponse> {
-    return this.transport.request<WorkItemSyncPreviewResponse>(path(workspaceId, '/sync/preview'), {
-      method: 'POST',
-      body: { ...request },
-    });
-  }
-
-  syncApply(workspaceId: string, request: WorkItemSyncApplyRequest): Promise<WorkItemSyncApplyResponse> {
-    return this.transport.request<WorkItemSyncApplyResponse>(path(workspaceId, '/sync/apply'), {
-      method: 'POST',
-      body: { ...request },
     });
   }
 

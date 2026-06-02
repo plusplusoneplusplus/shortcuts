@@ -4,7 +4,6 @@ import {
     buildWorkItemTreeFilter,
     getWorkItemTrackerViewCopy,
     isGitHubTrackerView,
-    shouldShowLegacyWorkItemSyncToolbar,
     shouldShowLocalRootCreationActions,
 } from '../../../../src/server/spa/client/react/features/work-items/workItemTrackerViews';
 
@@ -45,13 +44,6 @@ describe('work item tracker views', () => {
         expect(shouldShowLocalRootCreationActions('github-backed')).toBe(false);
         expect(isGitHubTrackerView('github-backed')).toBe(true);
         expect(isGitHubTrackerView('local-only')).toBe(false);
-    });
-
-    it('hides legacy per-item sync preview controls once a tracker tab is active', () => {
-        expect(shouldShowLegacyWorkItemSyncToolbar(true, undefined)).toBe(true);
-        expect(shouldShowLegacyWorkItemSyncToolbar(true, 'local-only')).toBe(false);
-        expect(shouldShowLegacyWorkItemSyncToolbar(true, 'github-backed')).toBe(false);
-        expect(shouldShowLegacyWorkItemSyncToolbar(false, undefined)).toBe(false);
     });
 
     it('uses tracker-specific copy for the split dashboard views', () => {

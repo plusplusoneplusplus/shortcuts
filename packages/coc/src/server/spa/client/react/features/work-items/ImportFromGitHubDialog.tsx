@@ -85,7 +85,7 @@ export function ImportFromGitHubDialog({ open, onClose, workspaceId, onImported 
                     />
                 </div>
                 <p className="text-[11px] text-[#848484] dark:text-[#999]">
-                    Imports the issue from your workspace-configured GitHub repository and creates a linked work item.
+                    Imports the issue from your workspace-configured GitHub repository and creates a mirrored Epic tree.
                 </p>
             </div>
             {error && (

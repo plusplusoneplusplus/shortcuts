@@ -2,30 +2,20 @@ import * as http from 'http';
 import * as url from 'url';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import {
-    type WorkItemSyncApplyConflictResolution,
-    type WorkItemSyncApplyRequest,
-    type WorkItemSyncApplyResponse,
-    type WorkItemSyncConflictResolution,
     type WorkItemSyncDisabledReason,
-    type WorkItemSyncOperation,
-    type WorkItemSyncPreviewRequest,
-    type WorkItemSyncPreviewResponse,
     type WorkItemSyncProvider as WorkItemSyncProviderName,
     type WorkItemSyncProviderStatus,
-    type WorkItemSyncRemoteFilter,
     type WorkItemSyncStatusResponse,
-    type WorkItemSyncWarning,
 } from '@plusplusoneplusplus/coc-client';
 import type { Route } from '../types';
 import { sendJSON, parseBody } from '../core/api-handler';
-import { APIError, badRequest, forbidden, handleAPIError, notFound } from '../errors';
+import { APIError, badRequest, handleAPIError, notFound } from '../errors';
 import { readRepoPreferences } from '../preferences-handler';
 import type { WorkItemStore } from '../work-items/types';
 import {
     DEFAULT_WORK_ITEM_SYNC_PROVIDER,
     SUPPORTED_WORK_ITEM_SYNC_PROVIDERS,
     WORK_ITEM_SYNC_MAX_ITEMS,
-    collectWorkItemSyncScope,
     isSupportedWorkItemSyncProvider,
     unavailableWorkItemSyncProviderStatus,
     type WorkItemSyncProviderAdapter,
@@ -57,9 +47,6 @@ export interface WorkItemSyncRouteContext {
     onGitHubBackedEpicTreeChanged?: (workspaceId: string) => void | Promise<void>;
 }
 
-const VALID_OPERATIONS: readonly WorkItemSyncOperation[] = ['import', 'export-selected', 'sync-linked'];
-const VALID_CONFLICT_RESOLUTIONS: readonly WorkItemSyncConflictResolution[] = ['use-coc', 'use-provider', 'skip'];
-
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -73,107 +60,12 @@ function optionalString(value: unknown, path: string): string | undefined {
     return trimmed || undefined;
 }
 
-function optionalBoolean(value: unknown, path: string): boolean | undefined {
-    if (value === undefined) return undefined;
-    if (typeof value !== 'boolean') {
-        throw badRequest(`${path} must be a boolean`);
-    }
-    return value;
-}
-
-function optionalStringArray(value: unknown, path: string): string[] | undefined {
-    if (value === undefined) return undefined;
-    if (!Array.isArray(value) || value.some(entry => typeof entry !== 'string')) {
-        throw badRequest(`${path} must be an array of strings`);
-    }
-    return value.map(entry => entry.trim()).filter(Boolean);
-}
-
-function optionalNumberArray(value: unknown, path: string): number[] | undefined {
-    if (value === undefined) return undefined;
-    if (!Array.isArray(value) || value.some(entry => typeof entry !== 'number' || !Number.isInteger(entry) || entry <= 0)) {
-        throw badRequest(`${path} must be an array of positive integers`);
-    }
-    return value;
-}
-
 function parseProvider(value: unknown): WorkItemSyncProviderName {
     if (value === undefined) return DEFAULT_WORK_ITEM_SYNC_PROVIDER;
     if (typeof value !== 'string' || !isSupportedWorkItemSyncProvider(value)) {
         throw badRequest(`provider must be one of: ${SUPPORTED_WORK_ITEM_SYNC_PROVIDERS.join(', ')}`);
     }
     return value;
-}
-
-function parseOperation(value: unknown): WorkItemSyncOperation {
-    if (typeof value !== 'string' || !VALID_OPERATIONS.includes(value as WorkItemSyncOperation)) {
-        throw badRequest(`operation must be one of: ${VALID_OPERATIONS.join(', ')}`);
-    }
-    return value as WorkItemSyncOperation;
-}
-
-function parseFilters(value: unknown): WorkItemSyncRemoteFilter | undefined {
-    if (value === undefined) return undefined;
-    if (!isRecord(value)) {
-        throw badRequest('filters must be an object');
-    }
-    return {
-        owner: optionalString(value.owner, 'filters.owner'),
-        repo: optionalString(value.repo, 'filters.repo'),
-        issueNumbers: optionalNumberArray(value.issueNumbers, 'filters.issueNumbers'),
-        labels: optionalStringArray(value.labels, 'filters.labels'),
-        q: optionalString(value.q, 'filters.q'),
-    };
-}
-
-function parseBaseRequest(body: Record<string, unknown>): WorkItemSyncPreviewRequest {
-    const operation = parseOperation(body.operation);
-    const request: WorkItemSyncPreviewRequest = {
-        provider: parseProvider(body.provider),
-        operation,
-        selectedWorkItemId: optionalString(body.selectedWorkItemId, 'selectedWorkItemId'),
-        includeArchived: optionalBoolean(body.includeArchived, 'includeArchived'),
-        filters: parseFilters(body.filters),
-    };
-
-    if (operation === 'export-selected' && !request.selectedWorkItemId) {
-        throw badRequest('selectedWorkItemId is required for export-selected preview');
-    }
-    if (request.filters?.issueNumbers && request.filters.issueNumbers.length > WORK_ITEM_SYNC_MAX_ITEMS) {
-        throw badRequest(`Work item sync run is limited to ${WORK_ITEM_SYNC_MAX_ITEMS} items; narrow the remote issue filter.`);
-    }
-
-    return request;
-}
-
-function parseConflictResolutions(value: unknown): WorkItemSyncApplyConflictResolution[] | undefined {
-    if (value === undefined) return undefined;
-    if (!Array.isArray(value)) {
-        throw badRequest('conflictResolutions must be an array');
-    }
-    return value.map((entry, index) => {
-        if (!isRecord(entry)) {
-            throw badRequest(`conflictResolutions[${index}] must be an object`);
-        }
-        const conflictId = optionalString(entry.conflictId, `conflictResolutions[${index}].conflictId`);
-        if (!conflictId) {
-            throw badRequest(`conflictResolutions[${index}].conflictId is required`);
-        }
-        const resolution = entry.resolution;
-        if (typeof resolution !== 'string' || !VALID_CONFLICT_RESOLUTIONS.includes(resolution as WorkItemSyncConflictResolution)) {
-            throw badRequest(`conflictResolutions[${index}].resolution must be one of: ${VALID_CONFLICT_RESOLUTIONS.join(', ')}`);
-        }
-        return { conflictId, resolution: resolution as WorkItemSyncConflictResolution };
-    });
-}
-
-function parseApplyRequest(body: Record<string, unknown>): WorkItemSyncApplyRequest {
-    const base = parseBaseRequest(body);
-    return {
-        ...base,
-        previewId: optionalString(body.previewId, 'previewId'),
-        conflictResolutions: parseConflictResolutions(body.conflictResolutions),
-    };
 }
 
 async function parseJsonObjectBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
@@ -193,22 +85,6 @@ function disabledReason(ctx: Pick<WorkItemSyncRouteContext, 'getHierarchyEnabled
     if (!ctx.getHierarchyEnabled()) return 'hierarchy-disabled';
     if (!ctx.getSyncEnabled()) return 'sync-disabled';
     return undefined;
-}
-
-function disabledMessage(reason: WorkItemSyncDisabledReason): string {
-    return reason === 'hierarchy-disabled'
-        ? 'Work item sync requires workItems.hierarchy.enabled to be true.'
-        : 'Work item sync requires workItems.sync.enabled to be true.';
-}
-
-function countPreviewRows(response: WorkItemSyncPreviewResponse): number {
-    return response.creates.length + response.updates.length + response.links.length + response.noOps.length + response.conflicts.length;
-}
-
-function assertRunWithinCap(itemCount: number): void {
-    if (itemCount > WORK_ITEM_SYNC_MAX_ITEMS) {
-        throw badRequest(`Work item sync run is limited to ${WORK_ITEM_SYNC_MAX_ITEMS} items; ${itemCount} matched. Narrow the scope.`);
-    }
 }
 
 function providerUnavailableError(status: WorkItemSyncProviderStatus): APIError {
@@ -241,22 +117,6 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
             return unavailableWorkItemSyncProviderStatus(provider);
         }
         return adapter.getStatus(context);
-    }
-
-    async function ensureProviderAvailable(provider: WorkItemSyncProviderName, context: WorkItemSyncProviderContext): Promise<WorkItemSyncProviderAdapter> {
-        const adapter = adapters.get(provider);
-        const status = adapter ? await adapter.getStatus(context) : unavailableWorkItemSyncProviderStatus(provider);
-        if (!adapter || !status.available) {
-            throw providerUnavailableError(status);
-        }
-        return adapter;
-    }
-
-    function ensureEnabledForRun(): void {
-        const reason = disabledReason(ctx);
-        if (reason) {
-            throw forbidden(disabledMessage(reason));
-        }
     }
 
     function notifyGitHubBackedEpicTreeChanged(workspaceId: string): void {
@@ -346,73 +206,6 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                     providers,
                 };
                 return sendJSON(res, 200, response);
-            } catch (error) {
-                return handleAPIError(res, error);
-            }
-        },
-    });
-
-    // POST /api/workspaces/:id/work-items/sync/preview
-    ctx.routes.push({
-        method: 'POST',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/sync\/preview$/,
-        handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            try {
-                ensureEnabledForRun();
-                const workspaceId = decodeURIComponent(match![1]);
-                const request = parseBaseRequest(await parseJsonObjectBody(req));
-                const provider = request.provider ?? DEFAULT_WORK_ITEM_SYNC_PROVIDER;
-                const providerContext = await buildProviderContext(workspaceId);
-                const adapter = await ensureProviderAvailable(provider, providerContext);
-                const scope = await collectWorkItemSyncScope({
-                    workItemStore: ctx.workItemStore,
-                    workspaceId,
-                    provider,
-                    request,
-                });
-                assertRunWithinCap(scope.items.length);
-                const preview = await adapter.preview({
-                    ...providerContext,
-                    operation: request.operation,
-                    request,
-                    items: scope.items,
-                });
-                assertRunWithinCap(Math.max(preview.itemCount, countPreviewRows(preview)));
-                const warnings: WorkItemSyncWarning[] = [...scope.warnings, ...preview.warnings];
-                return sendJSON(res, 200, { ...preview, warnings });
-            } catch (error) {
-                return handleAPIError(res, error);
-            }
-        },
-    });
-
-    // POST /api/workspaces/:id/work-items/sync/apply
-    ctx.routes.push({
-        method: 'POST',
-        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/sync\/apply$/,
-        handler: async (req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
-            try {
-                ensureEnabledForRun();
-                const workspaceId = decodeURIComponent(match![1]);
-                const request = parseApplyRequest(await parseJsonObjectBody(req));
-                const provider = request.provider ?? DEFAULT_WORK_ITEM_SYNC_PROVIDER;
-                const providerContext = await buildProviderContext(workspaceId);
-                const adapter = await ensureProviderAvailable(provider, providerContext);
-                const scope = await collectWorkItemSyncScope({
-                    workItemStore: ctx.workItemStore,
-                    workspaceId,
-                    provider,
-                    request,
-                });
-                assertRunWithinCap(scope.items.length);
-                const result: WorkItemSyncApplyResponse = await adapter.apply({
-                    ...providerContext,
-                    operation: request.operation,
-                    request,
-                    items: scope.items,
-                });
-                const warnings: WorkItemSyncWarning[] = [...scope.warnings, ...result.warnings];
-                return sendJSON(res, 200, { ...result, warnings });
             } catch (error) {
                 return handleAPIError(res, error);
             }

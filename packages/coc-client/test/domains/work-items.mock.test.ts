@@ -417,24 +417,11 @@ describe('WorkItemsClient mock coverage', () => {
     });
   });
 
-  it('sends sync status, preview, and apply requests to workspace-scoped endpoints', async () => {
+  it('sends sync status and Epic-scoped GitHub tracker requests to workspace-scoped endpoints', async () => {
     const adapter = createMockAdapter({ provider: 'github' });
     const client = new WorkItemsClient(adapter);
 
     await client.syncStatus('repo/a', 'azure-boards');
-    await client.syncPreview('repo/a', {
-      provider: 'github',
-      operation: 'export-selected',
-      selectedWorkItemId: 'wi/1',
-      includeArchived: true,
-      filters: { labels: ['coc:type:bug'], issueNumbers: [1, 2] },
-    });
-    await client.syncApply('repo/a', {
-      provider: 'github',
-      operation: 'sync-linked',
-      previewId: 'preview-1',
-      conflictResolutions: [{ conflictId: 'conflict-1', resolution: 'use-coc' }],
-    });
     await client.syncGitHubEpic('repo/a', 'epic/1');
     await client.convertLocalEpicToGitHub('repo/a', 'epic/1');
     await client.convertGitHubEpicToLocal('repo/a', 'epic/1');
@@ -443,31 +430,6 @@ describe('WorkItemsClient mock coverage', () => {
       {
         path: '/workspaces/repo%2Fa/work-items/sync/status',
         options: { query: { provider: 'azure-boards' } },
-      },
-      {
-        path: '/workspaces/repo%2Fa/work-items/sync/preview',
-        options: {
-          method: 'POST',
-          body: {
-            provider: 'github',
-            operation: 'export-selected',
-            selectedWorkItemId: 'wi/1',
-            includeArchived: true,
-            filters: { labels: ['coc:type:bug'], issueNumbers: [1, 2] },
-          },
-        },
-      },
-      {
-        path: '/workspaces/repo%2Fa/work-items/sync/apply',
-        options: {
-          method: 'POST',
-          body: {
-            provider: 'github',
-            operation: 'sync-linked',
-            previewId: 'preview-1',
-            conflictResolutions: [{ conflictId: 'conflict-1', resolution: 'use-coc' }],
-          },
-        },
       },
       {
         path: '/workspaces/repo%2Fa/work-items/epic%2F1/sync-from-github',

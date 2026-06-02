@@ -17,12 +17,12 @@ import type { DiffComment } from '../../../comments/diff-comment-types';
 import { computeStorageKey, patchDiffComment } from '../../utils/diffCommentApi';
 import { isWorkItemsHierarchyEnabled } from '../../utils/config';
 import { WorkItemParentPicker } from './WorkItemParentPicker';
-import { ALLOWED_CHILD_TYPES, type WorkItemSyncLink } from '@plusplusoneplusplus/coc-client';
+import { ALLOWED_CHILD_TYPES, type WorkItemGitHubMirrorMetadata } from '@plusplusoneplusplus/coc-client';
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
 import { TYPE_LABELS } from './WorkItemHierarchyNode';
 import { WorkItemAiComposer } from './WorkItemAiComposer';
 import { isWorkItemsAiAuthoringEnabled } from '../../utils/config';
-import { WorkItemSyncBadge } from './WorkItemSyncBadge';
+import { WorkItemGitHubMirrorBadge } from './WorkItemGitHubMirrorBadge';
 
 const STATUS_LABELS: Record<string, { label: string; badgeStatus: string }> = {
     created:          { label: 'Created',          badgeStatus: 'queued' },
@@ -78,7 +78,7 @@ interface WorkItemFull {
     taskId?: string; processId?: string;
     executionHistory?: Array<{ taskId: string; processId?: string; startedAt: string; completedAt?: string; status: string; error?: string; autoReExecuted?: boolean; title?: string; sessionCategory?: string }>;
     tags?: string[];
-    syncLinks?: WorkItemSyncLink[];
+    githubMirror?: WorkItemGitHubMirrorMetadata;
     autoExecute?: boolean;
     autoResolveAndReExecute?: boolean;
     autoReExecuteCycles?: number;
@@ -520,7 +520,7 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             Plan v{item.plan.version}
                         </span>
                     )}
-                    <WorkItemSyncBadge links={item.syncLinks} asLink data-testid="work-item-sync-link-badge" />
+                    <WorkItemGitHubMirrorBadge mirror={item.githubMirror} asLink data-testid="work-item-github-mirror-badge" />
                     <span className="text-[12px] leading-[1.4] text-[#656d76] dark:text-[#999]">Updated {formatRelativeTime(item.updatedAt)}</span>
                 </div>
 
@@ -675,18 +675,15 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                     </section>
                 ) : null}
 
-                {item.syncLinks?.length ? (
-                    <section data-testid="work-item-sync-links">
-                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">External sync</h3>
+                {item.githubMirror ? (
+                    <section data-testid="work-item-github-mirror">
+                        <h3 className="text-xs font-medium text-[#848484] dark:text-[#999] uppercase mb-1">GitHub mirror</h3>
                         <div className="flex flex-wrap gap-2">
-                            {item.syncLinks.map((syncLink, index) => (
-                                <WorkItemSyncBadge
-                                    key={`${syncLink.provider}-${syncLink.remote.issueNumber ?? syncLink.remote.issueId ?? index}`}
-                                    links={[syncLink]}
-                                    asLink
-                                    data-testid={`work-item-sync-link-${index}`}
-                                />
-                            ))}
+                            <WorkItemGitHubMirrorBadge
+                                mirror={item.githubMirror}
+                                asLink
+                                data-testid="work-item-github-mirror-link"
+                            />
                         </div>
                     </section>
                 ) : null}
@@ -1185,4 +1182,3 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
         </div>
     );
 }
-

@@ -55,10 +55,6 @@ export function shouldShowLocalRootCreationActions(trackerKind?: WorkItemTracker
     return !isGitHubTrackerView(trackerKind);
 }
 
-export function shouldShowLegacyWorkItemSyncToolbar(syncEnabled: boolean, trackerKind?: WorkItemTrackerKind): boolean {
-    return syncEnabled && trackerKind === undefined;
-}
-
 export function buildWorkItemTreeFilter({
     searchQuery,
     trackerKind,

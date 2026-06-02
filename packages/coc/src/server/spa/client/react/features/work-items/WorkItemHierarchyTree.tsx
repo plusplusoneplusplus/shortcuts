@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, cn } from '../../ui';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getSpaCocClient } from '../../api/cocClient';
 import { useWorkItems } from '../../contexts/WorkItemContext';
 import { WorkItemHierarchyNode } from './WorkItemHierarchyNode';
 import { WorkItemParentPicker } from './WorkItemParentPicker';
@@ -14,26 +14,16 @@ import { ContextMenu } from '../../tasks/comments/ContextMenu';
 import type { ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import {
     ALLOWED_CHILD_TYPES,
-    type WorkItemSyncConflictResolution,
-    type WorkItemSyncOperation,
-    type WorkItemSyncProviderStatus,
-    type WorkItemSyncStatusResponse,
     type WorkItemTrackerKind,
     type WorkItemTreeNode,
     type WorkItemTreeResponse,
 } from '@plusplusoneplusplus/coc-client';
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
 import { TYPE_LABELS } from './WorkItemHierarchyNode';
-import { isWorkItemsSyncEnabled } from '../../utils/config';
-import {
-    WorkItemSyncPreviewDialog,
-    type WorkItemSyncPreviewDialogState,
-} from './WorkItemSyncPreviewDialog';
 import {
     buildWorkItemTreeFilter,
     getWorkItemTrackerViewCopy,
     isGitHubTrackerView as isGitHubTrackerKind,
-    shouldShowLegacyWorkItemSyncToolbar,
     shouldShowLocalRootCreationActions,
 } from './workItemTrackerViews';
 
@@ -46,7 +36,6 @@ const TYPE_CHILD_LABELS: Record<WorkItemTypeLabel, string> = {
 };
 
 const COLLAPSE_STORAGE_KEY = (workspaceId: string) => `coc-hierarchy-collapsed-${workspaceId}`;
-const SYNC_PROVIDER = 'github' as const;
 
 function loadCollapsed(workspaceId: string): Set<string> {
     try {
@@ -59,23 +48,6 @@ function saveCollapsed(workspaceId: string, ids: Set<string>): void {
     try {
         localStorage.setItem(COLLAPSE_STORAGE_KEY(workspaceId), JSON.stringify([...ids]));
     } catch { /* quota exceeded */ }
-}
-
-function syncStatusLabel(status: WorkItemSyncStatusResponse | null, provider: WorkItemSyncProviderStatus | undefined, error: string | null): string {
-    if (error) return 'GitHub status unavailable';
-    if (!status) return 'GitHub sync';
-    if (status.disabledReason === 'hierarchy-disabled') return 'Hierarchy sync disabled';
-    if (status.disabledReason === 'sync-disabled') return 'Sync disabled';
-    if (!provider) return 'GitHub unavailable';
-    if (!provider.available) return provider.message ?? 'GitHub unavailable';
-    const repo = provider.repository?.owner && provider.repository?.repo
-        ? `${provider.repository.owner}/${provider.repository.repo}`
-        : 'repository detected';
-    return `GitHub connected: ${repo}`;
-}
-
-function isSyncProviderAvailable(status: WorkItemSyncStatusResponse | null, provider: WorkItemSyncProviderStatus | undefined): boolean {
-    return status?.enabled === true && provider?.available === true;
 }
 
 export interface WorkItemHierarchyTreeProps {
@@ -118,15 +90,9 @@ export function WorkItemHierarchyTree({
     const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => loadCollapsed(workspaceId));
     const [showArchived, setShowArchived] = useState(false);
     const [showDone, setShowDone] = useState(false);
-    const syncEnabled = isWorkItemsSyncEnabled();
     const trackerCopy = getWorkItemTrackerViewCopy(trackerKind);
-    const showLegacySyncToolbar = shouldShowLegacyWorkItemSyncToolbar(syncEnabled, trackerKind);
     const showLocalRootCreationActions = shouldShowLocalRootCreationActions(trackerKind);
     const isGitHubTrackerView = isGitHubTrackerKind(trackerKind);
-    const [syncStatus, setSyncStatus] = useState<WorkItemSyncStatusResponse | null>(null);
-    const [syncStatusLoading, setSyncStatusLoading] = useState(false);
-    const [syncStatusError, setSyncStatusError] = useState<string | null>(null);
-    const [syncDialog, setSyncDialog] = useState<WorkItemSyncPreviewDialogState | null>(null);
 
     const [contextMenu, setContextMenu] = useState<{
         node: WorkItemTreeNode;
@@ -155,24 +121,6 @@ export function WorkItemHierarchyTree({
     const { state: workItemState } = useWorkItems();
     const lastFetchedAt = useRef<string>('');
 
-    const fetchSyncStatus = useCallback(async () => {
-        if (!showLegacySyncToolbar) {
-            setSyncStatus(null);
-            setSyncStatusError(null);
-            return;
-        }
-        setSyncStatusLoading(true);
-        setSyncStatusError(null);
-        try {
-            const status = await getSpaCocClient().workItems.syncStatus(workspaceId, SYNC_PROVIDER);
-            setSyncStatus(status);
-        } catch (err) {
-            setSyncStatusError(getSpaCocClientErrorMessage(err, 'Failed to load GitHub sync status'));
-        } finally {
-            setSyncStatusLoading(false);
-        }
-    }, [workspaceId, showLegacySyncToolbar]);
-
     const fetchTree = useCallback(async () => {
         setLoading(true);
         setError(null);
@@ -196,7 +144,6 @@ export function WorkItemHierarchyTree({
 
     // Initial load
     useEffect(() => { fetchTree(); }, [fetchTree]);
-    useEffect(() => { void fetchSyncStatus(); }, [fetchSyncStatus]);
 
     // Refresh when WebSocket events arrive (work item context changes)
     const repoItems = workItemState.workItemsByRepo[workspaceId];
@@ -244,79 +191,6 @@ export function WorkItemHierarchyTree({
             alert(err.message ?? 'Failed to delete');
         }
     }, [workspaceId, fetchTree]);
-
-    const startSyncPreview = useCallback(async (operation: WorkItemSyncOperation) => {
-        if (operation === 'export-selected' && !selectedWorkItemId) return;
-        setSyncDialog({
-            operation,
-            phase: 'previewing',
-            conflictResolutions: {},
-        });
-        try {
-            const preview = await getSpaCocClient().workItems.syncPreview(workspaceId, {
-                provider: SYNC_PROVIDER,
-                operation,
-                selectedWorkItemId: operation === 'export-selected' ? selectedWorkItemId ?? undefined : undefined,
-                includeArchived: operation === 'sync-linked' ? showArchived : undefined,
-            });
-            setSyncDialog({
-                operation,
-                phase: 'ready',
-                preview,
-                conflictResolutions: {},
-            });
-        } catch (err) {
-            setSyncDialog({
-                operation,
-                phase: 'error',
-                error: getSpaCocClientErrorMessage(err, 'Failed to load sync preview'),
-                conflictResolutions: {},
-            });
-        }
-    }, [workspaceId, selectedWorkItemId, showArchived]);
-
-    const handleConflictResolutionChange = useCallback((conflictId: string, resolution: WorkItemSyncConflictResolution) => {
-        setSyncDialog(prev => prev ? {
-            ...prev,
-            conflictResolutions: {
-                ...prev.conflictResolutions,
-                [conflictId]: resolution,
-            },
-        } : prev);
-    }, []);
-
-    const applySyncPreview = useCallback(async () => {
-        if (!syncDialog?.preview) return;
-        const { operation, preview, conflictResolutions } = syncDialog;
-        setSyncDialog(prev => prev ? { ...prev, phase: 'applying', error: null } : prev);
-        try {
-            const result = await getSpaCocClient().workItems.syncApply(workspaceId, {
-                provider: preview.provider,
-                operation,
-                selectedWorkItemId: operation === 'export-selected' ? selectedWorkItemId ?? undefined : undefined,
-                includeArchived: operation === 'sync-linked' ? showArchived : undefined,
-                previewId: preview.previewId,
-                conflictResolutions: Object.entries(conflictResolutions).map(([conflictId, resolution]) => ({
-                    conflictId,
-                    resolution,
-                })),
-            });
-            setSyncDialog(prev => prev ? {
-                ...prev,
-                phase: 'success',
-                applyResult: result,
-                error: null,
-            } : prev);
-            await fetchTree();
-            await fetchSyncStatus();
-        } catch (err) {
-            setSyncDialog(prev => prev ? {
-                ...prev,
-                phase: 'ready',
-                error: getSpaCocClientErrorMessage(err, 'Failed to apply sync preview'),
-            } : prev);
-        }
-    }, [syncDialog, workspaceId, selectedWorkItemId, showArchived, fetchTree, fetchSyncStatus]);
 
     const buildContextMenuItems = useCallback((node: WorkItemTreeNode): ContextMenuItem[] => {
         const effectiveType = (node.item.type ?? 'work-item') as WorkItemTypeLabel;
@@ -453,11 +327,6 @@ export function WorkItemHierarchyTree({
     }, [collapsedIds, selectedWorkItemId, onSelectWorkItem, handleToggleCollapse, handleContextMenu, isMobile, handleAddChild]);
 
     // ── Render ────────────────────────────────────────────────────────────────
-    const activeProviderStatus = syncStatus?.provider ?? syncStatus?.providers.find(provider => provider.provider === SYNC_PROVIDER);
-    const syncProviderAvailable = isSyncProviderAvailable(syncStatus, activeProviderStatus);
-    const syncBusy = syncDialog?.phase === 'previewing' || syncDialog?.phase === 'applying';
-    const syncMessage = syncStatusLoading ? 'Checking GitHub sync...' : syncStatusLabel(syncStatus, activeProviderStatus, syncStatusError);
-
     return (
         <div className="flex flex-col h-full" data-testid="work-item-hierarchy-tree">
             {/* ── Pane header ── */}
@@ -525,72 +394,6 @@ export function WorkItemHierarchyTree({
                     )}
                 </div>
             </div>
-
-            {showLegacySyncToolbar && (
-                <div className="px-3 py-2 shrink-0 grid gap-2 border-b border-[#eaeef2] dark:border-[#3c3c3c]" data-testid="hierarchy-sync-toolbar">
-                    <div className="flex items-center justify-between gap-2">
-                        <button
-                            type="button"
-                            onClick={fetchSyncStatus}
-                            disabled={syncStatusLoading}
-                            className={cn(
-                                'min-w-0 inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] leading-[1.25] text-left',
-                                syncProviderAvailable
-                                    ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300'
-                                    : 'border-[#d0d7de] bg-white text-[#656d76] dark:border-[#555] dark:bg-[#1e1e1e] dark:text-[#999]',
-                            )}
-                            data-testid="hierarchy-sync-status-chip"
-                            title="Refresh GitHub sync status"
-                        >
-                            <span
-                                className={cn(
-                                    'h-1.5 w-1.5 rounded-full shrink-0',
-                                    syncProviderAvailable ? 'bg-green-600 dark:bg-green-400' : 'bg-[#848484]',
-                                )}
-                                aria-hidden="true"
-                            />
-                            <span className="truncate">{syncMessage}</span>
-                        </button>
-                        <div className="flex items-center gap-1 shrink-0">
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => startSyncPreview('import')}
-                                disabled={!syncProviderAvailable || syncBusy}
-                                data-testid="hierarchy-sync-import-btn"
-                                title="Preview importing GitHub issues"
-                            >
-                                Import
-                            </Button>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => startSyncPreview('export-selected')}
-                                disabled={!syncProviderAvailable || syncBusy || !selectedWorkItemId}
-                                data-testid="hierarchy-sync-export-selected-btn"
-                                title={selectedWorkItemId ? 'Preview exporting selected subtree' : 'Select a work item to export its subtree'}
-                            >
-                                Export selected
-                            </Button>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => startSyncPreview('sync-linked')}
-                                disabled={!syncProviderAvailable || syncBusy}
-                                data-testid="hierarchy-sync-linked-btn"
-                                title="Preview syncing linked work items"
-                            >
-                                Sync linked
-                            </Button>
-                        </div>
-                    </div>
-                    {!syncProviderAvailable && (
-                        <p className="text-[11px] text-[#656d76] dark:text-[#999]" data-testid="hierarchy-sync-provider-message">
-                            {syncMessage}
-                        </p>
-                    )}
-                </div>
-            )}
 
             {/* ── Search + filter chips ── */}
             <div className="px-3 py-3 shrink-0 grid gap-2 border-b border-[#eaeef2] dark:border-[#3c3c3c]">
@@ -782,14 +585,6 @@ export function WorkItemHierarchyTree({
                 </div>
             )}
 
-            {syncDialog && (
-                <WorkItemSyncPreviewDialog
-                    state={syncDialog}
-                    onClose={() => setSyncDialog(null)}
-                    onApply={applySyncPreview}
-                    onConflictResolutionChange={handleConflictResolutionChange}
-                />
-            )}
         </div>
     );
 }
