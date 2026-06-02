@@ -180,6 +180,8 @@ Each tool's internal sub-tab/hash scheme (e.g. `#skills/installed`,
 - Search box
 - Selection persists in `localStorage['coc-activity-scope']`
 
+Ralph activity deep-links mount `RalphWorkflowPane`, which shows the iteration timeline alongside a read-only session file browser. The file browser lists the raw files returned by the Ralph session API, selects the first file by default, renders Markdown files through the shared markdown renderer, and formats JSON files as plain indented text. The pane accepts an optional selected filename from the router and reports file selections back to the host so URL hash wiring can deep-link individual session files.
+
 ## Memory Route
 
 The top-level `#memory` route is embedded in the Admin shell's Knowledge group and renders `MemoryV2Panel` in the right pane. The panel root owns the stable `#view-memory` id. `MemorySubTab` values are `facts`, `review`, `episodes`, and `settings`; hash links such as `#memory/review` and `#memory/settings` select the matching V2 tab. The legacy memory-config panel is not rendered on the Memory route (the tool-call/explore cache has been removed). Repo settings still use `RepoMemorySection` for repo-scoped bounded memory and raw memory inspection.

@@ -22,13 +22,25 @@ export interface RalphWorkflowPaneContainerProps {
     /** Called with the queue process id of the clicked iteration so the
      *  host can swap the right pane to the chat detail view. */
     onSelectIteration?: (processId: string) => void;
+    /** Optional file name decoded from a Ralph session deep-link. */
+    selectedFileName?: string;
+    /** Called when the user selects a session file. */
+    onSelectFile?: (fileName: string) => void;
     now?: number;
 }
 
 export function RalphWorkflowPaneContainer(
     props: RalphWorkflowPaneContainerProps,
 ): React.ReactElement {
-    const { workspaceId, sessionId, onClose, onSelectIteration, now } = props;
+    const {
+        workspaceId,
+        sessionId,
+        onClose,
+        onSelectIteration,
+        selectedFileName,
+        onSelectFile,
+        now,
+    } = props;
     const { view, refresh } = useRalphSessionView(workspaceId, sessionId);
 
     const handleSelectIteration = useCallback(
@@ -72,6 +84,8 @@ export function RalphWorkflowPaneContainer(
             onSelectIteration={onSelectIteration ? handleSelectIteration : undefined}
             onNewLoop={handleNewLoop}
             onResume={handleResume}
+            selectedFileName={selectedFileName}
+            onSelectFile={onSelectFile}
             now={now}
         />
     );

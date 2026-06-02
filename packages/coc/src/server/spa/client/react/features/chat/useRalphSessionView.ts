@@ -1,6 +1,7 @@
 /**
- * useRalphSessionView — fetch the per-session journal (`session.json` +
- * parsed `progress.md` sections) for a Ralph session, and refresh it on:
+ * useRalphSessionView — fetch the per-session journal (`session.json`,
+ * parsed `progress.md` sections, and raw session files) for a Ralph session,
+ * and refresh it on:
  *
  *   - the `ralph-session-complete` window CustomEvent (re-broadcast from
  *     the WebSocket layer in `App.tsx`)
@@ -10,7 +11,7 @@
  * Returns:
  *   - `view = undefined` while the first fetch is in flight
  *   - `view = null` when the server returns 404 (session not found)
- *   - `view = { record, sections }` on success
+ *   - `view = { record, sections, files }` on success
  *
  * The hook is intentionally narrow: it only owns the read-side of the
  * journal. Mutations (start, cancel) are owned by the queue/route layer.
@@ -52,7 +53,7 @@ export function useRalphSessionView(
             .workspaces.ralphSession(workspaceId, sessionId)
             .then((res) => {
                 if (cancelled) return;
-                setView({ record: res.record, sections: res.sections });
+                setView({ record: res.record, sections: res.sections, files: res.files });
             })
             .catch((err: any) => {
                 if (cancelled) return;
