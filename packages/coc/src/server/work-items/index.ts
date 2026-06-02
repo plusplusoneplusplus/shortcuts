@@ -29,6 +29,23 @@ export {
 
 export { FileWorkItemStore, type FileWorkItemStoreOptions } from './work-item-store';
 export {
+    buildGitHubWorkItemIssueUpdate,
+    buildGitHubWorkItemLabels,
+    buildGitHubWorkItemSyncMetadata,
+    formatGitHubWorkItemSyncMetadataBlock,
+    hasExactlyOneGitHubWorkItemSyncMetadataBlock,
+    parseGitHubWorkItemIssue,
+    parseGitHubWorkItemSyncMetadataBlocks,
+    stripGitHubWorkItemSyncMetadataBlocks,
+    upsertGitHubWorkItemSyncMetadataBlock,
+    type GitHubIssueLabel,
+    type GitHubWorkItemIssueSnapshot,
+    type GitHubWorkItemIssueUpdate,
+    type GitHubWorkItemSyncMetadata,
+    type ParseGitHubWorkItemSyncMetadataResult,
+    type ParsedGitHubWorkItemIssue,
+} from './work-item-sync-github-issue';
+export {
     executeWorkItem,
     handleWorkItemTaskComplete,
     buildExecutionPrompt,
