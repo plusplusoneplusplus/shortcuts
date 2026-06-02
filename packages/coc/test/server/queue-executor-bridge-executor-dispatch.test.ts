@@ -11,6 +11,7 @@
  * - follow-up    → FollowUpExecutor.executeFollowUp() is invoked
  * - Cancellation before run-workflow does not call WorkflowExecutor
  * - Cancellation before run-script does not call ShellExecutor
+ * - Legacy plan-mode chat dispatches to Ask semantics
  * - Cancellation before follow-up reverts process to 'completed'
  */
 
@@ -67,14 +68,6 @@ const mockChatExecute = vi.fn();
 vi.mock('../../src/server/executors/chat-executor', function () { return ({
     ChatExecutor: vi.fn().mockImplementation(function () { return ({
         execute: mockChatExecute,
-    }); }),
-}); });
-
-// PlanExecutor mock — records calls for dispatch assertions
-const mockPlanExecute = vi.fn();
-vi.mock('../../src/server/executors/plan-executor', function () { return ({
-    PlanExecutor: vi.fn().mockImplementation(function () { return ({
-        execute: mockPlanExecute,
     }); }),
 }); });
 
@@ -205,7 +198,6 @@ describe('CLITaskExecutor executor dispatch', () => {
         mockShellExecute.mockReset();
         mockFollowUpExecuteFollowUp.mockReset();
         mockChatExecute.mockReset();
-        mockPlanExecute.mockReset();
         mockAutopilotExecute.mockReset();
     });
 
@@ -497,7 +489,7 @@ describe('CLITaskExecutor executor dispatch', () => {
     });
 
     // ========================================================================
-    // Dispatch — chat modes (ask / plan / autopilot)
+    // Dispatch — chat modes (ask / legacy plan / autopilot)
     // ========================================================================
 
     describe('chat mode dispatch', () => {
@@ -520,13 +512,11 @@ describe('CLITaskExecutor executor dispatch', () => {
             expect(result.success).toBe(true);
             expect(mockChatExecute).toHaveBeenCalledOnce();
             expect(mockChatExecute).toHaveBeenCalledWith(task, expect.any(String));
-            // Other mode executors must NOT be invoked
-            expect(mockPlanExecute).not.toHaveBeenCalled();
             expect(mockAutopilotExecute).not.toHaveBeenCalled();
         });
 
-        it('delegates plan-mode chat task to PlanExecutor.execute()', async () => {
-            mockPlanExecute.mockResolvedValue(chatResult);
+        it('normalizes legacy plan-mode chat task to ChatExecutor.execute()', async () => {
+            mockChatExecute.mockResolvedValue(chatResult);
 
             const executor = new CLITaskExecutor(store);
             const task = makeChatTask('plan');
@@ -534,9 +524,8 @@ describe('CLITaskExecutor executor dispatch', () => {
             const result = await executor.execute(task);
 
             expect(result.success).toBe(true);
-            expect(mockPlanExecute).toHaveBeenCalledOnce();
-            expect(mockPlanExecute).toHaveBeenCalledWith(task, expect.any(String));
-            expect(mockChatExecute).not.toHaveBeenCalled();
+            expect(mockChatExecute).toHaveBeenCalledOnce();
+            expect(mockChatExecute).toHaveBeenCalledWith(task, expect.any(String));
             expect(mockAutopilotExecute).not.toHaveBeenCalled();
         });
 
@@ -552,7 +541,6 @@ describe('CLITaskExecutor executor dispatch', () => {
             expect(mockAutopilotExecute).toHaveBeenCalledOnce();
             expect(mockAutopilotExecute).toHaveBeenCalledWith(task, expect.any(String));
             expect(mockChatExecute).not.toHaveBeenCalled();
-            expect(mockPlanExecute).not.toHaveBeenCalled();
         });
 
         it('marks process as failed when ChatExecutor.execute() throws', async () => {
@@ -571,8 +559,8 @@ describe('CLITaskExecutor executor dispatch', () => {
             );
         });
 
-        it('marks process as failed when PlanExecutor.execute() throws', async () => {
-            mockPlanExecute.mockRejectedValue(new Error('Plan AI error'));
+        it('marks legacy plan-mode process as failed when ChatExecutor.execute() throws', async () => {
+            mockChatExecute.mockRejectedValue(new Error('Ask AI error'));
 
             const executor = new CLITaskExecutor(store);
             const task = makeChatTask('plan', 'plan-fail-1');
@@ -580,7 +568,7 @@ describe('CLITaskExecutor executor dispatch', () => {
             const result = await executor.execute(task);
 
             expect(result.success).toBe(false);
-            expect(result.error?.message).toBe('Plan AI error');
+            expect(result.error?.message).toBe('Ask AI error');
             expect(store.updateProcess).toHaveBeenCalledWith(
                 'queue_plan-fail-1',
                 expect.objectContaining({ status: 'failed' }),
@@ -615,7 +603,7 @@ describe('CLITaskExecutor executor dispatch', () => {
             expect(mockChatExecute).not.toHaveBeenCalled();
         });
 
-        it('prevents plan-mode execution when task is cancelled', async () => {
+        it('prevents legacy plan-mode execution when task is cancelled', async () => {
             const executor = new CLITaskExecutor(store);
             const task = makeChatTask('plan', 'plan-cancel-1');
             executor.cancel(task.id);
@@ -624,7 +612,7 @@ describe('CLITaskExecutor executor dispatch', () => {
 
             expect(result.success).toBe(false);
             expect(result.error?.message).toContain('cancelled');
-            expect(mockPlanExecute).not.toHaveBeenCalled();
+            expect(mockChatExecute).not.toHaveBeenCalled();
         });
 
         it('prevents autopilot-mode execution when task is cancelled', async () => {

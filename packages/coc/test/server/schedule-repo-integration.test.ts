@@ -84,6 +84,15 @@ describe('ScheduleManager — repo schedules', () => {
         expect(repoSchedule!.name).toBe('Daily');
     });
 
+    it('normalizes legacy repo schedule mode: plan to ask at load time', () => {
+        writeScheduleFile(scheduleDir, 'legacy-plan.yaml', 'name: Legacy Plan\ncron: "0 0 * * *"\nmode: plan');
+        manager.registerWorkspacePath(REPO_ID, workspaceRoot);
+
+        const schedule = manager.getSchedule(REPO_ID, 'repo:legacy-plan');
+        expect(schedule).toBeDefined();
+        expect(schedule!.mode).toBe('ask');
+    });
+
     it('getSchedule finds repo schedule by ID', () => {
         writeScheduleFile(scheduleDir, 'daily.yaml', 'name: Daily\ncron: "0 0 * * *"');
         manager.registerWorkspacePath(REPO_ID, workspaceRoot);

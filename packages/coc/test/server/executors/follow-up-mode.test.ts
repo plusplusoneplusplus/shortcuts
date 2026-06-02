@@ -26,13 +26,19 @@ function makeStore(metadataMode?: unknown, throws = false) {
 describe('resolveFollowUpMode', () => {
     it('returns the explicit mode when provided', async () => {
         const store = makeStore('autopilot');
-        await expect(resolveFollowUpMode(store, 'p', 'plan')).resolves.toBe('plan');
+        await expect(resolveFollowUpMode(store, 'p', 'autopilot')).resolves.toBe('autopilot');
         expect(store.getProcess).not.toHaveBeenCalled();
     });
 
-    it('falls back to process metadata.mode when explicit is undefined', async () => {
+    it('normalizes explicit legacy plan mode to ask without reading the process', async () => {
+        const store = makeStore('autopilot');
+        await expect(resolveFollowUpMode(store, 'p', 'plan')).resolves.toBe('ask');
+        expect(store.getProcess).not.toHaveBeenCalled();
+    });
+
+    it('normalizes legacy process metadata.mode plan to ask', async () => {
         const store = makeStore('plan');
-        await expect(resolveFollowUpMode(store, 'p')).resolves.toBe('plan');
+        await expect(resolveFollowUpMode(store, 'p')).resolves.toBe('ask');
     });
 
     it('returns ask when process is missing', async () => {
@@ -53,9 +59,9 @@ describe('resolveFollowUpMode', () => {
     });
 
     it('rejects an invalid explicit mode and falls through to metadata', async () => {
-        const store = makeStore('plan');
+        const store = makeStore('autopilot');
         // Caller forced an invalid value (via `any`) — must fall through.
-        await expect(resolveFollowUpMode(store, 'p', 'bogus' as any)).resolves.toBe('plan');
+        await expect(resolveFollowUpMode(store, 'p', 'bogus' as any)).resolves.toBe('autopilot');
     });
 
     it('returns ask when the store throws', async () => {
@@ -64,7 +70,7 @@ describe('resolveFollowUpMode', () => {
     });
 
     it('accepts all valid ChatMode values from metadata', async () => {
-        for (const mode of ['ask', 'plan', 'autopilot', 'ralph'] as const) {
+        for (const mode of ['ask', 'autopilot', 'ralph'] as const) {
             const store = makeStore(mode);
             await expect(resolveFollowUpMode(store, 'p')).resolves.toBe(mode);
         }

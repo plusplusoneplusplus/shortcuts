@@ -3,7 +3,7 @@
  *
  * Tests for the unified task type guards:
  *   TaskType = 'chat' | 'run-workflow' | 'run-script'
- *   ChatMode = 'ask' | 'plan' | 'autopilot'
+ *   ChatMode = 'ask' | 'autopilot' | 'ralph'
  */
 
 import { describe, it, expect } from 'vitest';
@@ -20,6 +20,8 @@ import {
     hasNoteCreateContext,
     hasRalphContext,
     isRalphMode,
+    normalizeChatMode,
+    normalizeChatModeOrDefault,
     resolveInstructionMode,
     TaskDefs,
     getTaskDef,
@@ -598,8 +600,8 @@ describe('resolveInstructionMode', () => {
         expect(resolveInstructionMode('ask')).toBe('ask');
     });
 
-    it('maps plan -> plan', () => {
-        expect(resolveInstructionMode('plan')).toBe('plan');
+    it('maps legacy plan -> ask', () => {
+        expect(resolveInstructionMode('plan')).toBe('ask');
     });
 
     it('maps autopilot -> autopilot', () => {
@@ -613,7 +615,32 @@ describe('resolveInstructionMode', () => {
     it('returns a value for every ChatMode member', () => {
         const modes = ['ask', 'plan', 'autopilot', 'ralph'] as const;
         for (const mode of modes) {
-            expect(['ask', 'plan', 'autopilot']).toContain(resolveInstructionMode(mode));
+            expect(['ask', 'autopilot']).toContain(resolveInstructionMode(mode));
         }
+    });
+});
+
+// ============================================================================
+// normalizeChatMode
+// ============================================================================
+
+describe('normalizeChatMode', () => {
+    it('preserves active chat modes', () => {
+        expect(normalizeChatMode('ask')).toBe('ask');
+        expect(normalizeChatMode('autopilot')).toBe('autopilot');
+        expect(normalizeChatMode('ralph')).toBe('ralph');
+    });
+
+    it('normalizes legacy plan mode to ask', () => {
+        expect(normalizeChatMode('plan')).toBe('ask');
+    });
+
+    it('returns undefined for invalid or missing values', () => {
+        expect(normalizeChatMode('bogus')).toBeUndefined();
+        expect(normalizeChatMode(undefined)).toBeUndefined();
+    });
+
+    it('uses the fallback when a value is invalid', () => {
+        expect(normalizeChatModeOrDefault('bogus', 'autopilot')).toBe('autopilot');
     });
 });

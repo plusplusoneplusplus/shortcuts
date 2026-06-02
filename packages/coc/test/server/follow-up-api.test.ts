@@ -440,7 +440,7 @@ describe('POST /api/processes/:id/message', () => {
             expect(updated?.metadata?.mode).toBe('autopilot');
         });
 
-        it('should pass mode to enqueue payload when no parent task exists', async () => {
+        it('should normalize legacy plan mode in enqueue payload when no parent task exists', async () => {
             const proc: AIProcess = {
                 id: 'proc-mode-enqueue',
                 type: 'clarification',
@@ -460,10 +460,10 @@ describe('POST /api/processes/:id/message', () => {
 
             const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
             expect(enqueueFn).toHaveBeenCalledOnce();
-            expect(enqueueFn.mock.calls[0][0].payload.mode).toBe('plan');
+            expect(enqueueFn.mock.calls[0][0].payload.mode).toBe('ask');
         });
 
-        it('should forward mode in enqueue payload when completed parent task exists', async () => {
+        it('should normalize legacy plan mode in enqueue payload when completed parent task exists', async () => {
             const bridgeWithFind = createMockBridge();
             (bridgeWithFind as any).findTaskByProcessId = vi.fn().mockReturnValue({ id: 'parent-mode-1', type: 'chat', status: 'completed' });
 
@@ -499,7 +499,7 @@ describe('POST /api/processes/:id/message', () => {
             expect(res.status).toBe(202);
             const enqueueFn = bridgeWithFind.enqueue as ReturnType<typeof vi.fn>;
             expect(enqueueFn).toHaveBeenCalledOnce();
-            expect(enqueueFn.mock.calls[0][0].payload.mode).toBe('plan');
+            expect(enqueueFn.mock.calls[0][0].payload.mode).toBe('ask');
 
             await new Promise<void>((resolve) => freshServer.close(() => resolve()));
         });

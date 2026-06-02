@@ -60,7 +60,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | GET | `/api/processes` | List processes (with search/filter) |
 | GET | `/api/processes/:id` | Process detail |
 | DELETE | `/api/processes/:id` | Delete process |
-| POST | `/api/processes/:id/message` | Follow-up message. Body accepts `content`, optional `mode`, `deliveryMode`, `images`, `skillNames`, `model`, and `reasoningEffort` (`'low'\|'medium'\|'high'\|'xhigh'`) for a per-turn override. |
+| POST | `/api/processes/:id/message` | Follow-up message. Body accepts `content`, optional `mode` (`ask` or `autopilot`; legacy `plan` is accepted as Ask), `deliveryMode`, `images`, `skillNames`, `model`, and `reasoningEffort` (`'low'\|'medium'\|'high'\|'xhigh'`) for a per-turn override. |
 | POST | `/api/processes/:id/cancel` | Cancel running process |
 | POST | `/api/processes/:id/promote-to-ralph` | Promote completed ask-mode chat to Ralph session (see [ralph.md](ralph.md)) |
 | PATCH | `/api/processes/:id/pin` | Pin/unpin process |
@@ -77,8 +77,8 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 |--------|------|-------------|
 | GET | `/api/queue` | List queue tasks |
 | GET | `/api/queue/models` | List model IDs for the configured default provider |
-| POST | `/api/queue` | Enqueue a task |
-| POST | `/api/workspaces/:id/queue/generate` | Enqueue a Generate Plan chat task. Body accepts optional `provider`, `model`, and `reasoningEffort` overrides, which are validated through the shared chat queue validation path. |
+| POST | `/api/queue` | Enqueue a task. Chat payloads use `mode='ask'`, `mode='autopilot'`, or internal Ralph routing; legacy `mode='plan'` is accepted and normalized to Ask. |
+| POST | `/api/workspaces/:id/queue/generate` | Enqueue a Generate Plan chat task using Ask semantics. Body accepts optional `provider`, `model`, and `reasoningEffort` overrides, which are validated through the shared chat queue validation path. |
 | DELETE | `/api/queue/:id` | Remove from queue |
 | POST | `/api/queue/:id/cancel` | Cancel queued task |
 | PATCH | `/api/queue/pause` | Pause/resume queue |
@@ -104,6 +104,8 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | DELETE | `/api/schedules/:id` | Delete schedule |
 | POST | `/api/schedules/:id/run` | Trigger immediate run |
 | GET | `/api/schedules/:id/runs` | Run history |
+
+Prompt schedules expose Ask and Autopilot modes. Stored or incoming schedule entries with `mode='plan'` are read as Ask at runtime; no schedule data migration is required.
 
 ## Tasks
 

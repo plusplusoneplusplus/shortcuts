@@ -4,7 +4,7 @@
  * Unified task type model with mode-based AI dispatch for chat tasks.
  *
  *   CocTaskKind = 'chat' | 'run-workflow' | 'run-script' | 'pr-classification'
- *   ChatMode = 'ask' | 'plan' | 'autopilot'
+ *   ChatMode = 'ask' | 'autopilot' | 'ralph'
  *
  * All former AI task types (follow-prompt, ai-clarification, code-review,
  * resolve-comments, task-generation, replicate-template, custom) are now
@@ -108,22 +108,48 @@ export type TaskType = 'chat' | 'run-workflow' | 'run-script';
 // ============================================================================
 
 /** Controls permissions and concurrency for chat tasks. */
-export type ChatMode = 'ask' | 'plan' | 'autopilot' | 'ralph';
+export type ChatMode = 'ask' | 'autopilot' | 'ralph';
+
+/**
+ * Legacy chat-mode wire values accepted for runtime compatibility only.
+ * `plan` is normalized to `ask` before execution or persistence.
+ */
+export type LegacyChatMode = ChatMode | 'plan';
+
+/** User-facing schedule modes. Ralph scheduling is handled by server internals only. */
+export type ScheduleMode = 'ask' | 'autopilot';
 
 /** Instruction folder names that loadInstructions accepts (no ralph — it aliases autopilot). */
-export type InstructionMode = 'ask' | 'plan' | 'autopilot';
+export type InstructionMode = 'ask' | 'autopilot';
+
+const CHAT_MODE_NORMALIZATION: Record<LegacyChatMode, ChatMode> = {
+    ask: 'ask',
+    plan: 'ask',
+    autopilot: 'autopilot',
+    ralph: 'ralph',
+};
+
+/** Normalize chat-mode values from persisted legacy data or older clients. */
+export function normalizeChatMode(value: unknown): ChatMode | undefined {
+    if (typeof value !== 'string') return undefined;
+    return CHAT_MODE_NORMALIZATION[value as LegacyChatMode];
+}
+
+/** Normalize a chat-mode value, falling back when the value is absent or invalid. */
+export function normalizeChatModeOrDefault(value: unknown, fallback: ChatMode = 'ask'): ChatMode {
+    return normalizeChatMode(value) ?? fallback;
+}
 
 /** Maps each ChatMode to the instruction folder used by loadInstructions. */
 const INSTRUCTION_MODE_MAP: Record<ChatMode, InstructionMode> = {
     ask: 'ask',
-    plan: 'plan',
     autopilot: 'autopilot',
     ralph: 'autopilot',
 };
 
-/** Returns the instruction folder name for a given ChatMode. */
-export function resolveInstructionMode(mode: ChatMode): InstructionMode {
-    return INSTRUCTION_MODE_MAP[mode];
+/** Returns the instruction folder name for a chat mode; legacy `plan` uses Ask instructions. */
+export function resolveInstructionMode(mode: LegacyChatMode): InstructionMode {
+    return INSTRUCTION_MODE_MAP[normalizeChatModeOrDefault(mode)];
 }
 
 // ============================================================================

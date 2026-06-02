@@ -128,6 +128,24 @@ describe('validateAndParseTask – chat kind injection (existing behavior)', () 
         expect(result.valid).toBe(true);
         expect((result.input!.payload as any).mode).toBe('ask');
     });
+
+    it('normalizes legacy plan payload.mode to ask for new chats', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello', mode: 'plan' },
+        });
+        expect(result.valid).toBe(true);
+        expect((result.input!.payload as any).mode).toBe('ask');
+    });
+
+    it('normalizes legacy plan payload.mode to ask for follow-ups', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello', processId: 'queue_xyz', mode: 'plan' },
+        });
+        expect(result.valid).toBe(true);
+        expect((result.input!.payload as any).mode).toBe('ask');
+    });
 });
 
 // ============================================================================

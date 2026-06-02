@@ -14,17 +14,7 @@
 
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ChatMode } from '../tasks/task-types';
-
-const VALID_MODES: ReadonlySet<ChatMode> = new Set<ChatMode>([
-    'ask',
-    'plan',
-    'autopilot',
-    'ralph',
-]);
-
-function isChatMode(value: unknown): value is ChatMode {
-    return typeof value === 'string' && VALID_MODES.has(value as ChatMode);
-}
+import { normalizeChatMode } from '../tasks/task-types';
 
 /**
  * Resolve the follow-up mode for a given process.
@@ -37,13 +27,14 @@ function isChatMode(value: unknown): value is ChatMode {
 export async function resolveFollowUpMode(
     store: ProcessStore,
     processId: string,
-    explicit?: ChatMode,
+    explicit?: ChatMode | string,
 ): Promise<ChatMode> {
-    if (isChatMode(explicit)) return explicit;
+    const explicitMode = normalizeChatMode(explicit);
+    if (explicitMode) return explicitMode;
     try {
         const proc = await store.getProcess(processId);
-        const prev = proc?.metadata?.mode;
-        if (isChatMode(prev)) return prev;
+        const prev = normalizeChatMode(proc?.metadata?.mode);
+        if (prev) return prev;
     } catch {
         // Fall through to default
     }

@@ -3,7 +3,7 @@
  *
  * Verifies ask_user behavior at the executor level:
  * - ChatExecutor (ask mode) injects the custom ask_user tool
- * - PlanExecutor (plan mode) injects the custom ask_user tool
+ * - Legacy plan payloads use ChatExecutor Ask semantics and inject the custom ask_user tool
  * - AutopilotExecutor does NOT inject ask_user
  * - The custom ask_user tool carries overridesBuiltInTool: true
  * - No executor enables both custom ask_user and native onUserInputRequest
@@ -13,7 +13,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { QueuedTask, SendMessageOptions } from '@plusplusoneplusplus/forge';
 import { ChatExecutor } from '../../../src/server/executors/chat-executor';
-import { PlanExecutor } from '../../../src/server/executors/plan-executor';
 import { AutopilotExecutor } from '../../../src/server/executors/autopilot-executor';
 import type { ChatModeExecutorOptions } from '../../../src/server/executors/chat-base-executor';
 import { createMockProcessStore } from '../helpers/mock-process-store';
@@ -120,8 +119,8 @@ describe('ask_user tool injection in chat-mode executors', () => {
         expect(askTool!.overridesBuiltInTool).toBe(true);
     });
 
-    it('PlanExecutor (plan) includes ask_user tool with overridesBuiltInTool', async () => {
-        const executor = new PlanExecutor(store, makeOptions(store, {
+    it('ChatExecutor includes ask_user tool for legacy plan payloads', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store, {
             askUser: { enabled: true },
         } as any));
         await executor.execute(makeChatTask('plan'), 'Hello');
@@ -153,7 +152,6 @@ describe('ask_user tool injection in chat-mode executors', () => {
         // Test each executor type
         for (const [Ctor, mode] of [
             [ChatExecutor, 'ask'],
-            [PlanExecutor, 'plan'],
             [AutopilotExecutor, 'autopilot'],
         ] as const) {
             capturedOptions = undefined;
@@ -177,7 +175,7 @@ describe('ask_user tool injection in chat-mode executors', () => {
             fullPrompt: 'Hello',
         });
 
-        const executor = new PlanExecutor(store, makeOptions(store, {
+        const executor = new ChatExecutor(store, makeOptions(store, {
             askUser: { enabled: true },
         } as any));
 
@@ -255,7 +253,7 @@ describe('ask_user built-in name collision regression', () => {
     });
 
     it('ChatExecutor (ask) injects ask_user tool when askUser.enabled is true', () => {
-        // ask_user is enabled for both ChatExecutor (ask mode) and PlanExecutor (plan mode).
+        // ask_user is enabled for ChatExecutor Ask semantics, including legacy plan payloads.
         const store = createMockProcessStore();
         const sdkM = createMockSDKService();
         sdkM.mockIsAvailable.mockResolvedValue({ available: true });

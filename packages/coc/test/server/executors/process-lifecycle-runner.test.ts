@@ -178,7 +178,7 @@ describe('ProcessLifecycleRunner — initial user turn mode/model stamping', () 
         expect(initialTurn?.model).toBe('claude-sonnet-4.6');
     });
 
-    it('copies mode without adding a model property when no model is configured', async () => {
+    it('normalizes legacy plan mode without adding a model property when no model is configured', async () => {
         const task = makeTask({
             payload: {
                 kind: 'chat',
@@ -192,7 +192,7 @@ describe('ProcessLifecycleRunner — initial user turn mode/model stamping', () 
 
         const proc = await store.getProcess(`queue_${task.id}`);
         const initialTurn = proc?.conversationTurns?.[0];
-        expect(initialTurn?.mode).toBe('plan');
+        expect(initialTurn?.mode).toBe('ask');
         expect(initialTurn).not.toHaveProperty('model');
     });
 

@@ -2,7 +2,7 @@
  * Memory V2 cross-path parity tests.
  *
  * These invariant tests verify:
- * 1. Every active chat executor path (ask, plan, ralph, follow-up) calls
+ * 1. Every active chat executor path (ask, ralph, follow-up) calls
  *    buildChatTurnContext WITHOUT includeMemoryV2: false (defaults to true).
  * 2. AutopilotExecutor explicitly passes includeMemoryV2: false.
  * 3. When buildChatTurnContext returns a context with Memory V2 tools and
@@ -19,7 +19,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { AIProcess, QueuedTask } from '@plusplusoneplusplus/forge';
 import { ChatExecutor } from '../../../src/server/executors/chat-executor';
-import { PlanExecutor } from '../../../src/server/executors/plan-executor';
 import { AutopilotExecutor } from '../../../src/server/executors/autopilot-executor';
 import { RalphExecutor } from '../../../src/server/executors/ralph-executor';
 import { FollowUpExecutor } from '../../../src/server/executors/follow-up-executor';
@@ -235,8 +234,8 @@ describe('Memory V2 buildChatTurnContext call contract', () => {
         expect(args.includeMemoryV2).not.toBe(false);
     });
 
-    it('PlanExecutor calls buildChatTurnContext without includeMemoryV2: false', async () => {
-        const executor = new PlanExecutor(store, makeOptions(store));
+    it('ChatExecutor legacy plan payload calls buildChatTurnContext without includeMemoryV2: false', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store));
         await executor.execute(makeChatTask('plan', 'plan-contract'), 'Hello');
 
         expect(mockBuildChatTurnContext).toHaveBeenCalledOnce();
@@ -308,8 +307,8 @@ describe('Memory V2 tool parity across executor paths', () => {
         expect(call.excludedTools).toEqual(MEMORY_V2_EXCLUDED_BUILTINS);
     });
 
-    it('PlanExecutor: sendMessage receives save_memory, recall_memory, and excludedTools', async () => {
-        const executor = new PlanExecutor(store, makeOptions(store));
+    it('ChatExecutor legacy plan payload: sendMessage receives save_memory, recall_memory, and excludedTools', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store));
         await executor.execute(makeChatTask('plan', 'plan-parity'), 'Hello');
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
@@ -390,8 +389,8 @@ describe('Memory V2 disabled — no memory tools for any executor', () => {
         expect(call.excludedTools).toBeUndefined();
     });
 
-    it('PlanExecutor: no memory tools and no excludedTools when context is empty', async () => {
-        const executor = new PlanExecutor(store, makeOptions(store));
+    it('ChatExecutor legacy plan payload: no memory tools and no excludedTools when context is empty', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store));
         await executor.execute(makeChatTask('plan', 'plan-empty'), 'Hello');
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0] as any;

@@ -1,7 +1,7 @@
 /**
  * Chat Mode Base Executor
  *
- * Abstract base class for the three AI chat-mode executors (chat/plan/autopilot).
+ * Abstract base class for the AI chat-mode executors.
  * Owns the shared AI SDK call lifecycle: image handling, availability check, skill
  * resolution, tool-call capture, streaming, session cleanup, and output persistence.
  *
@@ -43,6 +43,7 @@ import {
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
 import type { ChatPayload, ChatProvider, PrClassificationPayload } from '../tasks/task-types';
+import { normalizeChatModeOrDefault } from '../tasks/task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
 import type { BroadcastWorkItemFn } from '../llm-tools/create-work-item-tool';
 import { BaseExecutor } from './base-executor';
@@ -336,20 +337,19 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     }
 
     // ========================================================================
-    // Shared helper — auto-folder context (used by ask and plan modes)
+    // Shared helper — auto-folder context (used by ask mode)
     // ========================================================================
 
     /**
      * Resolve the target root directory and list existing sub-folders.
      *
-     * When `isPlanMode` is true the target root is `notes/Plans/` (auto-created)
-     * so that plan files land in the Notes tab rather than the Tasks tree.
-     * All other modes continue to use the tasks root.
+     * Ask mode uses `notes/Plans/` (auto-created) so generated plans land in
+     * the Notes tab rather than the Tasks tree. All other modes use tasks root.
      */
     protected async buildAutoFolderContext(
         workingDirectory: string,
         workspaceId?: string,
-        mode: 'ask' | 'plan' = 'ask',
+        mode: 'ask' = 'ask',
     ): Promise<AutoFolderContext> {
         return resolveAutoFolderContext({
             dataDir: this.dataDir,
@@ -363,7 +363,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected async buildStandardModeOptions(
         task: QueuedTask,
         prompt: string,
-        mode: 'ask' | 'plan',
+        mode: 'ask',
         workingDirectory: string | undefined,
         broadcastWorkItem?: BroadcastWorkItemFn,
     ): Promise<ChatModeAIOptions> {
@@ -389,7 +389,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             scheduleWakeup: loopDeps.scheduleWakeup,
             loopTools: loopDeps.loopTools,
             askUser: {
-                enabled: (mode === 'plan' || mode === 'ask') && this.askUser.enabled,
+                enabled: mode === 'ask' && this.askUser.enabled,
                 deps: {
                     emitQuestions: async (questionPayloads) => {
                         await this.store.updateProcess(processId, { pendingAskUser: questionPayloads });
@@ -439,7 +439,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             : prompt;
 
         return {
-            agentMode: mode === 'plan' ? 'plan' as AgentMode : 'interactive' as AgentMode,
+            agentMode: 'interactive' as AgentMode,
             systemMessage,
             tools: ctx.tools,
             effectivePrompt,
@@ -565,10 +565,10 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             // Resolve per-repo default model when no explicit model is set on the task.
             let effectiveModel = task.config.model;
             if (!effectiveModel && this.dataDir && payload.workspaceId) {
-                const chatMode = payload.mode;
+                const chatMode = normalizeChatModeOrDefault(payload.mode);
                 const defaultModelMode = chatMode === 'autopilot' || chatMode === 'ralph'
                     ? 'task' as const
-                    : chatMode as 'ask' | 'plan';
+                    : 'ask' as const;
                 effectiveModel = resolveDefaultModel(this.dataDir, payload.workspaceId, defaultModelMode);
             }
 

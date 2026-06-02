@@ -108,7 +108,6 @@ The `executors/` directory contains the AI chat execution layer:
 | `base-executor.ts` | Abstract base: streaming, throttling, tool-event capture |
 | `chat-base-executor.ts` | Abstract chat executor: AI call lifecycle, memory/options helpers |
 | `chat-executor.ts` | Ask-mode executor (interactive) |
-| `plan-executor.ts` | Plan-mode executor |
 | `autopilot-executor.ts` | Autopilot-mode executor |
 | `follow-up-executor.ts` | Follow-up message executor |
 | `note-chat-executor.ts` | Note chat executor |
@@ -120,6 +119,8 @@ The `executors/` directory contains the AI chat execution layer:
 | `prompt-builder.ts` | System message, memory context, skill injection |
 | `chat-tool-builder.ts` | Common chat tool bundle assembly |
 | `bounded-memory-addon.ts` | Wires bounded MEMORY.md into chat executors |
+
+CoC chat tasks use Ask, Autopilot, or Ralph modes. Legacy stored or incoming chat payloads with `mode='plan'` are normalized to Ask before dispatch, metadata persistence, schedule execution, and follow-up execution; the server does not route CoC chat work through a dedicated Plan executor.
 
 ## Configuration
 

@@ -1,7 +1,7 @@
 import type { ConversationTurn, ISDKService, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import { approveAllPermissions, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../tasks/task-types';
-import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext, hasCommitChatContext, hasNoteChatContext, hasNoteCreateContext, hasClassifyDiffContext, isPrClassificationPayload } from '../tasks/task-types';
+import { isChatPayload, isChatFollowUp, isRunWorkflowPayload, isRunScriptPayload, hasTaskGenerationContext, hasResolveCommentsContext, hasResolveDiffCommentsMultiContext, hasReplicationContext, hasCommitChatContext, hasNoteChatContext, hasNoteCreateContext, hasClassifyDiffContext, isPrClassificationPayload, normalizeChatModeOrDefault } from '../tasks/task-types';
 import type { ChatMode } from '../tasks/task-types';
 import type { ExecutionContext } from '../task-strategies';
 import { TaskStrategyRegistry } from '../task-strategies';
@@ -10,7 +10,6 @@ import { ShellExecutor } from './shell-executor';
 import { WorkflowExecutor } from './workflow-executor';
 import { FollowUpExecutor } from './follow-up-executor';
 import { ChatExecutor } from './chat-executor';
-import { PlanExecutor } from './plan-executor';
 import { AutopilotExecutor } from './autopilot-executor';
 import { RalphExecutor } from './ralph-executor';
 import { TaskGenerationExecutor } from './task-generation-executor';
@@ -65,7 +64,6 @@ export class ExecutorRegistry {
     private readonly resolveSkillConfigFn: ExecutorRegistryOptions['resolveSkillConfig'];
     private readonly workflowExecutor: WorkflowExecutor;
     private readonly chatExecutor: ChatExecutor;
-    private readonly planExecutor: PlanExecutor;
     private readonly autopilotExecutor: AutopilotExecutor;
     private readonly ralphExecutor: RalphExecutor;
     private readonly taskGenerationExecutor: TaskGenerationExecutor;
@@ -105,7 +103,6 @@ export class ExecutorRegistry {
         this.workflowExecutor = new WorkflowExecutor(store, { approvePermissions: options.approvePermissions, workingDirectory: options.defaultWorkingDirectory }, options.dataDir);
         this.followUpExecutor = new FollowUpExecutor(store, { ...chatOpts, onTitleNeeded: options.onTitleNeeded, getWsServer: options.getWsServer }, options.dataDir);
         this.chatExecutor = new ChatExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir);
-        this.planExecutor = new PlanExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir);
         this.autopilotExecutor = new AutopilotExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir);
         this.ralphExecutor = new RalphExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir);
         this.taskGenerationExecutor = new TaskGenerationExecutor(store, chatOpts, options.dataDir);
@@ -179,8 +176,7 @@ export class ExecutorRegistry {
         if (hasClassifyDiffContext(task.payload)) return this.classificationExecutor;
         if (hasNoteCreateContext(task.payload)) return this.noteCreateExecutor;
         if (hasNoteChatContext(task.payload)) return this.noteChatExecutor;
-        const mode = payload.mode;
-        if (mode === 'plan') return this.planExecutor;
+        const mode = normalizeChatModeOrDefault(payload.mode);
         if (mode === 'autopilot') return this.autopilotExecutor;
         if (mode === 'ralph') return this.ralphExecutor;
         return this.chatExecutor;
@@ -188,11 +184,10 @@ export class ExecutorRegistry {
 
     /**
      * Look up the pending ask-user handles for a process across all executors
-     * that support the ask_user tool (chat, plan, and follow-up modes).
+     * that support the ask_user tool (ask and follow-up modes).
      */
     getAskUserHandles(processId: string): ReturnType<typeof this.chatExecutor.getAskUserHandles> {
         return this.chatExecutor.getAskUserHandles(processId)
-            ?? this.planExecutor.getAskUserHandles(processId)
             ?? this.followUpExecutor.getAskUserHandles(processId);
     }
 }

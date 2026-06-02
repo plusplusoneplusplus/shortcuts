@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import type { AutoFolderContext } from '@plusplusoneplusplus/forge';
 import type { ChatMode } from '../tasks/task-types';
+import { normalizeChatMode } from '../tasks/task-types';
 import { getRepoDataPath } from '../paths';
 import { resolveTaskRoot } from '../tasks/task-root-resolver';
 
@@ -29,9 +30,9 @@ export interface ResolveAutoFolderContextOptions {
 /**
  * Resolve the target root directory and list existing user-facing folders.
  *
- * Both `plan` and `ask` modes target repo notes/Plans so generated plans
- * appear in the Notes tab regardless of which mode the user is in.
- * Other modes target the repo task root.
+ * Ask mode targets repo notes/Plans so generated plans appear in the Notes tab.
+ * Other active modes target the repo task root. Legacy `plan` inputs are
+ * normalized to Ask before this decision.
  */
 export async function resolveAutoFolderContext(
     options: ResolveAutoFolderContextOptions,
@@ -41,7 +42,7 @@ export async function resolveAutoFolderContext(
     const effectiveDataDir = options.dataDir ?? path.join(os.homedir(), '.coc');
 
     let folderRoot: string;
-    if (options.mode === 'plan' || options.mode === 'ask') {
+    if (normalizeChatMode(options.mode) === 'ask') {
         folderRoot = path.join(getRepoDataPath(effectiveDataDir, wsId, 'notes'), 'Plans');
         await fs.promises.mkdir(folderRoot, { recursive: true });
     } else {

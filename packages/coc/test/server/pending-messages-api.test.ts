@@ -187,7 +187,7 @@ describe('Pending Messages API', () => {
             expect(proc?.pendingMessages).toHaveLength(2);
             expect(proc?.pendingMessages?.[0].content).toBe('Message 1');
             expect(proc?.pendingMessages?.[1].content).toBe('Message 2');
-            expect(proc?.pendingMessages?.[1].mode).toBe('plan');
+            expect(proc?.pendingMessages?.[1].mode).toBe('ask');
         });
 
         it('returns 404 for non-existent process', async () => {

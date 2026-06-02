@@ -44,6 +44,7 @@ import {
     isPrClassificationPayload,
     isRunScriptPayload,
     isRunWorkflowPayload,
+    normalizeChatMode,
     resolveInstructionMode,
 } from '../tasks/task-types';
 import { createTavilyWebSearchTool } from '../llm-tools/tavily-web-search-tool';
@@ -65,7 +66,7 @@ export { systemMessageBuilder } from './system-message-builder';
 
 /**
  * Builds the system message config for the given chat mode.
- * Both `ask` and `plan` modes inject the read-only system message.
+ * Ask mode injects the read-only system message.
  * `autopilot` (and any unknown mode) returns `undefined`.
  *
  * NOTE: The auto-folder location block is NOT included here.
@@ -75,7 +76,7 @@ export { systemMessageBuilder } from './system-message-builder';
 export function buildModeSystemMessage(
     mode: ChatMode | undefined,
 ): SystemMessageConfig | undefined {
-    if (mode !== 'ask' && mode !== 'plan') {
+    if (normalizeChatMode(mode) !== 'ask') {
         return undefined;
     }
     return { mode: 'append' as const, content: READ_ONLY_SYSTEM_MESSAGE };

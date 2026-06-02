@@ -13,7 +13,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { QueuedTask, ToolEvent } from '@plusplusoneplusplus/forge';
 import { ChatExecutor } from '../../../src/server/executors/chat-executor';
-import { PlanExecutor } from '../../../src/server/executors/plan-executor';
 import { AutopilotExecutor } from '../../../src/server/executors/autopilot-executor';
 import type { ChatModeExecutorOptions } from '../../../src/server/executors/chat-base-executor';
 import { createMockProcessStore } from '../helpers/mock-process-store';
@@ -140,8 +139,8 @@ describe('suggest_follow_ups tool injection', () => {
         expect(call.tools).toBeUndefined();
     });
 
-    it('injects tool for PlanExecutor when enabled', async () => {
-        const executor = new PlanExecutor(store, makeOptions(store, {
+    it('injects tool for legacy plan payloads through ChatExecutor', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store, {
             followUpSuggestions: { enabled: true, count: 3 },
         }));
         const task = makeChatTask('plan');

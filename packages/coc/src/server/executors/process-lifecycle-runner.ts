@@ -52,6 +52,7 @@ import {
     isRunScriptPayload,
     hasNoteChatContext,
     isRalphMode,
+    normalizeChatMode,
     serializeRalphMetadata,
 } from '../tasks/task-types';
 import { deriveScriptTitle } from './title-generator';
@@ -306,6 +307,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         const processId = toQueueProcessId(task.id);
         const prompt = applySkillContent(extractPrompt(task), task);
         const payload = task.payload as any;
+        const normalizedPayloadMode = isChatPayload(task.payload)
+            ? normalizeChatMode(payload?.mode)
+            : undefined;
         const selectedSkills = isChatPayload(task.payload)
             ? (task.payload as ChatPayload).context?.skills
             : isPrClassificationPayload(task.payload)
@@ -331,7 +335,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 queueTaskId: task.id,
                 priority: task.priority,
                 model: task.config.model,
-                mode: payload?.mode,
+                mode: normalizedPayloadMode,
                 workspaceId: payload?.workspaceId || task.repoId,
                 // Use per-task provider from payload when available; fall back to
                 // the server-level default (this.provider) set at startup.
@@ -367,7 +371,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 timeline: [],
                 images: payloadImages?.length > 0 ? payloadImages : undefined,
                 ...(task.config.model !== undefined ? { model: task.config.model } : {}),
-                ...(payload?.mode !== undefined ? { mode: payload.mode } : {}),
+                ...(normalizedPayloadMode !== undefined ? { mode: normalizedPayloadMode } : {}),
             },
         ];
 
@@ -543,8 +547,8 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     }
                 }
 
-                // Eagerly detect .plan.md in conversation turns and set planFilePath
-                if (currentProc && (currentProc.metadata as any)?.mode === 'plan' && !(currentProc.metadata as any)?.planFilePath) {
+                // Eagerly detect .plan.md in Ask planning conversations and set planFilePath.
+                if (currentProc && (currentProc.metadata as any)?.mode === 'ask' && !(currentProc.metadata as any)?.planFilePath) {
                     const detected = scanTurnsForPlanFile(combinedTurns);
                     if (detected) {
                         try {

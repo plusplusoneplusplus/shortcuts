@@ -1,5 +1,5 @@
 import type { ChatPayload, ChatMode } from '../tasks/task-types';
-import { isChatPayload, TaskDefs, getTaskDef } from '../tasks/task-types';
+import { isChatPayload, TaskDefs, getTaskDef, normalizeChatMode } from '../tasks/task-types';
 import { applyFollowUpToTask } from '../shared/queue-utils';
 import { processToQueuedTask } from '../shared/process-history-mapper';
 import type { Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
@@ -457,7 +457,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             processId: derivedProcessId,
             type: reconstructed.type ?? 'chat',
             priority: 'normal',
-            payload: { ...(reconstructed.payload as any), prompt, attachments, imageTempDir, ...(images ? { images } : {}), ...(mode ? { mode } : {}), ...(deliveryMode ? { deliveryMode } : {}) },
+            payload: { ...(reconstructed.payload as any), prompt, attachments, imageTempDir, ...(images ? { images } : {}), ...(normalizeChatMode(mode) ? { mode: normalizeChatMode(mode) } : {}), ...(deliveryMode ? { deliveryMode } : {}) },
             config: {},
             displayName: prompt.trim().substring(0, 57) + (prompt.trim().length > 57 ? '...' : ''),
         });
@@ -583,7 +583,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 ...(nextMsg.images ? { images: nextMsg.images } : {}),
                 ...(nextMsg.pasteExternalized ? { pasteExternalized: true } : {}),
                 ...(nextMsg.model ? { model: nextMsg.model } : {}),
-                ...(nextMsg.mode ? { mode: nextMsg.mode } : {}),
+                ...(normalizeChatMode(nextMsg.mode) ? { mode: normalizeChatMode(nextMsg.mode) } : {}),
             }),
         );
 
@@ -600,7 +600,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 kind: 'chat' as const,
                 processId,
                 prompt: nextMsg.content,
-                ...(nextMsg.mode ? { mode: nextMsg.mode } : {}),
+                ...(normalizeChatMode(nextMsg.mode) ? { mode: normalizeChatMode(nextMsg.mode) } : {}),
                 ...(nextMsg.model ? { model: nextMsg.model } : {}),
                 ...(pendingEffort ? { reasoningEffort: pendingEffort } : {}),
                 ...(nextMsg.attachments ? { attachments: nextMsg.attachments } : {}),
@@ -630,7 +630,7 @@ function getScheduleRunContext(context: ChatPayload['context'] | undefined): Rec
  * Concurrency model:
  * - `run-workflow` tasks (including work items) → **exclusive** — serialized 1-at-a-time per repo queue.
  *   Work items must never run concurrently within the same workspace.
- * - `chat` tasks with `ask` or `plan` mode (e.g. coc-chat sessions) → **shared** — up to
+ * - `chat` tasks with `ask` mode (e.g. coc-chat sessions) → **shared** — up to
  *   `sharedConcurrency` (default 5) run concurrently. Multiple background-agent chat sessions
  *   are fully supported and process in parallel. Ralph grilling phase uses `mode='ask'`
  *   and stays in the shared lane.

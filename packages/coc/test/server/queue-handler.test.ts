@@ -242,7 +242,7 @@ describe('Queue Handler', () => {
             expect(body.task.payload.mode).toBe('autopilot');
         });
 
-        it('should enqueue chat type with plan mode', async () => {
+        it('should normalize legacy plan mode to ask when enqueueing chat type', async () => {
             const srv = await startServer();
 
             const res = await postJSON(`${srv.url}/api/queue`, makeTask({
@@ -252,7 +252,7 @@ describe('Queue Handler', () => {
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
             expect(body.task.type).toBe('chat');
-            expect(body.task.payload.mode).toBe('plan');
+            expect(body.task.payload.mode).toBe('ask');
         });
 
         it('should enqueue chat type', async () => {

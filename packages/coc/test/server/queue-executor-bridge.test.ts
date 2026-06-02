@@ -451,7 +451,7 @@ describe('CLITaskExecutor', () => {
             }));
         });
 
-        it('should pass mode=plan to sendMessage for plan-mode chat tasks', async () => {
+        it('should normalize legacy plan-mode chat tasks to interactive sendMessage', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {
@@ -469,7 +469,7 @@ describe('CLITaskExecutor', () => {
 
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
                 prompt: expect.stringContaining('Plan the refactoring'),
-                mode: 'plan',
+                mode: 'interactive',
             }));
             // Prompt should NOT contain the old plan prefix
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
@@ -2126,11 +2126,11 @@ describe('CLITaskExecutor', () => {
     });
 
     // ========================================================================
-    // No-op / Plan-Mode Chat Tasks
+    // No-op / Legacy Plan-Mode Chat Tasks
     // ========================================================================
 
     describe('no-op task types', () => {
-        it('should execute plan-mode code-review chat task via AI', async () => {
+        it('should execute legacy plan-mode code-review chat task via Ask AI', async () => {
             const executor = new CLITaskExecutor(store);
 
             const task: QueuedTask = {

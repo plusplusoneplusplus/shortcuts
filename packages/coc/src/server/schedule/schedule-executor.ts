@@ -16,7 +16,7 @@ import * as crypto from 'crypto';
 import type { QueuedTask, TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from '../tasks/task-types';
-import { TaskDefs } from '../tasks/task-types';
+import { TaskDefs, normalizeChatMode } from '../tasks/task-types';
 import { getErrorMessage } from '../shared/fs-utils';
 import {
     RALPH_DEFAULT_MAX_ITERATIONS,
@@ -299,7 +299,8 @@ export class ScheduleExecutor {
             const model = schedule.model
                 || (this.dataDir ? resolveDefaultModel(this.dataDir, repoId, 'schedule') : undefined)
                 || undefined;
-            if (schedule.mode === 'ralph') {
+            const scheduleMode = normalizeChatMode(schedule.mode) ?? 'autopilot';
+            if (scheduleMode === 'ralph') {
                 const sessionId = createRalphSessionId();
                 const maxIterations = this.dataDir
                     ? (readRepoPreferences(this.dataDir, repoId).maxRalphIterations ?? RALPH_DEFAULT_MAX_ITERATIONS)
@@ -340,7 +341,7 @@ export class ScheduleExecutor {
                 priority: 'normal',
                 payload: {
                     kind: 'chat',
-                    mode: schedule.mode ?? 'autopilot',
+                    mode: scheduleMode,
                     prompt: `${outputPrefix}Follow the instruction ${schedule.target}.`,
                     context: {
                         files: [schedule.target],

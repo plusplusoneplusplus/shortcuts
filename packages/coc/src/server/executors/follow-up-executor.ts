@@ -24,6 +24,7 @@ import type {
     TurnSource,
 } from '@plusplusoneplusplus/forge';
 import type { ChatMode, ChatProvider } from '../tasks/task-types';
+import { normalizeChatModeOrDefault } from '../tasks/task-types';
 import {
     approveAllPermissions,
     getLogger,
@@ -52,7 +53,6 @@ import type { ChatTurnContext } from './chat-turn-context-builder';
 /** Map CoC ChatMode to SDK AgentMode for protocol-level enforcement. */
 const CHAT_MODE_TO_AGENT_MODE: Record<ChatMode, AgentMode> = {
     ask: 'interactive',
-    plan: 'plan',
     autopilot: 'autopilot',
     ralph: 'autopilot',
 };
@@ -103,7 +103,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         processId: string,
         message: string,
         attachments?: Attachment[],
-        mode?: ChatMode,
+        mode?: ChatMode | string,
         deliveryMode?: string,
         images?: string[],
         selectedSkillNames?: string[],
@@ -139,10 +139,10 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
         const workingDirectory = process.workingDirectory || this.defaultWorkingDirectory;
 
-        const previousMode = process.metadata?.mode as ChatMode | undefined;
+        const previousMode = normalizeChatModeOrDefault(process.metadata?.mode);
         let currentMode: ChatMode;
         if (mode) {
-            currentMode = mode;
+            currentMode = normalizeChatModeOrDefault(mode);
         } else {
             // Fail-loud: every enqueue site should resolve mode via
             // resolveFollowUpMode() before reaching the executor. Falling
@@ -179,7 +179,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             autoFolderContextForFollowUp = await this.buildAutoFolderContext(
                 workingDirectory,
                 wsId,
-                currentMode === 'plan' ? 'plan' : 'ask',
+                'ask',
             );
         }
         const notePath = process.metadata?.notePath as string | undefined;
@@ -240,7 +240,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 scheduleWakeup: loopDeps.scheduleWakeup,
                 loopTools: loopDeps.loopTools,
                 askUser: {
-                    enabled: (currentMode === 'ask' || currentMode === 'plan') && this.askUser.enabled,
+                    enabled: currentMode === 'ask' && this.askUser.enabled,
                     deps: {
                         emitQuestions: async (questionPayloads) => {
                             await this.store.updateProcess(processId, { pendingAskUser: questionPayloads });

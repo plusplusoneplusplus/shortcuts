@@ -3,12 +3,12 @@
  *
  * Tests for read-only system message injection in ask mode:
  * - Initial chat in ask mode includes READ_ONLY_SYSTEM_MESSAGE
- * - Initial chat in plan mode includes READ_ONLY_SYSTEM_MESSAGE (same as ask)
+ * - Legacy plan mode is normalized to ask and includes READ_ONLY_SYSTEM_MESSAGE
  * - Initial chat in autopilot mode does NOT include read-only message
  * - Follow-up with mode change ask → autopilot creates fresh session via sendMessage
  * - Follow-up with mode change autopilot → ask creates fresh session with read-only message
  * - Follow-up with same ask mode creates fresh session (no special handling needed)
- * - Transitions between autopilot ↔ plan do NOT need special handling
+ * - Legacy plan follow-ups use ask semantics
  * - Multiple transitions: ask → autopilot → ask
  * - Process metadata is updated with current and previous mode
  */
@@ -162,7 +162,7 @@ describe('ask mode system message — initial chat', () => {
         }
     });
 
-    it('should include read-only systemMessage when chat starts in plan mode', async () => {
+    it('should normalize legacy plan mode to ask for initial chat', async () => {
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
         const task = chatTask('plan');
 
@@ -170,6 +170,7 @@ describe('ask mode system message — initial chat', () => {
 
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(callArgs.mode).toBe('interactive');
         expect(callArgs.systemMessage?.mode).toBe('append');
         expect(callArgs.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
     });
@@ -242,7 +243,7 @@ describe('ask mode system message — follow-up transitions', () => {
         // No session re-creation needed when mode doesn't change
     });
 
-    it('should NOT destroy session for autopilot → plan transition', async () => {
+    it('should normalize autopilot → legacy plan follow-up to ask semantics', async () => {
         const proc = createProcessWithMode('proc-1', 'sess-1', 'autopilot');
         await store.addProcess(proc);
 
@@ -251,10 +252,15 @@ describe('ask mode system message — follow-up transitions', () => {
 
         await executor.execute(task);
 
-        // No session re-creation for non-ask transitions
+        const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(callArgs.mode).toBe('interactive');
+        expect(callArgs.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+        const updated = await store.getProcess('proc-1');
+        expect(updated?.metadata?.mode).toBe('ask');
+        expect(updated?.metadata?.previousMode).toBe('autopilot');
     });
 
-    it('should NOT destroy session for plan → autopilot transition', async () => {
+    it('should normalize stored legacy plan metadata before autopilot follow-up', async () => {
         const proc = createProcessWithMode('proc-1', 'sess-1', 'plan');
         await store.addProcess(proc);
 
@@ -262,6 +268,10 @@ describe('ask mode system message — follow-up transitions', () => {
         const task = followUpTask('proc-1', 'execute plan', 'autopilot');
 
         await executor.execute(task);
+
+        const updated = await store.getProcess('proc-1');
+        expect(updated?.metadata?.mode).toBe('autopilot');
+        expect(updated?.metadata?.previousMode).toBe('ask');
     });
 
     it('should update process metadata with current and previous mode', async () => {
@@ -389,7 +399,7 @@ describe('ask mode system message — auto-folder location block', () => {
         expect(callArgs.systemMessage?.content).toContain('<descriptive-name>.plan.md');
     });
 
-    it('should include auto-folder location block in plan mode when workingDirectory is set', async () => {
+    it('should include auto-folder location block for legacy plan mode when workingDirectory is set', async () => {
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
         const task: QueuedTask = {
             id: 'task-plan-wd',

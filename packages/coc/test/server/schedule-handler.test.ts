@@ -204,6 +204,15 @@ describe('Schedule Handler', () => {
             const body = JSON.parse(res.body);
             expect(body.error).toContain('targetType');
         });
+
+        it('should normalize legacy plan mode to ask', async () => {
+            await startServer();
+
+            const res = await postJSON(schedulesUrl(), makeSchedule({ mode: 'plan' }));
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.schedule.mode).toBe('ask');
+        });
     });
 
     // ========================================================================
@@ -634,13 +643,13 @@ describe('Schedule Handler', () => {
             expect(body.schedule.mode).toBe('ask');
         });
 
-        it('should store and return mode: plan when provided on create', async () => {
+        it('should normalize legacy mode: plan to ask when provided on create', async () => {
             await startServer();
 
             const res = await postJSON(schedulesUrl(), makeSchedule({ mode: 'plan' }));
             expect(res.status).toBe(201);
             const body = JSON.parse(res.body);
-            expect(body.schedule.mode).toBe('plan');
+            expect(body.schedule.mode).toBe('ask');
         });
 
         it('should reject invalid mode on create', async () => {
@@ -652,7 +661,7 @@ describe('Schedule Handler', () => {
             expect(body.error).toContain('mode');
         });
 
-        it('should update mode via PATCH', async () => {
+        it('should normalize legacy mode: plan to ask via PATCH', async () => {
             await startServer();
 
             const createRes = await postJSON(schedulesUrl(), makeSchedule());
@@ -661,7 +670,7 @@ describe('Schedule Handler', () => {
             const res = await patchJSON(`${schedulesUrl()}/${id}`, { mode: 'plan' });
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            expect(body.schedule.mode).toBe('plan');
+            expect(body.schedule.mode).toBe('ask');
         });
 
         it('should reject invalid mode on PATCH', async () => {
@@ -684,7 +693,7 @@ describe('Schedule Handler', () => {
             expect(body.schedules[0].mode).toBe('ask');
         });
 
-        it('should persist mode across server restarts', async () => {
+        it('should persist normalized legacy plan mode across server restarts', async () => {
             const store = new FileProcessStore({ dataDir });
             server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
 
@@ -697,7 +706,7 @@ describe('Schedule Handler', () => {
 
             const listRes = await request(schedulesUrl());
             const body = JSON.parse(listRes.body);
-            expect(body.schedules[0].mode).toBe('plan');
+            expect(body.schedules[0].mode).toBe('ask');
         });
     });
 });

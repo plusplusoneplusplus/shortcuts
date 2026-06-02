@@ -27,6 +27,7 @@ import { processMessageAttachments } from '../core/attachment-utils';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { truncateDisplayName } from '../shared/queue-utils';
 import { prependSelectedSkillsDirective } from '../executors/prompt-builder';
+import { normalizeChatMode } from '../tasks/task-types';
 import type { ApiRouteContext } from './api-shared';
 import { createRoute, asString } from './route-utils';
 
@@ -572,9 +573,9 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, new APIError(501, 'Follow-up execution not available', 'NOT_IMPLEMENTED'));
             }
 
-            // Validate optional mode override (ask | plan | autopilot)
-            const VALID_MODES = ['ask', 'plan', 'autopilot'];
-            const modeOverride: string | undefined = typeof body.mode === 'string' && VALID_MODES.includes(body.mode) ? body.mode : undefined;
+            // Validate optional mode override; legacy `plan` is accepted as Ask.
+            const normalizedMode = normalizeChatMode(body.mode);
+            const modeOverride: string | undefined = normalizedMode === 'ralph' ? undefined : normalizedMode;
 
             // Validate optional deliveryMode (immediate | enqueue), default to 'enqueue'
             const VALID_DELIVERY_MODES = ['immediate', 'enqueue'];
@@ -830,7 +831,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const pendingMsg = {
                 id: crypto.randomUUID(),
                 content: body.content as string,
-                mode: typeof body.mode === 'string' ? body.mode : undefined,
+                mode: normalizeChatMode(body.mode),
                 createdAt: new Date().toISOString(),
             };
 

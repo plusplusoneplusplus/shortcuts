@@ -100,7 +100,7 @@ export interface UpdateWorkspaceMcpConfigRequest {
   enabledMcpServers: string[] | null;
 }
 
-export type WorkspaceInstructionMode = 'base' | 'ask' | 'plan' | 'autopilot';
+export type WorkspaceInstructionMode = 'base' | 'ask' | 'autopilot';
 
 export type WorkspaceInstructionsResponse = Record<WorkspaceInstructionMode, string | null>;
 

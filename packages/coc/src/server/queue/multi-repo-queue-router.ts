@@ -30,6 +30,7 @@ import {
     createQueueExecutorBridge,
     type RalphSessionCompleteEvent,
 } from './queue-executor-bridge';
+import { normalizeChatMode } from '../tasks/task-types';
 
 // ============================================================================
 // Types
@@ -444,7 +445,7 @@ export class MultiRepoQueueRouter extends EventEmitter {
                 processId: proc.id,
                 workingDirectory: proc.workingDirectory,
                 workspaceId: proc.metadata?.workspaceId,
-                mode: mode || proc.metadata?.mode,
+                mode: normalizeChatMode(mode) ?? normalizeChatMode(proc.metadata?.mode),
                 attachments,
                 imageTempDir,
                 ...(images ? { images } : {}),

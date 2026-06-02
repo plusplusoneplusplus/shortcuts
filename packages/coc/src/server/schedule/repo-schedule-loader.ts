@@ -15,6 +15,7 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 import type { ScheduleEntry, ScheduleStatus, ScheduleOnFailure } from './schedule-manager';
 import type { TargetType, ChatMode } from '../tasks/task-types';
+import { normalizeChatMode } from '../tasks/task-types';
 import type { RepoScheduleOverrides } from './repo-schedule-overrides';
 
 // ============================================================================
@@ -89,7 +90,7 @@ export function loadRepoSchedules(
                 targetType: (parsed['targetType'] as TargetType | undefined) ?? 'prompt',
                 outputFolder: parsed['outputFolder'] ? String(parsed['outputFolder']) : undefined,
                 model: parsed['model'] ? String(parsed['model']) : undefined,
-                mode: (parsed['mode'] as ChatMode | undefined) ?? 'autopilot',
+                mode: normalizeChatMode(parsed['mode']) ?? 'autopilot',
                 source: 'repo',
             };
             result.push(entry);
