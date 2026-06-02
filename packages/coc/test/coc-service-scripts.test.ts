@@ -29,6 +29,17 @@ const findPowerShell = () => {
 const powerShellCommand = findPowerShell();
 const describePowerShell = powerShellCommand ? describe : describe.skip;
 
+const hasBash = spawnSync('bash', ['-c', 'exit 0'], { encoding: 'utf-8', stdio: 'pipe' }).status === 0;
+const describeBash = process.platform !== 'win32' && hasBash ? describe : describe.skip;
+
+const runBashFile = (scriptName: string, args: string[], env: NodeJS.ProcessEnv = {}) =>
+  spawnSync('bash', [resolve(scriptsRoot, scriptName), ...args], {
+    cwd: repoRoot,
+    encoding: 'utf-8',
+    env: { ...process.env, ...env },
+    timeout: 20_000,
+  });
+
 const runPowerShellFile = (scriptName: string, args: string[], env: NodeJS.ProcessEnv = {}) => {
   if (!powerShellCommand) {
     throw new Error('PowerShell is not available');
@@ -458,6 +469,194 @@ if ($errors.Count -gt 0) {
       expect(output).not.toContain('Dev tunnel URL: https://fake.devtunnels.ms:4000');
       expect(readLogLines(fake.cocLogPath)).toContain('serve\t--no-open\t--port\t53910\t--host\t127.0.0.1');
       expect(readDevTunnelLog(fake.logPath)).toEqual(['port\tlist\texisting-coc', 'host\texisting-coc']);
+    } finally {
+      fake.cleanup();
+    }
+  });
+});
+
+describe('CoC service bash scripts', () => {
+  const serveLoopSh = readScript('coc-serve-loop.sh');
+  const configDevTunnelSh = readScript('config-devtunnel.sh');
+  const devTunnelUtilsSh = readScript('devtunnel-utils.sh');
+
+  it('shares dev tunnel helpers via devtunnel-utils.sh', () => {
+    expect(devTunnelUtilsSh).toContain('is_devtunnel_auth_error()');
+    expect(devTunnelUtilsSh).toContain('get_http_devtunnel_ports()');
+    expect(devTunnelUtilsSh).toContain('get_random_free_port()');
+    for (const script of [serveLoopSh, configDevTunnelSh]) {
+      expect(script).toContain('. "$SCRIPT_DIR/devtunnel-utils.sh"');
+    }
+  });
+
+  it('config-devtunnel.sh owns the tunnel-id to HTTP port binding without hosting', () => {
+    expect(configDevTunnelSh).toContain('port list "$TUNNEL_ID"');
+    expect(configDevTunnelSh).toContain('port create "$TUNNEL_ID" -p "$resolved_port" --protocol http');
+    expect(configDevTunnelSh).toContain('get_random_free_port');
+    expect(configDevTunnelSh).not.toContain('host "$TUNNEL_ID"');
+  });
+
+  it('coc-serve-loop.sh uses --tunnel-id as the only tunnel selector and rejects --port with it', () => {
+    expect(serveLoopSh).toContain('-t|--tunnel-id)');
+    expect(serveLoopSh).toContain(
+      '--port cannot be used with --tunnel-id. Configure the tunnel port with config-devtunnel.sh, then start the loop with only --tunnel-id.'
+    );
+    expect(serveLoopSh).toContain('resolve_configured_devtunnel_port');
+    expect(serveLoopSh).toContain('start_devtunnel_host');
+    expect(serveLoopSh).toContain('stop_devtunnel_host');
+    expect(serveLoopSh).toContain('trap stop_devtunnel_host EXIT');
+    expect(serveLoopSh).toContain("trap 'stop_devtunnel_host; exit 130' INT");
+    expect(serveLoopSh).toContain("trap 'stop_devtunnel_host; exit 143' TERM");
+  });
+
+  it('coc-serve-loop.sh resolves the configured port before building and stops the host after serving', () => {
+    expect(serveLoopSh.indexOf('resolve_configured_devtunnel_port "$TUNNEL_ID"')).toBeLessThan(
+      serveLoopSh.indexOf('while true; do')
+    );
+    expect(serveLoopSh).toContain('port list "$id"');
+    expect(serveLoopSh.indexOf('stop_devtunnel_host')).toBeGreaterThan(serveLoopSh.indexOf('coc serve --no-open'));
+    expect(serveLoopSh).not.toContain('port create');
+  });
+});
+
+describeBash('CoC service bash script behavior', () => {
+  it('passes bash syntax checks', () => {
+    for (const file of ['devtunnel-utils.sh', 'config-devtunnel.sh', 'coc-serve-loop.sh']) {
+      const result = spawnSync('bash', ['-n', resolve(scriptsRoot, file)], { encoding: 'utf-8' });
+      expect(result.status, `${file}: ${result.stderr}`).toBe(0);
+    }
+  });
+
+  it('rejects --port with --tunnel-id before building', () => {
+    const result = runBashFile('coc-serve-loop.sh', [
+      '--tunnel-id',
+      'my-remote-coc',
+      '--port',
+      '51234',
+      '--skip-initial-build',
+    ]);
+    const output = `${result.stdout}\n${result.stderr}`;
+    expect(result.status, output).toBe(2);
+    expect(output).toContain(
+      '--port cannot be used with --tunnel-id. Configure the tunnel port with config-devtunnel.sh, then start the loop with only --tunnel-id.'
+    );
+    expect(output).not.toContain('=== Installing dependencies ===');
+  });
+
+  it('fails tunnel mode with a clear error when no HTTP port is configured', () => {
+    const fake = createFakeDevTunnel('none');
+    try {
+      const result = runBashFile('coc-serve-loop.sh', ['--tunnel-id', 'missing-port-coc', '--skip-initial-build'], fake.env);
+      const output = `${result.stdout}\n${result.stderr}`;
+      expect(result.status, output).toBe(2);
+      expect(output).toContain("Dev tunnel 'missing-port-coc' has no configured HTTP port.");
+      expect(output).not.toContain('=== Installing dependencies ===');
+
+      const log = readDevTunnelLog(fake.logPath);
+      expect(log).toContain('port\tlist\tmissing-port-coc');
+      expect(log.some((line) => line.startsWith('host\tmissing-port-coc'))).toBe(false);
+    } finally {
+      fake.cleanup();
+    }
+  });
+
+  it('starts non-tunnel mode on the default port', () => {
+    const fake = createFakeDevTunnel('none');
+    try {
+      const result = runBashFile('coc-serve-loop.sh', ['--skip-initial-build'], fake.env);
+      const output = `${result.stdout}\n${result.stderr}`;
+      expect(result.status, output).toBe(0);
+      expect(output).toContain('=== Starting coc serve (host 127.0.0.1, port 4000) ===');
+      expect(readLogLines(fake.cocLogPath)).toContain('serve\t--no-open\t--port\t4000\t--host\t127.0.0.1');
+      expect(readLogLines(fake.logPath)).toEqual([]);
+    } finally {
+      fake.cleanup();
+    }
+  });
+
+  it('starts non-tunnel mode on an explicit port', () => {
+    const fake = createFakeDevTunnel('none');
+    try {
+      const result = runBashFile('coc-serve-loop.sh', ['--skip-initial-build', '--port', '51235'], fake.env);
+      const output = `${result.stdout}\n${result.stderr}`;
+      expect(result.status, output).toBe(0);
+      expect(output).toContain('=== Starting coc serve (host 127.0.0.1, port 51235) ===');
+      expect(readLogLines(fake.cocLogPath)).toContain('serve\t--no-open\t--port\t51235\t--host\t127.0.0.1');
+      expect(readLogLines(fake.logPath)).toEqual([]);
+    } finally {
+      fake.cleanup();
+    }
+  });
+
+  it('starts tunnel mode on the configured HTTP port and reports the URL', () => {
+    const fake = createFakeDevTunnel('one');
+    try {
+      const result = runBashFile('coc-serve-loop.sh', ['--tunnel-id', 'existing-coc', '--skip-initial-build'], fake.env);
+      const output = `${result.stdout}\n${result.stderr}`;
+      expect(result.status, output).toBe(0);
+      expect(output).toContain("Using dev tunnel 'existing-coc' configured HTTP port 51234.");
+      expect(output).toContain('Dev tunnel URL: https://fake.devtunnels.ms');
+      expect(readLogLines(fake.cocLogPath)).toContain('serve\t--no-open\t--port\t51234\t--host\t127.0.0.1');
+      expect(readDevTunnelLog(fake.logPath)).toEqual(['port\tlist\texisting-coc', 'host\texisting-coc']);
+    } finally {
+      fake.cleanup();
+    }
+  });
+
+  it('selects the dev tunnel URL matching the configured HTTP port', () => {
+    const fake = createFakeDevTunnel('host-wrong-first');
+    try {
+      const result = runBashFile('coc-serve-loop.sh', ['--tunnel-id', 'existing-coc', '--skip-initial-build'], fake.env);
+      const output = `${result.stdout}\n${result.stderr}`;
+      expect(result.status, output).toBe(0);
+      expect(output).toContain("Using dev tunnel 'existing-coc' configured HTTP port 53910.");
+      expect(output).toContain('=== Starting coc serve (host 127.0.0.1, port 53910) ===');
+      expect(output).toContain('Dev tunnel URL: https://fake.devtunnels.ms:53910');
+      expect(output).not.toContain('Dev tunnel URL: https://fake.devtunnels.ms:4000');
+      expect(readLogLines(fake.cocLogPath)).toContain('serve\t--no-open\t--port\t53910\t--host\t127.0.0.1');
+      expect(readDevTunnelLog(fake.logPath)).toEqual(['port\tlist\texisting-coc', 'host\texisting-coc']);
+    } finally {
+      fake.cleanup();
+    }
+  });
+
+  it('config-devtunnel.sh configures an explicit HTTP port when the tunnel has none', () => {
+    const fake = createFakeDevTunnel('none');
+    try {
+      const result = runBashFile('config-devtunnel.sh', ['--tunnel-id', 'my-remote-coc', '--port', '51234'], fake.env);
+      expect(result.status, result.stderr || result.stdout).toBe(0);
+      expect(result.stdout).toContain("Dev tunnel 'my-remote-coc' is configured for HTTP port 51234.");
+
+      const log = readDevTunnelLog(fake.logPath);
+      expect(log).toContain('create\tmy-remote-coc');
+      expect(log).toContain('port\tlist\tmy-remote-coc');
+      expect(log).toContain('port\tcreate\tmy-remote-coc\t-p\t51234\t--protocol\thttp');
+    } finally {
+      fake.cleanup();
+    }
+  });
+
+  it('config-devtunnel.sh reuses an existing single HTTP port', () => {
+    const fake = createFakeDevTunnel('one');
+    try {
+      const result = runBashFile('config-devtunnel.sh', ['--tunnel-id', 'existing-coc', '--port', '4000'], fake.env);
+      expect(result.status, result.stderr || result.stdout).toBe(0);
+      expect(result.stdout).toContain('already has HTTP port 51234; reusing it instead of requested port 4000');
+      expect(result.stdout).toContain("Dev tunnel 'existing-coc' is configured for HTTP port 51234.");
+      expect(readDevTunnelLog(fake.logPath)).not.toContain('port\tcreate\texisting-coc\t-p\t4000\t--protocol\thttp');
+    } finally {
+      fake.cleanup();
+    }
+  });
+
+  it('config-devtunnel.sh fails when multiple HTTP ports exist', () => {
+    const fake = createFakeDevTunnel('multi');
+    try {
+      const result = runBashFile('config-devtunnel.sh', ['--tunnel-id', 'ambiguous-coc'], fake.env);
+      const output = `${result.stdout}\n${result.stderr}`;
+      expect(result.status, output).toBe(2);
+      expect(output).toContain("Dev tunnel 'ambiguous-coc' has multiple HTTP ports (4000 51234).");
+      expect(readDevTunnelLog(fake.logPath).some((line) => line.startsWith('port\tcreate\tambiguous-coc'))).toBe(false);
     } finally {
       fake.cleanup();
     }
