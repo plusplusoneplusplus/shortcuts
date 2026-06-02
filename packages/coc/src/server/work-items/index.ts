@@ -59,6 +59,14 @@ export {
     type ParsedGitHubWorkItemIssue,
 } from './work-item-sync-github-issue';
 export {
+    GhCliGitHubWorkItemIssueTransport,
+    createGitHubWorkItemSyncProviderAdapter,
+    type CreateGitHubWorkItemSyncProviderOptions,
+    type GitHubWorkItemIssue,
+    type GitHubWorkItemIssueListFilters,
+    type GitHubWorkItemIssueTransport,
+} from './work-item-sync-github-provider';
+export {
     executeWorkItem,
     handleWorkItemTaskComplete,
     buildExecutionPrompt,

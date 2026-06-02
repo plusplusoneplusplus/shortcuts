@@ -67,6 +67,7 @@ import { registerWorkItemChangesRoutes } from './work-item-changes-routes';
 import { registerWorkItemAiRoutes } from './work-item-ai-routes';
 import { createWorkItemAiGenerators } from '../work-items/work-item-ai-generator';
 import { FileWorkItemStore } from '../work-items/work-item-store';
+import { createGitHubWorkItemSyncProviderAdapter } from '../work-items/work-item-sync-github-provider';
 import { handleWorkItemTaskComplete, autoVersionPlanFromResolvedComments } from '../work-items/work-item-executor';
 import type { EnqueueFunction } from '../work-items/work-item-executor';
 import { upsertWorkItemTaskFile, toTaskFileStatus } from '../work-items/work-item-task-file';
@@ -471,6 +472,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         dataDir,
         getHierarchyEnabled: getWorkItemsHierarchyEnabled,
         getSyncEnabled: getWorkItemsSyncEnabled,
+        providers: [createGitHubWorkItemSyncProviderAdapter()],
     });
     registerWorkItemRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer, getHierarchyEnabled: getWorkItemsHierarchyEnabled });
     registerWorkItemPlanRoutes({ routes, workItemStore, getWsServer });

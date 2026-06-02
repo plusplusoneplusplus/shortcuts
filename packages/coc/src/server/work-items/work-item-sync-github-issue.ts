@@ -23,6 +23,8 @@ export type GitHubIssueLabel = string | { name?: string | null };
 export interface GitHubWorkItemIssueSnapshot {
     id?: string | number;
     number?: number;
+    title?: string;
+    state?: 'open' | 'closed' | string;
     htmlUrl?: string;
     url?: string;
     labels?: GitHubIssueLabel[];

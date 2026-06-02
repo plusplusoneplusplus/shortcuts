@@ -1,0 +1,776 @@
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import type {
+    WorkItemSyncPreviewOperation,
+    WorkItemSyncPreviewResponse,
+    WorkItemSyncProviderStatus,
+    WorkItemSyncRemoteFilter,
+    WorkItemSyncRemoteIdentity,
+    WorkItemSyncWarning,
+} from '@plusplusoneplusplus/coc-client';
+import {
+    buildGitHubWorkItemIssueUpdate,
+    parseGitHubWorkItemIssue,
+    type GitHubIssueLabel,
+    type GitHubWorkItemIssueSnapshot,
+    type ParsedGitHubWorkItemIssue,
+} from './work-item-sync-github-issue';
+import {
+    resolveGitHubWorkItemSyncRepo,
+    type GitHubWorkItemSyncRepo,
+} from './work-item-sync-github-repo';
+import type {
+    WorkItem,
+    WorkItemIndexEntry,
+    WorkItemSyncLink,
+    WorkItemSyncParentReference,
+} from './types';
+import {
+    ALLOWED_PARENT_TYPES,
+    getEffectiveType,
+    isValidParentChildTypes,
+} from './types';
+import {
+    WORK_ITEM_SYNC_MAX_ITEMS,
+    type WorkItemSyncProviderAdapter,
+    type WorkItemSyncProviderContext,
+    type WorkItemSyncProviderPreviewContext,
+} from './work-item-sync-provider';
+import { APIError } from '../errors';
+
+type AvailableGitHubWorkItemSyncRepo = Extract<GitHubWorkItemSyncRepo, { available: true }>;
+type UnavailableGitHubWorkItemSyncRepo = Exclude<GitHubWorkItemSyncRepo, AvailableGitHubWorkItemSyncRepo>;
+type WorkItemSyncFieldChanges = NonNullable<WorkItemSyncPreviewOperation['fields']>;
+
+export interface GitHubWorkItemIssue extends GitHubWorkItemIssueSnapshot {
+    number: number;
+    title: string;
+}
+
+export interface GitHubWorkItemIssueListFilters extends WorkItemSyncRemoteFilter {
+    limit?: number;
+}
+
+export interface GitHubWorkItemIssueTransport {
+    getRepository(repo: AvailableGitHubWorkItemSyncRepo): Promise<void>;
+    listIssues(repo: AvailableGitHubWorkItemSyncRepo, filters?: GitHubWorkItemIssueListFilters): Promise<GitHubWorkItemIssue[]>;
+    getIssue(repo: AvailableGitHubWorkItemSyncRepo, issueNumber: number): Promise<GitHubWorkItemIssue | undefined>;
+}
+
+export interface CreateGitHubWorkItemSyncProviderOptions {
+    transport?: GitHubWorkItemIssueTransport;
+    now?: () => string;
+    createPreviewId?: (operation: WorkItemSyncProviderPreviewContext['operation']) => string;
+}
+
+interface GitHubRestIssue {
+    id?: number | string;
+    node_id?: string;
+    number?: number;
+    title?: string;
+    state?: string;
+    html_url?: string;
+    url?: string;
+    labels?: GitHubIssueLabel[];
+    body?: string | null;
+    updated_at?: string;
+    pull_request?: unknown;
+}
+
+type ExecFileAsync = (
+    file: string,
+    args: string[],
+    options: { encoding: 'utf8'; windowsHide: true; maxBuffer: number },
+) => Promise<{ stdout: string; stderr: string }>;
+
+const execFileAsync = promisify(execFile) as ExecFileAsync;
+
+function repoApiPath(repo: AvailableGitHubWorkItemSyncRepo, suffix = ''): string {
+    return `repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo)}${suffix}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isNotFoundError(error: unknown): boolean {
+    if (!isRecord(error)) return false;
+    const message = typeof error.message === 'string' ? error.message.toLowerCase() : '';
+    return message.includes('404') || message.includes('not found');
+}
+
+function normalizeRestIssue(issue: GitHubRestIssue): GitHubWorkItemIssue | undefined {
+    if (issue.pull_request !== undefined) return undefined;
+    if (typeof issue.number !== 'number' || !Number.isInteger(issue.number) || issue.number <= 0) return undefined;
+    const title = issue.title?.trim();
+    if (!title) return undefined;
+    return {
+        id: issue.node_id ?? issue.id,
+        number: issue.number,
+        title,
+        state: issue.state,
+        htmlUrl: issue.html_url,
+        url: issue.url,
+        labels: issue.labels,
+        body: issue.body,
+        updatedAt: issue.updated_at,
+    };
+}
+
+function matchesTextFilter(issue: GitHubWorkItemIssue, q: string | undefined): boolean {
+    const needle = q?.trim().toLowerCase();
+    if (!needle) return true;
+    return [
+        issue.title,
+        issue.body ?? '',
+        String(issue.number),
+    ].some(value => value.toLowerCase().includes(needle));
+}
+
+export class GhCliGitHubWorkItemIssueTransport implements GitHubWorkItemIssueTransport {
+    constructor(private readonly run: ExecFileAsync = execFileAsync) {}
+
+    async getRepository(repo: AvailableGitHubWorkItemSyncRepo): Promise<void> {
+        await this.ghJson(repo, [repoApiPath(repo)]);
+    }
+
+    async listIssues(repo: AvailableGitHubWorkItemSyncRepo, filters: GitHubWorkItemIssueListFilters = {}): Promise<GitHubWorkItemIssue[]> {
+        const limit = Math.max(1, Math.min(filters.limit ?? WORK_ITEM_SYNC_MAX_ITEMS, WORK_ITEM_SYNC_MAX_ITEMS));
+        const labels = filters.labels?.map(label => label.trim()).filter(Boolean);
+        const result: GitHubWorkItemIssue[] = [];
+        let page = 1;
+
+        while (result.length < limit) {
+            const rawIssues = await this.ghJson<GitHubRestIssue[]>(repo, [
+                repoApiPath(repo, '/issues'),
+                '--method', 'GET',
+                '-f', 'state=all',
+                '-F', 'per_page=100',
+                '-F', `page=${page}`,
+                ...(labels?.length ? ['-f', `labels=${labels.join(',')}`] : []),
+            ]);
+            const normalized = rawIssues
+                .map(normalizeRestIssue)
+                .filter((issue): issue is GitHubWorkItemIssue => issue !== undefined)
+                .filter(issue => matchesTextFilter(issue, filters.q));
+            result.push(...normalized.slice(0, limit - result.length));
+            if (rawIssues.length < 100) break;
+            page++;
+        }
+
+        return result;
+    }
+
+    async getIssue(repo: AvailableGitHubWorkItemSyncRepo, issueNumber: number): Promise<GitHubWorkItemIssue | undefined> {
+        try {
+            return normalizeRestIssue(await this.ghJson<GitHubRestIssue>(repo, [
+                repoApiPath(repo, `/issues/${issueNumber}`),
+            ]));
+        } catch (error) {
+            if (isNotFoundError(error)) return undefined;
+            throw error;
+        }
+    }
+
+    private async ghJson<T>(repo: AvailableGitHubWorkItemSyncRepo, args: string[]): Promise<T> {
+        const { stdout } = await this.run('gh', ['api', ...args], {
+            encoding: 'utf8',
+            windowsHide: true,
+            maxBuffer: 10 * 1024 * 1024,
+        });
+        try {
+            return JSON.parse(stdout) as T;
+        } catch {
+            throw new Error(`GitHub API for ${repo.owner}/${repo.repo} returned invalid JSON.`);
+        }
+    }
+}
+
+function unavailableRepoStatus(repo: UnavailableGitHubWorkItemSyncRepo): WorkItemSyncProviderStatus {
+    const messageByReason: Record<UnavailableGitHubWorkItemSyncRepo['reason'], string> = {
+        'incomplete-preference': 'GitHub sync owner/repo preference must include both owner and repo.',
+        'missing-workspace': 'GitHub sync could not resolve the current workspace.',
+        'missing-origin': 'GitHub sync could not find a git origin remote for this workspace.',
+        'non-github-origin': 'GitHub sync requires a GitHub origin remote or workspace owner/repo override.',
+    };
+    return {
+        provider: 'github',
+        available: false,
+        reason: repo.reason,
+        message: messageByReason[repo.reason],
+        auth: {
+            mode: 'external',
+            authenticated: false,
+            message: 'GitHub sync uses external authentication; run gh auth login or set GITHUB_TOKEN for the server process.',
+        },
+    };
+}
+
+function availableRepoStatus(repo: AvailableGitHubWorkItemSyncRepo): WorkItemSyncProviderStatus {
+    return {
+        provider: 'github',
+        available: true,
+        repository: {
+            provider: 'github',
+            owner: repo.owner,
+            repo: repo.repo,
+            url: repo.url,
+            source: repo.source,
+        },
+        auth: {
+            mode: 'external',
+            authenticated: true,
+            message: 'GitHub sync is using external GitHub authentication.',
+        },
+    };
+}
+
+function authUnavailableStatus(repo: AvailableGitHubWorkItemSyncRepo): WorkItemSyncProviderStatus {
+    return {
+        provider: 'github',
+        available: false,
+        reason: 'auth-unavailable',
+        message: `GitHub sync could not reach ${repo.owner}/${repo.repo} using external authentication.`,
+        repository: {
+            provider: 'github',
+            owner: repo.owner,
+            repo: repo.repo,
+            url: repo.url,
+            source: repo.source,
+        },
+        auth: {
+            mode: 'external',
+            authenticated: false,
+            message: 'Run gh auth login or set GITHUB_TOKEN for the server process.',
+        },
+    };
+}
+
+function resolveRepo(context: Pick<WorkItemSyncProviderContext, 'workspace' | 'preferences'>): GitHubWorkItemSyncRepo {
+    return resolveGitHubWorkItemSyncRepo({
+        workspace: context.workspace,
+        preferences: context.preferences,
+    });
+}
+
+function getGithubSyncLink(item: WorkItem): WorkItemSyncLink | undefined {
+    return item.syncLinks?.find(link => link.provider === 'github');
+}
+
+function remoteIdentity(repo: AvailableGitHubWorkItemSyncRepo, issue?: GitHubWorkItemIssue, link?: WorkItemSyncLink): WorkItemSyncRemoteIdentity {
+    const remote: WorkItemSyncRemoteIdentity = {
+        owner: repo.owner,
+        repo: repo.repo,
+    };
+    const issueId = issue?.id ?? link?.remote.issueId;
+    if (issueId !== undefined) remote.issueId = String(issueId);
+    const issueNumber = issue?.number ?? link?.remote.issueNumber;
+    if (issueNumber !== undefined) remote.issueNumber = issueNumber;
+    const issueUrl = issue?.htmlUrl ?? issue?.url ?? link?.remote.issueUrl;
+    if (issueUrl) remote.issueUrl = issueUrl;
+    return remote;
+}
+
+function sameRemote(link: WorkItemSyncLink | undefined, repo: AvailableGitHubWorkItemSyncRepo, issue: GitHubWorkItemIssue): boolean {
+    if (!link || link.provider !== 'github') return false;
+    if (link.remote.owner && link.remote.owner !== repo.owner) return false;
+    if (link.remote.repo && link.remote.repo !== repo.repo) return false;
+    if (link.remote.issueNumber !== undefined && link.remote.issueNumber === issue.number) return true;
+    if (link.remote.issueId !== undefined && issue.id !== undefined && link.remote.issueId === String(issue.id)) return true;
+    return false;
+}
+
+function fieldsForRemoteDraft(issue: GitHubWorkItemIssue, parsed: ParsedGitHubWorkItemIssue): WorkItemSyncFieldChanges {
+    return [
+        { field: 'title', remoteValue: issue.title, proposedValue: issue.title },
+        { field: 'description', remoteValue: parsed.bodyWithoutMetadata, proposedValue: parsed.bodyWithoutMetadata },
+        { field: 'type', remoteValue: parsed.type, proposedValue: parsed.type ?? 'work-item' },
+        { field: 'status', remoteValue: parsed.status, proposedValue: parsed.status ?? (issue.state === 'closed' ? 'done' : 'created') },
+        { field: 'priority', remoteValue: parsed.priority, proposedValue: parsed.priority ?? 'normal' },
+        { field: 'tags', remoteValue: parsed.tags, proposedValue: parsed.tags },
+        { field: 'parentId', remoteValue: parsed.metadata?.parent, proposedValue: parsed.metadata?.parent?.workItemId },
+    ];
+}
+
+function changedLocalFields(item: WorkItem, issue: GitHubWorkItemIssue, parsed: ParsedGitHubWorkItemIssue): WorkItemSyncFieldChanges {
+    const fields: WorkItemSyncFieldChanges = [];
+    const remoteType = parsed.type ?? 'work-item';
+    const remoteStatus = parsed.status ?? (issue.state === 'closed' ? 'done' : 'created');
+    const remotePriority = parsed.priority ?? 'normal';
+    if (item.title !== issue.title) fields.push({ field: 'title', cocValue: item.title, remoteValue: issue.title, proposedValue: issue.title });
+    if ((item.description ?? '') !== parsed.bodyWithoutMetadata) fields.push({ field: 'description', cocValue: item.description ?? '', remoteValue: parsed.bodyWithoutMetadata, proposedValue: parsed.bodyWithoutMetadata });
+    if (getEffectiveType(item.type) !== remoteType) fields.push({ field: 'type', cocValue: getEffectiveType(item.type), remoteValue: remoteType, proposedValue: remoteType });
+    if (item.status !== remoteStatus) fields.push({ field: 'status', cocValue: item.status, remoteValue: remoteStatus, proposedValue: remoteStatus });
+    if ((item.priority ?? 'normal') !== remotePriority) fields.push({ field: 'priority', cocValue: item.priority ?? 'normal', remoteValue: remotePriority, proposedValue: remotePriority });
+    if (JSON.stringify(item.tags ?? []) !== JSON.stringify(parsed.tags)) fields.push({ field: 'tags', cocValue: item.tags ?? [], remoteValue: parsed.tags, proposedValue: parsed.tags });
+    return fields;
+}
+
+function changedRemoteFields(item: WorkItem, issue: GitHubWorkItemIssue, parsed: ParsedGitHubWorkItemIssue): WorkItemSyncFieldChanges {
+    const fields: WorkItemSyncFieldChanges = [];
+    const localType = getEffectiveType(item.type);
+    if (issue.title !== item.title) fields.push({ field: 'title', cocValue: item.title, remoteValue: issue.title, proposedValue: item.title });
+    if (parsed.type !== localType) fields.push({ field: 'type', cocValue: localType, remoteValue: parsed.type, proposedValue: localType });
+    if (parsed.status !== item.status) fields.push({ field: 'status', cocValue: item.status, remoteValue: parsed.status, proposedValue: item.status });
+    if ((parsed.priority ?? 'normal') !== (item.priority ?? 'normal')) fields.push({ field: 'priority', cocValue: item.priority ?? 'normal', remoteValue: parsed.priority ?? 'normal', proposedValue: item.priority ?? 'normal' });
+    if (JSON.stringify(parsed.tags) !== JSON.stringify(item.tags ?? [])) fields.push({ field: 'tags', cocValue: item.tags ?? [], remoteValue: parsed.tags, proposedValue: item.tags ?? [] });
+    return fields;
+}
+
+function orderParentFirst(items: readonly WorkItem[]): WorkItem[] {
+    const byId = new Map(items.map(item => [item.id, item]));
+    const visiting = new Set<string>();
+    const visited = new Set<string>();
+    const ordered: WorkItem[] = [];
+
+    function visit(item: WorkItem): void {
+        if (visited.has(item.id)) return;
+        if (visiting.has(item.id)) return;
+        visiting.add(item.id);
+        const parent = item.parentId ? byId.get(item.parentId) : undefined;
+        if (parent) visit(parent);
+        visiting.delete(item.id);
+        visited.add(item.id);
+        ordered.push(item);
+    }
+
+    for (const item of items) visit(item);
+    return ordered;
+}
+
+function parentWarnings(items: readonly WorkItem[]): WorkItemSyncWarning[] {
+    const byId = new Map(items.map(item => [item.id, item]));
+    const warnings: WorkItemSyncWarning[] = [];
+    for (const item of items) {
+        const type = getEffectiveType(item.type);
+        if (!item.parentId && ALLOWED_PARENT_TYPES[type].length > 0) {
+            warnings.push({
+                id: `missing-parent-${item.id}`,
+                message: `${type} item '${item.title}' has no parent; export will preserve it as unparented metadata until a parent is linked.`,
+                workItemId: item.id,
+                severity: 'warning',
+            });
+            continue;
+        }
+        if (!item.parentId) continue;
+        const parent = byId.get(item.parentId);
+        if (!parent) continue;
+        const parentType = getEffectiveType(parent.type);
+        if (!isValidParentChildTypes(type, parentType)) {
+            warnings.push({
+                id: `invalid-parent-${item.id}`,
+                message: `${type} item '${item.title}' cannot be parented by ${parentType} item '${parent.title}'.`,
+                workItemId: item.id,
+                severity: 'warning',
+            });
+        }
+    }
+    return warnings;
+}
+
+async function loadLocalEntries(context: WorkItemSyncProviderContext): Promise<WorkItemIndexEntry[]> {
+    return (await context.workItemStore.listWorkItems({ repoId: context.workspaceId })).items;
+}
+
+async function findLocalForIssue(
+    context: WorkItemSyncProviderContext,
+    repo: AvailableGitHubWorkItemSyncRepo,
+    issue: GitHubWorkItemIssue,
+    parsed: ParsedGitHubWorkItemIssue,
+): Promise<WorkItem | undefined> {
+    if (parsed.metadata?.workItemId) {
+        const item = await context.workItemStore.getWorkItem(parsed.metadata.workItemId, context.workspaceId);
+        if (item) return item;
+    }
+
+    for (const entry of await loadLocalEntries(context)) {
+        if (entry.syncLinks?.some(link => sameRemote(link, repo, issue))) {
+            return context.workItemStore.getWorkItem(entry.id, context.workspaceId);
+        }
+    }
+    return undefined;
+}
+
+function hasGithubSyncLink(item: WorkItem, repo: AvailableGitHubWorkItemSyncRepo, issue: GitHubWorkItemIssue): boolean {
+    return item.syncLinks?.some(link => sameRemote(link, repo, issue)) ?? false;
+}
+
+function shouldImportIssue(parsed: ParsedGitHubWorkItemIssue): boolean {
+    return parsed.metadata !== undefined
+        || parsed.type !== undefined
+        || parsed.status !== undefined
+        || parsed.priority !== undefined
+        || parsed.unknownCocLabels.length > 0;
+}
+
+function warningForUnknownLabels(issue: GitHubWorkItemIssue, parsed: ParsedGitHubWorkItemIssue, repo: AvailableGitHubWorkItemSyncRepo): WorkItemSyncWarning[] {
+    if (parsed.unknownCocLabels.length === 0) return [];
+    return [{
+        id: `unknown-coc-labels-${issue.number}`,
+        message: `GitHub issue #${issue.number} has unknown coc: labels: ${parsed.unknownCocLabels.join(', ')}.`,
+        remote: remoteIdentity(repo, issue),
+        severity: 'warning',
+    }];
+}
+
+function parentImportWarnings(issue: GitHubWorkItemIssue, parsed: ParsedGitHubWorkItemIssue, parentItem: WorkItem | undefined, repo: AvailableGitHubWorkItemSyncRepo): WorkItemSyncWarning[] {
+    const type = parsed.type ?? 'work-item';
+    const warnings: WorkItemSyncWarning[] = [];
+    if (!parsed.metadata?.parent && ALLOWED_PARENT_TYPES[type].length > 0) {
+        warnings.push({
+            id: `missing-import-parent-${issue.number}`,
+            message: `GitHub issue #${issue.number} is a ${type} without parent metadata; it will preview as unparented.`,
+            remote: remoteIdentity(repo, issue),
+            severity: 'warning',
+        });
+    }
+    if (parsed.metadata?.parent && !parentItem) {
+        warnings.push({
+            id: `unresolved-import-parent-${issue.number}`,
+            message: `GitHub issue #${issue.number} references a parent that is not linked locally; it will preview as unparented.`,
+            remote: remoteIdentity(repo, issue),
+            severity: 'warning',
+        });
+    }
+    if (parentItem && !isValidParentChildTypes(type, getEffectiveType(parentItem.type))) {
+        warnings.push({
+            id: `invalid-import-parent-${issue.number}`,
+            message: `GitHub issue #${issue.number} has parent metadata that would violate the CoC hierarchy type rules.`,
+            remote: remoteIdentity(repo, issue),
+            workItemId: parentItem.id,
+            severity: 'warning',
+        });
+    }
+    return warnings;
+}
+
+async function resolveMetadataParent(
+    context: WorkItemSyncProviderContext,
+    repo: AvailableGitHubWorkItemSyncRepo,
+    parent: WorkItemSyncParentReference | undefined,
+): Promise<WorkItem | undefined> {
+    if (!parent) return undefined;
+    if (parent.workItemId) {
+        const item = await context.workItemStore.getWorkItem(parent.workItemId, context.workspaceId);
+        if (item) return item;
+    }
+    for (const entry of await loadLocalEntries(context)) {
+        const link = entry.syncLinks?.find(candidate => {
+            if (candidate.provider !== 'github') return false;
+            if (candidate.remote.owner && candidate.remote.owner !== (parent.owner ?? repo.owner)) return false;
+            if (candidate.remote.repo && candidate.remote.repo !== (parent.repo ?? repo.repo)) return false;
+            return (parent.issueNumber !== undefined && candidate.remote.issueNumber === parent.issueNumber)
+                || (parent.issueId !== undefined && candidate.remote.issueId === parent.issueId);
+        });
+        if (link) return context.workItemStore.getWorkItem(entry.id, context.workspaceId);
+    }
+    return undefined;
+}
+
+async function loadImportIssues(
+    transport: GitHubWorkItemIssueTransport,
+    repo: AvailableGitHubWorkItemSyncRepo,
+    filters: WorkItemSyncRemoteFilter | undefined,
+): Promise<{ issues: GitHubWorkItemIssue[]; warnings: WorkItemSyncWarning[] }> {
+    const warnings: WorkItemSyncWarning[] = [];
+    if (filters?.issueNumbers?.length) {
+        const issues: GitHubWorkItemIssue[] = [];
+        for (const issueNumber of filters.issueNumbers) {
+            const issue = await transport.getIssue(repo, issueNumber);
+            if (issue) {
+                issues.push(issue);
+            } else {
+                warnings.push({
+                    id: `missing-remote-${issueNumber}`,
+                    message: `GitHub issue #${issueNumber} was not found or is inaccessible.`,
+                    remote: { owner: repo.owner, repo: repo.repo, issueNumber },
+                    severity: 'warning',
+                });
+            }
+        }
+        return { issues, warnings };
+    }
+
+    const issues = await transport.listIssues(repo, {
+        ...filters,
+        limit: WORK_ITEM_SYNC_MAX_ITEMS,
+    });
+    return {
+        issues: issues.filter(issue => shouldImportIssue(parseGitHubWorkItemIssue(issue))),
+        warnings,
+    };
+}
+
+function makePreviewBase(context: WorkItemSyncProviderPreviewContext, providerNow: string, previewId: string): WorkItemSyncPreviewResponse {
+    return {
+        provider: 'github',
+        operation: context.operation,
+        previewId,
+        generatedAt: providerNow,
+        itemCount: 0,
+        maxItems: WORK_ITEM_SYNC_MAX_ITEMS,
+        creates: [],
+        updates: [],
+        links: [],
+        noOps: [],
+        warnings: [],
+        conflicts: [],
+    };
+}
+
+export function createGitHubWorkItemSyncProviderAdapter(options: CreateGitHubWorkItemSyncProviderOptions = {}): WorkItemSyncProviderAdapter {
+    const transport = options.transport ?? new GhCliGitHubWorkItemIssueTransport();
+    const now = options.now ?? (() => new Date().toISOString());
+    const createPreviewId = options.createPreviewId ?? ((operation: WorkItemSyncProviderPreviewContext['operation']) => `github-${operation}-${Date.now()}`);
+
+    async function getAvailableRepo(context: WorkItemSyncProviderContext): Promise<AvailableGitHubWorkItemSyncRepo | undefined> {
+        const repo = resolveRepo(context);
+        return repo.available ? repo : undefined;
+    }
+
+    async function previewImport(context: WorkItemSyncProviderPreviewContext, repo: AvailableGitHubWorkItemSyncRepo, response: WorkItemSyncPreviewResponse): Promise<WorkItemSyncPreviewResponse> {
+        const { issues, warnings } = await loadImportIssues(transport, repo, context.request.filters);
+        response.warnings.push(...warnings);
+        response.itemCount = issues.length;
+
+        for (const issue of issues) {
+            const parsed = parseGitHubWorkItemIssue(issue);
+            response.warnings.push(...warningForUnknownLabels(issue, parsed, repo));
+            const parentItem = await resolveMetadataParent(context, repo, parsed.metadata?.parent);
+            response.warnings.push(...parentImportWarnings(issue, parsed, parentItem, repo));
+            const local = await findLocalForIssue(context, repo, issue, parsed);
+            const remote = remoteIdentity(repo, issue);
+
+            if (!local) {
+                response.creates.push({
+                    id: `create-local-${issue.number}`,
+                    kind: 'create-local',
+                    title: issue.title,
+                    remote,
+                    itemType: parsed.type ?? 'work-item',
+                    status: parsed.status ?? (issue.state === 'closed' ? 'done' : 'created'),
+                    fields: fieldsForRemoteDraft(issue, parsed),
+                });
+                continue;
+            }
+
+            const fields = changedLocalFields(local, issue, parsed);
+            if (fields.length > 0) {
+                response.updates.push({
+                    id: `update-local-${local.id}`,
+                    kind: 'update-local',
+                    title: issue.title,
+                    workItemId: local.id,
+                    remote,
+                    itemType: parsed.type ?? getEffectiveType(local.type),
+                    status: parsed.status ?? local.status,
+                    fields,
+                });
+            } else if (!hasGithubSyncLink(local, repo, issue)) {
+                response.links.push({
+                    id: `link-${local.id}-${issue.number}`,
+                    kind: 'link',
+                    title: issue.title,
+                    workItemId: local.id,
+                    remote,
+                    itemType: getEffectiveType(local.type),
+                    status: local.status,
+                    fields: [{ field: 'syncLinks', remoteValue: remote, proposedValue: remote }],
+                });
+            } else {
+                response.noOps.push({
+                    id: `noop-${local.id}`,
+                    kind: 'noop',
+                    title: local.title,
+                    workItemId: local.id,
+                    remote,
+                    itemType: getEffectiveType(local.type),
+                    status: local.status,
+                });
+            }
+        }
+        return response;
+    }
+
+    async function previewExport(context: WorkItemSyncProviderPreviewContext, repo: AvailableGitHubWorkItemSyncRepo, response: WorkItemSyncPreviewResponse): Promise<WorkItemSyncPreviewResponse> {
+        const items = orderParentFirst(context.items);
+        response.itemCount = items.length;
+        response.warnings.push(...parentWarnings(items));
+
+        for (const item of items) {
+            const link = getGithubSyncLink(item);
+            const issue = link?.remote.issueNumber
+                ? await transport.getIssue(repo, link.remote.issueNumber)
+                : undefined;
+            const remote = remoteIdentity(repo, issue, link);
+
+            if (!link) {
+                response.creates.push({
+                    id: `create-remote-${item.id}`,
+                    kind: 'create-remote',
+                    title: item.title,
+                    workItemId: item.id,
+                    remote,
+                    itemType: getEffectiveType(item.type),
+                    status: item.status,
+                    fields: [
+                        { field: 'title', cocValue: item.title, proposedValue: item.title },
+                        { field: 'type', cocValue: getEffectiveType(item.type), proposedValue: getEffectiveType(item.type) },
+                        { field: 'status', cocValue: item.status, proposedValue: item.status },
+                        { field: 'priority', cocValue: item.priority ?? 'normal', proposedValue: item.priority ?? 'normal' },
+                        { field: 'parentId', cocValue: item.parentId, proposedValue: item.parentId },
+                    ],
+                });
+                continue;
+            }
+
+            if (!issue) {
+                response.warnings.push({
+                    id: `missing-linked-remote-${item.id}`,
+                    message: `Linked GitHub issue for '${item.title}' was not found or is inaccessible.`,
+                    workItemId: item.id,
+                    remote,
+                    severity: 'warning',
+                });
+                continue;
+            }
+
+            const parsed = parseGitHubWorkItemIssue(issue);
+            const update = buildGitHubWorkItemIssueUpdate({
+                workItem: item,
+                remote: {
+                    owner: repo.owner,
+                    repo: repo.repo,
+                    issueId: remote.issueId,
+                    issueNumber: remote.issueNumber,
+                    issueUrl: remote.issueUrl,
+                },
+                lastSyncedAt: now(),
+                existingIssue: issue,
+            });
+            const fields = changedRemoteFields(item, issue, parsed);
+            if (fields.length > 0 || !update.metadata.parent && item.parentId) {
+                response.updates.push({
+                    id: `update-remote-${item.id}`,
+                    kind: 'update-remote',
+                    title: item.title,
+                    workItemId: item.id,
+                    remote,
+                    itemType: getEffectiveType(item.type),
+                    status: item.status,
+                    fields,
+                });
+            } else {
+                response.noOps.push({
+                    id: `noop-${item.id}`,
+                    kind: 'noop',
+                    title: item.title,
+                    workItemId: item.id,
+                    remote,
+                    itemType: getEffectiveType(item.type),
+                    status: item.status,
+                });
+            }
+        }
+        return response;
+    }
+
+    async function previewSyncLinked(context: WorkItemSyncProviderPreviewContext, repo: AvailableGitHubWorkItemSyncRepo, response: WorkItemSyncPreviewResponse): Promise<WorkItemSyncPreviewResponse> {
+        response.itemCount = context.items.length;
+        for (const item of orderParentFirst(context.items)) {
+            const link = getGithubSyncLink(item);
+            const issue = link?.remote.issueNumber
+                ? await transport.getIssue(repo, link.remote.issueNumber)
+                : undefined;
+            const remote = remoteIdentity(repo, issue, link);
+            if (!link || !issue) {
+                response.warnings.push({
+                    id: `missing-sync-remote-${item.id}`,
+                    message: `Linked GitHub issue for '${item.title}' was not found or is inaccessible.`,
+                    workItemId: item.id,
+                    remote,
+                    severity: 'warning',
+                });
+                continue;
+            }
+
+            const parsed = parseGitHubWorkItemIssue(issue);
+            const lastSyncedAt = link.lastSyncedAt ?? link.remoteUpdatedAt;
+            const remoteChanged = Boolean(link.remoteUpdatedAt && issue.updatedAt && issue.updatedAt > link.remoteUpdatedAt);
+            const localChanged = Boolean(lastSyncedAt && item.updatedAt > lastSyncedAt);
+            if (remoteChanged && !localChanged) {
+                response.updates.push({
+                    id: `update-local-${item.id}`,
+                    kind: 'update-local',
+                    title: issue.title,
+                    workItemId: item.id,
+                    remote,
+                    itemType: parsed.type ?? getEffectiveType(item.type),
+                    status: parsed.status ?? item.status,
+                    fields: changedLocalFields(item, issue, parsed),
+                });
+            } else if (localChanged && !remoteChanged) {
+                response.updates.push({
+                    id: `update-remote-${item.id}`,
+                    kind: 'update-remote',
+                    title: item.title,
+                    workItemId: item.id,
+                    remote,
+                    itemType: getEffectiveType(item.type),
+                    status: item.status,
+                    fields: changedRemoteFields(item, issue, parsed),
+                });
+            } else {
+                response.noOps.push({
+                    id: `noop-${item.id}`,
+                    kind: 'noop',
+                    title: item.title,
+                    workItemId: item.id,
+                    remote,
+                    itemType: getEffectiveType(item.type),
+                    status: item.status,
+                });
+            }
+        }
+        return response;
+    }
+
+    return {
+        provider: 'github',
+        async getStatus(context) {
+            const repo = resolveRepo(context);
+            if (!repo.available) return unavailableRepoStatus(repo);
+            try {
+                await transport.getRepository(repo);
+                return availableRepoStatus(repo);
+            } catch {
+                return authUnavailableStatus(repo);
+            }
+        },
+        async preview(context) {
+            const repo = await getAvailableRepo(context);
+            if (!repo) {
+                return {
+                    ...makePreviewBase(context, now(), createPreviewId(context.operation)),
+                    warnings: [{
+                        id: 'github-repo-unavailable',
+                        message: 'GitHub repository is unavailable; check workspace origin or owner/repo preferences.',
+                        severity: 'error',
+                    }],
+                };
+            }
+
+            const response = makePreviewBase(context, now(), createPreviewId(context.operation));
+            if (context.operation === 'import') return previewImport(context, repo, response);
+            if (context.operation === 'export-selected') return previewExport(context, repo, response);
+            return previewSyncLinked(context, repo, response);
+        },
+        async apply() {
+            throw new APIError(
+                501,
+                'GitHub sync apply is not implemented yet; run preview to inspect pending changes.',
+                'WORK_ITEM_SYNC_APPLY_NOT_IMPLEMENTED',
+            );
+        },
+    };
+}

@@ -257,7 +257,7 @@ See [mcp-settings.md](mcp-settings.md).
 
 Work item create/update payloads may include `syncLinks`, an allow-listed array of external provider metadata for manual hierarchy sync. Each link stores provider identity (`github` now, `azure-boards` reserved), remote issue identity, revision/updated timestamps, last-sync fingerprint/timestamp, dirty/conflict indicators, and parent reference data. Token, credential, secret, and arbitrary runtime-state fields are rejected. GitHub issue mapping owns only `coc:` labels (`coc:type:*`, `coc:status:*`, `coc:priority:*`) and the hidden `<!-- coc-work-item-sync {json} -->` metadata block; non-`coc:` issue labels remain user labels/tags.
 
-The sync route layer is provider-ready: status, preview, and apply dispatch through provider adapters. GitHub Issues is the intended first provider, while Azure Boards is reserved and must report unavailable until an adapter is added.
+The sync route layer is provider-ready: status, preview, and apply dispatch through provider adapters. GitHub Issues is registered by default and uses external authentication through `gh`/environment-backed GitHub auth without persisting tokens; its current adapter resolves workspace owner/repo, reports provider status, and computes read-only import/export/sync previews. Azure Boards is reserved and must report unavailable until an adapter is added.
 
 ### AI Authoring (gated by `workItems.aiAuthoring` flag, default `false`)
 
