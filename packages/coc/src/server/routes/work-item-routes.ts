@@ -28,9 +28,6 @@ import type {
     WorkItemPriority,
     WorkItemType,
     WorkItem,
-    WorkItemSyncLink,
-    WorkItemSyncParentReference,
-    WorkItemSyncRemoteIdentity,
     WorkItemTrackerKind,
     WorkItemTrackerMetadata,
 } from '../work-items/types';
@@ -48,40 +45,11 @@ const VALID_SOURCES: Set<string> = new Set(['manual', 'chat', 'schedule']);
 const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);
 /** Types allowed when hierarchy is disabled (legacy behavior). */
 const LEAF_VALID_TYPES: Set<string> = new Set(['work-item', 'bug']);
-const VALID_SYNC_PROVIDERS: Set<string> = new Set(['github', 'azure-boards']);
 const VALID_TRACKER_KINDS: Set<string> = new Set(WORK_ITEM_TRACKER_KINDS);
-const SYNC_LINK_KEYS: ReadonlySet<string> = new Set([
-    'provider',
-    'remote',
-    'remoteRevision',
-    'remoteUpdatedAt',
-    'lastSyncedAt',
-    'lastSyncedFingerprint',
-    'dirty',
-    'conflict',
-    'dirtyFields',
-    'conflictFields',
-    'parent',
-]);
-const SYNC_REMOTE_KEYS: ReadonlySet<string> = new Set([
-    'owner',
-    'repo',
-    'projectId',
-    'issueId',
-    'issueNumber',
-    'issueUrl',
-]);
-const SYNC_PARENT_KEYS: ReadonlySet<string> = new Set([
-    'workItemId',
-    'issueId',
-    'issueNumber',
-    'issueUrl',
-    'owner',
-    'repo',
-]);
 const TRACKER_KEYS: ReadonlySet<string> = new Set(['kind', 'provider', 'github']);
 const GITHUB_TRACKER_KEYS: ReadonlySet<string> = new Set(['issueId', 'issueNumber', 'issueUrl', 'lastPulledAt']);
 const CREDENTIAL_KEY_PATTERN = /(token|secret|password|credential|authorization|auth)/i;
+const LEGACY_SYNC_LINKS_ERROR = 'syncLinks are no longer accepted on work item create/update payloads. Use Epic-rooted GitHub import, conversion, or child creation instead.';
 
 export interface WorkItemRouteContext {
     routes: Route[];
@@ -131,84 +99,6 @@ function optionalNumber(value: unknown, path: string): number | undefined {
         throw new Error(`${path} must be a finite number`);
     }
     return value;
-}
-
-function optionalBoolean(value: unknown, path: string): boolean | undefined {
-    if (value === undefined) return undefined;
-    if (typeof value !== 'boolean') {
-        throw new Error(`${path} must be a boolean`);
-    }
-    return value;
-}
-
-function optionalStringArray(value: unknown, path: string): string[] | undefined {
-    if (value === undefined) return undefined;
-    if (!Array.isArray(value) || value.some(entry => typeof entry !== 'string')) {
-        throw new Error(`${path} must be an array of strings`);
-    }
-    return value;
-}
-
-function parseSyncRemote(value: unknown, path: string): WorkItemSyncRemoteIdentity {
-    if (!isObject(value)) {
-        throw new Error(`${path} must be an object`);
-    }
-    assertAllowedKeys(value, SYNC_REMOTE_KEYS, path);
-    return {
-        owner: optionalString(value.owner, `${path}.owner`),
-        repo: optionalString(value.repo, `${path}.repo`),
-        projectId: optionalString(value.projectId, `${path}.projectId`),
-        issueId: optionalString(value.issueId, `${path}.issueId`),
-        issueNumber: optionalNumber(value.issueNumber, `${path}.issueNumber`),
-        issueUrl: optionalString(value.issueUrl, `${path}.issueUrl`),
-    };
-}
-
-function parseSyncParent(value: unknown, path: string): WorkItemSyncParentReference | undefined {
-    if (value === undefined) return undefined;
-    if (!isObject(value)) {
-        throw new Error(`${path} must be an object`);
-    }
-    assertAllowedKeys(value, SYNC_PARENT_KEYS, path);
-    return {
-        workItemId: optionalString(value.workItemId, `${path}.workItemId`),
-        issueId: optionalString(value.issueId, `${path}.issueId`),
-        issueNumber: optionalNumber(value.issueNumber, `${path}.issueNumber`),
-        issueUrl: optionalString(value.issueUrl, `${path}.issueUrl`),
-        owner: optionalString(value.owner, `${path}.owner`),
-        repo: optionalString(value.repo, `${path}.repo`),
-    };
-}
-
-function parseSyncLinks(value: unknown): WorkItemSyncLink[] | undefined {
-    if (value === undefined) return undefined;
-    if (!Array.isArray(value)) {
-        throw new Error('syncLinks must be an array');
-    }
-    return value.map((entry, index) => {
-        const path = `syncLinks[${index}]`;
-        if (!isObject(entry)) {
-            throw new Error(`${path} must be an object`);
-        }
-        assertAllowedKeys(entry, SYNC_LINK_KEYS, path);
-        const provider = optionalString(entry.provider, `${path}.provider`);
-        if (!provider || !VALID_SYNC_PROVIDERS.has(provider)) {
-            throw new Error(`${path}.provider must be one of: github, azure-boards`);
-        }
-        return {
-            provider: provider as WorkItemSyncLink['provider'],
-            remote: parseSyncRemote(entry.remote, `${path}.remote`),
-            remoteRevision: optionalString(entry.remoteRevision, `${path}.remoteRevision`),
-            remoteUpdatedAt: optionalString(entry.remoteUpdatedAt, `${path}.remoteUpdatedAt`),
-            lastSyncedAt: optionalString(entry.lastSyncedAt, `${path}.lastSyncedAt`),
-            lastSyncedFingerprint: optionalString(entry.lastSyncedFingerprint, `${path}.lastSyncedFingerprint`),
-            dirty: optionalBoolean(entry.dirty, `${path}.dirty`),
-            conflict: optionalBoolean(entry.conflict, `${path}.conflict`),
-            dirtyFields: optionalStringArray(entry.dirtyFields, `${path}.dirtyFields`),
-            conflictFields: optionalStringArray(entry.conflictFields, `${path}.conflictFields`),
-            parent: parseSyncParent(entry.parent, `${path}.parent`),
-        };
-    });
 }
 
 function parseGitHubTrackerMetadata(value: unknown, path: string): WorkItemTrackerMetadata & { kind: 'github-backed' } {
@@ -482,11 +372,12 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
 
             const now = new Date().toISOString();
             const hierarchyEnabled = isHierarchyEnabled();
-            let syncLinks: WorkItemSyncLink[] | undefined;
             let tracker: WorkItemTrackerMetadata | undefined;
             let parentItem: WorkItem | undefined;
+            if (body.syncLinks !== undefined) {
+                return handleAPIError(res, badRequest(LEGACY_SYNC_LINKS_ERROR));
+            }
             try {
-                syncLinks = parseSyncLinks(body.syncLinks);
                 tracker = parseTracker(body.tracker);
             } catch (err) {
                 return handleAPIError(res, badRequest(err instanceof Error ? err.message : 'Invalid work item metadata'));
@@ -553,7 +444,6 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 type: resolvedType,
                 parentId: hierarchyEnabled && body.parentId ? String(body.parentId) : undefined,
                 tracker,
-                syncLinks,
                 createdAt: now,
                 updatedAt: now,
                 source: VALID_SOURCES.has(body.source) ? body.source : 'manual',
@@ -654,11 +544,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             if (body.successCriteria !== undefined) updates.successCriteria = body.successCriteria;
             if (body.grillSessionId !== undefined) updates.grillSessionId = body.grillSessionId;
             if (body.syncLinks !== undefined) {
-                try {
-                    updates.syncLinks = parseSyncLinks(body.syncLinks);
-                } catch (err) {
-                    return handleAPIError(res, badRequest(err instanceof Error ? err.message : 'Invalid syncLinks'));
-                }
+                return handleAPIError(res, badRequest(LEGACY_SYNC_LINKS_ERROR));
             }
             if (body.tracker !== undefined) {
                 try {

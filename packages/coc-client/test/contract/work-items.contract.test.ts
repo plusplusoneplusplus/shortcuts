@@ -31,53 +31,13 @@ describe('work items contract', () => {
     await expect(harness.client.workItems.delete(workspaceId, created.id)).resolves.toBeUndefined();
   });
 
-  it('round-trips work item sync metadata through typed client contracts', async () => {
-    harness = await startContractHarness();
-    const workspaceId = 'repo-a';
-    const syncLinks = [{
-      provider: 'github' as const,
-      remote: {
-        owner: 'plusplusoneplusplus',
-        repo: 'shortcuts',
-        issueId: 'I_kwDOExample',
-        issueNumber: 42,
-        issueUrl: 'https://github.com/plusplusoneplusplus/shortcuts/issues/42',
-      },
-      remoteRevision: 'etag-1',
-      remoteUpdatedAt: '2026-01-02T00:00:00.000Z',
-      lastSyncedAt: '2026-01-02T01:00:00.000Z',
-      lastSyncedFingerprint: 'fingerprint-1',
-      dirty: false,
-      conflict: false,
-      dirtyFields: [],
-      conflictFields: [],
-      parent: {
-        issueNumber: 7,
-        issueUrl: 'https://github.com/plusplusoneplusplus/shortcuts/issues/7',
-      },
-    }];
-
-    const created = await harness.client.workItems.create(workspaceId, {
-      title: 'Synced contract task',
-      syncLinks,
-    });
-    expect(created.syncLinks).toEqual(syncLinks);
-
-    await expect(harness.client.workItems.list(workspaceId)).resolves.toMatchObject({
-      items: [expect.objectContaining({ id: created.id, syncLinks })],
-    });
-
-    await expect(harness.client.workItems.update(workspaceId, created.id, { syncLinks: [] }))
-      .resolves.toMatchObject({ id: created.id, syncLinks: [] });
-  });
-
   it('reads disabled work item sync status through the typed client', async () => {
     harness = await startContractHarness();
 
     await expect(harness.client.workItems.syncStatus('repo-a')).resolves.toMatchObject({
       enabled: false,
       disabled: true,
-      disabledReason: 'hierarchy-disabled',
+      disabledReason: 'sync-disabled',
       maxItems: 200,
       providers: [],
     });

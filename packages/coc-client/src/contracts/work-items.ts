@@ -355,8 +355,6 @@ export interface CreateWorkItemRequest {
   parentId?: string;
   /** Epic-rooted tracker identity. Only accepted on root Epic items. */
   tracker?: WorkItemTrackerMetadata;
-  /** External provider sync metadata. Empty or absent means the item is unlinked. */
-  syncLinks?: WorkItemSyncLink[];
   source?: WorkItemSource;
   sourceId?: string;
   priority?: WorkItemPriority;
@@ -398,7 +396,7 @@ export interface CreateWorkItemFromChatRequest extends JsonObject {
   extractPlan?: boolean;
 }
 
-export interface UpdateWorkItemRequest extends Partial<Pick<WorkItem, 'title' | 'description' | 'status' | 'priority' | 'tags' | 'autoExecute' | 'syncLinks' | 'tracker'>> {
+export interface UpdateWorkItemRequest extends Partial<Pick<WorkItem, 'title' | 'description' | 'status' | 'priority' | 'tags' | 'autoExecute' | 'tracker'>> {
   completedAt?: string;
   reviewComments?: unknown[];
   /** Update success criteria for a `goal` item (markdown). */

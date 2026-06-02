@@ -384,6 +384,103 @@ describe('FileWorkItemStore', () => {
             const localOnly = await store.listWorkItems({ repoId: 'test-repo', tracker: 'local-only' });
             expect(localOnly.items.map(item => item.id).sort()).toEqual(['local-epic', 'local-feature', 'orphan-task']);
         });
+
+        it('migrates legacy GitHub syncLinks into Epic-rooted tracker and mirror metadata', async () => {
+            const rootSyncLink = {
+                provider: 'github' as const,
+                remote: {
+                    owner: 'octo-org',
+                    repo: 'octo-repo',
+                    issueId: 'I_root',
+                    issueNumber: 100,
+                    issueUrl: 'https://github.com/octo-org/octo-repo/issues/100',
+                },
+                remoteUpdatedAt: '2026-01-02T00:00:00.000Z',
+                lastSyncedAt: '2026-01-02T01:00:00.000Z',
+            };
+            const childSyncLink = {
+                provider: 'github' as const,
+                remote: {
+                    owner: 'octo-org',
+                    repo: 'octo-repo',
+                    issueId: 'I_child',
+                    issueNumber: 101,
+                    issueUrl: 'https://github.com/octo-org/octo-repo/issues/101',
+                },
+                remoteUpdatedAt: '2026-01-03T00:00:00.000Z',
+                lastSyncedAt: '2026-01-03T01:00:00.000Z',
+            };
+            await store.addWorkItem(makeWorkItem({
+                id: 'legacy-epic',
+                type: 'epic',
+                syncLinks: [rootSyncLink],
+            }));
+            await store.addWorkItem(makeWorkItem({
+                id: 'legacy-feature',
+                type: 'feature',
+                parentId: 'legacy-epic',
+                syncLinks: [childSyncLink],
+            }));
+
+            const feature = await store.getWorkItem('legacy-feature', 'test-repo');
+            expect(feature?.syncLinks).toBeUndefined();
+            expect(feature?.githubMirror).toEqual({
+                issueId: 'I_child',
+                issueNumber: 101,
+                issueUrl: 'https://github.com/octo-org/octo-repo/issues/101',
+                updatedAt: '2026-01-03T00:00:00.000Z',
+                lastPulledAt: '2026-01-03T01:00:00.000Z',
+            });
+
+            const epic = await store.getWorkItem('legacy-epic', 'test-repo');
+            expect(epic?.syncLinks).toBeUndefined();
+            expect(epic?.tracker).toEqual({
+                kind: 'github-backed',
+                provider: 'github',
+                github: {
+                    issueId: 'I_root',
+                    issueNumber: 100,
+                    issueUrl: 'https://github.com/octo-org/octo-repo/issues/100',
+                    lastPulledAt: '2026-01-02T01:00:00.000Z',
+                },
+            });
+            expect(epic?.githubMirror).toEqual({
+                issueId: 'I_root',
+                issueNumber: 100,
+                issueUrl: 'https://github.com/octo-org/octo-repo/issues/100',
+                updatedAt: '2026-01-02T00:00:00.000Z',
+                lastPulledAt: '2026-01-02T01:00:00.000Z',
+            });
+
+            const githubBacked = await store.listWorkItems({ repoId: 'test-repo', tracker: 'github-backed' });
+            expect(githubBacked.items.map(item => item.id).sort()).toEqual(['legacy-epic', 'legacy-feature']);
+            expect(githubBacked.items.every(item => item.syncLinks === undefined)).toBe(true);
+        });
+
+        it('drops legacy syncLinks that cannot be rooted at a GitHub-backed Epic', async () => {
+            await store.addWorkItem(makeWorkItem({
+                id: 'legacy-orphan',
+                type: 'work-item',
+                syncLinks: [{
+                    provider: 'github',
+                    remote: {
+                        owner: 'octo-org',
+                        repo: 'octo-repo',
+                        issueNumber: 200,
+                        issueUrl: 'https://github.com/octo-org/octo-repo/issues/200',
+                    },
+                    lastSyncedAt: '2026-01-04T00:00:00.000Z',
+                }],
+            }));
+
+            const item = await store.getWorkItem('legacy-orphan', 'test-repo');
+            expect(item?.syncLinks).toBeUndefined();
+            expect(item?.githubMirror).toBeUndefined();
+            expect(item?.tracker).toBeUndefined();
+
+            const list = await store.listWorkItems({ repoId: 'test-repo' });
+            expect(list.items.find(entry => entry.id === 'legacy-orphan')?.syncLinks).toBeUndefined();
+        });
     });
 
     describe('plan versioning', () => {

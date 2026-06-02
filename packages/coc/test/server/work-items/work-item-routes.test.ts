@@ -193,40 +193,17 @@ describe('Work Item Routes', () => {
             expect(res.body.successCriteria).toBe('New users complete setup in under 5 minutes');
         });
 
-        it('creates a work item with external sync metadata', async () => {
+        it('rejects legacy syncLinks metadata on create', async () => {
             const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
                 title: 'Synced task',
                 syncLinks: [SYNC_LINK],
             });
 
-            expect(res.status).toBe(201);
-            expect(res.body.syncLinks).toEqual([SYNC_LINK]);
-
-            const detail = await request('GET', `/api/workspaces/${REPO_ID}/work-items/${res.body.id}`);
-            expect(detail.status).toBe(200);
-            expect(detail.body.syncLinks).toEqual([SYNC_LINK]);
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('syncLinks are no longer accepted');
 
             const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
             expect(list.status).toBe(200);
-            expect(list.body.items[0].syncLinks).toEqual([SYNC_LINK]);
-        });
-
-        it('rejects credential-shaped sync metadata fields on create', async () => {
-            const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
-                title: 'Unsafe sync metadata',
-                syncLinks: [{
-                    ...SYNC_LINK,
-                    remote: {
-                        ...SYNC_LINK.remote,
-                        accessToken: 'not-allowed',
-                    },
-                }],
-            });
-
-            expect(res.status).toBe(400);
-            expect(res.body.error).toContain('credentials or secrets');
-
-            const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
             expect(list.body.items).toEqual([]);
         });
 
@@ -617,7 +594,7 @@ describe('Work Item Routes', () => {
             expect(res.body.grillSessionId).toBe('queue_proc-abc');
         });
 
-        it('updates external sync metadata and preserves it in list/detail responses', async () => {
+        it('rejects legacy syncLinks metadata on update without changing the item', async () => {
             const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${itemId}`, {
                 syncLinks: [{
                     ...SYNC_LINK,
@@ -627,31 +604,8 @@ describe('Work Item Routes', () => {
                 }],
             });
 
-            expect(res.status).toBe(200);
-            expect(res.body.syncLinks).toEqual([{
-                ...SYNC_LINK,
-                dirty: false,
-                conflict: true,
-                conflictFields: ['description'],
-            }]);
-
-            const detail = await request('GET', `/api/workspaces/${REPO_ID}/work-items/${itemId}`);
-            expect(detail.body.syncLinks).toEqual(res.body.syncLinks);
-
-            const list = await request('GET', `/api/workspaces/${REPO_ID}/work-items`);
-            expect(list.body.items[0].syncLinks).toEqual(res.body.syncLinks);
-        });
-
-        it('rejects unknown sync metadata fields on update without changing the item', async () => {
-            const res = await request('PATCH', `/api/workspaces/${REPO_ID}/work-items/${itemId}`, {
-                syncLinks: [{
-                    ...SYNC_LINK,
-                    unexpectedRuntimeState: 'not-allowed',
-                }],
-            });
-
             expect(res.status).toBe(400);
-            expect(res.body.error).toContain('not a supported sync metadata field');
+            expect(res.body.error).toContain('syncLinks are no longer accepted');
 
             const detail = await request('GET', `/api/workspaces/${REPO_ID}/work-items/${itemId}`);
             expect(detail.body.syncLinks).toBeUndefined();

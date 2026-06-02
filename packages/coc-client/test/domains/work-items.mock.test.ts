@@ -157,54 +157,6 @@ describe('WorkItemsClient mock coverage', () => {
     ]);
   });
 
-  it('passes sync metadata through create and update requests', async () => {
-    const adapter = createMockAdapter(workItem);
-    const client = new WorkItemsClient(adapter);
-    const syncLinks: WorkItem['syncLinks'] = [{
-      provider: 'github',
-      remote: {
-        owner: 'plusplusoneplusplus',
-        repo: 'shortcuts',
-        issueId: 'I_kwDOExample',
-        issueNumber: 42,
-        issueUrl: 'https://github.com/plusplusoneplusplus/shortcuts/issues/42',
-      },
-      remoteRevision: 'etag-1',
-      remoteUpdatedAt: '2026-01-02T00:00:00.000Z',
-      lastSyncedAt: '2026-01-02T01:00:00.000Z',
-      lastSyncedFingerprint: 'fingerprint-1',
-      dirty: true,
-      conflict: false,
-      dirtyFields: ['title'],
-      conflictFields: [],
-      parent: {
-        workItemId: 'parent-1',
-        issueNumber: 7,
-        issueUrl: 'https://github.com/plusplusoneplusplus/shortcuts/issues/7',
-      },
-    }];
-
-    await client.create('repo/a', { title: 'Task', syncLinks });
-    await client.update('repo/a', 'wi/1', { syncLinks: [] });
-
-    expect(adapter.calls).toEqual([
-      {
-        path: '/workspaces/repo%2Fa/work-items',
-        options: {
-          method: 'POST',
-          body: { title: 'Task', syncLinks },
-        },
-      },
-      {
-        path: '/workspaces/repo%2Fa/work-items/wi%2F1',
-        options: {
-          method: 'PATCH',
-          body: { syncLinks: [] },
-        },
-      },
-    ]);
-  });
-
   it('passes epic-rooted tracker metadata through create and update requests', async () => {
     const adapter = createMockAdapter(workItem);
     const client = new WorkItemsClient(adapter);

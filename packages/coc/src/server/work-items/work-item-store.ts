@@ -17,6 +17,7 @@ import * as path from 'path';
 import { getRepoDataPath } from '@plusplusoneplusplus/forge';
 import type {
     WorkItem,
+    WorkItemGitHubMirrorMetadata,
     WorkItemIndexEntry,
     WorkItemFilter,
     WorkItemListResult,
@@ -24,8 +25,10 @@ import type {
     WorkItemPlanVersion,
     WorkItemExecution,
     WorkItemChange,
+    WorkItemSyncLink,
     WorkItemStore,
     WorkItemStatus,
+    WorkItemTrackerMetadata,
 } from './types';
 import { getOwnWorkItemTrackerKind, toIndexEntry, WORK_ITEM_STATUSES } from './types';
 
@@ -36,6 +39,44 @@ import { getOwnWorkItemTrackerKind, toIndexEntry, WORK_ITEM_STATUSES } from './t
 export interface FileWorkItemStoreOptions {
     /** Base data directory (default: ~/.coc). */
     dataDir: string;
+}
+
+function getLegacyGitHubSyncLink(item: Pick<WorkItem, 'syncLinks'>): WorkItemSyncLink | undefined {
+    return item.syncLinks?.find(link => link.provider === 'github');
+}
+
+function positiveIssueNumber(link: WorkItemSyncLink): number | undefined {
+    const issueNumber = link.remote.issueNumber;
+    return typeof issueNumber === 'number' && Number.isInteger(issueNumber) && issueNumber > 0
+        ? issueNumber
+        : undefined;
+}
+
+function githubTrackerFromLegacySyncLink(link: WorkItemSyncLink): (WorkItemTrackerMetadata & { kind: 'github-backed' }) | undefined {
+    const issueNumber = positiveIssueNumber(link);
+    if (issueNumber === undefined) return undefined;
+    return {
+        kind: 'github-backed',
+        provider: 'github',
+        github: {
+            issueId: link.remote.issueId,
+            issueNumber,
+            issueUrl: link.remote.issueUrl,
+            lastPulledAt: link.lastSyncedAt,
+        },
+    };
+}
+
+function githubMirrorFromLegacySyncLink(link: WorkItemSyncLink): WorkItemGitHubMirrorMetadata | undefined {
+    const issueNumber = positiveIssueNumber(link);
+    if (issueNumber === undefined) return undefined;
+    return {
+        issueId: link.remote.issueId,
+        issueNumber,
+        issueUrl: link.remote.issueUrl,
+        updatedAt: link.remoteUpdatedAt,
+        lastPulledAt: link.lastSyncedAt,
+    };
 }
 
 export class FileWorkItemStore implements WorkItemStore {
@@ -151,7 +192,7 @@ export class FileWorkItemStore implements WorkItemStore {
             }
         }
 
-        return entries;
+        return this.migrateLegacySyncLinks(repoId, entries);
     }
 
     private async writeIndex(repoId: string, entries: WorkItemIndexEntry[]): Promise<void> {
@@ -261,11 +302,13 @@ export class FileWorkItemStore implements WorkItemStore {
 
     async getWorkItem(id: string, repoId?: string): Promise<WorkItem | undefined> {
         if (repoId) {
+            await this.readIndex(repoId);
             return this.readItem(repoId, id);
         }
         // Scan all repos (expensive but needed for cross-repo lookup)
         const repos = await this.listRepoIds();
         for (const repo of repos) {
+            await this.readIndex(repo);
             const item = await this.readItem(repo, id);
             if (item) return item;
         }
@@ -629,6 +672,95 @@ export class FileWorkItemStore implements WorkItemStore {
             current = parent;
         }
         return getOwnWorkItemTrackerKind(current);
+    }
+
+    private findRootEpicEntry(
+        entry: WorkItemIndexEntry,
+        entriesById: Map<string, WorkItemIndexEntry>,
+    ): WorkItemIndexEntry | undefined {
+        let current = entry;
+        const visited = new Set<string>();
+        while (current.parentId && !visited.has(current.id)) {
+            visited.add(current.id);
+            const parent = entriesById.get(current.parentId);
+            if (!parent) break;
+            current = parent;
+        }
+        return (current.type ?? 'work-item') === 'epic' && !current.parentId ? current : undefined;
+    }
+
+    private async migrateLegacySyncLinks(repoId: string, entries: WorkItemIndexEntry[]): Promise<WorkItemIndexEntry[]> {
+        if (!entries.some(entry => entry.syncLinks?.length)) return entries;
+
+        const entriesById = new Map(entries.map(entry => [entry.id, entry]));
+        const itemsById = new Map<string, WorkItem>();
+        for (const entry of entries) {
+            const item = await this.readItem(repoId, entry.id);
+            if (item) itemsById.set(entry.id, item);
+        }
+
+        const githubRootTrackers = new Map<string, WorkItemTrackerMetadata & { kind: 'github-backed' }>();
+        for (const entry of entries) {
+            if ((entry.type ?? 'work-item') !== 'epic' || entry.parentId) continue;
+            const rootItem = itemsById.get(entry.id);
+            if (rootItem?.tracker?.kind === 'github-backed') {
+                githubRootTrackers.set(entry.id, rootItem.tracker);
+                continue;
+            }
+            const legacyLink = rootItem ? getLegacyGitHubSyncLink(rootItem) : undefined;
+            const tracker = legacyLink ? githubTrackerFromLegacySyncLink(legacyLink) : undefined;
+            if (tracker) githubRootTrackers.set(entry.id, tracker);
+        }
+
+        let changed = false;
+        const nextEntries: WorkItemIndexEntry[] = [];
+
+        for (const entry of entries) {
+            const item = itemsById.get(entry.id);
+            const hasLegacyEntryLinks = (entry.syncLinks?.length ?? 0) > 0;
+            if (!item) {
+                if (hasLegacyEntryLinks) {
+                    const { syncLinks: _legacySyncLinks, ...entryWithoutLegacyLinks } = entry;
+                    nextEntries.push(entryWithoutLegacyLinks);
+                    changed = true;
+                } else {
+                    nextEntries.push(entry);
+                }
+                continue;
+            }
+
+            const hasLegacyItemLinks = (item.syncLinks?.length ?? 0) > 0;
+            if (!hasLegacyItemLinks && !hasLegacyEntryLinks) {
+                nextEntries.push(entry);
+                continue;
+            }
+
+            const updated: WorkItem = { ...item };
+            const rootEntry = this.findRootEpicEntry(entry, entriesById);
+            const rootTracker = rootEntry ? githubRootTrackers.get(rootEntry.id) : undefined;
+            const legacyLink = getLegacyGitHubSyncLink(item);
+
+            if (rootEntry?.id === entry.id && rootTracker) {
+                updated.tracker = rootTracker;
+            }
+
+            if (rootTracker && legacyLink) {
+                const mirror = githubMirrorFromLegacySyncLink(legacyLink);
+                if (mirror && !updated.githubMirror) {
+                    updated.githubMirror = mirror;
+                }
+            }
+
+            delete updated.syncLinks;
+            await this.writeItem(repoId, updated);
+            nextEntries.push(toIndexEntry(updated));
+            changed = true;
+        }
+
+        if (changed) {
+            await this.writeIndex(repoId, nextEntries);
+        }
+        return nextEntries;
     }
 
     private async findRepoForItem(id: string): Promise<string | undefined> {

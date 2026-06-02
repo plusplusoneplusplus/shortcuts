@@ -19,36 +19,13 @@ import { createRouter } from '../../../src/server/shared/router';
 import { registerWorkItemHierarchyRoutes } from '../../../src/server/routes/work-item-hierarchy-routes';
 import { registerWorkItemRoutes } from '../../../src/server/routes/work-item-routes';
 import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
-import { WORK_ITEM_TYPES, WORK_ITEM_STATUSES, type WorkItemSyncLink } from '../../../src/server/work-items/types';
+import { WORK_ITEM_TYPES, WORK_ITEM_STATUSES } from '../../../src/server/work-items/types';
 
 const REPO_ID = 'hierarchy-test-repo';
 
 let tmpDir: string;
 let store: FileWorkItemStore;
 let hierarchyEnabled = false;
-
-const SYNC_LINK: WorkItemSyncLink = {
-    provider: 'github',
-    remote: {
-        owner: 'plusplusoneplusplus',
-        repo: 'shortcuts',
-        issueId: 'I_kwDOExample',
-        issueNumber: 42,
-        issueUrl: 'https://github.com/plusplusoneplusplus/shortcuts/issues/42',
-    },
-    remoteRevision: 'etag-1',
-    remoteUpdatedAt: '2026-01-02T00:00:00.000Z',
-    lastSyncedAt: '2026-01-02T01:00:00.000Z',
-    lastSyncedFingerprint: 'fingerprint-1',
-    dirty: false,
-    conflict: false,
-    dirtyFields: [],
-    conflictFields: [],
-    parent: {
-        issueNumber: 7,
-        issueUrl: 'https://github.com/plusplusoneplusplus/shortcuts/issues/7',
-    },
-};
 
 function makeServer(): http.Server {
     const routes: Route[] = [];
@@ -160,20 +137,6 @@ describe('Work Item Hierarchy Routes', () => {
             expect(res.body.roots[0].children).toEqual([]);
         });
 
-        it('preserves sync metadata on tree nodes', async () => {
-            const itemRes = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
-                title: 'Linked task',
-                type: 'work-item',
-                syncLinks: [SYNC_LINK],
-            });
-            expect(itemRes.status).toBe(201);
-
-            const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items/tree`);
-            expect(res.status).toBe(200);
-            expect(res.body.roots).toHaveLength(1);
-            expect(res.body.roots[0].item.syncLinks).toEqual([SYNC_LINK]);
-        });
-
         it('preserves epic-rooted tracker metadata on tree nodes', async () => {
             const itemRes = await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
                 title: 'Imported GitHub epic',
@@ -241,11 +204,18 @@ describe('Work Item Hierarchy Routes', () => {
                     github: { issueNumber: 101 },
                 },
             });
-            await request('POST', `/api/workspaces/${REPO_ID}/work-items`, {
+            await store.addWorkItem({
                 id: 'github-feature',
+                repoId: REPO_ID,
                 title: 'GitHub Feature',
+                description: '',
+                status: 'created',
                 type: 'feature',
                 parentId: 'github-epic',
+                githubMirror: { issueNumber: 102 },
+                createdAt: '2026-01-01T00:00:00.000Z',
+                updatedAt: '2026-01-01T00:00:00.000Z',
+                source: 'manual',
             });
 
             const githubRes = await request('GET', `/api/workspaces/${REPO_ID}/work-items/tree?tracker=github-backed`);
