@@ -72,6 +72,7 @@ export {
     type GitHubWorkItemIssue,
     type GitHubWorkItemIssueListFilters,
     type GitHubWorkItemIssueTransport,
+    type ImportGitHubEpicTreeOptions,
     type ImportGitHubEpicTreeResult,
 } from './work-item-sync-github-provider';
 export {

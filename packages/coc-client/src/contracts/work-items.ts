@@ -372,6 +372,15 @@ export interface ImportFromGitHubRequest extends JsonObject {
   issueUrl: string;
 }
 
+export interface SyncGitHubEpicResponse extends JsonObject {
+  root: WorkItem;
+  items: WorkItem[];
+  created: number;
+  updated: number;
+  deleted: number;
+  deletedItemIds: string[];
+}
+
 export interface CreateWorkItemFromChatRequest extends JsonObject {
   processId: string;
   id?: string;

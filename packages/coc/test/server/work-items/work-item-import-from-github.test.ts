@@ -229,7 +229,7 @@ async function stopServer(): Promise<void> {
     server = undefined;
 }
 
-async function post(urlPath: string, body: unknown): Promise<{ status: number; body: any }> {
+async function post(urlPath: string, body: unknown = {}): Promise<{ status: number; body: any }> {
     return new Promise((resolve, reject) => {
         const urlObj = new URL(urlPath, baseUrl);
         const payload = JSON.stringify(body);
@@ -257,6 +257,10 @@ async function post(urlPath: string, body: unknown): Promise<{ status: number; b
 
 function importUrl(repoId: string = REPO_ID): string {
     return `/api/workspaces/${encodeURIComponent(repoId)}/work-items/import-from-github`;
+}
+
+function syncUrl(workItemId: string, repoId: string = REPO_ID): string {
+    return `/api/workspaces/${encodeURIComponent(repoId)}/work-items/${encodeURIComponent(workItemId)}/sync-from-github`;
 }
 
 beforeEach(async () => {
@@ -516,5 +520,154 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
         });
         expect(updated?.plan?.content).toBe('Local plan');
         expect(updated?.executionHistory?.[0].taskId).toBe('task-1');
+    });
+
+    it('prunes mirrored descendants that disappear from the GitHub Epic subtree on re-pull', async () => {
+        const issues = new Map<number, GitHubWorkItemIssue>([
+            [80, makeMockIssue(80, 'Remote Epic', 'open', {
+                labels: ['coc:type:epic'],
+                body: 'Remote epic',
+            })],
+            [81, makeMockIssue(81, 'Remote Feature', 'open', {
+                body: `Remote feature\n\n${metadataBlock({
+                    issueNumber: 81,
+                    type: 'feature',
+                    parent: { owner: CONFIGURED_OWNER, repo: CONFIGURED_REPO, issueNumber: 80 },
+                })}`,
+            })],
+            [82, makeMockIssue(82, 'Remote PBI', 'open', {
+                body: `Remote pbi\n\n${metadataBlock({
+                    issueNumber: 82,
+                    type: 'pbi',
+                    parent: { owner: CONFIGURED_OWNER, repo: CONFIGURED_REPO, issueNumber: 81 },
+                })}`,
+            })],
+        ]);
+
+        const first = await importGitHubEpicTreeAsWorkItems(
+            { workspaceId: REPO_ID, workItemStore: store },
+            configuredRepo(),
+            issues.get(80)!,
+            [...issues.values()],
+            () => NOW,
+        );
+        const removedPbi = first.items.find(item => item.githubMirror?.issueNumber === 82)!;
+        await store.updateWorkItem(removedPbi.id, {
+            status: 'planning',
+            plan: {
+                version: 1,
+                content: 'Local execution plan that GitHub deletion wins over',
+                updatedAt: '2026-01-01T01:00:00.000Z',
+                resolvedBy: 'user',
+            },
+            executionHistory: [{
+                taskId: 'task-local',
+                startedAt: '2026-01-01T02:00:00.000Z',
+                status: 'completed',
+            }],
+        });
+        issues.delete(82);
+
+        const second = await importGitHubEpicTreeAsWorkItems(
+            { workspaceId: REPO_ID, workItemStore: store },
+            configuredRepo(),
+            issues.get(80)!,
+            [...issues.values()],
+            () => '2026-01-03T00:00:00.000Z',
+            { pruneMissing: true },
+        );
+
+        expect(second.deleted).toBe(1);
+        expect(second.deletedItemIds).toEqual([removedPbi.id]);
+        expect(await store.getWorkItem(removedPbi.id, REPO_ID)).toBeUndefined();
+        const all = await store.listWorkItems({ repoId: REPO_ID });
+        expect(all.items.map(item => item.githubMirror?.issueNumber).filter(Boolean).sort()).toEqual([80, 81]);
+    });
+
+    it('syncs an existing GitHub-backed Epic via route and prunes removed mirrors', async () => {
+        const issues = new Map<number, GitHubWorkItemIssue>([
+            [90, makeMockIssue(90, 'Route Epic', 'open', {
+                labels: ['coc:type:epic'],
+                body: 'Route epic',
+            })],
+            [91, makeMockIssue(91, 'Route Feature', 'open', {
+                body: `Route feature\n\n${metadataBlock({
+                    issueNumber: 91,
+                    type: 'feature',
+                    parent: { owner: CONFIGURED_OWNER, repo: CONFIGURED_REPO, issueNumber: 90 },
+                })}`,
+            })],
+            [92, makeMockIssue(92, 'Route PBI', 'open', {
+                body: `Route pbi\n\n${metadataBlock({
+                    issueNumber: 92,
+                    type: 'pbi',
+                    parent: { owner: CONFIGURED_OWNER, repo: CONFIGURED_REPO, issueNumber: 91 },
+                })}`,
+            })],
+        ]);
+        await startServer(issues);
+
+        const imported = await post(importUrl(), {
+            issueUrl: `https://github.com/${CONFIGURED_OWNER}/${CONFIGURED_REPO}/issues/90`,
+        });
+        expect(imported.status).toBe(201);
+        const allBefore = await store.listWorkItems({ repoId: REPO_ID });
+        const removedPbi = allBefore.items.find(item => item.githubMirror?.issueNumber === 92)!;
+
+        issues.set(90, makeMockIssue(90, 'Route Epic Updated', 'closed', {
+            labels: ['coc:type:epic', 'route-tag'],
+            body: 'Route epic updated',
+            updatedAt: '2026-01-02T00:00:00.000Z',
+        }));
+        issues.delete(92);
+
+        const synced = await post(syncUrl(imported.body.id));
+
+        expect(synced.status).toBe(200);
+        expect(synced.body).toMatchObject({
+            created: 0,
+            updated: 2,
+            deleted: 1,
+            deletedItemIds: [removedPbi.id],
+            root: {
+                id: imported.body.id,
+                title: 'Route Epic Updated',
+                githubMirror: {
+                    issueNumber: 90,
+                    state: 'closed',
+                    updatedAt: '2026-01-02T00:00:00.000Z',
+                },
+                tracker: {
+                    kind: 'github-backed',
+                    github: {
+                        issueNumber: 90,
+                    },
+                },
+            },
+        });
+        expect(await store.getWorkItem(removedPbi.id, REPO_ID)).toBeUndefined();
+        const root = await store.getWorkItem(imported.body.id, REPO_ID);
+        expect(root?.title).toBe('Route Epic Updated');
+        expect(root?.tags).toEqual(['route-tag']);
+    });
+
+    it('rejects per-Epic GitHub sync for local-only items', async () => {
+        await store.addWorkItem({
+            id: 'local-epic',
+            repoId: REPO_ID,
+            title: 'Local Epic',
+            description: 'Local only',
+            status: 'created',
+            type: 'epic',
+            createdAt: NOW,
+            updatedAt: NOW,
+            source: 'manual',
+        });
+        await startServer(new Map());
+
+        const res = await post(syncUrl('local-epic'));
+
+        expect(res.status).toBe(400);
+        expect(res.body.error).toMatch(/not a GitHub-backed Epic root/i);
     });
 });

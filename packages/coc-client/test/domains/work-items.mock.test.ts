@@ -483,6 +483,7 @@ describe('WorkItemsClient mock coverage', () => {
       previewId: 'preview-1',
       conflictResolutions: [{ conflictId: 'conflict-1', resolution: 'use-coc' }],
     });
+    await client.syncGitHubEpic('repo/a', 'epic/1');
 
     expect(adapter.calls).toEqual([
       {
@@ -513,6 +514,10 @@ describe('WorkItemsClient mock coverage', () => {
             conflictResolutions: [{ conflictId: 'conflict-1', resolution: 'use-coc' }],
           },
         },
+      },
+      {
+        path: '/workspaces/repo%2Fa/work-items/epic%2F1/sync-from-github',
+        options: { method: 'POST' },
       },
     ]);
   });

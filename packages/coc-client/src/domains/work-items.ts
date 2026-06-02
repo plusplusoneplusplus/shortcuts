@@ -9,6 +9,7 @@ import type {
   RequestWorkItemChangesRequest,
   RequestWorkItemChangesResponse,
   ResolveWorkItemCommentsRequest,
+  SyncGitHubEpicResponse,
   WorkItemSyncApplyRequest,
   WorkItemSyncApplyResponse,
   WorkItemSyncPreviewRequest,
@@ -161,6 +162,12 @@ export class WorkItemsClient {
     return this.transport.request<WorkItem>(path(workspaceId, '/import-from-github'), {
       method: 'POST',
       body: { ...request },
+    });
+  }
+
+  syncGitHubEpic(workspaceId: string, workItemId: string): Promise<SyncGitHubEpicResponse> {
+    return this.transport.request<SyncGitHubEpicResponse>(path(workspaceId, `/${encodePathSegment(workItemId)}/sync-from-github`), {
+      method: 'POST',
     });
   }
 

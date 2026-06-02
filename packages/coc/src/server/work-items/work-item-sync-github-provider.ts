@@ -117,6 +117,12 @@ export interface ImportGitHubEpicTreeResult {
     items: WorkItem[];
     created: number;
     updated: number;
+    deleted: number;
+    deletedItemIds: string[];
+}
+
+export interface ImportGitHubEpicTreeOptions {
+    pruneMissing?: boolean;
 }
 
 const execFileAsync = promisify(execFile) as ExecFileAsync;
@@ -633,6 +639,65 @@ function mirrorTypeForIssue(
 
 function tagsForMirror(parsed: ParsedGitHubWorkItemIssue): string[] | undefined {
     return parsed.tags.length > 0 ? parsed.tags : undefined;
+}
+
+function collectLocalTreeEntries(
+    entries: readonly WorkItemIndexEntry[],
+    rootId: string,
+): Array<{ entry: WorkItemIndexEntry; depth: number }> {
+    const childrenByParent = new Map<string, WorkItemIndexEntry[]>();
+    for (const entry of entries) {
+        if (!entry.parentId) continue;
+        const children = childrenByParent.get(entry.parentId) ?? [];
+        children.push(entry);
+        childrenByParent.set(entry.parentId, children);
+    }
+
+    const result: Array<{ entry: WorkItemIndexEntry; depth: number }> = [];
+    const stack = [{ id: rootId, depth: 0 }];
+    const visited = new Set<string>();
+    while (stack.length > 0) {
+        const current = stack.pop()!;
+        if (visited.has(current.id)) continue;
+        visited.add(current.id);
+        for (const child of childrenByParent.get(current.id) ?? []) {
+            result.push({ entry: child, depth: current.depth + 1 });
+            stack.push({ id: child.id, depth: current.depth + 1 });
+        }
+    }
+    return result;
+}
+
+async function pruneMissingGitHubMirrorItems(
+    context: { workspaceId: string; workItemStore: WorkItemStore },
+    rootId: string,
+    currentIssueNumbers: ReadonlySet<number>,
+): Promise<{ deleted: number; deletedItemIds: string[] }> {
+    const entries = (await context.workItemStore.listWorkItems({ repoId: context.workspaceId })).items;
+    const descendants = collectLocalTreeEntries(entries, rootId);
+    const toDelete = descendants.filter(({ entry }) =>
+        entry.githubMirror?.issueNumber !== undefined &&
+        !currentIssueNumbers.has(entry.githubMirror.issueNumber),
+    );
+    if (toDelete.length === 0) {
+        return { deleted: 0, deletedItemIds: [] };
+    }
+
+    const deleteIds = new Set(toDelete.map(({ entry }) => entry.id));
+    for (const { entry } of descendants) {
+        if (entry.parentId && deleteIds.has(entry.parentId) && !deleteIds.has(entry.id)) {
+            await context.workItemStore.updateWorkItem(entry.id, { parentId: undefined });
+        }
+    }
+
+    const deletedItemIds: string[] = [];
+    for (const { entry } of [...toDelete].sort((a, b) => b.depth - a.depth)) {
+        if (await context.workItemStore.removeWorkItem(entry.id)) {
+            deletedItemIds.push(entry.id);
+        }
+    }
+
+    return { deleted: deletedItemIds.length, deletedItemIds };
 }
 
 function parentReferenceComparable(parent: WorkItemSyncParentReference | undefined): Record<string, unknown> | undefined {
@@ -1848,6 +1913,7 @@ export async function importGitHubEpicTreeAsWorkItems(
     rootIssue: GitHubWorkItemIssue,
     candidateIssues: readonly GitHubWorkItemIssue[],
     now?: () => string,
+    options: ImportGitHubEpicTreeOptions = {},
 ): Promise<ImportGitHubEpicTreeResult> {
     const pulledAt = (now ?? (() => new Date().toISOString()))();
     const tree = collectGitHubEpicTreeIssues(repo, rootIssue, candidateIssues);
@@ -1914,5 +1980,12 @@ export async function importGitHubEpicTreeAsWorkItems(
     if (!root) {
         throw new Error(`GitHub issue #${rootIssue.number} was not imported as the Epic root.`);
     }
-    return { root, items, created, updated };
+    const pruneResult = options.pruneMissing
+        ? await pruneMissingGitHubMirrorItems(
+            context,
+            root.id,
+            new Set(tree.map(({ issue }) => issue.number)),
+        )
+        : { deleted: 0, deletedItemIds: [] };
+    return { root, items, created, updated, ...pruneResult };
 }

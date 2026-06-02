@@ -251,6 +251,7 @@ See [mcp-settings.md](mcp-settings.md).
 | PATCH | `/api/workspaces/:id/work-items/:itemId` | Update work item. `tracker` metadata is accepted only on root Epic items. |
 | DELETE | `/api/workspaces/:id/work-items/:itemId` | Delete work item |
 | POST | `/api/workspaces/:id/work-items/:itemId/execute` | Enqueue a work-item implementation run. Body accepts optional `skillNames`, `provider`, `model`, and `reasoningEffort` overrides. |
+| POST | `/api/workspaces/:id/work-items/:itemId/sync-from-github` | Re-pull a GitHub-backed root Epic from the workspace-configured GitHub repo. GitHub-owned fields are overwritten, local execution/lifecycle fields are preserved, and mirrored descendants missing from the freshly discovered metadata subtree are deleted. |
 | GET | `/api/workspaces/:id/work-items/tree` | Read the hierarchy tree. Supports `tracker=local-only\|github-backed`; descendants inherit the tracker identity of their root Epic. |
 | POST | `/api/workspaces/:id/work-items/import-from-github` | Import an existing GitHub Epic issue from the workspace-configured repository. The server pulls the root issue plus descendants discovered from hidden `coc-work-item-sync` parent metadata into a local read mirror and returns the root Epic work item. |
 | GET | `/api/workspaces/:id/work-items/sync/status` | Manual hierarchy sync status. Returns disabled reasons unless both `workItems.hierarchy.enabled` and `workItems.sync.enabled` are true; without a `provider` query it reports all supported providers. Provider credentials remain external. |

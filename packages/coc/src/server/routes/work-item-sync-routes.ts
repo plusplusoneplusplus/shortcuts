@@ -253,6 +253,39 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
         }
     }
 
+    async function resolveAvailableGitHubRepo(workspaceId: string): Promise<{
+        context: WorkItemSyncProviderContext;
+        repo: AvailableGitHubWorkItemSyncRepo;
+    }> {
+        const providerContext = await buildProviderContext(workspaceId);
+        const adapter = adapters.get('github');
+        const status = adapter
+            ? await adapter.getStatus(providerContext)
+            : unavailableWorkItemSyncProviderStatus('github');
+
+        if (!status.available) {
+            throw providerUnavailableError(status);
+        }
+
+        const configuredOwner = status.repository?.owner;
+        const configuredRepo = status.repository?.repo;
+        if (!configuredOwner || !configuredRepo) {
+            throw providerUnavailableError(status);
+        }
+
+        return {
+            context: providerContext,
+            repo: {
+                available: true,
+                provider: 'github',
+                owner: configuredOwner,
+                repo: configuredRepo,
+                url: status.repository?.url ?? `https://github.com/${configuredOwner}/${configuredRepo}`,
+                source: (status.repository?.source as 'preference' | 'workspaceRemote' | 'origin') ?? 'origin',
+            },
+        };
+    }
+
     function statusResponseForDisabled(reason: WorkItemSyncDisabledReason): WorkItemSyncStatusResponse {
         return {
             enabled: false,
@@ -384,21 +417,9 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                 const [, urlOwner, urlRepo, issueNumberStr] = urlMatch;
                 const issueNumber = parseInt(issueNumberStr, 10);
 
-                const providerContext = await buildProviderContext(workspaceId);
-                const adapter = adapters.get('github');
-                const status = adapter
-                    ? await adapter.getStatus(providerContext)
-                    : unavailableWorkItemSyncProviderStatus('github');
-
-                if (!status.available) {
-                    throw providerUnavailableError(status);
-                }
-
-                const configuredOwner = status.repository?.owner;
-                const configuredRepo = status.repository?.repo;
-                if (!configuredOwner || !configuredRepo) {
-                    throw providerUnavailableError(status);
-                }
+                const { repo } = await resolveAvailableGitHubRepo(workspaceId);
+                const configuredOwner = repo.owner;
+                const configuredRepo = repo.repo;
 
                 if (
                     urlOwner.toLowerCase() !== configuredOwner.toLowerCase() ||
@@ -433,14 +454,6 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                     );
                 }
 
-                const repo: AvailableGitHubWorkItemSyncRepo = {
-                    available: true,
-                    provider: 'github',
-                    owner: configuredOwner,
-                    repo: configuredRepo,
-                    url: status.repository?.url ?? `https://github.com/${configuredOwner}/${configuredRepo}`,
-                    source: (status.repository?.source as 'preference' | 'workspaceRemote' | 'origin') ?? 'origin',
-                };
                 const transport = ctx.githubTransport ?? new GhCliGitHubWorkItemIssueTransport();
                 const issue = await transport.getIssue(repo, issueNumber);
                 if (!issue) {
@@ -460,6 +473,58 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                 );
 
                 return sendJSON(res, 201, result.root);
+            } catch (error) {
+                return handleAPIError(res, error);
+            }
+        },
+    });
+
+    // POST /api/workspaces/:id/work-items/:workItemId/sync-from-github
+    ctx.routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/work-items\/([^/]+)\/sync-from-github$/,
+        handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match?: RegExpMatchArray) => {
+            try {
+                const workspaceId = decodeURIComponent(match![1]);
+                const workItemId = decodeURIComponent(match![2]);
+                const root = await ctx.workItemStore.getWorkItem(workItemId, workspaceId);
+                if (!root) {
+                    throw notFound(`Work item '${workItemId}'`);
+                }
+                if (root.type !== 'epic' || root.parentId) {
+                    throw badRequest('GitHub-backed tree sync must be run from a root Epic work item.');
+                }
+                if (root.tracker?.kind !== 'github-backed' || root.tracker.provider !== 'github') {
+                    throw badRequest('Work item is not a GitHub-backed Epic root.');
+                }
+                const issueNumber = root.tracker.github.issueNumber ?? root.githubMirror?.issueNumber;
+                if (issueNumber === undefined) {
+                    throw badRequest('GitHub-backed Epic root is missing a GitHub issue number.');
+                }
+
+                const { repo } = await resolveAvailableGitHubRepo(workspaceId);
+                const transport = ctx.githubTransport ?? new GhCliGitHubWorkItemIssueTransport();
+                const issue = await transport.getIssue(repo, issueNumber);
+                if (!issue) {
+                    throw notFound(`GitHub issue #${issueNumber}`);
+                }
+
+                const rootType = parseGitHubWorkItemIssue(issue).type ?? 'epic';
+                if (rootType !== 'epic') {
+                    throw badRequest('A GitHub-backed tree must sync from a GitHub issue marked as coc:type:epic or with no CoC type metadata.');
+                }
+
+                const candidateIssues = await transport.listIssues(repo, { limit: WORK_ITEM_SYNC_MAX_ITEMS });
+                const result = await importGitHubEpicTreeAsWorkItems(
+                    { workspaceId, workItemStore: ctx.workItemStore },
+                    repo,
+                    issue,
+                    candidateIssues,
+                    undefined,
+                    { pruneMissing: true },
+                );
+
+                return sendJSON(res, 200, result);
             } catch (error) {
                 return handleAPIError(res, error);
             }
