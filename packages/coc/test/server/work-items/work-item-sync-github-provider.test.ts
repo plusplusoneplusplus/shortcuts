@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
@@ -32,6 +32,10 @@ class FakeGitHubTransport implements GitHubWorkItemIssueTransport {
     parentUpdates: Array<{ issueNumber: number; parent: WorkItemSyncParentReference }> = [];
     issues = new Map<number, GitHubWorkItemIssue>();
     failRepository = false;
+    failListIssues = false;
+    failGetIssueNumbers = new Set<number>();
+    failUpdateIssueNumbers = new Set<number>();
+    deleteIssue = vi.fn();
     private nextIssueNumber = 100;
 
     async getRepository(): Promise<void> {
@@ -40,6 +44,7 @@ class FakeGitHubTransport implements GitHubWorkItemIssueTransport {
     }
 
     async listIssues(_repo: typeof REPO, filters: GitHubWorkItemIssueListFilters = {}): Promise<GitHubWorkItemIssue[]> {
+        if (this.failListIssues) throw new Error('GitHub list failed');
         this.listedFilters.push(filters);
         return [...this.issues.values()].filter(issue => {
             if (filters.q && !issue.title.toLowerCase().includes(filters.q.toLowerCase())) return false;
@@ -48,6 +53,7 @@ class FakeGitHubTransport implements GitHubWorkItemIssueTransport {
     }
 
     async getIssue(_repo: typeof REPO, issueNumber: number): Promise<GitHubWorkItemIssue | undefined> {
+        if (this.failGetIssueNumbers.has(issueNumber)) throw new Error(`GitHub issue #${issueNumber} inaccessible`);
         return this.issues.get(issueNumber);
     }
 
@@ -65,6 +71,7 @@ class FakeGitHubTransport implements GitHubWorkItemIssueTransport {
     }
 
     async updateIssue(_repo: typeof REPO, issueNumber: number, input: GitHubWorkItemIssueUpdateInput): Promise<GitHubWorkItemIssue> {
+        if (this.failUpdateIssueNumbers.has(issueNumber)) throw new Error(`GitHub issue #${issueNumber} update failed`);
         this.updatedInputs.push({ issueNumber, input });
         const existing = this.issues.get(issueNumber);
         const issue = makeIssue({
@@ -884,5 +891,200 @@ describe('GitHub work item sync provider', () => {
             lastSyncedAt: NOW,
             conflict: false,
         });
+    });
+
+    it('surfaces remote list API failures during import preview without mutating state', async () => {
+        const provider = makeProvider();
+        transport.failListIssues = true;
+
+        await expect(provider.preview({
+            ...makeContext(),
+            operation: 'import',
+            request: { operation: 'import', provider: 'github' },
+            items: [],
+        })).rejects.toThrow('GitHub list failed');
+
+        expect((await store.listWorkItems({ repoId: WORKSPACE_ID })).total).toBe(0);
+        expect(transport.createdInputs).toEqual([]);
+        expect(transport.updatedInputs).toEqual([]);
+        expect(transport.deleteIssue).not.toHaveBeenCalled();
+    });
+
+    it('warns for missing filtered import issues without creating locals or deleting remotes', async () => {
+        const provider = makeProvider();
+        transport.issues.set(22, makeIssue({
+            number: 22,
+            title: 'Importable remote bug',
+            labels: ['coc:type:bug', 'coc:status:planning'],
+            body: 'Remote body.',
+        }));
+
+        const preview = await provider.preview({
+            ...makeContext(),
+            operation: 'import',
+            request: { operation: 'import', provider: 'github', filters: { issueNumbers: [21, 22] } },
+            items: [],
+        });
+
+        expect(preview.warnings).toContainEqual(expect.objectContaining({
+            id: 'missing-remote-21',
+            message: expect.stringContaining('not found or is inaccessible'),
+            remote: { owner: 'octo-org', repo: 'octo-repo', issueNumber: 21 },
+        }));
+        expect(preview.creates.map(operation => operation.remote?.issueNumber)).toEqual([22]);
+        expect((await store.listWorkItems({ repoId: WORKSPACE_ID })).total).toBe(0);
+        expect(transport.createdInputs).toEqual([]);
+        expect(transport.updatedInputs).toEqual([]);
+        expect(transport.deleteIssue).not.toHaveBeenCalled();
+    });
+
+    it('warns for missing linked export and sync issues without recreating or deleting remotes', async () => {
+        const provider = makeProvider();
+        const linked = await addItem({
+            id: 'missing-linked',
+            title: 'Missing linked issue',
+            type: 'bug',
+            status: 'planning',
+            updatedAt: '2026-01-04T00:00:00.000Z',
+            syncLinks: [{
+                provider: 'github',
+                remote: { owner: 'octo-org', repo: 'octo-repo', issueNumber: 31 },
+                remoteUpdatedAt: '2026-01-02T00:00:00.000Z',
+                lastSyncedAt: '2026-01-02T00:00:00.000Z',
+            }],
+        });
+
+        const exportPreview = await provider.preview({
+            ...makeContext(),
+            operation: 'export-selected',
+            request: { operation: 'export-selected', provider: 'github', selectedWorkItemId: linked.id },
+            items: [linked],
+        });
+        expect(exportPreview.warnings).toContainEqual(expect.objectContaining({
+            id: 'missing-linked-remote-missing-linked',
+            message: expect.stringContaining('not found or is inaccessible'),
+            workItemId: 'missing-linked',
+        }));
+        expect(exportPreview.creates).toEqual([]);
+        expect(exportPreview.updates).toEqual([]);
+
+        const syncPreview = await provider.preview({
+            ...makeContext(),
+            operation: 'sync-linked',
+            request: { operation: 'sync-linked', provider: 'github' },
+            items: [linked],
+        });
+        expect(syncPreview.warnings).toContainEqual(expect.objectContaining({
+            id: 'missing-sync-remote-missing-linked',
+            message: expect.stringContaining('not found or is inaccessible'),
+            workItemId: 'missing-linked',
+        }));
+        expect(syncPreview.creates).toEqual([]);
+        expect(syncPreview.updates).toEqual([]);
+        expect(transport.createdInputs).toEqual([]);
+        expect(transport.updatedInputs).toEqual([]);
+        expect(transport.deleteIssue).not.toHaveBeenCalled();
+    });
+
+    it('records remote update API failures as failed apply rows without deleting or advancing sync state', async () => {
+        const provider = makeProvider();
+        const item = await addItem({
+            id: 'update-fails',
+            title: 'Local title',
+            type: 'bug',
+            status: 'planning',
+            updatedAt: '2026-01-04T00:00:00.000Z',
+            syncLinks: [{
+                provider: 'github',
+                remote: { owner: 'octo-org', repo: 'octo-repo', issueNumber: 32 },
+                remoteUpdatedAt: '2026-01-02T00:00:00.000Z',
+                lastSyncedAt: '2026-01-02T00:00:00.000Z',
+            }],
+        });
+        transport.issues.set(32, makeIssue({
+            number: 32,
+            title: 'Remote title',
+            labels: ['coc:type:bug', 'coc:status:planning'],
+            body: 'Remote body.',
+            updatedAt: '2026-01-02T00:00:00.000Z',
+        }));
+        transport.failUpdateIssueNumbers.add(32);
+
+        const result = await provider.apply({
+            ...makeContext(),
+            operation: 'sync-linked',
+            request: { operation: 'sync-linked', provider: 'github' },
+            items: [item],
+        });
+
+        expect(result).toMatchObject({ applied: 0, skipped: 0, failed: 1 });
+        expect(result.rows).toContainEqual(expect.objectContaining({
+            status: 'failed',
+            operationId: 'update-remote-update-fails',
+            workItemId: 'update-fails',
+            message: expect.stringContaining('update failed'),
+        }));
+        expect(transport.updatedInputs).toEqual([]);
+        expect(transport.deleteIssue).not.toHaveBeenCalled();
+        expect((await store.getWorkItem('update-fails', WORKSPACE_ID))?.syncLinks?.[0]).toMatchObject({
+            remoteUpdatedAt: '2026-01-02T00:00:00.000Z',
+            lastSyncedAt: '2026-01-02T00:00:00.000Z',
+        });
+    });
+
+    it('applies explicit Use GitHub conflict resolutions to CoC without mutating GitHub', async () => {
+        const provider = makeProvider();
+        const item = await addItem({
+            id: 'use-github-conflict',
+            title: 'Local title',
+            description: 'Local body.',
+            type: 'bug',
+            status: 'done',
+            updatedAt: '2026-01-04T00:00:00.000Z',
+            syncLinks: [{
+                provider: 'github',
+                remote: { owner: 'octo-org', repo: 'octo-repo', issueNumber: 33 },
+                remoteUpdatedAt: '2026-01-02T00:00:00.000Z',
+                lastSyncedAt: '2026-01-02T00:00:00.000Z',
+            }],
+        });
+        transport.issues.set(33, makeIssue({
+            number: 33,
+            title: 'Remote title',
+            labels: ['remote-label', 'coc:type:bug', 'coc:status:planning', 'coc:priority:high'],
+            body: 'Remote body.',
+            updatedAt: '2026-01-03T00:00:00.000Z',
+        }));
+
+        const result = await provider.apply({
+            ...makeContext(),
+            operation: 'sync-linked',
+            request: {
+                operation: 'sync-linked',
+                provider: 'github',
+                conflictResolutions: [{ conflictId: 'conflict-use-github-conflict', resolution: 'use-provider' }],
+            },
+            items: [item],
+        });
+
+        expect(result).toMatchObject({ applied: 1, skipped: 0, failed: 0 });
+        expect(transport.createdInputs).toEqual([]);
+        expect(transport.updatedInputs).toEqual([]);
+        expect(transport.deleteIssue).not.toHaveBeenCalled();
+        const updated = await store.getWorkItem('use-github-conflict', WORKSPACE_ID);
+        expect(updated).toMatchObject({
+            title: 'Remote title',
+            description: 'Remote body.',
+            status: 'planning',
+            priority: 'high',
+            tags: ['remote-label'],
+        });
+        expect(updated?.syncLinks?.[0]).toMatchObject({
+            remoteUpdatedAt: '2026-01-03T00:00:00.000Z',
+            lastSyncedAt: NOW,
+            dirty: false,
+            conflict: false,
+        });
+        expect(updated?.syncLinks?.[0].lastSyncedFingerprint).toBeTruthy();
     });
 });

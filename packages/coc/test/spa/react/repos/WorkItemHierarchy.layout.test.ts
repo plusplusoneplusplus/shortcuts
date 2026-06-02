@@ -164,6 +164,16 @@ describe('WorkItemHierarchyTree — GitHub sync toolbar workflow', () => {
         expect(src).toContain('hierarchy-sync-provider-message');
     });
 
+    it('renders provider-unavailable status messaging and disables sync actions', () => {
+        expect(src).toContain('isSyncProviderAvailable');
+        expect(src).toContain('!provider.available');
+        expect(src).toContain('provider.message');
+        expect(src).toContain('!syncProviderAvailable &&');
+        expect(src).toContain('hierarchy-sync-provider-message');
+        expect(src).toContain('disabled={!syncProviderAvailable || syncBusy}');
+        expect(src).toContain('disabled={!syncProviderAvailable || syncBusy || !selectedWorkItemId}');
+    });
+
     it('exposes Import, Export selected, and Sync linked actions', () => {
         expect(src).toContain('hierarchy-sync-import-btn');
         expect(src).toContain('hierarchy-sync-export-selected-btn');
@@ -187,6 +197,13 @@ describe('WorkItemHierarchyTree — GitHub sync toolbar workflow', () => {
         expect(applyIdx).toBeGreaterThan(previewIdx);
     });
 
+    it('surfaces preview failures such as over-limit responses in the dialog error state', () => {
+        expect(src).toContain('getSpaCocClientErrorMessage(err, \'Failed to load sync preview\')');
+        expect(src).toContain('phase: \'error\'');
+        expect(src).toContain('error: getSpaCocClientErrorMessage');
+        expect(src).toContain('setSyncDialog({');
+    });
+
     it('applies with preview id and explicit conflict resolutions', () => {
         expect(src).toContain('workItems.syncApply');
         expect(src).toContain('previewId: preview.previewId');
@@ -194,6 +211,8 @@ describe('WorkItemHierarchyTree — GitHub sync toolbar workflow', () => {
     });
 
     it('refreshes the tree and provider status after successful apply', () => {
+        expect(src).toContain('phase: \'success\'');
+        expect(src).toContain('applyResult: result');
         expect(src).toContain('await fetchTree()');
         expect(src).toContain('await fetchSyncStatus()');
     });
@@ -233,7 +252,20 @@ describe('WorkItemSyncPreviewDialog — preview/apply states', () => {
     it('renders apply result and row-level partial failure output', () => {
         expect(src).toContain('hierarchy-sync-apply-result');
         expect(src).toContain('hierarchy-sync-apply-row');
+        expect(src).toContain('Applied {result.applied}, skipped {result.skipped}, failed {result.failed}');
         expect(src).toContain('result.failed');
+    });
+
+    it('shows over-limit context through preview item count and max item summary', () => {
+        expect(src).toContain('preview.itemCount');
+        expect(src).toContain('preview.maxItems');
+        expect(src).toContain('Limit {preview.maxItems}');
+    });
+
+    it('shows success state with apply rows and a Done close action', () => {
+        expect(src).toContain("state.phase === 'success'");
+        expect(src).toContain("'Done'");
+        expect(src).toContain('state.applyResult && <ApplyResult result={state.applyResult} />');
     });
 });
 
