@@ -4,10 +4,12 @@ import {
     buildQueueSubmitRequest,
     executeQueueCancel,
     executeQueueList,
+    executeQueueStatus,
     executeQueueSubmit,
     listQueueTasks,
     type QueueCancelDependencies,
     type QueueListDependencies,
+    type QueueStatusDependencies,
     resolveWorkspaceIdFromWorkspaces,
     type QueueSubmitDependencies,
 } from '../../src/commands/queue';
@@ -16,6 +18,7 @@ import type {
     EnqueueTaskResponse,
     QueueHistoryResponse,
     QueueListResponse,
+    QueueTaskResponse,
     QueueTaskSummary,
     WorkspacesResponse,
 } from '@plusplusoneplusplus/coc-client';
@@ -66,6 +69,16 @@ function makeCancelClient(options: {
     return {
         queue: {
             cancel: vi.fn(options.cancel ?? (async () => ({ cancelled: true }))),
+        },
+    };
+}
+
+function makeStatusClient(options: {
+    getTask?: (taskId: string) => Promise<QueueTaskResponse>;
+} = {}): QueueStatusDependencies['client'] {
+    return {
+        queue: {
+            getTask: vi.fn(options.getTask ?? (async () => ({ task: queueTask({ id: 'queue-abc123', status: 'running', displayName: 'Refactor auth' }) }))),
         },
     };
 }
@@ -423,5 +436,90 @@ describe('executeQueueCancel', () => {
         expect(exitCode).toBe(1);
         expect(stdout.output()).toBe('');
         expect(stderr.output()).toBe('Task not found or not cancellable\n');
+    });
+});
+
+describe('executeQueueStatus', () => {
+    it('prints task details as text', async () => {
+        const stdout = memoryWritable();
+        const stderr = memoryWritable();
+        const client = makeStatusClient({
+            getTask: async () => ({
+                task: queueTask({
+                    id: 'queue-abc123',
+                    status: 'running',
+                    type: 'chat',
+                    displayName: 'refactor src/auth.ts',
+                    createdAt: Date.UTC(2026, 5, 2, 5, 40, 0),
+                }),
+            }),
+        });
+
+        const exitCode = await executeQueueStatus('queue-abc123', {}, {
+            client,
+            stdout: stdout.stream,
+            stderr: stderr.stream,
+            env: {},
+        });
+
+        expect(exitCode).toBe(0);
+        expect(stderr.output()).toBe('');
+        expect(stdout.output()).toBe([
+            'ID:      queue-abc123',
+            'Status:  running',
+            'Type:    chat',
+            'Name:    refactor src/auth.ts',
+            'Created: 2026-06-02T05:40:00.000Z',
+            '',
+        ].join('\n'));
+        expect(client!.queue.getTask).toHaveBeenCalledWith('queue-abc123');
+    });
+
+    it('prints raw task JSON when requested', async () => {
+        const stdout = memoryWritable();
+
+        const exitCode = await executeQueueStatus('queue-json', {
+            output: 'json',
+        }, {
+            client: makeStatusClient({
+                getTask: async () => ({
+                    task: queueTask({
+                        id: 'queue-json',
+                        status: 'queued',
+                        displayName: 'JSON task',
+                    }),
+                }),
+            }),
+            stdout: stdout.stream,
+            stderr: memoryWritable().stream,
+            env: {},
+        });
+
+        expect(exitCode).toBe(0);
+        expect(JSON.parse(stdout.output())).toMatchObject({
+            id: 'queue-json',
+            status: 'queued',
+            displayName: 'JSON task',
+        });
+    });
+
+    it('prints a clear error and exits 1 for an unknown task', async () => {
+        const stdout = memoryWritable();
+        const stderr = memoryWritable();
+
+        const exitCode = await executeQueueStatus('queue-missing', {}, {
+            client: makeStatusClient({
+                getTask: async () => {
+                    throw new Error('Task not found');
+                },
+            }),
+            stdout: stdout.stream,
+            stderr: stderr.stream,
+            env: {},
+        });
+
+        expect(exitCode).toBe(1);
+        expect(stdout.output()).toBe('');
+        expect(stderr.output()).toBe('Task not found\n');
     });
 });

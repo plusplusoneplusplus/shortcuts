@@ -5,6 +5,7 @@ import type {
     QueueHistoryResponse,
     QueueListResponse,
     QueueTaskSummary,
+    QueueTaskResponse,
     QueueStatus,
     WorkspaceInfo,
     WorkspacesResponse,
@@ -20,6 +21,7 @@ const REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh'] as const;
 const PRIORITIES = ['low', 'normal', 'high'] as const;
 const SUBMIT_OUTPUT_FORMATS = ['text', 'json'] as const;
 const LIST_OUTPUT_FORMATS = ['table', 'json'] as const;
+const STATUS_OUTPUT_FORMATS = ['text', 'json'] as const;
 const QUEUE_STATUSES = ['queued', 'running', 'completed', 'failed', 'cancelled'] as const;
 const TERMINAL_QUEUE_STATUSES = new Set<QueueCliStatus>(['completed', 'failed', 'cancelled']);
 const DEFAULT_LIST_LIMIT = 20;
@@ -31,6 +33,7 @@ type ReasoningEffort = typeof REASONING_EFFORTS[number];
 type QueuePriority = typeof PRIORITIES[number];
 type QueueSubmitOutputFormat = typeof SUBMIT_OUTPUT_FORMATS[number];
 type QueueListOutputFormat = typeof LIST_OUTPUT_FORMATS[number];
+type QueueStatusOutputFormat = typeof STATUS_OUTPUT_FORMATS[number];
 type QueueCliStatus = typeof QUEUE_STATUSES[number];
 
 type InputStream = NodeJS.ReadableStream & { isTTY?: boolean };
@@ -119,6 +122,24 @@ export interface QueueCancelDependencies {
     env?: NodeJS.ProcessEnv;
 }
 
+interface QueueStatusApiClient {
+    queue: {
+        getTask(taskId: string): Promise<QueueTaskResponse>;
+    };
+}
+
+export interface QueueStatusOptions {
+    serverUrl?: string;
+    output?: string;
+}
+
+export interface QueueStatusDependencies {
+    client?: QueueStatusApiClient;
+    stdout?: OutputStream;
+    stderr?: OutputStream;
+    env?: NodeJS.ProcessEnv;
+}
+
 export async function executeQueueSubmit(
     message: string | undefined,
     opts: QueueSubmitOptions,
@@ -192,6 +213,37 @@ export async function executeQueueCancel(
         await client.queue.cancel(id, reason === undefined ? undefined : { reason });
 
         writeLine(stdout, `Cancelled: ${id}`);
+        return 0;
+    } catch (error) {
+        writeLine(stderr, formatQueueCliError(error));
+        return 1;
+    }
+}
+
+export async function executeQueueStatus(
+    taskId: string,
+    opts: QueueStatusOptions,
+    deps: QueueStatusDependencies = {},
+): Promise<number> {
+    const stdout = deps.stdout ?? process.stdout;
+    const stderr = deps.stderr ?? process.stderr;
+
+    try {
+        const id = trimOptional(taskId);
+        if (!id) {
+            throw new Error('Task ID is required.');
+        }
+
+        const serverUrl = resolveServerUrl(opts, deps.env ?? process.env);
+        const client = deps.client ?? new CocClient({ baseUrl: serverUrl });
+        const response = await client.queue.getTask(id);
+        const task = response.task;
+
+        if (resolveStatusOutputFormat(opts.output) === 'json') {
+            writeLine(stdout, JSON.stringify(task));
+        } else {
+            writeLine(stdout, formatQueueTaskStatus(task));
+        }
         return 0;
     } catch (error) {
         writeLine(stderr, formatQueueCliError(error));
@@ -299,6 +351,10 @@ function resolveListOutputFormat(value: string | undefined): QueueListOutputForm
     return resolveEnum(value, LIST_OUTPUT_FORMATS, 'output') ?? 'table';
 }
 
+function resolveStatusOutputFormat(value: string | undefined): QueueStatusOutputFormat {
+    return resolveEnum(value, STATUS_OUTPUT_FORMATS, 'output') ?? 'text';
+}
+
 function resolveListLimit(value: string | number | undefined): number {
     if (value === undefined || value === '') {
         return DEFAULT_LIST_LIMIT;
@@ -357,6 +413,16 @@ function formatQueueTasksTable(tasks: QueueTaskSummary[]): string {
     const separator = widths.map(width => '-'.repeat(width)).join('  ');
     const body = rows.map(row => row.map((cell, index) => cell.padEnd(widths[index])).join('  '));
     return [header, separator, ...body].join('\n');
+}
+
+function formatQueueTaskStatus(task: QueueTaskSummary): string {
+    return [
+        `ID:      ${stringCell(task.id)}`,
+        `Status:  ${stringCell(task.status)}`,
+        `Type:    ${stringCell(task.type)}`,
+        `Name:    ${stringCell(task.displayName)}`,
+        `Created: ${formatCreatedAt(task.createdAt)}`,
+    ].join('\n');
 }
 
 function stringCell(value: unknown): string {

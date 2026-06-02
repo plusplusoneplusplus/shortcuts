@@ -11,7 +11,7 @@ import { Command } from 'commander';
 import { executeRun } from './commands/run';
 import { executeValidate } from './commands/validate';
 import { executeList } from './commands/list';
-import { executeQueueCancel, executeQueueList, executeQueueSubmit } from './commands/queue';
+import { executeQueueCancel, executeQueueList, executeQueueStatus, executeQueueSubmit } from './commands/queue';
 import { resolveRunOptions, resolveListOptions, resolveServeOptions, resolveWipeDataOptions } from './commands/options-resolver';
 import { resolveConfig } from './config';
 import { setColorEnabled } from './logger';
@@ -200,6 +200,18 @@ export function createProgram(): Command {
         .action(async (taskId: string, opts: Record<string, unknown>) => {
             applyGlobalOptions(opts);
             const exitCode = await executeQueueCancel(taskId, opts);
+            process.exit(exitCode);
+        });
+
+    queue
+        .command('status')
+        .description('Show the current status of a queue task')
+        .argument('<taskId>', 'Queue task ID to inspect')
+        .option('--server-url <url>', 'CoC server URL (default: COC_SERVER_URL or http://localhost:4000)')
+        .option('-o, --output <format>', 'Output format: text, json', 'text')
+        .action(async (taskId: string, opts: Record<string, unknown>) => {
+            applyGlobalOptions(opts);
+            const exitCode = await executeQueueStatus(taskId, opts);
             process.exit(exitCode);
         });
 

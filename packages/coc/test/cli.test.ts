@@ -114,7 +114,7 @@ describe('CLI', () => {
             expect(optionNames).toContain('--data-dir');
         });
 
-        it('should have queue command with submit, list, and cancel subcommands', () => {
+        it('should have queue command with submit, list, cancel, and status subcommands', () => {
             const program = createProgram();
             const queueCmd = program.commands.find(c => c.name() === 'queue');
             expect(queueCmd).toBeDefined();
@@ -125,6 +125,8 @@ describe('CLI', () => {
             expect(listCmd).toBeDefined();
             const cancelCmd = queueCmd!.commands.find(c => c.name() === 'cancel');
             expect(cancelCmd).toBeDefined();
+            const statusCmd = queueCmd!.commands.find(c => c.name() === 'status');
+            expect(statusCmd).toBeDefined();
         });
 
         it('queue submit command should have expected options', () => {
@@ -164,6 +166,15 @@ describe('CLI', () => {
             const optionNames = cancelCmd.options.map(o => o.long || o.short);
             expect(optionNames).toContain('--reason');
             expect(optionNames).toContain('--server-url');
+        });
+
+        it('queue status command should have expected options', () => {
+            const program = createProgram();
+            const queueCmd = program.commands.find(c => c.name() === 'queue')!;
+            const statusCmd = queueCmd.commands.find(c => c.name() === 'status')!;
+            const optionNames = statusCmd.options.map(o => o.long || o.short);
+            expect(optionNames).toContain('--server-url');
+            expect(optionNames).toContain('--output');
         });
     });
 });

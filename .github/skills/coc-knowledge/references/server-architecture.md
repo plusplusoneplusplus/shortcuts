@@ -12,6 +12,7 @@ coc serve                   # Start AI Execution Dashboard web server
 coc queue submit [message]  # Submit a chat task to a running CoC server queue
 coc queue list              # List active queued/running tasks, optionally filtered
 coc queue cancel <taskId>   # Cancel a queued or running task
+coc queue status <taskId>   # Show status/details for a single queue task
 coc skills                  # Manage CoC skills (list, install-bundled, install, delete, check-updates)
 coc wipe-data               # Clear all stored data
 ```
@@ -54,7 +55,7 @@ src/
 │   ├── serve.ts          # Start server
 │   ├── wipe-data.ts      # Clear stored data
 │   ├── skills.ts         # Skills management
-│   ├── queue.ts          # Queue submit/list/cancel CLI commands
+│   ├── queue.ts          # Queue submit/list/cancel/status CLI commands
 │   └── options-resolver.ts  # Shared option resolution
 ├── server/               # HTTP/WebSocket server (see module layout below)
 ├── ai-invoker.ts         # AI invoker factory
