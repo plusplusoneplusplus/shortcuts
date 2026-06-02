@@ -29,6 +29,11 @@ export interface RalphSessionStoreOptions {
     dataDir: string;
 }
 
+export interface RalphSessionFile {
+    name: string;
+    content: string;
+}
+
 export interface InitSessionInput {
     originalGoal: string;
     maxIterations: number;
@@ -127,6 +132,27 @@ export class RalphSessionStore {
             if (err?.code === 'ENOENT') return '';
             throw err;
         }
+    }
+
+    async readSessionFiles(workspaceId: string, sessionId: string): Promise<RalphSessionFile[]> {
+        const dir = this.getSessionDir(workspaceId, sessionId);
+        let entries: fs.Dirent[];
+        try {
+            entries = await fs.promises.readdir(dir, { withFileTypes: true });
+        } catch (err: any) {
+            if (err?.code === 'ENOENT') return [];
+            throw err;
+        }
+
+        const fileNames = entries
+            .filter((entry) => entry.isFile())
+            .map((entry) => entry.name)
+            .sort();
+
+        return Promise.all(fileNames.map(async (name) => ({
+            name,
+            content: await fs.promises.readFile(path.join(dir, name), 'utf-8'),
+        })));
     }
 
     async readSessionRecord(

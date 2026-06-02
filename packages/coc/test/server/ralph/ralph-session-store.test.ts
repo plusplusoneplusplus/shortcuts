@@ -181,6 +181,35 @@ describe('RalphSessionStore — updateSessionRecord', () => {
     });
 });
 
+describe('RalphSessionStore — readSessionFiles', () => {
+    it('returns all direct session files alphabetically with raw text content', async () => {
+        await store.initSession(WS, SID, {
+            originalGoal: 'read raw files',
+            maxIterations: 3,
+            startedAt: '2026-06-02T00:00:00.000Z',
+        });
+        const dir = store.getSessionDir(WS, SID);
+        await fs.promises.writeFile(path.join(dir, 'z-extra.txt'), 'last', 'utf-8');
+        await fs.promises.writeFile(path.join(dir, 'a-notes.md'), '# Notes\nraw text', 'utf-8');
+        await fs.promises.mkdir(path.join(dir, 'nested'));
+
+        const files = await store.readSessionFiles(WS, SID);
+
+        expect(files.map((file) => file.name)).toEqual([
+            'a-notes.md',
+            'progress.md',
+            'session.json',
+            'z-extra.txt',
+        ]);
+        expect(files.find((file) => file.name === 'a-notes.md')?.content).toBe('# Notes\nraw text');
+        expect(files.find((file) => file.name === 'z-extra.txt')?.content).toBe('last');
+        expect(files.find((file) => file.name === 'progress.md')?.content)
+            .toContain('# Ralph Session: sess-abc');
+        expect(files.find((file) => file.name === 'session.json')?.content)
+            .toContain('"originalGoal": "read raw files"');
+    });
+});
+
 describe('RalphSessionStore — progressMtimeAfter', () => {
     it('returns false when the file does not exist', async () => {
         const after = await store.progressMtimeAfter(WS, SID, Date.now());

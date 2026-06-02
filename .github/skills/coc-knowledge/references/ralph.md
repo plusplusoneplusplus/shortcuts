@@ -46,7 +46,9 @@ The Ralph executor is the only writer. It must:
    terminal signals.
 
 Readers, including REST handlers and the SPA `useRalphSessionView` hook, treat
-`session.json` and `progress.md` as source of truth and never mutate them. A
+`session.json` and `progress.md` as source of truth and never mutate them. The
+session read route also returns raw text for every direct file in the session
+folder as `files: { name, content }[]`, sorted alphabetically by filename. A
 missing journal is surfaced as `null` or empty state. A partially written
 `session.json` is tolerated as `null`; the next mutator pass rewrites it.
 

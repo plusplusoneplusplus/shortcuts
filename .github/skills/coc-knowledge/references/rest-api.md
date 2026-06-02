@@ -91,7 +91,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 |--------|------|-------------|
 | POST | `/api/processes/:id/ralph-start` | Start Ralph execution after grilling. Body accepts optional `provider`, `config.model`, and `config.reasoningEffort` overrides for the first execution task. |
 | POST | `/api/ralph-launch` | Direct Ralph launch (skip grilling). Body accepts optional `provider`, `config.model`, and `config.reasoningEffort` overrides for the first execution task. |
-| GET | `/api/workspaces/:wsId/ralph-sessions/:sessionId` | Read session journal (record + progress sections) |
+| GET | `/api/workspaces/:wsId/ralph-sessions/:sessionId` | Read session journal (`record`, parsed progress `sections`, and alphabetically ordered raw session `files`) |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/continue` | Extend completed session (CAP_REACHED or NO_SIGNAL) by N iterations |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/new-loop` | New goal loop after RALPH_COMPLETE |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/resume` | Resume stuck executing session (no in-flight task) |

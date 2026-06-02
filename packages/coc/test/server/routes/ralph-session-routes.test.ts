@@ -102,6 +102,36 @@ describe('GET /api/workspaces/:workspaceId/ralph-sessions/:sessionId', () => {
         expect(r.body.sections[1]).toMatchObject({ iteration: 2, signal: 'RALPH_COMPLETE' });
     });
 
+    it('returns raw session files in alphabetical order', async () => {
+        const store = new RalphSessionStore({ dataDir });
+        await store.initSession(WS, SID, {
+            originalGoal: 'inspect files',
+            maxIterations: 2,
+            startedAt: '2026-06-02T00:00:00.000Z',
+        });
+        const dir = store.getSessionDir(WS, SID);
+        await fs.promises.writeFile(path.join(dir, 'z-extra.json'), '{"z":true}', 'utf-8');
+        await fs.promises.writeFile(path.join(dir, 'a-extra.md'), '# Extra\nraw markdown', 'utf-8');
+
+        const r = await getJson(baseUrl, `/api/workspaces/${WS}/ralph-sessions/${SID}`);
+
+        expect(r.status).toBe(200);
+        expect(r.body.files.map((file: { name: string }) => file.name)).toEqual([
+            'a-extra.md',
+            'progress.md',
+            'session.json',
+            'z-extra.json',
+        ]);
+        expect(r.body.files.find((file: { name: string }) => file.name === 'a-extra.md')?.content)
+            .toBe('# Extra\nraw markdown');
+        expect(r.body.files.find((file: { name: string }) => file.name === 'z-extra.json')?.content)
+            .toBe('{"z":true}');
+        expect(r.body.files.find((file: { name: string }) => file.name === 'progress.md')?.content)
+            .toContain('# Ralph Session: session-1');
+        expect(r.body.files.find((file: { name: string }) => file.name === 'session.json')?.content)
+            .toContain('"originalGoal": "inspect files"');
+    });
+
     it('returns an empty sections array when session.json exists but progress.md does not', async () => {
         const store = new RalphSessionStore({ dataDir });
         await store.initSession(WS, SID, { originalGoal: 'g', maxIterations: 1 });

@@ -371,9 +371,15 @@ export interface ParsedProgressSection {
   body: string;
 }
 
+export interface RalphSessionFile {
+  name: string;
+  content: string;
+}
+
 export interface RalphSessionResponse {
   record: RalphSessionRecord;
   sections: ParsedProgressSection[];
+  files: RalphSessionFile[];
 }
 
 export interface RalphContinueResponse {

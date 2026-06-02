@@ -294,6 +294,32 @@ describe('WorkspacesClient mock server contract', () => {
     await expect(client.workspaces.pinTerminal('repo/one', 'sess-1', false)).resolves.toEqual(unpinResponse);
     expectJsonRequest(mock.requests[1], 'PATCH', '/api/workspaces/repo%2Fone/terminals/sess-1/pin', { pinned: false });
   });
+
+  it('reads Ralph session files through the workspace client', async () => {
+    mock = await startMockServer();
+    const response = {
+      record: {
+        sessionId: 'sess/1',
+        workspaceId: 'repo/one',
+        originalGoal: 'inspect files',
+        maxIterations: 2,
+        currentIteration: 1,
+        phase: 'executing',
+        startedAt: '2026-06-02T00:00:00.000Z',
+        iterations: [],
+      },
+      sections: [{ iteration: 1, signal: 'RALPH_NEXT', timestamp: 't1', body: 'body' }],
+      files: [
+        { name: 'progress.md', content: '# Ralph Session' },
+        { name: 'session.json', content: '{"sessionId":"sess/1"}' },
+      ],
+    };
+    mock.on('GET', '/api/workspaces/repo%2Fone/ralph-sessions/sess%2F1', { body: response });
+    const client = createClient(mock);
+
+    await expect(client.workspaces.ralphSession('repo/one', 'sess/1')).resolves.toEqual(response);
+    expectGetRequest(mock.requests[0], '/api/workspaces/repo%2Fone/ralph-sessions/sess%2F1');
+  });
 });
 
 function createClient(mock: MockServer): CocClient {
