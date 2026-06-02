@@ -32,7 +32,6 @@ const StorageSection = lazy(() => import('./StorageSection'));
 const AgentManagementPanel = lazy(() => import('../repos/AgentManagementPanel').then(m => ({ default: m.AgentManagementPanel })));
 const IMSettingsSection = lazy(() => import('./IMSettingsSection').then(m => ({ default: m.IMSettingsSection })));
 const ContainerLinkSection = lazy(() => import('./ContainerLinkSection').then(m => ({ default: m.ContainerLinkSection })));
-const ConnectedAgentsPanel = lazy(() => import('./ConnectedAgentsPanel').then(m => ({ default: m.ConnectedAgentsPanel })));
 
 // Tool views embedded in the admin right panel. Keeping the imports here
 // (not in Router.tsx) means the admin shell owns their layout.
@@ -2041,7 +2040,7 @@ export function AdminPanel() {
 
                         {activeTab === 'agents' && isContainerMode() && (
                             <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
-                                <ConnectedAgentsPanel />
+                                <AgentManagementPanel />
                             </Suspense>
                         )}
 
