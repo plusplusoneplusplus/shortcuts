@@ -145,16 +145,16 @@ fi
 
 create_out="$("$DEVTUNNEL" create "$TUNNEL_ID" 2>&1)"
 create_rc=$?
+if is_devtunnel_not_owned_error "$create_out"; then
+    log_error "Dev tunnel '$TUNNEL_ID' is not accessible to the current account; the tunnel ID is owned by a different account or in use elsewhere."
+    log_warn "Log in as the tunnel's owner ('$DEVTUNNEL user login'), or rerun with a different --tunnel-id."
+    exit 2
+fi
 if is_devtunnel_auth_error "$create_out"; then
     log_warn "devtunnel is not authenticated. Run '$DEVTUNNEL user login', then rerun this script."
     exit 2
 fi
 if (( create_rc != 0 )) && ! is_already_configured "$create_out"; then
-    if is_devtunnel_not_owned_error "$create_out"; then
-        log_error "Dev tunnel '$TUNNEL_ID' is not accessible to the current account; the tunnel ID is owned by a different account or in use elsewhere."
-        log_warn "Log in as the tunnel's owner ('$DEVTUNNEL user login'), or rerun with a different --tunnel-id."
-        exit 2
-    fi
     log_error "Failed to create dev tunnel '$TUNNEL_ID': $create_out"
     exit 1
 fi

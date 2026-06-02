@@ -101,16 +101,16 @@ function Invoke-EnsureTunnel {
     }
 
     $create = Invoke-DevTunnelCli -Arguments @('create', $TunnelId)
+    if (Test-DevTunnelNotOwnedError $create.Output) {
+        Write-Log "Dev tunnel '$TunnelId' is not accessible to the current account; the tunnel ID is owned by a different account or in use elsewhere." -Color Red
+        Write-Log "Log in as the tunnel's owner ('devtunnel user login'), or rerun with a different -TunnelId." -Color Yellow
+        return [pscustomobject]@{ Status = 'NotOwned'; Port = $null }
+    }
     if (Test-DevTunnelAuthError $create.Output) {
         Write-Log "devtunnel is not authenticated. Run 'devtunnel user login', then rerun this script." -Color Yellow
         return [pscustomobject]@{ Status = 'Unauthenticated'; Port = $null }
     }
     if ($create.ExitCode -ne 0 -and -not (Test-DevTunnelAlreadyConfigured $create.Output)) {
-        if (Test-DevTunnelNotOwnedError $create.Output) {
-            Write-Log "Dev tunnel '$TunnelId' is not accessible to the current account; the tunnel ID is owned by a different account or in use elsewhere." -Color Red
-            Write-Log "Log in as the tunnel's owner ('devtunnel user login'), or rerun with a different -TunnelId." -Color Yellow
-            return [pscustomobject]@{ Status = 'NotOwned'; Port = $null }
-        }
         Write-Log "Failed to create dev tunnel '$TunnelId': $($create.Output.Trim())" -Color Red
         return [pscustomobject]@{ Status = 'Unavailable'; Port = $null }
     }

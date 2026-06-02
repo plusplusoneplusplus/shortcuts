@@ -57,7 +57,7 @@ const runPowerShellFile = (scriptName: string, args: string[], env: NodeJS.Proce
   );
 };
 
-const createFakeDevTunnel = (mode: 'none' | 'one' | 'multi' | 'host-wrong-first' | 'not-owned') => {
+const createFakeDevTunnel = (mode: 'none' | 'one' | 'multi' | 'host-wrong-first' | 'not-owned' | 'create-not-owned') => {
   const dir = mkdtempSync(join(tmpdir(), 'coc-devtunnel-test-'));
   const logPath = join(dir, 'devtunnel.log');
   const cocLogPath = join(dir, 'coc.log');
@@ -75,6 +75,10 @@ if (logPath) {
 }
 const mode = process.env.FAKE_DEVTUNNEL_MODE || 'none';
 if (args[0] === 'create') {
+  if (mode === 'create-not-owned') {
+    console.error('Unauthorized tunnel access: Request not permitted.');
+    process.exit(11);
+  }
   process.exit(0);
 }
 if (args[0] === 'port' && args[1] === 'list') {
@@ -410,6 +414,19 @@ if ($errors.Count -gt 0) {
     }
   });
 
+  it('reports ownership conflicts raised by create itself (not as an auth error)', () => {
+    const fake = createFakeDevTunnel('create-not-owned');
+    try {
+      const result = runPowerShellFile('config-devtunnel.ps1', ['-TunnelId', 'foreign-coc'], fake.env);
+      const output = `${result.stdout}\n${result.stderr}`;
+      expect(result.status, output).toBe(2);
+      expect(output).toContain('owned by a different account or in use elsewhere');
+      expect(output).not.toContain('devtunnel is not authenticated');
+    } finally {
+      fake.cleanup();
+    }
+  });
+
   it('rejects Port with TunnelId before building', () => {
     const result = runPowerShellFile('coc-serve-loop.ps1', ['-TunnelId', 'my-remote-coc', '-Port', '51234', '-SkipInitialBuild']);
     const output = `${result.stdout}\n${result.stderr}`;
@@ -700,6 +717,19 @@ describeBash('CoC service bash script behavior', () => {
       expect(output).toContain('owned by a different account or in use elsewhere');
       expect(output).toContain('rerun with a different --tunnel-id');
       expect(readDevTunnelLog(fake.logPath).some((line) => line.startsWith('port\tcreate\tforeign-coc'))).toBe(false);
+    } finally {
+      fake.cleanup();
+    }
+  });
+
+  it('config-devtunnel.sh reports ownership conflicts raised by create itself (not as an auth error)', () => {
+    const fake = createFakeDevTunnel('create-not-owned');
+    try {
+      const result = runBashFile('config-devtunnel.sh', ['--tunnel-id', 'foreign-coc'], fake.env);
+      const output = `${result.stdout}\n${result.stderr}`;
+      expect(result.status, output).toBe(2);
+      expect(output).toContain('owned by a different account or in use elsewhere');
+      expect(output).not.toContain('devtunnel is not authenticated');
     } finally {
       fake.cleanup();
     }
