@@ -328,6 +328,8 @@ export type UserInputHandler = (
  * - Copilot `assistant.usage` events (per-turn) and `session.usage_info`
  *   events (session-level quota info)
  * - Codex `turn.completed.usage` events (per-turn totals only)
+ * - Claude `result.usage` events plus optional `getContextUsage()` context
+ *   window data
  */
 export interface TokenUsage {
     /** Total input tokens consumed across all turns */

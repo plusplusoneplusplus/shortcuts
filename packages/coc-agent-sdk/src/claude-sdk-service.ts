@@ -28,7 +28,7 @@
  * themselves.
  */
 
-import type { SendMessageOptions, MCPServerConfig, MCPLocalServerConfig, ReasoningEffort } from './types';
+import type { SendMessageOptions, MCPServerConfig, MCPLocalServerConfig, ReasoningEffort, TokenUsage } from './types';
 import type { ToolEvent } from './types';
 import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult } from './sdk-service-interface';
 import type { IAccountQuotaResult, IAccountQuotaSnapshot } from './copilot-sdk-service';
@@ -98,6 +98,8 @@ interface ClaudeResultMessage {
     subtype: 'success' | 'error_max_turns' | 'error_during_execution';
     result?: string;
     is_error?: boolean;
+    duration_ms?: number;
+    num_turns?: number;
     /** Total cost of the request in USD */
     total_cost_usd?: number;
     /** Total input/output token counts */
@@ -108,6 +110,31 @@ interface ClaudeResultMessage {
         cache_read_input_tokens?: number;
     };
     session_id?: string;
+}
+
+interface ClaudeTokenEntry {
+    tokens?: number;
+}
+
+interface ClaudeMessageBreakdown {
+    toolCallTokens?: number;
+    toolResultTokens?: number;
+    attachmentTokens?: number;
+    assistantMessageTokens?: number;
+    userMessageTokens?: number;
+    redirectedContextTokens?: number;
+    unattributedTokens?: number;
+}
+
+interface ClaudeContextUsage {
+    totalTokens?: number;
+    maxTokens?: number;
+    systemPromptSections?: ClaudeTokenEntry[];
+    systemTools?: ClaudeTokenEntry[];
+    mcpTools?: ClaudeTokenEntry[];
+    deferredBuiltinTools?: ClaudeTokenEntry[];
+    messageBreakdown?: ClaudeMessageBreakdown;
+    apiUsage?: ClaudeResultMessage['usage'] | null;
 }
 
 interface ClaudeSystemMessage {
@@ -218,6 +245,7 @@ export interface ClaudeAccountInfo {
 interface ClaudeQueryHandle extends AsyncIterable<ClaudeSDKMessage> {
     accountInfo?(): Promise<ClaudeAccountInfo>;
     supportedModels?(): Promise<Array<{ value?: string; displayName?: string; description?: string }>>;
+    getContextUsage?(): Promise<ClaudeContextUsage>;
     return?(value?: unknown): Promise<{ done: true; value: unknown }>;
 }
 
@@ -245,6 +273,7 @@ interface ActiveClaudeSession {
 
 const CLAUDE_AGENT_SDK_PACKAGE = '@anthropic-ai/claude-agent-sdk';
 const CLAUDE_MODEL_DISCOVERY_TIMEOUT_MS = 15_000;
+const CLAUDE_CONTEXT_USAGE_TIMEOUT_MS = 2_000;
 /** Reasoning-effort levels CoC forwards to Claude Code's `effort` option. */
 const CLAUDE_EFFORT_LEVELS: readonly ReasoningEffort[] = ['low', 'medium', 'high', 'xhigh'];
 const runtimeRequire = createRequire(__filename);
@@ -569,6 +598,7 @@ export class ClaudeSDKService implements ISDKService {
         const chunks: string[] = [];
         const toolCalls = new Map<string, ToolCall>();
         const startedToolCalls = new Set<string>();
+        let tokenUsage: TokenUsage | undefined;
 
         const publishProviderSessionId = (providerSessionId: string | undefined) => {
             if (!providerSessionId || providerSessionId === currentSessionId) return;
@@ -635,6 +665,7 @@ export class ClaudeSDKService implements ISDKService {
                             sessionId: currentSessionId,
                         };
                     }
+                    tokenUsage = addClaudeUsage(tokenUsage, msg);
                     // If the result contains text not yet emitted, add it.
                     if (typeof msg.result === 'string' && msg.result && chunks.join('') === '') {
                         chunks.push(msg.result);
@@ -653,11 +684,13 @@ export class ClaudeSDKService implements ISDKService {
 
             // Empty chunk signals end-of-stream.
             options.onStreamingChunk?.('');
+            tokenUsage = addClaudeContextUsage(tokenUsage, await this.safeGetClaudeContextUsage(handle));
 
             return {
                 success: true,
                 response: chunks.join(''),
                 sessionId: currentSessionId,
+                ...(tokenUsage ? { tokenUsage } : {}),
                 ...(toolCalls.size > 0 ? { toolCalls: Array.from(toolCalls.values()) } : {}),
             } as IInvocationResult;
         } catch (err) {
@@ -819,6 +852,24 @@ export class ClaudeSDKService implements ISDKService {
             typeof (msg as ClaudeRateLimitEvent).rate_limit_info === 'object' &&
             (msg as ClaudeRateLimitEvent).rate_limit_info !== null
         );
+    }
+
+    private async safeGetClaudeContextUsage(handle: ClaudeQueryHandle): Promise<ClaudeContextUsage | undefined> {
+        if (!handle.getContextUsage) return undefined;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+            return await Promise.race([
+                handle.getContextUsage(),
+                new Promise<undefined>((resolve) => {
+                    timer = setTimeout(() => resolve(undefined), CLAUDE_CONTEXT_USAGE_TIMEOUT_MS);
+                    timer.unref?.();
+                }),
+            ]);
+        } catch {
+            return undefined;
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
     }
 
     private handleClaudeToolUse(
@@ -1173,6 +1224,111 @@ function mapForgeMcpServerToClaude(cfg: MCPServerConfig): ClaudeMcpServerConfig 
         args: local.args ?? [],
         ...(local.env ? { env: local.env } : {}),
     };
+}
+
+function emptyClaudeTokenUsage(): TokenUsage {
+    return {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        totalTokens: 0,
+        turnCount: 0,
+    };
+}
+
+function claudeUsageNumber(value: number | undefined): number {
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function positiveClaudeUsageNumber(value: number | undefined): number | undefined {
+    const normalized = claudeUsageNumber(value);
+    return normalized > 0 ? normalized : undefined;
+}
+
+function addClaudeUsage(current: TokenUsage | undefined, msg: Pick<ClaudeResultMessage, 'usage' | 'total_cost_usd' | 'duration_ms' | 'num_turns'>): TokenUsage | undefined {
+    if (!msg.usage) return current;
+
+    const result = current ? { ...current } : emptyClaudeTokenUsage();
+    result.inputTokens += claudeUsageNumber(msg.usage.input_tokens);
+    result.outputTokens += claudeUsageNumber(msg.usage.output_tokens);
+    result.cacheReadTokens += claudeUsageNumber(msg.usage.cache_read_input_tokens);
+    result.cacheWriteTokens += claudeUsageNumber(msg.usage.cache_creation_input_tokens);
+    result.totalTokens = result.inputTokens + result.outputTokens;
+    result.turnCount += Math.max(1, claudeUsageNumber(msg.num_turns));
+    if (msg.total_cost_usd != null && Number.isFinite(msg.total_cost_usd)) {
+        result.cost = (result.cost ?? 0) + msg.total_cost_usd;
+    }
+    if (msg.duration_ms != null && Number.isFinite(msg.duration_ms)) {
+        result.duration = (result.duration ?? 0) + msg.duration_ms;
+    }
+    return result;
+}
+
+function sumClaudeTokenEntries(entries: ClaudeTokenEntry[] | undefined): number | undefined {
+    if (!entries) return undefined;
+    let total = 0;
+    let seen = false;
+    for (const entry of entries) {
+        if (typeof entry.tokens === 'number' && Number.isFinite(entry.tokens)) {
+            total += entry.tokens;
+            seen = true;
+        }
+    }
+    return seen ? total : undefined;
+}
+
+function sumClaudeOptionalNumbers(values: Array<number | undefined>): number | undefined {
+    let total = 0;
+    let seen = false;
+    for (const value of values) {
+        if (typeof value === 'number' && Number.isFinite(value)) {
+            total += value;
+            seen = true;
+        }
+    }
+    return seen ? total : undefined;
+}
+
+function sumClaudeMessageBreakdown(breakdown: ClaudeMessageBreakdown | undefined): number | undefined {
+    if (!breakdown) return undefined;
+    return sumClaudeOptionalNumbers([
+        breakdown.toolCallTokens,
+        breakdown.toolResultTokens,
+        breakdown.attachmentTokens,
+        breakdown.assistantMessageTokens,
+        breakdown.userMessageTokens,
+        breakdown.redirectedContextTokens,
+        breakdown.unattributedTokens,
+    ]);
+}
+
+function addClaudeContextUsage(current: TokenUsage | undefined, context: ClaudeContextUsage | undefined): TokenUsage | undefined {
+    if (!context) return current;
+
+    let result = current;
+    if (!result && context.apiUsage) {
+        result = addClaudeUsage(undefined, { usage: context.apiUsage, num_turns: 1 });
+    }
+    if (!result) return undefined;
+
+    const tokenLimit = positiveClaudeUsageNumber(context.maxTokens);
+    const currentTokens = positiveClaudeUsageNumber(context.totalTokens);
+    if (tokenLimit != null) result.tokenLimit = tokenLimit;
+    if (currentTokens != null) result.currentTokens = currentTokens;
+
+    const systemTokens = sumClaudeTokenEntries(context.systemPromptSections);
+    const toolDefinitionsTokens = sumClaudeOptionalNumbers([
+        sumClaudeTokenEntries(context.systemTools),
+        sumClaudeTokenEntries(context.mcpTools),
+        sumClaudeTokenEntries(context.deferredBuiltinTools),
+    ]);
+    const conversationTokens = sumClaudeMessageBreakdown(context.messageBreakdown);
+
+    if (systemTokens != null) result.systemTokens = systemTokens;
+    if (toolDefinitionsTokens != null) result.toolDefinitionsTokens = toolDefinitionsTokens;
+    if (conversationTokens != null) result.conversationTokens = conversationTokens;
+    return result;
 }
 
 export function mapClaudeRateLimitInfoToQuota(info: ClaudeRateLimitInfo): IAccountQuotaResult {

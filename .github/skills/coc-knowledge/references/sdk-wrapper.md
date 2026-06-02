@@ -119,6 +119,8 @@ sdkServiceRegistry.register(SDK_PROVIDER_CODEX, svc);
 
 `ClaudeSDKService` implements `ISDKService` backed by the **optional** `@anthropic-ai/claude-agent-sdk` peer dependency. It lazy-loads the SDK's `query` export, streams Claude messages into the common invocation result shape, and reports `{ available: false }` with install guidance when the package cannot be imported.
 
+Claude token usage is mapped from successful `result.usage` messages into the shared `TokenUsage` result shape. The adapter fills `inputTokens`, `outputTokens`, `cacheReadTokens` from `cache_read_input_tokens`, `cacheWriteTokens` from `cache_creation_input_tokens`, `totalTokens`, `cost`, `duration`, and `turnCount`. When the query handle exposes `getContextUsage()`, the adapter best-effort enriches `TokenUsage` with `tokenLimit`/`currentTokens` and structured context breakdown fields (`systemTokens`, `toolDefinitionsTokens`, `conversationTokens`). Context lookup failures and timeouts are ignored so a completed Claude response still succeeds with the result-level totals.
+
 Claude Agent SDK does **not** expose a direct quota RPC equivalent to Copilot `account.getQuota` or Codex `account/rateLimits/read`. `ClaudeSDKService.getAccountQuota()` surfaces, in priority order:
 
 1. The most recent structured `rate_limit_event` emitted during a Claude session (concrete per-limit usage, mapped via `mapClaudeRateLimitInfoToQuota`).
