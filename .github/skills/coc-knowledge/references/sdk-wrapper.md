@@ -97,6 +97,8 @@ Codex permission mode is mapped at the provider boundary with `approvalPolicy: '
 
 Codex image attachments are passed at the provider boundary as `@openai/codex-sdk` structured `local_image` inputs. When `SendMessageOptions.attachments` includes file attachments with supported raster image extensions (`png`, `jpg`/`jpeg`, `gif`, `webp`), `CodexSDKService` sends an input array containing the prompt text plus `{ type: 'local_image', path }` entries in attachment order. Directories, non-images, and SVGs are ignored so text-only behavior is preserved.
 
+Codex token usage is mapped from `turn.completed.usage` into the shared `TokenUsage` result shape when the SDK reports it. The adapter fills per-turn totals only: `inputTokens`, `outputTokens`, `cacheReadTokens` from `cached_input_tokens`, `cacheWriteTokens: 0`, `totalTokens`, and `turnCount`. Copilot-only session/context fields (`tokenLimit`, `currentTokens`, `systemTokens`, `toolDefinitionsTokens`, `conversationTokens`) remain absent because Codex does not expose an equivalent `session.usage_info` event.
+
 **Thread ↔ session mapping:** Every CoC session ID maps to exactly one Codex thread. The mapping is created on the first `sendMessage()` call for a session and removed on abort or dispose.
 
 **Authentication:** CoC does not own a Codex auth store or `/api/codex-auth/*` routes. Codex authentication is handled by the Codex SDK/CLI; hosts may still inject an optional `CodexAuthChecker` if they need a preflight gate before loading the SDK.

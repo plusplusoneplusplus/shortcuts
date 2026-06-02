@@ -324,8 +324,10 @@ export type UserInputHandler = (
 /**
  * Aggregated token usage data from SDK events.
  *
- * Accumulated from `assistant.usage` events (per-turn) and
- * `session.usage_info` events (session-level quota info).
+ * Accumulated from provider usage events:
+ * - Copilot `assistant.usage` events (per-turn) and `session.usage_info`
+ *   events (session-level quota info)
+ * - Codex `turn.completed.usage` events (per-turn totals only)
  */
 export interface TokenUsage {
     /** Total input tokens consumed across all turns */
