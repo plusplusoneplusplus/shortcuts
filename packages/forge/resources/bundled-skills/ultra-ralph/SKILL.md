@@ -61,6 +61,12 @@ Your task each iteration:
 3. Pick the next logical subtask toward the goal — implement one subtask only.
 4. Run tests/build to verify your change, then commit with a clear message.
 
+Keep each commit small and focused: one subtask — typically a single
+acceptance criterion (or a coherent slice of one) — per commit. Never batch
+multiple ACs into one commit. If a change starts growing large or spanning
+several ACs, commit what is already complete and end the iteration with
+RALPH_NEXT so the rest lands in later commits.
+
 When done with this iteration, you MUST:
 
 A. Append a new section to the progress journal with this exact header
