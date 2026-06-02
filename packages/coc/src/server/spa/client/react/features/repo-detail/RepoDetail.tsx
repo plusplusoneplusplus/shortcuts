@@ -53,10 +53,10 @@ export const SUB_TABS: { key: RepoSubTab; label: string; shortcut?: string }[] =
     { key: 'git', label: 'Git', shortcut: 'Alt+G' },
     { key: 'terminal', label: 'Terminal' },
     { key: 'work-items', label: 'Work Items', shortcut: 'Alt+I' },
-    { key: 'schedules', label: 'Schedules', shortcut: 'Alt+S' },
+    { key: 'pull-requests', label: 'Pull Requests', shortcut: 'Alt+R' },
     { key: 'explorer', label: 'Explorer', shortcut: 'Alt+E' },
     { key: 'workflows', label: 'Workflows', shortcut: 'Alt+W' },
-    { key: 'pull-requests', label: 'Pull Requests', shortcut: 'Alt+R' },
+    { key: 'schedules', label: 'Schedules', shortcut: 'Alt+S' },
     { key: 'tasks', label: 'Tasks (Dep.)', shortcut: 'Alt+T' },
     { key: 'notes', label: 'Notes', shortcut: 'Alt+N' },
     { key: 'settings', label: 'Settings', shortcut: 'Alt+C' },
@@ -75,8 +75,8 @@ export const VISIBLE_SUB_TABS = SHOW_WIKI_TAB
  */
 const TAB_GROUP_INDEX: Record<string, number> = {
     'chats': 1, 'activity': 1, 'git': 1, 'terminal': 1,
-    'work-items': 2, 'schedules': 2, 'tasks': 2,
-    'explorer': 3, 'workflows': 3, 'pull-requests': 3,
+    'work-items': 2, 'pull-requests': 2, 'tasks': 2,
+    'explorer': 3, 'workflows': 3, 'schedules': 3,
     'notes': 4, 'settings': 4, 'wiki': 4,
 };
 
