@@ -479,6 +479,48 @@ describe('reasoningEffort wiring in queue executor bridge', () => {
     });
 
     // -------------------------------------------------------------------------
+    it('executeWithAI() resolves Claude effort from the provider catalog when absent from the shared store', async () => {
+        // The shared modelMetadataStore is warmed from the default (Copilot)
+        // provider, so Claude models (default/opus/haiku) are missing from it.
+        // The executor must fall back to the Claude service's own listModels()
+        // so a supported effort ("high" for "default") validates instead of
+        // throwing "Unsupported reasoning effort ... Supported efforts: unknown".
+        getModelSpy.mockReturnValue(undefined); // shared store has no Claude models
+        sdkMocks.mockListModels.mockResolvedValue([
+            modelInfo('default', { supportedEfforts: ['low', 'medium', 'high'] }),
+            modelInfo('opus', { supportedEfforts: ['low', 'medium', 'high', 'xhigh'] }),
+            modelInfo('haiku', {}),
+        ]);
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task = chatTaskWithProvider('claude', 'default', 'high');
+        await executor.execute(task);
+
+        expect(sdkMocks.mockListModels).toHaveBeenCalled();
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
+        expect(call.model).toBe('default');
+        expect(call.reasoningEffort).toBe('high');
+    });
+
+    // -------------------------------------------------------------------------
+    it('executeWithAI() caches the Claude provider catalog across turns', async () => {
+        getModelSpy.mockReturnValue(undefined);
+        sdkMocks.mockListModels.mockResolvedValue([
+            modelInfo('opus', { supportedEfforts: ['low', 'medium', 'high', 'xhigh'] }),
+        ]);
+
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        await executor.execute(chatTaskWithProvider('claude', 'opus', 'xhigh'));
+        await executor.execute(chatTaskWithProvider('claude', 'opus', 'high'));
+
+        // Two turns, but the provider catalog is fetched only once.
+        expect(sdkMocks.mockListModels).toHaveBeenCalledTimes(1);
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(2);
+        expect((sdkMocks.mockSendMessage.mock.calls[1][0] as Record<string, unknown>).reasoningEffort).toBe('high');
+    });
+
+    // -------------------------------------------------------------------------
     it('executeFollowUp() uses provider-scoped reasoningEfforts for Codex session (Auto path)', async () => {
         getModelSpy.mockImplementation((id: string) =>
             id === 'gpt-5.5'

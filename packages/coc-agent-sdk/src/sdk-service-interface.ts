@@ -24,6 +24,13 @@ export interface IModelInfo {
     id: string;
     /** Human-readable model name */
     name: string;
+    /**
+     * Reasoning-effort levels this model supports, when the provider advertises
+     * them (e.g. `['low', 'medium', 'high', 'xhigh']`). Omitted or empty means
+     * the model exposes no selectable effort levels, so effort is left to the
+     * provider default. Surfaced by the admin model/effort-tier UIs.
+     */
+    supportedReasoningEfforts?: string[];
 }
 
 /**

@@ -55,7 +55,7 @@ Required:
   --out <path>            Output directory for artifacts
 
 Optional:
-  --target-model <m>      Copilot model for target agent   (default: claude-sonnet-4.5)
+  --target-model <m>      Copilot model for target agent   (default: claude-sonnet-4.6)
   --optimizer-model <m>   Copilot model for optimizer      (default: same as --target-model)
   --max-steps <n>         Max optimization steps           (default: 10)
   --w1 <weight>           Hidden-test pass-rate weight     (default: 0.7)

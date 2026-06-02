@@ -28,7 +28,7 @@
  * themselves.
  */
 
-import type { SendMessageOptions, MCPServerConfig, MCPLocalServerConfig } from './types';
+import type { SendMessageOptions, MCPServerConfig, MCPLocalServerConfig, ReasoningEffort } from './types';
 import type { ToolEvent } from './types';
 import type { ISDKService, IAvailabilityResult, IModelInfo, IInvocationResult } from './sdk-service-interface';
 import type { IAccountQuotaResult, IAccountQuotaSnapshot } from './copilot-sdk-service';
@@ -174,6 +174,13 @@ interface ClaudeQueryOptions {
     options?: {
         cwd?: string;
         model?: string;
+        /**
+         * Reasoning-effort level guiding how much thinking Claude applies.
+         * Mirrors the SDK's `EffortLevel`; the SDK silently downgrades a level
+         * the selected model does not support. (`'max'` is accepted by the SDK
+         * but not yet surfaced by CoC.)
+         */
+        effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
         /** Extra absolute directories Claude may access beyond `cwd`. */
         additionalDirectories?: string[];
         customSystemPrompt?: string;
@@ -238,6 +245,8 @@ interface ActiveClaudeSession {
 
 const CLAUDE_AGENT_SDK_PACKAGE = '@anthropic-ai/claude-agent-sdk';
 const CLAUDE_MODEL_DISCOVERY_TIMEOUT_MS = 15_000;
+/** Reasoning-effort levels CoC forwards to Claude Code's `effort` option. */
+const CLAUDE_EFFORT_LEVELS: readonly ReasoningEffort[] = ['low', 'medium', 'high', 'xhigh'];
 const runtimeRequire = createRequire(__filename);
 
 /**
@@ -468,15 +477,19 @@ export class ClaudeSDKService implements ISDKService {
 
     private isClaudeInitializeResponse(msg: unknown): msg is {
         type: 'control_response';
-        request_id: 'init-1';
         response: { response: { models: unknown } };
     } {
         if (typeof msg !== 'object' || msg === null) return false;
         const record = msg as Record<string, unknown>;
-        if (record.type !== 'control_response' || record.request_id !== 'init-1') return false;
+        if (record.type !== 'control_response') return false;
         const response = record.response;
         if (typeof response !== 'object' || response === null) return false;
-        const nested = (response as Record<string, unknown>).response;
+        const responseRecord = response as Record<string, unknown>;
+        // The Claude CLI nests `request_id` inside `response`; older builds placed
+        // it at the top level. Accept the init-1 reply in either location.
+        const requestId = record.request_id ?? responseRecord.request_id;
+        if (requestId !== 'init-1') return false;
+        const nested = responseRecord.response;
         return typeof nested === 'object' && nested !== null && 'models' in nested;
     }
 
@@ -489,10 +502,25 @@ export class ClaudeSDKService implements ISDKService {
                 const value = typeof record.value === 'string' ? record.value.trim() : '';
                 const displayName = typeof record.displayName === 'string' ? record.displayName.trim() : '';
                 if (!value || !displayName) return null;
-                return { id: value, name: displayName } as IModelInfo;
+                const info: IModelInfo = { id: value, name: displayName };
+                const efforts = this.mapClaudeCliEffortLevels(record.supportedEffortLevels);
+                if (efforts.length > 0) info.supportedReasoningEfforts = efforts;
+                return info;
             })
             .filter((model): model is IModelInfo => model !== null);
         return mapped.length > 0 ? mapped : null;
+    }
+
+    /**
+     * Map a Claude CLI model's `supportedEffortLevels` to the reasoning-effort
+     * levels CoC surfaces. The CLI advertises `low`/`medium`/`high`/`xhigh`/`max`;
+     * we keep only the levels in {@link CLAUDE_EFFORT_LEVELS} (CoC does not yet
+     * surface `max`) and return them in canonical order. A missing/empty list
+     * (e.g. Haiku) yields `[]` so no effort levels are advertised.
+     */
+    private mapClaudeCliEffortLevels(value: unknown): ReasoningEffort[] {
+        if (!Array.isArray(value)) return [];
+        return CLAUDE_EFFORT_LEVELS.filter(level => value.includes(level));
     }
 
     // ── Account quota from Claude rate-limit events ───────────────────────────
@@ -559,6 +587,7 @@ export class ClaudeSDKService implements ISDKService {
 
         try {
             const model = this.normalizeClaudeModel(options.model);
+            const effort = this.normalizeClaudeEffort(options.reasoningEffort);
             const permissionOptions = this.resolveClaudePermissionOptions(options.mode);
             const { servers: mcpServers, allowedTools, cleanup } = await this.buildClaudeMcpServers(options);
             mcpCleanup = cleanup;
@@ -569,6 +598,7 @@ export class ClaudeSDKService implements ISDKService {
                     ...(options.workingDirectory ? { cwd: options.workingDirectory } : {}),
                     additionalDirectories: this.resolveAdditionalDirectories(options),
                     ...(model ? { model } : {}),
+                    ...(effort ? { effort } : {}),
                     ...(options.systemMessage?.mode === 'append' ? { appendSystemPrompt: options.systemMessage.content } : {}),
                     ...(options.systemMessage?.mode === 'replace' ? { customSystemPrompt: options.systemMessage.content } : {}),
                     ...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
@@ -960,6 +990,23 @@ export class ClaudeSDKService implements ISDKService {
         // Only pass through Claude model IDs; reject Copilot/Codex model IDs.
         if (normalized.startsWith('claude')) return trimmed;
         return undefined;
+    }
+
+    /**
+     * Normalize a requested reasoning effort for Claude Code's `effort` option.
+     *
+     * CoC's {@link ReasoningEffort} (`low`/`medium`/`high`/`xhigh`) is a subset of
+     * the SDK's `EffortLevel`, so recognized values pass straight through; the SDK
+     * silently downgrades a level the selected model does not support. Unknown or
+     * absent values (including `max`, which CoC does not yet surface) return
+     * `undefined` so no `effort` is sent and Claude's adaptive thinking decides.
+     */
+    private normalizeClaudeEffort(effort: string | undefined): ReasoningEffort | undefined {
+        if (!effort) return undefined;
+        const normalized = effort.trim().toLowerCase();
+        return (CLAUDE_EFFORT_LEVELS as readonly string[]).includes(normalized)
+            ? (normalized as ReasoningEffort)
+            : undefined;
     }
 
     /**

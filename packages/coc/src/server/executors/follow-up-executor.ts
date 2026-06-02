@@ -319,7 +319,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             const reasoningSelection = resolveReasoningSelection({
                 modelId: reasoningModel,
                 requestedEffort,
-                model: await this.getModelMetadataForReasoning(reasoningModel),
+                model: await this.getModelMetadataForReasoning(reasoningModel, sessionProvider, followUpAiService),
             });
 
             const sendOptions = {

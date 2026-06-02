@@ -11,7 +11,7 @@
  *   --out <path>           Output directory for artifacts (best_skill.md, history.jsonl, summary.json)
  *
  * Optional:
- *   --target-model <m>     Copilot model for the target agent (default: "claude-sonnet-4.5")
+ *   --target-model <m>     Copilot model for the target agent (default: "claude-sonnet-4.6")
  *   --optimizer-model <m>  Copilot model for the optimizer (default: same as --target-model)
  *   --max-steps <n>        Maximum optimization steps (default: 10)
  *   --w1 <weight>          Weight for hidden-test pass rate (default: 0.7)
@@ -31,12 +31,12 @@
  *     --max-steps 1
  */
 
+import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { execSync } from 'child_process';
 import { parseArgs } from 'util';
 import { loadCorpus } from './corpus';
-import { runLoop, LoopConfig } from './loop';
+import { LoopConfig, runLoop } from './loop';
 import { DEFAULT_WEIGHTS } from './scoring';
 
 // ─── Help ─────────────────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ Required:
   --out <path>           Output directory for artifacts
 
 Optional:
-  --target-model <m>     Copilot model for target agent  (default: claude-sonnet-4.5)
+  --target-model <m>     Copilot model for target agent  (default: claude-sonnet-4.6)
   --optimizer-model <m>  Copilot model for optimizer     (default: same as --target-model)
   --max-steps <n>        Max optimization steps          (default: 10)
   --w1 <weight>          Hidden-test weight              (default: 0.7)
@@ -80,16 +80,16 @@ function parseCliArgs() {
     try {
         parsed = parseArgs({
             options: {
-                skill:           { type: 'string' },
-                corpus:          { type: 'string' },
-                out:             { type: 'string' },
-                'target-model':  { type: 'string' },
+                skill: { type: 'string' },
+                corpus: { type: 'string' },
+                out: { type: 'string' },
+                'target-model': { type: 'string' },
                 'optimizer-model': { type: 'string' },
-                'max-steps':     { type: 'string' },
-                w1:              { type: 'string' },
-                w2:              { type: 'string' },
-                'timeout-ms':    { type: 'string' },
-                help:            { type: 'boolean', short: 'h' },
+                'max-steps': { type: 'string' },
+                w1: { type: 'string' },
+                w2: { type: 'string' },
+                'timeout-ms': { type: 'string' },
+                help: { type: 'boolean', short: 'h' },
             },
             strict: false,
             allowPositionals: false,
@@ -160,7 +160,7 @@ async function main() {
     }
 
     // Model / step config
-    const targetModel = (values['target-model'] as string | undefined) ?? 'claude-sonnet-4.5';
+    const targetModel = (values['target-model'] as string | undefined) ?? 'claude-sonnet-4.6';
     const optimizerModel = (values['optimizer-model'] as string | undefined) ?? targetModel;
     const maxSteps = parseInt((values['max-steps'] as string | undefined) ?? '10', 10);
     const w1 = parseFloat((values.w1 as string | undefined) ?? String(DEFAULT_WEIGHTS.hiddenTestWeight));
