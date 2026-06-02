@@ -3794,7 +3794,7 @@
     "lint": "eslint packages/vscode-extension/src --ext ts",
     "validate:models": "node scripts/validate-model-registry.js",
     "test": "npm run test:extension && npm run test:packages",
-    "test:extension": "node ./out/test/runTest.js",
+    "test:extension": "node scripts/run-extension-tests.js",
     "test:packages": "npm run test:run -w packages/coc-agent-sdk && npm run test:run -w packages/forge && npm run test:run -w packages/coc-client && npm run test:run -w packages/coc-memory && npm run test:run -w packages/coc && npm run test:run -w packages/deep-wiki",
     "test:all": "npm run test",
     "coverage": "npm run coverage -w packages/coc-agent-sdk && npm run coverage -w packages/forge && npm run coverage -w packages/coc-client && npm run coverage -w packages/coc-memory && npm run coverage -w packages/coc && npm run coverage -w packages/deep-wiki",
