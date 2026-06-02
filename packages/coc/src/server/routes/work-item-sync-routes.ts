@@ -60,6 +60,14 @@ function optionalString(value: unknown, path: string): string | undefined {
     return trimmed || undefined;
 }
 
+function optionalPositiveInteger(value: unknown, path: string): number | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+        throw badRequest(`${path} must be a positive integer`);
+    }
+    return value;
+}
+
 function parseProvider(value: unknown): WorkItemSyncProviderName {
     if (value === undefined) return DEFAULT_WORK_ITEM_SYNC_PROVIDER;
     if (typeof value !== 'string' || !isSupportedWorkItemSyncProvider(value)) {
@@ -220,54 +228,65 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                 const workspaceId = decodeURIComponent(match![1]);
                 const body = await parseJsonObjectBody(req);
 
-                const issueUrl = optionalString(body.issueUrl, 'issueUrl');
-                if (!issueUrl) {
-                    throw badRequest('issueUrl is required');
-                }
-
-                const urlMatch = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/issues\/(\d+)\/?$/i.exec(issueUrl);
-                if (!urlMatch) {
-                    throw badRequest(
-                        'issueUrl must be a valid GitHub issue URL: https://github.com/<owner>/<repo>/issues/<number>',
-                    );
-                }
-                const [, urlOwner, urlRepo, issueNumberStr] = urlMatch;
-                const issueNumber = parseInt(issueNumberStr, 10);
-
                 const { repo } = await resolveAvailableGitHubRepo(workspaceId);
                 const configuredOwner = repo.owner;
                 const configuredRepo = repo.repo;
 
-                if (
-                    urlOwner.toLowerCase() !== configuredOwner.toLowerCase() ||
-                    urlRepo.toLowerCase() !== configuredRepo.toLowerCase()
-                ) {
-                    throw badRequest(
-                        `Issue URL repo (${urlOwner}/${urlRepo}) does not match the workspace-configured GitHub repo (${configuredOwner}/${configuredRepo})`,
-                    );
+                const issueUrl = optionalString(body.issueUrl, 'issueUrl');
+                const explicitIssueNumber = optionalPositiveInteger(body.issueNumber, 'issueNumber');
+                if (!issueUrl && explicitIssueNumber === undefined) {
+                    throw badRequest('Either issueUrl or issueNumber is required');
+                }
+
+                let issueNumber = explicitIssueNumber;
+                if (issueUrl) {
+                    const urlMatch = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/issues\/(\d+)\/?$/i.exec(issueUrl);
+                    if (!urlMatch) {
+                        throw badRequest(
+                            'issueUrl must be a valid GitHub issue URL: https://github.com/<owner>/<repo>/issues/<number>',
+                        );
+                    }
+                    const [, urlOwner, urlRepo, issueNumberStr] = urlMatch;
+                    const urlIssueNumber = parseInt(issueNumberStr, 10);
+                    if (
+                        urlOwner.toLowerCase() !== configuredOwner.toLowerCase() ||
+                        urlRepo.toLowerCase() !== configuredRepo.toLowerCase()
+                    ) {
+                        throw badRequest(
+                            `Issue URL repo (${urlOwner}/${urlRepo}) does not match the workspace-configured GitHub repo (${configuredOwner}/${configuredRepo})`,
+                        );
+                    }
+                    if (issueNumber !== undefined && issueNumber !== urlIssueNumber) {
+                        throw badRequest('issueNumber must match the issue number in issueUrl');
+                    }
+                    issueNumber = urlIssueNumber;
+                }
+                const resolvedIssueNumber = issueNumber;
+                if (resolvedIssueNumber === undefined) {
+                    throw badRequest('Either issueUrl or issueNumber is required');
                 }
 
                 const allItems = await ctx.workItemStore.listWorkItems({ repoId: workspaceId });
                 const duplicate = allItems.items.find(item =>
-                    item.githubMirror?.issueNumber === issueNumber ||
+                    item.githubMirror?.issueNumber === resolvedIssueNumber ||
                     (
                         item.tracker?.kind === 'github-backed' &&
-                        item.tracker.github.issueNumber === issueNumber
+                        item.tracker.github.issueNumber === resolvedIssueNumber
                     ),
                 );
                 if (duplicate) {
                     throw new APIError(
                         409,
-                        `GitHub issue #${issueNumber} is already imported as work item '${duplicate.id}'`,
+                        `GitHub issue #${resolvedIssueNumber} is already imported as work item '${duplicate.id}'`,
                         'DUPLICATE_IMPORT',
                         { existingWorkItemId: duplicate.id },
                     );
                 }
 
                 const transport = ctx.githubTransport ?? new GhCliGitHubWorkItemIssueTransport();
-                const issue = await transport.getIssue(repo, issueNumber);
+                const issue = await transport.getIssue(repo, resolvedIssueNumber);
                 if (!issue) {
-                    throw notFound(`GitHub issue #${issueNumber}`);
+                    throw notFound(`GitHub issue #${resolvedIssueNumber}`);
                 }
                 const rootType = parseGitHubWorkItemIssue(issue).type ?? 'epic';
                 if (rootType !== 'epic') {

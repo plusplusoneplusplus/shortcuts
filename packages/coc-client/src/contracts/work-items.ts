@@ -219,8 +219,10 @@ export interface CreateWorkItemRequest {
 }
 
 export interface ImportFromGitHubRequest extends JsonObject {
-  /** Full GitHub issue URL, e.g. https://github.com/<owner>/<repo>/issues/<number> */
-  issueUrl: string;
+  /** Full GitHub issue URL, e.g. https://github.com/<owner>/<repo>/issues/<number>. */
+  issueUrl?: string;
+  /** Issue number in the workspace-configured GitHub repository. */
+  issueNumber?: number;
 }
 
 export interface SyncGitHubEpicResponse extends JsonObject {

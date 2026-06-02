@@ -11,28 +11,31 @@ export interface ImportFromGitHubDialogProps {
 }
 
 export function ImportFromGitHubDialog({ open, onClose, workspaceId, onImported }: ImportFromGitHubDialogProps) {
-    const [issueUrl, setIssueUrl] = useState('');
+    const [issueInput, setIssueInput] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         if (open) {
-            setIssueUrl('');
+            setIssueInput('');
             setLoading(false);
             setError(null);
         }
     }, [open]);
 
     const handleImport = useCallback(async () => {
-        const trimmedUrl = issueUrl.trim();
-        if (!trimmedUrl) {
-            setError('Please enter a GitHub issue URL');
+        const trimmedInput = issueInput.trim();
+        if (!trimmedInput) {
+            setError('Please enter a GitHub issue URL or issue number');
             return;
         }
         setLoading(true);
         setError(null);
         try {
-            const item = await getSpaCocClient().workItems.importFromGitHub(workspaceId, { issueUrl: trimmedUrl });
+            const request = /^\d+$/.test(trimmedInput)
+                ? { issueNumber: Number(trimmedInput) }
+                : { issueUrl: trimmedInput };
+            const item = await getSpaCocClient().workItems.importFromGitHub(workspaceId, request);
             onImported?.(item);
             onClose();
         } catch (err) {
@@ -44,7 +47,7 @@ export function ImportFromGitHubDialog({ open, onClose, workspaceId, onImported 
         } finally {
             setLoading(false);
         }
-    }, [workspaceId, issueUrl, onImported, onClose]);
+    }, [workspaceId, issueInput, onImported, onClose]);
 
     return (
         <Dialog
@@ -56,7 +59,7 @@ export function ImportFromGitHubDialog({ open, onClose, workspaceId, onImported 
                     <Button variant="secondary" onClick={onClose} disabled={loading}>
                         Cancel
                     </Button>
-                    <Button variant="primary" onClick={handleImport} disabled={loading || !issueUrl.trim()} loading={loading}>
+                    <Button variant="primary" onClick={handleImport} disabled={loading || !issueInput.trim()} loading={loading}>
                         {loading ? 'Importing…' : 'Import'}
                     </Button>
                 </>
@@ -65,14 +68,14 @@ export function ImportFromGitHubDialog({ open, onClose, workspaceId, onImported 
             <div className="space-y-3">
                 <div>
                     <label className="block text-xs font-medium text-[#848484] dark:text-[#999] mb-1">
-                        GitHub Issue URL
+                        GitHub Issue URL or number
                     </label>
                     <input
-                        type="url"
+                        type="text"
                         className="w-full rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-sm text-[#1e1e1e] dark:text-[#cccccc] p-2 focus:outline-none focus:ring-1 focus:ring-[#0078d4]"
-                        value={issueUrl}
-                        onChange={e => setIssueUrl(e.target.value)}
-                        placeholder="https://github.com/<owner>/<repo>/issues/<number>"
+                        value={issueInput}
+                        onChange={e => setIssueInput(e.target.value)}
+                        placeholder="123 or https://github.com/<owner>/<repo>/issues/123"
                         disabled={loading}
                         autoFocus
                         onKeyDown={e => {
@@ -81,11 +84,11 @@ export function ImportFromGitHubDialog({ open, onClose, workspaceId, onImported 
                                 handleImport();
                             }
                         }}
-                        data-testid="import-github-url-input"
+                        data-testid="import-github-issue-input"
                     />
                 </div>
                 <p className="text-[11px] text-[#848484] dark:text-[#999]">
-                    Imports the issue from your workspace-configured GitHub repository and creates a mirrored Epic tree.
+                    Paste a full issue URL or enter an issue number from your workspace-configured GitHub repository.
                 </p>
             </div>
             {error && (

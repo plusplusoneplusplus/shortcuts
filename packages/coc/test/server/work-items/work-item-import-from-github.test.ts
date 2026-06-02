@@ -326,13 +326,62 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
         expect(res.body.error).toMatch(/valid GitHub issue URL/i);
     });
 
-    it('missing issueUrl field → 400', async () => {
+    it('imports by issue number from the workspace-configured GitHub repo', async () => {
+        const issueNumber = 77;
+        const issues = new Map<number, GitHubWorkItemIssue>([
+            [issueNumber, makeMockIssue(issueNumber, 'Number Import Epic', 'open', {
+                labels: ['coc:type:epic'],
+                body: 'Epic body imported by number',
+            })],
+        ]);
+        await startServer(issues);
+
+        const res = await post(importUrl(), { issueNumber });
+
+        expect(res.status).toBe(201);
+        expect(res.body).toMatchObject({
+            title: 'Number Import Epic',
+            repoId: REPO_ID,
+            type: 'epic',
+            tracker: {
+                kind: 'github-backed',
+                provider: 'github',
+                github: {
+                    issueNumber,
+                    issueUrl: `https://github.com/${CONFIGURED_OWNER}/${CONFIGURED_REPO}/issues/${issueNumber}`,
+                },
+            },
+            githubMirror: {
+                issueNumber,
+                issueUrl: `https://github.com/${CONFIGURED_OWNER}/${CONFIGURED_REPO}/issues/${issueNumber}`,
+            },
+        });
+        const stored = await store.getWorkItem(res.body.id, REPO_ID);
+        expect(stored?.githubMirror?.issueNumber).toBe(issueNumber);
+    });
+
+    it('rejects mismatched issueUrl and issueNumber payloads', async () => {
+        const issueNumber = 88;
+        await startServer(new Map([
+            [issueNumber, makeMockIssue(issueNumber, 'Mismatch Epic')],
+        ]));
+
+        const res = await post(importUrl(), {
+            issueUrl: `https://github.com/${CONFIGURED_OWNER}/${CONFIGURED_REPO}/issues/${issueNumber}`,
+            issueNumber: issueNumber + 1,
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.body.error).toMatch(/issueNumber must match/i);
+    });
+
+    it('missing issueUrl and issueNumber fields → 400', async () => {
         await startServer(new Map());
 
         const res = await post(importUrl(), {});
 
         expect(res.status).toBe(400);
-        expect(res.body.error).toMatch(/issueUrl is required/i);
+        expect(res.body.error).toMatch(/Either issueUrl or issueNumber is required/i);
     });
 
     it('wrong owner/repo → 400', async () => {
