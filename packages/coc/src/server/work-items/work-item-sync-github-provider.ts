@@ -29,6 +29,7 @@ import type {
     WorkItemStore,
     WorkItemSyncLink,
     WorkItemSyncParentReference,
+    WorkItemType,
 } from './types';
 import {
     ALLOWED_PARENT_TYPES,
@@ -109,6 +110,13 @@ interface RemoteParentResolution {
     parentItem?: WorkItem;
     parentId?: string;
     warnings: WorkItemSyncWarning[];
+}
+
+export interface ImportGitHubEpicTreeResult {
+    root: WorkItem;
+    items: WorkItem[];
+    created: number;
+    updated: number;
 }
 
 const execFileAsync = promisify(execFile) as ExecFileAsync;
@@ -415,10 +423,216 @@ function sameRemote(link: WorkItemSyncLink | undefined, repo: AvailableGitHubWor
     return false;
 }
 
+function sameGithubMirror(
+    mirror: WorkItem['githubMirror'] | undefined,
+    issue: Pick<GitHubWorkItemIssue, 'id' | 'number' | 'htmlUrl' | 'url'>,
+): boolean {
+    if (!mirror) return false;
+    if (mirror.issueNumber === issue.number) return true;
+    if (mirror.issueId !== undefined && issue.id !== undefined && mirror.issueId === String(issue.id)) return true;
+    return Boolean(mirror.issueUrl && (mirror.issueUrl === issue.htmlUrl || mirror.issueUrl === issue.url));
+}
+
+function githubMirrorForIssue(issue: GitHubWorkItemIssue, pulledAt: string): NonNullable<WorkItem['githubMirror']> {
+    return {
+        issueId: issue.id !== undefined ? String(issue.id) : undefined,
+        issueNumber: issue.number,
+        issueUrl: issue.htmlUrl ?? issue.url,
+        state: issue.state,
+        updatedAt: issue.updatedAt,
+        lastPulledAt: pulledAt,
+    };
+}
+
 function remoteParentForIssue(issue: GitHubWorkItemIssue, parsed: ParsedGitHubWorkItemIssue): Pick<RemoteParentResolution, 'parent' | 'source'> {
     if (issue.nativeParent) return { parent: issue.nativeParent, source: 'native' };
     if (parsed.metadata?.parent) return { parent: parsed.metadata.parent, source: 'metadata' };
     return {};
+}
+
+function metadataParentForIssue(parsed: ParsedGitHubWorkItemIssue): WorkItemSyncParentReference | undefined {
+    return parsed.metadata?.parent;
+}
+
+function parentOwnerRepoMatches(
+    parent: WorkItemSyncParentReference,
+    repo: AvailableGitHubWorkItemSyncRepo,
+): boolean {
+    return (!parent.owner || parent.owner.toLowerCase() === repo.owner.toLowerCase())
+        && (!parent.repo || parent.repo.toLowerCase() === repo.repo.toLowerCase());
+}
+
+function parentReferenceTargetsIssue(
+    parent: WorkItemSyncParentReference | undefined,
+    repo: AvailableGitHubWorkItemSyncRepo,
+    issue: GitHubWorkItemIssue,
+    parsed: ParsedGitHubWorkItemIssue,
+): boolean {
+    if (!parent || !parentOwnerRepoMatches(parent, repo)) return false;
+    if (parent.issueNumber !== undefined && parent.issueNumber === issue.number) return true;
+    if (parent.issueId !== undefined && issue.id !== undefined && parent.issueId === String(issue.id)) return true;
+    if (parent.issueUrl !== undefined && (parent.issueUrl === issue.htmlUrl || parent.issueUrl === issue.url)) return true;
+    return Boolean(parent.workItemId && parsed.metadata?.workItemId === parent.workItemId);
+}
+
+function issueMapKey(issue: GitHubWorkItemIssue): string {
+    return `number:${issue.number}`;
+}
+
+function uniqueIssues(rootIssue: GitHubWorkItemIssue, candidates: readonly GitHubWorkItemIssue[]): GitHubWorkItemIssue[] {
+    const result: GitHubWorkItemIssue[] = [];
+    const seen = new Set<string>();
+    for (const issue of [rootIssue, ...candidates]) {
+        const key = issueMapKey(issue);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        result.push(issue);
+    }
+    return result;
+}
+
+function collectGitHubEpicTreeIssues(
+    repo: AvailableGitHubWorkItemSyncRepo,
+    rootIssue: GitHubWorkItemIssue,
+    candidates: readonly GitHubWorkItemIssue[],
+): Array<{ issue: GitHubWorkItemIssue; parsed: ParsedGitHubWorkItemIssue }> {
+    const allIssues = uniqueIssues(rootIssue, candidates);
+    const parsedByNumber = new Map<number, ParsedGitHubWorkItemIssue>();
+    for (const issue of allIssues) {
+        parsedByNumber.set(issue.number, parseGitHubWorkItemIssue(issue));
+    }
+
+    const included = new Set<number>([rootIssue.number]);
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (const issue of allIssues) {
+            if (included.has(issue.number)) continue;
+            const parsed = parsedByNumber.get(issue.number)!;
+            const parent = metadataParentForIssue(parsed);
+            const hasIncludedParent = allIssues.some(candidate => {
+                if (!included.has(candidate.number)) return false;
+                return parentReferenceTargetsIssue(parent, repo, candidate, parsedByNumber.get(candidate.number)!);
+            });
+            if (hasIncludedParent) {
+                included.add(issue.number);
+                changed = true;
+            }
+        }
+    }
+
+    const childrenByParentNumber = new Map<number, GitHubWorkItemIssue[]>();
+    for (const issue of allIssues) {
+        if (!included.has(issue.number) || issue.number === rootIssue.number) continue;
+        const parsed = parsedByNumber.get(issue.number)!;
+        const parent = metadataParentForIssue(parsed);
+        const parentIssue = allIssues.find(candidate =>
+            included.has(candidate.number)
+            && parentReferenceTargetsIssue(parent, repo, candidate, parsedByNumber.get(candidate.number)!),
+        );
+        if (!parentIssue) continue;
+        const siblings = childrenByParentNumber.get(parentIssue.number) ?? [];
+        siblings.push(issue);
+        childrenByParentNumber.set(parentIssue.number, siblings);
+    }
+
+    const ordered: GitHubWorkItemIssue[] = [];
+    const visited = new Set<number>();
+    function visit(issue: GitHubWorkItemIssue): void {
+        if (visited.has(issue.number)) return;
+        visited.add(issue.number);
+        ordered.push(issue);
+        for (const child of [...(childrenByParentNumber.get(issue.number) ?? [])].sort((a, b) => a.number - b.number)) {
+            visit(child);
+        }
+    }
+    visit(rootIssue);
+    return ordered.map(issue => ({ issue, parsed: parsedByNumber.get(issue.number)! }));
+}
+
+interface RemoteLocalMaps {
+    byIssueNumber: Map<number, string>;
+    byIssueId: Map<string, string>;
+    byIssueUrl: Map<string, string>;
+    byWorkItemId: Map<string, string>;
+}
+
+function emptyRemoteLocalMaps(): RemoteLocalMaps {
+    return {
+        byIssueNumber: new Map(),
+        byIssueId: new Map(),
+        byIssueUrl: new Map(),
+        byWorkItemId: new Map(),
+    };
+}
+
+function rememberRemoteLocal(
+    maps: RemoteLocalMaps,
+    issue: GitHubWorkItemIssue,
+    parsed: ParsedGitHubWorkItemIssue,
+    localId: string,
+): void {
+    maps.byIssueNumber.set(issue.number, localId);
+    if (issue.id !== undefined) maps.byIssueId.set(String(issue.id), localId);
+    if (issue.htmlUrl) maps.byIssueUrl.set(issue.htmlUrl, localId);
+    if (issue.url) maps.byIssueUrl.set(issue.url, localId);
+    if (parsed.metadata?.workItemId) maps.byWorkItemId.set(parsed.metadata.workItemId, localId);
+}
+
+function localParentIdForMetadataParent(
+    parent: WorkItemSyncParentReference | undefined,
+    maps: RemoteLocalMaps,
+): string | undefined {
+    if (!parent) return undefined;
+    if (parent.workItemId && maps.byWorkItemId.has(parent.workItemId)) return maps.byWorkItemId.get(parent.workItemId);
+    if (parent.issueNumber !== undefined && maps.byIssueNumber.has(parent.issueNumber)) return maps.byIssueNumber.get(parent.issueNumber);
+    if (parent.issueId && maps.byIssueId.has(parent.issueId)) return maps.byIssueId.get(parent.issueId);
+    if (parent.issueUrl && maps.byIssueUrl.has(parent.issueUrl)) return maps.byIssueUrl.get(parent.issueUrl);
+    return undefined;
+}
+
+async function findLocalMirrorForIssue(
+    context: { workspaceId: string; workItemStore: WorkItemStore },
+    repo: AvailableGitHubWorkItemSyncRepo,
+    entries: readonly WorkItemIndexEntry[],
+    issue: GitHubWorkItemIssue,
+    parsed: ParsedGitHubWorkItemIssue,
+): Promise<WorkItem | undefined> {
+    if (parsed.metadata?.workItemId) {
+        const item = await context.workItemStore.getWorkItem(parsed.metadata.workItemId, context.workspaceId);
+        if (item) return item;
+    }
+    const entry = entries.find(candidate =>
+        sameGithubMirror(candidate.githubMirror, issue)
+        || (candidate.syncLinks?.some(link => sameRemote(link, repo, issue)) ?? false),
+    );
+    return entry ? context.workItemStore.getWorkItem(entry.id, context.workspaceId) : undefined;
+}
+
+function githubBackedTrackerForRoot(issue: GitHubWorkItemIssue, pulledAt: string): WorkItem['tracker'] {
+    return {
+        kind: 'github-backed',
+        provider: 'github',
+        github: {
+            issueId: issue.id !== undefined ? String(issue.id) : undefined,
+            issueNumber: issue.number,
+            issueUrl: issue.htmlUrl ?? issue.url,
+            lastPulledAt: pulledAt,
+        },
+    };
+}
+
+function mirrorTypeForIssue(
+    issue: GitHubWorkItemIssue,
+    rootIssue: GitHubWorkItemIssue,
+    parsed: ParsedGitHubWorkItemIssue,
+): WorkItemType {
+    if (issue.number === rootIssue.number) return 'epic';
+    return parsed.type ?? 'work-item';
+}
+
+function tagsForMirror(parsed: ParsedGitHubWorkItemIssue): string[] | undefined {
+    return parsed.tags.length > 0 ? parsed.tags : undefined;
 }
 
 function parentReferenceComparable(parent: WorkItemSyncParentReference | undefined): Record<string, unknown> | undefined {
@@ -1619,4 +1833,86 @@ export async function importGitHubIssueAsWorkItem(
     );
     await context.workItemStore.addWorkItem(item);
     return item;
+}
+
+/**
+ * Import or re-pull a GitHub-backed Epic tree into CoC's read mirror.
+ *
+ * The tree root is the imported GitHub issue. Descendants are discovered only
+ * through hidden `coc-work-item-sync` parent metadata in issue bodies; native
+ * GitHub sub-issue links are intentionally ignored for this epic-rooted mirror.
+ */
+export async function importGitHubEpicTreeAsWorkItems(
+    context: { workspaceId: string; workItemStore: WorkItemStore },
+    repo: AvailableGitHubWorkItemSyncRepo,
+    rootIssue: GitHubWorkItemIssue,
+    candidateIssues: readonly GitHubWorkItemIssue[],
+    now?: () => string,
+): Promise<ImportGitHubEpicTreeResult> {
+    const pulledAt = (now ?? (() => new Date().toISOString()))();
+    const tree = collectGitHubEpicTreeIssues(repo, rootIssue, candidateIssues);
+    const index = (await context.workItemStore.listWorkItems({ repoId: context.workspaceId })).items;
+    const localByRemote = emptyRemoteLocalMaps();
+    const localById = new Map<string, WorkItem>();
+    const items: WorkItem[] = [];
+    let created = 0;
+    let updated = 0;
+
+    for (const { issue, parsed } of tree) {
+        const existing = await findLocalMirrorForIssue(context, repo, index, issue, parsed);
+        const type = mirrorTypeForIssue(issue, rootIssue, parsed);
+        const proposedParentId = issue.number === rootIssue.number
+            ? undefined
+            : localParentIdForMetadataParent(metadataParentForIssue(parsed), localByRemote);
+        const parent = proposedParentId
+            ? localById.get(proposedParentId) ?? await context.workItemStore.getWorkItem(proposedParentId, context.workspaceId)
+            : undefined;
+        const parentId = parent && isValidParentChildTypes(type, getEffectiveType(parent.type))
+            ? parent.id
+            : undefined;
+        const isRoot = issue.number === rootIssue.number;
+        const desiredId = existing?.id ?? parsed.metadata?.workItemId ?? crypto.randomUUID();
+        const commonFields = {
+            title: issue.title,
+            description: parsed.bodyWithoutMetadata,
+            type,
+            parentId,
+            tracker: isRoot ? githubBackedTrackerForRoot(issue, pulledAt) : undefined,
+            githubMirror: githubMirrorForIssue(issue, pulledAt),
+            tags: tagsForMirror(parsed),
+            syncLinks: undefined,
+        };
+
+        let item: WorkItem;
+        if (existing) {
+            item = await context.workItemStore.updateWorkItem(existing.id, commonFields) ?? {
+                ...existing,
+                ...commonFields,
+            };
+            updated++;
+        } else {
+            item = {
+                id: desiredId,
+                repoId: context.workspaceId,
+                ...commonFields,
+                status: 'created',
+                createdAt: pulledAt,
+                updatedAt: pulledAt,
+                source: 'manual',
+                priority: parsed.priority,
+            };
+            await context.workItemStore.addWorkItem(item);
+            created++;
+        }
+
+        localById.set(item.id, item);
+        rememberRemoteLocal(localByRemote, issue, parsed, item.id);
+        items.push(item);
+    }
+
+    const root = items.find(item => item.githubMirror?.issueNumber === rootIssue.number);
+    if (!root) {
+        throw new Error(`GitHub issue #${rootIssue.number} was not imported as the Epic root.`);
+    }
+    return { root, items, created, updated };
 }

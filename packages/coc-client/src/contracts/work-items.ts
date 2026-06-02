@@ -23,6 +23,15 @@ export interface WorkItemGitHubTrackerMetadata {
   lastPulledAt?: string;
 }
 
+export interface WorkItemGitHubMirrorMetadata {
+  issueId?: string;
+  issueNumber: number;
+  issueUrl?: string;
+  state?: string;
+  updatedAt?: string;
+  lastPulledAt?: string;
+}
+
 export type WorkItemTrackerMetadata =
   | { kind: 'local-only' }
   | { kind: 'github-backed'; provider: 'github'; github: WorkItemGitHubTrackerMetadata };
@@ -285,6 +294,8 @@ export interface WorkItem {
   parentId?: string;
   /** Epic-rooted tracker identity. Set on Epic roots; descendants inherit it. */
   tracker?: WorkItemTrackerMetadata;
+  /** GitHub read-mirror identity for items inside a GitHub-backed Epic tree. */
+  githubMirror?: WorkItemGitHubMirrorMetadata;
   /** External provider sync metadata. Empty or absent means the item is unlinked. */
   syncLinks?: WorkItemSyncLink[];
   createdAt: string;

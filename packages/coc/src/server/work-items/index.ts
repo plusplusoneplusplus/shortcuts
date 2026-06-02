@@ -5,6 +5,7 @@ export type {
     WorkItemType,
     WorkItemTrackerKind,
     WorkItemGitHubTrackerMetadata,
+    WorkItemGitHubMirrorMetadata,
     WorkItemTrackerMetadata,
     WorkItemSyncProvider,
     WorkItemSyncRemoteIdentity,
@@ -66,10 +67,12 @@ export {
 export {
     GhCliGitHubWorkItemIssueTransport,
     createGitHubWorkItemSyncProviderAdapter,
+    importGitHubEpicTreeAsWorkItems,
     type CreateGitHubWorkItemSyncProviderOptions,
     type GitHubWorkItemIssue,
     type GitHubWorkItemIssueListFilters,
     type GitHubWorkItemIssueTransport,
+    type ImportGitHubEpicTreeResult,
 } from './work-item-sync-github-provider';
 export {
     executeWorkItem,

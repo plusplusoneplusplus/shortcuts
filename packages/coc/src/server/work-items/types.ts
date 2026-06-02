@@ -115,6 +115,22 @@ export interface WorkItemGitHubTrackerMetadata {
     lastPulledAt?: string;
 }
 
+/** Per-item read-mirror details for a GitHub-backed Epic tree. */
+export interface WorkItemGitHubMirrorMetadata {
+    /** Provider-native issue ID for this mirrored item. */
+    issueId?: string;
+    /** Provider-native issue number for this mirrored item. */
+    issueNumber: number;
+    /** Browser URL for this mirrored GitHub issue. */
+    issueUrl?: string;
+    /** Mirrored GitHub issue open/closed state. CoC lifecycle status stays local. */
+    state?: string;
+    /** Provider updated-at timestamp for the mirrored issue. */
+    updatedAt?: string;
+    /** Last successful GitHub→local pull timestamp for this item. */
+    lastPulledAt?: string;
+}
+
 /**
  * Tracker identity for a work-item tree.
  *
@@ -321,6 +337,8 @@ export interface WorkItem {
     parentId?: string;
     /** Epic-rooted tracker identity. Set on Epic roots; descendants inherit it. */
     tracker?: WorkItemTrackerMetadata;
+    /** GitHub read-mirror identity for items inside a GitHub-backed Epic tree. */
+    githubMirror?: WorkItemGitHubMirrorMetadata;
     /** External provider sync metadata. Empty or absent means the item is unlinked. */
     syncLinks?: WorkItemSyncLink[];
     /** ISO timestamp when the work item was created. */
@@ -418,6 +436,8 @@ export interface WorkItemIndexEntry {
     parentId?: string;
     /** Epic-rooted tracker identity. Set on Epic roots; descendants inherit it. */
     tracker?: WorkItemTrackerMetadata;
+    /** GitHub read-mirror identity for items inside a GitHub-backed Epic tree. */
+    githubMirror?: WorkItemGitHubMirrorMetadata;
     /** External provider sync metadata. Empty or absent means the item is unlinked. */
     syncLinks?: WorkItemSyncLink[];
     source: WorkItemSource;
@@ -569,6 +589,7 @@ export function toIndexEntry(item: WorkItem): WorkItemIndexEntry {
         type: item.type,
         parentId: item.parentId,
         tracker: item.tracker,
+        githubMirror: item.githubMirror,
         syncLinks: item.syncLinks,
         source: item.source,
         priority: item.priority,

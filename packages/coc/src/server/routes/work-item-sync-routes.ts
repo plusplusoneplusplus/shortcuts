@@ -33,10 +33,11 @@ import {
 } from '../work-items/work-item-sync-provider';
 import {
     GhCliGitHubWorkItemIssueTransport,
-    importGitHubIssueAsWorkItem,
+    importGitHubEpicTreeAsWorkItems,
     type AvailableGitHubWorkItemSyncRepo,
     type GitHubWorkItemIssueTransport,
 } from '../work-items/work-item-sync-github-provider';
+import { parseGitHubWorkItemIssue } from '../work-items/work-item-sync-github-issue';
 
 export interface WorkItemSyncRouteContext {
     routes: Route[];
@@ -410,6 +411,11 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
 
                 const allItems = await ctx.workItemStore.listWorkItems({ repoId: workspaceId });
                 const duplicate = allItems.items.find(item =>
+                    item.githubMirror?.issueNumber === issueNumber ||
+                    (
+                        item.tracker?.kind === 'github-backed' &&
+                        item.tracker.github.issueNumber === issueNumber
+                    ) ||
                     item.syncLinks?.some(
                         link =>
                             link.provider === 'github' &&
@@ -440,14 +446,20 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                 if (!issue) {
                     throw notFound(`GitHub issue #${issueNumber}`);
                 }
+                const rootType = parseGitHubWorkItemIssue(issue).type ?? 'epic';
+                if (rootType !== 'epic') {
+                    throw badRequest('A GitHub-backed tree must be imported from a GitHub issue marked as coc:type:epic or with no CoC type metadata.');
+                }
 
-                const workItem = await importGitHubIssueAsWorkItem(
+                const candidateIssues = await transport.listIssues(repo, { limit: WORK_ITEM_SYNC_MAX_ITEMS });
+                const result = await importGitHubEpicTreeAsWorkItems(
                     { workspaceId, workItemStore: ctx.workItemStore },
                     repo,
                     issue,
+                    candidateIssues,
                 );
 
-                return sendJSON(res, 201, workItem);
+                return sendJSON(res, 201, result.root);
             } catch (error) {
                 return handleAPIError(res, error);
             }

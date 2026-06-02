@@ -18,6 +18,7 @@ import type {
     GitHubWorkItemIssue,
     GitHubWorkItemIssueTransport,
 } from '../../../src/server/work-items/work-item-sync-github-provider';
+import { importGitHubEpicTreeAsWorkItems } from '../../../src/server/work-items/work-item-sync-github-provider';
 
 const REPO_ID = 'import-test-repo';
 const NOW = '2026-01-01T00:00:00.000Z';
@@ -94,6 +95,47 @@ function makeMockIssue(
         body: 'Issue body text',
         updatedAt: NOW,
         ...overrides,
+    };
+}
+
+function metadataBlock(input: {
+    issueNumber: number;
+    workItemId?: string;
+    type: WorkItem['type'];
+    status?: WorkItem['status'];
+    parent?: {
+        workItemId?: string;
+        issueId?: string;
+        issueNumber?: number;
+        issueUrl?: string;
+        owner?: string;
+        repo?: string;
+    };
+}): string {
+    return `<!-- coc-work-item-sync ${JSON.stringify({
+        schemaVersion: 1,
+        provider: 'github',
+        remote: {
+            owner: CONFIGURED_OWNER,
+            repo: CONFIGURED_REPO,
+            issueNumber: input.issueNumber,
+        },
+        workItemId: input.workItemId,
+        parent: input.parent,
+        type: input.type,
+        status: input.status ?? 'created',
+        lastSyncedAt: NOW,
+    })} -->`;
+}
+
+function configuredRepo(): AvailableGitHubWorkItemSyncRepo {
+    return {
+        available: true,
+        provider: 'github',
+        owner: CONFIGURED_OWNER,
+        repo: CONFIGURED_REPO,
+        url: `https://github.com/${CONFIGURED_OWNER}/${CONFIGURED_REPO}`,
+        source: 'origin',
     };
 }
 
@@ -228,9 +270,35 @@ afterEach(async () => {
 });
 
 describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
-    it('happy path: valid URL → 201 with syncLink', async () => {
+    it('imports a GitHub Epic and metadata-parent subtree as a github-backed mirror', async () => {
         const issueNumber = 42;
-        const issues = new Map([[issueNumber, makeMockIssue(issueNumber, 'Fix the thing')]]);
+        const issues = new Map<number, GitHubWorkItemIssue>([
+            [issueNumber, makeMockIssue(issueNumber, 'GitHub Epic', 'open', {
+                labels: ['customer', 'coc:type:epic'],
+                body: 'Epic body',
+            })],
+            [43, makeMockIssue(43, 'GitHub Feature', 'open', {
+                body: `Feature body\n\n${metadataBlock({
+                    issueNumber: 43,
+                    type: 'feature',
+                    parent: { owner: CONFIGURED_OWNER, repo: CONFIGURED_REPO, issueNumber },
+                })}`,
+            })],
+            [44, makeMockIssue(44, 'GitHub PBI', 'closed', {
+                body: `PBI body\n\n${metadataBlock({
+                    issueNumber: 44,
+                    type: 'pbi',
+                    parent: { owner: CONFIGURED_OWNER, repo: CONFIGURED_REPO, issueNumber: 43 },
+                })}`,
+            })],
+            [45, makeMockIssue(45, 'Other tree Feature', 'open', {
+                body: `Other feature\n\n${metadataBlock({
+                    issueNumber: 45,
+                    type: 'feature',
+                    parent: { owner: CONFIGURED_OWNER, repo: CONFIGURED_REPO, issueNumber: 999 },
+                })}`,
+            })],
+        ]);
         await startServer(issues);
 
         const res = await post(importUrl(), {
@@ -239,24 +307,40 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
 
         expect(res.status).toBe(201);
         expect(res.body).toMatchObject({
-            title: 'Fix the thing',
+            title: 'GitHub Epic',
             repoId: REPO_ID,
             source: 'manual',
-        });
-        expect(res.body.syncLinks).toHaveLength(1);
-        expect(res.body.syncLinks[0]).toMatchObject({
-            provider: 'github',
-            remote: {
+            type: 'epic',
+            status: 'created',
+            tracker: {
+                kind: 'github-backed',
+                provider: 'github',
+                github: {
+                    issueNumber,
+                    issueUrl: `https://github.com/${CONFIGURED_OWNER}/${CONFIGURED_REPO}/issues/${issueNumber}`,
+                },
+            },
+            githubMirror: {
                 issueNumber,
-                owner: CONFIGURED_OWNER,
-                repo: CONFIGURED_REPO,
+                state: 'open',
             },
         });
+        expect(res.body.syncLinks).toBeUndefined();
 
-        // Also confirm item is persisted in the store
         const stored = await store.getWorkItem(res.body.id, REPO_ID);
         expect(stored).toBeDefined();
-        expect(stored!.title).toBe('Fix the thing');
+        expect(stored!.title).toBe('GitHub Epic');
+
+        const all = await store.listWorkItems({ repoId: REPO_ID });
+        expect(all.items.map(item => item.title).sort()).toEqual(['GitHub Epic', 'GitHub Feature', 'GitHub PBI']);
+        const feature = all.items.find(item => item.title === 'GitHub Feature')!;
+        const pbi = all.items.find(item => item.title === 'GitHub PBI')!;
+        expect(feature.parentId).toBe(res.body.id);
+        expect(pbi.parentId).toBe(feature.id);
+        expect(pbi.githubMirror).toMatchObject({ issueNumber: 44, state: 'closed' });
+
+        const githubBacked = await store.listWorkItems({ repoId: REPO_ID, tracker: 'github-backed' });
+        expect(githubBacked.items.map(item => item.title).sort()).toEqual(['GitHub Epic', 'GitHub Feature', 'GitHub PBI']);
     });
 
     it('invalid URL format → 400', async () => {
@@ -320,6 +404,21 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
         expect(res.body.error).toMatch(/GitHub issue #1234/i);
     });
 
+    it('non-Epic root issue → 400', async () => {
+        const issueNumber = 55;
+        const issues = new Map([[issueNumber, makeMockIssue(issueNumber, 'Bug root', 'open', {
+            labels: ['coc:type:bug'],
+        })]]);
+        await startServer(issues);
+
+        const res = await post(importUrl(), {
+            issueUrl: `https://github.com/${CONFIGURED_OWNER}/${CONFIGURED_REPO}/issues/${issueNumber}`,
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.body.error).toMatch(/must be imported from a GitHub issue marked as coc:type:epic/i);
+    });
+
     it('provider unavailable → 409', async () => {
         await startServer(new Map(), false); // providerAvailable = false
 
@@ -331,20 +430,12 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
         expect(res.body.error).toMatch(/No GitHub repository configured/i);
     });
 
-    it('imports standalone GitHub issues with created status while preserving type and priority labels', async () => {
+    it('imports epic roots with created local status while mirroring GitHub state', async () => {
         const issueNumber = 77;
-        const issues = new Map([[issueNumber, makeMockIssue(issueNumber, 'Closed issue', 'closed', {
-            body: [
-                'Issue body',
-                '',
-                '<!-- coc-sync -->',
-                'coc:type:bug',
-                'coc:status:done',
-                'coc:priority:high',
-                '<!-- /coc-sync -->',
-            ].join('\n'),
+        const issues = new Map([[issueNumber, makeMockIssue(issueNumber, 'Closed epic', 'closed', {
+            body: 'Issue body',
             labels: [
-                { name: 'coc:type:bug' },
+                { name: 'coc:type:epic' },
                 { name: 'coc:status:planning' },
                 { name: 'coc:priority:high' },
             ],
@@ -357,8 +448,73 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
 
         expect(res.status).toBe(201);
         expect(res.body.status).toBe('created');
-        expect(res.body.type).toBe('bug');
+        expect(res.body.type).toBe('epic');
         expect(res.body.priority).toBe('high');
-        expect(res.body.syncLinks).toHaveLength(1);
+        expect(res.body.githubMirror).toMatchObject({ issueNumber, state: 'closed' });
+        expect(res.body.syncLinks).toBeUndefined();
+    });
+
+    it('re-pulls GitHub-owned fields while preserving local lifecycle fields', async () => {
+        const issues = new Map<number, GitHubWorkItemIssue>([
+            [70, makeMockIssue(70, 'Remote Epic', 'open', {
+                labels: ['coc:type:epic', 'remote-tag'],
+                body: 'Remote body',
+            })],
+        ]);
+
+        const first = await importGitHubEpicTreeAsWorkItems(
+            { workspaceId: REPO_ID, workItemStore: store },
+            configuredRepo(),
+            issues.get(70)!,
+            [...issues.values()],
+            () => NOW,
+        );
+        await store.updateWorkItem(first.root.id, {
+            title: 'Local title edit',
+            description: 'Local body edit',
+            status: 'planning',
+            plan: {
+                version: 1,
+                content: 'Local plan',
+                updatedAt: '2026-01-01T01:00:00.000Z',
+                resolvedBy: 'user',
+            },
+            executionHistory: [{
+                taskId: 'task-1',
+                startedAt: '2026-01-01T02:00:00.000Z',
+                status: 'running',
+            }],
+        });
+        issues.set(70, makeMockIssue(70, 'Remote Epic Updated', 'closed', {
+            labels: ['coc:type:epic', 'github-tag'],
+            body: 'Remote body updated',
+            updatedAt: '2026-01-02T00:00:00.000Z',
+        }));
+
+        const second = await importGitHubEpicTreeAsWorkItems(
+            { workspaceId: REPO_ID, workItemStore: store },
+            configuredRepo(),
+            issues.get(70)!,
+            [...issues.values()],
+            () => '2026-01-03T00:00:00.000Z',
+        );
+
+        expect(second).toMatchObject({ created: 0, updated: 1 });
+        const updated = await store.getWorkItem(first.root.id, REPO_ID);
+        expect(updated).toMatchObject({
+            title: 'Remote Epic Updated',
+            description: 'Remote body updated',
+            type: 'epic',
+            status: 'planning',
+            tags: ['github-tag'],
+            githubMirror: {
+                issueNumber: 70,
+                state: 'closed',
+                updatedAt: '2026-01-02T00:00:00.000Z',
+                lastPulledAt: '2026-01-03T00:00:00.000Z',
+            },
+        });
+        expect(updated?.plan?.content).toBe('Local plan');
+        expect(updated?.executionHistory?.[0].taskId).toBe('task-1');
     });
 });

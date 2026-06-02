@@ -318,6 +318,32 @@ describe('FileWorkItemStore', () => {
             });
         });
 
+        it('stores GitHub mirror metadata on index entries', async () => {
+            await store.addWorkItem(makeWorkItem({
+                id: 'github-mirror-item',
+                type: 'feature',
+                githubMirror: {
+                    issueId: 'I_42',
+                    issueNumber: 42,
+                    issueUrl: 'https://github.com/org/repo/issues/42',
+                    state: 'closed',
+                    updatedAt: '2026-01-02T00:00:00.000Z',
+                    lastPulledAt: '2026-01-03T00:00:00.000Z',
+                },
+            }));
+
+            const entries = await store.listWorkItems({ repoId: 'test-repo' });
+            const entry = entries.items.find(e => e.id === 'github-mirror-item');
+            expect(entry?.githubMirror).toEqual({
+                issueId: 'I_42',
+                issueNumber: 42,
+                issueUrl: 'https://github.com/org/repo/issues/42',
+                state: 'closed',
+                updatedAt: '2026-01-02T00:00:00.000Z',
+                lastPulledAt: '2026-01-03T00:00:00.000Z',
+            });
+        });
+
         it('filters by inherited epic-rooted tracker kind', async () => {
             await store.addWorkItem(makeWorkItem({
                 id: 'local-epic',
