@@ -2564,6 +2564,59 @@ describe('registerPreferencesRoutes — sync engine wiring', () => {
         expect(res.statusCode).toBe(200);
         expect(mockEngine.start).toHaveBeenCalledWith('git@github.com:u/notes.git', 15);
     });
+
+    it('PATCH workItems GitHub polling prefs deep-merges owner/repo and triggers live callback', async () => {
+        writeRepoPreferences(tmpDir, 'my_work', {
+            workItems: {
+                sync: {
+                    github: {
+                        owner: 'plusplusoneplusplus',
+                        repo: 'shortcuts',
+                        pollingEnabled: true,
+                        pollIntervalMinutes: 5,
+                    },
+                },
+            },
+        });
+        const onRepoPreferencesChanged = vi.fn();
+        const routes: Route[] = [];
+        registerPreferencesRoutes(routes, tmpDir, undefined, onRepoPreferencesChanged);
+
+        const url = '/api/workspaces/my_work/preferences';
+        const found = findRoute(routes, 'PATCH', url)!;
+        const res = fakeRes();
+
+        await found.route.handler(fakeReq('PATCH', {
+            workItems: {
+                sync: {
+                    github: {
+                        pollingEnabled: false,
+                        pollIntervalMinutes: 10,
+                    },
+                },
+            },
+        }), res, found.match);
+
+        expect(res.statusCode).toBe(200);
+        expect(readRepoPreferences(tmpDir, 'my_work').workItems?.sync?.github).toEqual({
+            owner: 'plusplusoneplusplus',
+            repo: 'shortcuts',
+            pollingEnabled: false,
+            pollIntervalMinutes: 10,
+        });
+        expect(onRepoPreferencesChanged).toHaveBeenCalledWith('my_work', expect.objectContaining({
+            workItems: {
+                sync: {
+                    github: {
+                        owner: 'plusplusoneplusplus',
+                        repo: 'shortcuts',
+                        pollingEnabled: false,
+                        pollIntervalMinutes: 10,
+                    },
+                },
+            },
+        }));
+    });
 });
 
 // ============================================================================

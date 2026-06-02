@@ -62,6 +62,10 @@ export interface PerRepoPreferences {
         owner?: string;
         /** Optional non-secret repository-name override when origin cannot identify the GitHub repo. */
         repo?: string;
+        /** Whether background GitHub→local polling is active for imported GitHub-backed Epics. Defaults to true. */
+        pollingEnabled?: boolean;
+        /** Background GitHub→local polling cadence in minutes. Defaults to 5. */
+        pollIntervalMinutes?: number;
       };
     };
   };

@@ -700,6 +700,45 @@ async function pruneMissingGitHubMirrorItems(
     return { deleted: deletedItemIds.length, deletedItemIds };
 }
 
+export async function deleteGitHubEpicMirrorTree(
+    context: { workspaceId: string; workItemStore: WorkItemStore },
+    rootId: string,
+): Promise<{ deleted: number; deletedItemIds: string[] }> {
+    const entries = (await context.workItemStore.listWorkItems({ repoId: context.workspaceId })).items;
+    const rootEntry = entries.find(entry => entry.id === rootId);
+    if (!rootEntry) {
+        return { deleted: 0, deletedItemIds: [] };
+    }
+
+    const tree = [
+        { entry: rootEntry, depth: 0 },
+        ...collectLocalTreeEntries(entries, rootId),
+    ];
+    const toDelete = tree.filter(({ entry }) =>
+        entry.githubMirror?.issueNumber !== undefined
+        || (entry.id === rootId && entry.tracker?.kind === 'github-backed' && entry.tracker.provider === 'github'),
+    );
+    if (toDelete.length === 0) {
+        return { deleted: 0, deletedItemIds: [] };
+    }
+
+    const deleteIds = new Set(toDelete.map(({ entry }) => entry.id));
+    for (const { entry } of tree) {
+        if (entry.parentId && deleteIds.has(entry.parentId) && !deleteIds.has(entry.id)) {
+            await context.workItemStore.updateWorkItem(entry.id, { parentId: undefined });
+        }
+    }
+
+    const deletedItemIds: string[] = [];
+    for (const { entry } of [...toDelete].sort((a, b) => b.depth - a.depth)) {
+        if (await context.workItemStore.removeWorkItem(entry.id)) {
+            deletedItemIds.push(entry.id);
+        }
+    }
+
+    return { deleted: deletedItemIds.length, deletedItemIds };
+}
+
 function parentReferenceComparable(parent: WorkItemSyncParentReference | undefined): Record<string, unknown> | undefined {
     if (!parent) return undefined;
     return {

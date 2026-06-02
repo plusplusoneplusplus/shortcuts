@@ -67,6 +67,7 @@ export {
 export {
     GhCliGitHubWorkItemIssueTransport,
     createGitHubWorkItemSyncProviderAdapter,
+    deleteGitHubEpicMirrorTree,
     importGitHubEpicTreeAsWorkItems,
     type CreateGitHubWorkItemSyncProviderOptions,
     type GitHubWorkItemIssue,
@@ -75,6 +76,14 @@ export {
     type ImportGitHubEpicTreeOptions,
     type ImportGitHubEpicTreeResult,
 } from './work-item-sync-github-provider';
+export {
+    DEFAULT_WORK_ITEM_GITHUB_PULL_INTERVAL_MINUTES,
+    WorkItemGitHubPullPoller,
+    type WorkItemGitHubPullPollerOptions,
+    type WorkItemGitHubPullPollerTimerApi,
+    type WorkItemGitHubPullPollError,
+    type WorkItemGitHubPullWorkspaceResult,
+} from './work-item-github-pull-poller';
 export {
     executeWorkItem,
     handleWorkItemTaskComplete,

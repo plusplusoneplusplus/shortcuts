@@ -651,6 +651,50 @@ describe('POST /api/workspaces/:id/work-items/import-from-github', () => {
         expect(root?.tags).toEqual(['route-tag']);
     });
 
+    it('sync route deletes the local mirror tree when the GitHub Epic root is deleted', async () => {
+        const issues = new Map<number, GitHubWorkItemIssue>([
+            [93, makeMockIssue(93, 'Deleted Root Epic', 'open', {
+                labels: ['coc:type:epic'],
+                body: 'Deleted root epic',
+            })],
+            [94, makeMockIssue(94, 'Deleted Root Feature', 'open', {
+                body: `Deleted root feature\n\n${metadataBlock({
+                    issueNumber: 94,
+                    type: 'feature',
+                    parent: { owner: CONFIGURED_OWNER, repo: CONFIGURED_REPO, issueNumber: 93 },
+                })}`,
+            })],
+        ]);
+        await startServer(issues);
+
+        const imported = await post(importUrl(), {
+            issueUrl: `https://github.com/${CONFIGURED_OWNER}/${CONFIGURED_REPO}/issues/93`,
+        });
+        expect(imported.status).toBe(201);
+        const allBefore = await store.listWorkItems({ repoId: REPO_ID });
+        const feature = allBefore.items.find(item => item.githubMirror?.issueNumber === 94)!;
+
+        issues.delete(93);
+        issues.delete(94);
+
+        const synced = await post(syncUrl(imported.body.id));
+
+        expect(synced.status).toBe(200);
+        expect(synced.body).toMatchObject({
+            created: 0,
+            updated: 0,
+            deleted: 2,
+            deletedItemIds: [feature.id, imported.body.id],
+            root: {
+                id: imported.body.id,
+                title: 'Deleted Root Epic',
+            },
+            items: [],
+        });
+        expect(await store.getWorkItem(imported.body.id, REPO_ID)).toBeUndefined();
+        expect(await store.getWorkItem(feature.id, REPO_ID)).toBeUndefined();
+    });
+
     it('rejects per-Epic GitHub sync for local-only items', async () => {
         await store.addWorkItem({
             id: 'local-epic',

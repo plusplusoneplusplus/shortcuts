@@ -187,6 +187,8 @@ const ActivityFiltersSchema = z.object({
 const WorkItemsSyncGithubSchema = z.object({
     owner: z.string().trim().min(1).max(100).optional().catch(undefined),
     repo: z.string().trim().min(1).max(100).optional().catch(undefined),
+    pollingEnabled: z.boolean().optional().catch(undefined),
+    pollIntervalMinutes: z.number().int().min(1).max(1440).optional().catch(undefined),
 }).strip().transform(dropIfEmpty);
 
 const WorkItemsSyncSchema = z.object({
@@ -641,12 +643,22 @@ export function writeRepoPreferences(dataDir: string, workspaceId: string, data:
  * @param getSyncEngine - Optional getter for per-workspace sync engines; when
  *   provided, saving sync preferences immediately reconfigures the live engine
  *   without requiring a server restart.
+ * @param onRepoPreferencesChanged - Optional callback for infrastructure backed
+ *   by per-repo preferences, such as work-item GitHub polling.
  */
 export function registerPreferencesRoutes(
     routes: Route[],
     dataDir: string,
     getSyncEngine?: (workspaceId: string) => SyncEngine | undefined,
+    onRepoPreferencesChanged?: (workspaceId: string, preferences: PerRepoPreferences) => void | Promise<void>,
 ): void {
+    function notifyRepoPreferencesChanged(workspaceId: string, preferences: PerRepoPreferences): void {
+        if (!onRepoPreferencesChanged) return;
+        Promise.resolve(onRepoPreferencesChanged(workspaceId, preferences)).catch(error => {
+            const message = error instanceof Error ? error.message : String(error);
+            process.stderr.write(`[preferences] Failed to apply live repo preferences for '${workspaceId}': ${message}\n`);
+        });
+    }
 
     // ------------------------------------------------------------------
     // GET /api/preferences — Read global preferences
@@ -735,6 +747,7 @@ export function registerPreferencesRoutes(
             const repoId = decodeURIComponent(match![1]);
             const repoPrefs = validatePerRepoPreferences(body);
             writeRepoPreferences(dataDir, repoId, repoPrefs);
+            notifyRepoPreferencesChanged(repoId, repoPrefs);
             sendJSON(res, 200, repoPrefs);
         },
     });
@@ -806,6 +819,27 @@ export function registerPreferencesRoutes(
                 merged.activityFilters = { ...existingRepo.activityFilters, ...patch.activityFilters };
             }
 
+            // Deep-merge work-item preferences so updating polling cadence does
+            // not clear the workspace GitHub owner/repo override.
+            if (patch.workItems && existingRepo.workItems) {
+                merged.workItems = {
+                    ...existingRepo.workItems,
+                    ...patch.workItems,
+                    sync: patch.workItems.sync || existingRepo.workItems.sync
+                        ? {
+                            ...(existingRepo.workItems.sync ?? {}),
+                            ...(patch.workItems.sync ?? {}),
+                            github: patch.workItems.sync?.github || existingRepo.workItems.sync?.github
+                                ? {
+                                    ...(existingRepo.workItems.sync?.github ?? {}),
+                                    ...(patch.workItems.sync?.github ?? {}),
+                                }
+                                : undefined,
+                        }
+                        : undefined,
+                };
+            }
+
             // Explicitly set linkedRepoIds to empty array when client sends [] to clear
             if (Array.isArray((body as any).linkedRepoIds) && (body as any).linkedRepoIds.length === 0) {
                 delete merged.linkedRepoIds;
@@ -822,6 +856,9 @@ export function registerPreferencesRoutes(
                     const intervalMinutes = merged.sync?.intervalMinutes ?? 5;
                     engine.start(gitRemote, intervalMinutes).catch(() => {});
                 }
+            }
+            if (patch.workItems !== undefined && onRepoPreferencesChanged) {
+                notifyRepoPreferencesChanged(repoId, merged);
             }
 
             sendJSON(res, 200, merged);

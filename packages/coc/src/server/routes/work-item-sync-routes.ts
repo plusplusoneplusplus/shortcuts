@@ -33,6 +33,7 @@ import {
 } from '../work-items/work-item-sync-provider';
 import {
     GhCliGitHubWorkItemIssueTransport,
+    deleteGitHubEpicMirrorTree,
     importGitHubEpicTreeAsWorkItems,
     type AvailableGitHubWorkItemSyncRepo,
     type GitHubWorkItemIssueTransport,
@@ -49,6 +50,8 @@ export interface WorkItemSyncRouteContext {
     providers?: WorkItemSyncProviderAdapter[];
     /** Override GitHub transport for testing. Defaults to GhCliGitHubWorkItemIssueTransport. */
     githubTransport?: GitHubWorkItemIssueTransport;
+    /** Notify background poll infrastructure that this workspace's GitHub-backed roots changed. */
+    onGitHubBackedEpicTreeChanged?: (workspaceId: string) => void | Promise<void>;
 }
 
 const VALID_OPERATIONS: readonly WorkItemSyncOperation[] = ['import', 'export-selected', 'sync-linked'];
@@ -251,6 +254,14 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
         if (reason) {
             throw forbidden(disabledMessage(reason));
         }
+    }
+
+    function notifyGitHubBackedEpicTreeChanged(workspaceId: string): void {
+        if (!ctx.onGitHubBackedEpicTreeChanged) return;
+        Promise.resolve(ctx.onGitHubBackedEpicTreeChanged(workspaceId)).catch(error => {
+            const message = error instanceof Error ? error.message : String(error);
+            process.stderr.write(`[work-items/github-poll] Failed to reconfigure workspace '${workspaceId}': ${message}\n`);
+        });
     }
 
     async function resolveAvailableGitHubRepo(workspaceId: string): Promise<{
@@ -471,6 +482,7 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                     issue,
                     candidateIssues,
                 );
+                notifyGitHubBackedEpicTreeChanged(workspaceId);
 
                 return sendJSON(res, 201, result.root);
             } catch (error) {
@@ -506,7 +518,18 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                 const transport = ctx.githubTransport ?? new GhCliGitHubWorkItemIssueTransport();
                 const issue = await transport.getIssue(repo, issueNumber);
                 if (!issue) {
-                    throw notFound(`GitHub issue #${issueNumber}`);
+                    const deleteResult = await deleteGitHubEpicMirrorTree(
+                        { workspaceId, workItemStore: ctx.workItemStore },
+                        root.id,
+                    );
+                    notifyGitHubBackedEpicTreeChanged(workspaceId);
+                    return sendJSON(res, 200, {
+                        root,
+                        items: [],
+                        created: 0,
+                        updated: 0,
+                        ...deleteResult,
+                    });
                 }
 
                 const rootType = parseGitHubWorkItemIssue(issue).type ?? 'epic';
@@ -523,6 +546,7 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                     undefined,
                     { pruneMissing: true },
                 );
+                notifyGitHubBackedEpicTreeChanged(workspaceId);
 
                 return sendJSON(res, 200, result);
             } catch (error) {
