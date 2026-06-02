@@ -242,16 +242,17 @@ function HeaderBar({
 
 // ─── Summary Strip ────────────────────────────────────────────────────────────
 
-function SummaryStrip({ online, offline, total, procs, tunnels }: {
-    online: number; offline: number; total: number; procs: number; tunnels: number;
+function SummaryStrip({ online, offline, total, procs, tunnels, sshTunnels }: {
+    online: number; offline: number; total: number; procs: number; tunnels: number; sshTunnels: number;
 }) {
     return (
-        <div data-testid="summary-strip" className="grid grid-cols-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex-shrink-0 gap-px bg-[#e0e0e0] dark:bg-[#3c3c3c]">
+        <div data-testid="summary-strip" className="grid grid-cols-5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex-shrink-0 gap-px bg-[#e0e0e0] dark:bg-[#3c3c3c]">
             {[
-                { label: 'Online',       value: online,  sub: `/${total}`, color: '#16c060' },
-                { label: 'Offline',      value: offline, sub: `/${total}`, color: offline > 0 ? '#f14c4c' : undefined },
-                { label: 'Active tasks', value: procs,   sub: null,        color: undefined },
-                { label: 'DevTunnels',   value: tunnels, sub: `/${total}`, color: '#c586c0' },
+                { label: 'Online',       value: online,     sub: `/${total}`, color: '#16c060' },
+                { label: 'Offline',      value: offline,    sub: `/${total}`, color: offline > 0 ? '#f14c4c' : undefined },
+                { label: 'Active tasks', value: procs,      sub: null,        color: undefined },
+                { label: 'DevTunnels',   value: tunnels,    sub: `/${total}`, color: '#c586c0' },
+                { label: 'SSH tunnels',  value: sshTunnels, sub: `/${total}`, color: '#16a3b8' },
             ].map(t => (
                 <div key={t.label} className="bg-white dark:bg-[#1e1e1e] px-4 py-3">
                     <div className="text-[10px] font-semibold uppercase tracking-widest text-[#999] dark:text-[#6e6e6e] mb-1.5">
@@ -613,7 +614,7 @@ export function ServersView() {
     const [editServerId, setEditServerId] = useState<string | undefined>();
     const [reconnectingId, setReconnectingId] = useState<string | undefined>();
     const [loadError, setLoadError] = useState<string | undefined>();
-    const [view, setView] = useState<ViewMode>('grid');
+    const [view, setView] = useState<ViewMode>('split');
     const [filter, setFilter] = useState<FilterMode>('all');
     const [search, setSearch] = useState('');
     const [selectedId, setSelectedId] = useState<string>('local');
@@ -690,11 +691,12 @@ export function ServersView() {
     const allHealthStates = useMemo(() => [localUnified, ...remoteUnified], [localUnified, remoteUnified]);
 
     const counts = useMemo(() => ({
-        total:   allHealthStates.length,
-        online:  allHealthStates.filter(h => h.status === 'online').length,
-        offline: allHealthStates.filter(h => h.status === 'offline').length,
-        procs:   allHealthStates.reduce((a, h) => a + (h.processCount ?? 0), 0),
-        tunnels: allHealthStates.filter(h => h.kind === 'devtunnel').length,
+        total:      allHealthStates.length,
+        online:     allHealthStates.filter(h => h.status === 'online').length,
+        offline:    allHealthStates.filter(h => h.status === 'offline').length,
+        procs:      allHealthStates.reduce((a, h) => a + (h.processCount ?? 0), 0),
+        tunnels:    allHealthStates.filter(h => h.kind === 'devtunnel').length,
+        sshTunnels: allHealthStates.filter(h => h.kind === 'ssh').length,
     }), [allHealthStates]);
 
     const filtered = useMemo(() => allHealthStates.filter(h => {
@@ -788,6 +790,7 @@ export function ServersView() {
                 total={counts.total}
                 procs={counts.procs}
                 tunnels={counts.tunnels}
+                sshTunnels={counts.sshTunnels}
             />
 
             {loadError && (
