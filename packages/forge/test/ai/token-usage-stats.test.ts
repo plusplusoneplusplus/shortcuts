@@ -150,4 +150,44 @@ describe('aggregateTokenUsageStats', () => {
         expect(result.entries[0].dayTotal.estimatedUsdCost).toBeUndefined();
         expect(result.entries[0].dayTotal.pricingUnavailable).toBe(true);
     });
+
+    it('12. includes Claude Opus 4.8 in mixed-model day cost estimates', () => {
+        const opus = makeProcess('2026-06-02T08:00:00.000Z', 'CLAUDE-OPUS-4.8', {
+            inputTokens: 21_487_300,
+            outputTokens: 97_100,
+            cacheReadTokens: 21_000_000,
+            cacheWriteTokens: 0,
+            totalTokens: 21_584_400,
+        });
+        const sonnet = makeProcess('2026-06-02T09:00:00.000Z', 'CLAUDE-SONNET-4.6', {
+            inputTokens: 761_300,
+            outputTokens: 10_500,
+            cacheReadTokens: 705_400,
+            cacheWriteTokens: 0,
+            totalTokens: 771_800,
+        });
+        const gpt = makeProcess('2026-06-02T10:00:00.000Z', 'GPT-5.5', {
+            inputTokens: 11_248_700,
+            outputTokens: 31_400,
+            cacheReadTokens: 10_900_000,
+            cacheWriteTokens: 0,
+            totalTokens: 11_280_100,
+        });
+        const unknown = makeProcess('2026-06-02T11:00:00.000Z', 'UNKNOWN', {
+            inputTokens: 477_700,
+            outputTokens: 4_700,
+            cacheReadTokens: 395_800,
+            cacheWriteTokens: 0,
+            totalTokens: 482_400,
+        });
+
+        const result = aggregateTokenUsageStats([opus, sonnet, gpt, unknown]);
+        const entry = result.entries[0];
+
+        expect(entry.byModel['CLAUDE-OPUS-4.8'].estimatedUsdCost).toBeCloseTo(15.364);
+        expect(entry.byModel.UNKNOWN.estimatedUsdCost).toBeUndefined();
+        expect(entry.byModel.UNKNOWN.pricingUnavailable).toBe(true);
+        expect(entry.dayTotal.estimatedUsdCost).toBeCloseTo(24.03532);
+        expect(entry.dayTotal.pricingUnavailable).toBe(true);
+    });
 });
