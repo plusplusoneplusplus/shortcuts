@@ -5,7 +5,7 @@
  */
 
 import yaml from 'js-yaml';
-import type { PipelineConfig } from '@plusplusoneplusplus/forge';
+import type { PipelineConfig } from '@plusplusoneplusplus/coc-workflow';
 import type { DAGChartData, DAGNodeData, DAGNodeState } from '../../processes/dag';
 
 // --- Types for workflow DAG preview (multi-node workflows) ---

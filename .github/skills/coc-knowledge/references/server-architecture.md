@@ -1,6 +1,6 @@
 # Server Architecture
 
-Standalone Node.js CLI for executing YAML-based AI workflows. Depends on the published `@plusplusoneplusplus/forge` package. Published as `@plusplusoneplusplus/coc`. Requires Node.js ≥ 24.
+Standalone Node.js CLI for executing YAML-based AI workflows. Depends on `@plusplusoneplusplus/coc-workflow` for pure workflow compilation/execution and `@plusplusoneplusplus/forge` for runtime/process/queue utilities. Published as `@plusplusoneplusplus/coc`. Requires Node.js ≥ 24.
 
 ## CLI Commands
 

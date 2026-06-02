@@ -1,8 +1,9 @@
 # packages/coc
 
-CoC CLI and integrated server. Consumes `@plusplusoneplusplus/forge`, plus
-`@plusplusoneplusplus/coc-agent-sdk` directly for the provider-neutral LLM-tool
-contract (`Tool`, `defineTool`, etc.).
+CoC CLI and integrated server. Consumes `@plusplusoneplusplus/coc-workflow`
+directly for pure workflow compilation/execution, `@plusplusoneplusplus/forge`
+for runtime/process/queue utilities, and `@plusplusoneplusplus/coc-agent-sdk`
+for the provider-neutral LLM-tool contract (`Tool`, `defineTool`, etc.).
 
 See the root `AGENTS.md` for cross-package conventions and **always load
 `.github/skills/coc-knowledge/SKILL.md`** before working on this package —
@@ -61,5 +62,6 @@ all have their own `references/*.md`.
   `payload.mode`. `FollowUpExecutor.executeFollowUp` fail-loud warns + defaults
   to `'ask'` if missing.
 - **Direct package builds** use `scripts/prebuild.mjs` to build
-  `@plusplusoneplusplus/coc-memory` before `tsc` and to generate
+  `@plusplusoneplusplus/coc-workflow` and `@plusplusoneplusplus/coc-memory`
+  before `tsc` and to generate
   `src/server/core/build-info.ts`; keep this script cross-platform.

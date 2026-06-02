@@ -13,8 +13,8 @@ import {
     readCSVFileSync,
     resolveCSVPath,
     compileToWorkflow,
-} from '@plusplusoneplusplus/forge';
-import type { WorkflowConfig, LoadNodeConfig } from '@plusplusoneplusplus/forge';
+} from '@plusplusoneplusplus/coc-workflow';
+import type { WorkflowConfig, LoadNodeConfig } from '@plusplusoneplusplus/coc-workflow';
 import {
     bold,
     gray,

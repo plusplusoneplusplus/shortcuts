@@ -2,7 +2,7 @@
  * Workflow Executor
  *
  * Concrete executor that owns DAG workflow execution: reading pipeline YAML,
- * compiling it to a WorkflowConfig, invoking executeWorkflow from forge,
+ * compiling it to a WorkflowConfig, invoking executeWorkflow from coc-workflow,
  * mapping node-progress events to SSE, and tracking child pipeline-item processes.
  *
  * Extends BaseExecutor for shared streaming/cancellation plumbing.
@@ -22,6 +22,8 @@ import {
     compileToWorkflow,
     executeWorkflow,
     flattenWorkflowResult,
+} from '@plusplusoneplusplus/coc-workflow';
+import {
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
 import type { RunWorkflowPayload } from '../tasks/task-types';

@@ -27,7 +27,7 @@ Published workspaces (`coc`, `coc-workflow`, `forge`, `coc-agent-sdk`, `coc-memo
 
 **How workspace packages are consumed:** `coc` and `deep-wiki` depend on published workspace packages via caret ranges. During local development, npm workspaces symlink them automatically. There is no bundling or copying into consumer packages — packages are resolved from `node_modules` at runtime.
 
-**CoC build order:** `packages/coc-workflow` builds before `forge` and `coc`, and `packages/coc` depends on `packages/coc-memory` because `@plusplusoneplusplus/coc-memory` exports its compiled `dist/index.js`. The root `build:packages` script builds `coc-workflow`, `forge`, and `coc-memory` before `coc`, and direct `packages/coc` builds run `scripts/prebuild.mjs` to build `coc-memory` before `tsc`.
+**CoC build order:** `packages/coc-workflow` builds before `forge` and `coc`, and `packages/coc` depends on compiled `coc-workflow` and `coc-memory` output. The root `build:packages` script builds `coc-workflow`, `forge`, and `coc-memory` before `coc`, and direct `packages/coc` builds run `scripts/prebuild.mjs` to build `coc-workflow` and `coc-memory` before `tsc`.
 
 **Versioning workflow:**
 1. Add a changeset: `npm run changeset` (interactive prompt for affected packages and semver bump)

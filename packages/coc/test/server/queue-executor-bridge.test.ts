@@ -66,11 +66,18 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         ...actual,
         sdkServiceRegistry: { getOrThrow: () => sdkMocks.service },
         executePipeline: (...args: any[]) => mockExecutePipeline(...args),
+        gatherFeatureContext: (...args: any[]) => mockGatherFeatureContext(...args),
+        resolveSkillSync: (...args: any[]) => mockResolveSkillSync(...args),
+    };
+});
+
+vi.mock('@plusplusoneplusplus/coc-workflow', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/coc-workflow')>();
+    return {
+        ...actual,
         executeWorkflow: (...args: any[]) => mockExecuteWorkflow(...args),
         compileToWorkflow: (...args: any[]) => mockCompileToWorkflow(...args),
         flattenWorkflowResult: (...args: any[]) => mockFlattenWorkflowResult(...args),
-        gatherFeatureContext: (...args: any[]) => mockGatherFeatureContext(...args),
-        resolveSkillSync: (...args: any[]) => mockResolveSkillSync(...args),
     };
 });
 
