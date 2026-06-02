@@ -73,9 +73,17 @@ export async function loadRuntimeConfig(): Promise<void> {
 }
 
 async function _doLoadRuntimeConfig(): Promise<void> {
+    await _fetchAndApplyRuntimeConfig(getBootstrapConfig().apiBasePath);
+}
+
+/**
+ * Fetch runtime config from a given API base and merge into active config.
+ * Shared between initial page load and container-mode agent switches.
+ */
+async function _fetchAndApplyRuntimeConfig(apiBase: string): Promise<void> {
     try {
         const bootstrap = getBootstrapConfig();
-        const resp = await fetch(`${bootstrap.apiBasePath}/config/runtime`);
+        const resp = await fetch(`${apiBase}/config/runtime`);
         if (!resp.ok) return;
         const data = await resp.json();
         if (!data || typeof data !== 'object' || !data.features) return;
@@ -131,9 +139,17 @@ export function _resetRuntimeConfig(): void {
  */
 let _currentAgentId: string | null = null;
 
-/** Called by AppContext when selected workspace changes. */
+/** Called by AppContext when selected workspace changes.
+ * In container mode, re-fetches runtime config from the agent so feature
+ * flags (ralph, loops, etc.) reflect the agent's actual config.
+ */
 export function setCurrentAgentId(agentId: string | null): void {
+    const prev = _currentAgentId;
     _currentAgentId = agentId;
+    if (agentId && agentId !== prev && isContainerMode()) {
+        const base = getBootstrapConfig().apiBasePath + '/agent/' + encodeURIComponent(agentId);
+        _runtimeConfigPromise = _fetchAndApplyRuntimeConfig(base);
+    }
 }
 
 export function getCurrentAgentId(): string | null {

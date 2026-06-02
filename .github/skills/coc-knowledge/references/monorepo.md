@@ -13,7 +13,7 @@ The published Node packages plus a frozen VS Code extension live in one npm work
 
 | Shared Package | Location | Description |
 |----------------|----------|-------------|
-| **forge** | `packages/forge/` | Core AI/pipeline engine: imports AI SDK from `coc-agent-sdk`, DAG workflow engine (`executeWorkflow`, `compileToWorkflow`), task queue, runtime policies, process store, git CLI, utilities |
+| **forge** | `packages/forge/` | Core AI/pipeline engine: imports AI SDK from `coc-agent-sdk`, DAG workflow engine (`executeWorkflow`, `compileToWorkflow`), task queue, runtime policies, process store, git CLI, remote server connectors (`connectors` sub-path: SSH, DevTunnel), utilities |
 | **coc-agent-sdk** | `packages/coc-agent-sdk/` | Provider-agnostic AI agent SDK: `CopilotSDKService`, `CodexSDKService`, `SDKServiceRegistry`, session lifecycle, streaming state machine, MCP config, model registry |
 | **coc-memory** | `packages/coc-memory/` | Memory V2 core package: SQLite-backed fact/episode stores, hybrid search, embedding provider abstraction, capture service, safety scanning |
 | **whatsapp-bot** | `packages/whatsapp-bot/` | Standalone WhatsApp bot via Baileys — no CoC/forge deps. Used by `coccontainer` when `messaging.whatsapp.enabled` is true |
@@ -51,6 +51,7 @@ Published workspaces (`coc`, `forge`, `coc-agent-sdk`, `coc-memory`, `coc-client
 - **Publish:** `npm run vsce:publish`
 - **Debug CoC:** `cd packages/coc && npm run build && npm link && cd ../..` then `coc run <path>` or `coc serve --no-open`
 - **Debug Deep Wiki:** `cd packages/deep-wiki && npm run build && npm link && cd ../..` then `deep-wiki generate <repo>`
+- **Run CoCContainer with rebuild loop:** `./scripts/coccontainer-serve-loop.sh --port 8080` installs dependencies, builds and links the package chain, verifies native dependencies such as `better-sqlite3`, then starts `coccontainer serve --no-open`
 - **Run CoC as a service:** see [coc-service.md](coc-service.md)
 
 ## Cross-Package Conventions

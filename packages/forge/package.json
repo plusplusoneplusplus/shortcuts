@@ -50,6 +50,9 @@
       ],
       "templates": [
         "dist/templates/index.d.ts"
+      ],
+      "connectors": [
+        "dist/connectors/index.d.ts"
       ]
     }
   },
@@ -71,7 +74,8 @@
     "./editor/types": "./dist/editor/types.js",
     "./workflow": "./dist/workflow/index.js",
     "./memory": "./dist/memory/index.js",
-    "./templates": "./dist/templates/index.js"
+    "./templates": "./dist/templates/index.js",
+    "./connectors": "./dist/connectors/index.js"
   },
   "files": [
     "dist",

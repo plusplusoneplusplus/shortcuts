@@ -67,7 +67,7 @@ export function createProgram(): Command {
         .command('serve')
         .description('Start the CoCContainer aggregation dashboard')
         .option('-p, --port <number>', 'Port number (default: 5000)')
-        .option('-H, --host <string>', 'Bind address (default: localhost)')
+        .option('-H, --host <string>', 'Bind address (default: 127.0.0.1)')
         .option('-d, --data-dir <path>', 'Data directory (default: ~/.coccontainer)')
         .option('--no-open', "Don't auto-open browser")
         .action(async (opts) => {

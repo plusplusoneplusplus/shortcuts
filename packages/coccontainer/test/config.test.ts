@@ -41,9 +41,9 @@ describe('config', () => {
         expect(dir).toBe(path.join(os.homedir(), '.coccontainer'));
     });
 
-    it('should default whatsapp to enabled', () => {
+    it('should default whatsapp to disabled', () => {
         const config = resolveConfig();
-        expect(config.messaging.whatsapp.enabled).toBe(true);
+        expect(config.messaging.whatsapp.enabled).toBe(false);
         expect(config.messaging.whatsapp.userName).toBe('CoC');
         expect(config.messaging.whatsapp.sessionDir).toContain('whatsapp-session');
     });
@@ -64,9 +64,9 @@ describe('config', () => {
         expect(config.messaging.whatsapp.userName).toBe('CoC');
     });
 
-    it('should default teams to enabled', () => {
+    it('should default teams to disabled', () => {
         const config = resolveConfig();
-        expect(config.messaging.teams.enabled).toBe(true);
+        expect(config.messaging.teams.enabled).toBe(false);
         expect(config.messaging.teams.botName).toBe('CoC');
         expect(config.messaging.teams.pollIntervalMs).toBe(3000);
         expect(config.messaging.teams.mcpServerUrl).toContain('agent365.svc.cloud.microsoft');

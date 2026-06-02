@@ -91,6 +91,12 @@ build_coccontainer() {
     cd "$REPO_ROOT"
     npm install || { echo -e "\033[31mPost-link npm install failed\033[0m"; return 1; }
 
+    echo -e "\n\033[36m=== Verifying native dependencies ===\033[0m"
+    node "$REPO_ROOT/scripts/ensure-native-dependency.mjs" better-sqlite3 || {
+        echo -e "\033[31mNative dependency verification failed\033[0m"
+        return 1
+    }
+
     cd "$REPO_ROOT"
     echo -e "\033[32mBuild succeeded.\033[0m"
     return 0

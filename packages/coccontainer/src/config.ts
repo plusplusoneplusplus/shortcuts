@@ -123,12 +123,12 @@ const DEFAULTS: ResolvedContainerConfig = {
     tunnelBridgeBasePort: 10400,
     messaging: {
         whatsapp: {
-            enabled: true,
+            enabled: false,
             sessionDir: path.join(DEFAULT_DATA_DIR, 'whatsapp-session'),
             userName: 'CoC',
         },
         teams: {
-            enabled: true,
+            enabled: false,
             // Graph mode disabled: az CLI tokens lack ChatMessage.Send/Chat.ReadWrite scopes.
             // MCP mode uses SendMessageToSelf which works with first-party app tokens.
             mode: 'mcp',

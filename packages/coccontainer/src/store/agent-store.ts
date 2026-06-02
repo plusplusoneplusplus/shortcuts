@@ -84,7 +84,7 @@ export function createAgentStore(dataDir: string): AgentStore {
         add(address: string, name?: string, tunnelId?: string): Agent {
             // Normalize address: strip trailing slash, ensure protocol
             let normalizedAddress = address.replace(/\/+$/, '');
-            if (!/^(https?|wss?):\/\//i.test(normalizedAddress) && !normalizedAddress.startsWith('inbound://')) {
+            if (!/^(https?|wss?|ssh):\/\//i.test(normalizedAddress) && !normalizedAddress.startsWith('inbound://')) {
                 normalizedAddress = `http://${normalizedAddress}`;
             }
 

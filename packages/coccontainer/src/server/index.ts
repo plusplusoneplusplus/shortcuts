@@ -14,6 +14,7 @@ import type { ResolvedContainerConfig } from '../config';
 import { createAgentStore, type Agent } from '../store';
 import { pipeRequest } from '../proxy/http';
 import { TunnelBridge } from '../proxy/tunnel-bridge';
+import { SshBridge, isSshAddress } from '../proxy/ssh-bridge';
 import { addCachedWorkspace, type RemoteWorkspace } from '../proxy/workspaces';
 import { SSERelay } from '../proxy/sse-relay';
 import { WebSocketRelay } from '../proxy/ws-relay';
@@ -57,16 +58,21 @@ function generateContainerHtml(): string {
 
 // ── Server factory ──────────────────────────────────────
 
+function resolveEffectiveAddress(agentId: string, address: string, tunnelBridge: TunnelBridge, sshBridge: SshBridge): string {
+    return sshBridge.getLocalUrl(agentId) || tunnelBridge.getLocalUrl(agentId) || address;
+}
+
 export async function createContainerServer(config: ResolvedContainerConfig): Promise<ContainerServer> {
     const agentStore = createAgentStore(config.serve.dataDir);
     const tunnelBridge = new TunnelBridge({ basePort: config.tunnelBridgeBasePort });
+    const sshBridge = new SshBridge();
     const sseRelay = new SSERelay();
     const wsRelay = new WebSocketRelay();
     const agentManager = new AgentManager();
     wsRelay.setAgentManager(agentManager);
     const webClientBridge = new WebClientBridge({ wsRelay });
     agentManager.startHeartbeatCheck(30_000);
-    const healthMonitor = new AgentHealthMonitor(agentStore, config.healthCheckIntervalMs, tunnelBridge, agentManager);
+    const healthMonitor = new AgentHealthMonitor(agentStore, config.healthCheckIntervalMs, tunnelBridge, agentManager, sshBridge);
 
     // Start health monitoring and SSE/WS connections for existing agents
     const agents = agentStore.list();
@@ -77,9 +83,13 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
         if (agent.tunnelId) {
             await tunnelBridge.start(agent.id, agent.tunnelId, agent.address).catch(() => {});
         }
+        // Start SSH bridges for ssh:// agents
+        if (isSshAddress(agent.address)) {
+            await sshBridge.connect(agent.id, agent.address).catch(() => {});
+        }
         // Skip SSE/WS relay for inbound agents — they use the WebSocket channel
         if (agent.address.startsWith('inbound://')) continue;
-        const effectiveAddr = tunnelBridge.getLocalUrl(agent.id) || agent.address;
+        const effectiveAddr = resolveEffectiveAddress(agent.id, agent.address, tunnelBridge, sshBridge);
         sseRelay.connect(agent.id, agent.name, effectiveAddr);
         agentManager.connectOutbound(agent.id, agent.name, effectiveAddr);
     }
@@ -190,10 +200,14 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 if (agent.tunnelId) {
                     await tunnelBridge.start(agent.id, agent.tunnelId, agent.address).catch(() => {});
                 }
-                const effectiveAddr = tunnelBridge.getLocalUrl(agent.id) || agent.address;
+                // Start SSH bridge for ssh:// agents
+                if (isSshAddress(agent.address)) {
+                    await sshBridge.connect(agent.id, agent.address).catch(() => {});
+                }
+                const effectiveAddr = resolveEffectiveAddress(agent.id, agent.address, tunnelBridge, sshBridge);
                 sseRelay.connect(agent.id, agent.name, effectiveAddr);
                 agentManager.connectOutbound(agent.id, agent.name, effectiveAddr);
-                const bridgeUrl = tunnelBridge.getLocalUrl(agent.id);
+                const bridgeUrl = tunnelBridge.getLocalUrl(agent.id) || sshBridge.getLocalUrl(agent.id);
                 return sendJson(res, { ...agent, bridgeUrl: bridgeUrl || undefined }, 201);
             }
 
@@ -202,6 +216,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 const agent = agentStore.get(agentId);
                 if (agent) {
                     tunnelBridge.stop(agent.id);
+                    sshBridge.disconnect(agent.id);
                     sseRelay.disconnect(agent.id);
                     agentManager.disconnectOutbound(agent.id);
                 }
@@ -218,19 +233,23 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                     ? agentStore.update(agentId, { name, address, tunnelId })
                     : agentStore.rename(agentId, name ?? '');
                 if (!agent) return sendJson(res, { error: 'Agent not found' }, 404);
-                // Restart bridge if tunnelId changed
+                // Restart bridges — tear down old, start new if applicable
                 tunnelBridge.stop(agentId);
+                sshBridge.disconnect(agentId);
                 if (agent.tunnelId) {
                     await tunnelBridge.start(agentId, agent.tunnelId, agent.address).catch(() => {});
                 }
-                const bridgeUrl = tunnelBridge.getLocalUrl(agentId);
+                if (isSshAddress(agent.address)) {
+                    await sshBridge.connect(agentId, agent.address).catch(() => {});
+                }
+                const bridgeUrl = tunnelBridge.getLocalUrl(agentId) || sshBridge.getLocalUrl(agentId);
                 return sendJson(res, { ...agent, bridgeUrl: bridgeUrl || undefined });
             }
 
             // Aggregated workspaces from all agents
             if (url.pathname === '/api/workspaces' && req.method === 'GET') {
                 const allAgents = agentStore.list();
-                const workspaces = await aggregateWorkspaces(allAgents, tunnelBridge, agentManager);
+                const workspaces = await aggregateWorkspaces(allAgents, tunnelBridge, agentManager, sshBridge);
                 return sendJson(res, { workspaces });
             }
 
@@ -240,7 +259,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                 const results = await Promise.all(
                     allAgents.map(async (agent) => {
                         try {
-                            const resp = await proxyToAgent(agent, agentManager, tunnelBridge, 'GET', `/api/processes/summaries${url.search}`);
+                            const resp = await proxyToAgent(agent, agentManager, tunnelBridge, 'GET', `/api/processes/summaries${url.search}`, sshBridge);
                             if (resp.status !== 200) return [];
                             const data = JSON.parse(resp.body);
                             const summaries = data?.summaries || data?.processes || (Array.isArray(data) ? data : []);
@@ -641,8 +660,8 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
                         return res.end(JSON.stringify({ error: 'Proxy via channel failed', message: (err as Error).message }));
                     }
                 }
-                // Fallback: Use tunnel bridge local URL if available, otherwise direct address
-                const effectiveAddr = tunnelBridge.getLocalUrl(agentId) || agent.address;
+                // Fallback: Use tunnel/SSH bridge local URL if available, otherwise direct address
+                const effectiveAddr = resolveEffectiveAddress(agentId, agent.address, tunnelBridge, sshBridge);
                 if (effectiveAddr.startsWith('inbound://')) {
                     res.writeHead(503, { 'Content-Type': 'application/json' });
                     return res.end(JSON.stringify({ error: 'Agent not connected via WebSocket channel' }));
@@ -725,6 +744,7 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
             whatsappBridge?.stop();
             healthMonitor.stop();
             tunnelBridge.stopAll();
+            sshBridge.dispose();
             sseRelay.disconnectAll();
             agentManager.disconnectAllOutbound();
             agentManager.close();
@@ -746,14 +766,14 @@ async function proxyToAgent(
     bridge: TunnelBridge,
     method: string,
     apiPath: string,
+    ssh?: SshBridge,
 ): Promise<{ status: number; body: string; headers: Record<string, string> }> {
     // For inbound agents, use the WebSocket channel
     const inboundId = agent.address.startsWith('inbound://') ? agent.address.replace('inbound://', '') : undefined;
     if (inboundId && inboundMgr.hasAgent(inboundId)) {
         return inboundMgr.proxyRequest(inboundId, method, apiPath);
     }
-    // Legacy: direct HTTP fetch
-    const effectiveAddr = bridge.getLocalUrl(agent.id) || agent.address;
+    const effectiveAddr = ssh?.getLocalUrl(agent.id) || bridge.getLocalUrl(agent.id) || agent.address;
     const resp = await fetch(`${effectiveAddr}${apiPath}`);
     const body = await resp.text();
     const headers: Record<string, string> = {};
@@ -761,7 +781,7 @@ async function proxyToAgent(
     return { status: resp.status, body, headers };
 }
 
-async function aggregateWorkspaces(agents: Agent[], bridge: TunnelBridge, inboundMgr: AgentManager): Promise<RemoteWorkspace[]> {
+async function aggregateWorkspaces(agents: Agent[], bridge: TunnelBridge, inboundMgr: AgentManager, ssh?: SshBridge): Promise<RemoteWorkspace[]> {
     const results = await Promise.all(
         agents
             .map(async (agent) => {
@@ -792,7 +812,7 @@ async function aggregateWorkspaces(agents: Agent[], bridge: TunnelBridge, inboun
                     return [];
                 }
                 try {
-                    const resp = await proxyToAgent(agent, inboundMgr, bridge, 'GET', '/api/workspaces');
+                    const resp = await proxyToAgent(agent, inboundMgr, bridge, 'GET', '/api/workspaces', ssh);
                     if (resp.status !== 200) return workspaceCache.get(agent.address) || [];
                     const result = JSON.parse(resp.body);
                     let workspaces: RemoteWorkspace[] = [];

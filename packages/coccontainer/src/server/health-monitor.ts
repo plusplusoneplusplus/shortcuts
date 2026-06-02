@@ -2,13 +2,15 @@
  * Agent Health Monitor
  *
  * Periodically checks agent health and updates status in the store.
- * Health is determined solely by WebSocket connection status via AgentManager.
- * Agents are online only if they have an active call-home WebSocket connection.
+ * Inbound agents are checked via WebSocket call-home connection.
+ * Outbound agents are checked via WebSocket connection status with HTTP fallback.
  */
 
 import type { AgentStore } from '../store';
 import type { TunnelBridge } from '../proxy/tunnel-bridge';
+import type { SshBridge } from '../proxy/ssh-bridge';
 import type { AgentManager } from '../inbound/agent-manager';
+import { checkAgentHealth } from '../proxy/health';
 
 export class AgentHealthMonitor {
     private intervalHandle: ReturnType<typeof setInterval> | null = null;
@@ -17,7 +19,8 @@ export class AgentHealthMonitor {
         private store: AgentStore,
         private intervalMs: number = 30_000,
         private tunnelBridge?: TunnelBridge,
-        private agentManager?: AgentManager
+        private agentManager?: AgentManager,
+        private sshBridge?: SshBridge
     ) {}
 
     start(): void {
@@ -35,18 +38,29 @@ export class AgentHealthMonitor {
     private async check(): Promise<void> {
         const agents = this.store.list();
         for (const agent of agents) {
-            // For inbound agents, check by stored agent ID
+            // Inbound agents: check by stored agent ID
             if (agent.address.startsWith('inbound://')) {
                 const agentId = agent.address.replace('inbound://', '');
                 const connected = this.agentManager?.hasAgent(agentId) ?? false;
                 this.store.updateStatus(agent.id, connected ? 'online' : 'offline');
                 continue;
             }
-            // Legacy outbound agents: check if they happen to have a call-home
-            // WebSocket connection (by matching name). Otherwise mark offline.
-            const inboundAgents = this.agentManager?.listAgents() ?? [];
-            const matchByName = inboundAgents.find(a => a.name === agent.name);
-            this.store.updateStatus(agent.id, matchByName ? 'online' : 'offline');
+
+            // SSH agents: use SshConnector's state (it has its own health polling)
+            const sshState = this.sshBridge?.getState(agent.id);
+            if (sshState) {
+                this.store.updateStatus(agent.id, sshState.status === 'online' ? 'online' : 'offline');
+                continue;
+            }
+
+            // Outbound agents: check WebSocket connection, then HTTP health
+            if (this.agentManager?.hasOutboundConnection(agent.id)) {
+                this.store.updateStatus(agent.id, 'online');
+                continue;
+            }
+            const effectiveAddr = this.tunnelBridge?.getLocalUrl(agent.id) || agent.address;
+            const healthy = await checkAgentHealth(effectiveAddr);
+            this.store.updateStatus(agent.id, healthy ? 'online' : 'offline');
         }
     }
 }

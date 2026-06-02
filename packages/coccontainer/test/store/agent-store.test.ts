@@ -116,4 +116,9 @@ describe('AgentStore', () => {
         const agent = store.add('inbound://agent-123', 'inbound-agent');
         expect(agent.address).toBe('inbound://agent-123');
     });
+
+    it('should preserve ssh:// protocol without prepending http://', () => {
+        const agent = store.add('ssh://ubuntu-arm:4001', 'ssh-agent');
+        expect(agent.address).toBe('ssh://ubuntu-arm:4001');
+    });
 });
