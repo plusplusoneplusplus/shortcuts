@@ -18,7 +18,8 @@ import type { Route } from '../types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { execGit } from '@plusplusoneplusplus/forge';
 import { sendJSON, parseBody } from '../core/api-handler';
-import { handleAPIError, missingFields, notFound, badRequest, conflict } from '../errors';
+import { APIError, handleAPIError, missingFields, notFound, badRequest, conflict } from '../errors';
+import { readRepoPreferences } from '../preferences-handler';
 import type {
     WorkItemStore,
     WorkItemFilter,
@@ -34,6 +35,12 @@ import type {
     WorkItemTrackerMetadata,
 } from '../work-items/types';
 import { WORK_ITEM_STATUSES, WORK_ITEM_TYPES, WORK_ITEM_TRACKER_KINDS, isValidTransition, HIERARCHY_CONTAINER_TYPES, isValidParentChildTypes, getEffectiveType } from '../work-items/types';
+import { resolveGitHubWorkItemSyncRepo, type GitHubWorkItemSyncRepo } from '../work-items/work-item-sync-github-repo';
+import {
+    GhCliGitHubWorkItemIssueTransport,
+    createGitHubIssueForLocalChild,
+    type GitHubWorkItemIssueTransport,
+} from '../work-items/work-item-sync-github-provider';
 import { executeWorkItem, type EnqueueFunction } from '../work-items/work-item-executor';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 
@@ -84,6 +91,10 @@ export interface WorkItemRouteContext {
     getWsServer?: () => ProcessWebSocketServer;
     /** Returns true when the workItems.hierarchy feature flag is enabled. */
     getHierarchyEnabled?: () => boolean;
+    /** Base CoC data directory, required to resolve workspace GitHub preferences for GitHub-backed child creation. */
+    dataDir?: string;
+    /** Override GitHub transport for testing. Defaults to GhCliGitHubWorkItemIssueTransport. */
+    githubTransport?: GitHubWorkItemIssueTransport;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -257,11 +268,100 @@ function validateTrackerRootPlacement(
     return undefined;
 }
 
+function githubRepoUnavailableError(repo: Exclude<GitHubWorkItemSyncRepo, { available: true }>): APIError {
+    const messageByReason: Record<typeof repo.reason, string> = {
+        'incomplete-preference': 'GitHub sync owner/repo preference must include both owner and repo.',
+        'missing-workspace': 'GitHub sync could not resolve the current workspace.',
+        'missing-origin': 'GitHub sync could not find a git origin remote for this workspace.',
+        'non-github-origin': 'GitHub sync requires a GitHub origin remote or workspace owner/repo override.',
+    };
+    return new APIError(
+        409,
+        messageByReason[repo.reason],
+        'WORK_ITEM_GITHUB_REPO_UNAVAILABLE',
+        { provider: repo },
+    );
+}
+
 export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
     const { routes, workItemStore, processStore, enqueue, getWsServer } = ctx;
     const isHierarchyEnabled = () => ctx.getHierarchyEnabled?.() ?? false;
     // All valid types when hierarchy is enabled
     const ALL_VALID_TYPES = new Set<string>(WORK_ITEM_TYPES);
+
+    async function findTreeRoot(item: WorkItem, repoId: string): Promise<WorkItem> {
+        let current = item;
+        const visited = new Set<string>();
+        while (current.parentId && !visited.has(current.id)) {
+            visited.add(current.id);
+            const parent = await workItemStore.getWorkItem(current.parentId, repoId);
+            if (!parent) break;
+            current = parent;
+        }
+        return current;
+    }
+
+    async function resolveAvailableGitHubRepo(repoId: string): Promise<Extract<GitHubWorkItemSyncRepo, { available: true }>> {
+        if (!ctx.dataDir) {
+            throw new APIError(
+                409,
+                'GitHub-backed child creation requires the server data directory.',
+                'WORK_ITEM_GITHUB_REPO_UNAVAILABLE',
+            );
+        }
+        const workspaces = await processStore.getWorkspaces();
+        const repo = resolveGitHubWorkItemSyncRepo({
+            workspace: workspaces.find(workspace => workspace.id === repoId),
+            preferences: readRepoPreferences(ctx.dataDir, repoId),
+        });
+        if (!repo.available) {
+            throw githubRepoUnavailableError(repo);
+        }
+        const transport = ctx.githubTransport ?? new GhCliGitHubWorkItemIssueTransport();
+        try {
+            await transport.getRepository(repo);
+        } catch {
+            throw new APIError(
+                409,
+                `GitHub sync could not reach ${repo.owner}/${repo.repo} using external authentication.`,
+                'WORK_ITEM_GITHUB_AUTH_UNAVAILABLE',
+            );
+        }
+        return repo;
+    }
+
+    async function pushNewGitHubBackedChildIfNeeded(
+        item: WorkItem,
+        parentItem: WorkItem | undefined,
+        repoId: string,
+        now: string,
+    ): Promise<WorkItem> {
+        if (!parentItem) return item;
+        const root = await findTreeRoot(parentItem, repoId);
+        if (root.tracker?.kind !== 'github-backed') return item;
+        if (!parentItem.githubMirror?.issueNumber) {
+            throw new APIError(
+                409,
+                `Parent work item '${parentItem.id}' is not mirrored to GitHub.`,
+                'WORK_ITEM_GITHUB_PARENT_NOT_MIRRORED',
+            );
+        }
+
+        const repo = await resolveAvailableGitHubRepo(repoId);
+        const transport = ctx.githubTransport ?? new GhCliGitHubWorkItemIssueTransport();
+        const result = await createGitHubIssueForLocalChild({
+            repo,
+            transport,
+            item,
+            parent: parentItem,
+            now: () => now,
+        });
+        return {
+            ...item,
+            githubMirror: result.githubMirror,
+            syncLinks: undefined,
+        };
+    }
 
     // GET /api/workspaces/:id/work-items — List with optional filters
     routes.push({
@@ -384,6 +484,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
             const hierarchyEnabled = isHierarchyEnabled();
             let syncLinks: WorkItemSyncLink[] | undefined;
             let tracker: WorkItemTrackerMetadata | undefined;
+            let parentItem: WorkItem | undefined;
             try {
                 syncLinks = parseSyncLinks(body.syncLinks);
                 tracker = parseTracker(body.tracker);
@@ -414,7 +515,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
 
             // Validate parent-child type relationship when parentId is provided
             if (body.parentId && hierarchyEnabled) {
-                const parentItem = await workItemStore.getWorkItem(body.parentId, repoId);
+                parentItem = await workItemStore.getWorkItem(body.parentId, repoId);
                 if (!parentItem) {
                     return handleAPIError(res, badRequest(`Parent work item not found: ${body.parentId}`));
                 }
@@ -430,6 +531,10 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 }
             }
 
+            if (body.id && await workItemStore.getWorkItem(String(body.id), repoId)) {
+                return handleAPIError(res, conflict(`Work item already exists: ${body.id}`));
+            }
+
             const trackerPlacementError = validateTrackerRootPlacement(
                 tracker,
                 resolvedType ?? 'work-item',
@@ -439,7 +544,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                 return handleAPIError(res, badRequest(trackerPlacementError));
             }
 
-            const item: WorkItem = {
+            let item: WorkItem = {
                 id: body.id || crypto.randomUUID(),
                 repoId,
                 title: body.title,
@@ -468,6 +573,12 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
                     updatedAt: now,
                     resolvedBy: body.plan.resolvedBy || 'user',
                 };
+            }
+
+            try {
+                item = await pushNewGitHubBackedChildIfNeeded(item, parentItem, repoId, now);
+            } catch (err) {
+                return handleAPIError(res, err);
             }
 
             try {

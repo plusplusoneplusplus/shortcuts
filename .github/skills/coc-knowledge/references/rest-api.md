@@ -246,7 +246,7 @@ See [mcp-settings.md](mcp-settings.md).
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/workspaces/:id/work-items` | List work items. Supports standard field filters plus `tracker=local-only\|github-backed`, which filters by inherited Epic-rooted tracker identity. |
-| POST | `/api/workspaces/:id/work-items` | Create work item. Root Epic payloads may include `tracker` metadata; absent tracker metadata is treated as `local-only`. |
+| POST | `/api/workspaces/:id/work-items` | Create work item. Root Epic payloads may include `tracker` metadata; absent tracker metadata is treated as `local-only`. Creating a child under a GitHub-backed Epic tree creates the GitHub issue first, encodes the parent via hidden body metadata, then stores `githubMirror` metadata on the local item. |
 | GET | `/api/workspaces/:id/work-items/:itemId` | Read work item |
 | PATCH | `/api/workspaces/:id/work-items/:itemId` | Update work item. `tracker` metadata is accepted only on root Epic items. |
 | DELETE | `/api/workspaces/:id/work-items/:itemId` | Delete work item |

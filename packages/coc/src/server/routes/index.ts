@@ -487,7 +487,15 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         providers: [createGitHubWorkItemSyncProviderAdapter()],
         onGitHubBackedEpicTreeChanged: (workspaceId) => workItemGitHubPullPoller?.configureWorkspace(workspaceId),
     });
-    registerWorkItemRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer, getHierarchyEnabled: getWorkItemsHierarchyEnabled });
+    registerWorkItemRoutes({
+        routes,
+        workItemStore,
+        processStore: store,
+        enqueue: enqueueForWorkItems,
+        getWsServer,
+        getHierarchyEnabled: getWorkItemsHierarchyEnabled,
+        dataDir,
+    });
     registerWorkItemPlanRoutes({ routes, workItemStore, getWsServer });
     registerWorkItemExecutionRoutes({ routes, workItemStore, processStore: store, enqueue: enqueueForWorkItems, getWsServer, dataDir });
     registerWorkItemChangesRoutes({ routes, workItemStore, getWsServer });

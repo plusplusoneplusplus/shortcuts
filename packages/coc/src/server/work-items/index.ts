@@ -67,8 +67,11 @@ export {
 export {
     GhCliGitHubWorkItemIssueTransport,
     createGitHubWorkItemSyncProviderAdapter,
+    createGitHubIssueForLocalChild,
     deleteGitHubEpicMirrorTree,
     importGitHubEpicTreeAsWorkItems,
+    type CreateGitHubIssueForLocalChildOptions,
+    type CreateGitHubIssueForLocalChildResult,
     type CreateGitHubWorkItemSyncProviderOptions,
     type GitHubWorkItemIssue,
     type GitHubWorkItemIssueListFilters,

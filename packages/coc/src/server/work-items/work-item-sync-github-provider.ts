@@ -13,8 +13,11 @@ import type {
     WorkItemSyncWarning,
 } from '@plusplusoneplusplus/coc-client';
 import {
+    buildGitHubWorkItemLabels,
     buildGitHubWorkItemIssueUpdate,
+    buildGitHubWorkItemSyncMetadata,
     parseGitHubWorkItemIssue,
+    upsertGitHubWorkItemSyncMetadataBlock,
     type GitHubIssueLabel,
     type GitHubWorkItemIssueSnapshot,
     type ParsedGitHubWorkItemIssue,
@@ -123,6 +126,19 @@ export interface ImportGitHubEpicTreeResult {
 
 export interface ImportGitHubEpicTreeOptions {
     pruneMissing?: boolean;
+}
+
+export interface CreateGitHubIssueForLocalChildOptions {
+    repo: AvailableGitHubWorkItemSyncRepo;
+    transport: GitHubWorkItemIssueTransport;
+    item: WorkItem;
+    parent: WorkItem;
+    now?: () => string;
+}
+
+export interface CreateGitHubIssueForLocalChildResult {
+    issue: GitHubWorkItemIssue;
+    githubMirror: NonNullable<WorkItem['githubMirror']>;
 }
 
 const execFileAsync = promisify(execFile) as ExecFileAsync;
@@ -447,6 +463,80 @@ function githubMirrorForIssue(issue: GitHubWorkItemIssue, pulledAt: string): Non
         state: issue.state,
         updatedAt: issue.updatedAt,
         lastPulledAt: pulledAt,
+    };
+}
+
+function labelsForNewGitHubMirrorIssue(item: WorkItem): string[] {
+    return buildGitHubWorkItemLabels({
+        workItem: { ...item, status: 'created' },
+    }).filter(label => !label.toLowerCase().startsWith('coc:status:'));
+}
+
+function parentReferenceForGitHubMirrorChild(
+    parent: WorkItem,
+    repo: AvailableGitHubWorkItemSyncRepo,
+): WorkItemSyncParentReference {
+    if (!parent.githubMirror?.issueNumber) {
+        throw new Error(`Parent work item '${parent.id}' is not mirrored to GitHub.`);
+    }
+    return {
+        workItemId: parent.id,
+        issueId: parent.githubMirror.issueId,
+        issueNumber: parent.githubMirror.issueNumber,
+        issueUrl: parent.githubMirror.issueUrl,
+        owner: repo.owner,
+        repo: repo.repo,
+    };
+}
+
+function bodyForNewGitHubMirrorIssue(
+    item: WorkItem,
+    repo: AvailableGitHubWorkItemSyncRepo,
+    parent: WorkItemSyncParentReference,
+    syncedAt: string,
+    issue?: GitHubWorkItemIssue,
+): string {
+    const issueRemote = remoteIdentity(repo, issue);
+    const metadata = buildGitHubWorkItemSyncMetadata({
+        workItem: {
+            id: item.id,
+            type: item.type,
+            status: 'created',
+            parentId: item.parentId,
+        },
+        remote: {
+            owner: repo.owner,
+            repo: repo.repo,
+            issueId: issueRemote.issueId,
+            issueNumber: issueRemote.issueNumber,
+            issueUrl: issueRemote.issueUrl,
+        },
+        lastSyncedAt: syncedAt,
+        parent,
+    });
+    return upsertGitHubWorkItemSyncMetadataBlock(item.description ?? '', metadata);
+}
+
+export async function createGitHubIssueForLocalChild(
+    options: CreateGitHubIssueForLocalChildOptions,
+): Promise<CreateGitHubIssueForLocalChildResult> {
+    const syncedAt = (options.now ?? (() => new Date().toISOString()))();
+    const parent = parentReferenceForGitHubMirrorChild(options.parent, options.repo);
+    const labels = labelsForNewGitHubMirrorIssue(options.item);
+    const created = await options.transport.createIssue(options.repo, {
+        title: options.item.title,
+        body: bodyForNewGitHubMirrorIssue(options.item, options.repo, parent, syncedAt),
+        labels,
+    });
+    const updated = await options.transport.updateIssue(options.repo, created.number, {
+        title: options.item.title,
+        body: bodyForNewGitHubMirrorIssue(options.item, options.repo, parent, syncedAt, created),
+        labels,
+        state: 'open',
+    });
+    return {
+        issue: updated,
+        githubMirror: githubMirrorForIssue(updated, syncedAt),
     };
 }
 
