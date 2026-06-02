@@ -189,7 +189,7 @@ describe('ChatDetail', () => {
 
         it('Shift+Tab cycles modes via MODE_ORDER array', () => {
             expect(MODE_CONFIG_SOURCE).toContain('MODE_ORDER');
-            expect(MODE_CONFIG_SOURCE).toContain("'ask', 'plan', 'autopilot'");
+            expect(MODE_CONFIG_SOURCE).toContain("DEFAULT_CHAT_MODES: readonly ChatMode[] = ['ask', 'autopilot']");
         });
 
         it('Shift+Tab uses functional state update for mode cycling', () => {
@@ -678,11 +678,12 @@ describe('ChatDetail', () => {
     });
 
     describe('mode-based input border colors', () => {
-        it('defines MODE_BORDER_COLORS mapping for all three modes', () => {
+        it('defines MODE_BORDER_COLORS mapping for active modes', () => {
             expect(MODE_CONFIG_SOURCE).toContain('MODE_BORDER_COLORS');
             expect(MODE_CONFIG_SOURCE).toContain("autopilot: { border: 'border-green-500 dark:border-green-400', ring: 'focus-within:ring-green-500/30' }");
             expect(MODE_CONFIG_SOURCE).toContain("ask: { border: 'border-yellow-500 dark:border-yellow-400', ring: 'focus-within:ring-yellow-500/30' }");
-            expect(MODE_CONFIG_SOURCE).toContain("plan: { border: 'border-blue-500 dark:border-blue-400', ring: 'focus-within:ring-blue-500/30' }");
+            expect(MODE_CONFIG_SOURCE).toContain("ralph: { border: 'border-purple-500 dark:border-purple-400', ring: 'focus-within:ring-purple-500/30' }");
+            expect(MODE_CONFIG_SOURCE).not.toContain('border-blue-500');
         });
 
         // Regression guard for the “double-border” bug where the stacked

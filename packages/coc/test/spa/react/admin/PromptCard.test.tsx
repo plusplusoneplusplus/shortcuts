@@ -10,7 +10,7 @@ describe('PromptCard', () => {
     const defaultProps = {
         title: 'Read-only Mode',
         source: 'forge/copilot-sdk-wrapper/types.ts',
-        description: 'System message injected in ask/plan modes blocking file edits',
+        description: 'System message injected in Ask-mode sessions blocking file edits',
         text: 'You are in read-only mode.',
     };
 
@@ -19,7 +19,7 @@ describe('PromptCard', () => {
 
         expect(screen.getByText('Read-only Mode')).toBeDefined();
         expect(screen.getByText('forge/copilot-sdk-wrapper/types.ts')).toBeDefined();
-        expect(screen.getByText('System message injected in ask/plan modes blocking file edits')).toBeDefined();
+        expect(screen.getByText('System message injected in Ask-mode sessions blocking file edits')).toBeDefined();
         expect(screen.getByTestId('prompt-text').textContent).toContain('You are in read-only mode.');
     });
 

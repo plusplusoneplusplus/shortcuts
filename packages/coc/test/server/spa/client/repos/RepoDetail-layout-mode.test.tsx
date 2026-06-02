@@ -352,14 +352,14 @@ describe('RepoDetail — header action buttons by layout mode', () => {
         expect(cls).not.toMatch(/!bg-\[#f6f8fa\]/);
     });
 
-    it('classic mode: Generate Plan button background matches plan-mode blue', () => {
+    it('classic mode: Generate Plan button keeps its primary blue background', () => {
         mockUiLayoutMode = 'classic';
         mockActiveRepoSubTab = 'chats';
         renderDetail();
 
         const generateBtn = screen.getByTestId('repo-generate-btn');
         const cls = generateBtn.className;
-        // Blue background tracks MODE_BORDER_COLORS.plan (blue-500 / blue-400)
+        // Generate Plan is a non-chat planning action and keeps the primary blue CTA.
         expect(cls).toMatch(/!bg-blue-500\b/);
         expect(cls).toMatch(/dark:!bg-blue-400\b/);
         expect(cls).toMatch(/hover:!bg-blue-600\b/);
@@ -369,7 +369,7 @@ describe('RepoDetail — header action buttons by layout mode', () => {
         expect(cls).not.toMatch(/!bg-\[#f6f8fa\]/);
     });
 
-    it('classic mode: Queue Task button keeps the success (green) variant — no yellow/blue overrides', () => {
+    it('classic mode: Queue Task button keeps the success (green) variant — no ask-mode overrides', () => {
         mockUiLayoutMode = 'classic';
         mockActiveRepoSubTab = 'chats';
         renderDetail();
@@ -377,7 +377,7 @@ describe('RepoDetail — header action buttons by layout mode', () => {
         const queueBtn = screen.getByTestId('repo-queue-task-btn');
         const cls = queueBtn.className;
         // Queue Task inherits the success variant from Button (#1f883d / #238636).
-        // Make sure the new ask/plan colour overrides did not leak into it.
+        // Make sure ask-mode colour overrides did not leak into it.
         expect(cls).not.toMatch(/!bg-yellow-/);
         expect(cls).not.toMatch(/!bg-blue-/);
     });

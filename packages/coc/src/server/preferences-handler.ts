@@ -25,32 +25,29 @@ import type { SyncEngine } from './sync/sync-engine';
 // ============================================================================
 
 /** Skill interaction mode — determines which last-used skill preference to read/write. */
-export type SkillMode = 'task' | 'ask' | 'plan';
+export type SkillMode = 'task' | 'ask';
 
 /** Per-mode last-used skill names (array supports multi-skill combinations). */
 export interface LastSkillsByMode {
     task?: string[];
     ask?: string[];
-    plan?: string[];
 }
 
 /** Per-mode last-used AI model names. */
 export interface LastModelsByMode {
     task?: string;
     ask?: string;
-    plan?: string;
     /** Default model for note-chat sessions. Falls back to claude-sonnet-4.6 when absent. */
     note?: string;
 }
 
 /** Mode keys for the per-repo default model overrides. */
-export type DefaultModelMode = 'task' | 'ask' | 'plan' | 'note' | 'schedule' | 'followUp' | 'memory';
+export type DefaultModelMode = 'task' | 'ask' | 'note' | 'schedule' | 'followUp' | 'memory';
 
 /** Per-mode default model overrides. Take precedence over the repo-wide defaultModel. */
 export interface DefaultModelsByMode {
     task?: string;
     ask?: string;
-    plan?: string;
     note?: string;
     schedule?: string;
     followUp?: string;
@@ -125,7 +122,6 @@ const lastSkillsMode = z.union([
 const LastSkillsByModeSchema = z.object({
     task: lastSkillsMode.optional(),
     ask: lastSkillsMode.optional(),
-    plan: lastSkillsMode.optional(),
 }).strip().transform(dropIfEmpty);
 
 const optionalModelString = z.string().optional().catch(undefined);
@@ -133,7 +129,6 @@ const optionalModelString = z.string().optional().catch(undefined);
 const LastModelsByModeSchema = z.object({
     task: optionalModelString,
     ask: optionalModelString,
-    plan: optionalModelString,
     note: optionalModelString,
 }).strip().transform(dropIfEmpty);
 
@@ -142,7 +137,6 @@ const optionalModelStringMax100 = z.string().max(100).optional().catch(undefined
 const DefaultModelsByModeSchema = z.object({
     task: optionalModelStringMax100,
     ask: optionalModelStringMax100,
-    plan: optionalModelStringMax100,
     note: optionalModelStringMax100,
     schedule: optionalModelStringMax100,
     followUp: optionalModelStringMax100,
@@ -747,7 +741,7 @@ export function registerPreferencesRoutes(
             const merged: PerRepoPreferences = { ...existingRepo, ...patch };
 
             // Deep-merge lastSkills so that patching { lastSkills: { ask: 'x' } }
-            // preserves existing task/plan values.
+            // preserves existing active mode values.
             if (patch.lastSkills && existingRepo.lastSkills) {
                 merged.lastSkills = { ...existingRepo.lastSkills, ...patch.lastSkills };
             }
@@ -755,7 +749,7 @@ export function registerPreferencesRoutes(
             // Remove modes explicitly cleared by the client (empty array = "user cleared").
             // This works whether the deep-merge above ran or the shallow spread applied.
             if (merged.lastSkills) {
-                for (const mode of ['task', 'ask', 'plan'] as const) {
+                for (const mode of ['task', 'ask'] as const) {
                     if (Array.isArray(merged.lastSkills[mode]) && merged.lastSkills[mode]!.length === 0) {
                         delete merged.lastSkills[mode];
                     }
@@ -766,7 +760,7 @@ export function registerPreferencesRoutes(
             }
 
             // Deep-merge lastModels so that patching { lastModels: { ask: 'x' } }
-            // preserves existing task/plan values.
+            // preserves existing active mode values.
             if (patch.lastModels && existingRepo.lastModels) {
                 merged.lastModels = { ...existingRepo.lastModels, ...patch.lastModels };
             }
@@ -778,7 +772,7 @@ export function registerPreferencesRoutes(
             }
             // Remove per-mode entries explicitly cleared by the client (empty string = clear).
             if (merged.defaultModels) {
-                for (const mode of ['task', 'ask', 'plan', 'note', 'schedule', 'followUp', 'memory'] as const) {
+                for (const mode of ['task', 'ask', 'note', 'schedule', 'followUp', 'memory'] as const) {
                     if (merged.defaultModels[mode] === '') {
                         delete merged.defaultModels[mode];
                     }

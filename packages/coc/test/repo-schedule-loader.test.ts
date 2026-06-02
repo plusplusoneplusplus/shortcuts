@@ -140,7 +140,7 @@ params:
         const s = result[0];
         expect(s.targetType).toBe('script');
         expect(s.onFailure).toBe('stop');
-        expect(s.mode).toBe('plan');
+        expect(s.mode).toBe('ask');
         expect(s.outputFolder).toBe('/tmp/output');
         expect(s.model).toBe('gpt-4');
         expect(s.params).toEqual({ ENV: 'production', BRANCH: 'main' });

@@ -7,7 +7,7 @@
  * Extends BaseExecutor so it inherits the shared streaming/cancellation
  * plumbing, output-file management, and session lifecycle helpers.
  *
- * Must NOT import or reference chat/plan/autopilot logic.
+ * Must NOT import or reference chat/autopilot logic.
  */
 
 import { spawn } from 'child_process';

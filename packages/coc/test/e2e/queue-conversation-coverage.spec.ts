@@ -1256,7 +1256,7 @@ test.describe('Shift+Tab Mode Cycling', () => {
             await waitForConversation(page, 2);
 
             const askPill = page.locator('[data-testid="mode-pill-ask"]');
-            const planPill = page.locator('[data-testid="mode-pill-plan"]');
+            const removedPlanPill = page.locator('[data-testid="mode-pill-plan"]');
             const autopilotPill = page.locator('[data-testid="mode-pill-autopilot"]');
             const textarea = page.locator('[data-testid="activity-chat-input"]');
 
@@ -1265,7 +1265,7 @@ test.describe('Shift+Tab Mode Cycling', () => {
             // then back to `autopilot`. The active pill is identified by
             // aria-checked="true".
             await expect(autopilotPill).toHaveAttribute('aria-checked', 'true');
-            await expect(planPill).toHaveCount(0);
+            await expect(removedPlanPill).toHaveCount(0);
 
             await textarea.click();
             await textarea.press('Shift+Tab');

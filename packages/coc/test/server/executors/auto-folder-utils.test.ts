@@ -103,7 +103,7 @@ describe('resolveAutoFolderContext', () => {
         expect(context.tasksRoot).toBe(plansRoot);
     });
 
-    it('routes non-ask/plan modes to the tasks root, not notes/Plans', async () => {
+    it('routes non-ask modes to the tasks root, not notes/Plans', async () => {
         const dataDir = await makeDataDir();
         const tasksRoot = path.join(dataDir, 'repos', 'ws-other', 'tasks');
         await fs.mkdir(tasksRoot, { recursive: true });
@@ -112,7 +112,7 @@ describe('resolveAutoFolderContext', () => {
             dataDir,
             workingDirectory: path.join(dataDir, 'repo'),
             workspaceId: 'ws-other',
-            // mode omitted — defaults to non-ask/plan (autopilot-style)
+            // mode omitted — defaults to autopilot-style task output.
             resolveWorkspaceIdForPath: async () => 'unused',
         });
 

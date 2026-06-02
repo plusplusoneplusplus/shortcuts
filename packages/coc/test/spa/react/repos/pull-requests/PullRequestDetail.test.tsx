@@ -10,6 +10,8 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '',
     isRalphEnabled: () => false,
     getActiveProvider: () => 'copilot',
+    getDefaultProvider: () => 'copilot',
+    isEffortLevelsEnabled: () => false,
 }));
 
 const prefsMocks = vi.hoisted(() => ({

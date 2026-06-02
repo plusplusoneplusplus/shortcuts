@@ -32,11 +32,26 @@ import { ScheduleTimerRegistry } from './schedule-timer-registry';
 import { ScheduleRunHistory } from './schedule-run-history';
 import { RepoScheduleWatcher } from './repo-schedule-watcher';
 import { ScheduleExecutor } from './schedule-executor';
+import { normalizeChatMode } from '../tasks/task-types';
 import type {
     ScheduleEntry,
     ScheduleRunRecord,
     ScheduleChangeEvent,
 } from './schedule-manager-types';
+
+type ScheduleMutableFields = Pick<ScheduleEntry, 'name' | 'target' | 'cron' | 'params' | 'onFailure' | 'status' | 'targetType' | 'outputFolder' | 'model' | 'mode'>;
+type ScheduleUpdates = Partial<ScheduleMutableFields>;
+
+function normalizeScheduleMode(mode: unknown): ScheduleEntry['mode'] {
+    return normalizeChatMode(mode);
+}
+
+function normalizeScheduleUpdates(updates: ScheduleUpdates): ScheduleUpdates {
+    if (!Object.prototype.hasOwnProperty.call(updates, 'mode')) {
+        return updates;
+    }
+    return { ...updates, mode: normalizeScheduleMode(updates.mode) };
+}
 
 // Re-export cron utilities for backward compatibility
 export { parseCron, nextCronTime, describeCron, slugifyName } from './cron-utils';
@@ -150,6 +165,7 @@ export class ScheduleManager extends EventEmitter {
 
         const schedule: ScheduleEntry = {
             ...entry,
+            mode: normalizeScheduleMode(entry.mode),
             id: 'sch_' + crypto.randomBytes(6).toString('hex'),
             createdAt: new Date().toISOString(),
         };
@@ -184,6 +200,7 @@ export class ScheduleManager extends EventEmitter {
         const existing = this.schedules.get(repoId)?.get(entry.id);
         const schedule: ScheduleEntry = {
             ...entry,
+            mode: normalizeScheduleMode(entry.mode),
             createdAt: existing?.createdAt ?? entry.createdAt ?? new Date().toISOString(),
         };
 
@@ -212,18 +229,19 @@ export class ScheduleManager extends EventEmitter {
      * Update an existing schedule.
      * For repo-sourced schedules, field changes are written back to the YAML file.
      */
-    async updateSchedule(repoId: string, scheduleId: string, updates: Partial<Pick<ScheduleEntry, 'name' | 'target' | 'cron' | 'params' | 'onFailure' | 'status' | 'targetType' | 'outputFolder' | 'model' | 'mode'>>): Promise<ScheduleEntry | undefined> {
+    async updateSchedule(repoId: string, scheduleId: string, updates: ScheduleUpdates): Promise<ScheduleEntry | undefined> {
+        const normalizedUpdates = normalizeScheduleUpdates(updates);
         // Check repo schedules first
         const repoSchedule = this.repoSchedules.get(repoId)?.get(scheduleId);
         if (repoSchedule) {
             // Handle status changes via override store
-            if (updates.status && updates.status !== repoSchedule.status) {
-                repoSchedule.status = updates.status;
-                this.overrideStore?.setStatus(repoId, scheduleId, updates.status);
+            if (normalizedUpdates.status && normalizedUpdates.status !== repoSchedule.status) {
+                repoSchedule.status = normalizedUpdates.status;
+                this.overrideStore?.setStatus(repoId, scheduleId, normalizedUpdates.status);
             }
 
             // Apply non-status field updates and write back to YAML
-            const { status: _status, ...fieldUpdates } = updates;
+            const { status: _status, ...fieldUpdates } = normalizedUpdates;
             if (Object.keys(fieldUpdates).length > 0) {
                 Object.assign(repoSchedule, fieldUpdates);
                 const rootPath = this.workspacePaths.get(repoId);
@@ -253,11 +271,11 @@ export class ScheduleManager extends EventEmitter {
         const schedule = this.schedules.get(repoId)?.get(scheduleId);
         if (!schedule) return undefined;
 
-        if (updates.cron && updates.cron !== schedule.cron) {
-            parseCron(updates.cron);
+        if (normalizedUpdates.cron && normalizedUpdates.cron !== schedule.cron) {
+            parseCron(normalizedUpdates.cron);
         }
 
-        Object.assign(schedule, updates);
+        Object.assign(schedule, normalizedUpdates);
 
         // Reschedule timer if needed
         this.timers.cancel(scheduleId);

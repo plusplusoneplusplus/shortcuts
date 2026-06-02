@@ -231,9 +231,9 @@ describe('readPreferences / writePreferences', () => {
     });
 
     it('round-trips activityFilters with myWorkExcludedTypes', () => {
-        writePreferences(tmpDir, { global: { activityFilters: { myWorkExcludedTypes: ['ask', 'plan'] } } });
+        writePreferences(tmpDir, { global: { activityFilters: { myWorkExcludedTypes: ['ask', 'run-script'] } } });
         const result = readPreferences(tmpDir);
-        expect(result.global?.activityFilters).toEqual({ myWorkExcludedTypes: ['ask', 'plan'] });
+        expect(result.global?.activityFilters).toEqual({ myWorkExcludedTypes: ['ask', 'run-script'] });
     });
 
     it('creates data directory if needed', () => {
@@ -395,16 +395,28 @@ describe('readPreferences / writePreferences', () => {
         expect(loaded.lastSkills).toEqual({ task: ['impl'], ask: ['go-deep'] });
     });
 
-    it('round-trips lastSkills with all three modes', () => {
-        writeRepoPreferences(tmpDir, 'r', { lastSkills: { task: ['impl'], ask: ['go-deep'], plan: ['speckit'] } });
+    it('strips legacy plan lastSkills while preserving active modes', () => {
+        const repoPrefsPath = path.join(tmpDir, 'repos', 'r', 'preferences.json');
+        fs.mkdirSync(path.dirname(repoPrefsPath), { recursive: true });
+        fs.writeFileSync(
+            repoPrefsPath,
+            JSON.stringify({ lastSkills: { task: ['impl'], ask: ['go-deep'], plan: ['speckit'] } }),
+            'utf-8'
+        );
         const loaded = readRepoPreferences(tmpDir, 'r');
-        expect(loaded.lastSkills).toEqual({ task: ['impl'], ask: ['go-deep'], plan: ['speckit'] });
+        expect(loaded.lastSkills).toEqual({ task: ['impl'], ask: ['go-deep'] });
     });
 
-    it('round-trips lastSkills with multi-skill combinations', () => {
-        writeRepoPreferences(tmpDir, 'r', { lastSkills: { task: ['impl', 'code-review'], plan: ['draft', 'speckit'] } });
+    it('drops legacy-only plan lastSkills', () => {
+        const repoPrefsPath = path.join(tmpDir, 'repos', 'r', 'preferences.json');
+        fs.mkdirSync(path.dirname(repoPrefsPath), { recursive: true });
+        fs.writeFileSync(
+            repoPrefsPath,
+            JSON.stringify({ lastSkills: { plan: ['draft', 'speckit'] } }),
+            'utf-8'
+        );
         const loaded = readRepoPreferences(tmpDir, 'r');
-        expect(loaded.lastSkills).toEqual({ task: ['impl', 'code-review'], plan: ['draft', 'speckit'] });
+        expect(loaded.lastSkills).toBeUndefined();
     });
 
     it('round-trips lastModels through write and read', () => {
@@ -413,10 +425,16 @@ describe('readPreferences / writePreferences', () => {
         expect(loaded.lastModels).toEqual({ task: 'gpt-4', ask: 'claude-3' });
     });
 
-    it('round-trips lastModels with all three modes', () => {
-        writeRepoPreferences(tmpDir, 'r', { lastModels: { task: 'gpt-4', ask: 'claude-3', plan: 'gemini' } });
+    it('strips legacy plan lastModels while preserving active modes', () => {
+        const repoPrefsPath = path.join(tmpDir, 'repos', 'r', 'preferences.json');
+        fs.mkdirSync(path.dirname(repoPrefsPath), { recursive: true });
+        fs.writeFileSync(
+            repoPrefsPath,
+            JSON.stringify({ lastModels: { task: 'gpt-4', ask: 'claude-3', plan: 'gemini' } }),
+            'utf-8'
+        );
         const loaded = readRepoPreferences(tmpDir, 'r');
-        expect(loaded.lastModels).toEqual({ task: 'gpt-4', ask: 'claude-3', plan: 'gemini' });
+        expect(loaded.lastModels).toEqual({ task: 'gpt-4', ask: 'claude-3' });
     });
 
     it('round-trips lastModels with note mode', () => {
@@ -430,9 +448,9 @@ describe('readPreferences / writePreferences', () => {
         expect(result.lastModels).toEqual({ note: 'claude-sonnet-4.6' });
     });
 
-    it('accepts lastModels with all four modes including note', () => {
+    it('accepts lastModels with active modes including note and strips legacy plan', () => {
         const result = validatePerRepoPreferences({ lastModels: { task: 'gpt-4', ask: 'claude-3', plan: 'gemini', note: 'my-model' } });
-        expect(result.lastModels).toEqual({ task: 'gpt-4', ask: 'claude-3', plan: 'gemini', note: 'my-model' });
+        expect(result.lastModels).toEqual({ task: 'gpt-4', ask: 'claude-3', note: 'my-model' });
     });
 
     it('strips invalid lastModels in repos on read', () => {
@@ -563,6 +581,11 @@ describe('readPreferences / writePreferences', () => {
         const result = validatePerRepoPreferences({ defaultModels: { task: 'gpt-4', unknownMode: 'val' } } as any);
         expect(result.defaultModels).toEqual({ task: 'gpt-4' });
     });
+
+    it('strips legacy plan defaultModels while preserving active modes', () => {
+        const result = validatePerRepoPreferences({ defaultModels: { ask: 'claude-3', plan: 'gemini' } });
+        expect(result.defaultModels).toEqual({ ask: 'claude-3' });
+    });
 });
 
 describe('validatePreferences', () => {
@@ -656,14 +679,18 @@ describe('validatePreferences', () => {
         expect(validatePreferences({ lastSkills: { task: ['impl'] } })).toEqual({ lastSkills: { task: ['impl'] } });
     });
 
-    it('accepts valid lastSkills array with all three modes', () => {
+    it('accepts active lastSkills modes and strips legacy plan', () => {
         const skills = { task: ['impl'], ask: ['go-deep'], plan: ['speckit'] };
-        expect(validatePreferences({ lastSkills: skills })).toEqual({ lastSkills: skills });
+        expect(validatePreferences({ lastSkills: skills })).toEqual({
+            lastSkills: { task: ['impl'], ask: ['go-deep'] },
+        });
     });
 
-    it('accepts multi-skill combinations in lastSkills', () => {
+    it('accepts active multi-skill combinations and drops legacy-only plan skills', () => {
         const skills = { task: ['impl', 'code-review'], plan: ['draft', 'speckit'] };
-        expect(validatePreferences({ lastSkills: skills })).toEqual({ lastSkills: skills });
+        expect(validatePreferences({ lastSkills: skills })).toEqual({
+            lastSkills: { task: ['impl', 'code-review'] },
+        });
     });
 
     it('coerces legacy string values in lastSkills to array (backwards compat)', () => {
@@ -1144,8 +1171,8 @@ describe('validateGlobalPreferences', () => {
     });
 
     it('filters non-string items from myWorkExcludedTypes', () => {
-        const result = validateGlobalPreferences({ activityFilters: { myWorkExcludedTypes: ['chat', 42, null, '', 'plan'] } });
-        expect(result.activityFilters!.myWorkExcludedTypes).toEqual(['chat', 'plan']);
+        const result = validateGlobalPreferences({ activityFilters: { myWorkExcludedTypes: ['chat', 42, null, '', 'run-script'] } });
+        expect(result.activityFilters!.myWorkExcludedTypes).toEqual(['chat', 'run-script']);
     });
 
     it('ignores myWorkExcludedTypes when not an array', () => {
@@ -1664,10 +1691,10 @@ describe('Preferences REST API', () => {
 
     it('PATCH deep-merges myWorkExcludedTypes with existing activityFilters', async () => {
         await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: { workspace: 'ws-1' } });
-        const res = await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: { myWorkExcludedTypes: ['plan'] } });
+        const res = await patchJSON(`${baseUrl}/api/preferences`, { activityFilters: { myWorkExcludedTypes: ['run-script'] } });
         const body = JSON.parse(res.body);
         expect(body.activityFilters!.workspace).toBe('ws-1');
-        expect(body.activityFilters!.myWorkExcludedTypes).toEqual(['plan']);
+        expect(body.activityFilters!.myWorkExcludedTypes).toEqual(['run-script']);
     });
 
     it('PATCH with empty myWorkExcludedTypes clears the array', async () => {
@@ -2157,14 +2184,14 @@ describe('Per-Repo Preferences REST API', () => {
         expect(body.lastModels).toEqual({ task: 'gpt-4', ask: 'claude-3', note: 'claude-sonnet-4.6' });
     });
 
-    it('PATCH updating lastModels.note does not erase task or ask modes', async () => {
+    it('PATCH updating lastModels.note preserves active modes and strips legacy plan', async () => {
         await patchJSON(repoUrl(repoId), { lastModels: { task: 'gpt-4', ask: 'claude-3', plan: 'gemini' } });
         const res = await patchJSON(repoUrl(repoId), { lastModels: { note: 'my-model' } });
         expect(res.status).toBe(200);
         const body = JSON.parse(res.body);
         expect(body.lastModels.task).toBe('gpt-4');
         expect(body.lastModels.ask).toBe('claude-3');
-        expect(body.lastModels.plan).toBe('gemini');
+        expect(body.lastModels.plan).toBeUndefined();
         expect(body.lastModels.note).toBe('my-model');
     });
 

@@ -6,7 +6,7 @@
  * resolution, tool-call capture, streaming, session cleanup, and output persistence.
  *
  * Subclasses implement `buildModeOptions()` to supply mode-specific params:
- * - agentMode (interactive | plan | autopilot)
+ * - agentMode (interactive | autopilot)
  * - systemMessage (mode-specific prompt restrictions)
  * - tools (follow-up suggestions or other injected tools)
  * - effectivePrompt (prompt with any mode-specific suffix appended)

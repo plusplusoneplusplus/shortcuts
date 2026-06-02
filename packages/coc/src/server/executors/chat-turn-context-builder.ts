@@ -2,7 +2,7 @@
  * Chat Turn Context Builder
  *
  * Centralizes common addon assembly for all chat-mode executor paths:
- * ask/plan (ChatBaseExecutor.buildStandardModeOptions), Ralph
+ * ask (ChatBaseExecutor.buildStandardModeOptions), Ralph
  * (RalphExecutor.buildModeOptions), follow-up
  * (FollowUpExecutor.executeFollowUp), and optionally autopilot
  * (AutopilotExecutor.buildModeOptions).

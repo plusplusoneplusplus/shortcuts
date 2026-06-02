@@ -2,7 +2,7 @@
  * Queue Executor Bridge Tests
  *
  * Tests for CLITaskExecutor and createQueueExecutorBridge:
- * - Task execution by type (chat with ask/plan/autopilot modes, run-workflow, run-script)
+ * - Task execution by type (chat with ask/autopilot/Ralph modes, run-workflow, run-script)
  * - Process tracking in ProcessStore
  * - Cancellation handling
  * - Error handling and failure paths

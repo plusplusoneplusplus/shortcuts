@@ -86,7 +86,7 @@ describe('filterTasks', () => {
             },
         );
         expect(out.running.map(t => t.id)).toEqual([]); // ask excluded; workflow fails scope
-        expect(out.history.map(t => t.id)).toEqual(['h2']); // h1 is ask-excluded, h2 plan passes
+        expect(out.history.map(t => t.id)).toEqual([]); // legacy plan normalizes to ask and is excluded
     });
 });
 

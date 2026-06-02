@@ -114,8 +114,8 @@ describe('GET /api/workspaces/:id/instructions', () => {
         const body = res.json();
         expect(body.base).toBeNull();
         expect(body.ask).toBeNull();
-        expect(body.plan).toBeNull();
         expect(body.autopilot).toBeNull();
+        expect(body).not.toHaveProperty('plan');
     });
 
     it('returns content for existing files', async () => {
@@ -123,14 +123,15 @@ describe('GET /api/workspaces/:id/instructions', () => {
         fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(path.join(dir, 'instructions.md'), 'base content', 'utf-8');
         fs.writeFileSync(path.join(dir, 'instructions-ask.md'), 'ask content', 'utf-8');
+        fs.writeFileSync(path.join(dir, 'instructions-plan.md'), 'legacy plan content', 'utf-8');
 
         const res = await request(`${base()}/api/workspaces/ws-test/instructions`);
         expect(res.status).toBe(200);
         const body = res.json();
         expect(body.base).toBe('base content');
         expect(body.ask).toBe('ask content');
-        expect(body.plan).toBeNull();
         expect(body.autopilot).toBeNull();
+        expect(body).not.toHaveProperty('plan');
     });
 
     it('returns 404 for unknown workspace', async () => {
@@ -152,18 +153,33 @@ describe('GET /api/workspaces/:id/instructions/:mode', () => {
     it('returns content for existing file', async () => {
         const dir = path.join(repoDir, '.github', 'coc');
         fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(path.join(dir, 'instructions-plan.md'), 'plan content', 'utf-8');
+        fs.writeFileSync(path.join(dir, 'instructions-ask.md'), 'ask content', 'utf-8');
+
+        const res = await request(`${base()}/api/workspaces/ws-test/instructions/ask`);
+        expect(res.status).toBe(200);
+        const body = res.json();
+        expect(body.mode).toBe('ask');
+        expect(body.content).toBe('ask content');
+    });
+
+    it('normalizes legacy plan mode requests to ask instructions', async () => {
+        const dir = path.join(repoDir, '.github', 'coc');
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'instructions-ask.md'), 'ask content', 'utf-8');
+        fs.writeFileSync(path.join(dir, 'instructions-plan.md'), 'legacy plan content', 'utf-8');
 
         const res = await request(`${base()}/api/workspaces/ws-test/instructions/plan`);
         expect(res.status).toBe(200);
         const body = res.json();
-        expect(body.mode).toBe('plan');
-        expect(body.content).toBe('plan content');
+        expect(body.mode).toBe('ask');
+        expect(body.content).toBe('ask content');
     });
 
     it('returns 400 for invalid mode', async () => {
         const res = await request(`${base()}/api/workspaces/ws-test/instructions/invalid`);
         expect(res.status).toBe(400);
+        expect(res.body).toContain('base, ask, autopilot');
+        expect(res.body).not.toContain('base, ask, plan, autopilot');
     });
 });
 
@@ -197,6 +213,19 @@ describe('PUT /api/workspaces/:id/instructions/:mode', () => {
         });
 
         expect(fs.readFileSync(path.join(dir, 'instructions-autopilot.md'), 'utf-8')).toBe('updated content');
+    });
+
+    it('writes legacy plan mode requests to ask instructions', async () => {
+        const res = await request(`${base()}/api/workspaces/ws-test/instructions/plan`, {
+            method: 'PUT',
+            body: JSON.stringify({ content: 'ask-compatible content' }),
+        });
+        expect(res.status).toBe(200);
+        expect(res.json().mode).toBe('ask');
+
+        const dir = path.join(repoDir, '.github', 'coc');
+        expect(fs.readFileSync(path.join(dir, 'instructions-ask.md'), 'utf-8')).toBe('ask-compatible content');
+        expect(fs.existsSync(path.join(dir, 'instructions-plan.md'))).toBe(false);
     });
 
     it('returns 400 when content field is missing', async () => {
@@ -236,10 +265,26 @@ describe('DELETE /api/workspaces/:id/instructions/:mode', () => {
     });
 
     it('returns 404 when file does not exist', async () => {
-        const res = await request(`${base()}/api/workspaces/ws-test/instructions/plan`, {
+        const res = await request(`${base()}/api/workspaces/ws-test/instructions/autopilot`, {
             method: 'DELETE',
         });
         expect(res.status).toBe(404);
+    });
+
+    it('deletes ask instructions for legacy plan mode requests', async () => {
+        const dir = path.join(repoDir, '.github', 'coc');
+        fs.mkdirSync(dir, { recursive: true });
+        const askPath = path.join(dir, 'instructions-ask.md');
+        const legacyPlanPath = path.join(dir, 'instructions-plan.md');
+        fs.writeFileSync(askPath, 'ask', 'utf-8');
+        fs.writeFileSync(legacyPlanPath, 'legacy plan', 'utf-8');
+
+        const res = await request(`${base()}/api/workspaces/ws-test/instructions/plan`, {
+            method: 'DELETE',
+        });
+        expect(res.status).toBe(200);
+        expect(fs.existsSync(askPath)).toBe(false);
+        expect(fs.existsSync(legacyPlanPath)).toBe(true);
     });
 
     it('returns 400 for invalid mode', async () => {

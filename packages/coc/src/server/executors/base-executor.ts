@@ -11,7 +11,7 @@
  * - Tool-event capture (building the onToolEvent handler)
  * - Output file management (writing streamed output to disk)
  *
- * No execution-mode logic (chat, plan, autopilot, workflows, scripts) lives here.
+ * No execution-mode logic (chat, autopilot, workflows, scripts) lives here.
  */
 
 import type { GenericProcessMetadata, ProcessStore, TimelineItem, ToolEvent, BackgroundTasksInfo } from '@plusplusoneplusplus/forge';
