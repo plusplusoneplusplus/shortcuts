@@ -20,6 +20,7 @@ import {
     markFinalCheckEnqueued,
 } from '../ralph/enqueue-final-check';
 import { orchestrateFinalCheck } from '../ralph/orchestrate-final-check';
+import { buildRalphIterationPrompt } from '../ralph/iteration-prompt';
 import { loadConfigFile, DEFAULT_CONFIG } from '../../config';
 
 export const DEFAULT_FOLLOW_UP_SUGGESTIONS = { enabled: true, count: 3 } as const;
@@ -220,6 +221,14 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         logger.debug(LogCategory.AI, `[Ralph] Enqueuing iteration ${nextIteration}/${maxIterations} for session ${sessionId ?? processId}`);
 
         try {
+            const nextPrompt = buildRalphIterationPrompt({
+                originalGoal: ralphCtx?.originalGoal ?? '',
+                progressPath: (this.dataDir && payload.workspaceId)
+                    ? new RalphSessionStore({ dataDir: this.dataDir }).getProgressPath(payload.workspaceId, sessionId ?? processId)
+                    : undefined,
+                currentIteration: nextIteration,
+                maxIterations,
+            });
             this.queueManager.enqueue({
                 type: 'chat',
                 repoId: completedTask.repoId,
@@ -228,7 +237,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 payload: {
                     kind: 'chat' as const,
                     mode: 'ralph' as const,
-                    prompt: payload.prompt,
+                    prompt: nextPrompt,
                     workspaceId: payload.workspaceId,
                     workingDirectory: payload.workingDirectory,
                     folderPath: (payload as any).folderPath,
