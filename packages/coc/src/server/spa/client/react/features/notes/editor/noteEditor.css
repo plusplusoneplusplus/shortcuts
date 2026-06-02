@@ -645,6 +645,7 @@
     display: flex;
     flex-direction: row;
     align-items: center;
+    flex-wrap: wrap;
     gap: 6px;
     padding: 4px 8px;
     font-size: 12px;
@@ -668,12 +669,47 @@
     border-color: #aaa;
 }
 
+.mermaid-node-view-zoom-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.mermaid-node-view-toolbar button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.mermaid-node-view-zoom-level {
+    min-width: 42px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    color: #555;
+}
+
 .mermaid-node-view-preview {
     min-height: 60px;
     padding: 12px;
     overflow: auto;
-    display: flex;
-    justify-content: center;
+    cursor: grab;
+    touch-action: none;
+}
+
+.mermaid-node-view-preview.mermaid-node-view-dragging {
+    cursor: grabbing;
+}
+
+.mermaid-node-view-canvas {
+    display: inline-block;
+    min-width: 100%;
+    transform-origin: 0 0;
+    transition: transform 120ms ease-out;
+    will-change: transform;
+}
+
+.mermaid-node-view-canvas .mermaid {
+    display: inline-block;
+    margin: 0;
 }
 
 /* SVG rendered by mermaid is display:block by default; center it */
@@ -728,6 +764,10 @@
 .dark .mermaid-node-view-toolbar button:hover {
     background: #3c3c3c;
     border-color: #666;
+}
+
+.dark .mermaid-node-view-zoom-level {
+    color: #bdbdbd;
 }
 
 .dark .mermaid-node-view-source {

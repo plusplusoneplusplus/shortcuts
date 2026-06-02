@@ -149,10 +149,11 @@ async function assertDeepLinkRendersDetail(
 
     // The conversation pane must have a real width — the regression collapsed
     // it to 0px on the first paint even though the element existed.
-    const box = await detail.boundingBox();
-    expect(box, `activity-chat-detail (${urlSegment}) should have a bounding box`).not.toBeNull();
-    expect(
-        box!.width,
+    await expect.poll(
+        async () => {
+            const box = await detail.boundingBox();
+            return box?.width ?? 0;
+        },
         `activity-chat-detail (${urlSegment}) should have non-zero width on mobile`,
     ).toBeGreaterThan(200);
 
@@ -223,9 +224,10 @@ test.describe('Mobile Activity Deep Link', () => {
         const detail = page.locator('[data-testid="activity-chat-detail"]');
         await expect(detail).toBeVisible({ timeout: 10000 });
 
-        const box = await detail.boundingBox();
-        expect(box, 'activity-chat-detail should have a bounding box after tap').not.toBeNull();
-        expect(box!.width).toBeGreaterThan(200);
+        await expect.poll(async () => {
+            const box = await detail.boundingBox();
+            return box?.width ?? 0;
+        }, 'activity-chat-detail should have non-zero width after tap').toBeGreaterThan(200);
 
         // After tapping a completed chat, the list pane is replaced by the detail.
         await expect(page.locator('[data-testid="activity-mobile-list"]')).toHaveCount(0);
@@ -249,9 +251,10 @@ test.describe('Mobile Activity Deep Link', () => {
         const detail = page.locator('[data-testid="activity-chat-detail"]');
         await expect(detail).toBeVisible({ timeout: 10000 });
 
-        const box = await detail.boundingBox();
-        expect(box, 'activity-chat-detail should have a bounding box after tap').not.toBeNull();
-        expect(box!.width).toBeGreaterThan(200);
+        await expect.poll(async () => {
+            const box = await detail.boundingBox();
+            return box?.width ?? 0;
+        }, 'activity-chat-detail should have non-zero width after tap').toBeGreaterThan(200);
 
         await expect(page.locator('[data-testid="activity-mobile-list"]')).toHaveCount(0);
     });
