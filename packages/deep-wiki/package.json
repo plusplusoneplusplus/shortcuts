@@ -29,14 +29,15 @@
     "@github/copilot-sdk": "^0.3.0",
     "@octokit/rest": "^22.0.1",
     "@plusplusoneplusplus/coc-agent-sdk": "*",
+    "@plusplusoneplusplus/coc-workflow": "^0.1.0",
     "@plusplusoneplusplus/forge": "^1.2.0",
     "azure-devops-node-api": "^14.1.0",
+    "better-sqlite3": "^11.9.1",
     "commander": "^12.1.0",
     "diff": "^5.2.0",
     "js-yaml": "^4.1.0",
     "pino": "^9.x",
-    "pino-pretty": "^11.x",
-    "better-sqlite3": "^11.9.1"
+    "pino-pretty": "^11.x"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.0",

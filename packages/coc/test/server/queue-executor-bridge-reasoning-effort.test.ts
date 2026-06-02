@@ -378,7 +378,7 @@ describe('reasoningEffort wiring in queue executor bridge', () => {
         // This covers the acceptance criterion "Queued, buffered, and drained
         // follow-ups preserve xhigh".
         getModelSpy.mockImplementation((id: string) =>
-            id === 'codex-gpt-5.5'
+            id === 'gpt-5.5'
                 ? modelInfo(id, {
                     supportedEfforts: ['low', 'medium', 'high', 'xhigh'],
                     defaultEffort: 'medium',
@@ -388,15 +388,15 @@ describe('reasoningEffort wiring in queue executor bridge', () => {
 
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
         const proc = createCompletedProcessWithSession('proc-re-xhigh', 'sess-re-xhigh');
-        proc.metadata = { type: 'chat', model: 'codex-gpt-5.5' };
+        proc.metadata = { type: 'chat', model: 'gpt-5.5', provider: 'codex' };
         await store.addProcess(proc);
 
-        const task = followUpTask('proc-re-xhigh', 'codex-gpt-5.5', 'xhigh');
+        const task = followUpTask('proc-re-xhigh', 'gpt-5.5', 'xhigh');
         await executor.execute(task);
 
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
         const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
-        expect(call.model).toBe('codex-gpt-5.5');
+        expect(call.model).toBe('gpt-5.5');
         expect(call.reasoningEffort).toBe('xhigh');
     });
 
@@ -483,23 +483,22 @@ describe('reasoningEffort wiring in queue executor bridge', () => {
         // The shared modelMetadataStore is warmed from the default (Copilot)
         // provider, so Claude models (default/opus/haiku) are missing from it.
         // The executor must fall back to the Claude service's own listModels()
-        // so a supported effort ("high" for "default") validates instead of
+        // so a supported effort ("high" for "opus") validates instead of
         // throwing "Unsupported reasoning effort ... Supported efforts: unknown".
         getModelSpy.mockReturnValue(undefined); // shared store has no Claude models
         sdkMocks.mockListModels.mockResolvedValue([
-            modelInfo('default', { supportedEfforts: ['low', 'medium', 'high'] }),
             modelInfo('opus', { supportedEfforts: ['low', 'medium', 'high', 'xhigh'] }),
             modelInfo('haiku', {}),
         ]);
 
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
-        const task = chatTaskWithProvider('claude', 'default', 'high');
+        const task = chatTaskWithProvider('claude', 'opus', 'high');
         await executor.execute(task);
 
         expect(sdkMocks.mockListModels).toHaveBeenCalled();
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledOnce();
         const call = sdkMocks.mockSendMessage.mock.calls[0][0] as Record<string, unknown>;
-        expect(call.model).toBe('default');
+        expect(call.model).toBe('opus');
         expect(call.reasoningEffort).toBe('high');
     });
 

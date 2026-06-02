@@ -2,7 +2,7 @@
 
 CLI tool that auto-generates comprehensive wikis for any codebase using a six-phase AI pipeline, with optional theme-based article generation.
 
-Published as `@plusplusoneplusplus/deep-wiki`. Depends on `@plusplusoneplusplus/forge` (`^1.0.0`). Requires Node.js ≥ 24.
+Published as `@plusplusoneplusplus/deep-wiki`. Depends on `@plusplusoneplusplus/forge`, `@plusplusoneplusplus/coc-agent-sdk`, and `@plusplusoneplusplus/coc-workflow` at runtime so the bundled CLI can externalize Forge and its runtime dependency chain safely. Requires Node.js ≥ 24.
 
 Location: `packages/deep-wiki/`
 
