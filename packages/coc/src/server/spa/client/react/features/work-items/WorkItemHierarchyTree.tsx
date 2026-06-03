@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Button, cn } from '../../ui';
-import { getSpaCocClient } from '../../api/cocClient';
+import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useWorkItems } from '../../contexts/WorkItemContext';
 import { WorkItemHierarchyNode } from './WorkItemHierarchyNode';
 import { WorkItemParentPicker } from './WorkItemParentPicker';
@@ -14,10 +14,14 @@ import { ContextMenu } from '../../tasks/comments/ContextMenu';
 import type { ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import {
     ALLOWED_CHILD_TYPES,
+    type WorkItemSyncProvider,
+    type WorkItemSyncProviderStatus,
+    type WorkItemSyncStatusResponse,
     type WorkItemTrackerKind,
     type WorkItemTreeNode,
     type WorkItemTreeResponse,
 } from '@plusplusoneplusplus/coc-client';
+import { isWorkItemsSyncEnabled } from '../../utils/config';
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
 import { TYPE_LABELS } from './WorkItemHierarchyNode';
 import {
@@ -40,6 +44,21 @@ const TYPE_CHILD_LABELS: Record<WorkItemTypeLabel, string> = {
 };
 
 const COLLAPSE_STORAGE_KEY = (workspaceId: string) => `coc-hierarchy-collapsed-${workspaceId}`;
+const REMOTE_PROVIDER_LABELS: Record<WorkItemSyncProvider, string> = {
+    github: 'GitHub',
+    'azure-boards': 'Azure Boards',
+};
+
+interface RemoteSyncStatusState {
+    loading: boolean;
+    response?: WorkItemSyncStatusResponse;
+    error?: string;
+}
+
+interface RemoteSyncStatusNotice {
+    tone: 'muted' | 'success' | 'warning' | 'error';
+    message: string;
+}
 
 function loadCollapsed(workspaceId: string): Set<string> {
     try {
@@ -52,6 +71,107 @@ function saveCollapsed(workspaceId: string, ids: Set<string>): void {
     try {
         localStorage.setItem(COLLAPSE_STORAGE_KEY(workspaceId), JSON.stringify([...ids]));
     } catch { /* quota exceeded */ }
+}
+
+function remoteProviderFilterLabel(filter: WorkItemRemoteProviderFilter): string {
+    return filter === 'all' ? 'remote providers' : REMOTE_PROVIDER_LABELS[filter];
+}
+
+function repositoryLabel(status: WorkItemSyncProviderStatus): string | undefined {
+    if (status.provider === 'azure-boards') return status.repository?.project;
+    const owner = status.repository?.owner;
+    const repo = status.repository?.repo;
+    return owner && repo ? `${owner}/${repo}` : undefined;
+}
+
+function unavailableStatusMessage(status: WorkItemSyncProviderStatus): string {
+    if (status.message) return status.message;
+    if (status.provider === 'azure-boards') {
+        switch (status.reason) {
+            case 'missing-org-url':
+                return 'Azure DevOps organization URL is not configured in Provider Tokens.';
+            case 'missing-project':
+                return 'Azure Boards project is not configured for this workspace.';
+            case 'auth-unavailable':
+                return status.auth?.message ?? 'Azure CLI authentication is unavailable. Run az login and ensure Azure DevOps access.';
+            case 'missing-workspace':
+                return 'Workspace metadata is unavailable.';
+            default:
+                return 'Azure Boards sync is unavailable.';
+        }
+    }
+    switch (status.reason) {
+        case 'missing-origin':
+        case 'non-github-origin':
+        case 'incomplete-preference':
+            return 'GitHub repository is not configured for this workspace.';
+        case 'auth-unavailable':
+            return status.auth?.message ?? 'GitHub authentication is unavailable.';
+        default:
+            return 'GitHub sync is unavailable.';
+    }
+}
+
+function providersForFilter(response: WorkItemSyncStatusResponse, filter: WorkItemRemoteProviderFilter): WorkItemSyncProviderStatus[] {
+    const providers = response.providers.length > 0
+        ? response.providers
+        : response.provider ? [response.provider] : [];
+    return filter === 'all' ? providers : providers.filter(provider => provider.provider === filter);
+}
+
+function remoteSyncStatusNotice(state: RemoteSyncStatusState, filter: WorkItemRemoteProviderFilter): RemoteSyncStatusNotice | null {
+    const providerLabel = remoteProviderFilterLabel(filter);
+    if (state.loading) {
+        return {
+            tone: 'muted',
+            message: `Checking ${providerLabel} sync status...`,
+        };
+    }
+    if (state.error) {
+        return {
+            tone: 'error',
+            message: `Unable to check ${providerLabel} sync status: ${state.error}`,
+        };
+    }
+    const response = state.response;
+    if (!response) return null;
+    if (response.disabled) {
+        return {
+            tone: 'warning',
+            message: response.disabledReason === 'hierarchy-disabled'
+                ? 'Remote sync is unavailable because Work Items hierarchy is disabled.'
+                : 'Remote sync is disabled by configuration. Enable Work Items sync to import or refresh remote Epic trees.',
+        };
+    }
+    const providers = providersForFilter(response, filter);
+    if (providers.length === 0) {
+        return {
+            tone: 'warning',
+            message: `${providerLabel} sync status is unavailable.`,
+        };
+    }
+    const unavailable = providers.filter(provider => !provider.available);
+    if (unavailable.length > 0) {
+        const status = unavailable[0];
+        return {
+            tone: 'warning',
+            message: `${REMOTE_PROVIDER_LABELS[status.provider]} unavailable: ${unavailableStatusMessage(status)}`,
+        };
+    }
+    if (providers.length === 1) {
+        const status = providers[0];
+        const repoLabel = repositoryLabel(status);
+        return {
+            tone: 'success',
+            message: repoLabel
+                ? `${REMOTE_PROVIDER_LABELS[status.provider]} ready for ${repoLabel}.`
+                : `${REMOTE_PROVIDER_LABELS[status.provider]} sync is ready.`,
+        };
+    }
+    return {
+        tone: 'success',
+        message: `Remote sync ready for ${providers.map(provider => REMOTE_PROVIDER_LABELS[provider.provider]).join(' and ')}.`,
+    };
 }
 
 export interface WorkItemHierarchyTreeProps {
@@ -108,6 +228,7 @@ export function WorkItemHierarchyTree({
     const [showArchived, setShowArchived] = useState(false);
     const [showDone, setShowDone] = useState(false);
     const [syncNotice, setSyncNotice] = useState<{ tone: 'success' | 'warning'; message: string } | null>(null);
+    const [remoteStatus, setRemoteStatus] = useState<RemoteSyncStatusState>({ loading: false });
     const effectiveTrackerKinds = useMemo(
         () => trackerKinds ? [...trackerKinds] : (trackerKind ? [trackerKind] : []),
         [trackerKind, trackerKinds],
@@ -116,6 +237,8 @@ export function WorkItemHierarchyTree({
     const showLocalRootCreationActions = shouldShowLocalRootCreationActions(trackerViewKind ?? trackerKind);
     const isGitHubTrackerView = isGitHubTrackerKind(trackerKind);
     const isRemoteView = isRemoteTrackerView(trackerViewKind);
+    const workItemsSyncEnabled = isWorkItemsSyncEnabled();
+    const remoteStatusNotice = remoteSyncStatusNotice(remoteStatus, remoteProviderFilter);
 
     const [contextMenu, setContextMenu] = useState<{
         node: WorkItemTreeNode;
@@ -173,6 +296,42 @@ export function WorkItemHierarchyTree({
 
     // Initial load
     useEffect(() => { fetchTree(); }, [fetchTree]);
+
+    useEffect(() => {
+        if (!isRemoteView) {
+            setRemoteStatus({ loading: false });
+            return;
+        }
+        if (!workItemsSyncEnabled) {
+            setRemoteStatus({
+                loading: false,
+                response: {
+                    enabled: false,
+                    disabled: true,
+                    disabledReason: 'sync-disabled',
+                    maxItems: 0,
+                    providers: [],
+                },
+            });
+            return;
+        }
+        let cancelled = false;
+        setRemoteStatus({ loading: true });
+        const provider = remoteProviderFilter === 'all' ? undefined : remoteProviderFilter;
+        getSpaCocClient().workItems.syncStatus(workspaceId, provider)
+            .then(response => {
+                if (!cancelled) setRemoteStatus({ loading: false, response });
+            })
+            .catch(error => {
+                if (!cancelled) {
+                    setRemoteStatus({
+                        loading: false,
+                        error: getSpaCocClientErrorMessage(error, 'Failed to load remote sync status'),
+                    });
+                }
+            });
+        return () => { cancelled = true; };
+    }, [isRemoteView, remoteProviderFilter, workItemsSyncEnabled, workspaceId]);
 
     // Refresh when WebSocket events arrive (work item context changes)
     const repoItems = workItemState.workItemsByRepo[workspaceId];
@@ -484,6 +643,25 @@ export function WorkItemHierarchyTree({
                             );
                         })}
                     </div>
+                    {remoteStatusNotice && (
+                        <div
+                            className={cn(
+                                'mt-2 rounded-md border px-2.5 py-1.5 text-[12px] leading-[1.4]',
+                                remoteStatusNotice.tone === 'success'
+                                    ? 'border-green-300 bg-green-50 text-green-800 dark:border-green-700 dark:bg-green-900/20 dark:text-green-300'
+                                    : remoteStatusNotice.tone === 'warning'
+                                        ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
+                                        : remoteStatusNotice.tone === 'error'
+                                            ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-900/20 dark:text-red-300'
+                                            : 'border-[#d0d7de] bg-[#f6f8fa] text-[#656d76] dark:border-[#3c3c3c] dark:bg-[#252526] dark:text-[#999]',
+                            )}
+                            role={remoteStatusNotice.tone === 'error' ? 'alert' : 'status'}
+                            data-testid="remote-sync-status-message"
+                            data-status-tone={remoteStatusNotice.tone}
+                        >
+                            {remoteStatusNotice.message}
+                        </div>
+                    )}
                 </div>
             )}
 

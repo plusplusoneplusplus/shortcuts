@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { WorkItemSection } from '../../../../src/server/spa/client/react/features/work-items/WorkItemSection';
 import { WorkItemHierarchyTree } from '../../../../src/server/spa/client/react/features/work-items/WorkItemHierarchyTree';
 
@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
     tree: vi.fn(),
     grouped: vi.fn(),
     syncStatus: vi.fn(),
+    isWorkItemsSyncEnabled: vi.fn(),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/contexts/WorkItemContext', () => ({
@@ -42,11 +43,11 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
             syncStatus: mocks.syncStatus,
         },
     }),
-    getSpaCocClientErrorMessage: (_error: unknown, fallback: string) => fallback,
+    getSpaCocClientErrorMessage: (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
-    isWorkItemsSyncEnabled: () => false,
+    isWorkItemsSyncEnabled: () => mocks.isWorkItemsSyncEnabled(),
 }));
 
 const importedItem = {
@@ -63,6 +64,7 @@ describe('Import from remote work item placement', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.isWorkItemsSyncEnabled.mockReturnValue(false);
         scrollIntoView = vi.fn();
         HTMLElement.prototype.scrollIntoView = scrollIntoView;
         mocks.grouped.mockResolvedValue({
@@ -80,6 +82,33 @@ describe('Import from remote work item placement', () => {
                     descendantCount: 0,
                     byStatus: {},
                 },
+            }],
+        });
+        mocks.syncStatus.mockResolvedValue({
+            enabled: true,
+            disabled: false,
+            maxItems: 200,
+            provider: {
+                provider: 'github',
+                available: true,
+                repository: {
+                    provider: 'github',
+                    owner: 'octo',
+                    repo: 'repo',
+                    url: 'https://github.com/octo/repo',
+                },
+                auth: { mode: 'external', authenticated: true },
+            },
+            providers: [{
+                provider: 'github',
+                available: true,
+                repository: {
+                    provider: 'github',
+                    owner: 'octo',
+                    repo: 'repo',
+                    url: 'https://github.com/octo/repo',
+                },
+                auth: { mode: 'external', authenticated: true },
             }],
         });
     });
@@ -128,5 +157,211 @@ describe('Import from remote work item placement', () => {
             expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
         });
         expect(screen.getByTestId('hierarchy-node-row-wi-imported').className).toContain('animate-pulse');
+    });
+
+    it('shows a disabled-by-flag Remote sync status message without calling the provider status endpoint', async () => {
+        mocks.isWorkItemsSyncEnabled.mockReturnValue(false);
+
+        render(
+            <WorkItemHierarchyTree
+                workspaceId="ws-test"
+                trackerViewKind="remote"
+                trackerKinds={['azure-boards-backed']}
+                remoteProviderFilter="azure-boards"
+                selectedWorkItemId={null}
+                onSelectWorkItem={vi.fn()}
+                onCreated={vi.fn()}
+                onCreateItem={vi.fn()}
+                onImportFromRemote={vi.fn()}
+            />,
+        );
+
+        const status = await screen.findByTestId('remote-sync-status-message');
+        expect(status).toHaveTextContent('Remote sync is disabled by configuration');
+        expect(status.dataset.statusTone).toBe('warning');
+        expect(mocks.syncStatus).not.toHaveBeenCalled();
+    });
+
+    it('shows Azure Boards sync status loading and success states', async () => {
+        mocks.isWorkItemsSyncEnabled.mockReturnValue(true);
+        let resolveStatus: (value: any) => void = () => undefined;
+        mocks.syncStatus.mockReturnValue(new Promise(resolve => {
+            resolveStatus = resolve;
+        }));
+
+        render(
+            <WorkItemHierarchyTree
+                workspaceId="ws-test"
+                trackerViewKind="remote"
+                trackerKinds={['azure-boards-backed']}
+                remoteProviderFilter="azure-boards"
+                selectedWorkItemId={null}
+                onSelectWorkItem={vi.fn()}
+                onCreated={vi.fn()}
+                onCreateItem={vi.fn()}
+                onImportFromRemote={vi.fn()}
+            />,
+        );
+
+        expect(await screen.findByTestId('remote-sync-status-message')).toHaveTextContent('Checking Azure Boards sync status');
+
+        await act(async () => {
+            resolveStatus({
+                enabled: true,
+                disabled: false,
+                maxItems: 200,
+                provider: {
+                    provider: 'azure-boards',
+                    available: true,
+                    repository: {
+                        provider: 'azure-boards',
+                        organizationUrl: 'https://dev.azure.com/example',
+                        project: 'Payments',
+                        url: 'https://dev.azure.com/example/Payments',
+                    },
+                    auth: { mode: 'external', authenticated: true },
+                },
+                providers: [{
+                    provider: 'azure-boards',
+                    available: true,
+                    repository: {
+                        provider: 'azure-boards',
+                        organizationUrl: 'https://dev.azure.com/example',
+                        project: 'Payments',
+                        url: 'https://dev.azure.com/example/Payments',
+                    },
+                    auth: { mode: 'external', authenticated: true },
+                }],
+            });
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('remote-sync-status-message')).toHaveTextContent('Azure Boards ready for Payments.');
+        });
+        expect(screen.getByTestId('remote-sync-status-message').dataset.statusTone).toBe('success');
+        expect(mocks.syncStatus).toHaveBeenCalledWith('ws-test', 'azure-boards');
+    });
+
+    it('shows Azure Boards project-missing status messaging', async () => {
+        mocks.isWorkItemsSyncEnabled.mockReturnValue(true);
+        mocks.syncStatus.mockResolvedValue({
+            enabled: true,
+            disabled: false,
+            maxItems: 200,
+            provider: {
+                provider: 'azure-boards',
+                available: false,
+                reason: 'missing-project',
+                repository: {
+                    provider: 'azure-boards',
+                    organizationUrl: 'https://dev.azure.com/example',
+                },
+                auth: { mode: 'external', authenticated: true },
+            },
+            providers: [{
+                provider: 'azure-boards',
+                available: false,
+                reason: 'missing-project',
+                repository: {
+                    provider: 'azure-boards',
+                    organizationUrl: 'https://dev.azure.com/example',
+                },
+                auth: { mode: 'external', authenticated: true },
+            }],
+        });
+
+        render(
+            <WorkItemHierarchyTree
+                workspaceId="ws-test"
+                trackerViewKind="remote"
+                trackerKinds={['azure-boards-backed']}
+                remoteProviderFilter="azure-boards"
+                selectedWorkItemId={null}
+                onSelectWorkItem={vi.fn()}
+                onCreated={vi.fn()}
+                onCreateItem={vi.fn()}
+                onImportFromRemote={vi.fn()}
+            />,
+        );
+
+        const status = await screen.findByText(/Azure Boards unavailable: Azure Boards project is not configured for this workspace/);
+        expect(status).toBeTruthy();
+    });
+
+    it('shows Azure Boards auth-missing status messaging without exposing credentials', async () => {
+        mocks.isWorkItemsSyncEnabled.mockReturnValue(true);
+        mocks.syncStatus.mockResolvedValue({
+            enabled: true,
+            disabled: false,
+            maxItems: 200,
+            provider: {
+                provider: 'azure-boards',
+                available: false,
+                reason: 'auth-unavailable',
+                repository: {
+                    provider: 'azure-boards',
+                    organizationUrl: 'https://dev.azure.com/example',
+                    project: 'Payments',
+                },
+                auth: { mode: 'external', authenticated: false },
+            },
+            providers: [{
+                provider: 'azure-boards',
+                available: false,
+                reason: 'auth-unavailable',
+                repository: {
+                    provider: 'azure-boards',
+                    organizationUrl: 'https://dev.azure.com/example',
+                    project: 'Payments',
+                },
+                auth: { mode: 'external', authenticated: false },
+            }],
+        });
+
+        render(
+            <WorkItemHierarchyTree
+                workspaceId="ws-test"
+                trackerViewKind="remote"
+                trackerKinds={['azure-boards-backed']}
+                remoteProviderFilter="azure-boards"
+                selectedWorkItemId={null}
+                onSelectWorkItem={vi.fn()}
+                onCreated={vi.fn()}
+                onCreateItem={vi.fn()}
+                onImportFromRemote={vi.fn()}
+            />,
+        );
+
+        const status = await screen.findByText(/Azure Boards unavailable: Azure CLI authentication is unavailable/);
+        expect(status.textContent).not.toMatch(/bearer|token|pat|authorization/i);
+    });
+
+    it('shows Azure Boards sync status errors distinctly from empty tree state', async () => {
+        mocks.isWorkItemsSyncEnabled.mockReturnValue(true);
+        mocks.tree.mockResolvedValue({
+            disabled: false,
+            total: 0,
+            roots: [],
+        });
+        mocks.syncStatus.mockRejectedValue(new Error('network down'));
+
+        render(
+            <WorkItemHierarchyTree
+                workspaceId="ws-test"
+                trackerViewKind="remote"
+                trackerKinds={['azure-boards-backed']}
+                remoteProviderFilter="azure-boards"
+                selectedWorkItemId={null}
+                onSelectWorkItem={vi.fn()}
+                onCreated={vi.fn()}
+                onCreateItem={vi.fn()}
+                onImportFromRemote={vi.fn()}
+            />,
+        );
+
+        const status = await screen.findByTestId('remote-sync-status-message');
+        expect(status).toHaveTextContent('Unable to check Azure Boards sync status: network down');
+        expect(status.dataset.statusTone).toBe('error');
+        expect(await screen.findByTestId('hierarchy-empty')).toHaveTextContent('No Azure Boards-backed Epic trees yet');
     });
 });

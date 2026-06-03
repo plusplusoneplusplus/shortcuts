@@ -172,6 +172,14 @@ describe('WorkItemHierarchyTree — Remote tracker workflow', () => {
         expect(src).toContain('onRemoteProviderFilterChange');
     });
 
+    it('checks and renders provider availability in the Remote tracker header', () => {
+        expect(src).toContain('workItems.syncStatus');
+        expect(src).toContain('remote-sync-status-message');
+        expect(src).toContain('isWorkItemsSyncEnabled');
+        expect(src).toContain('Azure Boards project is not configured for this workspace');
+        expect(src).toContain('Azure CLI authentication is unavailable');
+    });
+
     it('keeps manual provider pulls as per-Epic context actions', () => {
         expect(src).toContain('Sync from GitHub');
         expect(src).toContain('workItems.syncGitHubEpic');
