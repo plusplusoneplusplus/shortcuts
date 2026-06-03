@@ -162,6 +162,8 @@ export interface WorkItemAzureBoardsMirrorMetadata {
     updatedAt?: string;
     /** Last successful Azure Boards→local pull timestamp for this item. */
     lastPulledAt?: string;
+    /** Hash of Azure-owned local fields after the last successful pull/push. Used to warn on remote-wins conflict pulls. */
+    lastSyncedLocalFingerprint?: string;
 }
 
 /**

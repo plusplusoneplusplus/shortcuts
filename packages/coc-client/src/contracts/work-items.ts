@@ -48,6 +48,8 @@ export interface WorkItemAzureBoardsMirrorMetadata {
   state?: string;
   updatedAt?: string;
   lastPulledAt?: string;
+  /** Hash of Azure-owned local fields after the last successful pull/push. */
+  lastSyncedLocalFingerprint?: string;
 }
 
 export type WorkItemTrackerMetadata =
@@ -273,6 +275,22 @@ export interface SyncAzureBoardsEpicResponse extends JsonObject {
   updated: number;
   deleted: number;
   deletedItemIds: string[];
+  warnings: WorkItemSyncWarning[];
+}
+
+export interface WorkItemSyncWarning extends JsonObject {
+  provider: WorkItemSyncProvider;
+  code: 'remote-wins-conflict' | string;
+  workItemId: string;
+  remoteWorkItemId?: number;
+  fields: string[];
+  message: string;
+  localUpdatedAt?: string;
+  lastPulledAt?: string;
+  previousRevision?: number;
+  remoteRevision?: number;
+  previousUpdatedAt?: string;
+  remoteUpdatedAt?: string;
 }
 
 export interface ConvertWorkItemTrackerResponse extends JsonObject {

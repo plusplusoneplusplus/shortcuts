@@ -96,6 +96,7 @@ export {
     updateAzureBoardsWorkItemForLocalMirror,
     type AvailableAzureBoardsWorkItemSyncProject,
     type AzureBoardsAccessTokenResolver,
+    type AzureBoardsSyncWarning,
     type AzureBoardsWorkItem,
     type AzureBoardsWorkItemCreateInput,
     type AzureBoardsWorkItemRelation,

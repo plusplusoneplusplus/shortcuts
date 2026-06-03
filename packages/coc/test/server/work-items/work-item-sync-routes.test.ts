@@ -486,6 +486,7 @@ describe('Work Item Sync Routes', () => {
         const root = importedItems.find(item => item.azureBoardsMirror?.workItemId === 100)!;
         const feature = importedItems.find(item => item.azureBoardsMirror?.workItemId === 101)!;
         const pbi = importedItems.find(item => item.azureBoardsMirror?.workItemId === 102)!;
+        expect(root.azureBoardsMirror?.lastSyncedLocalFingerprint).toEqual(expect.any(String));
         expect(feature).toMatchObject({
             parentId: root.id,
             type: 'feature',
@@ -501,6 +502,7 @@ describe('Work Item Sync Routes', () => {
             tags: ['API'],
         });
 
+        await store.updateWorkItem(root.id, { title: 'Unsynced local epic title' });
         azureTransport.set([
             {
                 id: 100,
@@ -558,6 +560,17 @@ describe('Work Item Sync Routes', () => {
             updated: 2,
             deleted: 1,
             deletedItemIds: [pbi.id],
+            warnings: [
+                {
+                    provider: 'azure-boards',
+                    code: 'remote-wins-conflict',
+                    workItemId: root.id,
+                    remoteWorkItemId: 100,
+                    fields: ['title', 'description', 'status', 'priority', 'tags', 'parentId'],
+                    previousRevision: 1,
+                    remoteRevision: 2,
+                },
+            ],
         });
         expect(synced.body.root).toMatchObject({
             id: root.id,

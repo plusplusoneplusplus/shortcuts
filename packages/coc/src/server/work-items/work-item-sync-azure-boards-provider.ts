@@ -18,11 +18,14 @@ import {
     mapAzureBoardsTypeToCocWorkItemType,
     mapWorkItemPriorityToAzureBoardsPriority,
     mapWorkItemStatusToAzureBoardsState,
+    parseAzureBoardsTags,
 } from './work-item-sync-azure-boards-mapping';
 import type {
     WorkItem,
     WorkItemAzureBoardsMirrorMetadata,
     WorkItemIndexEntry,
+    WorkItemPriority,
+    WorkItemStatus,
     WorkItemStore,
     WorkItemType,
 } from './types';
@@ -114,6 +117,22 @@ export interface ImportAzureBoardsEpicTreeResult {
     updated: number;
     deleted: number;
     deletedItemIds: string[];
+    warnings: AzureBoardsSyncWarning[];
+}
+
+export interface AzureBoardsSyncWarning {
+    provider: 'azure-boards';
+    code: 'remote-wins-conflict';
+    workItemId: string;
+    remoteWorkItemId?: number;
+    fields: string[];
+    message: string;
+    localUpdatedAt?: string;
+    lastPulledAt?: string;
+    previousRevision?: number;
+    remoteRevision?: number;
+    previousUpdatedAt?: string;
+    remoteUpdatedAt?: string;
 }
 
 export interface ImportAzureBoardsEpicTreeOptions {
@@ -170,6 +189,7 @@ interface AzureBoardsJsonPatchOperation {
     value?: unknown;
 }
 
+const AZURE_BOARDS_REMOTE_WINS_FIELDS = ['title', 'description', 'status', 'priority', 'tags', 'parentId'];
 const execFileAsync = promisify(execFile) as ExecFileAsync;
 
 function authNotChecked(): WorkItemSyncProviderStatus['auth'] {
@@ -610,6 +630,7 @@ function azureBoardsMirrorForWorkItem(
         state: item.state,
         updatedAt: item.updatedAt,
         lastPulledAt: pulledAt,
+        lastSyncedLocalFingerprint: azureBoardsLocalFingerprintForRemoteWorkItem(item),
     };
 }
 
@@ -682,6 +703,99 @@ function mirrorTypeForAzureBoardsWorkItem(remote: AzureBoardsWorkItem, rootId: n
 
 function priorityForAzureBoardsWorkItem(remote: AzureBoardsWorkItem) {
     return mapAzureBoardsPriorityToWorkItemPriority(remote.priority).priority;
+}
+
+interface AzureBoardsLocalFingerprintFields {
+    title: string;
+    description: string;
+    status: WorkItemStatus;
+    priority?: WorkItemPriority;
+    tags?: readonly string[];
+    parentWorkItemId?: number | null;
+}
+
+function normalizedFingerprintTags(tags: readonly string[] | undefined): string[] {
+    return parseAzureBoardsTags(tags)
+        .map(tag => tag.trim())
+        .filter(Boolean)
+        .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()) || a.localeCompare(b));
+}
+
+function azureBoardsLocalFingerprint(fields: AzureBoardsLocalFingerprintFields): string {
+    const normalized = {
+        title: fields.title,
+        description: fields.description,
+        status: fields.status,
+        priority: fields.priority ?? null,
+        tags: normalizedFingerprintTags(fields.tags),
+        parentWorkItemId: fields.parentWorkItemId ?? null,
+    };
+    return crypto.createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
+}
+
+function azureBoardsLocalFingerprintForRemoteWorkItem(remote: AzureBoardsWorkItem): string {
+    return azureBoardsLocalFingerprint({
+        title: remote.title,
+        description: remote.description ?? '',
+        status: mapAzureBoardsStateToWorkItemStatus(remote.state),
+        priority: priorityForAzureBoardsWorkItem(remote),
+        tags: tagsForAzureBoardsMirror(remote),
+        parentWorkItemId: parentWorkItemId(remote) ?? null,
+    });
+}
+
+function azureBoardsRemoteChangedSinceLastMirror(existing: WorkItem, remote: AzureBoardsWorkItem): boolean {
+    const mirror = existing.azureBoardsMirror;
+    if (!mirror) return false;
+    if (mirror.revision !== undefined && remote.revision !== undefined && mirror.revision !== remote.revision) {
+        return true;
+    }
+    return Boolean(mirror.updatedAt && remote.updatedAt && mirror.updatedAt !== remote.updatedAt);
+}
+
+async function localParentAzureBoardsWorkItemId(
+    context: { workspaceId: string; workItemStore: WorkItemStore },
+    item: WorkItem,
+): Promise<number | null> {
+    if (!item.parentId) return null;
+    const parent = await context.workItemStore.getWorkItem(item.parentId, context.workspaceId);
+    return parent ? azureBoardsRemoteWorkItemIdForLocalItem(parent) ?? null : null;
+}
+
+async function azureBoardsRemoteWinsWarningForExistingItem(
+    context: { workspaceId: string; workItemStore: WorkItemStore },
+    existing: WorkItem,
+    remote: AzureBoardsWorkItem,
+): Promise<AzureBoardsSyncWarning | undefined> {
+    const mirror = existing.azureBoardsMirror;
+    if (!mirror?.lastSyncedLocalFingerprint || !azureBoardsRemoteChangedSinceLastMirror(existing, remote)) {
+        return undefined;
+    }
+    const currentFingerprint = azureBoardsLocalFingerprint({
+        title: existing.title,
+        description: existing.description ?? '',
+        status: existing.status,
+        priority: existing.priority,
+        tags: existing.tags,
+        parentWorkItemId: await localParentAzureBoardsWorkItemId(context, existing),
+    });
+    if (currentFingerprint === mirror.lastSyncedLocalFingerprint) {
+        return undefined;
+    }
+    return {
+        provider: 'azure-boards',
+        code: 'remote-wins-conflict',
+        workItemId: existing.id,
+        remoteWorkItemId: remote.id,
+        fields: AZURE_BOARDS_REMOTE_WINS_FIELDS,
+        message: `Azure Boards work item ${remote.id} changed remotely while local Azure-owned fields had unsynced edits; Azure Boards values were applied.`,
+        localUpdatedAt: existing.updatedAt,
+        lastPulledAt: mirror.lastPulledAt,
+        previousRevision: mirror.revision,
+        remoteRevision: remote.revision,
+        previousUpdatedAt: mirror.updatedAt,
+        remoteUpdatedAt: remote.updatedAt,
+    };
 }
 
 function azureBoardsInputFieldsForLocalItem(item: WorkItem) {
@@ -858,9 +972,14 @@ export async function importAzureBoardsEpicTreeAsWorkItems(
     const items: WorkItem[] = [];
     let created = 0;
     let updated = 0;
+    const warnings: AzureBoardsSyncWarning[] = [];
 
     for (const remote of ordered) {
         const existing = await findLocalMirrorForAzureBoardsWorkItem(context, index, remote);
+        const warning = existing
+            ? await azureBoardsRemoteWinsWarningForExistingItem(context, existing, remote)
+            : undefined;
+        if (warning) warnings.push(warning);
         const type = mirrorTypeForAzureBoardsWorkItem(remote, rootWorkItem.id);
         const remoteParentId = remote.id === rootWorkItem.id ? undefined : parentWorkItemId(remote);
         const proposedParentId = remoteParentId !== undefined ? localByRemoteId.get(remoteParentId) : undefined;
@@ -920,7 +1039,7 @@ export async function importAzureBoardsEpicTreeAsWorkItems(
             new Set(ordered.map(item => item.id)),
         )
         : { deleted: 0, deletedItemIds: [] };
-    return { root, items, created, updated, ...pruneResult };
+    return { root, items, created, updated, warnings, ...pruneResult };
 }
 
 export async function resolveAzureDevOpsCliAccessToken(

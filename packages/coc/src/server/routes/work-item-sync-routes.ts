@@ -552,6 +552,7 @@ export function registerWorkItemSyncRoutes(ctx: WorkItemSyncRouteContext): void 
                         created: 0,
                         updated: 0,
                         ...deleteResult,
+                        warnings: [],
                     });
                 }
 
