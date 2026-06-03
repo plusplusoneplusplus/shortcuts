@@ -43,6 +43,28 @@ export interface PullRequestListResponse {
   fetchedAt?: number;
 }
 
+// ── Recently opened PRs ─────────────────────────────────────────────
+
+export interface RecentOpenedPullRequestEntry {
+  workspaceId: string;
+  repoId: string;
+  number: number;
+  title: string;
+  webUrl?: string;
+  /** ISO 8601 string. */
+  openedAt: string;
+}
+
+export interface RecentOpenedPullRequestsResponse {
+  entries: RecentOpenedPullRequestEntry[];
+}
+
+export interface RecordRecentOpenedPullRequestRequest {
+  number: number;
+  title: string;
+  webUrl?: string;
+}
+
 export interface PullRequestThreadsResponse {
   threads: unknown[];
 }
