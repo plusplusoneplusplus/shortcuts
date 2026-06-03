@@ -8,6 +8,8 @@ Converts YAML pipeline/workflow definitions into executable DAGs and runs them w
 
 The published package is `@plusplusoneplusplus/coc-workflow`. It contains the pure workflow compiler/executor surface without taking a runtime dependency on Forge; AI execution is injected through `WorkflowExecutionOptions.aiInvoker`. Forge depends on `@plusplusoneplusplus/coc-workflow` and keeps backward-compatible workflow exports from both `@plusplusoneplusplus/forge` and `@plusplusoneplusplus/forge/workflow`.
 
+`@plusplusoneplusplus/coc-workflow/ralph` is a sibling public module, not part of the DAG workflow internals. It exposes portable Ralph records, signal/final-check parsers, progress-section parsing/formatting, and prompt builders while CoC server adapters keep queue, process-store, route, WebSocket, and filesystem side effects.
+
 ## Key Exports
 
 | Symbol | Purpose |
@@ -16,6 +18,7 @@ The published package is `@plusplusoneplusplus/coc-workflow`. It contains the pu
 | `executeWorkflow(config, options)` | Runs the DAG with full lifecycle management |
 | `flattenWorkflowResult(result)` | Flattens workflow result for flat display output |
 | `isCSVSource(value)`, `isGenerateConfig(value)` | Runtime guards for legacy pipeline YAML compatibility inputs |
+| `@plusplusoneplusplus/coc-workflow/ralph` | Portable Ralph contracts and pure helpers outside the DAG workflow barrel |
 
 ## Architecture
 

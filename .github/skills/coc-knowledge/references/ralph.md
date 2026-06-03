@@ -3,6 +3,12 @@
 Ralph is a CoC server feature for iterative AI execution with a small
 file-backed session journal. The session store lives in
 `packages/coc/src/server/ralph/ralph-session-store.ts`.
+Portable Ralph contracts and pure helpers live in
+`@plusplusoneplusplus/coc-workflow/ralph`, including session/final-check record
+types, signal parsing, progress-section parsing/formatting, iteration prompt
+building, final-check prompt building, and final-check result parsing. The CoC
+server owns all side effects: queue tasks, process metadata, WebSocket events,
+repo-scoped path resolution, and filesystem persistence.
 
 ## Session Journal
 
