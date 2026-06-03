@@ -19,6 +19,36 @@ export interface GitCommit {
     files: string[];
 }
 
+/** Filesystem error codes that indicate a transiently-locked path on Windows. */
+const RETRIABLE_RM_CODES = new Set(['ENOTEMPTY', 'EBUSY', 'EPERM', 'EACCES']);
+
+/**
+ * Windows-safe recursive removal of a throwaway temp directory.
+ *
+ * On Windows, `git` can keep a handle open on files inside a just-used repo for
+ * a short window after `execSync` returns, so an immediate `fs.rmSync` throws
+ * `EPERM`/`EBUSY` (and `force: true` only suppresses `ENOENT`, not lock errors).
+ * Node's built-in `maxRetries`/`retryDelay` retries removal with a linear
+ * back-off; if the path is *still* locked afterwards we warn instead of
+ * throwing, because cleaning up a temp directory must never fail an otherwise
+ * passing test. This keeps teardown deterministic across platforms.
+ */
+export function safeRmSync(dir: string): void {
+    try {
+        fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === 'ENOENT') {
+            return;
+        }
+        if (code && RETRIABLE_RM_CODES.has(code)) {
+            console.warn(`safeRmSync: leaving locked temp path behind: ${dir} (${code})`);
+            return;
+        }
+        throw error;
+    }
+}
+
 /**
  * Create a test git repository with initial commit
  */
@@ -48,12 +78,8 @@ export function createTestGitRepo(prefix: string = 'test-git-repo'): GitTestRepo
             }]
         };
     } catch (error) {
-        // Cleanup on error
-        try {
-            fs.rmSync(repoPath, { recursive: true, force: true });
-        } catch (cleanupError) {
-            // Ignore cleanup errors
-        }
+        // Cleanup on error (best-effort, Windows-safe)
+        safeRmSync(repoPath);
         throw error;
     }
 }
@@ -138,11 +164,7 @@ export function getFileAtCommit(
  * Cleanup test repository
  */
 export function cleanupTestRepo(repo: GitTestRepo): void {
-    try {
-        fs.rmSync(repo.repoPath, { recursive: true, force: true });
-    } catch (error) {
-        console.warn(`Failed to cleanup test repo at ${repo.repoPath}:`, error);
-    }
+    safeRmSync(repo.repoPath);
 }
 
 /**

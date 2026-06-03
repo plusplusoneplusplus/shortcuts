@@ -9,6 +9,7 @@ import * as path from 'path';
 import { execSync } from 'child_process';
 import { GitSearchProvider } from '../../shortcuts/discovery/search-providers/git-search-provider';
 import { DEFAULT_DISCOVERY_SCOPE, DiscoveryScope } from '../../shortcuts/discovery/types';
+import { safeRmSync } from '../helpers/git-test-helpers';
 
 suite('GitSearchProvider Tests', function() {
     // Increase timeout for all tests in this suite - git operations can be slow on Windows CI
@@ -37,9 +38,9 @@ suite('GitSearchProvider Tests', function() {
     });
 
     teardown(() => {
-        if (fs.existsSync(tempDir)) {
-            fs.rmSync(tempDir, { recursive: true, force: true });
-        }
+        // Windows-safe: git may briefly hold handles inside the repo after the
+        // test's execSync calls return, so retry + degrade to best-effort.
+        safeRmSync(tempDir);
     });
 
     /**
@@ -326,7 +327,7 @@ suite('GitSearchProvider Tests', function() {
             try {
                 assert.strictEqual(GitSearchProvider.isGitRepository(nonGitDir), false);
             } finally {
-                fs.rmSync(nonGitDir, { recursive: true, force: true });
+                safeRmSync(nonGitDir);
             }
         });
 
@@ -381,7 +382,7 @@ suite('GitSearchProvider Tests', function() {
                 const results = await provider.searchByMessage(['auth'], 50, emptyGitDir);
                 assert.deepStrictEqual(results, []);
             } finally {
-                fs.rmSync(emptyGitDir, { recursive: true, force: true });
+                safeRmSync(emptyGitDir);
             }
         });
 
