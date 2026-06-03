@@ -1,6 +1,6 @@
 import {
     getEffectiveType,
-    WORK_ITEM_STATUSES,
+    isKnownWorkItemStatus,
     WORK_ITEM_TYPES,
     type WorkItem,
     type WorkItemPriority,
@@ -97,7 +97,7 @@ function isWorkItemType(value: unknown): value is WorkItemType {
 }
 
 function isWorkItemStatus(value: unknown): value is WorkItemStatus {
-    return typeof value === 'string' && WORK_ITEM_STATUSES.includes(value as WorkItemStatus);
+    return isKnownWorkItemStatus(value);
 }
 
 function isWorkItemPriority(value: unknown): value is WorkItemPriority {

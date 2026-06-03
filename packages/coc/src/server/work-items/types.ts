@@ -22,15 +22,16 @@
  * spec is developed interactively (e.g. a Ralph grilling session). Other types
  * skip it and start at `created`.
  */
-export type WorkItemStatus = 'created' | 'drafting' | 'planning' | 'readyToExecute' | 'executing' | 'aiDone' | 'aiFailed' | 'done' | 'failed';
+export type KnownWorkItemStatus = 'created' | 'drafting' | 'planning' | 'readyToExecute' | 'executing' | 'aiDone' | 'aiFailed' | 'done' | 'failed';
+export type WorkItemStatus = KnownWorkItemStatus | (string & {});
 
 /** All valid work item statuses (useful for validation). */
-export const WORK_ITEM_STATUSES: readonly WorkItemStatus[] = Object.freeze([
+export const WORK_ITEM_STATUSES: readonly KnownWorkItemStatus[] = Object.freeze([
     'created', 'drafting', 'planning', 'readyToExecute', 'executing', 'aiDone', 'aiFailed', 'done', 'failed',
 ]);
 
 /** Terminal statuses that cannot transition further. */
-export const TERMINAL_WORK_ITEM_STATUSES: ReadonlySet<WorkItemStatus> = new Set([
+export const TERMINAL_WORK_ITEM_STATUSES: ReadonlySet<KnownWorkItemStatus> = new Set([
     'done', 'failed',
 ]);
 
@@ -508,11 +509,11 @@ export interface WorkItemStore {
 
 /** Check if a work item status is terminal (done or failed). */
 export function isTerminalStatus(status: WorkItemStatus): boolean {
-    return TERMINAL_WORK_ITEM_STATUSES.has(status);
+    return isKnownWorkItemStatus(status) && TERMINAL_WORK_ITEM_STATUSES.has(status);
 }
 
 /** Valid status transitions. */
-export const VALID_TRANSITIONS: Record<WorkItemStatus, readonly WorkItemStatus[]> = {
+export const VALID_TRANSITIONS: Record<KnownWorkItemStatus, readonly KnownWorkItemStatus[]> = {
     created:        ['drafting', 'planning', 'readyToExecute', 'done', 'failed'],
     drafting:       ['planning', 'readyToExecute', 'created', 'failed'],
     planning:       ['readyToExecute', 'drafting', 'created', 'done', 'failed'],
@@ -524,8 +525,14 @@ export const VALID_TRANSITIONS: Record<WorkItemStatus, readonly WorkItemStatus[]
     failed:         ['created'],      // Allow re-opening
 };
 
+/** Check whether a status is one of CoC's built-in lifecycle states. */
+export function isKnownWorkItemStatus(status: unknown): status is KnownWorkItemStatus {
+    return typeof status === 'string' && WORK_ITEM_STATUSES.includes(status as KnownWorkItemStatus);
+}
+
 /** Check if a status transition is valid. */
 export function isValidTransition(from: WorkItemStatus, to: WorkItemStatus): boolean {
+    if (!isKnownWorkItemStatus(from) || !isKnownWorkItemStatus(to)) return false;
     return VALID_TRANSITIONS[from]?.includes(to) ?? false;
 }
 

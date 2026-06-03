@@ -1008,6 +1008,16 @@ describe('FileWorkItemStore', () => {
             expect(result.groups['executing']).toBeUndefined();
         });
 
+        it('keeps unknown remote statuses as visible groups after known statuses', async () => {
+            await store.addWorkItem(makeWorkItem({ id: 'gu1', title: 'Blocked item', status: 'Blocked by dependency' }));
+            await store.addWorkItem(makeWorkItem({ id: 'gu2', title: 'Created item', status: 'created' }));
+
+            const result = await store.listWorkItemsGrouped({ repoId: 'test-repo' });
+            expect(Object.keys(result.groups)).toEqual(['created', 'Blocked by dependency']);
+            expect(result.groups['Blocked by dependency'].items).toHaveLength(1);
+            expect(result.groups['Blocked by dependency'].items[0].id).toBe('gu1');
+        });
+
         it('returns empty groups object when no items', async () => {
             const result = await store.listWorkItemsGrouped({ repoId: 'test-repo' });
             expect(result.groups).toEqual({});

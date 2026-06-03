@@ -1,6 +1,6 @@
 import type { ChatProvider, JsonObject, ReasoningEffort } from './common';
 
-export type WorkItemStatus =
+export type KnownWorkItemStatus =
   | 'created'
   | 'drafting'
   | 'planning'
@@ -9,8 +9,8 @@ export type WorkItemStatus =
   | 'aiDone'
   | 'aiFailed'
   | 'done'
-  | 'failed'
-  | string;
+  | 'failed';
+export type WorkItemStatus = KnownWorkItemStatus | (string & {});
 export type WorkItemPriority = 'high' | 'normal' | 'low';
 export type WorkItemSource = 'manual' | 'chat' | 'schedule';
 export type WorkItemType = 'work-item' | 'bug' | 'goal' | 'epic' | 'feature' | 'pbi';
@@ -360,17 +360,7 @@ export interface WorkItemRollup {
     bug: number;
     goal: number;
   };
-  byStatus: {
-    created: number;
-    drafting: number;
-    planning: number;
-    readyToExecute: number;
-    executing: number;
-    aiDone: number;
-    aiFailed: number;
-    done: number;
-    failed: number;
-  };
+  byStatus: Record<KnownWorkItemStatus, number> & Record<string, number>;
 }
 
 /** A node in the work item hierarchy tree. */

@@ -33,7 +33,7 @@ import type {
     WorkItemPlanVersion,
     WorkItemChange,
 } from '../work-items/types';
-import { WORK_ITEM_STATUSES, WORK_ITEM_TYPES, WORK_ITEM_TRACKER_KINDS, isValidTransition, HIERARCHY_CONTAINER_TYPES, isValidParentChildTypes, getEffectiveType } from '../work-items/types';
+import { WORK_ITEM_STATUSES, WORK_ITEM_TYPES, WORK_ITEM_TRACKER_KINDS, isValidTransition, HIERARCHY_CONTAINER_TYPES, isValidParentChildTypes, getEffectiveType, isKnownWorkItemStatus } from '../work-items/types';
 import { resolveGitHubWorkItemSyncRepo, type GitHubWorkItemSyncRepo } from '../work-items/work-item-sync-github-repo';
 import {
     GhCliGitHubWorkItemIssueTransport,
@@ -265,7 +265,7 @@ export function registerWorkItemRoutes(ctx: WorkItemRouteContext): void {
 
             const filter: WorkItemFilter = { repoId };
             if (typeof query.status === 'string' && query.status) {
-                const statuses = query.status.split(',').filter(s => WORK_ITEM_STATUSES.includes(s as WorkItemStatus));
+                const statuses = query.status.split(',').filter(isKnownWorkItemStatus);
                 if (statuses.length === 1) {
                     filter.status = statuses[0] as WorkItemStatus;
                 } else if (statuses.length > 1) {

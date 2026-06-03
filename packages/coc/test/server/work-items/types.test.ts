@@ -8,6 +8,7 @@ import {
     LEAF_WORK_ITEM_TYPES,
     ALLOWED_PARENT_TYPES,
     ALLOWED_CHILD_TYPES,
+    isKnownWorkItemStatus,
     isTerminalStatus,
     isValidTransition,
     toIndexEntry,
@@ -83,6 +84,18 @@ describe('Work Item Types', () => {
             expect(isTerminalStatus('executing')).toBe(false);
             expect(isTerminalStatus('aiDone')).toBe(false);
             expect(isTerminalStatus('aiFailed')).toBe(false);
+        });
+
+        it('returns false for unknown remote statuses', () => {
+            expect(isTerminalStatus('Blocked by dependency')).toBe(false);
+        });
+    });
+
+    describe('isKnownWorkItemStatus', () => {
+        it('recognizes built-in statuses only', () => {
+            expect(isKnownWorkItemStatus('created')).toBe(true);
+            expect(isKnownWorkItemStatus('Blocked by dependency')).toBe(false);
+            expect(isKnownWorkItemStatus(undefined)).toBe(false);
         });
     });
 
@@ -185,6 +198,11 @@ describe('Work Item Types', () => {
             expect(isValidTransition('done', 'executing')).toBe(false);
             expect(isValidTransition('failed', 'executing')).toBe(false);
             expect(isValidTransition('created', 'aiDone')).toBe(false);
+        });
+
+        it('rejects transitions involving unknown remote statuses', () => {
+            expect(isValidTransition('Blocked by dependency', 'done')).toBe(false);
+            expect(isValidTransition('created', 'Blocked by dependency')).toBe(false);
         });
 
         it('every status has at least one valid transition', () => {

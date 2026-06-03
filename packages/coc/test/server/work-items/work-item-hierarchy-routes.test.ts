@@ -541,6 +541,42 @@ describe('Work Item Hierarchy Routes', () => {
                 }
             }
         });
+
+        it('includes unknown remote statuses in rollup counts without corrupting canonical counts', async () => {
+            hierarchyEnabled = true;
+            await store.addWorkItem({
+                id: 'epic-unknown-status',
+                repoId: REPO_ID,
+                title: 'Epic',
+                description: '',
+                status: 'created',
+                type: 'epic',
+                createdAt: '2026-01-01T00:00:00.000Z',
+                updatedAt: '2026-01-01T00:00:00.000Z',
+                source: 'manual',
+            });
+            await store.addWorkItem({
+                id: 'feature-unknown-status',
+                repoId: REPO_ID,
+                title: 'Feature',
+                description: '',
+                status: 'Blocked by dependency',
+                type: 'feature',
+                parentId: 'epic-unknown-status',
+                createdAt: '2026-01-01T00:00:00.000Z',
+                updatedAt: '2026-01-01T00:00:00.000Z',
+                source: 'manual',
+            });
+
+            const res = await request('GET', `/api/workspaces/${REPO_ID}/work-items/tree`);
+            expect(res.status).toBe(200);
+            const rollup = res.body.roots[0].rollup;
+            expect(rollup.byStatus.created).toBe(0);
+            expect(rollup.byStatus['Blocked by dependency']).toBe(1);
+            for (const s of WORK_ITEM_STATUSES) {
+                expect(Number.isNaN(rollup.byStatus[s])).toBe(false);
+            }
+        });
     });
 
     describe('POST /work-items — hierarchy type validation', () => {

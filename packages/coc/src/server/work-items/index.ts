@@ -1,4 +1,5 @@
 export type {
+    KnownWorkItemStatus,
     WorkItemStatus,
     WorkItemSource,
     WorkItemPriority,
@@ -26,6 +27,7 @@ export {
     WORK_ITEM_TRACKER_KINDS,
     TERMINAL_WORK_ITEM_STATUSES,
     VALID_TRANSITIONS,
+    isKnownWorkItemStatus,
     isTerminalStatus,
     isValidTransition,
     getOwnWorkItemTrackerKind,
@@ -85,6 +87,23 @@ export {
     type AzureBoardsAccessTokenResolver,
     type CreateAzureBoardsWorkItemSyncProviderOptions,
 } from './work-item-sync-azure-boards-provider';
+export {
+    AZURE_BOARDS_COC_TYPE_TAG_PREFIX,
+    AZURE_BOARDS_TAG_SEPARATOR,
+    AZURE_BOARDS_UNKNOWN_PRIORITY_TAG_PREFIX,
+    AZURE_BOARDS_UNKNOWN_TYPE_TAG_PREFIX,
+    formatAzureBoardsTags,
+    mapAzureBoardsPriorityToWorkItemPriority,
+    mapAzureBoardsStateToWorkItemStatus,
+    mapAzureBoardsTypeToCocWorkItemType,
+    mapCocWorkItemTypeToAzureBoardsType,
+    mapWorkItemPriorityToAzureBoardsPriority,
+    mapWorkItemStatusToAzureBoardsState,
+    parseAzureBoardsTags,
+    type AzureBoardsPriorityMapping,
+    type AzureBoardsRemoteTypeMapping,
+    type AzureBoardsTypeMapping,
+} from './work-item-sync-azure-boards-mapping';
 export {
     DEFAULT_WORK_ITEM_GITHUB_PULL_INTERVAL_MINUTES,
     WorkItemGitHubPullPoller,
