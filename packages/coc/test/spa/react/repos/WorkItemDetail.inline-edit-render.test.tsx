@@ -52,8 +52,16 @@ vi.mock(`../../../../src/server/spa/client/react/utils/config`, () => ({
 }));
 
 // --- Stub heavy child components ---
+// Lightweight controlled stub that mirrors the real plan section's draft wiring
+// so we can assert plan edits join the parent's unified Ctrl+S batch.
 vi.mock(`../../../../src/server/spa/client/react/features/work-items/WorkItemPlanSection`, () => ({
-    WorkItemPlanSection: () => <div data-testid="mock-plan-section" />,
+    WorkItemPlanSection: ({ draftContent, onDraftChange }: any) => (
+        <input
+            data-testid="mock-plan-input"
+            value={draftContent ?? ''}
+            onChange={(e) => onDraftChange(e.target.value)}
+        />
+    ),
 }));
 vi.mock(`../../../../src/server/spa/client/react/features/work-items/WorkItemExecuteDialog`, () => ({
     WorkItemExecuteDialog: () => null,
@@ -161,13 +169,28 @@ describe('WorkItemDetail inline editing (render)', () => {
         expect(screen.getByTestId('wi-dirty-indicator')).toBeTruthy();
     });
 
-    it('AC-05: empty title blocks save with validation error', async () => {
+    it('AC-03: editing the plan marks dirty and Ctrl+S includes a single updatePlan', async () => {
         renderDetail();
-        const title = await screen.findByTestId('wi-title-input');
-        fireEvent.change(title, { target: { value: '   ' } });
+        await screen.findByTestId('wi-title-input');
+        const planInput = screen.getByTestId('mock-plan-input');
+        // Plan starts clean (no plan content) — editing it should dirty the batch.
+        expect(screen.queryByTestId('wi-dirty-indicator')).toBeNull();
+        fireEvent.change(planInput, { target: { value: '# New plan' } });
+        expect(screen.getByTestId('wi-dirty-indicator')).toBeTruthy();
+
         fireEvent.keyDown(window, { key: 's', ctrlKey: true });
-        const err = await screen.findByTestId('wi-edit-error');
-        expect(err.textContent).toContain('Title is required');
+
+        await waitFor(() => expect(mockUpdatePlan).toHaveBeenCalledTimes(1));
+        const [, , planContent] = mockUpdatePlan.mock.calls[0];
+        expect(planContent).toBe('# New plan');
+    });
+
+    it('AC-02: empty-batch Ctrl+S with no edits issues no network calls', async () => {
+        renderDetail();
+        await screen.findByTestId('wi-title-input');
+        fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+        await Promise.resolve();
         expect(mockUpdate).not.toHaveBeenCalled();
+        expect(mockUpdatePlan).not.toHaveBeenCalled();
     });
 });

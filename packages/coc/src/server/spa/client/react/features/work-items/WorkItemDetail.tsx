@@ -819,6 +819,8 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                             workItemId={workItemId}
                             plan={item.plan}
                             canEdit={canEditPlan}
+                            draftContent={planDraft}
+                            onDraftChange={setPlanDraft}
                             onUpdated={fetchItem}
                             onError={setError}
                             onNavigateToTasksTab={onNavigateToTasksTab}

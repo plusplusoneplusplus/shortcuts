@@ -18,6 +18,9 @@ import { fetchApi } from '../../hooks/useApi';
 import { getSpaCocClient } from '../../api/cocClient';
 import { formatRelativeTime } from '../../utils/format';
 import { useMarkdownPreview } from '../../hooks/ui/useMarkdownPreview';
+import { SourceEditor } from '../../shared/SourceEditor';
+import { ModeToggleToolbar } from '../../ui/ModeToggleToolbar';
+import type { ModeOption } from '../../ui/ModeToggleToolbar';
 import { useTaskComments } from '../../tasks/hooks/useTaskComments';
 import type { RenderCommentInfo } from '../../../diff/markdown-renderer';
 import { ContextMenu } from '../../tasks/comments/ContextMenu';
@@ -51,12 +54,28 @@ interface WorkItemPlanSectionProps {
     plan?: { version: number; content: string; updatedAt?: string; resolvedBy?: string };
     /** Whether the user can edit / refine the plan (based on work item status). */
     canEdit: boolean;
-    /** Called after any plan mutation so the parent can refresh. */
+    /**
+     * Lifted plan draft from the parent's unified dirty batch. `null` until the
+     * parent has initialized it from the loaded plan content. When the user
+     * edits in source mode, changes flow up via `onDraftChange` and are persisted
+     * only when the parent's Ctrl+S save runs — no instant standalone save here.
+     */
+    draftContent: string | null;
+    /** Push edited plan content into the parent's unified dirty batch. */
+    onDraftChange: (content: string) => void;
+    /** Called after any plan mutation (e.g. AI resolve) so the parent can refresh. */
     onUpdated: () => void;
     onError: (msg: string) => void;
     /** Called when a batch-resolve task is enqueued so the parent can navigate. */
     onNavigateToTasksTab?: (taskId: string) => void;
 }
+
+type PlanViewMode = 'preview' | 'source';
+
+const PLAN_MODE_OPTIONS: readonly ModeOption<PlanViewMode>[] = [
+    { value: 'preview', label: 'Preview' },
+    { value: 'source', label: 'Source', testId: 'work-item-plan-mode-source' },
+] as const;
 
 /** Minimum characters selected to activate the comment toolbar. */
 const MIN_SELECTION_LENGTH = 3;
@@ -82,19 +101,23 @@ function buildPlanAnchor(
 }
 
 export function WorkItemPlanSection({
-    workspaceId, workItemId, plan, canEdit, onUpdated, onError, onNavigateToTasksTab,
+    workspaceId, workItemId, plan, canEdit, draftContent, onDraftChange, onUpdated, onError, onNavigateToTasksTab,
 }: WorkItemPlanSectionProps) {
     // ── Plan version state ──────────────────────────────────────────────────
     const [versions, setVersions] = useState<PlanVersionMeta[]>([]);
     const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
     const [selectedContent, setSelectedContent] = useState<string | null>(null);
     const [loadingVersion, setLoadingVersion] = useState(false);
-    const [editMode, setEditMode] = useState(false);
-    const [planDraft, setPlanDraft] = useState('');
-    const [saving, setSaving] = useState(false);
+    const [viewMode, setViewMode] = useState<PlanViewMode>('preview');
     const [resolving, setResolving] = useState(false);
 
     const currentVersion = plan?.version ?? null;
+
+    // Plan content for the current version, sourced from the parent's unified
+    // dirty batch (falling back to the loaded plan content until initialized).
+    const currentDraft = draftContent ?? plan?.content ?? '';
+    const planBaseline = plan?.content ?? '';
+    const isPlanDirty = currentDraft !== planBaseline;
 
     // ── Inline review state ────────────────────────────────────────────────
     const previewRef = useRef<HTMLDivElement>(null);
@@ -154,7 +177,7 @@ export function WorkItemPlanSection({
     useEffect(() => {
         setSelectedVersion(null);
         setSelectedContent(null);
-        setEditMode(false);
+        setViewMode('preview');
     }, [plan?.version]);
 
     const handleSelectVersion = async (v: number) => {
@@ -175,23 +198,11 @@ export function WorkItemPlanSection({
         }
     };
 
-    const displayedContent = selectedVersion !== null ? (selectedContent ?? '') : (plan?.content ?? '');
     const isCurrentSelected = selectedVersion === null || selectedVersion === currentVersion;
-
-    // Save edited plan
-    const handleSave = async () => {
-        setSaving(true);
-        try {
-            await getSpaCocClient().workItems.updatePlan(workspaceId, workItemId, planDraft);
-            setEditMode(false);
-            onUpdated();
-            loadVersions();
-        } catch (err: any) {
-            onError(err.message || 'Failed to save plan');
-        } finally {
-            setSaving(false);
-        }
-    };
+    // Current version reflects the live draft so edits preview instantly; older
+    // versions are read-only snapshots fetched on demand.
+    const displayedContent = isCurrentSelected ? currentDraft : (selectedContent ?? '');
+    const canEditNow = canEdit && isCurrentSelected;
 
     // Resolve inline comments with AI — creates a Run# execution session
     const handleResolveAllWithAI = useCallback(async () => {
@@ -231,7 +242,7 @@ export function WorkItemPlanSection({
     // Capture text selections in the preview div
     useEffect(() => {
         const handleMouseUp = () => {
-            if (editMode) return;
+            if (viewMode !== 'preview') return;
             const sel = window.getSelection();
             if (
                 sel && !sel.isCollapsed && sel.rangeCount &&
@@ -252,14 +263,14 @@ export function WorkItemPlanSection({
         };
         document.addEventListener('mouseup', handleMouseUp);
         return () => document.removeEventListener('mouseup', handleMouseUp);
-    }, [editMode, displayedContent]);
+    }, [viewMode, displayedContent]);
 
     const handleContextMenu = useCallback((e: React.MouseEvent) => {
-        if (editMode) return;
+        if (viewMode !== 'preview') return;
         e.preventDefault();
         setContextMenuPos({ x: e.clientX, y: e.clientY });
         setContextMenuVisible(true);
-    }, [editMode]);
+    }, [viewMode]);
 
     const handleAddCommentFromMenu = useCallback(() => {
         if (!savedSelection) return;
@@ -369,23 +380,33 @@ export function WorkItemPlanSection({
 
     if (!plan) {
         return (
-            <div className="space-y-2">
-                <div className="text-xs text-[#848484] italic">No plan yet.</div>
-                {canEdit && (
-                    <Button variant="ghost" size="sm"
-                        onClick={() => { setPlanDraft(''); setEditMode(true); }}
-                        data-testid="work-item-plan-add-btn">
-                        ✏️ Add Plan
-                    </Button>
-                )}
-                {editMode && (
-                    <PlanEditor
-                        draft={planDraft}
-                        onChange={setPlanDraft}
-                        onSave={handleSave}
-                        onCancel={() => setEditMode(false)}
-                        saving={saving}
-                    />
+            <div className="space-y-2" data-testid="work-item-plan-section">
+                {canEdit ? (
+                    <>
+                        <ModeToggleToolbar
+                            modes={PLAN_MODE_OPTIONS}
+                            activeMode={viewMode}
+                            onModeChange={setViewMode}
+                            dirty={isPlanDirty}
+                            testId="work-item-plan-mode-toggle"
+                        />
+                        {viewMode === 'source' ? (
+                            <SourceEditor
+                                content={currentDraft}
+                                onChange={onDraftChange}
+                                className="w-full h-48 text-xs p-2 rounded border border-[#e0e0e0] dark:border-[#474749] bg-[#fafafa] dark:bg-[#1e1e1e] resize-y font-mono"
+                            />
+                        ) : (
+                            <div
+                                ref={previewRef}
+                                className="markdown-body text-xs rounded border max-h-72 overflow-y-auto p-3 bg-[#fafafa] dark:bg-[#1e1e1e] border-[#e0e0e0] dark:border-[#474749]"
+                                data-testid="work-item-plan-content"
+                                dangerouslySetInnerHTML={{ __html: html || `<span class="italic text-[#848484]">No plan yet. Switch to Source to write one.</span>` }}
+                            />
+                        )}
+                    </>
+                ) : (
+                    <div className="text-xs text-[#848484] italic">No plan yet.</div>
                 )}
             </div>
         );
@@ -432,14 +453,23 @@ export function WorkItemPlanSection({
                 </div>
             )}
 
-            {/* Plan content — edit mode or inline review mode */}
-            {editMode && isCurrentSelected ? (
-                <PlanEditor
-                    draft={planDraft}
-                    onChange={setPlanDraft}
-                    onSave={handleSave}
-                    onCancel={() => setEditMode(false)}
-                    saving={saving}
+            {/* Mode toggle — only the current version is editable. */}
+            {canEditNow && (
+                <ModeToggleToolbar
+                    modes={PLAN_MODE_OPTIONS}
+                    activeMode={viewMode}
+                    onModeChange={setViewMode}
+                    dirty={isPlanDirty}
+                    testId="work-item-plan-mode-toggle"
+                />
+            )}
+
+            {/* Plan content — always-editable source or inline-review preview */}
+            {canEditNow && viewMode === 'source' ? (
+                <SourceEditor
+                    content={currentDraft}
+                    onChange={onDraftChange}
+                    className="w-full h-48 text-xs p-2 rounded border border-[#e0e0e0] dark:border-[#474749] bg-[#fafafa] dark:bg-[#1e1e1e] resize-y font-mono"
                 />
             ) : (
                 <div className="relative">
@@ -460,14 +490,9 @@ export function WorkItemPlanSection({
                             onClick={handleHighlightClick}
                         />
                     )}
-                    {/* Edit button (current version only) */}
-                    {isCurrentSelected && canEdit && (
+                    {/* Resolve-comments action (current version, preview only) */}
+                    {isCurrentSelected && canEdit && openCommentCount > 0 && (
                         <div className="flex items-center gap-2 mt-1.5">
-                            <Button variant="ghost" size="sm"
-                                onClick={() => { setPlanDraft(plan?.content || ''); setEditMode(true); }}
-                                data-testid="work-item-plan-edit-btn">
-                                ✏️ Edit
-                            </Button>
                             {openCommentCount > 0 && (
                                 <Button
                                     variant="ghost" size="sm"
@@ -484,8 +509,8 @@ export function WorkItemPlanSection({
                 </div>
             )}
 
-            {/* Inline comment sidebar — shown when comments exist */}
-            {planComments.length > 0 && !editMode && (
+            {/* Inline comment sidebar — shown when comments exist (preview only) */}
+            {planComments.length > 0 && viewMode === 'preview' && (
                 <div className="border-t border-[#e0e0e0] dark:border-[#474749] pt-2" data-testid="work-item-plan-comment-sidebar">
                     <CommentSidebar
                         taskId={commentPath}
@@ -575,37 +600,4 @@ export function WorkItemPlanSection({
         </div>
     );
 }
-
-// ── Internal editor sub-component ────────────────────────────────────────────
-
-interface PlanEditorProps {
-    draft: string;
-    onChange: (v: string) => void;
-    onSave: () => void;
-    onCancel: () => void;
-    saving: boolean;
-}
-
-function PlanEditor({ draft, onChange, onSave, onCancel, saving }: PlanEditorProps) {
-    return (
-        <div className="space-y-2" data-testid="work-item-plan-editor-section">
-            <textarea
-                className="w-full h-48 text-xs p-2 rounded border border-[#e0e0e0] dark:border-[#474749] bg-[#fafafa] dark:bg-[#1e1e1e] resize-y font-mono"
-                value={draft}
-                onChange={e => onChange(e.target.value)}
-                placeholder="Write your plan here…"
-                data-testid="work-item-plan-editor"
-            />
-            <div className="flex gap-1">
-                <Button variant="primary" size="sm" onClick={onSave} disabled={saving} loading={saving}>
-                    Save
-                </Button>
-                <Button variant="ghost" size="sm" onClick={onCancel}>
-                    Cancel
-                </Button>
-            </div>
-        </div>
-    );
-}
-
 
