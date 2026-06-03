@@ -7,7 +7,8 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { EventEmitter } from 'events';
-import { CliError, captureGitDiff } from '../cli-driver';
+import * as path from 'path';
+import { CliError, captureGitDiff, resolveCopilotInvocation } from '../cli-driver';
 
 // ─── Minimal inline driver for unit-testing spawn logic ───────────────────────
 
@@ -181,5 +182,73 @@ describe('captureGitDiff', () => {
         // In a non-git directory it returns '' without throwing
         const result = captureGitDiff(require('os').tmpdir());
         expect(typeof result).toBe('string');
+    });
+});
+
+describe('resolveCopilotInvocation — cross-platform binary resolution', () => {
+    const baseArgs = ['-p', 'hi', '--no-color'];
+
+    it('on Windows, runs the npm-loader via node when found on PATH', () => {
+        const shimDir = path.join('C:', 'tools', 'npm-global');
+        const loader = path.join(shimDir, 'node_modules', '@github', 'copilot', 'npm-loader.js');
+        const pathEnv = [path.join('C:', 'other'), shimDir].join(path.delimiter);
+
+        const result = resolveCopilotInvocation(baseArgs, {
+            platform: 'win32',
+            pathEnv,
+            nodePath: 'C:\\node\\node.exe',
+            fileExists: (p) => p === loader,
+        });
+
+        expect(result.command).toBe('C:\\node\\node.exe');
+        expect(result.args).toEqual([loader, ...baseArgs]);
+    });
+
+    it('on Windows, picks the first PATH dir whose loader exists', () => {
+        const dirA = path.join('C:', 'a');
+        const dirB = path.join('C:', 'b');
+        const loaderA = path.join(dirA, 'node_modules', '@github', 'copilot', 'npm-loader.js');
+        const loaderB = path.join(dirB, 'node_modules', '@github', 'copilot', 'npm-loader.js');
+        const pathEnv = [dirA, dirB].join(path.delimiter);
+
+        const result = resolveCopilotInvocation(baseArgs, {
+            platform: 'win32',
+            pathEnv,
+            nodePath: 'node',
+            fileExists: (p) => p === loaderA || p === loaderB,
+        });
+
+        expect(result.args[0]).toBe(loaderA);
+    });
+
+    it('on Windows, falls back to "copilot" when no loader is found', () => {
+        const result = resolveCopilotInvocation(baseArgs, {
+            platform: 'win32',
+            pathEnv: [path.join('C:', 'x'), path.join('C:', 'y')].join(path.delimiter),
+            fileExists: () => false,
+        });
+
+        expect(result.command).toBe('copilot');
+        expect(result.args).toEqual(baseArgs);
+    });
+
+    it('on non-Windows, always invokes "copilot" directly (even if a loader exists)', () => {
+        const result = resolveCopilotInvocation(baseArgs, {
+            platform: 'linux',
+            pathEnv: '/usr/local/bin',
+            fileExists: () => true,
+        });
+
+        expect(result.command).toBe('copilot');
+        expect(result.args).toEqual(baseArgs);
+    });
+
+    it('ignores empty PATH segments', () => {
+        const result = resolveCopilotInvocation(baseArgs, {
+            platform: 'win32',
+            pathEnv: path.delimiter + path.delimiter,
+            fileExists: () => false,
+        });
+        expect(result.command).toBe('copilot');
     });
 });
