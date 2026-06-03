@@ -1,7 +1,8 @@
-import { execFile } from 'child_process';
-import { parseDevTunnelHttpPortInfo } from './devtunnel-port-parser';
+import { execFile, spawn } from 'child_process';
+import type { ChildProcess } from 'child_process';
+import { parseDevTunnelForwardedPort, parseDevTunnelHttpPortInfo } from './devtunnel-port-parser';
 import type { DevTunnelConnectionState, RemoteServer, ManagedChildProcess, ProcessStarter, HealthChecker } from './types';
-import { startProcess as defaultProcessStarter, defaultHealthChecker, waitForHealth } from './health';
+import { defaultHealthChecker, waitForHealth } from './health';
 
 export type DevTunnelCommandRunner = (command: string, args: string[]) => Promise<{ stdout: string; stderr: string }>;
 
@@ -11,6 +12,8 @@ export interface DevTunnelConnectorOptions {
     healthChecker?: HealthChecker;
     readinessTimeoutMs?: number;
     readinessPollMs?: number;
+    forwardReadyTimeoutMs?: number;
+    healthRequestTimeoutMs?: number;
 }
 
 interface ManagedConnection {
@@ -18,6 +21,8 @@ interface ManagedConnection {
     child?: ManagedChildProcess;
     pending?: Promise<DevTunnelConnectionState>;
     intentionalStop?: boolean;
+    forwardedPort?: number;
+    forwardBuffer?: string;
 }
 
 function runCommand(command: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
@@ -30,6 +35,15 @@ function runCommand(command: string, args: string[]): Promise<{ stdout: string; 
             resolve({ stdout: stdout.toString(), stderr: stderr.toString() });
         });
     });
+}
+
+// `devtunnel connect` prints the forwarded local port to stdout, so pipe it (the shared
+// startProcess uses stdio:'ignore' and would discard that output).
+function startDevTunnelProcess(command: string, args: string[]): ManagedChildProcess {
+    return spawn(command, args, {
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+    }) as ChildProcess as ManagedChildProcess;
 }
 
 function classifyCommandError(error: unknown): string {
@@ -51,13 +65,17 @@ export class DevTunnelConnector {
     private readonly healthChecker: HealthChecker;
     private readonly readinessTimeoutMs: number;
     private readonly readinessPollMs: number;
+    private readonly forwardReadyTimeoutMs: number;
+    private readonly healthRequestTimeoutMs: number;
 
     constructor(options: DevTunnelConnectorOptions = {}) {
         this.commandRunner = options.commandRunner ?? runCommand;
-        this.processStarter = options.processStarter ?? defaultProcessStarter;
+        this.processStarter = options.processStarter ?? startDevTunnelProcess;
         this.healthChecker = options.healthChecker ?? defaultHealthChecker;
-        this.readinessTimeoutMs = options.readinessTimeoutMs ?? 15_000;
+        this.readinessTimeoutMs = options.readinessTimeoutMs ?? 20_000;
         this.readinessPollMs = options.readinessPollMs ?? 500;
+        this.forwardReadyTimeoutMs = options.forwardReadyTimeoutMs ?? 10_000;
+        this.healthRequestTimeoutMs = options.healthRequestTimeoutMs ?? 5_000;
     }
 
     getState(tunnelId: string): DevTunnelConnectionState {
@@ -92,10 +110,8 @@ export class DevTunnelConnector {
         const entry = this.getConnection(tunnelId);
 
         entry.intentionalStop = true;
-        if (entry.child) {
-            entry.child.kill();
-            entry.child = undefined;
-        }
+        entry.child?.kill();
+        this.clearChild(entry);
 
         entry.pending = undefined;
 
@@ -114,10 +130,8 @@ export class DevTunnelConnector {
     disconnect(tunnelId: string): DevTunnelConnectionState {
         const entry = this.getConnection(tunnelId);
         entry.intentionalStop = true;
-        if (entry.child) {
-            entry.child.kill();
-            entry.child = undefined;
-        }
+        entry.child?.kill();
+        this.clearChild(entry);
         entry.state = {
             tunnelId,
             status: 'idle',
@@ -146,17 +160,18 @@ export class DevTunnelConnector {
         try {
             const { stdout, stderr } = await this.commandRunner('devtunnel', ['port', 'list', tunnelId]);
             const { port, publicUrl } = parseDevTunnelHttpPortInfo(`${stdout}\n${stderr}`);
-            const effectiveUrl = `http://127.0.0.1:${port}`;
 
             if (!entry.child) {
                 entry.intentionalStop = false;
+                this.clearChild(entry);
                 const child = this.processStarter('devtunnel', ['connect', tunnelId]);
                 entry.child = child;
+                this.attachForwardListener(entry, child, port);
                 child.once('exit', (code, signal) => {
                     if (entry.intentionalStop || entry.child !== child) {
                         return;
                     }
-                    entry.child = undefined;
+                    this.clearChild(entry);
                     entry.state = {
                         ...entry.state,
                         status: 'failed',
@@ -168,7 +183,7 @@ export class DevTunnelConnector {
                     if (entry.child !== child) {
                         return;
                     }
-                    entry.child = undefined;
+                    this.clearChild(entry);
                     entry.state = {
                         ...entry.state,
                         status: 'failed',
@@ -178,10 +193,15 @@ export class DevTunnelConnector {
                 });
             }
 
-            await waitForHealth(effectiveUrl, this.healthChecker, this.readinessTimeoutMs, this.readinessPollMs, 'DevTunnel');
+            // `devtunnel connect` forwards the remote HTTP port to a possibly-different local port,
+            // so health-check the actual forwarded local port (falling back to the configured port).
+            const localPort = await this.resolveForwardedPort(entry, port);
+            const effectiveUrl = `http://127.0.0.1:${localPort}`;
+
+            await waitForHealth(effectiveUrl, this.healthChecker, this.readinessTimeoutMs, this.readinessPollMs, 'DevTunnel', this.healthRequestTimeoutMs);
             entry.state = {
                 tunnelId,
-                port,
+                port: localPort,
                 effectiveUrl,
                 publicUrl,
                 status: 'online',
@@ -201,6 +221,40 @@ export class DevTunnelConnector {
             };
             throw new Error(entry.state.lastError);
         }
+    }
+
+    private clearChild(entry: ManagedConnection): void {
+        entry.child = undefined;
+        entry.forwardedPort = undefined;
+        entry.forwardBuffer = undefined;
+    }
+
+    private attachForwardListener(entry: ManagedConnection, child: ManagedChildProcess, hostPort: number): void {
+        const onData = (chunk: Buffer | string): void => {
+            if (entry.child !== child || entry.forwardedPort !== undefined) {
+                return; // stale child or already learned — keep draining the pipe, do nothing
+            }
+            entry.forwardBuffer = `${entry.forwardBuffer ?? ''}${chunk.toString()}`.slice(-65536);
+            const local = parseDevTunnelForwardedPort(entry.forwardBuffer, hostPort);
+            if (local !== undefined) {
+                entry.forwardedPort = local;
+                entry.forwardBuffer = undefined;
+            }
+        };
+        child.stdout?.on('data', onData);
+        child.stderr?.on('data', onData);
+    }
+
+    private async resolveForwardedPort(entry: ManagedConnection, configuredPort: number): Promise<number> {
+        const child = entry.child;
+        if (!child || (!child.stdout && !child.stderr)) {
+            return entry.forwardedPort ?? configuredPort;
+        }
+        const deadline = Date.now() + this.forwardReadyTimeoutMs;
+        while (entry.forwardedPort === undefined && entry.child === child && Date.now() < deadline) {
+            await new Promise(resolve => setTimeout(resolve, this.readinessPollMs));
+        }
+        return entry.forwardedPort ?? configuredPort;
     }
 
     private getConnection(tunnelId: string): ManagedConnection {

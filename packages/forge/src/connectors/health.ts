@@ -20,12 +20,17 @@ export async function waitForHealth(
     timeoutMs: number,
     pollMs: number,
     label: string = 'Tunnel',
+    requestTimeoutMs: number = 5_000,
 ): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     let lastError = '';
     while (Date.now() <= deadline) {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), Math.min(pollMs, 2_000));
+        // Per-attempt timeout is independent of the poll interval: a single health request over a
+        // WAN tunnel relay can easily take longer than pollMs, so clamping to pollMs would abort
+        // every attempt on remote tunnels. Bound it by the remaining overall deadline.
+        const attemptBudget = Math.max(1, Math.min(requestTimeoutMs, deadline - Date.now()));
+        const timer = setTimeout(() => controller.abort(), attemptBudget);
         try {
             if (await checker(url, controller.signal)) {
                 clearTimeout(timer);
@@ -35,6 +40,9 @@ export async function waitForHealth(
             lastError = err instanceof Error ? err.message : String(err);
         } finally {
             clearTimeout(timer);
+        }
+        if (Date.now() >= deadline) {
+            break;
         }
         await new Promise(resolve => setTimeout(resolve, pollMs));
     }
