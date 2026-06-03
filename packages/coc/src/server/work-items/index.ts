@@ -7,6 +7,8 @@ export type {
     WorkItemTrackerKind,
     WorkItemGitHubTrackerMetadata,
     WorkItemGitHubMirrorMetadata,
+    WorkItemAzureBoardsTrackerMetadata,
+    WorkItemAzureBoardsMirrorMetadata,
     WorkItemTrackerMetadata,
     WorkItemSyncProvider,
     WorkItemSyncRemoteIdentity,
@@ -82,10 +84,21 @@ export {
     type ImportGitHubEpicTreeResult,
 } from './work-item-sync-github-provider';
 export {
+    AzureBoardsRestWorkItemTransport,
+    azureBoardsProjectFromStatus,
+    azureBoardsWorkItemIdFromUrl,
     createAzureBoardsWorkItemSyncProviderAdapter,
+    deleteAzureBoardsEpicMirrorTree,
+    importAzureBoardsEpicTreeAsWorkItems,
     resolveAzureDevOpsCliAccessToken,
+    type AvailableAzureBoardsWorkItemSyncProject,
     type AzureBoardsAccessTokenResolver,
+    type AzureBoardsWorkItem,
+    type AzureBoardsWorkItemRelation,
+    type AzureBoardsWorkItemTransport,
     type CreateAzureBoardsWorkItemSyncProviderOptions,
+    type ImportAzureBoardsEpicTreeOptions,
+    type ImportAzureBoardsEpicTreeResult,
 } from './work-item-sync-azure-boards-provider';
 export {
     AZURE_BOARDS_COC_TYPE_TAG_PREFIX,

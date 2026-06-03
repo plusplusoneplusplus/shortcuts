@@ -48,8 +48,9 @@ const VALID_PRIORITIES: Set<string> = new Set(['high', 'normal', 'low']);
 /** Types allowed when hierarchy is disabled (legacy behavior). */
 const LEAF_VALID_TYPES: Set<string> = new Set(['work-item', 'bug']);
 const VALID_TRACKER_KINDS: Set<string> = new Set(WORK_ITEM_TRACKER_KINDS);
-const TRACKER_KEYS: ReadonlySet<string> = new Set(['kind', 'provider', 'github']);
+const TRACKER_KEYS: ReadonlySet<string> = new Set(['kind', 'provider', 'github', 'azureBoards']);
 const GITHUB_TRACKER_KEYS: ReadonlySet<string> = new Set(['issueId', 'issueNumber', 'issueUrl', 'lastPulledAt']);
+const AZURE_BOARDS_TRACKER_KEYS: ReadonlySet<string> = new Set(['workItemId', 'workItemUrl', 'revision', 'updatedAt', 'lastPulledAt']);
 const CREDENTIAL_KEY_PATTERN = /(token|secret|password|credential|authorization|auth)/i;
 const LEGACY_SYNC_LINKS_ERROR = 'syncLinks are no longer accepted on work item create/update payloads. Use Epic-rooted GitHub import, conversion, or child creation instead.';
 
@@ -125,6 +126,33 @@ function parseGitHubTrackerMetadata(value: unknown, path: string): WorkItemTrack
     };
 }
 
+function parseAzureBoardsTrackerMetadata(value: unknown, path: string): WorkItemTrackerMetadata & { kind: 'azure-boards-backed' } {
+    if (value !== undefined && !isObject(value)) {
+        throw new Error(`${path}.azureBoards must be an object`);
+    }
+    const azureBoards = value === undefined ? {} : value;
+    assertAllowedKeys(azureBoards, AZURE_BOARDS_TRACKER_KEYS, `${path}.azureBoards`, 'tracker metadata');
+    const workItemId = optionalNumber(azureBoards.workItemId, `${path}.azureBoards.workItemId`);
+    if (workItemId !== undefined && (!Number.isInteger(workItemId) || workItemId <= 0)) {
+        throw new Error(`${path}.azureBoards.workItemId must be a positive integer`);
+    }
+    const revision = optionalNumber(azureBoards.revision, `${path}.azureBoards.revision`);
+    if (revision !== undefined && (!Number.isInteger(revision) || revision < 0)) {
+        throw new Error(`${path}.azureBoards.revision must be a non-negative integer`);
+    }
+    return {
+        kind: 'azure-boards-backed',
+        provider: 'azure-boards',
+        azureBoards: {
+            workItemId,
+            workItemUrl: optionalString(azureBoards.workItemUrl, `${path}.azureBoards.workItemUrl`),
+            revision,
+            updatedAt: optionalString(azureBoards.updatedAt, `${path}.azureBoards.updatedAt`),
+            lastPulledAt: optionalString(azureBoards.lastPulledAt, `${path}.azureBoards.lastPulledAt`),
+        },
+    };
+}
+
 function parseTracker(value: unknown): WorkItemTrackerMetadata | undefined {
     if (value === undefined) return undefined;
     if (!isObject(value)) {
@@ -136,16 +164,29 @@ function parseTracker(value: unknown): WorkItemTrackerMetadata | undefined {
         throw new Error(`tracker.kind must be one of: ${WORK_ITEM_TRACKER_KINDS.join(', ')}`);
     }
     if (kind === 'local-only') {
-        if (value.provider !== undefined || value.github !== undefined) {
-            throw new Error('tracker.local-only must not include provider or github metadata');
+        if (value.provider !== undefined || value.github !== undefined || value.azureBoards !== undefined) {
+            throw new Error('tracker.local-only must not include provider, github, or azureBoards metadata');
         }
         return { kind: 'local-only' };
     }
-    const provider = optionalString(value.provider, 'tracker.provider') ?? 'github';
-    if (provider !== 'github') {
-        throw new Error('tracker.provider must be github for github-backed trackers');
+    if (kind === 'github-backed') {
+        const provider = optionalString(value.provider, 'tracker.provider') ?? 'github';
+        if (provider !== 'github') {
+            throw new Error('tracker.provider must be github for github-backed trackers');
+        }
+        if (value.azureBoards !== undefined) {
+            throw new Error('tracker.github-backed must not include azureBoards metadata');
+        }
+        return parseGitHubTrackerMetadata(value.github, 'tracker');
     }
-    return parseGitHubTrackerMetadata(value.github, 'tracker');
+    const provider = optionalString(value.provider, 'tracker.provider') ?? 'azure-boards';
+    if (provider !== 'azure-boards') {
+        throw new Error('tracker.provider must be azure-boards for azure-boards-backed trackers');
+    }
+    if (value.github !== undefined) {
+        throw new Error('tracker.azure-boards-backed must not include github metadata');
+    }
+    return parseAzureBoardsTrackerMetadata(value.azureBoards, 'tracker');
 }
 
 function validateTrackerRootPlacement(

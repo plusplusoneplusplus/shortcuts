@@ -9,6 +9,9 @@ import { registerWorkItemSyncRoutes } from '../../../src/server/routes/work-item
 import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
 import {
     createAzureBoardsWorkItemSyncProviderAdapter,
+    type AzureBoardsWorkItem,
+    type AzureBoardsWorkItemTransport,
+    type AvailableAzureBoardsWorkItemSyncProject,
     type WorkItemSyncProviderAdapter,
 } from '../../../src/server/work-items';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
@@ -55,7 +58,59 @@ function makeAzureProvider(resolveAccessToken = async () => 'azure-cli-access'):
     });
 }
 
-function makeServer(providers: WorkItemSyncProviderAdapter[] = []): http.Server {
+function relationUrl(workItemId: number): string {
+    return `https://dev.azure.com/octo-org/Project%20Alpha/_apis/wit/workItems/${workItemId}`;
+}
+
+class FakeAzureBoardsTransport implements AzureBoardsWorkItemTransport {
+    readonly items = new Map<number, AzureBoardsWorkItem>();
+
+    set(items: AzureBoardsWorkItem[]): void {
+        this.items.clear();
+        for (const item of items) {
+            this.items.set(item.id, item);
+        }
+    }
+
+    async getWorkItem(
+        _project: AvailableAzureBoardsWorkItemSyncProject,
+        workItemId: number,
+    ): Promise<AzureBoardsWorkItem | undefined> {
+        return this.items.get(workItemId);
+    }
+
+    async listWorkItemTree(
+        _project: AvailableAzureBoardsWorkItemSyncProject,
+        rootWorkItemId: number,
+        limit = 200,
+    ): Promise<AzureBoardsWorkItem[]> {
+        const root = this.items.get(rootWorkItemId);
+        if (!root) return [];
+        const result: AzureBoardsWorkItem[] = [];
+        const queue = [root];
+        const seen = new Set<number>();
+        while (queue.length > 0 && result.length < limit) {
+            const item = queue.shift()!;
+            if (seen.has(item.id)) continue;
+            seen.add(item.id);
+            result.push(item);
+            for (const relation of item.relations ?? []) {
+                const match = relation.rel === 'System.LinkTypes.Hierarchy-Forward'
+                    ? /\/workItems\/(\d+)$/i.exec(relation.url ?? '')
+                    : undefined;
+                if (!match) continue;
+                const child = this.items.get(Number.parseInt(match[1], 10));
+                if (child) queue.push(child);
+            }
+        }
+        return result;
+    }
+}
+
+function makeServer(
+    providers: WorkItemSyncProviderAdapter[] = [],
+    options: { azureBoardsTransport?: AzureBoardsWorkItemTransport } = {},
+): http.Server {
     const routes: Route[] = [];
     registerWorkItemSyncRoutes({
         routes,
@@ -80,12 +135,16 @@ function makeServer(providers: WorkItemSyncProviderAdapter[] = []): http.Server 
         getHierarchyEnabled: () => hierarchyEnabled,
         getSyncEnabled: () => syncEnabled,
         providers,
+        azureBoardsTransport: options.azureBoardsTransport,
     });
     return http.createServer(createRouter({ routes, spaHtml: '' }));
 }
 
-async function startServer(providers: WorkItemSyncProviderAdapter[] = []): Promise<void> {
-    server = makeServer(providers);
+async function startServer(
+    providers: WorkItemSyncProviderAdapter[] = [],
+    options: { azureBoardsTransport?: AzureBoardsWorkItemTransport } = {},
+): Promise<void> {
+    server = makeServer(providers, options);
     await new Promise<void>((resolve, reject) => {
         server!.on('error', reject);
         server!.listen(0, '127.0.0.1', () => {
@@ -324,6 +383,192 @@ describe('Work Item Sync Routes', () => {
         expect(second.body.provider.repository).toMatchObject({
             organizationUrl: 'https://dev.azure.com/octo-org',
             project: 'Project Beta',
+        });
+    });
+
+    it('imports and syncs Azure Boards Epic trees through native hierarchy relations', async () => {
+        await writeProvidersConfig({
+            providers: {
+                ado: { orgUrl: 'https://dev.azure.com/octo-org' },
+            },
+        }, tmpDir);
+        writeRepoPreferences(tmpDir, REPO_ID, {
+            workItems: {
+                sync: {
+                    azureBoards: { project: 'Project Alpha' },
+                },
+            },
+        });
+        const azureTransport = new FakeAzureBoardsTransport();
+        azureTransport.set([
+            {
+                id: 100,
+                revision: 1,
+                title: 'Remote Epic',
+                description: '<p>Epic body</p>',
+                state: 'Active',
+                workItemType: 'Epic',
+                priority: 2,
+                tags: 'Platform; Initiative',
+                updatedAt: '2026-06-03T01:00:00Z',
+                url: 'https://dev.azure.com/octo-org/Project%20Alpha/_workitems/edit/100',
+                relations: [
+                    { rel: 'System.LinkTypes.Hierarchy-Forward', url: relationUrl(101) },
+                ],
+            },
+            {
+                id: 101,
+                revision: 3,
+                title: 'Remote Feature',
+                description: '<p>Feature body</p>',
+                state: 'New',
+                workItemType: 'Feature',
+                priority: 1,
+                tags: 'Frontend',
+                updatedAt: '2026-06-03T01:10:00Z',
+                url: 'https://dev.azure.com/octo-org/Project%20Alpha/_workitems/edit/101',
+                relations: [
+                    { rel: 'System.LinkTypes.Hierarchy-Reverse', url: relationUrl(100) },
+                    { rel: 'System.LinkTypes.Hierarchy-Forward', url: relationUrl(102) },
+                ],
+            },
+            {
+                id: 102,
+                revision: 5,
+                title: 'Remote PBI',
+                description: '<p>PBI body</p>',
+                state: 'Resolved',
+                workItemType: 'Product Backlog Item',
+                priority: 3,
+                tags: 'API',
+                updatedAt: '2026-06-03T01:20:00Z',
+                url: 'https://dev.azure.com/octo-org/Project%20Alpha/_workitems/edit/102',
+                relations: [
+                    { rel: 'System.LinkTypes.Hierarchy-Reverse', url: relationUrl(101) },
+                ],
+            },
+        ]);
+        await startServer([makeFakeProvider(), makeAzureProvider()], { azureBoardsTransport: azureTransport });
+
+        const imported = await request('POST', `/api/workspaces/${REPO_ID}/work-items/import-from-azure-boards`, {
+            workItemUrl: 'https://dev.azure.com/octo-org/Project%20Alpha/_workitems/edit/100',
+        });
+
+        expect(imported.status).toBe(201);
+        expect(imported.body).toMatchObject({
+            title: 'Remote Epic',
+            type: 'epic',
+            status: 'executing',
+            tracker: {
+                kind: 'azure-boards-backed',
+                provider: 'azure-boards',
+                azureBoards: {
+                    workItemId: 100,
+                    revision: 1,
+                },
+            },
+            azureBoardsMirror: {
+                workItemId: 100,
+                revision: 1,
+                state: 'Active',
+            },
+        });
+
+        const importedItems = (await store.listWorkItems({ repoId: REPO_ID })).items;
+        const root = importedItems.find(item => item.azureBoardsMirror?.workItemId === 100)!;
+        const feature = importedItems.find(item => item.azureBoardsMirror?.workItemId === 101)!;
+        const pbi = importedItems.find(item => item.azureBoardsMirror?.workItemId === 102)!;
+        expect(feature).toMatchObject({
+            parentId: root.id,
+            type: 'feature',
+            status: 'created',
+            priority: 'high',
+            tags: ['Frontend'],
+        });
+        expect(pbi).toMatchObject({
+            parentId: feature.id,
+            type: 'pbi',
+            status: 'aiDone',
+            priority: 'low',
+            tags: ['API'],
+        });
+
+        azureTransport.set([
+            {
+                id: 100,
+                revision: 2,
+                title: 'Remote Epic Updated',
+                description: '<p>Updated epic body</p>',
+                state: 'Closed',
+                workItemType: 'Epic',
+                priority: 1,
+                tags: 'Platform',
+                updatedAt: '2026-06-03T02:00:00Z',
+                url: 'https://dev.azure.com/octo-org/Project%20Alpha/_workitems/edit/100',
+                relations: [
+                    { rel: 'System.LinkTypes.Hierarchy-Forward', url: relationUrl(101) },
+                    { rel: 'System.LinkTypes.Hierarchy-Forward', url: relationUrl(103) },
+                ],
+            },
+            {
+                id: 101,
+                revision: 4,
+                title: 'Remote Feature Updated',
+                description: '<p>Feature body updated</p>',
+                state: 'Active',
+                workItemType: 'Feature',
+                priority: 2,
+                tags: 'Frontend',
+                updatedAt: '2026-06-03T02:10:00Z',
+                url: 'https://dev.azure.com/octo-org/Project%20Alpha/_workitems/edit/101',
+                relations: [
+                    { rel: 'System.LinkTypes.Hierarchy-Reverse', url: relationUrl(100) },
+                ],
+            },
+            {
+                id: 103,
+                revision: 1,
+                title: 'Remote Follow-up Feature',
+                description: '<p>Follow-up feature body</p>',
+                state: 'New',
+                workItemType: 'Feature',
+                priority: 2,
+                tags: 'Ops',
+                updatedAt: '2026-06-03T02:20:00Z',
+                url: 'https://dev.azure.com/octo-org/Project%20Alpha/_workitems/edit/103',
+                relations: [
+                    { rel: 'System.LinkTypes.Hierarchy-Reverse', url: relationUrl(100) },
+                ],
+            },
+        ]);
+
+        const synced = await request('POST', `/api/workspaces/${REPO_ID}/work-items/${root.id}/sync-from-azure-boards`);
+
+        expect(synced.status).toBe(200);
+        expect(synced.body).toMatchObject({
+            created: 1,
+            updated: 2,
+            deleted: 1,
+            deletedItemIds: [pbi.id],
+        });
+        expect(synced.body.root).toMatchObject({
+            id: root.id,
+            title: 'Remote Epic Updated',
+            status: 'done',
+            priority: 'high',
+            azureBoardsMirror: {
+                workItemId: 100,
+                revision: 2,
+            },
+        });
+        const syncedItems = (await store.listWorkItems({ repoId: REPO_ID })).items;
+        expect(syncedItems.find(item => item.id === pbi.id)).toBeUndefined();
+        expect(syncedItems.find(item => item.azureBoardsMirror?.workItemId === 103)).toMatchObject({
+            parentId: root.id,
+            type: 'feature',
+            status: 'created',
+            priority: 'normal',
+            tags: ['Ops'],
         });
     });
 

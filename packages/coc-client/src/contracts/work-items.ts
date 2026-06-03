@@ -14,7 +14,7 @@ export type WorkItemStatus = KnownWorkItemStatus | (string & {});
 export type WorkItemPriority = 'high' | 'normal' | 'low';
 export type WorkItemSource = 'manual' | 'chat' | 'schedule';
 export type WorkItemType = 'work-item' | 'bug' | 'goal' | 'epic' | 'feature' | 'pbi';
-export type WorkItemTrackerKind = 'local-only' | 'github-backed';
+export type WorkItemTrackerKind = 'local-only' | 'github-backed' | 'azure-boards-backed';
 
 export interface WorkItemGitHubTrackerMetadata {
   issueId?: string;
@@ -32,9 +32,28 @@ export interface WorkItemGitHubMirrorMetadata {
   lastPulledAt?: string;
 }
 
+export interface WorkItemAzureBoardsTrackerMetadata {
+  workItemId?: number;
+  workItemUrl?: string;
+  revision?: number;
+  updatedAt?: string;
+  lastPulledAt?: string;
+}
+
+export interface WorkItemAzureBoardsMirrorMetadata {
+  workItemId: number;
+  workItemUrl?: string;
+  revision?: number;
+  workItemType?: string;
+  state?: string;
+  updatedAt?: string;
+  lastPulledAt?: string;
+}
+
 export type WorkItemTrackerMetadata =
   | { kind: 'local-only' }
-  | { kind: 'github-backed'; provider: 'github'; github: WorkItemGitHubTrackerMetadata };
+  | { kind: 'github-backed'; provider: 'github'; github: WorkItemGitHubTrackerMetadata }
+  | { kind: 'azure-boards-backed'; provider: 'azure-boards'; azureBoards: WorkItemAzureBoardsTrackerMetadata };
 
 /**
  * Allowed parent types for each work item type.
@@ -155,6 +174,8 @@ export interface WorkItem {
   tracker?: WorkItemTrackerMetadata;
   /** GitHub read-mirror identity for items inside a GitHub-backed Epic tree. */
   githubMirror?: WorkItemGitHubMirrorMetadata;
+  /** Azure Boards read-mirror identity for items inside an Azure Boards-backed Epic tree. */
+  azureBoardsMirror?: WorkItemAzureBoardsMirrorMetadata;
   createdAt: string;
   updatedAt: string;
   completedAt?: string;
@@ -229,7 +250,23 @@ export interface ImportFromGitHubRequest extends JsonObject {
   issueNumber?: number;
 }
 
+export interface ImportFromAzureBoardsRequest extends JsonObject {
+  /** Full Azure Boards work item URL, e.g. https://dev.azure.com/<org>/<project>/_workitems/edit/<id>. */
+  workItemUrl?: string;
+  /** Azure Boards work item ID in the workspace-configured project. */
+  workItemId?: number;
+}
+
 export interface SyncGitHubEpicResponse extends JsonObject {
+  root: WorkItem;
+  items: WorkItem[];
+  created: number;
+  updated: number;
+  deleted: number;
+  deletedItemIds: string[];
+}
+
+export interface SyncAzureBoardsEpicResponse extends JsonObject {
   root: WorkItem;
   items: WorkItem[];
   created: number;

@@ -97,11 +97,11 @@ export const ALLOWED_CHILD_TYPES: Record<WorkItemType, readonly WorkItemType[]> 
 // ============================================================================
 
 /** Top-level tracker partition for an Epic tree. */
-export type WorkItemTrackerKind = 'local-only' | 'github-backed';
+export type WorkItemTrackerKind = 'local-only' | 'github-backed' | 'azure-boards-backed';
 
 /** All valid tracker kinds (useful for validation). */
 export const WORK_ITEM_TRACKER_KINDS: readonly WorkItemTrackerKind[] = Object.freeze([
-    'local-only', 'github-backed',
+    'local-only', 'github-backed', 'azure-boards-backed',
 ]);
 
 /** GitHub-backed Epic root metadata. Repository identity is workspace-scoped config, not per Epic. */
@@ -132,6 +132,38 @@ export interface WorkItemGitHubMirrorMetadata {
     lastPulledAt?: string;
 }
 
+/** Azure Boards-backed Epic root metadata. Organization/project identity is workspace-scoped config. */
+export interface WorkItemAzureBoardsTrackerMetadata {
+    /** Azure Boards work item ID for the imported/pushed Epic root. */
+    workItemId?: number;
+    /** Browser URL for the Azure Boards work item. */
+    workItemUrl?: string;
+    /** Azure Boards revision number from the last successful pull/push. */
+    revision?: number;
+    /** Provider updated-at timestamp. */
+    updatedAt?: string;
+    /** Last successful Azure Boards→local pull timestamp for this Epic tree. */
+    lastPulledAt?: string;
+}
+
+/** Per-item read-mirror details for an Azure Boards-backed Epic tree. */
+export interface WorkItemAzureBoardsMirrorMetadata {
+    /** Azure Boards work item ID for this mirrored item. */
+    workItemId: number;
+    /** Browser URL for this mirrored Azure Boards work item. */
+    workItemUrl?: string;
+    /** Azure Boards revision number from the last successful pull/push. */
+    revision?: number;
+    /** Mirrored Azure Boards work item type. CoC type is mapped separately. */
+    workItemType?: string;
+    /** Mirrored Azure Boards state. */
+    state?: string;
+    /** Provider updated-at timestamp. */
+    updatedAt?: string;
+    /** Last successful Azure Boards→local pull timestamp for this item. */
+    lastPulledAt?: string;
+}
+
 /**
  * Tracker identity for a work-item tree.
  *
@@ -140,7 +172,8 @@ export interface WorkItemGitHubMirrorMetadata {
  */
 export type WorkItemTrackerMetadata =
     | { kind: 'local-only' }
-    | { kind: 'github-backed'; provider: 'github'; github: WorkItemGitHubTrackerMetadata };
+    | { kind: 'github-backed'; provider: 'github'; github: WorkItemGitHubTrackerMetadata }
+    | { kind: 'azure-boards-backed'; provider: 'azure-boards'; azureBoards: WorkItemAzureBoardsTrackerMetadata };
 
 // ============================================================================
 // External Provider Metadata
@@ -316,6 +349,8 @@ export interface WorkItem {
     tracker?: WorkItemTrackerMetadata;
     /** GitHub read-mirror identity for items inside a GitHub-backed Epic tree. */
     githubMirror?: WorkItemGitHubMirrorMetadata;
+    /** Azure Boards read-mirror identity for items inside an Azure Boards-backed Epic tree. */
+    azureBoardsMirror?: WorkItemAzureBoardsMirrorMetadata;
     /** ISO timestamp when the work item was created. */
     createdAt: string;
     /** ISO timestamp of last modification. */
@@ -413,6 +448,8 @@ export interface WorkItemIndexEntry {
     tracker?: WorkItemTrackerMetadata;
     /** GitHub read-mirror identity for items inside a GitHub-backed Epic tree. */
     githubMirror?: WorkItemGitHubMirrorMetadata;
+    /** Azure Boards read-mirror identity for items inside an Azure Boards-backed Epic tree. */
+    azureBoardsMirror?: WorkItemAzureBoardsMirrorMetadata;
     source: WorkItemSource;
     priority?: WorkItemPriority;
     planVersion?: number;
@@ -569,6 +606,7 @@ export function toIndexEntry(item: WorkItem): WorkItemIndexEntry {
         parentId: item.parentId,
         tracker: item.tracker,
         githubMirror: item.githubMirror,
+        azureBoardsMirror: item.azureBoardsMirror,
         source: item.source,
         priority: item.priority,
         planVersion: item.plan?.version,
