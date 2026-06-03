@@ -981,6 +981,29 @@ describe('open PR by number or URL', () => {
         expect(fetchMock.mock.calls[3][1]?.method).toBe('DELETE');
     });
 
+    it('keeps a recent entry when click validation fails without a confirmed 404', async () => {
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(jsonResponse({ pullRequests: [] }))
+            .mockResolvedValueOnce(jsonResponse({
+                entries: [makeRecentEntry({ number: 88, title: 'Temporarily unavailable PR' })],
+            }))
+            .mockResolvedValueOnce(jsonResponse({ error: 'provider failed' }, { ok: false, status: 500 }));
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByText('Temporarily unavailable PR')).toBeInTheDocument());
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('recent-opened-pr-entry'));
+        });
+
+        await waitFor(() => expect(screen.getByTestId('open-pr-error')).toBeInTheDocument());
+        expect(screen.getByTestId('recent-opened-prs')).toBeInTheDocument();
+        expect(fetchMock.mock.calls.some(call =>
+            String(call[0]).includes('/recent-opened/') && call[1]?.method === 'DELETE',
+        )).toBe(false);
+    });
+
     it('shows an inline error for invalid input and does not call the API', async () => {
         const fetchMock = vi.fn()
             .mockResolvedValueOnce(jsonResponse({ pullRequests: [] }))
@@ -1013,6 +1036,23 @@ describe('open PR by number or URL', () => {
         expect(screen.getByTestId('open-pr-error').textContent).toMatch(/not registered/i);
         // No PR validation request was made.
         expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not record a recent entry when validation fails with an auth/provider error', async () => {
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(jsonResponse({ pullRequests: [] }))
+            .mockResolvedValueOnce(jsonResponse({ entries: [] }))
+            .mockResolvedValueOnce(jsonResponse({ error: 'unauthorized' }, { ok: false, status: 401 }));
+        global.fetch = fetchMock;
+
+        await act(async () => { await renderTab(); });
+        fireEvent.change(screen.getByTestId('open-pr-input'), { target: { value: '123' } });
+        await act(async () => { fireEvent.click(screen.getByTestId('open-pr-button')); });
+
+        await waitFor(() => expect(screen.getByTestId('open-pr-error')).toBeInTheDocument());
+        expect(fetchMock.mock.calls.some(call =>
+            String(call[0]).includes('/recent-opened') && call[1]?.method === 'POST',
+        )).toBe(false);
     });
 
     it('clears the error when the user edits the input again', async () => {
