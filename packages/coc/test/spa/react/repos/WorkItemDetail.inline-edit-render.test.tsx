@@ -74,6 +74,7 @@ vi.mock(`../../../../src/server/spa/client/react/features/work-items/WorkItemPar
 }));
 vi.mock(`../../../../src/server/spa/client/react/features/work-items/WorkItemGitHubMirrorBadge`, () => ({
     WorkItemGitHubMirrorBadge: () => null,
+    WorkItemRemoteMirrorBadge: () => null,
 }));
 
 import { WorkItemDetail } from '../../../../src/server/spa/client/react/features/work-items/WorkItemDetail';
