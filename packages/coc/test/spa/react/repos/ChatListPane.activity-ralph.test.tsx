@@ -252,6 +252,36 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
         expect(screen.queryByTestId('ralph-session-children')).toBeNull();
     });
 
+    it('keeps unseen Ralph sessions collapsed after workspace switches in the Chats tab', () => {
+        const history = fixtureFiveIterPlusThreeStandalone();
+        const unseenId = `ralph-${SESSION_ID}-1`;
+        const { rerender, props } = renderActivity(history, {
+            activeTab: 'chats',
+            workspaceId: 'ws-a',
+            unseenProcessIds: new Set([unseenId]),
+        });
+
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('ralph-session-children')).toBeNull();
+        expect(screen.getByTestId('ralph-session-unseen-dot')).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('ralph-session-chevron'));
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('true');
+
+        rerender(<ChatListPane {...props} workspaceId="__all" />);
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('ralph-session-children')).toBeNull();
+        expect(screen.getByTestId('ralph-session-unseen-dot')).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('ralph-session-chevron'));
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('true');
+
+        rerender(<ChatListPane {...props} workspaceId="ws-a" />);
+        expect(screen.getByTestId('ralph-session-body').getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('ralph-session-children')).toBeNull();
+        expect(screen.getByTestId('ralph-session-unseen-dot')).toBeTruthy();
+    });
+
     it('Today section count badge reflects entries (1 ralph session + 3 standalones = 4)', () => {
         const { container } = renderActivity(fixtureFiveIterPlusThreeStandalone());
         const sections = Array.from(container.querySelectorAll('[data-section]')).map(el => el.getAttribute('data-section'));
