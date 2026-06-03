@@ -1725,7 +1725,7 @@ export function ChatListPane({
                                                 {section.items.map((entry: RalphHistoryEntry) =>
                                                     entry.kind === 'ralph-session' ? (
                                                         <RalphSessionRow
-                                                            key={entry.sessionId}
+                                                            key={`${workspaceId ?? '__all'}:${entry.sessionId}`}
                                                             session={entry as RalphSession}
                                                             selectedTaskId={selectedTaskId}
                                                             selectedSessionId={selectedRalphSessionId}
@@ -2324,7 +2324,7 @@ export function ChatListPane({
                                             const session = entry as RalphSession;
                                             return (
                                                 <RalphSessionRow
-                                                    key={session.sessionId}
+                                                    key={`${workspaceId ?? '__all'}:${session.sessionId}`}
                                                     session={session}
                                                     selectedTaskId={selectedTaskId}
                                                     selectedSessionId={selectedRalphSessionId}
