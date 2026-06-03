@@ -46,4 +46,15 @@ describe('QueueClient', () => {
       body: { processIds: ['proc/1', 'proc/2'], workspaceId: 'repo/a', userPrompt: 'focus on risks' },
     });
   });
+
+  it('posts to the retry endpoint with the encoded task id', async () => {
+    const adapter = createMockAdapter({ task: { id: 'new-1', status: 'queued' } });
+    const client = new QueueClient(adapter);
+
+    await client.retry('task/1');
+
+    expect(adapter.calls).toHaveLength(1);
+    expect(adapter.calls[0].path).toBe('/queue/task%2F1/retry');
+    expect(adapter.calls[0].options).toMatchObject({ method: 'POST' });
+  });
 });

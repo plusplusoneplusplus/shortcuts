@@ -141,6 +141,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const [followUpInput, setFollowUpInput] = useState('');
     const [resumeLaunching, setResumeLaunching] = useState(false);
     const [forking, setForking] = useState(false);
+    const [retryingTask, setRetryingTask] = useState(false);
     const [resumeFeedback, setResumeFeedback] = useState<{ type: 'success' | 'error'; message: string; command?: string } | null>(null);
     const [processDetails, setProcessDetails] = useState<any>(null);
     const [copied, setCopied] = useState(false);
@@ -1260,6 +1261,30 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
         }
     }, [processId, forking, workspaceId]);
 
+    // Re-run a task whose first message failed before any resumable session
+    // existed. Enqueues a fresh copy server-side and navigates to it.
+    const handleRetryTask = useCallback(async () => {
+        if (retryingTask) return;
+        setRetryingTask(true);
+        try {
+            const res = await getSpaCocClient().queue.retry(bareTaskId);
+            const newId = res?.task?.id;
+            if (newId) {
+                const newProcessId = toQueueProcessId(String(newId));
+                if (!standalone) {
+                    queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newProcessId, repoId: workspaceId });
+                }
+                if (workspaceId) {
+                    location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/activity/' + encodeURIComponent(newProcessId);
+                }
+            }
+        } catch (err) {
+            setError(getSpaCocClientErrorMessage(err, 'Failed to retry task.'));
+        } finally {
+            setRetryingTask(false);
+        }
+    }, [retryingTask, bareTaskId, standalone, workspaceId, queueDispatch]);
+
     const scrollToBottom = () => {
         if (conversationContainerRef.current) {
             conversationContainerRef.current.scrollTop = conversationContainerRef.current.scrollHeight;
@@ -1307,6 +1332,32 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             scratchpad.close();
         }
     }, [scratchpad, scratchpadCandidates]);
+
+    // Notice shown when a terminal task has no resumable session. For *failed*
+    // tasks (e.g. the first message failed before a session existed), offer a
+    // one-click retry that re-runs the task from its original payload.
+    const noSessionNotice = (
+        <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">
+            <div className="text-[#848484] text-sm text-center">
+                {effectiveStatus === 'failed'
+                    ? 'This task failed before a chat session was created.'
+                    : 'Follow-up chat is not available for this process type.'}
+            </div>
+            {effectiveStatus === 'failed' && (
+                <div className="mt-2 flex justify-center">
+                    <button
+                        type="button"
+                        data-testid="retry-task-button"
+                        onClick={handleRetryTask}
+                        disabled={retryingTask}
+                        className="px-3 py-1.5 text-sm rounded bg-[#0e639c] hover:bg-[#1177bb] text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {retryingTask ? 'Retrying…' : 'Retry task'}
+                    </button>
+                </div>
+            )}
+        </div>
+    );
 
     return (
         <div className="flex-1 flex flex-col min-h-0" data-testid="activity-chat-detail" {...(workspaceId ? { 'data-ws-id': workspaceId } : {})}>
@@ -1500,11 +1551,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         />
                     )}
                     {isVerticalScratchpad && !isPending && noSessionForFollowUp && !readOnly && (
-                        <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">
-                            <div className="text-[#848484] text-sm text-center">
-                                Follow-up chat is not available for this process type.
-                            </div>
-                        </div>
+                        noSessionNotice
                     )}
                     {isVerticalScratchpad && !isPending && !noSessionForFollowUp && !readOnly && (
                         <FollowUpInputArea
@@ -1624,11 +1671,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
             </div>
             {/* Mobile tab bar — shown when isMobileScratchpad, positioned below follow-up input */}
             {!isVerticalScratchpad && !isPending && noSessionForFollowUp && !readOnly && (!isMobileScratchpad || scratchpad.activeMobileTab === 'chat') && (
-                <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] p-3">
-                    <div className="text-[#848484] text-sm text-center">
-                        Follow-up chat is not available for this process type.
-                    </div>
-                </div>
+                noSessionNotice
             )}
             {!isVerticalScratchpad && !isPending && !noSessionForFollowUp && !readOnly && (!isMobileScratchpad || scratchpad.activeMobileTab === 'chat') && (
                 <FollowUpInputArea

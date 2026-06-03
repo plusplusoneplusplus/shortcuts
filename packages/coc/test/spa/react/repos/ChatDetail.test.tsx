@@ -784,6 +784,52 @@ describe('ChatDetail', () => {
                 expect(screen.getByTestId('activity-chat-stop-btn')).toBeTruthy();
             });
         });
+
+        it('shows a Retry button for a failed task with no session and calls retry on click', async () => {
+            const task = makeTask({ status: 'failed', processId: 'proc-1' });
+            const proc = makeProcess({ status: 'failed', metadata: { mode: 'autopilot' } });
+            setupFetch({
+                '/skills/all': { body: { merged: [] } },
+                '/queue/': (url: string) => {
+                    if (url.includes('/retry')) {
+                        return new Response(
+                            JSON.stringify({ task: { id: 'task-2', status: 'queued' } }),
+                            { status: 201, headers: { 'content-type': 'application/json' } },
+                        );
+                    }
+                    return new Response(
+                        JSON.stringify({ task }),
+                        { status: 200, headers: { 'content-type': 'application/json' } },
+                    );
+                },
+                '/processes/': { body: { process: proc } },
+                '/models': { body: [] },
+            });
+            render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+
+            const btn = await screen.findByTestId('retry-task-button');
+            expect(btn).toBeTruthy();
+
+            fireEvent.click(btn);
+
+            await waitFor(() => {
+                const retryCalls = fetchMock.mock.calls.filter(
+                    (c: any) => typeof c[0] === 'string' && c[0].includes('/queue/task-1/retry'),
+                );
+                expect(retryCalls.length).toBeGreaterThan(0);
+            });
+        });
+
+        it('does not show a Retry button for a completed task with no session', async () => {
+            const task = makeTask({ status: 'completed', processId: 'proc-1' });
+            const proc = makeProcess({ metadata: { mode: 'autopilot' } });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
+            await waitFor(() => {
+                expect(screen.queryByText('Follow-up chat is not available for this process type.')).toBeTruthy();
+            });
+            expect(screen.queryByTestId('retry-task-button')).toBeNull();
+        });
     });
 
     // ── Task actions ───────────────────────────────────────────────────────
