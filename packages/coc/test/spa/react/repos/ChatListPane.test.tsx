@@ -1331,6 +1331,33 @@ describe('ChatListPane', () => {
             expect(cls).toContain('ml-3');
         });
 
+        it('keeps unseen plan-file groups collapsed by default while preserving unread affordances', () => {
+            const onMarkAllRead = vi.fn();
+            renderGrouped({
+                unseenProcessIds: new Set(['g2-a']),
+                onMarkAllRead,
+            });
+
+            const unseenGroup = screen.getByTestId('group-unseen-dot').closest('[data-testid="history-group"]') as HTMLElement;
+            expect(unseenGroup.getAttribute('data-expanded')).toBe('false');
+            expect(screen.queryByTestId('history-group-children')).toBeNull();
+            expect(screen.getByTestId('unseen-count-badge').textContent).toBe('1');
+            expect(screen.getByTestId('mark-all-read-btn')).toBeTruthy();
+        });
+
+        it('respects manual plan-file group toggles until the workspace changes', () => {
+            const { rerender, props } = renderGrouped({ workspaceId: 'ws-a' });
+            const firstGroup = screen.getAllByTestId('history-group')[0];
+            const firstChevron = screen.getAllByTestId('group-chevron')[0];
+            expect(firstGroup.getAttribute('data-expanded')).toBe('false');
+
+            fireEvent.click(firstChevron);
+            expect(firstGroup.getAttribute('data-expanded')).toBe('true');
+
+            rerender(<ChatListPane {...props} workspaceId="ws-b" />);
+            expect(screen.getAllByTestId('history-group')[0].getAttribute('data-expanded')).toBe('false');
+        });
+
     });
 
     // ── Search ─────────────────────────────────────────────────────────

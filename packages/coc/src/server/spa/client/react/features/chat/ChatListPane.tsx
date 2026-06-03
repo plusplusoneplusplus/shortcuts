@@ -730,6 +730,7 @@ export function ChatListPane({
 
     // Expand/collapse state for plan-file groups
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+    const observedGroupKeysRef = useRef<Set<string>>(new Set());
     const toggleGroup = useCallback((planFilePath: string) => {
         setCollapsedGroups(prev => {
             const next = new Set(prev);
@@ -738,25 +739,38 @@ export function ChatListPane({
         });
     }, []);
 
-    // Auto-collapse groups where all children are seen (on group list change)
-    const prevGroupKeysRef = useRef<string>('');
     useEffect(() => {
-        if (!groupedUnpinned) return;
-        const groupKeys = groupedUnpinned
-            .filter((e): e is HistoryGroup => e.kind === 'group')
-            .map(g => g.planFilePath)
-            .sort()
-            .join('\0');
-        if (groupKeys === prevGroupKeysRef.current) return;
-        prevGroupKeysRef.current = groupKeys;
-        const toCollapse = new Set<string>();
-        for (const entry of groupedUnpinned) {
-            if (entry.kind === 'group' && !entry.hasUnseen) {
-                toCollapse.add(entry.planFilePath);
-            }
+        observedGroupKeysRef.current = new Set();
+        setCollapsedGroups(new Set());
+    }, [workspaceId]);
+
+    // Newly observed groups default collapsed; explicit toggles stay local to
+    // the current mounted workspace view.
+    useEffect(() => {
+        if (!groupedUnpinned) {
+            observedGroupKeysRef.current = new Set();
+            setCollapsedGroups(new Set());
+            return;
         }
-        if (toCollapse.size > 0) setCollapsedGroups(toCollapse);
-    }, [groupedUnpinned]);
+        const groupKeys = new Set(groupedUnpinned
+            .filter((e): e is HistoryGroup => e.kind === 'group')
+            .map(g => g.planFilePath));
+        const observedGroupKeys = observedGroupKeysRef.current;
+
+        setCollapsedGroups(prev => {
+            const next = new Set<string>();
+            for (const key of groupKeys) {
+                if (prev.has(key) || !observedGroupKeys.has(key)) {
+                    next.add(key);
+                }
+            }
+            if (next.size === prev.size && [...next].every(key => prev.has(key))) {
+                return prev;
+            }
+            return next;
+        });
+        observedGroupKeysRef.current = groupKeys;
+    }, [groupedUnpinned, workspaceId]);
 
     // Count pinned tasks that are still running (not yet in history)
     const pinnedRunningCount = useMemo(() => {
@@ -2331,7 +2345,6 @@ export function ChatListPane({
                                             );
                                         }
                                         if (entry.kind === 'group') {
-                                            // Expanded by default if group has unseen items; user toggle overrides
                                             const expanded = !collapsedGroups.has(entry.planFilePath);
                                             const aggregateMode = computeAggregateMode(entry.children);
                                             const groupHasUnseen = !!unseenProcessIds && entry.children.some((c: any) => unseenProcessIds.has(c.id));

@@ -37,6 +37,12 @@ spa/client/react/
 └── featureFlags.ts     # Compile-time feature flags
 ```
 
+`features/chat/ChatListPane.tsx` keeps grouped chat-history expansion state
+local to the mounted view. Ralph session groups and plan-file/history groups
+render collapsed by default on mount or workspace switch; unread dots/count
+badges and Mark all read controls remain the visibility affordances for unread
+children.
+
 ## Key Contexts
 
 | Context | Purpose |

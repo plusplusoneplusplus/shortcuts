@@ -118,9 +118,10 @@ describe('RalphSessionRow', () => {
         expect(screen.queryByTestId('ralph-session-children')).toBeNull();
     });
 
-    it('is expanded by default when hasUnseen=true', () => {
+    it('is collapsed by default when hasUnseen=true', () => {
         render(<RalphSessionRow session={makeSession({ hasUnseen: true })} {...defaultProps} />);
-        expect(screen.getByTestId('ralph-session-children')).toBeTruthy();
+        expect(screen.queryByTestId('ralph-session-children')).toBeNull();
+        expect(screen.getByTestId('ralph-session-unseen-dot')).toBeTruthy();
     });
 
     it('clicking the body toggles expanded state when no onSelectSession handler is given', () => {
@@ -186,7 +187,10 @@ describe('RalphSessionRow', () => {
 
     it('renders the chevron with aria-expanded reflecting state', () => {
         render(<RalphSessionRow session={makeSession({ hasUnseen: true })} {...defaultProps} />);
-        expect(screen.getByTestId('ralph-session-chevron').getAttribute('aria-expanded')).toBe('true');
+        const chevron = screen.getByTestId('ralph-session-chevron');
+        expect(chevron.getAttribute('aria-expanded')).toBe('false');
+        fireEvent.click(chevron);
+        expect(chevron.getAttribute('aria-expanded')).toBe('true');
     });
 
     it('renders grilling process and iteration children via renderTaskCard with isGroupChild=true', () => {
@@ -197,6 +201,7 @@ describe('RalphSessionRow', () => {
         const session = makeSession({ grillingProcess, iterations: [iter1, iter2], hasUnseen: true });
 
         render(<RalphSessionRow session={session} {...defaultProps} />);
+        fireEvent.click(screen.getByTestId('ralph-session-chevron'));
 
         expect(screen.getByTestId('task-card-grilling-1')).toBeTruthy();
         expect(screen.getByTestId('task-card-iter-1')).toBeTruthy();
@@ -209,6 +214,7 @@ describe('RalphSessionRow', () => {
 
     it('nests expanded children under a left guide-line + indent (parity with plan-file groups)', () => {
         const { container } = render(<RalphSessionRow session={makeSession({ hasUnseen: true })} {...defaultProps} />);
+        fireEvent.click(screen.getByTestId('ralph-session-chevron'));
         const children = container.querySelector('[data-testid="ralph-session-children"]');
         expect(children).not.toBeNull();
         // Same wrapper classes as HistoryGroupHeader's expanded children container,
@@ -220,6 +226,7 @@ describe('RalphSessionRow', () => {
 
     it('strengthens the row background when expanded (parity with plan-file groups)', () => {
         const { container } = render(<RalphSessionRow session={makeSession({ hasUnseen: true })} {...defaultProps} />);
+        fireEvent.click(screen.getByTestId('ralph-session-chevron'));
         const row = container.querySelector('[data-testid="ralph-session-row"]')!;
         expect(row.className).toMatch(/bg-\[#f7f7f8\]/);
     });
