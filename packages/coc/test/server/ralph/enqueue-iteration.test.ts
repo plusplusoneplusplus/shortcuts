@@ -82,4 +82,30 @@ describe('buildRalphIterationTask', () => {
         expect(task.payload.context).not.toHaveProperty('skills');
         expect(task.payload.context.ralph.sessionId).toBe('sess-2');
     });
+
+    it('preserves non-authoritative Ralph context such as loopIndex', () => {
+        const task = buildRalphIterationTask({
+            sessionId: 'sess-loop',
+            originalGoal: 'Fix gaps',
+            iteration: 7,
+            maxIterations: 10,
+            extraContext: {
+                ralph: {
+                    loopIndex: 3,
+                    currentIteration: 99,
+                    finalCheck: { kind: 'goal-gap-check', checkIndex: 1, sourceIteration: 6, loopIndex: 2 },
+                },
+            },
+        });
+
+        expect(task.payload.context.ralph).toMatchObject({
+            loopIndex: 3,
+            sessionId: 'sess-loop',
+            originalGoal: 'Fix gaps',
+            currentIteration: 7,
+            maxIterations: 10,
+            phase: 'executing',
+        });
+        expect(task.payload.context.ralph).not.toHaveProperty('finalCheck');
+    });
 });

@@ -2,21 +2,24 @@
  * AC-04/05 — Orchestrate the outcome of a completed final-check task.
  *
  * Responsibilities:
- *  1. Parse the checker AI response for a RALPH_FINAL_CHECK_RESULT block.
- *  2. Persist the result section in progress.md and update session.json.
+ *  1. Ask coc-workflow/ralph for portable final-check action intents.
+ *  2. Apply CoC-owned side effects: progress.md, session.json, queue, WS.
  *  3. When gaps exist and the safety cap is not reached, start a same-session
  *     new loop with a focused gap-fix goal (AC-04).
  *  4. Repeat check → gap-loop → check until clean or cap reached (AC-05).
  *  5. Never create a Work Item or modify the session outside these boundaries.
  *
- * The caller (queue-executor-bridge) is responsible for supplying injected
- * callbacks so this module remains testable without a live queue.
+ * The caller (queue-executor-bridge) supplies injected callbacks so this module
+ * remains testable without a live queue.
  */
 
-import { parseFinalCheckResult, type FinalCheckResult } from './final-check-result-parser';
+import {
+    decideRalphFinalCheckActions,
+    type RalphFinalCheckRecordPatch,
+    type RalphStartGapFixLoopAction,
+} from '@plusplusoneplusplus/coc-workflow/ralph';
 import { RalphSessionStore } from './ralph-session-store';
 import { buildRalphIterationTask } from './enqueue-iteration';
-import type { RalphFinalCheckRecord } from './types';
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import { resolveRalphAdditionalIterations } from '../routes/ralph-route-utils';
 
@@ -83,99 +86,124 @@ export async function orchestrateFinalCheck(input: OrchestrateFinalCheckInput): 
         workspaceId, sessionId, checkIndex, loopIndex, sourceIteration,
         taskId, processId, responseText, deps,
     } = input;
-    const { store, enqueueTask, broadcastSessionComplete, maxGapFixLoops, dataDir } = deps;
+    const { store, broadcastSessionComplete, maxGapFixLoops } = deps;
     const logger = getLogger();
 
-    // ── 1. Parse checker output ─────────────────────────────────────────────
-    const parsed = parseFinalCheckResult(responseText);
-
     const nowIso = new Date().toISOString();
-
-    // ── 2. Persist progress section ─────────────────────────────────────────
-    const progressSection = buildProgressSection(checkIndex, loopIndex, parsed, nowIso);
-    try {
-        await store.appendFinalCheckSection(workspaceId, sessionId, progressSection);
-    } catch (err) {
-        logger.warn(LogCategory.AI, `[Ralph/FinalCheck] Failed to append progress section for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
-        // A failure here must not silently report a clean result (AC-03 edge case).
-        // We still update metadata so the record shows failed status.
-    }
-
-    // ── 3. Determine result and decide next action ───────────────────────────
     const session = await store.readSessionRecord(workspaceId, sessionId);
-    const startedAt = session?.finalChecks?.find(c => c.checkIndex === checkIndex)?.startedAt ?? nowIso;
-    const baseCheckRecord = buildBaseCheckRecord({ loopIndex, sourceIteration, taskId, processId }, startedAt, nowIso);
+    const decision = decideRalphFinalCheckActions({
+        responseText,
+        taskId,
+        processId,
+        workspaceId,
+        sessionId,
+        checkIndex,
+        loopIndex,
+        sourceIteration,
+        maxGapFixLoops,
+        session,
+        nowIso,
+    });
 
-    if (parsed.status === 'unparseable' || parsed.status === 'invalid') {
-        // Unparseable or contradictory response — record as failed, do not start gap loop
-        logger.warn(LogCategory.AI, `[Ralph/FinalCheck] Check ${checkIndex} ${parsed.status} for ${sessionId}: ${parsed.error ?? ''}`);
-        await safeUpsertRecord(store, workspaceId, sessionId, checkIndex, {
-            status: 'failed',
-            ...baseCheckRecord,
-            hasGaps: false,
-            gapCount: 0,
-        }, logger);
-        broadcastSessionComplete({ workspaceId, sessionId, processId, totalIterations: sourceIteration, reason: 'final-check-failed' });
-        return;
+    if (decision.result.status === 'unparseable' || decision.result.status === 'invalid') {
+        logger.warn(LogCategory.AI, `[Ralph/FinalCheck] Check ${checkIndex} ${decision.result.status} for ${sessionId}: ${decision.result.error ?? ''}`);
+    } else if (decision.result.hasGaps && decision.existingGapFixLoops >= decision.maxGapFixLoops) {
+        logger.debug(LogCategory.AI, `[Ralph/FinalCheck] Cap reached (${decision.existingGapFixLoops}/${decision.maxGapFixLoops}) for session ${sessionId}; stopping automation.`);
     }
 
-    if (!parsed.hasGaps || parsed.gaps.length === 0) {
-        // ── Clean result ─────────────────────────────────────────────────────
-        await safeUpsertRecord(store, workspaceId, sessionId, checkIndex, {
-            status: 'completed',
-            ...baseCheckRecord,
-            hasGaps: false,
-            gapCount: 0,
-            gapLoopStarted: false,
-        }, logger);
-        broadcastSessionComplete({ workspaceId, sessionId, processId, totalIterations: sourceIteration, reason: 'signal' });
-        return;
-    }
+    for (const action of decision.actions) {
+        switch (action.type) {
+            case 'appendFinalCheckSection':
+                try {
+                    await store.appendFinalCheckSection(workspaceId, sessionId, action.section);
+                } catch (err) {
+                    logger.warn(LogCategory.AI, `[Ralph/FinalCheck] Failed to append progress section for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
+                    // A failure here must not silently report a clean result. We still
+                    // apply subsequent metadata/broadcast actions from the decision.
+                }
+                break;
 
-    // ── Gaps found — check safety cap ────────────────────────────────────────
-    // Count how many gap-fix loops have already been started (not initial loop).
-    const existingGapLoops = (session?.finalChecks ?? []).filter(c => c.gapLoopStarted === true).length;
-    if (existingGapLoops >= maxGapFixLoops) {
-        // Cap reached — persist and surface
-        logger.debug(LogCategory.AI, `[Ralph/FinalCheck] Cap reached (${existingGapLoops}/${maxGapFixLoops}) for session ${sessionId}; stopping automation.`);
-        await safeUpsertRecord(store, workspaceId, sessionId, checkIndex, {
-            status: 'completed',
-            ...baseCheckRecord,
-            hasGaps: true,
-            gapCount: parsed.gaps.length,
-            gapLoopStarted: false,
-            capReached: true,
-        }, logger);
-        broadcastSessionComplete({ workspaceId, sessionId, processId, totalIterations: sourceIteration, reason: 'cap' });
-        return;
-    }
+            case 'upsertFinalCheckRecord':
+                await safeUpsertRecord(store, workspaceId, sessionId, checkIndex, action.record, logger);
+                break;
 
-    // ── Start gap-fix loop (AC-04) ────────────────────────────────────────────
-    // The parser already synthesizes gapFixGoal when absent (AC-02); use it directly.
-    const gapFixGoal = (parsed.gapFixGoal ?? '').trim();
-    const goalSynthesized = parsed.goalSynthesized ?? false;
-    if (!gapFixGoal) {
-        // Should never happen (parser guarantees gapFixGoal when hasGaps: true), but defensive
-        logger.warn(LogCategory.AI, `[Ralph/FinalCheck] No gapFixGoal for ${sessionId} — falling back to gap titles.`);
-    }
+            case 'broadcastSessionComplete':
+                broadcastSessionComplete({
+                    workspaceId,
+                    sessionId,
+                    processId: action.processId,
+                    totalIterations: action.totalIterations,
+                    reason: action.reason,
+                });
+                break;
 
-    const additionalIterations = resolveRalphAdditionalIterations(undefined, dataDir, workspaceId);
+            case 'startGapFixLoop':
+                await startGapFixLoop({
+                    action,
+                    deps,
+                    store,
+                    workspaceId,
+                    sessionId,
+                    checkIndex,
+                    loopIndex,
+                    sourceIteration,
+                    processId,
+                    nowIso,
+                    logger,
+                });
+                break;
+        }
+    }
+}
+
+// ============================================================================
+// Private helpers
+// ============================================================================
+
+interface StartGapFixLoopInput {
+    action: RalphStartGapFixLoopAction;
+    deps: OrchestrateFinalCheckDeps;
+    store: RalphSessionStore;
+    workspaceId: string;
+    sessionId: string;
+    checkIndex: number;
+    loopIndex: number;
+    sourceIteration: number;
+    processId: string;
+    nowIso: string;
+    logger: ReturnType<typeof getLogger>;
+}
+
+async function startGapFixLoop(input: StartGapFixLoopInput): Promise<void> {
+    const {
+        action,
+        deps,
+        store,
+        workspaceId,
+        sessionId,
+        checkIndex,
+        loopIndex,
+        sourceIteration,
+        processId,
+        nowIso,
+        logger,
+    } = input;
+
+    const additionalIterations = resolveRalphAdditionalIterations(undefined, deps.dataDir, workspaceId);
 
     let newLoopRecord;
     try {
-        newLoopRecord = await store.startNewLoop(workspaceId, sessionId, gapFixGoal, additionalIterations, nowIso);
+        newLoopRecord = await store.startNewLoop(workspaceId, sessionId, action.gapFixGoal, additionalIterations, nowIso);
     } catch (err) {
         logger.warn(LogCategory.AI, `[Ralph/FinalCheck] startNewLoop failed for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
-        // Record that a gap loop was intended but failed to start.
-        await safeUpsertRecord(store, workspaceId, sessionId, checkIndex, {
-            status: 'completed',
-            ...baseCheckRecord,
-            hasGaps: true,
-            gapCount: parsed.gaps.length,
-            gapLoopStarted: false,
-            goalSynthesized,
-        }, logger);
-        broadcastSessionComplete({ workspaceId, sessionId, processId, totalIterations: sourceIteration, reason: 'final-check-gap-loop-start-failed' });
+        await safeUpsertRecord(store, workspaceId, sessionId, checkIndex, action.failureRecord, logger);
+        deps.broadcastSessionComplete({
+            workspaceId,
+            sessionId,
+            processId,
+            totalIterations: sourceIteration,
+            reason: action.startFailureReason,
+        });
         return;
     }
 
@@ -187,10 +215,10 @@ export async function orchestrateFinalCheck(input: OrchestrateFinalCheckInput): 
         workingDirectory: deps.workingDirectory,
         folderPath: deps.folderPath,
         sessionId,
-        originalGoal: gapFixGoal,
+        originalGoal: action.gapFixGoal,
         iteration: nextIteration,
         maxIterations: newLoopRecord.maxIterations,
-        dataDir,
+        dataDir: deps.dataDir,
         provider: deps.provider,
         continuationOfSessionId: sessionId,
         extraContext: { ...(deps.extraContext ?? {}), ralph: { loopIndex: newLoopIndex } },
@@ -198,44 +226,26 @@ export async function orchestrateFinalCheck(input: OrchestrateFinalCheckInput): 
 
     let newTaskId: string;
     try {
-        newTaskId = enqueueTask(taskInput);
+        newTaskId = deps.enqueueTask(taskInput);
     } catch (err) {
         logger.warn(LogCategory.AI, `[Ralph/FinalCheck] enqueue gap-fix failed for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
-        await safeUpsertRecord(store, workspaceId, sessionId, checkIndex, {
-            status: 'completed',
-            ...baseCheckRecord,
-            hasGaps: true,
-            gapCount: parsed.gaps.length,
-            gapLoopStarted: false,
-            goalSynthesized,
-        }, logger);
-        broadcastSessionComplete({ workspaceId, sessionId, processId, totalIterations: sourceIteration, reason: 'final-check-gap-enqueue-failed' });
+        await safeUpsertRecord(store, workspaceId, sessionId, checkIndex, action.failureRecord, logger);
+        deps.broadcastSessionComplete({
+            workspaceId,
+            sessionId,
+            processId,
+            totalIterations: sourceIteration,
+            reason: action.enqueueFailureReason,
+        });
         return;
     }
 
     logger.debug(LogCategory.AI, `[Ralph/FinalCheck] Gap-fix loop ${newLoopIndex} enqueued as task ${newTaskId} for session ${sessionId}.`);
 
     await safeUpsertRecord(store, workspaceId, sessionId, checkIndex, {
-        status: 'completed',
-        ...baseCheckRecord,
-        hasGaps: true,
-        gapCount: parsed.gaps.length,
-        gapLoopStarted: true,
+        ...action.successRecordBase,
         gapLoopIndex: newLoopIndex,
-        goalSynthesized: goalSynthesized || undefined,
     }, logger);
-}
-
-// ============================================================================
-// Private helpers
-// ============================================================================
-
-function buildBaseCheckRecord(
-    fields: Pick<RalphFinalCheckRecord, 'loopIndex' | 'sourceIteration' | 'taskId' | 'processId'>,
-    startedAt: string,
-    nowIso: string,
-): Pick<RalphFinalCheckRecord, 'loopIndex' | 'sourceIteration' | 'taskId' | 'processId' | 'startedAt' | 'completedAt'> {
-    return { ...fields, startedAt, completedAt: nowIso };
 }
 
 async function safeUpsertRecord(
@@ -243,7 +253,7 @@ async function safeUpsertRecord(
     workspaceId: string,
     sessionId: string,
     checkIndex: number,
-    partial: Partial<RalphFinalCheckRecord> & Pick<RalphFinalCheckRecord, 'status'>,
+    partial: RalphFinalCheckRecordPatch,
     logger: ReturnType<typeof getLogger>,
 ): Promise<void> {
     try {
@@ -252,49 +262,3 @@ async function safeUpsertRecord(
         logger.warn(LogCategory.AI, `[Ralph/FinalCheck] Failed to persist metadata for ${sessionId} check ${checkIndex}: ${err instanceof Error ? err.message : String(err)}`);
     }
 }
-
-function buildProgressSection(
-    checkIndex: number,
-    loopIndex: number,
-    parsed: FinalCheckResult,
-    nowIso: string,
-): string {
-    if (parsed.status === 'unparseable' || parsed.status === 'invalid') {
-        return [
-            `---`,
-            `## Final Check ${checkIndex} - FAILED - ${nowIso}`,
-            `Loop: ${loopIndex}`,
-            ``,
-            `The final-check task completed but produced no parseable RALPH_FINAL_CHECK_RESULT block.`,
-            `Automation stopped. Manual review required.`,
-            ...(parsed.error ? [`Error: ${parsed.error}`] : []),
-        ].join('\n');
-    }
-    if (!parsed.hasGaps) {
-        return [
-            `---`,
-            `## Final Check ${checkIndex} - CLEAN - ${nowIso}`,
-            `Loop: ${loopIndex}`,
-            ``,
-            parsed.summary,
-        ].join('\n');
-    }
-    const gapLines = parsed.gaps.map((g: FinalCheckResult['gaps'][number]) =>
-        `- **${g.id}**: ${g.title}\n  Evidence: ${g.evidence}\n  Action: ${g.recommendedAction}${g.validation ? `\n  Validation: \`${g.validation}\`` : ''}`,
-    ).join('\n');
-    return [
-        `---`,
-        `## Final Check ${checkIndex} - GAPS - ${nowIso}`,
-        `Loop: ${loopIndex}`,
-        ``,
-        parsed.summary,
-        ``,
-        `### Gaps (${parsed.gaps.length})`,
-        gapLines,
-        ``,
-        `### Gap-fix goal`,
-        parsed.gapFixGoal ?? '*(synthesized)*',
-    ].join('\n');
-}
-
-

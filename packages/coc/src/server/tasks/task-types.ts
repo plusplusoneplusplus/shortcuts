@@ -249,6 +249,8 @@ export interface RalphContext {
     currentIteration?: number;
     /** Links the grill-me task and all iteration tasks in the UI. */
     sessionId?: string;
+    /** 1-based loop index for multi-loop Ralph sessions. */
+    loopIndex?: number;
     /** Current stage of the Ralph session. */
     phase?: 'grilling' | 'executing' | 'complete';
     /**

@@ -9,7 +9,7 @@
  *    a check for a given sourceIteration already exists in the persisted record.
  */
 
-import { buildFinalCheckPrompt } from './final-check-prompt';
+import { buildFinalCheckPrompt } from '@plusplusoneplusplus/coc-workflow/ralph';
 import type { RalphFinalCheckRecord, RalphSessionRecord } from './types';
 
 // ============================================================================
