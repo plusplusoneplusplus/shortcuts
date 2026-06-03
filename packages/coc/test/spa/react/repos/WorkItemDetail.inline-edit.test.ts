@@ -31,7 +31,7 @@ describe('WorkItemDetail always-on inline editing', () => {
 
         it('renders fields as always-on inputs', () => {
             expect(src).toContain('wi-title-input');
-            expect(src).toContain('wi-description-input');
+            expect(src).toContain('WorkItemDescriptionEditor');
             expect(src).toContain('wi-priority-select');
             expect(src).toContain('wi-tags-input');
         });

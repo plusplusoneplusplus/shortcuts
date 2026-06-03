@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 
 
 // --- Mock the CoC client ---
@@ -111,7 +111,7 @@ describe('WorkItemDetail inline editing (render)', () => {
         renderDetail();
         const title = await screen.findByTestId('wi-title-input');
         expect((title as HTMLInputElement).value).toBe('Original title');
-        expect(screen.getByTestId('wi-description-input')).toBeTruthy();
+        expect(screen.getByTestId('wi-description-editor')).toBeTruthy();
         expect(screen.getByTestId('wi-priority-select')).toBeTruthy();
         expect(screen.getByTestId('wi-tags-input')).toBeTruthy();
         expect(screen.getByTestId('work-item-status-select')).toBeTruthy();
@@ -131,7 +131,8 @@ describe('WorkItemDetail inline editing (render)', () => {
         renderDetail();
         const title = await screen.findByTestId('wi-title-input');
         fireEvent.change(title, { target: { value: 'Edited title' } });
-        fireEvent.change(screen.getByTestId('wi-description-input'), { target: { value: 'Edited desc' } });
+        const descEditor = within(screen.getByTestId('wi-description-editor')).getByRole('textbox');
+        fireEvent.change(descEditor, { target: { value: 'Edited desc' } });
         fireEvent.change(screen.getByTestId('wi-priority-select'), { target: { value: 'high' } });
         fireEvent.change(screen.getByTestId('wi-tags-input'), { target: { value: 'a, b, a' } });
         fireEvent.change(screen.getByTestId('work-item-status-select'), { target: { value: 'planning' } });
@@ -183,6 +184,30 @@ describe('WorkItemDetail inline editing (render)', () => {
         await waitFor(() => expect(mockUpdatePlan).toHaveBeenCalledTimes(1));
         const [, , planContent] = mockUpdatePlan.mock.calls[0];
         expect(planContent).toBe('# New plan');
+    });
+
+    it('AC-03: description has a Source/Preview toggle and edits flow into the batch', async () => {
+        renderDetail();
+        await screen.findByTestId('wi-title-input');
+        const editor = screen.getByTestId('wi-description-editor');
+        // Per-field rich/source toggle is present.
+        expect(within(editor).getByTestId('wi-description-mode-source')).toBeTruthy();
+        expect(within(editor).getByTestId('wi-description-mode-preview')).toBeTruthy();
+
+        // Source mode renders an editable textarea wired into the dirty batch.
+        const descEditor = within(editor).getByRole('textbox');
+        fireEvent.change(descEditor, { target: { value: 'Edited via source' } });
+        expect(screen.getByTestId('wi-dirty-indicator')).toBeTruthy();
+
+        // Switching to Preview hides the textarea and shows rendered markdown.
+        fireEvent.click(within(editor).getByTestId('wi-description-mode-preview'));
+        expect(within(editor).queryByRole('textbox')).toBeNull();
+        expect(within(editor).getByTestId('wi-description-preview')).toBeTruthy();
+
+        fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+        await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+        const [, , updates] = mockUpdate.mock.calls[0];
+        expect(updates).toMatchObject({ description: 'Edited via source' });
     });
 
     it('AC-02: empty-batch Ctrl+S with no edits issues no network calls', async () => {

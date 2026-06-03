@@ -10,6 +10,7 @@ import { fetchApi } from '../../hooks/useApi';
 import { getSpaCocClient } from '../../api/cocClient';
 import { formatRelativeTime } from '../../utils/format';
 import { WorkItemPlanSection } from './WorkItemPlanSection';
+import { WorkItemDescriptionEditor } from './WorkItemDescriptionEditor';
 import { WorkItemExecuteDialog } from './WorkItemExecuteDialog';
 import { useWorkItems } from '../../contexts/WorkItemContext';
 import { useCommitCommentTotals } from '../git/hooks/useCommitCommentTotals';
@@ -746,14 +747,11 @@ export function WorkItemDetail({ workItemId, workspaceId, onBack, onExecuted, on
                         <h3 className="text-[13px] leading-[1.25] font-semibold text-[#1f2328] dark:text-[#cccccc]">Description</h3>
                     </div>
                     <div className="p-4">
-                    <textarea
-                        className="w-full min-h-[80px] text-sm p-2 rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] resize-y focus:outline-none focus:ring-1 focus:ring-[#0969da]"
+                    <WorkItemDescriptionEditor
                         value={d.description}
-                        onChange={e => updateDraft('description', e.target.value)}
+                        onChange={v => updateDraft('description', v)}
+                        dirty={!!(baseline && d.description !== baseline.description)}
                         disabled={saving}
-                        placeholder="No description"
-                        data-testid="wi-description-input"
-                        aria-label="Description"
                     />
                     </div>
                 </article>
