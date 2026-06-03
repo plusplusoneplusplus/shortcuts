@@ -9,6 +9,7 @@ import { EffortTierSelector } from '../../../../src/server/spa/client/react/feat
 import type { LocalEffortTiersMap } from '../../../../src/server/spa/client/react/hooks/useProviderEffortTiers';
 
 const tiers: LocalEffortTiersMap = {
+    'very-low': { model: 'gpt-5.4-mini', reasoningEffort: 'low', source: 'default' },
     low: { model: 'gpt-5-mini', reasoningEffort: 'low', source: 'config' },
     medium: { model: 'gpt-5', reasoningEffort: '', source: 'default' },
     high: { model: 'gpt-5-pro', reasoningEffort: 'high', source: 'config' },
@@ -36,6 +37,9 @@ describe('EffortTierSelector', () => {
 
         fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
 
+        expect(screen.getByTestId('effort-tier-option-very-low').getAttribute('title')).toBe(
+            'Very Low\nModel: gpt-5.4-mini\nReasoning effort: low',
+        );
         expect(screen.getByTestId('effort-tier-option-low').getAttribute('title')).toBe(
             'Low\nModel: gpt-5-mini\nReasoning effort: low',
         );
@@ -49,11 +53,31 @@ describe('EffortTierSelector', () => {
         render(<EffortTierSelector tiers={{ low: tiers.low }} selectedTier="low" onChange={onChange} />);
 
         fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
-        const medium = screen.getByTestId('effort-tier-option-medium') as HTMLButtonElement;
+        const veryLow = screen.getByTestId('effort-tier-option-very-low') as HTMLButtonElement;
 
-        expect(medium.disabled).toBe(true);
-        expect(medium.getAttribute('title')).toBe('Medium: Not configured in Admin');
-        fireEvent.click(medium);
+        expect(veryLow.disabled).toBe(true);
+        expect(veryLow.getAttribute('title')).toBe('Very Low: Not configured in Admin');
+        fireEvent.click(veryLow);
         expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('renders Very Low first and notifies when selected', () => {
+        const onChange = vi.fn();
+        const { rerender } = render(<EffortTierSelector tiers={tiers} selectedTier="medium" onChange={onChange} />);
+
+        fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+
+        expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual([
+            'Very Low',
+            'Low',
+            'Medium',
+            'High',
+        ]);
+
+        fireEvent.click(screen.getByTestId('effort-tier-option-very-low'));
+
+        expect(onChange).toHaveBeenCalledWith('very-low');
+        rerender(<EffortTierSelector tiers={tiers} selectedTier="very-low" onChange={onChange} />);
+        expect(screen.getByTestId('effort-tier-selector').getAttribute('data-tier-value')).toBe('very-low');
     });
 });

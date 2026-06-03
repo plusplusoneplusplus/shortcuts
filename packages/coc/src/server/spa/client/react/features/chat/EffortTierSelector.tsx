@@ -1,12 +1,12 @@
 /**
  * EffortTierSelector — a single-chip dropdown that lets the user pick
- * Low / Medium / High as a composite effort tier in the composer toolbar.
+ * Very Low / Low / Medium / High as a composite effort tier in the composer toolbar.
  *
  * Unconfigured tiers (no model set in Admin) are shown greyed-out with a
  * "Not configured in Admin" tooltip and cannot be selected.
  *
  * Visual style mirrors EffortPillSelector: a ghost button (label + chevron)
- * that opens a small popover listing the three tier options.
+ * that opens a small popover listing the tier options.
  */
 
 import { useState, useRef, useEffect } from 'react';
@@ -14,12 +14,13 @@ import { cn } from '../../ui/cn';
 import type { EffortTierKey, LocalEffortTiersMap } from '../../hooks/useProviderEffortTiers';
 
 const TIER_LABELS: Record<EffortTierKey, string> = {
+    'very-low': 'Very Low',
     low: 'Low',
     medium: 'Medium',
     high: 'High',
 };
 
-const TIER_KEYS: readonly EffortTierKey[] = ['low', 'medium', 'high'];
+const TIER_KEYS: readonly EffortTierKey[] = ['very-low', 'low', 'medium', 'high'];
 
 function formatReasoningEffort(effort: string): string {
     return effort || 'Auto';
