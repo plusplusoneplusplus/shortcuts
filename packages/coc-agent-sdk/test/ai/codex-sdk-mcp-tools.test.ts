@@ -75,6 +75,9 @@ describe('CodexSDKService MCP tool wiring', () => {
         expect(entry.command).toBe(process.execPath);
         expect(Array.isArray(entry.args)).toBe(true);
         expect(entry.enabled_tools).toEqual(['ask_user', 'create_work_item']);
+        // Blocking tools (e.g. ask_user) must not be aborted by Codex's default MCP
+        // tool timeout: the server entry pins an effectively-unbounded tool_timeout_sec.
+        expect(entry.tool_timeout_sec).toBe(31_536_000);
         expect(entry.env[COC_LLM_TOOLS_ENDPOINT_ENV]).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
         expect(typeof entry.env[COC_LLM_TOOLS_TOKEN_ENV]).toBe('string');
         expect(entry.env[COC_LLM_TOOLS_TOKEN_ENV].length).toBeGreaterThan(0);
