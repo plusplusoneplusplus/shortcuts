@@ -16,6 +16,7 @@ Location: `packages/coc-agent-sdk/src/`
 | `claude-sdk-service.ts` | `ClaudeSDKService` — optional Claude backend (`@anthropic-ai/claude-agent-sdk`) |
 | `sdk-service-interface.ts` | `ISDKService` provider-agnostic contract |
 | `sdk-service-registry.ts` | `SDKServiceRegistry` — named-provider registry |
+| `testing/` | Shared vitest-free `ISDKService` mock (`createMockSDKService` + presets); exposed via `./testing` subpath export |
 | `request-runner.ts` | `sendMessage`/`transform` execution: session creation, MCP wiring, permission handler, streaming routing |
 | `stream-error-guard.ts` | `StreamErrorGuard` + `isStreamDestroyedError()`/`isConnectionDisposedError()` helpers |
 | `session-manager.ts` | Active session tracking and cancellation |
@@ -286,7 +287,9 @@ Without a call to `initSDKLogger`, all internal SDK log statements are silently 
 
 ## Testing Notes
 
-- Mock helpers in `packages/coc-agent-sdk/test/helpers/mock-sdk.ts`
-- 306 tests in `packages/coc-agent-sdk/test/`
+- **Shared ISDKService mock** in `packages/coc-agent-sdk/src/testing/` — vitest-free, exposed via `@plusplusoneplusplus/coc-agent-sdk/testing` subpath export. Factories: `createMockSDKService`, `createUnavailableMock`, `createStreamingMock`, `createFailingMock`, `createMockBridge`, `createExpiredSessionBridge`. Accepts an injectable mock-fn factory (`fn` parameter); consumers pass `vi.fn` for vitest spy assertions.
+- `packages/coc/test/helpers/mock-sdk-service.ts` is a thin wrapper that binds `vi.fn` and re-exports from the shared mock.
+- Lower-level mock helpers in `packages/coc-agent-sdk/test/helpers/mock-sdk.ts` (MockCopilotClient — different layer, not migrated).
+- 539+ tests in `packages/coc-agent-sdk/test/`
 - Set `serviceAny.sdkModule` and `serviceAny.availabilityCache` to bypass real SDK
 - Unit tests cover: session-manager, streaming-session, sdk-loader, sdk-client-factory, stream-error-guard, request-runner, logger, codex-sdk-service

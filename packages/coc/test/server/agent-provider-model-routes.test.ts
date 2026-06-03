@@ -13,7 +13,8 @@ import type { AgentProvidersRouteContext } from '../../src/server/agent-provider
 import { RuntimeConfigService } from '../../src/config/runtime-config-service';
 import type { Route } from '../../src/server/types';
 import type { CLIConfig } from '../../src/config';
-import type { ModelInfo, ISDKService } from '@plusplusoneplusplus/forge';
+import type { ModelInfo } from '@plusplusoneplusplus/forge';
+import { createMockSDKService } from '../helpers/mock-sdk-service';
 
 // Mock modelMetadataStore from forge
 const mockGetAll = vi.fn<() => ModelInfo[]>().mockReturnValue([]);
@@ -74,25 +75,6 @@ function makeConfigFunctions(initialConfig?: CLIConfig): {
         getConfigFilePath: () => '/fake/config.yaml',
     };
     return result;
-}
-
-function makeAiService(overrides?: Partial<ISDKService>): ISDKService {
-    return {
-        isAvailable: async () => ({ available: true }),
-        clearAvailabilityCache: () => undefined,
-        listModels: async () => [],
-        sendMessage: async () => ({ success: true, response: 'test response', sessionId: 'sess-1' }),
-        transform: async () => '',
-        forkSession: async () => 'forked',
-        abortSession: async () => false,
-        softAbortSession: async () => false,
-        steerSession: async () => false,
-        hasActiveSession: () => false,
-        getActiveSessionCount: () => 0,
-        cleanup: async () => undefined,
-        dispose: () => undefined,
-        ...overrides,
-    };
 }
 
 function makeCtx(overrides?: Partial<AgentProvidersRouteContext>): AgentProvidersRouteContext {
@@ -236,9 +218,9 @@ describe('GET /api/agent-providers/:provider/models', () => {
             supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
             defaultReasoningEffort: 'medium',
         };
-        const codexService = makeAiService({
-            listModels: async () => [gpt55] as unknown as any[],
-        });
+        const codexService = createMockSDKService({
+            overrides: { listModels: async () => [gpt55] as unknown as any[] },
+        }).service;
         const ctx = makeCtx({
             getCodexSdkService: () => codexService as unknown as any,
         });
@@ -257,9 +239,9 @@ describe('GET /api/agent-providers/:provider/models', () => {
     });
 
     it('returns empty models for codex when SDK service listModels throws', async () => {
-        const codexService = makeAiService({
-            listModels: async () => { throw new Error('catalog unavailable'); },
-        });
+        const codexService = createMockSDKService({
+            overrides: { listModels: async () => { throw new Error('catalog unavailable'); } },
+        }).service;
         const ctx = makeCtx({
             getCodexSdkService: () => codexService as unknown as any,
         });
@@ -467,13 +449,15 @@ describe('POST /api/agent-providers/:provider/models/query', () => {
     });
 
     it('queries the SDK service for copilot', async () => {
-        const aiService = makeAiService({
-            sendMessage: async () => ({
-                success: true,
-                response: 'hello world',
-                sessionId: 'sess-42',
-            }),
-        });
+        const aiService = createMockSDKService({
+            overrides: {
+                sendMessage: async () => ({
+                    success: true,
+                    response: 'hello world',
+                    sessionId: 'sess-42',
+                }),
+            },
+        }).service;
         const ctx = makeCtx({
             getCopilotSdkService: () => aiService as any,
         });
@@ -491,7 +475,7 @@ describe('POST /api/agent-providers/:provider/models/query', () => {
     });
 
     it('returns 400 for missing prompt', async () => {
-        const aiService = makeAiService();
+        const aiService = createMockSDKService().service;
         const ctx = makeCtx({
             getCopilotSdkService: () => aiService as any,
         });

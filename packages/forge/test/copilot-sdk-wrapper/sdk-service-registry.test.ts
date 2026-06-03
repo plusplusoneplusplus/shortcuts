@@ -10,29 +10,23 @@ import {
     SDK_PROVIDER_COPILOT,
 } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { ISDKService } from '@plusplusoneplusplus/coc-agent-sdk';
+import { createMockSDKService } from '@plusplusoneplusplus/coc-agent-sdk/testing';
 
 // ---------------------------------------------------------------------------
-// Minimal stub that satisfies ISDKService structurally
+// Shared factory wrapper with parameterized id
 // ---------------------------------------------------------------------------
 function makeMockProvider(id = 'mock'): ISDKService {
-    return {
-        isAvailable: async () => ({ available: true }),
-        clearAvailabilityCache: () => {},
-        listModels: async () => [{ id, name: `Model ${id}` }],
-        sendMessage: async () => ({ success: true, response: 'ok' }),
-        transform: async <T = string>(prompt: string, parse?: (raw: string) => T) => {
-            const raw = `transformed: ${prompt}`;
-            return (parse ? parse(raw) : raw) as T;
+    return createMockSDKService({
+        listModelsResult: [{ id, name: `Model ${id}` }],
+        overrides: {
+            hasActiveSession: () => false,
+            transform: (async <T = string>(prompt: string, parse?: (raw: string) => T) => {
+                const raw = `transformed: ${prompt}`;
+                return (parse ? parse(raw) : raw) as T;
+            }) as ISDKService['transform'],
+            forkSession: async (sid: string) => `${sid}-fork`,
         },
-        forkSession: async (sid: string) => `${sid}-fork`,
-        abortSession: async () => true,
-        softAbortSession: async () => true,
-        steerSession: async () => true,
-        hasActiveSession: () => false,
-        getActiveSessionCount: () => 0,
-        cleanup: async () => {},
-        dispose: () => {},
-    };
+    }).service;
 }
 
 // ---------------------------------------------------------------------------
