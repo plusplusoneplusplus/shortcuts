@@ -1,17 +1,17 @@
 /**
- * Checks tab content — combines the AI-interpreted checks/CI table with
+ * Checks tab content - combines the provider-derived checks/CI table with
  * a side-by-side merge readiness checklist.
  */
 
 import { cn } from '../../ui';
-import { checkStatusClass, findingTagClass } from './pr-mock-data';
-import type { AiCheckRow, MergeReadinessItem } from './pr-mock-data';
+import { checkStatusClass, findingTagClass } from './pr-derived-data';
+import type { PrCheckRow, MergeReadinessItem } from './pr-derived-data';
 
 interface PrChecksTableProps {
-    rows: AiCheckRow[];
+    rows: PrCheckRow[];
 }
 
-function statusLabel(status: AiCheckRow['status']): string {
+function statusLabel(status: PrCheckRow['status']): string {
     switch (status) {
         case 'success':   return 'Passed';
         case 'warning':   return 'Needs review';

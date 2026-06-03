@@ -4,7 +4,7 @@
  */
 
 import { cn } from '../../ui';
-import { findingTagClass } from './pr-mock-data';
+import { findingTagClass } from './pr-derived-data';
 import type { PrReviewSummary } from './pr-detail-summary';
 
 interface PrReviewSummaryPanelProps {

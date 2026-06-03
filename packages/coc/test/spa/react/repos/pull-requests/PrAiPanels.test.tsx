@@ -15,13 +15,19 @@ import { PrFilesPanel } from '../../../../../src/server/spa/client/react/feature
 import { PrConversationPanel } from '../../../../../src/server/spa/client/react/features/pull-requests/PrConversationPanel';
 import { buildPrReviewSummary } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-detail-summary';
 import {
-    buildAiThreadGroupsFromThreads,
-    getMockCheckRows,
-    getMockMergeReadiness,
-    getMockTimeline,
-} from '../../../../../src/server/spa/client/react/features/pull-requests/pr-mock-data';
+    buildCheckRowsFromChecks,
+    buildMergeReadinessFromData,
+    buildThreadGroupsFromThreads,
+    buildTimelineFromRealData,
+} from '../../../../../src/server/spa/client/react/features/pull-requests/pr-derived-data';
 import { parseDiffFileList } from '../../../../../src/server/spa/client/react/features/git/diff';
-import type { PullRequest } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-utils';
+import type {
+    CommentThread,
+    PullRequest,
+    PullRequestCheck,
+    PullRequestCommit,
+    Reviewer,
+} from '../../../../../src/server/spa/client/react/features/pull-requests/pr-utils';
 
 const samplePr: PullRequest = {
     id: 4289,
@@ -34,6 +40,38 @@ const samplePr: PullRequest = {
     updatedAt: '2026-04-02T12:30:00Z',
     description: 'Switches the ingestion worker to a streaming JSONL pipeline.',
 };
+
+const sampleThreads: CommentThread[] = [
+    {
+        id: 'thread-1',
+        status: 'active',
+        comments: [{
+            id: 'comment-1',
+            author: { displayName: 'Reviewer One' },
+            body: 'Please handle the null stream case.',
+        }],
+        threadContext: { filePath: 'src/stream.ts', line: 42 },
+    },
+];
+
+const sampleCommits: PullRequestCommit[] = [
+    {
+        id: 'abcdef1234567890',
+        shortId: 'abcdef1',
+        message: 'Fix retry handling',
+        subject: 'Fix retry handling',
+        author: { displayName: 'Contributor One' },
+    },
+];
+
+const sampleChecks: PullRequestCheck[] = [
+    { id: 'build', name: 'build', status: 'success', source: 'check', durationMs: 60_000 },
+    { id: 'lint', name: 'lint', status: 'success', source: 'check', durationMs: 30_000 },
+];
+
+const sampleReviewers: Reviewer[] = [
+    { identity: { displayName: 'Approving Reviewer' }, vote: 'approved', isRequired: true },
+];
 
 describe('PrReviewSummaryPanel', () => {
     it('renders deterministic metric and finding facts', () => {
@@ -67,8 +105,16 @@ describe('PrReviewSummaryPanel', () => {
 
 describe('PrConversationPanel', () => {
     it('renders the timeline and lets the user draft a reply', () => {
-        render(<PrConversationPanel events={getMockTimeline()} />);
-        expect(screen.getAllByTestId('pr-timeline-event').length).toBeGreaterThanOrEqual(3);
+        render(
+            <PrConversationPanel
+                events={buildTimelineFromRealData(
+                    sampleThreads,
+                    sampleCommits,
+                    buildThreadGroupsFromThreads(sampleThreads),
+                )}
+            />,
+        );
+        expect(screen.getAllByTestId('pr-timeline-event').length).toBeGreaterThanOrEqual(2);
         const reply = screen.getByTestId('pr-reply-box') as HTMLTextAreaElement;
         expect(reply.value).toBe('');
 
@@ -78,7 +124,7 @@ describe('PrConversationPanel', () => {
 });
 
 describe('PrAiGroupedThreads', () => {
-    it('groups real threads into the three AI severity buckets', () => {
+    it('groups real threads into the three deterministic severity buckets', () => {
         const realThreads = [
             { id: 1, comments: [{ body: 'this looks like a real bug, crash on null' }] },
             { id: 2, comments: [{ body: 'nit: typo here' }] },
@@ -86,7 +132,7 @@ describe('PrAiGroupedThreads', () => {
         ];
         render(
             <PrAiGroupedThreads
-                groups={buildAiThreadGroupsFromThreads(realThreads)}
+                groups={buildThreadGroupsFromThreads(realThreads)}
                 totalThreads={realThreads.length}
             />,
         );
@@ -100,7 +146,7 @@ describe('PrAiGroupedThreads', () => {
     });
 
     it('renders an empty-state message when there are no threads', () => {
-        render(<PrAiGroupedThreads groups={buildAiThreadGroupsFromThreads([])} totalThreads={0} />);
+        render(<PrAiGroupedThreads groups={buildThreadGroupsFromThreads([])} totalThreads={0} />);
         expect(screen.getByText(/No comment threads/i)).toBeTruthy();
     });
 });
@@ -112,14 +158,14 @@ describe('PrCommitTable', () => {
                 sha: 'abcdef1234567890',
                 shortSha: 'abcdef1',
                 title: 'Fix retry handling',
-                author: { displayName: 'Alice' },
+                author: { displayName: 'Contributor Two' },
                 committedAt: '2024-01-01T00:00:00Z',
             },
             {
                 sha: '123456abcdef7890',
                 shortSha: '123456a',
                 title: 'Add retry tests',
-                author: { displayName: 'Bob' },
+                author: { displayName: 'Contributor Three' },
                 committedAt: '2024-01-02T00:00:00Z',
             },
         ]} />);
@@ -135,13 +181,17 @@ describe('PrCommitTable', () => {
 
 describe('PrChecksTable + PrMergeReadiness', () => {
     it('renders a row per check and a passing pill', () => {
-        render(<PrChecksTable rows={getMockCheckRows()} />);
-        expect(screen.getAllByTestId('pr-check-row').length).toBeGreaterThanOrEqual(5);
+        render(<PrChecksTable rows={buildCheckRowsFromChecks(sampleChecks)} />);
+        expect(screen.getAllByTestId('pr-check-row')).toHaveLength(2);
         expect(screen.getByText(/passing/i)).toBeInTheDocument();
     });
 
     it('renders the merge readiness checklist', () => {
-        render(<PrMergeReadiness items={getMockMergeReadiness()} />);
+        render(<PrMergeReadiness items={buildMergeReadinessFromData({
+            checks: sampleChecks,
+            threads: [],
+            reviewers: sampleReviewers,
+        })} />);
         expect(screen.getAllByTestId('pr-merge-readiness-item').length).toBeGreaterThan(0);
     });
 });

@@ -5,19 +5,14 @@
  *   - PR header (title, branches, status, reviewers, labels, description)
  *   - Comment threads (via /threads endpoint)
  *   - File list, +/- counts, hunks, and diff body (parsed from /diff)
- *   - Commit list (via /commits endpoint) — intent label is still a
- *     heuristic inferred from the commit subject (editable).
+ *   - Commit list (via /commits endpoint).
  *   - Deterministic review summary facts from PR description, diff stats,
  *     checks, reviewers, and real threads.
- *   - The "AI grouped threads" sidebar groups REAL threads — only the
- *     severity tag is AI-derived (deterministic, mocked for now).
+ *   - The grouped threads sidebar buckets REAL threads with deterministic
+ *     severity derived from thread status and comment text.
  *   - Checks / CI table and merge-readiness (via /checks endpoint —
  *     provider-agnostic; works for both GitHub and ADO).
- *
- * AI-flavored sections still backed by deterministic fixtures in
- * `pr-mock-data.ts` (until an AI backend is wired up):
- *   - Conversation timeline
- *   - Assistant chat drawer
+ *   - Conversation timeline derived from real threads and commits.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -40,12 +35,12 @@ import type { ClassificationKey } from '../git/diff/diffSource';
 import { buildGitPrPopOutUrl } from '../../layout/Router';
 import { useGitReviewPopOut, gitReviewPrPopOutKey } from '../../contexts/GitReviewPopOutContext';
 import {
-    buildAiThreadGroupsFromThreads,
     buildCheckRowsFromChecks,
     buildCommitRowsFromPrCommits,
     buildMergeReadinessFromData,
+    buildThreadGroupsFromThreads,
     buildTimelineFromRealData,
-} from './pr-mock-data';
+} from './pr-derived-data';
 import {
     buildPrReviewSummary,
     buildPullRequestDiffStats,
@@ -219,7 +214,7 @@ export function PullRequestDetail({ repoId, prId, onBack, isMobile = false }: Pu
         }
     }, [state.selectedPrDetailTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const threadGroups = useMemo(() => buildAiThreadGroupsFromThreads(threads), [threads]);
+    const threadGroups = useMemo(() => buildThreadGroupsFromThreads(threads), [threads]);
     const timeline = useMemo(() => buildTimelineFromRealData(threads, commits, threadGroups), [threads, commits, threadGroups]);
     const commitRows = useMemo(() => buildCommitRowsFromPrCommits(commits), [commits]);
     const checkRows = useMemo(() => buildCheckRowsFromChecks(checks), [checks]);

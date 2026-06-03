@@ -1,5 +1,5 @@
 /**
- * Tests for deterministic PR helper fixtures still used by the redesigned PR review page.
+ * Tests for deterministic PR data adapters used by the redesigned PR review page.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -7,67 +7,27 @@ import {
     buildCheckRowsFromChecks,
     buildCommitRowsFromPrCommits,
     buildMergeReadinessFromData,
+    buildThreadGroupsFromThreads,
     buildTimelineFromRealData,
     checkStatusClass,
-    commitIntentClass,
+    deriveThreadSeverity,
     findingTagClass,
-    getMockCheckRows,
-    getMockCommitRows,
-    getMockMergeReadiness,
-    getMockPrFileCount,
-    getMockPrReviewMinutes,
-    getMockQueueRisk,
-    getMockThreadGroups,
-    getMockTimeline,
     getQueueFilterDefinitions,
-    inferCommitIntent,
     queueDotClass,
     queueRiskClass,
-    riskPillClass,
-} from '../../../../../src/server/spa/client/react/features/pull-requests/pr-mock-data';
+} from '../../../../../src/server/spa/client/react/features/pull-requests/pr-derived-data';
 import type {
     CommentThread,
-    PullRequest,
     PullRequestCheck,
     PullRequestCommit,
     Reviewer,
 } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-utils';
 
-const basePr: PullRequest = {
-    id: 4289,
-    number: 4289,
-    title: 'feat(stream): add JSONL backpressure to ingestion worker',
-    description: 'Switches the ingestion worker to a streaming JSONL pipeline.',
-    sourceBranch: 'morgan:jsonl-streaming',
-    targetBranch: 'main',
-    status: 'open',
-    createdAt: new Date('2026-04-01T10:00:00Z').toISOString(),
-    updatedAt: new Date('2026-04-02T12:30:00Z').toISOString(),
-};
-
-describe('PR deterministic fixture helpers', () => {
-    it('returns timeline and thread groups', () => {
-        expect(getMockTimeline().length).toBeGreaterThanOrEqual(3);
-        const groups = getMockThreadGroups();
-        expect(groups.length).toBeGreaterThanOrEqual(4);
-        expect(groups.some(group => group.severity === 'blocking')).toBe(true);
-    });
-
-    it('returns commit, check, and merge-readiness fixtures', () => {
-        expect(getMockCommitRows().length).toBeGreaterThanOrEqual(5);
-        expect(getMockCheckRows().some(row => row.status === 'warning')).toBe(true);
-        expect(getMockMergeReadiness().some(item => item.tag === 'risk')).toBe(true);
-    });
-
-    it('exposes class-name helpers for tags, intents, statuses, and risks', () => {
+describe('PR deterministic data helpers', () => {
+    it('exposes class-name helpers for finding tags, statuses, queue dots, and risk pills', () => {
         expect(findingTagClass('good')).toContain('green');
         expect(findingTagClass('risk')).toContain('yellow');
         expect(findingTagClass('note')).toContain('blue');
-        expect(findingTagClass('ai')).toContain('purple');
-
-        expect(commitIntentClass('feat')).toContain('green');
-        expect(commitIntentClass('fix')).toContain('yellow');
-        expect(commitIntentClass('refactor')).toContain('purple');
 
         expect(checkStatusClass('success')).toContain('green');
         expect(checkStatusClass('warning')).toContain('yellow');
@@ -78,36 +38,15 @@ describe('PR deterministic fixture helpers', () => {
         expect(checkStatusClass('skipped')).toContain('gray');
         expect(checkStatusClass('unknown')).toContain('gray');
 
-        expect(riskPillClass('Low')).toContain('green');
-        expect(riskPillClass('Medium')).toContain('yellow');
-        expect(riskPillClass('High')).toContain('red');
-    });
-});
+        expect(queueDotClass('open')).toContain('green');
+        expect(queueDotClass('draft')).toContain('gray');
+        expect(queueDotClass('blocked')).toContain('yellow');
+        expect(queueDotClass('ready')).toContain('purple');
 
-describe('commit intent inference', () => {
-    it.each([
-        ['feat: stream JSONL parser',           'feat'],
-        ['feature(stream): add backpressure',   'feat'],
-        ['Add cancellation test',               'feat'],
-        ['fix: handle abort cleanly',           'fix'],
-        ['Fixes regression in retry path',      'fix'],
-        ['docs: update README',                 'docs'],
-        ['Document ingest rollout',             'docs'],
-        ['test: cover slow consumer',           'test'],
-        ['refactor: extract parser module',     'refactor'],
-        ['Rename old offset cache',             'refactor'],
-        ['chore: bump dependencies',            'chore'],
-        ['Bump @types/foo to 1.2.3',            'chore'],
-    ])('infers %s as %s', (message, expected) => {
-        expect(inferCommitIntent(message)).toBe(expected);
-    });
-
-    it('falls back to "chore" when the message has no known keyword', () => {
-        expect(inferCommitIntent('mystery commit')).toBe('chore');
-    });
-
-    it('only looks at the first line of multi-line messages', () => {
-        expect(inferCommitIntent('fix: handle abort\n\nfeature notes')).toBe('fix');
+        expect(queueRiskClass('low')).toContain('green');
+        expect(queueRiskClass('med')).toContain('yellow');
+        expect(queueRiskClass('high')).toContain('red');
+        expect(queueRiskClass('unknown')).toContain('gray');
     });
 });
 
@@ -118,10 +57,10 @@ describe('buildCommitRowsFromPrCommits', () => {
             shortId: 'abc1234',
             message: 'feat: stream JSONL parser',
             subject: 'feat: stream JSONL parser',
-            author: { displayName: 'Alice', email: 'alice@example.com' },
+            author: { displayName: 'Contributor One' },
             authoredAt: '2024-01-04T12:34:56Z',
             committedAt: '2024-01-04T12:35:00Z',
-            url: 'https://example.com/commit/abc1234',
+            url: 'https://example.invalid/commit/abc1234',
         },
         {
             id: 'def5678deadbeef0000000000000000000000000',
@@ -139,10 +78,10 @@ describe('buildCommitRowsFromPrCommits', () => {
             shortSha: 'abc1234',
             title: 'feat: stream JSONL parser',
             message: 'feat: stream JSONL parser',
-            author: { displayName: 'Alice', email: 'alice@example.com' },
+            author: { displayName: 'Contributor One' },
             authoredAt: '2024-01-04T12:34:56Z',
             committedAt: '2024-01-04T12:35:00Z',
-            url: 'https://example.com/commit/abc1234',
+            url: 'https://example.invalid/commit/abc1234',
         });
         expect(rows[1]).toMatchObject({
             sha: 'def5678deadbeef0000000000000000000000000',
@@ -185,7 +124,7 @@ describe('buildCheckRowsFromChecks', () => {
         ...over,
     });
 
-    it('maps every generic check status to a UI row with status + interpretation text', () => {
+    it('maps every generic check status to a UI row with status and interpretation text', () => {
         const checks: PullRequestCheck[] = [
             makeCheck({ id: '1', name: 'unit-tests', status: 'success', durationMs: 12000 }),
             makeCheck({ id: '2', name: 'lint', status: 'failure', description: 'eslint failed' }),
@@ -207,7 +146,6 @@ describe('buildCheckRowsFromChecks', () => {
         expect(rows[5].status).toBe('cancelled');
         expect(rows[6].status).toBe('skipped');
         expect(rows[7].status).toBe('unknown');
-        // Default interpretation per-status when no description is supplied.
         expect(rows[3].interpretation).toMatch(/queue|wait/i);
         expect(rows[5].interpretation).toMatch(/cancel/i);
         expect(rows[7].interpretation).toMatch(/not reported|unknown/i);
@@ -218,12 +156,12 @@ describe('buildCheckRowsFromChecks', () => {
             makeCheck({
                 id: 'x',
                 name: 'ci',
-                detailsUrl: 'https://ex/1',
+                detailsUrl: 'https://example.invalid/checks/1',
                 group: 'github-actions',
                 source: 'check',
             }),
         ]);
-        expect(rows[0].detailsUrl).toBe('https://ex/1');
+        expect(rows[0].detailsUrl).toBe('https://example.invalid/checks/1');
         expect(rows[0].group).toBe('github-actions');
         expect(rows[0].source).toBe('check');
         expect(rows[0].name).toBe('github-actions / ci');
@@ -294,12 +232,21 @@ describe('buildMergeReadinessFromData', () => {
         expect(checksItem?.body).toMatch(/warning/i);
     });
 
-    it('flags unresolved blocking threads', () => {
+    it('flags missing, active, and open thread statuses as unresolved', () => {
         const threads: CommentThread[] = [
             {
                 id: 't1',
                 status: 'active',
-                comments: [{ id: 'c1', author: { displayName: 'a' }, body: 'change please' }],
+                comments: [{ id: 'c1', author: { displayName: 'Reviewer One' }, body: 'change please' }],
+            },
+            {
+                id: 't2',
+                status: 'open',
+                comments: [{ id: 'c2', author: { displayName: 'Reviewer Two' }, body: 'another change' }],
+            },
+            {
+                id: 't3',
+                comments: [{ id: 'c3', author: { displayName: 'Reviewer Three' }, body: 'provider omitted status' }],
             },
         ];
         const items = buildMergeReadinessFromData({
@@ -310,7 +257,7 @@ describe('buildMergeReadinessFromData', () => {
         const threadsItem = items.find(item => item.label === 'Threads');
         expect(threadsItem).toBeDefined();
         expect(threadsItem?.tag).toBe('risk');
-        expect(threadsItem?.body).toMatch(/unresolved/i);
+        expect(threadsItem?.body).toMatch(/3 comment threads are still unresolved/i);
     });
 
     it('reports resolved threads as good when nothing is active', () => {
@@ -318,7 +265,7 @@ describe('buildMergeReadinessFromData', () => {
             {
                 id: 't1',
                 status: 'fixed',
-                comments: [{ id: 'c1', author: { displayName: 'a' }, body: 'done' }],
+                comments: [{ id: 'c1', author: { displayName: 'Reviewer One' }, body: 'done' }],
             },
         ];
         const items = buildMergeReadinessFromData({
@@ -332,7 +279,7 @@ describe('buildMergeReadinessFromData', () => {
 
     it('flags missing required-reviewer approval', () => {
         const reviewers: Reviewer[] = [
-            { identity: { displayName: 'gatekeeper' }, vote: 'noVote', isRequired: true },
+            { identity: { displayName: 'Required Reviewer' }, vote: 'noVote', isRequired: true },
         ];
         const items = buildMergeReadinessFromData({
             checks: [passingCheck],
@@ -347,7 +294,7 @@ describe('buildMergeReadinessFromData', () => {
 
     it('flags rejected reviewers as a blocking risk', () => {
         const reviewers: Reviewer[] = [
-            { identity: { displayName: 'blocker' }, vote: 'rejected' },
+            { identity: { displayName: 'Blocking Reviewer' }, vote: 'rejected' },
         ];
         const items = buildMergeReadinessFromData({
             checks: [passingCheck],
@@ -360,7 +307,7 @@ describe('buildMergeReadinessFromData', () => {
 
     it('reports clean reviewers when everything is approved', () => {
         const reviewers: Reviewer[] = [
-            { identity: { displayName: 'ok' }, vote: 'approved', isRequired: true },
+            { identity: { displayName: 'Approving Reviewer' }, vote: 'approved', isRequired: true },
         ];
         const items = buildMergeReadinessFromData({
             checks: [passingCheck],
@@ -380,45 +327,6 @@ describe('buildMergeReadinessFromData', () => {
 });
 
 describe('queue helpers', () => {
-    it('returns deterministic file count and review minutes inside expected ranges', () => {
-        const a = getMockPrFileCount(basePr);
-        const b = getMockPrFileCount({ ...basePr });
-        expect(a).toBe(b);
-        expect(a).toBeGreaterThanOrEqual(2);
-        expect(a).toBeLessThanOrEqual(61);
-
-        const t = getMockPrReviewMinutes(basePr);
-        expect(t).toBe(getMockPrReviewMinutes({ ...basePr }));
-        expect(t).toBeGreaterThanOrEqual(2);
-        expect(t).toBeLessThanOrEqual(41);
-    });
-
-    it('maps the AI summary risk to a low / med / high queue badge', () => {
-        const risk = getMockQueueRisk(basePr);
-        expect(['low', 'med', 'high']).toContain(risk);
-
-        expect(getMockQueueRisk({
-            ...basePr,
-            title: 'docs(api): clarify webhook replay order',
-            description: 'Tighten the wording on the webhook replay order docs.',
-        })).toBe('low');
-        expect(getMockQueueRisk({
-            ...basePr,
-            title: 'refactor(tasks): replace scheduler persistence',
-        })).toBe('high');
-    });
-
-    it('exposes class-name helpers for queue dots and risk pills', () => {
-        expect(queueDotClass('open')).toContain('green');
-        expect(queueDotClass('draft')).toContain('gray');
-        expect(queueDotClass('blocked')).toContain('yellow');
-        expect(queueDotClass('ready')).toContain('purple');
-
-        expect(queueRiskClass('low')).toContain('green');
-        expect(queueRiskClass('med')).toContain('yellow');
-        expect(queueRiskClass('high')).toContain('red');
-    });
-
     it('lists the four canonical queue filters in display order', () => {
         expect(getQueueFilterDefinitions().map(filter => filter.id)).toEqual([
             'all',
@@ -450,9 +358,27 @@ describe('queue helpers', () => {
     });
 });
 
-// ──────────────────────────────────────────────────────────────────────────────
-// buildTimelineFromRealData
-// ──────────────────────────────────────────────────────────────────────────────
+describe('thread group derivation', () => {
+    it('derives thread severity from real thread status and comment text', () => {
+        expect(deriveThreadSeverity({ id: 1, comments: [{ body: 'this crash is a regression' }] })).toBe('blocking');
+        expect(deriveThreadSeverity({ id: 2, comments: [{ body: 'nit: typo in label' }] })).toBe('noise');
+        expect(deriveThreadSeverity({ id: 3, status: 'fixed', comments: [{ body: 'resolved follow-up' }] })).toBe('non-blocking');
+        expect(deriveThreadSeverity({ id: 4, comments: [{ body: 'general note about future work' }] })).toBe('non-blocking');
+    });
+
+    it('groups real threads into deterministic severity buckets with example file paths', () => {
+        const groups = buildThreadGroupsFromThreads([
+            { id: 1, comments: [{ body: 'this looks like a real bug, crash on null' }], threadContext: { filePath: 'src/foo.ts' } },
+            { id: 2, comments: [{ body: 'nit: typo here' }] },
+            { id: 3, comments: [{ body: 'general note about future work' }], threadContext: { filePath: 'src/bar.ts' } },
+        ]);
+
+        expect(groups.map(group => group.id)).toEqual(['blocking', 'non-blocking', 'noise']);
+        expect(groups.map(group => group.count)).toEqual([1, 1, 1]);
+        expect(groups[0].body).toContain('src/foo.ts');
+        expect(groups[1].body).toContain('src/bar.ts');
+    });
+});
 
 const threadGroups = [
     { id: 'blocking',     title: 'Blocking concerns',     count: 2 },
@@ -467,7 +393,7 @@ const sampleThreads: CommentThread[] = [
         comments: [
             {
                 id: 'c1',
-                author: { displayName: 'Jordan Lee' },
+                author: { displayName: 'Reviewer One' },
                 body: 'Can we prove abort does not replay the final partial line?',
             },
         ],
@@ -478,7 +404,7 @@ const sampleThreads: CommentThread[] = [
         comments: [
             {
                 id: 'c2',
-                author: { displayName: 'Alex Kim' },
+                author: { displayName: 'Reviewer Two' },
                 body: 'Style nit: rename variable.',
             },
         ],
@@ -491,21 +417,21 @@ const sampleCommits: PullRequestCommit[] = [
         shortId: 'abc1',
         message: 'Added parser boundary docs',
         subject: 'Added parser boundary docs',
-        author: { displayName: 'Morgan Ames' },
+        author: { displayName: 'Contributor One' },
     },
     {
         id: 'abc2',
         shortId: 'abc2',
         message: 'Replaced the old batch fixture helper',
         subject: 'Replaced the old batch fixture helper',
-        author: { displayName: 'Morgan Ames' },
+        author: { displayName: 'Contributor One' },
     },
     {
         id: 'abc3',
         shortId: 'abc3',
         message: 'Fix cancellation edge case',
         subject: 'Fix cancellation edge case',
-        author: { displayName: 'Morgan Ames' },
+        author: { displayName: 'Contributor One' },
     },
 ];
 
@@ -514,27 +440,27 @@ describe('buildTimelineFromRealData', () => {
         expect(buildTimelineFromRealData([], [], [])).toEqual([]);
     });
 
-    it('emits an AI grouping event when threads are present', () => {
+    it('emits a summary event when threads are present', () => {
         const events = buildTimelineFromRealData(sampleThreads, [], threadGroups);
-        const aiEvent = events.find(e => e.kind === 'ai');
-        expect(aiEvent).toBeDefined();
-        expect(aiEvent!.initials).toBe('AI');
-        expect(aiEvent!.title).toMatch(/AI grouped 2 review threads into 2 topics/);
-        expect(aiEvent!.detail).toMatch(/Blocking concerns/);
-        expect(aiEvent!.detail).toMatch(/Non-blocking feedback/);
+        const summaryEvent = events.find(e => e.kind === 'summary');
+        expect(summaryEvent).toBeDefined();
+        expect(summaryEvent!.initials).toBe('PR');
+        expect(summaryEvent!.title).toMatch(/Grouped 2 review threads into 2 topics/);
+        expect(summaryEvent!.detail).toMatch(/Blocking concerns/);
+        expect(summaryEvent!.detail).toMatch(/Non-blocking feedback/);
     });
 
-    it('omits AI event when there are no threads', () => {
+    it('omits the summary event when there are no threads', () => {
         const events = buildTimelineFromRealData([], sampleCommits, []);
-        expect(events.find(e => e.kind === 'ai')).toBeUndefined();
+        expect(events.find(e => e.kind === 'summary')).toBeUndefined();
     });
 
     it('emits a reviewer event with initials derived from the commenter name', () => {
         const events = buildTimelineFromRealData(sampleThreads, [], threadGroups);
         const reviewerEvent = events.find(e => e.kind === 'reviewer');
         expect(reviewerEvent).toBeDefined();
-        expect(reviewerEvent!.initials).toBe('JL');
-        expect(reviewerEvent!.title).toContain('Jordan Lee');
+        expect(reviewerEvent!.initials).toBe('RO');
+        expect(reviewerEvent!.title).toContain('Reviewer One');
         expect(reviewerEvent!.detail).toContain('abort');
     });
 
@@ -542,8 +468,8 @@ describe('buildTimelineFromRealData', () => {
         const events = buildTimelineFromRealData([], sampleCommits, []);
         const authorEvent = events.find(e => e.kind === 'author');
         expect(authorEvent).toBeDefined();
-        expect(authorEvent!.initials).toBe('MA');
-        expect(authorEvent!.title).toContain('Morgan Ames');
+        expect(authorEvent!.initials).toBe('CO');
+        expect(authorEvent!.title).toContain('Contributor One');
         expect(authorEvent!.title).toContain('3 commits');
         expect(authorEvent!.detail).toContain('Added parser boundary docs');
     });
@@ -572,13 +498,13 @@ describe('buildTimelineFromRealData', () => {
             {
                 id: 'x',
                 status: 'active',
-                comments: [{ id: 'cx', author: { displayName: 'Dev Dev' }, body: 'question' }],
+                comments: [{ id: 'cx', author: { displayName: 'Reviewer One' }, body: 'question' }],
             },
         ];
         const oneGroup = [{ id: 'blocking', title: 'Blocking', count: 1 }];
         const events = buildTimelineFromRealData(oneThread, [], oneGroup);
-        const aiEvent = events.find(e => e.kind === 'ai');
-        expect(aiEvent!.title).toMatch(/1 review thread into 1 topic/);
+        const summaryEvent = events.find(e => e.kind === 'summary');
+        expect(summaryEvent!.title).toMatch(/1 review thread into 1 topic/);
     });
 
     it('truncates long comment bodies to 80 chars with an ellipsis', () => {
@@ -587,13 +513,13 @@ describe('buildTimelineFromRealData', () => {
             {
                 id: 'long',
                 status: 'active',
-                comments: [{ id: 'cl', author: { displayName: 'Bob Builder' }, body: longBody }],
+                comments: [{ id: 'cl', author: { displayName: 'Reviewer One' }, body: longBody }],
             },
         ];
         const events = buildTimelineFromRealData(longThread, [], []);
         const reviewerEvent = events.find(e => e.kind === 'reviewer');
-        expect(reviewerEvent!.detail).toHaveLength(83); // "  + 80 chars + … + " = 83
-        expect(reviewerEvent!.detail).toMatch(/…"$/);
+        expect(reviewerEvent!.detail).toHaveLength(85);
+        expect(reviewerEvent!.detail).toMatch(/\.\.\."$/);
     });
 
     it('skips threads with no author displayName or empty body', () => {
@@ -608,11 +534,11 @@ describe('buildTimelineFromRealData', () => {
 
     it('produces correct 2-letter initials for single-name authors', () => {
         const commits: PullRequestCommit[] = [
-            { id: 'a', shortId: 'a', message: 'fix thing', subject: 'fix thing', author: { displayName: 'Zara' } },
+            { id: 'a', shortId: 'a', message: 'fix thing', subject: 'fix thing', author: { displayName: 'Contributor' } },
         ];
         const events = buildTimelineFromRealData([], commits, []);
         const authorEvent = events.find(e => e.kind === 'author');
-        expect(authorEvent!.initials).toBe('ZA');
+        expect(authorEvent!.initials).toBe('CO');
     });
 
     it('falls back to "Author" when commit has no author name', () => {

@@ -1,14 +1,14 @@
 /**
- * Sidebar panel that surfaces AI-generated thread groupings.
+ * Sidebar panel that surfaces deterministic thread groupings.
  *
  * The underlying `CommentThread[]` is real (from
  * `/api/repos/:repoId/pull-requests/:prId/threads`). The grouping
- * categories and severity tags are mocked for now and assigned
- * deterministically by `buildAiThreadGroupsFromThreads`.
+ * categories and severity tags are assigned deterministically by
+ * `buildThreadGroupsFromThreads`.
  */
 
 import { cn } from '../../ui';
-import type { ThreadGroupSummary } from './pr-mock-data';
+import type { ThreadGroupSummary } from './pr-derived-data';
 
 interface PrAiGroupedThreadsProps {
     groups: ThreadGroupSummary[];
@@ -40,7 +40,7 @@ export function PrAiGroupedThreads({ groups, totalThreads }: PrAiGroupedThreadsP
         >
             <header className="flex min-h-[30px] items-center justify-between gap-1.5 border-b border-gray-200 bg-gray-50 px-2 py-1 dark:border-gray-700 dark:bg-gray-800/60">
                 <h2 className="m-0 text-[13px] font-semibold leading-tight text-gray-900 dark:text-gray-100">
-                    AI grouped threads
+                    Grouped threads
                 </h2>
                 <div className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
                     <span data-testid="pr-ai-thread-total">{totalThreads} total</span>

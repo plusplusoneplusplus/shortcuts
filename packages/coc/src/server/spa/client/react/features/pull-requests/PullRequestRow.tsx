@@ -11,8 +11,8 @@ import { formatRelativeTime } from '../../utils/format';
 import {
     queueDotClass,
     queueRiskClass,
-} from './pr-mock-data';
-import type { QueueDotState } from './pr-mock-data';
+} from './pr-derived-data';
+import type { QueueDotState } from './pr-derived-data';
 import { deriveQueueRisk, estimateReviewMinutes, formatTimestamp } from './pr-utils';
 import type { PullRequest, QueueRiskBadge } from './pr-utils';
 

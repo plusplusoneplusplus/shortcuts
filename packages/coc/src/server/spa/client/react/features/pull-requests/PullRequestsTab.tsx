@@ -35,7 +35,7 @@ import {
     AttentionGroup,
     type QueueSection,
 } from './pr-attention-groups';
-import type { QueueFilter, QueueFilterCounts } from './pr-mock-data';
+import type { QueueFilter, QueueFilterCounts } from './pr-derived-data';
 import type { PullRequest, PrStatus } from './pr-utils';
 import { matchWorkspaceForPrUrl, parsePrInput, type WorkspaceLike } from './pr-open-utils';
 
