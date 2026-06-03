@@ -74,6 +74,49 @@ async function waitForStreamingToComplete(page: Page): Promise<void> {
 }
 
 /**
+ * Instrument EventSource so a test can deterministically wait until the server's
+ * SSE output subscription is live. The SSE handler registers its output
+ * subscriber and *then* sends an immediate `heartbeat` frame
+ * (sse-handler.ts: `store.onProcessOutput(...)` followed by
+ * `sendEvent(res, 'heartbeat', {})`), so observing that first frame proves the
+ * subscription exists and any subsequently-released chunk is delivered rather
+ * than dropped in the pre-subscription window.
+ *
+ * Must be called BEFORE navigation so the init script patches `EventSource`
+ * before app scripts construct it. The flag resets on every document load.
+ */
+async function instrumentSseHeartbeat(page: Page): Promise<void> {
+    await page.addInitScript(() => {
+        const NativeES = window.EventSource;
+        (window as Window & { __sseHeartbeat?: boolean }).__sseHeartbeat = false;
+        class InstrumentedEventSource extends NativeES {
+            constructor(url: string | URL, init?: EventSourceInit) {
+                super(url, init);
+                if (String(url).includes('/stream')) {
+                    this.addEventListener('heartbeat', () => {
+                        (window as Window & { __sseHeartbeat?: boolean }).__sseHeartbeat = true;
+                    });
+                }
+            }
+        }
+        window.EventSource = InstrumentedEventSource as unknown as typeof EventSource;
+    });
+}
+
+/**
+ * Wait until the instrumented EventSource (see {@link instrumentSseHeartbeat})
+ * has observed the server's immediate post-subscribe `heartbeat`, guaranteeing
+ * that gated chunks released afterwards reach the browser deterministically.
+ */
+async function waitForSseSubscribed(page: Page): Promise<void> {
+    await page.waitForFunction(
+        () => (window as Window & { __sseHeartbeat?: boolean }).__sseHeartbeat === true,
+        undefined,
+        { timeout: 10_000 },
+    );
+}
+
+/**
  * Set toolCompactness via the admin API. Defaults to 0 so that every tool
  * call renders as an individual `.tool-call-card` instead of being collapsed
  * into the whisper group (the default `toolCompactness=3`).
@@ -291,12 +334,14 @@ test.describe('Queue Task Conversation – Streaming', () => {
             });
             const taskId = task.id as string;
 
-            const sseConnected = page.waitForRequest(req => req.url().includes('/stream'), { timeout: 10_000 });
+            // Deterministically wait for the server's SSE subscription to be live
+            // (heartbeat) before releasing chunks, so the first chunk can't be
+            // dropped in the pre-subscription window.
+            await instrumentSseHeartbeat(page);
             await gotoQueueTask(page, serverUrl, wsId, taskId);
 
-            // Wait for SSE to be fully established before releasing chunks
             await expect(page.locator('.streaming-indicator')).toBeVisible({ timeout: 8000 });
-            await sseConnected;
+            await waitForSseSubscribed(page);
 
             const bubbleContent = page.locator('.chat-message.assistant').last().locator('.chat-message-content');
 
@@ -973,27 +1018,9 @@ test.describe('Queue Task Conversation – Streaming Intermediate State', () => 
                 payload: { workspaceId: wsId, prompt: 'Gate test' },
             });
 
-            // Instrument EventSource so the test can deterministically wait until the
-            // server's output subscription is live. The SSE handler sends an immediate
-            // `heartbeat` frame right AFTER it registers the output subscriber
-            // (sse-handler.ts: subscribe then `sendEvent(res, 'heartbeat', {})`), so
-            // observing that frame guarantees released chunks won't fall into the
-            // pre-subscription window and get dropped. Must run before app scripts.
-            await page.addInitScript(() => {
-                const NativeES = window.EventSource;
-                (window as Window & { __sseHeartbeat?: boolean }).__sseHeartbeat = false;
-                class InstrumentedEventSource extends NativeES {
-                    constructor(url: string | URL, init?: EventSourceInit) {
-                        super(url, init);
-                        if (String(url).includes('/stream')) {
-                            this.addEventListener('heartbeat', () => {
-                                (window as Window & { __sseHeartbeat?: boolean }).__sseHeartbeat = true;
-                            });
-                        }
-                    }
-                }
-                window.EventSource = InstrumentedEventSource as unknown as typeof EventSource;
-            });
+            // Deterministically wait until the server's SSE output subscription is
+            // live (heartbeat) before releasing chunks. Must run before navigation.
+            await instrumentSseHeartbeat(page);
             await gotoQueueTask(page, serverUrl, wsId, task.id as string);
 
             const bubble = page.locator('.chat-message.assistant').last();
@@ -1003,11 +1030,7 @@ test.describe('Queue Task Conversation – Streaming Intermediate State', () => 
             await expect(page.locator('.streaming-indicator')).toBeVisible({ timeout: 8000 });
             // Ensure the server's output subscription is live (heartbeat received) so
             // released chunks are delivered rather than dropped pre-subscription.
-            await page.waitForFunction(
-                () => (window as Window & { __sseHeartbeat?: boolean }).__sseHeartbeat === true,
-                undefined,
-                { timeout: 10_000 },
-            );
+            await waitForSseSubscribed(page);
 
             // ── Chunk 1 ───────────────────────────────────────────────────────
             await gate.releaseNext();
@@ -1051,13 +1074,13 @@ test.describe('Queue Task Conversation – Streaming Intermediate State', () => 
                 payload: { workspaceId: wsId, prompt: 'Indicator test' },
             });
 
-            const sseConnected = page.waitForRequest(req => req.url().includes('/stream'), { timeout: 10_000 });
+            // Deterministically wait for the server's SSE subscription to be live
+            // (heartbeat) before releasing chunks. Must run before navigation.
+            await instrumentSseHeartbeat(page);
             await gotoQueueTask(page, serverUrl, wsId, task.id as string);
 
             await expect(page.locator('.streaming-indicator')).toBeVisible({ timeout: 8000 });
-            await sseConnected;
-            // Allow SSE connection to fully establish before releasing chunks
-            await page.waitForTimeout(500);
+            await waitForSseSubscribed(page);
 
             await gate.releaseNext();
             await expect(page.locator('.chat-message.assistant .chat-message-content').last())
