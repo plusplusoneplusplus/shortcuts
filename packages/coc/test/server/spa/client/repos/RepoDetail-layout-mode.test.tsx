@@ -306,17 +306,17 @@ describe('RepoDetail — header action buttons by layout mode', () => {
         location.hash = '';
     });
 
-    it('classic mode: Queue Task, Ask, Generate Plan buttons are rendered', () => {
+    it('classic mode: Queue Task and Ask buttons are rendered; Generate Plan is not', () => {
         mockUiLayoutMode = 'classic';
         mockActiveRepoSubTab = 'chats';
         renderDetail();
 
         expect(screen.getByTestId('repo-queue-task-btn')).toBeTruthy();
         expect(screen.getByTestId('repo-ask-btn')).toBeTruthy();
-        expect(screen.getByTestId('repo-generate-btn')).toBeTruthy();
+        expect(screen.queryByTestId('repo-generate-btn')).toBeNull();
     });
 
-    it('dev-workflow mode: Queue Task, Ask, Generate Plan buttons are NOT rendered', () => {
+    it('dev-workflow mode: Queue Task and Ask buttons are NOT rendered', () => {
         mockUiLayoutMode = 'dev-workflow';
         mockActiveRepoSubTab = 'chats';
         renderDetail();
@@ -348,23 +348,6 @@ describe('RepoDetail — header action buttons by layout mode', () => {
         expect(cls).toMatch(/hover:!bg-yellow-600\b/);
         // Yellow needs a dark text colour for AA contrast.
         expect(cls).toMatch(/!text-\[#1e1e1e\]/);
-        // No leftover grey surface from the previous neutral styling.
-        expect(cls).not.toMatch(/!bg-\[#f6f8fa\]/);
-    });
-
-    it('classic mode: Generate Plan button keeps its primary blue background', () => {
-        mockUiLayoutMode = 'classic';
-        mockActiveRepoSubTab = 'chats';
-        renderDetail();
-
-        const generateBtn = screen.getByTestId('repo-generate-btn');
-        const cls = generateBtn.className;
-        // Generate Plan is a non-chat planning action and keeps the primary blue CTA.
-        expect(cls).toMatch(/!bg-blue-500\b/);
-        expect(cls).toMatch(/dark:!bg-blue-400\b/);
-        expect(cls).toMatch(/hover:!bg-blue-600\b/);
-        // White text in light mode for AA contrast on saturated blue.
-        expect(cls).toMatch(/!text-white\b/);
         // No leftover grey surface from the previous neutral styling.
         expect(cls).not.toMatch(/!bg-\[#f6f8fa\]/);
     });

@@ -531,19 +531,6 @@ export function RepoDetail({ repo, repos, onRefresh }: RepoDetailProps) {
                                     >
                                         Ask
                                     </Button>
-                                    <Button
-                                        variant="secondary"
-                                        size="sm"
-                                        id="repo-generate-btn"
-                                        data-testid="repo-generate-btn"
-                                        onClick={() => handleOpenGenerateDialog()}
-                                        className="relative !h-[30px] !rounded-md !px-2.5 !text-[13px] !font-semibold !min-h-0 !bg-blue-500 hover:!bg-blue-600 dark:!bg-blue-400 dark:hover:!bg-blue-300 !text-white dark:!text-[#1e1e1e] !border-transparent !shadow-[0_1px_0_rgba(31,35,40,0.1)]"
-                                    >
-                                        Generate Plan
-                                        {generateDialog.open && generateDialog.minimized && (
-                                            <span data-testid="generate-minimized-badge" className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-white dark:bg-[#1e1e1e] border-2 border-blue-700 dark:border-blue-300" />
-                                        )}
-                                    </Button>
                                 </>
                             )}
                             {/*
