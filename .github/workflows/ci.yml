@@ -520,6 +520,10 @@ jobs:
       - name: Build packages
         run: npm run build:packages
 
+      - name: Build whatsapp-bot package
+        run: npm run build
+        working-directory: packages/whatsapp-bot
+
       - name: Build coccontainer package
         run: npm run build
         working-directory: packages/coccontainer
