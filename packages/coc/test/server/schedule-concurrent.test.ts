@@ -273,6 +273,13 @@ describe('Schedule Concurrency With Queue (Section 5)', () => {
     let server: ExecutionServer | undefined;
     let dataDir: string;
 
+    // These tests exercise the manual `/run` path against a live server whose
+    // ScheduleManager arms real cron timers. A frequent cron (e.g. '* * * * *')
+    // can auto-fire on a minute boundary mid-test and add an extra history
+    // record, making length assertions flaky. The cron value is irrelevant to
+    // what these tests assert, so use one that won't fire during the test.
+    const NON_FIRING_CRON = '0 0 1 1 *';
+
     beforeEach(() => {
         dataDir = createTempDir();
     });
@@ -301,14 +308,14 @@ describe('Schedule Concurrency With Queue (Section 5)', () => {
         const cr1 = await postJSON(schedulesUrl(), {
             name: 'Schedule A',
             target: 'pipelines/a.yaml',
-            cron: '* * * * *',
+            cron: NON_FIRING_CRON,
             params: {},
             onFailure: 'notify',
         });
         const cr2 = await postJSON(schedulesUrl(), {
             name: 'Schedule B',
             target: 'pipelines/b.yaml',
-            cron: '* * * * *',
+            cron: NON_FIRING_CRON,
             params: {},
             onFailure: 'notify',
         });
@@ -338,7 +345,7 @@ describe('Schedule Concurrency With Queue (Section 5)', () => {
         const cr = await postJSON(schedulesUrl(), {
             name: 'Queue Test Schedule',
             target: 'pipelines/test.yaml',
-            cron: '* * * * *',
+            cron: NON_FIRING_CRON,
             params: {},
             onFailure: 'notify',
         });
