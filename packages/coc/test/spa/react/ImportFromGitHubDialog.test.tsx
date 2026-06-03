@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { ImportFromGitHubDialog } from '../../../src/server/spa/client/react/features/work-items/ImportFromGitHubDialog';
 
 const importFromGitHub = vi.fn();
@@ -14,7 +15,7 @@ vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
     }),
 }));
 
-function renderDialog() {
+function renderDialog(props: Partial<ComponentProps<typeof ImportFromGitHubDialog>> = {}) {
     const onClose = vi.fn();
     const onImported = vi.fn();
     render(
@@ -23,6 +24,7 @@ function renderDialog() {
             onClose={onClose}
             workspaceId="workspace-1"
             onImported={onImported}
+            {...props}
         />,
     );
     return { onClose, onImported };
@@ -105,6 +107,42 @@ describe('ImportFromGitHubDialog', () => {
                 workItemUrl: 'https://dev.azure.com/org/project/_workitems/edit/12345',
             });
         });
+    });
+
+    it('hides provider selection and imports with the only allowed GitHub provider', async () => {
+        renderDialog({ initialProvider: 'github', providerOptions: ['github'] });
+
+        expect(screen.queryByTestId('import-provider-selector')).toBeNull();
+        expect(screen.queryByTestId('import-provider-azure-boards')).toBeNull();
+        fireEvent.change(screen.getByTestId('import-github-issue-input'), {
+            target: { value: '42' },
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByText('Import'));
+        });
+
+        await waitFor(() => {
+            expect(importFromGitHub).toHaveBeenCalledWith('workspace-1', { issueNumber: 42 });
+        });
+        expect(importFromAzureBoards).not.toHaveBeenCalled();
+    });
+
+    it('hides provider selection and imports with the only allowed Azure Boards provider', async () => {
+        renderDialog({ initialProvider: 'azure-boards', providerOptions: ['azure-boards'] });
+
+        expect(screen.queryByTestId('import-provider-selector')).toBeNull();
+        expect(screen.queryByTestId('import-provider-github')).toBeNull();
+        fireEvent.change(screen.getByTestId('import-azure-boards-work-item-input'), {
+            target: { value: '12345' },
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByText('Import'));
+        });
+
+        await waitFor(() => {
+            expect(importFromAzureBoards).toHaveBeenCalledWith('workspace-1', { workItemId: 12345 });
+        });
+        expect(importFromGitHub).not.toHaveBeenCalled();
     });
 
     it('prompts for either URL or number before importing', async () => {

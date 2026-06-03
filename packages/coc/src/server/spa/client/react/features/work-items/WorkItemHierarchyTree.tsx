@@ -25,8 +25,9 @@ import { isWorkItemsSyncEnabled } from '../../utils/config';
 import type { WorkItemTypeLabel } from './WorkItemHierarchyNode';
 import { TYPE_LABELS } from './WorkItemHierarchyNode';
 import {
-    WORK_ITEM_REMOTE_PROVIDER_FILTERS,
     buildWorkItemTreeFilters,
+    getRemoteProviderFilterOptions,
+    getTrackerKindsForRemoteProvider,
     getWorkItemTrackerViewCopy,
     isRemoteTrackerView,
     isGitHubTrackerView as isGitHubTrackerKind,
@@ -143,6 +144,12 @@ function remoteSyncStatusNotice(state: RemoteSyncStatusState, filter: WorkItemRe
                 : 'Remote sync is disabled by configuration. Enable Work Items sync to import or refresh remote Epic trees.',
         };
     }
+    if (!response.remoteProvider && response.providers.length === 0 && !response.provider) {
+        return {
+            tone: 'warning',
+            message: 'No supported remote provider was detected for this workspace repo. Configure a GitHub or Azure DevOps remote to use remote work-item sync.',
+        };
+    }
     const providers = providersForFilter(response, filter);
     if (providers.length === 0) {
         return {
@@ -192,8 +199,8 @@ export interface WorkItemHierarchyTreeProps {
     onCreateItem: (type: WorkItemTypeLabel, parentId?: string) => void;
     /** When provided, renders the "✨ Create with AI" entry point in the tree header and empty state. */
     onCreateWithAi?: () => void;
-    /** When provided in Remote view, opens provider selection before importing a remote Epic tree. */
-    onImportFromRemote?: () => void;
+    /** When provided in Remote view, opens import for the detected remote provider. */
+    onImportFromRemote?: (provider: WorkItemSyncProvider) => void;
     /** Legacy GitHub-only import entry point used outside the Remote/Synced tracker view. */
     onImportFromGitHub?: () => void;
     /** Newly imported item id to scroll to and highlight once the tree renders it. */
@@ -229,16 +236,29 @@ export function WorkItemHierarchyTree({
     const [showDone, setShowDone] = useState(false);
     const [syncNotice, setSyncNotice] = useState<{ tone: 'success' | 'warning'; message: string } | null>(null);
     const [remoteStatus, setRemoteStatus] = useState<RemoteSyncStatusState>({ loading: false });
-    const effectiveTrackerKinds = useMemo(
+    const requestedTrackerKinds = useMemo(
         () => trackerKinds ? [...trackerKinds] : (trackerKind ? [trackerKind] : []),
         [trackerKind, trackerKinds],
     );
-    const trackerCopy = getWorkItemTrackerViewCopy(trackerViewKind, remoteProviderFilter);
     const showLocalRootCreationActions = shouldShowLocalRootCreationActions(trackerViewKind ?? trackerKind);
     const isGitHubTrackerView = isGitHubTrackerKind(trackerKind);
     const isRemoteView = isRemoteTrackerView(trackerViewKind);
     const workItemsSyncEnabled = isWorkItemsSyncEnabled();
-    const remoteStatusNotice = remoteSyncStatusNotice(remoteStatus, remoteProviderFilter);
+    const detectedRemoteProvider = isRemoteView ? remoteStatus.response?.remoteProvider : undefined;
+    const visibleRemoteProviderFilter: WorkItemRemoteProviderFilter = detectedRemoteProvider ?? remoteProviderFilter;
+    const remoteProviderFilterOptions = isRemoteView && remoteStatus.response && !remoteStatus.response.disabled
+        ? detectedRemoteProvider ? getRemoteProviderFilterOptions(detectedRemoteProvider) : []
+        : [];
+    const remoteProviderAffordancesVisible = isRemoteView && !!detectedRemoteProvider;
+    const effectiveTrackerKinds = useMemo(() => {
+        if (!isRemoteView) return requestedTrackerKinds;
+        if (!workItemsSyncEnabled) return [];
+        if (detectedRemoteProvider) return getTrackerKindsForRemoteProvider(detectedRemoteProvider);
+        if (remoteStatus.error) return requestedTrackerKinds;
+        return [];
+    }, [detectedRemoteProvider, isRemoteView, remoteStatus.error, requestedTrackerKinds, workItemsSyncEnabled]);
+    const trackerCopy = getWorkItemTrackerViewCopy(trackerViewKind, visibleRemoteProviderFilter);
+    const remoteStatusNotice = remoteSyncStatusNotice(remoteStatus, visibleRemoteProviderFilter);
 
     const [contextMenu, setContextMenu] = useState<{
         node: WorkItemTreeNode;
@@ -270,6 +290,12 @@ export function WorkItemHierarchyTree({
     const fetchTree = useCallback(async () => {
         setLoading(true);
         setError(null);
+        if (isRemoteView && effectiveTrackerKinds.length === 0) {
+            setTreeData([]);
+            setTotal(0);
+            setLoading(false);
+            return;
+        }
         try {
             const filters = buildWorkItemTreeFilters({
                 searchQuery,
@@ -292,7 +318,7 @@ export function WorkItemHierarchyTree({
         } finally {
             setLoading(false);
         }
-    }, [workspaceId, effectiveTrackerKinds, searchQuery, showArchived, showDone]);
+    }, [workspaceId, effectiveTrackerKinds, isRemoteView, searchQuery, showArchived, showDone]);
 
     // Initial load
     useEffect(() => { fetchTree(); }, [fetchTree]);
@@ -317,8 +343,7 @@ export function WorkItemHierarchyTree({
         }
         let cancelled = false;
         setRemoteStatus({ loading: true });
-        const provider = remoteProviderFilter === 'all' ? undefined : remoteProviderFilter;
-        getSpaCocClient().workItems.syncStatus(workspaceId, provider)
+        getSpaCocClient().workItems.syncStatus(workspaceId)
             .then(response => {
                 if (!cancelled) setRemoteStatus({ loading: false, response });
             })
@@ -331,7 +356,7 @@ export function WorkItemHierarchyTree({
                 }
             });
         return () => { cancelled = true; };
-    }, [isRemoteView, remoteProviderFilter, workItemsSyncEnabled, workspaceId]);
+    }, [isRemoteView, workItemsSyncEnabled, workspaceId]);
 
     // Refresh when WebSocket events arrive (work item context changes)
     const repoItems = workItemState.workItemsByRepo[workspaceId];
@@ -605,13 +630,13 @@ export function WorkItemHierarchyTree({
                             Import from GitHub
                         </Button>
                     )}
-                    {isRemoteView && onImportFromRemote && (
+                    {remoteProviderAffordancesVisible && detectedRemoteProvider && onImportFromRemote && (
                         <Button
                             variant="ghost"
                             size="sm"
-                            onClick={onImportFromRemote}
+                            onClick={() => onImportFromRemote(detectedRemoteProvider)}
                             data-testid="import-from-remote-btn"
-                            title="Import a GitHub issue or Azure Boards work item"
+                            title={`Import a ${REMOTE_PROVIDER_LABELS[detectedRemoteProvider]} Epic tree`}
                             className="whitespace-nowrap"
                         >
                             Import remote
@@ -622,27 +647,29 @@ export function WorkItemHierarchyTree({
 
             {isRemoteView && (
                 <div className="px-3 py-2 shrink-0 border-b border-[#eaeef2] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e]">
-                    <div className="flex flex-wrap items-center gap-1.5" data-testid="remote-provider-filter" aria-label="Remote provider filter">
-                        {WORK_ITEM_REMOTE_PROVIDER_FILTERS.map(option => {
-                            const active = remoteProviderFilter === option.kind;
-                            return (
-                                <button
-                                    key={option.kind}
-                                    type="button"
-                                    className={cn(
-                                        'inline-flex items-center gap-1 border rounded-full px-2 py-px text-[12px] leading-[1.4] whitespace-nowrap transition-colors',
-                                        active
-                                            ? 'border-[#0969da] text-[#0969da] bg-[#ddf4ff] dark:border-[#0969da] dark:text-[#58a6ff] dark:bg-[#0969da]/15'
-                                            : 'border-[#d0d7de] dark:border-[#555] text-[#656d76] dark:text-[#999] bg-white dark:bg-transparent',
-                                    )}
-                                    onClick={() => onRemoteProviderFilterChange?.(option.kind)}
-                                    data-testid={`remote-provider-filter-${option.kind}`}
-                                >
-                                    {option.label}
-                                </button>
-                            );
-                        })}
-                    </div>
+                    {remoteProviderFilterOptions.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1.5" data-testid="remote-provider-filter" aria-label="Remote provider filter">
+                            {remoteProviderFilterOptions.map(option => {
+                                const active = visibleRemoteProviderFilter === option.kind;
+                                return (
+                                    <button
+                                        key={option.kind}
+                                        type="button"
+                                        className={cn(
+                                            'inline-flex items-center gap-1 border rounded-full px-2 py-px text-[12px] leading-[1.4] whitespace-nowrap transition-colors',
+                                            active
+                                                ? 'border-[#0969da] text-[#0969da] bg-[#ddf4ff] dark:border-[#0969da] dark:text-[#58a6ff] dark:bg-[#0969da]/15'
+                                                : 'border-[#d0d7de] dark:border-[#555] text-[#656d76] dark:text-[#999] bg-white dark:bg-transparent',
+                                        )}
+                                        onClick={() => onRemoteProviderFilterChange?.(option.kind)}
+                                        data-testid={`remote-provider-filter-${option.kind}`}
+                                    >
+                                        {option.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
                     {remoteStatusNotice && (
                         <div
                             className={cn(

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { Dialog } from '../../ui/Dialog';
 import { Button, cn } from '../../ui';
 import { getSpaCocClient } from '../../api/cocClient';
@@ -9,6 +9,7 @@ export interface ImportFromGitHubDialogProps {
     onClose: () => void;
     workspaceId: string;
     initialProvider?: WorkItemSyncProvider;
+    providerOptions?: readonly WorkItemSyncProvider[];
     onImported?: (item: any, provider: WorkItemSyncProvider) => void;
 }
 
@@ -17,7 +18,24 @@ const PROVIDER_OPTIONS: Array<{ provider: WorkItemSyncProvider; label: string; d
     { provider: 'azure-boards', label: 'Azure Boards', description: 'Import an Epic work item tree' },
 ];
 
-export function ImportFromGitHubDialog({ open, onClose, workspaceId, initialProvider = 'github', onImported }: ImportFromGitHubDialogProps) {
+export function ImportFromGitHubDialog({
+    open,
+    onClose,
+    workspaceId,
+    initialProvider = 'github',
+    providerOptions,
+    onImported,
+}: ImportFromGitHubDialogProps) {
+    const providerOptionsKey = providerOptions?.join('|') ?? 'all';
+    const allowedProviders = useMemo(() => {
+        if (providerOptionsKey === 'all') return undefined;
+        return new Set(providerOptionsKey.split('|') as WorkItemSyncProvider[]);
+    }, [providerOptionsKey]);
+    const visibleProviderOptions = useMemo(
+        () => PROVIDER_OPTIONS.filter(option => !allowedProviders || allowedProviders.has(option.provider)),
+        [allowedProviders],
+    );
+    const defaultProvider = visibleProviderOptions[0]?.provider ?? initialProvider;
     const [provider, setProvider] = useState<WorkItemSyncProvider>(initialProvider);
     const [remoteInput, setRemoteInput] = useState('');
     const [loading, setLoading] = useState(false);
@@ -25,12 +43,12 @@ export function ImportFromGitHubDialog({ open, onClose, workspaceId, initialProv
 
     useEffect(() => {
         if (open) {
-            setProvider(initialProvider);
+            setProvider(visibleProviderOptions.some(option => option.provider === initialProvider) ? initialProvider : defaultProvider);
             setRemoteInput('');
             setLoading(false);
             setError(null);
         }
-    }, [open, initialProvider]);
+    }, [open, initialProvider, defaultProvider, visibleProviderOptions]);
 
     const handleImport = useCallback(async () => {
         const trimmedInput = remoteInput.trim();
@@ -89,33 +107,35 @@ export function ImportFromGitHubDialog({ open, onClose, workspaceId, initialProv
             }
         >
             <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-2" data-testid="import-provider-selector">
-                    {PROVIDER_OPTIONS.map(option => {
-                        const active = provider === option.provider;
-                        return (
-                            <button
-                                key={option.provider}
-                                type="button"
-                                className={cn(
-                                    'rounded-md border px-3 py-2 text-left transition-colors',
-                                    active
-                                        ? 'border-[#0969da] bg-[#ddf4ff] text-[#0969da] dark:border-[#0969da] dark:bg-[#0969da]/15 dark:text-[#58a6ff]'
-                                        : 'border-[#d0d7de] dark:border-[#555] text-[#57606a] dark:text-[#9da7b3] hover:border-[#0969da]',
-                                )}
-                                onClick={() => {
-                                    setProvider(option.provider);
-                                    setRemoteInput('');
-                                    setError(null);
-                                }}
-                                aria-pressed={active}
-                                data-testid={`import-provider-${option.provider}`}
-                            >
-                                <span className="block text-xs font-semibold">{option.label}</span>
-                                <span className="block text-[11px] opacity-75">{option.description}</span>
-                            </button>
-                        );
-                    })}
-                </div>
+                {visibleProviderOptions.length > 1 && (
+                    <div className="grid grid-cols-2 gap-2" data-testid="import-provider-selector">
+                        {visibleProviderOptions.map(option => {
+                            const active = provider === option.provider;
+                            return (
+                                <button
+                                    key={option.provider}
+                                    type="button"
+                                    className={cn(
+                                        'rounded-md border px-3 py-2 text-left transition-colors',
+                                        active
+                                            ? 'border-[#0969da] bg-[#ddf4ff] text-[#0969da] dark:border-[#0969da] dark:bg-[#0969da]/15 dark:text-[#58a6ff]'
+                                            : 'border-[#d0d7de] dark:border-[#555] text-[#57606a] dark:text-[#9da7b3] hover:border-[#0969da]',
+                                    )}
+                                    onClick={() => {
+                                        setProvider(option.provider);
+                                        setRemoteInput('');
+                                        setError(null);
+                                    }}
+                                    aria-pressed={active}
+                                    data-testid={`import-provider-${option.provider}`}
+                                >
+                                    <span className="block text-xs font-semibold">{option.label}</span>
+                                    <span className="block text-[11px] opacity-75">{option.description}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
                 <div>
                     <label className="block text-xs font-medium text-[#848484] dark:text-[#999] mb-1">
                         {isGitHub ? 'GitHub Issue URL or number' : 'Azure Boards work item URL or ID'}

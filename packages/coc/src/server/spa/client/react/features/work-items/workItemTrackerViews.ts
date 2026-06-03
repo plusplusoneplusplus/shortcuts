@@ -39,6 +39,11 @@ export const WORK_ITEM_REMOTE_PROVIDER_FILTERS: readonly WorkItemRemoteProviderF
     { kind: 'azure-boards', label: 'Azure Boards' },
 ]);
 
+export function getRemoteProviderFilterOptions(supportedProvider?: WorkItemSyncProvider): readonly WorkItemRemoteProviderFilterOption[] {
+    if (!supportedProvider) return WORK_ITEM_REMOTE_PROVIDER_FILTERS;
+    return WORK_ITEM_REMOTE_PROVIDER_FILTERS.filter(option => option.kind === supportedProvider);
+}
+
 export function getWorkItemTrackerViewCopy(viewKind?: WorkItemTrackerViewKind, remoteProviderFilter: WorkItemRemoteProviderFilter = 'all'): WorkItemTrackerViewCopy {
     if (viewKind === 'local') {
         return {
@@ -80,6 +85,10 @@ export function getTrackerKindsForView(viewKind: WorkItemTrackerViewKind, remote
     if (remoteProviderFilter === 'github') return ['github-backed'];
     if (remoteProviderFilter === 'azure-boards') return ['azure-boards-backed'];
     return ['github-backed', 'azure-boards-backed'];
+}
+
+export function getTrackerKindsForRemoteProvider(provider?: WorkItemSyncProvider): WorkItemTrackerKind[] {
+    return provider ? getTrackerKindsForView('remote', provider) : [];
 }
 
 export function isRemoteTrackerView(viewKind?: WorkItemTrackerViewKind): boolean {

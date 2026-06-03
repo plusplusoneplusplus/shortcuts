@@ -4,6 +4,8 @@ import {
     WORK_ITEM_TRACKER_TABS,
     buildWorkItemTreeFilter,
     buildWorkItemTreeFilters,
+    getRemoteProviderFilterOptions,
+    getTrackerKindsForRemoteProvider,
     getWorkItemTrackerViewCopy,
     getTrackerKindsForView,
     isGitHubTrackerView,
@@ -76,9 +78,14 @@ describe('work item tracker views', () => {
             empty: expect.stringContaining('Azure Boards'),
         }));
         expect(WORK_ITEM_REMOTE_PROVIDER_FILTERS.map(option => option.kind)).toEqual(['all', 'github', 'azure-boards']);
+        expect(getRemoteProviderFilterOptions('github').map(option => option.kind)).toEqual(['github']);
+        expect(getRemoteProviderFilterOptions('azure-boards').map(option => option.kind)).toEqual(['azure-boards']);
         expect(getTrackerKindsForView('remote', 'all')).toEqual(['github-backed', 'azure-boards-backed']);
         expect(getTrackerKindsForView('remote', 'github')).toEqual(['github-backed']);
         expect(getTrackerKindsForView('remote', 'azure-boards')).toEqual(['azure-boards-backed']);
+        expect(getTrackerKindsForRemoteProvider('github')).toEqual(['github-backed']);
+        expect(getTrackerKindsForRemoteProvider('azure-boards')).toEqual(['azure-boards-backed']);
+        expect(getTrackerKindsForRemoteProvider(undefined)).toEqual([]);
         expect(getTrackerKindsForView('local', 'all')).toEqual(['local-only']);
     });
 

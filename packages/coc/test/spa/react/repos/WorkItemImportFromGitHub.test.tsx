@@ -88,6 +88,7 @@ describe('Import from remote work item placement', () => {
             enabled: true,
             disabled: false,
             maxItems: 200,
+            remoteProvider: 'github',
             provider: {
                 provider: 'github',
                 available: true,
@@ -134,6 +135,7 @@ describe('Import from remote work item placement', () => {
     });
 
     it('renders the Remote hierarchy import action and scrolls the highlighted imported tree row into view', async () => {
+        mocks.isWorkItemsSyncEnabled.mockReturnValue(true);
         const onImportFromRemote = vi.fn();
         render(
             <WorkItemHierarchyTree
@@ -152,7 +154,12 @@ describe('Import from remote work item placement', () => {
         const importButton = await screen.findByRole('button', { name: 'Import remote' });
         fireEvent.click(importButton);
 
-        expect(onImportFromRemote).toHaveBeenCalledTimes(1);
+        expect(onImportFromRemote).toHaveBeenCalledWith('github');
+        expect(screen.getByTestId('remote-provider-filter-github')).toBeTruthy();
+        expect(screen.queryByTestId('remote-provider-filter-all')).toBeNull();
+        expect(screen.queryByTestId('remote-provider-filter-azure-boards')).toBeNull();
+        expect(mocks.tree.mock.calls.map(call => call[1]?.tracker)).toContain('github-backed');
+        expect(mocks.tree.mock.calls.map(call => call[1]?.tracker)).not.toContain('azure-boards-backed');
         await waitFor(() => {
             expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
         });
@@ -210,6 +217,7 @@ describe('Import from remote work item placement', () => {
                 enabled: true,
                 disabled: false,
                 maxItems: 200,
+                remoteProvider: 'azure-boards',
                 provider: {
                     provider: 'azure-boards',
                     available: true,
@@ -239,7 +247,12 @@ describe('Import from remote work item placement', () => {
             expect(screen.getByTestId('remote-sync-status-message')).toHaveTextContent('Azure Boards ready for Payments.');
         });
         expect(screen.getByTestId('remote-sync-status-message').dataset.statusTone).toBe('success');
-        expect(mocks.syncStatus).toHaveBeenCalledWith('ws-test', 'azure-boards');
+        expect(screen.getByTestId('remote-provider-filter-azure-boards')).toBeTruthy();
+        expect(screen.queryByTestId('remote-provider-filter-all')).toBeNull();
+        expect(screen.queryByTestId('remote-provider-filter-github')).toBeNull();
+        expect(mocks.syncStatus).toHaveBeenCalledWith('ws-test');
+        expect(mocks.tree.mock.calls.map(call => call[1]?.tracker)).toContain('azure-boards-backed');
+        expect(mocks.tree.mock.calls.map(call => call[1]?.tracker)).not.toContain('github-backed');
     });
 
     it('shows Azure Boards project-missing status messaging', async () => {
@@ -248,6 +261,7 @@ describe('Import from remote work item placement', () => {
             enabled: true,
             disabled: false,
             maxItems: 200,
+            remoteProvider: 'azure-boards',
             provider: {
                 provider: 'azure-boards',
                 available: false,
@@ -294,6 +308,7 @@ describe('Import from remote work item placement', () => {
             enabled: true,
             disabled: false,
             maxItems: 200,
+            remoteProvider: 'azure-boards',
             provider: {
                 provider: 'azure-boards',
                 available: false,
@@ -363,5 +378,36 @@ describe('Import from remote work item placement', () => {
         expect(status).toHaveTextContent('Unable to check Azure Boards sync status: network down');
         expect(status.dataset.statusTone).toBe('error');
         expect(await screen.findByTestId('hierarchy-empty')).toHaveTextContent('No Azure Boards-backed Epic trees yet');
+    });
+
+    it('hides remote provider affordances when the workspace remote is unsupported', async () => {
+        mocks.isWorkItemsSyncEnabled.mockReturnValue(true);
+        mocks.tree.mockClear();
+        mocks.syncStatus.mockResolvedValue({
+            enabled: true,
+            disabled: false,
+            maxItems: 200,
+            providers: [],
+        });
+
+        render(
+            <WorkItemHierarchyTree
+                workspaceId="ws-test"
+                trackerViewKind="remote"
+                trackerKinds={['github-backed', 'azure-boards-backed']}
+                remoteProviderFilter="all"
+                selectedWorkItemId={null}
+                onSelectWorkItem={vi.fn()}
+                onCreated={vi.fn()}
+                onCreateItem={vi.fn()}
+                onImportFromRemote={vi.fn()}
+            />,
+        );
+
+        const status = await screen.findByTestId('remote-sync-status-message');
+        expect(status).toHaveTextContent('No supported remote provider was detected');
+        expect(screen.queryByTestId('remote-provider-filter')).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Import remote' })).toBeNull();
+        expect(mocks.tree).not.toHaveBeenCalled();
     });
 });

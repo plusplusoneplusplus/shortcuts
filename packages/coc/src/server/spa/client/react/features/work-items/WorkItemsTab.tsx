@@ -233,7 +233,18 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
     const [showAiComposer, setShowAiComposer] = useState(false);
     const aiAuthoringEnabled = isWorkItemsAiAuthoringEnabled();
     const [showImportDialog, setShowImportDialog] = useState(false);
+    const [importDialogProvider, setImportDialogProvider] = useState<WorkItemSyncProvider>('github');
     const [highlightedWorkItemId, setHighlightedWorkItemId] = useState<string | null>(null);
+
+    const openImportDialog = useCallback((provider?: WorkItemSyncProvider) => {
+        const nextProvider = provider ?? (remoteProviderFilter === 'azure-boards' ? 'azure-boards' : 'github');
+        setImportDialogProvider(nextProvider);
+        setShowImportDialog(true);
+    }, [remoteProviderFilter]);
+    const remoteImportProviderOptions = useMemo<readonly WorkItemSyncProvider[]>(
+        () => [importDialogProvider],
+        [importDialogProvider],
+    );
 
     const handleImported = useCallback((item: any, provider?: WorkItemSyncProvider) => {
         const importedProvider: WorkItemRemoteProviderFilter =
@@ -309,7 +320,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                 onCreated={handleCreated}
                 onCreateItem={openCreateDialog}
                 onCreateWithAi={activeTracker === 'local' && aiAuthoringEnabled ? () => setShowAiComposer(true) : undefined}
-                onImportFromRemote={activeTracker === 'remote' ? () => setShowImportDialog(true) : undefined}
+                onImportFromRemote={activeTracker === 'remote' ? openImportDialog : undefined}
                 highlightedWorkItemId={highlightedWorkItemId}
                 isMobile={isMobile}
             />
@@ -330,7 +341,7 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                             ✨ AI
                         </Button>
                     )}
-                    <Button variant="ghost" size="sm" onClick={() => setShowImportDialog(true)} data-testid="import-from-github-btn">
+                    <Button variant="ghost" size="sm" onClick={() => openImportDialog('github')} data-testid="import-from-github-btn">
                         Import from GitHub
                     </Button>
                 </div>
@@ -488,7 +499,8 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                     open={showImportDialog}
                     onClose={() => setShowImportDialog(false)}
                     workspaceId={workspaceId}
-                    initialProvider={remoteProviderFilter === 'azure-boards' ? 'azure-boards' : 'github'}
+                    initialProvider={importDialogProvider}
+                    providerOptions={activeTracker === 'remote' ? remoteImportProviderOptions : undefined}
                     onImported={handleImported}
                 />
             </>
@@ -534,7 +546,8 @@ export function WorkItemsTab({ workspaceId, onNavigateToTasksTab }: WorkItemsTab
                 open={showImportDialog}
                 onClose={() => setShowImportDialog(false)}
                 workspaceId={workspaceId}
-                initialProvider={remoteProviderFilter === 'azure-boards' ? 'azure-boards' : 'github'}
+                initialProvider={importDialogProvider}
+                providerOptions={activeTracker === 'remote' ? remoteImportProviderOptions : undefined}
                 onImported={handleImported}
             />
         </>
