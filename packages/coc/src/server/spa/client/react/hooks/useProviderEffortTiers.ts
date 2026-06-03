@@ -2,8 +2,8 @@
  * useProviderEffortTiers — fetches and manages the per-tier effort mapping
  * for a given provider.
  *
- * The GET response always returns all three tiers populated (defaults fill any
- * tier the admin has not explicitly configured), with a per-tier `source`
+ * The GET response always returns known tiers populated (defaults fill any tier
+ * the admin has not explicitly configured), with a per-tier `source`
  * marker (`'config'` for stored entries, `'default'` for default fallbacks)
  * plus a separate `defaults` map the client can revert to.
  *
@@ -20,7 +20,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import type { AgentProvider } from './useProviderModels';
 
-export type EffortTierKey = 'low' | 'medium' | 'high';
+export type EffortTierKey = 'very-low' | 'low' | 'medium' | 'high';
 export type EffortTierSource = 'config' | 'default';
 
 export interface LocalTierEntry {
@@ -57,7 +57,7 @@ export interface UseProviderEffortTiersResult {
     reload: () => void;
 }
 
-const TIER_KEYS: EffortTierKey[] = ['low', 'medium', 'high'];
+export const TIER_KEYS: readonly EffortTierKey[] = ['very-low', 'low', 'medium', 'high'];
 
 function normalizeFromServer(raw: ServerTierMap = {}): LocalEffortTiersMap {
     const result: LocalEffortTiersMap = {};
