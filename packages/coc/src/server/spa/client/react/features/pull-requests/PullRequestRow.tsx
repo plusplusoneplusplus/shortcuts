@@ -3,22 +3,20 @@
  * queue. Shows a state dot, the PR title, a `#number / files / minutes`
  * meta line, and a deterministic AI risk pill.
  *
- * AI metadata (file count, review minutes, risk level) is sourced from
- * `pr-mock-data` until a real AI backend is wired up. Real data still
- * drives the title, status, and PR number.
+ * Real provider/git diff stats drive file count and review minutes.
+ * The risk level remains deterministic PR metadata until the risk slice
+ * replaces the remaining mocked judgment.
  */
 
 import { cn } from '../../ui';
 import { formatRelativeTime } from '../../utils/format';
 import {
-    getMockPrFileCount,
-    getMockPrReviewMinutes,
     getMockQueueRisk,
     queueDotClass,
     queueRiskClass,
 } from './pr-mock-data';
 import type { QueueDotState, QueueRiskBadge } from './pr-mock-data';
-import { formatTimestamp } from './pr-utils';
+import { estimateReviewMinutes, formatTimestamp } from './pr-utils';
 import type { PullRequest } from './pr-utils';
 
 interface PullRequestRowProps {
@@ -41,7 +39,7 @@ interface PullRequestRowProps {
     dotState?: QueueDotState;
     /**
      * Optional override for the risk pill. When omitted, the risk is
-     * sourced from the deterministic AI mock summary.
+     * sourced from the remaining deterministic PR risk helper.
      */
     risk?: QueueRiskBadge;
     /** When true, show a ⭐ badge indicating this PR is AI-suggested for the user. */
@@ -75,8 +73,12 @@ export function PullRequestRow({
 }: PullRequestRowProps) {
     const effectiveRisk: QueueRiskBadge = risk ?? getMockQueueRisk(pr);
     const effectiveDot: QueueDotState = dotState ?? deriveDotState(pr, effectiveRisk);
-    const fileCount = getMockPrFileCount(pr);
-    const minutes = getMockPrReviewMinutes(pr);
+    const fileCount = pr.diffStats?.changedFiles;
+    const minutes = estimateReviewMinutes(pr.diffStats);
+    const filesLabel = fileCount == null
+        ? 'n/a files'
+        : `${fileCount} file${fileCount === 1 ? '' : 's'}`;
+    const minutesLabel = minutes == null ? 'n/a min' : `${minutes} min`;
 
     if (compact) {
         return (
@@ -164,8 +166,8 @@ export function PullRequestRow({
                     {pr.number != null && (
                         <span className="pr-number font-mono tabular-nums">#{pr.number}</span>
                     )}
-                    <span>{fileCount} files</span>
-                    <span>{minutes} min</span>
+                    <span>{filesLabel}</span>
+                    <span>{minutesLabel}</span>
                     {pr.updatedAt && (
                         <span
                             className="pr-updated-at"

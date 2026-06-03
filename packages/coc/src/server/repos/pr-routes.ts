@@ -41,9 +41,9 @@ import {
 import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
-import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { computeSummary, parseFullDiff } from '@plusplusoneplusplus/forge';
+import type { IPullRequestsService, ISDKService, ProcessStore } from '@plusplusoneplusplus/forge';
 import { readReviewHistoryCache, fetchAndCacheReviewHistory, readSuggestionsCache, rankAndCacheSuggestions, toPrMetadata } from './pr-suggestions';
-import type { ISDKService } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Helpers
@@ -120,6 +120,14 @@ interface PrCacheEntry {
 
 const prListCache = new Map<string, PrCacheEntry>();
 
+interface PullRequestDiffStats {
+    additions: number;
+    deletions: number;
+    changedFiles: number;
+}
+
+const prDiffStatsCache = new Map<string, PullRequestDiffStats>();
+
 function makePrCacheKey(repoId: string, status: string, scope: string): string {
     return `${repoId}|${status}|${scope}`;
 }
@@ -127,6 +135,74 @@ function makePrCacheKey(repoId: string, status: string, scope: string): string {
 /** Clear all cached PR list entries. Exported for testing. */
 export function clearPrListCache(): void {
     prListCache.clear();
+    prDiffStatsCache.clear();
+}
+
+function getPullRequestProviderId(pr: any): number | string | undefined {
+    return pr?.number ?? pr?.id;
+}
+
+function makePrDiffStatsCacheKey(repoId: string, pr: any): string | undefined {
+    const headSha = typeof pr?.headSha === 'string' ? pr.headSha.trim() : '';
+    if (!headSha) return undefined;
+
+    const prId = getPullRequestProviderId(pr);
+    if (prId == null) return undefined;
+
+    return `${repoId}|${String(prId)}|${headSha}`;
+}
+
+function buildPullRequestDiffStats(diff: string): PullRequestDiffStats {
+    const { files } = parseFullDiff(diff);
+    const summary = computeSummary(files);
+    return {
+        additions: summary.additions,
+        deletions: summary.deletions,
+        changedFiles: summary.filesChanged,
+    };
+}
+
+async function getPullRequestDiffStats(
+    repoId: string,
+    pr: any,
+    prSvc: IPullRequestsService,
+): Promise<PullRequestDiffStats | undefined> {
+    if (typeof prSvc.getDiff !== 'function') return undefined;
+
+    const prId = getPullRequestProviderId(pr);
+    if (prId == null) return undefined;
+
+    const cacheKey = makePrDiffStatsCacheKey(repoId, pr);
+    const cached = cacheKey ? prDiffStatsCache.get(cacheKey) : undefined;
+    if (cached) return cached;
+
+    const diff = await prSvc.getDiff(repoId, prId);
+    const stats = buildPullRequestDiffStats(diff);
+    if (cacheKey) {
+        prDiffStatsCache.set(cacheKey, stats);
+    }
+    return stats;
+}
+
+async function enrichPullRequestsWithDiffStats(
+    repoId: string,
+    prs: any[],
+    prSvc: IPullRequestsService,
+): Promise<any[]> {
+    if (typeof prSvc.getDiff !== 'function') return prs;
+
+    return Promise.all(prs.map(async pr => {
+        try {
+            const diffStats = await getPullRequestDiffStats(repoId, pr, prSvc);
+            return diffStats ? { ...pr, diffStats } : pr;
+        } catch (err) {
+            const prId = getPullRequestProviderId(pr);
+            console.warn(
+                `[pr-list] failed to load diff stats for repo=${repoId} pr=${prId ?? '(unknown)'}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            return pr;
+        }
+    }));
 }
 
 // ============================================================================
@@ -277,6 +353,7 @@ export function registerPrRoutes(routes: Route[], dataDir: string, service?: Rep
                     }
 
                     prs = await prSvc.listPullRequests(repoId, { status, top: PR_LIST_FETCH_TOP, scope });
+                    prs = await enrichPullRequestsWithDiffStats(repoId, prs, prSvc);
                     prListCache.set(cacheKey, { data: prs, expiresAt: Date.now() + PR_LIST_TTL_MS });
                 }
 

@@ -79,6 +79,12 @@ export interface PullRequestCommit {
     url?: string;
 }
 
+export interface PullRequestDiffStats {
+    additions: number;
+    deletions: number;
+    changedFiles: number;
+}
+
 /** Shape of a pull request as returned by the /api/repos/:id/pull-requests endpoint. */
 export interface PullRequest {
     id: number | string;
@@ -100,6 +106,8 @@ export interface PullRequest {
     commentCount?: number;
     /** SHA of the PR head commit (used as classification cache key). */
     headSha?: string;
+    /** Real diff stats enriched by the server for list/detail queue metadata. */
+    diffStats?: PullRequestDiffStats;
 }
 
 export interface StatusBadge {
@@ -175,4 +183,14 @@ export function formatTimestamp(iso: string | null | undefined): string {
  */
 export function formatRelativeTime(iso: string | null | undefined): string {
     return formatTimestamp(iso);
+}
+
+/**
+ * Deterministic queue review-time estimate from real diff size:
+ * max(1, round(changedLines / 25 + changedFiles * 0.5)).
+ */
+export function estimateReviewMinutes(diffStats: PullRequestDiffStats | null | undefined): number | null {
+    if (!diffStats) return null;
+    const changedLines = diffStats.additions + diffStats.deletions;
+    return Math.max(1, Math.round(changedLines / 25 + diffStats.changedFiles * 0.5));
 }

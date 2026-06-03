@@ -37,8 +37,19 @@ export interface PullRequestListQuery {
   search?: string;
 }
 
+export interface PullRequestDiffStats {
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+}
+
+export interface PullRequestListItem {
+  [key: string]: unknown;
+  diffStats?: PullRequestDiffStats;
+}
+
 export interface PullRequestListResponse {
-  pullRequests: unknown[];
+  pullRequests: PullRequestListItem[];
   total: number;
   fetchedAt?: number;
 }
