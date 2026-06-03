@@ -1,1 +1,0 @@
-../../.github/prompts/draft-ux.prompt.md
