@@ -4,9 +4,8 @@
  *
  * The queue is grouped into two sections (Needs review / Ready after
  * checks) and filtered via four pills (All / Mine / Blocked / Ready).
- * Real PR data still drives the list; AI-flagged risk, file count, and
- * review minutes shown on each row come from the deterministic
- * `pr-mock-data` module.
+ * Real PR data drives the list plus queue row file count, review minutes,
+ * and deterministic risk badges.
  *
  * Desktop: resizable split-panel (queue left, detail right).
  * Mobile: single-pane toggle (queue ↔ detail).
@@ -36,7 +35,7 @@ import {
     AttentionGroup,
     type QueueSection,
 } from './pr-attention-groups';
-import { getMockQueueRisk, type QueueFilter, type QueueFilterCounts } from './pr-mock-data';
+import type { QueueFilter, QueueFilterCounts } from './pr-mock-data';
 import type { PullRequest, PrStatus } from './pr-utils';
 import { matchWorkspaceForPrUrl, parsePrInput, type WorkspaceLike } from './pr-open-utils';
 
@@ -972,9 +971,6 @@ export function PullRequestsTab({ repoId, workspaceId }: PullRequestsTabProps) {
             </div>
         );
     }
-
-    // Suppress unused-warning when mock helper is only re-exported for tests.
-    void getMockQueueRisk;
 
     const effectiveLeftPanelWidth = queueCollapsed ? QUEUE_COLLAPSED_WIDTH : leftPanelWidth;
 

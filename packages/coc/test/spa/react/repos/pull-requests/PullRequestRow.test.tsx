@@ -118,11 +118,20 @@ describe('PullRequestRow — state dot', () => {
 });
 
 describe('PullRequestRow — risk pill', () => {
-    it('renders an AI risk pill with one of low/med/high', () => {
+    it('renders a deterministic risk pill from real diff stats', () => {
+        render(<PullRequestRow pr={makePr({
+            diffStats: { changedFiles: 2, additions: 150, deletions: 50 },
+        })} onClick={vi.fn()} />);
+        const pill = screen.getByTestId('pr-risk-pill');
+        expect(pill.getAttribute('data-risk')).toBe('med');
+        expect(pill.textContent).toBe('Med');
+    });
+
+    it('shows an unavailable risk state when diff stats are missing', () => {
         render(<PullRequestRow pr={makePr()} onClick={vi.fn()} />);
         const pill = screen.getByTestId('pr-risk-pill');
-        expect(['low', 'med', 'high']).toContain(pill.getAttribute('data-risk'));
-        expect(['Low', 'Med', 'High']).toContain(pill.textContent ?? '');
+        expect(pill.getAttribute('data-risk')).toBe('unknown');
+        expect(pill.textContent).toBe('N/A');
     });
 
     it('respects an explicit risk override', () => {

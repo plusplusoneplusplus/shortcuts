@@ -1,23 +1,20 @@
 /**
  * PullRequestRow — single PR queue row in the redesigned review command
  * queue. Shows a state dot, the PR title, a `#number / files / minutes`
- * meta line, and a deterministic AI risk pill.
+ * meta line, and a deterministic risk pill.
  *
- * Real provider/git diff stats drive file count and review minutes.
- * The risk level remains deterministic PR metadata until the risk slice
- * replaces the remaining mocked judgment.
+ * Real provider/git diff stats drive file count, review minutes, and risk.
  */
 
 import { cn } from '../../ui';
 import { formatRelativeTime } from '../../utils/format';
 import {
-    getMockQueueRisk,
     queueDotClass,
     queueRiskClass,
 } from './pr-mock-data';
-import type { QueueDotState, QueueRiskBadge } from './pr-mock-data';
-import { estimateReviewMinutes, formatTimestamp } from './pr-utils';
-import type { PullRequest } from './pr-utils';
+import type { QueueDotState } from './pr-mock-data';
+import { deriveQueueRisk, estimateReviewMinutes, formatTimestamp } from './pr-utils';
+import type { PullRequest, QueueRiskBadge } from './pr-utils';
 
 interface PullRequestRowProps {
     pr: PullRequest;
@@ -34,12 +31,12 @@ interface PullRequestRowProps {
     compact?: boolean;
     /**
      * Optional override for the state dot. When omitted, the dot is
-     * derived from the PR status and the AI-flagged risk level.
+     * derived from the PR status and the deterministic risk level.
      */
     dotState?: QueueDotState;
     /**
      * Optional override for the risk pill. When omitted, the risk is
-     * sourced from the remaining deterministic PR risk helper.
+     * derived from real diff stats.
      */
     risk?: QueueRiskBadge;
     /** When true, show a ⭐ badge indicating this PR is AI-suggested for the user. */
@@ -50,6 +47,7 @@ const RISK_LABEL: Record<QueueRiskBadge, string> = {
     low: 'Low',
     med: 'Med',
     high: 'High',
+    unknown: 'N/A',
 };
 
 function deriveDotState(pr: PullRequest, risk: QueueRiskBadge): QueueDotState {
@@ -71,7 +69,7 @@ export function PullRequestRow({
     risk,
     isSuggested,
 }: PullRequestRowProps) {
-    const effectiveRisk: QueueRiskBadge = risk ?? getMockQueueRisk(pr);
+    const effectiveRisk: QueueRiskBadge = risk ?? deriveQueueRisk(pr.diffStats);
     const effectiveDot: QueueDotState = dotState ?? deriveDotState(pr, effectiveRisk);
     const fileCount = pr.diffStats?.changedFiles;
     const minutes = estimateReviewMinutes(pr.diffStats);

@@ -85,6 +85,13 @@ export interface PullRequestDiffStats {
     changedFiles: number;
 }
 
+export type QueueRiskBadge = 'low' | 'med' | 'high' | 'unknown';
+
+export interface QueueRiskSignals {
+    hasFailingCheck?: boolean;
+    hasUnresolvedBlockingThread?: boolean;
+}
+
 /** Shape of a pull request as returned by the /api/repos/:id/pull-requests endpoint. */
 export interface PullRequest {
     id: number | string;
@@ -193,4 +200,34 @@ export function estimateReviewMinutes(diffStats: PullRequestDiffStats | null | u
     if (!diffStats) return null;
     const changedLines = diffStats.additions + diffStats.deletions;
     return Math.max(1, Math.round(changedLines / 25 + diffStats.changedFiles * 0.5));
+}
+
+/**
+ * Deterministic queue risk heuristic from real PR diff stats.
+ * Risk is based on changed lines and may be bumped once by real blocking signals.
+ */
+export function deriveQueueRisk(
+    diffStats: PullRequestDiffStats | null | undefined,
+    signals: QueueRiskSignals = {},
+): QueueRiskBadge {
+    if (!diffStats) return 'unknown';
+
+    const changedLines = diffStats.additions + diffStats.deletions;
+    let risk: QueueRiskBadge;
+
+    if (changedLines < 200) {
+        risk = 'low';
+    } else if (changedLines <= 800) {
+        risk = 'med';
+    } else {
+        risk = 'high';
+    }
+
+    if (!signals.hasFailingCheck && !signals.hasUnresolvedBlockingThread) {
+        return risk;
+    }
+
+    if (risk === 'low') return 'med';
+    if (risk === 'med') return 'high';
+    return 'high';
 }

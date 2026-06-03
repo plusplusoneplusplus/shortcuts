@@ -9,7 +9,7 @@
  * presentational components.
  */
 
-import type { PullRequest, PullRequestCommit, CommentThread } from './pr-utils';
+import type { PullRequest, PullRequestCommit, CommentThread, QueueRiskBadge } from './pr-utils';
 import type { PullRequestCheck, PullRequestCheckStatus, Reviewer } from './pr-utils';
 import type { PrCommitRow } from './PrCommitTable';
 
@@ -841,7 +841,6 @@ export function getMockReviewSummaryText(pr: PullRequest): string {
 
 export type QueueFilter = 'all' | 'mine' | 'blocked' | 'ready' | 'foryou';
 export type QueueDotState = 'open' | 'draft' | 'blocked' | 'ready';
-export type QueueRiskBadge = 'low' | 'med' | 'high';
 
 export function getMockPrFileCount(pr: PullRequest): number {
     const seed = hashString(`${pr.id}|files`);
@@ -866,6 +865,7 @@ export function queueRiskClass(risk: QueueRiskBadge): string {
         case 'low':  return 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-200';
         case 'med':  return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200';
         case 'high': return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200';
+        case 'unknown': return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300';
     }
 }
 
@@ -967,4 +967,3 @@ export function getQueueFilterDefinitions(options?: { suggestionsEnabled?: boole
 }
 
 export { ALL_FILTERS as QUEUE_FILTERS };
-

@@ -4,7 +4,14 @@
 
 import { describe, it, expect } from 'vitest';
 import { AttentionGroup } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-attention-groups';
-import { formatRelativeTime, formatTimestamp, getGroupBadgeStyle, prStatusBadge, prStatusColor } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-utils';
+import {
+    deriveQueueRisk,
+    formatRelativeTime,
+    formatTimestamp,
+    getGroupBadgeStyle,
+    prStatusBadge,
+    prStatusColor,
+} from '../../../../../src/server/spa/client/react/features/pull-requests/pr-utils';
 
 describe('formatTimestamp', () => {
     it('returns a non-empty string for a valid ISO date', () => {
@@ -136,5 +143,34 @@ describe('getGroupBadgeStyle', () => {
             color: 'bg-purple-100 text-purple-800',
             emoji: '✅',
         });
+    });
+});
+
+describe('deriveQueueRisk', () => {
+    it('returns unknown when real diff stats are unavailable', () => {
+        expect(deriveQueueRisk(undefined)).toBe('unknown');
+        expect(deriveQueueRisk(null)).toBe('unknown');
+    });
+
+    it('uses the documented changed-line thresholds', () => {
+        expect(deriveQueueRisk({ additions: 100, deletions: 99, changedFiles: 3 })).toBe('low');
+        expect(deriveQueueRisk({ additions: 100, deletions: 100, changedFiles: 3 })).toBe('med');
+        expect(deriveQueueRisk({ additions: 500, deletions: 300, changedFiles: 6 })).toBe('med');
+        expect(deriveQueueRisk({ additions: 500, deletions: 301, changedFiles: 6 })).toBe('high');
+    });
+
+    it('bumps risk by exactly one tier for failing checks or blocking threads', () => {
+        expect(deriveQueueRisk(
+            { additions: 50, deletions: 25, changedFiles: 1 },
+            { hasFailingCheck: true },
+        )).toBe('med');
+        expect(deriveQueueRisk(
+            { additions: 200, deletions: 100, changedFiles: 2 },
+            { hasUnresolvedBlockingThread: true },
+        )).toBe('high');
+        expect(deriveQueueRisk(
+            { additions: 900, deletions: 50, changedFiles: 10 },
+            { hasFailingCheck: true, hasUnresolvedBlockingThread: true },
+        )).toBe('high');
     });
 });
