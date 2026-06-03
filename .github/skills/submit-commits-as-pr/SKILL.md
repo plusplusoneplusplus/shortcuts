@@ -31,7 +31,7 @@ commit/stash first.
 ## Invocation
 
 ```bash
-python .agents/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start [<commits>] [options]
+python3 .agents/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start [<commits>] [options]
 ```
 
 Common options:
@@ -96,7 +96,7 @@ After the PR is created, invoke the `loop` skill with a self-contained prompt th
 
 ## Prereqs & notes
 
-- Needs `git`, `gh` (authed), and `python` ≥ 3.9 on PATH.
+- Needs `git`, `gh` (authed), and `python3` ≥ 3.9 on PATH.
 - Auto-merge only takes effect if the repo allows it and the chosen
   method is enabled; otherwise the PR is created and a warning is logged.
 - Branch-name collisions get a numeric suffix (`pr/abc1234-fix-foo-2`).
