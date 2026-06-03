@@ -1331,18 +1331,25 @@ describe('ChatListPane', () => {
             expect(cls).toContain('ml-3');
         });
 
-        it('keeps unseen plan-file groups collapsed by default while preserving unread affordances', () => {
+        it('keeps unseen plan-file groups collapsed after workspace switches while preserving unread affordances', () => {
             const onMarkAllRead = vi.fn();
-            renderGrouped({
+            const { rerender, props } = renderGrouped({
+                workspaceId: 'ws-a',
                 unseenProcessIds: new Set(['g2-a']),
                 onMarkAllRead,
             });
 
+            rerender(<ChatListPane {...props} workspaceId="__all" />);
             const unseenGroup = screen.getByTestId('group-unseen-dot').closest('[data-testid="history-group"]') as HTMLElement;
             expect(unseenGroup.getAttribute('data-expanded')).toBe('false');
             expect(screen.queryByTestId('history-group-children')).toBeNull();
             expect(screen.getByTestId('unseen-count-badge').textContent).toBe('1');
             expect(screen.getByTestId('mark-all-read-btn')).toBeTruthy();
+            fireEvent.click(screen.getByTestId('mark-all-read-btn'));
+            expect(onMarkAllRead).toHaveBeenCalledTimes(1);
+            expect(onMarkAllRead.mock.calls[0][0].map((task: any) => task.id)).toEqual(
+                expect.arrayContaining(['g2-a', 'g2-b', 'standalone', 'g1-a', 'g1-b']),
+            );
         });
 
         it('respects manual plan-file group toggles only until the workspace changes or remounts', () => {
